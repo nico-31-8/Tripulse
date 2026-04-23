@@ -1,5 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+
+const RUTAS_PUBLICAS = ['/', '/login', '/registro']
 
 const modulos = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
@@ -12,6 +16,22 @@ const modulos = [
 
 export default function Sidebar() {
   const [expandido, setExpandido] = useState(false)
+  const [autenticado, setAutenticado] = useState(false)
+  const pathname = usePathname()
+
+  useEffect(() => {
+    const comprobar = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setAutenticado(!!user)
+    }
+    comprobar()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAutenticado(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (!autenticado || RUTAS_PUBLICAS.includes(pathname)) return null
 
   return (
     <div onMouseEnter={() => setExpandido(true)} onMouseLeave={() => setExpandido(false)} className={`fixed left-0 top-0 h-full bg-gray-900 border-r border-gray-800 z-50 flex flex-col transition-all duration-300 ${expandido ? 'w-48' : 'w-14'}`}>

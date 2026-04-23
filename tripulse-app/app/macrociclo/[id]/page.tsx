@@ -50,7 +50,7 @@ export default function PaginaMacrociclo({ params }: { params: Promise<{ id: str
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
+        <button onClick={() => window.location.href = "/dashboard"} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
         <a href={`/deportistas/${macrociclo.id_deportista}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</a>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">

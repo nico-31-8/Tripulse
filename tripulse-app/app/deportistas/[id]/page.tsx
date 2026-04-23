@@ -55,7 +55,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
+        <button onClick={() => window.location.href = "/dashboard"} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
         <a href="/deportistas" className="text-gray-400 hover:text-white text-sm transition">← Deportistas</a>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -70,7 +70,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 HRV basal: {deportista.hrv_basal || '—'} ms
               </p>
             </div>
-            <div className="flex gap-2"><button onClick={() => window.location.href = `/tests/${deportista.id}`} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1 rounded-full transition">Tests</button><span className="bg-gray-700 text-gray-300 text-xs px-3 py-1 rounded-full">Activo</span></div>
+            <div className="flex gap-2"><button onClick={() => window.location.href = `/tests/${deportista.id}`} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1 rounded-full transition">Tests</button><button onClick={() => window.location.href = `/zonas/${deportista.id}`} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded-full transition">Zonas</button><span className="bg-gray-700 text-gray-300 text-xs px-3 py-1 rounded-full">Activo</span></div>
           </div>
         </div>
         <div className="flex justify-between items-center mb-4">
