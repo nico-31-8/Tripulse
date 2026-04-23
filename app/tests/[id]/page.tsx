@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import ProtocoloTest from '@/app/components/ProtocoloTest'
 
 export default function PaginaTests({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -137,7 +138,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           <h3 className="text-xl font-bold">{tab === 'carrera' ? 'Test incremental carrera' : tab === 'natacion' ? 'Test CSS natacion' : 'Test FTP ciclismo'}</h3>
           <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">{mostrarForm ? 'Cancelar' : '+ Nuevo test'}</button>
         </div>
-        {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+        {error {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}{error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>} <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+        <ProtocoloTest tipo={tab} />
         {mostrarForm && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test incremental de carrera</h4>

@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, use } from 'react'
+import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
@@ -151,6 +152,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">{mostrarForm ? 'Cancelar' : '+ Nuevo test'}</button>
         </div>
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+        <ProtocoloTest tipo={tab} />
 
         {mostrarForm && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
