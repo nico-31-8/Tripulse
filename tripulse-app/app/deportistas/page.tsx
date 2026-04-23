@@ -23,11 +23,8 @@ function TooltipHRV() {
       <button type="button" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)} onClick={() => setVisible(!visible)} className="w-5 h-5 rounded-full bg-gray-600 hover:bg-orange-500 text-white text-xs font-bold transition flex items-center justify-center">?</button>
       {visible && (
         <div className="absolute left-7 top-0 z-10 w-72 bg-gray-700 text-gray-200 text-xs rounded-lg p-3 shadow-xl border border-gray-600">
-          <p className="font-bold text-white mb-1">HRV Basal — ¿Qué es y cómo se calcula?</p>
-          <p className="mb-2">La HRV (Heart Rate Variability) es la variabilidad entre latidos. Un valor alto indica buena recuperación; un valor bajo indica fatiga o estrés.</p>
-          <p className="font-semibold text-orange-400 mb-1">Cómo obtenerla:</p>
-          <p>Media de los valores nocturnos registrados por el reloj Garmin durante <strong>7 a 14 días en reposo</strong>. El atleta la encuentra en Garmin Connect → Estado HRV.</p>
-          <p className="mt-2 text-gray-400">Este valor sirve como línea base individual para el corrector HRV del Sistema ECO.</p>
+          <p className="font-bold text-white mb-1">HRV Basal</p>
+          <p className="mb-2">Media de los valores nocturnos del reloj Garmin durante 7-14 días en reposo.</p>
         </div>
       )}
     </div>
@@ -42,22 +39,25 @@ export default function Deportistas() {
   const [fechaNacimiento, setFechaNacimiento] = useState('')
   const [hrvBasal, setHrvBasal] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => { cargarDeportistas() }, [])
 
   const cargarDeportistas = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/login'; return }
-    const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
+    const { data, error } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
+    if (error) setError('Error al cargar: ' + error.message)
     setDeportistas(data || [])
   }
 
   const crearDeportista = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
     const { data: { user } } = await supabase.auth.getUser()
     const fcMaxima = fechaNacimiento ? calcularFCMaxima(fechaNacimiento) : null
-    await supabase.from('deportista').insert({
+    const { error } = await supabase.from('deportista').insert({
       id_entrenador: user?.id,
       nombre,
       sexo,
@@ -65,9 +65,13 @@ export default function Deportistas() {
       fc_maxima: fcMaxima,
       hrv_basal: hrvBasal ? Number(hrvBasal) : null
     })
-    setNombre(''); setSexo(''); setFechaNacimiento(''); setHrvBasal('')
-    setMostrarForm(false)
-    cargarDeportistas()
+    if (error) {
+      setError('Error al guardar: ' + error.message)
+    } else {
+      setNombre(''); setSexo(''); setFechaNacimiento(''); setHrvBasal('')
+      setMostrarForm(false)
+      cargarDeportistas()
+    }
     setLoading(false)
   }
 
@@ -84,6 +88,7 @@ export default function Deportistas() {
             {mostrarForm ? 'Cancelar' : '+ Nuevo deportista'}
           </button>
         </div>
+        {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
         {mostrarForm && (
           <form onSubmit={crearDeportista} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h3 className="font-bold text-lg">Nuevo deportista</h3>
