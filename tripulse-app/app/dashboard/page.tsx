@@ -27,7 +27,7 @@ export default function Dashboard() {
     { icon: '📅', titulo: 'Planificacion', descripcion: 'Macrociclos, mesociclos y sesiones', href: '/deportistas' },
     { icon: '📊', titulo: 'Sistema ECO', descripcion: 'Analisis de carga individual', href: '/deportistas' },
     { icon: '💚', titulo: 'Wellness', descripcion: 'Estado diario de tus atletas', href: '/deportistas' },
-    { icon: '🏋️', titulo: 'Tests', descripcion: 'FTP, CSS, VAM, 1RM', href: '/deportistas' },
+    { icon: '🏋️', titulo: 'Tests', descripcion: 'FTP, CSS, VAM, 1RM', href: '/tests' },
     { icon: '📈', titulo: 'Carga', descripcion: 'ATL, CTL, TSB y ACWR', href: '/deportistas' },
   ]
 

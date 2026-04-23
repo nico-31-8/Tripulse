@@ -70,7 +70,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 HRV basal: {deportista.hrv_basal || '—'} ms
               </p>
             </div>
-            <span className="bg-orange-500 text-white text-xs px-3 py-1 rounded-full">Activo</span>
+            <div className="flex gap-2"><button onClick={() => window.location.href = `/tests/${deportista.id}`} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1 rounded-full transition">Tests</button><span className="bg-gray-700 text-gray-300 text-xs px-3 py-1 rounded-full">Activo</span></div>
           </div>
         </div>
         <div className="flex justify-between items-center mb-4">

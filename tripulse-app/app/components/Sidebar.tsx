@@ -6,7 +6,7 @@ const modulos = [
   { icon: '📅', titulo: 'Planificacion', href: '/deportistas' },
   { icon: '📊', titulo: 'Sistema ECO', href: '/deportistas' },
   { icon: '💚', titulo: 'Wellness', href: '/deportistas' },
-  { icon: '🏋️', titulo: 'Tests', href: '/deportistas' },
+  { icon: '🏋️', titulo: 'Tests', href: '/tests' },
   { icon: '📈', titulo: 'Carga', href: '/deportistas' },
 ]
 
