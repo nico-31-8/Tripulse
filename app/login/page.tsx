@@ -11,11 +11,16 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      setMensaje('Email o contraseña incorrectos')
-    } else {
-      window.location.href = '/dashboard'
+      setMensaje('Email o contrasena incorrectos')
+    } else if (data.user) {
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.user.id).single()
+      if (perfil?.rol === 'deportista') {
+        window.location.href = '/dashboard-deportista'
+      } else {
+        window.location.href = '/dashboard'
+      }
     }
     setLoading(false)
   }
