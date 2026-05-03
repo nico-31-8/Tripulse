@@ -19,10 +19,16 @@ export default function Registro() {
     if (error) { setMensaje('Error: ' + error.message); setLoading(false); return }
     if (data.user) {
       await supabase.from('perfiles').insert({ id: data.user.id, rol, nombre, email })
-      if (rol === 'deportista' && codigoEntrenador) {
-        const { data: entrenador } = await supabase.from('perfiles').select('id').eq('id', codigoEntrenador).single()
-        if (entrenador) {
-          await supabase.from('deportista').insert({ id_entrenador: codigoEntrenador, id_usuario: data.user.id, nombre })
+      if (rol === 'deportista') {
+        if (codigoEntrenador) {
+          const { data: entrenador } = await supabase.from('perfiles').select('id').eq('codigo_entrenador', codigoEntrenador.toUpperCase()).single()
+          if (entrenador) {
+            await supabase.from('deportista').insert({ id_entrenador: entrenador.id, id_usuario: data.user.id, nombre })
+          } else {
+            await supabase.from('deportista').insert({ id_usuario: data.user.id, nombre })
+          }
+        } else {
+          await supabase.from('deportista').insert({ id_usuario: data.user.id, nombre })
         }
       }
       window.location.href = rol === 'entrenador' ? '/dashboard' : '/dashboard-deportista'

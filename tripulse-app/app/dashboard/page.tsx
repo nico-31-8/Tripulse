@@ -24,11 +24,13 @@ export default function Dashboard() {
 
   const modulos = [
     { icon: '👥', titulo: 'Deportistas', descripcion: 'Gestiona tus atletas', href: '/deportistas' },
-    { icon: '📅', titulo: 'Planificacion', descripcion: 'Macrociclos, mesociclos y sesiones', href: '/deportistas' },
-    { icon: '📊', titulo: 'Sistema ECO', descripcion: 'Analisis de carga individual', href: '/deportistas' },
+    { icon: '📅', titulo: 'Planificacion', descripcion: 'Macrociclos, mesociclos y sesiones', href: '/planificacion-visual' },
+    { icon: '📊', titulo: 'Sistema ECO', descripcion: 'Analisis de carga individual', href: '/eco' },
+    { icon: '🎯', titulo: 'Análisis de Índices', descripcion: 'Percepción, planificación y semáforo', href: '/indices' },
     { icon: '💚', titulo: 'Wellness', descripcion: 'Estado diario de tus atletas', href: '/wellness-entrenador' },
     { icon: '🏋️', titulo: 'Tests', descripcion: 'FTP, CSS, VAM, 1RM', href: '/tests' },
-    { icon: '📈', titulo: 'Carga', descripcion: 'ATL, CTL, TSB y ACWR', href: '/deportistas' },
+    { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Ejercicios por grupo muscular', href: '/fuerza' },
+    { icon: '📈', titulo: 'Carga', descripcion: 'ATL, CTL, TSB y ACWR', href: '/carga' },
   ]
 
   return (

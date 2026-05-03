@@ -19,7 +19,13 @@ export default function DashboardDeportista() {
       setDeportista(dep)
       if (dep) {
         const hoy = new Date().toISOString().split('T')[0]
-        const { data: sesHoy } = await supabase.from('sesion').select('*').eq('fecha_sesion', hoy)
+        const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
+        const macroIds = (macros || []).map((m: any) => m.id)
+        const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+        const mesoIds = (mesos || []).map((m: any) => m.id)
+        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+        const microIds = (micros || []).map((m: any) => m.id)
+        const { data: sesHoy } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).eq('fecha_sesion', hoy)
         setSesionesHoy(sesHoy || [])
         const { data: wellness } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1)
         setUltimoWellness(wellness?.[0] || null)

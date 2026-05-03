@@ -17,7 +17,13 @@ export default function MisSesiones() {
       if (!user) { window.location.href = '/login'; return }
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).single()
       if (dep) {
-        const { data } = await supabase.from('sesion').select('*').order('fecha_sesion')
+        const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
+      const macroIds = (macros || []).map((m: any) => m.id)
+      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+      const mesoIds = (mesos || []).map((m: any) => m.id)
+      const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+      const microIds = (micros || []).map((m: any) => m.id)
+      const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).order('fecha_sesion')
         setSesiones(data || [])
       }
       setLoading(false)

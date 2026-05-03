@@ -1,19 +1,45 @@
 'use client'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState('')
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { setMensaje('Email o contrasena incorrectos') }
-    else { window.location.href = '/dashboard' }
+    setMensaje('')
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      setMensaje('Email o contrasena incorrectos')
+      setLoading(false)
+      return
+    }
+    if (data.user) {
+      const { data: perfil, error: errorPerfil } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', data.user.id)
+        .single()
+      
+      if (errorPerfil || !perfil) {
+        setMensaje('Error al cargar el perfil. Contacta con soporte.')
+        setLoading(false)
+        return
+      }
+
+      if (perfil.rol === 'deportista') {
+        window.location.href = '/dashboard-deportista'
+      } else {
+        window.location.href = '/dashboard'
+      }
+    }
     setLoading(false)
   }
+
   return (
     <main className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md">
