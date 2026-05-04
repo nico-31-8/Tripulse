@@ -23,14 +23,15 @@ export default function Dashboard() {
   const ir = (ruta: string) => { window.location.href = ruta }
 
   const modulos = [
-    { icon: '👥', titulo: 'Deportistas', descripcion: 'Gestiona tus atletas', href: '/deportistas' },
-    { icon: '📅', titulo: 'Planificacion', descripcion: 'Macrociclos, mesociclos y sesiones', href: '/planificacion-visual' },
-    { icon: '📊', titulo: 'Sistema ECO', descripcion: 'Analisis de carga individual', href: '/eco' },
-    { icon: '🎯', titulo: 'Análisis de Índices', descripcion: 'Percepción, planificación y semáforo', href: '/indices' },
-    { icon: '💚', titulo: 'Wellness', descripcion: 'Estado diario de tus atletas', href: '/wellness-entrenador' },
-    { icon: '🏋️', titulo: 'Tests', descripcion: 'FTP, CSS, VAM, 1RM', href: '/tests' },
-    { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Ejercicios por grupo muscular', href: '/fuerza' },
-    { icon: '📈', titulo: 'Carga', descripcion: 'ATL, CTL, TSB y ACWR', href: '/carga' },
+    { icon: '👥', titulo: 'Deportistas', descripcion: 'Añade y gestiona tus atletas. Accede a su perfil, tests y zonas de entrenamiento.', href: '/deportistas' },
+    { icon: '📅', titulo: 'Planificación', descripcion: 'Diseña macrociclos, mesociclos, microciclos y sesiones. Planifica tareas por zona y disciplina.', href: '/planificacion-visual' },
+    { icon: '💚', titulo: 'Wellness', descripcion: 'Consulta el estado diario de tus atletas. Score, HRV, fatiga, estrés y evolución gráfica.', href: '/wellness-entrenador' },
+    { icon: '📈', titulo: 'Carga', descripcion: 'Monitoriza ATL, CTL, TSB, ACWR, monotonía y strain. Control del estrés de entrenamiento.', href: '/carga' },
+    { icon: '📊', titulo: 'Volumen', descripcion: 'Visualiza el volumen de entrenamiento por disciplina. Metros, minutos y carga UA por semana.', href: '/volumen' },
+    { icon: '🔬', titulo: 'Sistema ECO', descripcion: 'Análisis individualizado del coste energético por disciplina. Factores F1-F4 y corrector HRV.', href: '/eco' },
+    { icon: '🎯', titulo: 'Análisis de Índices', descripcion: 'Índice de percepción y planificación por sesión. Semáforo de doble dimensión.', href: '/indices' },
+    { icon: '🏋️', titulo: 'Tests', descripcion: 'Registra FTP, CSS, VAM y 1RM. Genera zonas de entrenamiento automáticas.', href: '/tests' },
+    { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Gestiona ejercicios por grupo muscular con video de referencia. Acceso con clave de admin.', href: '/fuerza' },
   ]
 
   return (

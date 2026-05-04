@@ -255,7 +255,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           {sesion.notas_entrenador && <p className="text-gray-300 text-sm mt-2 italic bg-gray-800 rounded-lg px-3 py-2">"{sesion.notas_entrenador}"</p>}
         </div>
 
-        {sesion.estado !== 'Realizada' && (
+        {sesion.estado !== 'Realizada' && esDeportista && (
           <div className="mb-6">
             {!sesionIniciada ? (
               <button onClick={iniciarSesion} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg transition">▶ Iniciar sesion</button>

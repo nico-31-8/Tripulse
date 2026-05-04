@@ -1,18 +1,16 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
 
-const VARIABLES = [
-  { key: 'score_wellness', label: 'Score wellness', color: '#f97316', domain: [0, 100] },
-  { key: 'hrv', label: 'HRV (ms)', color: '#60a5fa', domain: ['auto', 'auto'] },
-  { key: 'fatiga', label: 'Fatiga', color: '#f87171', domain: [1, 7] },
-  { key: 'estres', label: 'Estrés', color: '#fb923c', domain: [1, 7] },
-  { key: 'animo', label: 'Ánimo', color: '#4ade80', domain: [1, 7] },
-  { key: 'motivacion', label: 'Motivación', color: '#a78bfa', domain: [1, 7] },
-  { key: 'calidad_sueno', label: 'Calidad sueño', color: '#34d399', domain: [1, 7] },
-  { key: 'horas_sueno', label: 'Horas sueño', color: '#38bdf8', domain: [0, 12] },
-  { key: 'dolor_muscular', label: 'Dolor muscular', color: '#fbbf24', domain: [1, 7] },
+const VARS_SUBJETIVAS = [
+  { key: 'fatiga',         label: 'Fatiga',         color: '#f87171' },
+  { key: 'estres',         label: 'Estrés',         color: '#fb923c' },
+  { key: 'animo',          label: 'Ánimo',          color: '#4ade80' },
+  { key: 'motivacion',     label: 'Motivación',     color: '#a78bfa' },
+  { key: 'calidad_sueno',  label: 'Calidad sueño',  color: '#34d399' },
+  { key: 'horas_sueno',    label: 'Horas sueño',    color: '#38bdf8' },
+  { key: 'dolor_muscular', label: 'Dolor muscular', color: '#fbbf24' },
 ]
 
 const RANGOS = [
@@ -41,16 +39,18 @@ function estadoScore(s: number) {
   return 'Crítico'
 }
 
+const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }
+
 export default function WellnessEntrenador() {
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [registros, setRegistros] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [variablesActivas, setVariablesActivas] = useState<string[]>(['score_wellness', 'hrv'])
   const [rango, setRango] = useState(14)
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [usarFechasCustom, setUsarFechasCustom] = useState(false)
+  const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
 
   useEffect(() => {
     const cargar = async () => {
@@ -69,11 +69,6 @@ export default function WellnessEntrenador() {
     cargar()
   }, [])
 
-  const verDetalle = async (deportista: any) => {
-    setSeleccionado(deportista)
-    await cargarRegistros(deportista.id, rango, fechaDesde, fechaHasta, usarFechasCustom)
-  }
-
   const cargarRegistros = async (depId: number, dias: number, desde: string, hasta: string, custom: boolean) => {
     let query = supabase.from('wellness').select('*').eq('id_deportista', depId).order('fecha', { ascending: true })
     if (custom && desde) query = query.gte('fecha', desde)
@@ -87,29 +82,50 @@ export default function WellnessEntrenador() {
     setRegistros(data || [])
   }
 
+  const verDetalle = async (dep: any) => {
+    setSeleccionado(dep)
+    await cargarRegistros(dep.id, rango, fechaDesde, fechaHasta, usarFechasCustom)
+  }
+
   const cambiarRango = async (dias: number) => {
-    setRango(dias)
-    setUsarFechasCustom(false)
+    setRango(dias); setUsarFechasCustom(false)
     if (seleccionado) await cargarRegistros(seleccionado.id, dias, '', '', false)
   }
 
-  const aplicarFechasCustom = async () => {
+  const aplicarFechas = async () => {
     setUsarFechasCustom(true)
     if (seleccionado) await cargarRegistros(seleccionado.id, rango, fechaDesde, fechaHasta, true)
   }
 
-  const toggleVariable = (key: string) => {
-    setVariablesActivas(prev =>
-      prev.includes(key) ? prev.filter(v => v !== key) : [...prev, key]
-    )
+  const toggleVar = (key: string) => {
+    setVarsActivas(prev => prev.includes(key) ? prev.filter(v => v !== key) : [...prev, key])
   }
 
-  const datosGrafica = registros.map(r => ({
-    fecha: r.fecha.slice(5),
-    ...VARIABLES.reduce((acc, v) => ({ ...acc, [v.key]: r[v.key] }), {})
-  }))
-
+  const datos = registros.map(r => ({ fecha: r.fecha.slice(5), ...r }))
   const alertas = deportistas.filter(d => d.ultimoWellness && d.ultimoWellness.score_wellness > 75)
+
+  // Selector de rango compartido
+  const SelectorRango = () => (
+    <div className="flex gap-2 flex-wrap items-center mb-4">
+      <p className="text-gray-500 text-xs uppercase tracking-wide mr-1">Período</p>
+      {RANGOS.map(r => (
+        <button key={r.dias} onClick={() => cambiarRango(r.dias)}
+          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' +
+            (!usarFechasCustom && rango === r.dias ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+          {r.label}
+        </button>
+      ))}
+      <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
+        className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
+      <span className="text-gray-500 text-xs">—</span>
+      <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
+        className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
+      <button onClick={aplicarFechas}
+        className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
+        Aplicar
+      </button>
+    </div>
+  )
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -169,98 +185,115 @@ export default function WellnessEntrenador() {
         </div>
 
         {seleccionado && (
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col gap-6">
+            <div className="flex justify-between items-center">
               <h3 className="text-xl font-bold">Evolución — {seleccionado.nombre}</h3>
               <button onClick={() => setSeleccionado(null)} className="text-gray-400 hover:text-white text-sm">Cerrar ×</button>
             </div>
 
-            {/* Selector de variables */}
-            <div className="mb-5">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-2 font-medium">Variables a mostrar</p>
-              <div className="flex flex-wrap gap-2">
-                {VARIABLES.map(v => (
-                  <button key={v.key} onClick={() => toggleVariable(v.key)}
-                    className={'px-3 py-1.5 rounded-lg text-xs font-medium transition border ' +
-                      (variablesActivas.includes(v.key)
-                        ? 'text-gray-900 border-transparent'
-                        : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500')}
-                    style={variablesActivas.includes(v.key) ? { background: v.color, borderColor: v.color } : {}}>
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <SelectorRango />
 
-            {/* Selector de rango */}
-            <div className="mb-5">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-2 font-medium">Período</p>
-              <div className="flex gap-2 flex-wrap items-end">
-                <div className="flex gap-2">
-                  {RANGOS.map(r => (
-                    <button key={r.dias} onClick={() => cambiarRango(r.dias)}
-                      className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' +
-                        (!usarFechasCustom && rango === r.dias
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2 items-center ml-2">
-                  <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                    className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
-                  <span className="text-gray-500 text-xs">—</span>
-                  <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                    className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
-                  <button onClick={aplicarFechasCustom}
-                    className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
-                    Aplicar
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Gráfica */}
             {registros.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">No hay registros en este período.</p>
-            ) : variablesActivas.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">Selecciona al menos una variable para ver la gráfica.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={datosGrafica}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
-                  {VARIABLES.filter(v => variablesActivas.includes(v.key)).map(v => (
-                    <Line key={v.key} type="monotone" dataKey={v.key} stroke={v.color} strokeWidth={2}
-                      dot={{ fill: v.color, r: 3 }} name={v.label} connectNulls />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-
-            {/* Tabla de últimos registros */}
-            <div className="mt-6">
-              <h4 className="font-medium text-gray-300 mb-3 text-sm">Últimos registros</h4>
-              <div className="grid gap-2">
-                {registros.slice(-5).reverse().map(r => (
-                  <div key={r.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium">{r.fecha}</p>
-                      <p className="text-gray-400 text-xs">Sueño: {r.horas_sueno}h · Fatiga: {r.fatiga}/7 · Estrés: {r.estres}/7 · Ánimo: {r.animo}/7 · Motivación: {r.motivacion}/7</p>
-                      {r.hrv && <p className="text-blue-400 text-xs">HRV: {r.hrv} ms</p>}
-                    </div>
-                    <div className="text-right ml-4">
-                      <p className={'font-bold ' + colorScore(r.score_wellness)}>{r.score_wellness}</p>
-                      <p className={'text-xs ' + colorScore(r.score_wellness)}>{estadoScore(r.score_wellness)}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center text-gray-400">
+                No hay registros en este período.
               </div>
-            </div>
+            ) : (
+              <>
+                {/* GRÁFICA 1 — Score wellness */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-bold text-orange-400">Score Wellness</h4>
+                    <span className="text-xs text-gray-500">Escala 0–100</span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={datos}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
+                      <YAxis domain={[0, 100]} stroke="#9ca3af" tick={{ fontSize: 11 }} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <ReferenceLine y={25} stroke="#4ade80" strokeDasharray="4 4" label={{ value: 'Óptimo', fill: '#4ade80', fontSize: 10 }} />
+                      <ReferenceLine y={50} stroke="#facc15" strokeDasharray="4 4" label={{ value: 'Aceptable', fill: '#facc15', fontSize: 10 }} />
+                      <ReferenceLine y={75} stroke="#f97316" strokeDasharray="4 4" label={{ value: 'Deteriorado', fill: '#f97316', fontSize: 10 }} />
+                      <Line type="monotone" dataKey="score_wellness" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 4 }} name="Score wellness" connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* GRÁFICA 2 — HRV */}
+                {registros.some(r => r.hrv) && (
+                  <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-bold text-blue-400">HRV</h4>
+                      <span className="text-xs text-gray-500">Milisegundos (ms)</span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={datos.filter(r => r.hrv)}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
+                        <YAxis stroke="#9ca3af" tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={tooltipStyle} />
+                        <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 4 }} name="HRV (ms)" connectNulls />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* GRÁFICA 3 — Variables subjetivas */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-bold text-gray-200">Variables subjetivas</h4>
+                    <span className="text-xs text-gray-500">Escala 1–7</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {VARS_SUBJETIVAS.map(v => (
+                      <button key={v.key} onClick={() => toggleVar(v.key)}
+                        className={'px-3 py-1 rounded-lg text-xs font-medium transition border ' +
+                          (varsActivas.includes(v.key) ? 'text-gray-900 border-transparent' : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500')}
+                        style={varsActivas.includes(v.key) ? { background: v.color, borderColor: v.color } : {}}>
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                  {varsActivas.length === 0 ? (
+                    <p className="text-gray-500 text-sm text-center py-8">Selecciona al menos una variable</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={datos}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
+                        <YAxis domain={[1, 7]} stroke="#9ca3af" tick={{ fontSize: 11 }} ticks={[1,2,3,4,5,6,7]} />
+                        <Tooltip contentStyle={tooltipStyle} />
+                        <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+                        {VARS_SUBJETIVAS.filter(v => varsActivas.includes(v.key)).map(v => (
+                          <Line key={v.key} type="monotone" dataKey={v.key} stroke={v.color} strokeWidth={2}
+                            dot={{ fill: v.color, r: 3 }} name={v.label} connectNulls />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Últimos registros */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <h4 className="font-medium text-gray-300 mb-3 text-sm">Últimos registros</h4>
+                  <div className="grid gap-2">
+                    {registros.slice(-5).reverse().map(r => (
+                      <div key={r.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium">{r.fecha}</p>
+                          <p className="text-gray-400 text-xs">Sueño: {r.horas_sueno}h · Fatiga: {r.fatiga}/7 · Estrés: {r.estres}/7 · Ánimo: {r.animo}/7 · Motivación: {r.motivacion}/7</p>
+                          {r.hrv && <p className="text-blue-400 text-xs">HRV: {r.hrv} ms</p>}
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className={'font-bold ' + colorScore(r.score_wellness)}>{r.score_wellness}</p>
+                          <p className={'text-xs ' + colorScore(r.score_wellness)}>{estadoScore(r.score_wellness)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -39,15 +39,18 @@ export default function DashboardDeportista() {
     window.location.href = '/'
   }
 
-  const irWellness = () => { if (deportista) window.location.href = '/wellness/' + deportista.id }
-  const irSesion = (id: number) => { window.location.href = '/sesion/' + id }
-  const irMisSesiones = () => { window.location.href = '/mis-sesiones' }
-
   const colorScore = (score: number) => {
     if (score <= 25) return 'text-green-400'
     if (score <= 50) return 'text-yellow-400'
     if (score <= 75) return 'text-orange-400'
     return 'text-red-400'
+  }
+
+  const estadoScore = (score: number) => {
+    if (score <= 25) return 'Óptimo'
+    if (score <= 50) return 'Aceptable'
+    if (score <= 75) return 'Deteriorado'
+    return 'Crítico'
   }
 
   const colorDisciplina = (d: string) => {
@@ -59,6 +62,13 @@ export default function DashboardDeportista() {
     return 'bg-purple-900 text-purple-300'
   }
 
+  const modulos = [
+    { icon: '📅', titulo: 'Mis sesiones', descripcion: 'Consulta tu calendario de entrenamientos. Ve el detalle de cada sesión y registra cómo fue.', href: '/mis-sesiones', border: 'hover:border-orange-500' },
+    { icon: '💚', titulo: 'Wellness', descripcion: 'Registra tu estado diario — sueño, fatiga, estrés, HRV. Tu entrenador lo consulta para ajustar la carga.', href: deportista ? '/wellness/' + deportista.id : '#', border: 'hover:border-green-500' },
+    { icon: '🏋️', titulo: 'Mis tests', descripcion: 'Consulta tus resultados de tests — VAM, CSS, FTP, 1RM — y las zonas de entrenamiento generadas.', href: '/mis-tests', border: 'hover:border-blue-500' },
+    { icon: '👤', titulo: 'Mi perfil', descripcion: 'Gestiona tu cuenta, vincula o desvincula tu entrenador con su código.', href: '/perfil', border: 'hover:border-gray-500' },
+  ]
+
   if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
@@ -67,64 +77,71 @@ export default function DashboardDeportista() {
         <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
-          <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesion</button>
+          <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesión</button>
         </div>
       </nav>
       <div className="max-w-2xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-1">Hola, {perfil?.nombre} 👋</h2>
-        <p className="text-gray-400 mb-8">Tu panel de entrenamiento</p>
+        <p className="text-gray-400 mb-6">Tu panel de entrenamiento</p>
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <button onClick={irWellness} className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-green-500 transition text-left">
-            <div className="text-3xl mb-2">💚</div>
-            <h3 className="font-bold mb-1 text-sm">Wellness</h3>
-            {ultimoWellness ? (
-              <div>
-                <p className={'text-xl font-bold ' + colorScore(ultimoWellness.score_wellness)}>{ultimoWellness.score_wellness}</p>
-                <p className="text-gray-400 text-xs">{ultimoWellness.fecha}</p>
-              </div>
-            ) : (
-              <p className="text-gray-400 text-xs">Registra tu estado</p>
-            )}
-          </button>
-
-          <button onClick={irMisSesiones} className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-orange-500 transition text-left">
-            <div className="text-3xl mb-2">📅</div>
-            <h3 className="font-bold mb-1 text-sm">Mis sesiones</h3>
-            <p className="text-gray-400 text-xs">Ver calendario</p>
-          </button>
-
-          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-            <div className="text-3xl mb-2">📊</div>
-            <h3 className="font-bold mb-1 text-sm">Mi progreso</h3>
-            <p className="text-gray-400 text-xs">Proximamente</p>
-          </div>
-        </div>
-
+        {/* Sesión de hoy */}
         {sesionesHoy.length > 0 && (
           <div className="mb-8">
-            <h3 className="text-xl font-bold mb-4">Sesion de hoy 🔥</h3>
+            <h3 className="text-lg font-bold mb-3 text-orange-400">🔥 Sesión de hoy</h3>
             {sesionesHoy.map(s => (
-              <div key={s.id} className="bg-gray-900 rounded-xl p-6 border border-orange-500">
+              <div key={s.id} className="bg-gray-900 rounded-xl p-5 border border-orange-500 mb-3">
                 <div className="flex items-center gap-3 mb-3">
                   <span className={'text-xs px-2 py-1 rounded-full font-medium ' + colorDisciplina(s.disciplina)}>{s.disciplina}</span>
                   <span className="text-gray-400 text-sm">{s.duracion_minutos ? s.duracion_minutos + ' min' : '—'}</span>
                   <span className="text-gray-400 text-sm">RPE est: {s.rpe_estimado || '—'}</span>
                 </div>
                 {s.notas_entrenador && <p className="text-gray-300 text-sm italic mb-4">"{s.notas_entrenador}"</p>}
-                <button onClick={() => irSesion(s.id)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition w-full">Ver sesion completa</button>
+                <button onClick={() => window.location.href = '/sesion/' + s.id}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition w-full">
+                  Ver sesión completa
+                </button>
               </div>
             ))}
           </div>
         )}
 
         {sesionesHoy.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <div className="text-5xl mb-4">😴</div>
-            <p className="text-lg font-medium text-white mb-1">Hoy es dia de descanso</p>
-            <p>Recupera bien para la proxima sesion.</p>
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8 text-center">
+            <div className="text-4xl mb-2">😴</div>
+            <p className="font-medium text-white mb-1">Hoy es día de descanso</p>
+            <p className="text-gray-500 text-sm">Recupera bien para la próxima sesión.</p>
           </div>
         )}
+
+        {/* Wellness rápido */}
+        {ultimoWellness && (
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Último wellness — {ultimoWellness.fecha}</p>
+                <p className="text-gray-300 text-sm">Fatiga: {ultimoWellness.fatiga}/7 · Estrés: {ultimoWellness.estres}/7 · Sueño: {ultimoWellness.horas_sueno}h</p>
+              </div>
+              <div className="text-right">
+                <p className={'text-3xl font-bold ' + colorScore(ultimoWellness.score_wellness)}>{ultimoWellness.score_wellness}</p>
+                <p className={'text-xs ' + colorScore(ultimoWellness.score_wellness)}>{estadoScore(ultimoWellness.score_wellness)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Módulos */}
+        <div className="grid grid-cols-1 gap-3">
+          {modulos.map(m => (
+            <button key={m.titulo} onClick={() => window.location.href = m.href}
+              className={'bg-gray-900 rounded-xl p-5 border border-gray-800 text-left transition w-full flex items-start gap-4 ' + m.border}>
+              <span className="text-3xl flex-shrink-0">{m.icon}</span>
+              <div>
+                <h3 className="font-bold mb-1">{m.titulo}</h3>
+                <p className="text-gray-400 text-sm">{m.descripcion}</p>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </main>
   )

@@ -8,10 +8,12 @@ const RUTAS_PUBLICAS = ['/', '/login', '/registro']
 const modulosEntrenador = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
   { icon: '📅', titulo: 'Planificacion', href: '/planificacion-visual' },
-  { icon: '📊', titulo: 'Sistema ECO', href: '/deportistas' },
   { icon: '💚', titulo: 'Wellness', href: '/wellness-entrenador' },
-  { icon: '🏋️', titulo: 'Tests', href: '/tests' },
   { icon: '📈', titulo: 'Carga', href: '/carga' },
+  { icon: '📊', titulo: 'Sistema ECO', href: '/eco' },
+  { icon: '🎯', titulo: 'Índices', href: '/indices' },
+  { icon: '🏋️', titulo: 'Tests', href: '/tests' },
+  { icon: '💪', titulo: 'Biblioteca Fuerza', href: '/fuerza' },
 ]
 
 const modulosDeportista = [
