@@ -84,6 +84,11 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
+  const [panelAbierto, setPanelAbierto] = useState(true)
+  const [macroExpandido, setMacroExpandido] = useState<number | null>(null)
+  const [mesoExpandido, setMesoExpandido] = useState<number | null>(null)
+  const [navMesos, setNavMesos] = useState<Record<number, any[]>>({})
+  const [navMicros, setNavMicros] = useState<Record<number, any[]>>({})
   const [modalMeso, setModalMeso] = useState(false)
   const [modalMicro, setModalMicro] = useState(false)
   const [modalSesion, setModalSesion] = useState(false)
@@ -109,6 +114,18 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     supabase.from('deportista').select('*').eq('id', id).single().then(({ data }) => setDeportista(data))
     supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio').then(({ data }) => setMacros(data || []))
   }, [id])
+
+  const cargarNavMesos = async (macroId: number) => {
+    if (navMesos[macroId]) return
+    const { data } = await supabase.from('mesociclo').select('*').eq('id_macrociclo', macroId).order('fecha_inicio')
+    setNavMesos(prev => ({ ...prev, [macroId]: data || [] }))
+  }
+
+  const cargarNavMicros = async (mesoId: number) => {
+    if (navMicros[mesoId]) return
+    const { data } = await supabase.from('microciclo').select('*').eq('id_mesociclo', mesoId).order('fecha_inicio')
+    setNavMicros(prev => ({ ...prev, [mesoId]: data || [] }))
+  }
 
   const verMesos = async (mac: any) => {
     setMacroSel(mac)
@@ -213,9 +230,145 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
-        <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+        <div className="flex flex-col items-end gap-1">
+          <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
+        </div>
       </nav>
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 flex gap-4">
+        {/* Panel lateral de navegación */}
+        <div className={`flex-shrink-0 transition-all duration-300 ${panelAbierto ? 'w-56' : 'w-10'}`}>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden sticky top-6">
+            <button onClick={() => setPanelAbierto(!panelAbierto)}
+              className="w-full flex items-center justify-between px-3 py-3 hover:bg-gray-800 transition border-b border-gray-800">
+              {panelAbierto && <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Navegación</span>}
+              <span className="text-gray-400 text-sm">{panelAbierto ? '◀' : '▶'}</span>
+            </button>
+            {panelAbierto && (
+              <div className="py-2 max-h-96 overflow-y-auto">
+                {macros.map(mac => (
+                  <div key={mac.id}>
+                    <button
+                      onClick={async () => {
+                        const nuevoEstado = macroExpandido === mac.id ? null : mac.id
+                        setMacroExpandido(nuevoEstado)
+                        if (nuevoEstado) await cargarNavMesos(mac.id)
+                        await verMesos(mac)
+                      }}
+                      className={'w-full text-left px-3 py-2 text-xs hover:bg-gray-800 transition flex justify-between items-center ' +
+                        (macroSel?.id === mac.id ? 'text-orange-400 font-medium' : 'text-gray-300')}>
+                      <span className="truncate">{mac.objetivo}</span>
+                      <span className="text-gray-600 ml-1">{macroExpandido === mac.id ? '▾' : '▸'}</span>
+                    </button>
+                    {macroExpandido === mac.id && navMesos[mac.id]?.map(meso => (
+                      <div key={meso.id}>
+                        <button
+                          onClick={async () => {
+                            const nuevoEstado = mesoExpandido === meso.id ? null : meso.id
+                            setMesoExpandido(nuevoEstado)
+                            if (nuevoEstado) await cargarNavMicros(meso.id)
+                            await verMicros(meso)
+                          }}
+                          className={'w-full text-left pl-5 pr-3 py-1.5 text-xs hover:bg-gray-800 transition flex justify-between items-center ' +
+                            (mesoSel?.id === meso.id ? 'text-orange-300 font-medium' : 'text-gray-400')}>
+                          <span className="truncate">{meso.objetivo}</span>
+                          <span className="text-gray-600 ml-1">{mesoExpandido === meso.id ? '▾' : '▸'}</span>
+                        </button>
+                        {mesoExpandido === meso.id && navMicros[meso.id]?.map((micro, idx) => (
+                          <button key={micro.id}
+                            onClick={() => verSesiones(micro)}
+                            className={'w-full text-left pl-8 pr-3 py-1 text-xs hover:bg-gray-800 transition ' +
+                              (microSel?.id === micro.id ? 'text-orange-200' : 'text-gray-500 hover:text-gray-300')}>
+                            Sem {idx + 1} · {micro.tipo?.slice(0,3)}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {macros.length === 0 && (
+                  <p className="text-gray-600 text-xs px-3 py-2">Sin macrociclos</p>
+                )}
+              </div>
+            )}
+
+            {/* Mini calendario */}
+            {panelAbierto && (
+              <div className="border-t border-gray-800 p-2">
+                <p className="text-xs text-gray-500 uppercase tracking-wide px-1 mb-2">Calendario</p>
+
+                {/* Vista macro: bloques de mesociclos */}
+                {nivel === 'macro' && macros.map(mac => (
+                  <div key={mac.id} className="mb-2">
+                    <p className="text-xs text-gray-500 px-1 truncate">{mac.objetivo}</p>
+                    <div className="flex flex-col gap-0.5 mt-1">
+                      {(navMesos[mac.id] || []).map(meso => (
+                        <button key={meso.id} onClick={() => { verMicros(meso) }}
+                          className={'w-full text-left px-2 py-1 rounded text-xs truncate ' +
+                            (meso.tipo?.includes('Acum') ? 'bg-orange-900 text-orange-300' :
+                             meso.tipo?.includes('Trans') ? 'bg-yellow-900 text-yellow-300' :
+                             meso.tipo?.includes('Real') ? 'bg-red-900 text-red-300' :
+                             'bg-green-900 text-green-300')}>
+                          {meso.objetivo?.slice(0,18)} · {meso.duracion_semanas}sem
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Vista meso: semanas */}
+                {nivel === 'meso' && mesoSel && (
+                  <div>
+                    <p className="text-xs text-gray-500 px-1 truncate mb-1">{mesoSel.objetivo}</p>
+                    <div className="flex flex-col gap-0.5">
+                      {micros.map((micro, idx) => (
+                        <button key={micro.id} onClick={() => verSesiones(micro)}
+                          className={'w-full text-left px-2 py-1 rounded text-xs ' +
+                            (microSel?.id === micro.id ? 'bg-orange-500 text-white' :
+                             micro.tipo?.includes('Carga') ? 'bg-orange-900 text-orange-300 hover:bg-orange-800' :
+                             micro.tipo?.includes('Recup') ? 'bg-green-900 text-green-300 hover:bg-green-800' :
+                             'bg-blue-900 text-blue-300 hover:bg-blue-800')}>
+                          Sem {idx+1} · {micro.fecha_inicio?.slice(5)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vista micro: días de la semana */}
+                {nivel === 'sesiones' && microSel && (
+                  <div>
+                    <p className="text-xs text-gray-500 px-1 truncate mb-1">{microSel.objetivo}</p>
+                    <div className="grid grid-cols-7 gap-0.5">
+                      {['L','M','X','J','V','S','D'].map((d, i) => (
+                        <div key={d} className="text-center text-xs text-gray-600">{d}</div>
+                      ))}
+                      {diasSemana(microSel.fecha_inicio || '').map(({ str, dia, sesiones: ses }) => {
+                        const tieneSesion = ses.length > 0
+                        const hoy = new Date().toISOString().split('T')[0]
+                        const esHoy = str === hoy
+                        return (
+                          <button key={str}
+                            onClick={() => tieneSesion ? window.location.href = '/sesion/' + ses[0].id : abrirModalSesion(str)}
+                            className={'rounded text-xs py-1 text-center transition ' +
+                              (esHoy ? 'bg-orange-500 text-white font-bold' :
+                               tieneSesion ? 'bg-blue-800 text-blue-200 hover:bg-blue-700' :
+                               'bg-gray-800 text-gray-500 hover:bg-gray-700')}>
+                            {new Date(str + 'T12:00:00').getDate()}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1 px-1">Pulsa día para añadir sesión</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Contenido principal */}
+        <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2 text-sm text-gray-400 flex-wrap">
           <button onClick={() => setNivel('macro')} className="hover:text-orange-400">Macrociclos</button>
           {nivel !== 'macro' && <><span>›</span><button onClick={() => setNivel('meso')} className="hover:text-orange-400">{macroSel?.objetivo}</button></>}
@@ -317,6 +470,8 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
             </div>
           </div>
         )}
+      </div>
+
       </div>
 
       {modalMeso && (
