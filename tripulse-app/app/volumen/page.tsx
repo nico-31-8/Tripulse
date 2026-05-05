@@ -38,7 +38,7 @@ export default function VolumenPage() {
   const [rango, setRango] = useState(28)
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
-  const [pestana, setPestana] = useState<'volumen'|'carga'>('volumen')
+  const [pestana, setPestana] = useState<'volumen'|'carga'|'fuerza'>('volumen')
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
   const [agrupCarga, setAgrupCarga] = useState<'sesion'|'semana'|'mes'>('semana')
   const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza'])
@@ -252,6 +252,11 @@ export default function VolumenPage() {
                   (pestana === 'carga' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
                 ⚡ Carga (RPE × duración)
               </button>
+              <button onClick={() => setPestana('fuerza')}
+                className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
+                  (pestana === 'fuerza' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
+                💪 Fuerza muscular
+              </button>
             </div>
 
             {/* Selector de rango — compartido */}
@@ -339,6 +344,68 @@ export default function VolumenPage() {
                         </ResponsiveContainer>
                       </div>
                     )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* PESTAÑA FUERZA */}
+            {pestana === 'fuerza' && (
+              <div className="flex flex-col gap-4">
+                {datosMusculo.length === 0 ? (
+                  <div className="text-center py-16 text-gray-500">
+                    <div className="text-5xl mb-4">💪</div>
+                    <p>No hay datos de ejercicios de fuerza todavía.</p>
+                    <p className="text-sm mt-2 text-gray-600">Crea sesiones de fuerza con ejercicios para ver el volumen muscular.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Mantenimiento', rango: '< 4 series', color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' },
+                        { label: 'Desarrollo', rango: '4–8 series', color: 'text-green-400', bg: 'bg-green-900 border-green-700' },
+                        { label: 'Carga alta', rango: '9–12 series', color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-700' },
+                        { label: 'Sobrevolumen', rango: '> 12 series', color: 'text-red-400', bg: 'bg-red-900 border-red-700' },
+                      ].map(z => (
+                        <div key={z.label} className={'rounded-xl p-3 border text-center ' + z.bg}>
+                          <p className={'font-bold text-sm ' + z.color}>{z.label}</p>
+                          <p className="text-gray-400 text-xs mt-0.5">{z.rango}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                      <p className="text-sm font-medium text-red-400 mb-3">Series por grupo muscular</p>
+                      <ResponsiveContainer width="100%" height={Math.max(250, datosMusculo.length * 45)}>
+                        <BarChart data={datosMusculo} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" series" />
+                          <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={160} />
+                          <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' series', 'Volumen']} />
+                          <Bar dataKey="series" radius={[0,4,4,0]} name="Series"
+                            fill="#f87171"
+                            label={{ position: 'right', fontSize: 11, fill: '#9ca3af', formatter: (v: any) => v + ' series' }} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="grid gap-2">
+                      {datosMusculo.map(m => {
+                        const estado = m.series < 4 ? { label: 'Mantenimiento', color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' }
+                          : m.series <= 8 ? { label: 'Desarrollo', color: 'text-green-400', bg: 'bg-green-900 border-green-700' }
+                          : m.series <= 12 ? { label: 'Carga alta', color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-700' }
+                          : { label: '⚠️ Sobrevolumen', color: 'text-red-400', bg: 'bg-red-900 border-red-700' }
+                        return (
+                          <div key={m.grupo} className={'flex justify-between items-center rounded-xl px-4 py-3 border ' + estado.bg}>
+                            <p className="font-medium text-sm text-white">{m.grupo}</p>
+                            <div className="flex items-center gap-3">
+                              <p className={'text-xs ' + estado.color}>{estado.label}</p>
+                              <p className="font-bold text-white">{m.series} series</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </>
                 )}
               </div>

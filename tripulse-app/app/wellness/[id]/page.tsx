@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 function scoreWellness(datos: any): number {
   const animoInv = 8 - datos.animo
@@ -46,6 +47,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [mostrarForm, setMostrarForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
+  const [rango, setRango] = useState(14)
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
   const [calidadSueno, setCalidadSueno] = useState(4)
   const [horasSueno, setHorasSueno] = useState(7)
@@ -143,6 +146,85 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar registro'}</button>
           </form>
         )}
+        {/* GRÁFICAS */}
+        {registros.length > 1 && (
+          <div className="flex flex-col gap-4 mb-6">
+            {/* Score wellness */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+              <p className="text-sm font-medium text-orange-400 mb-3">Score Wellness</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), score: r.score_wellness }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[0, 100]} stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
+                  <ReferenceLine y={25} stroke="#4ade80" strokeDasharray="4 4" />
+                  <ReferenceLine y={50} stroke="#facc15" strokeDasharray="4 4" />
+                  <ReferenceLine y={75} stroke="#f97316" strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="score" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 3 }} name="Score" connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* HRV */}
+            {registros.some(r => r.hrv) && (
+              <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                <p className="text-sm font-medium text-blue-400 mb-3">HRV (ms)</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <LineChart data={registros.slice().reverse().filter(r => r.hrv).map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                    <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
+                    <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 3 }} name="HRV" connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Variables subjetivas */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+              <p className="text-sm font-medium text-gray-200 mb-3">Variables subjetivas</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[
+                  { key: 'fatiga', label: 'Fatiga', color: '#f87171' },
+                  { key: 'estres', label: 'Estrés', color: '#fb923c' },
+                  { key: 'animo', label: 'Ánimo', color: '#4ade80' },
+                  { key: 'motivacion', label: 'Motivación', color: '#a78bfa' },
+                  { key: 'calidad_sueno', label: 'Sueño', color: '#34d399' },
+                  { key: 'dolor_muscular', label: 'Dolor', color: '#fbbf24' },
+                ].map(v => (
+                  <button key={v.key}
+                    onClick={() => setVarsActivas(prev => prev.includes(v.key) ? prev.filter(x => x !== v.key) : [...prev, v.key])}
+                    className={'px-2 py-1 rounded-lg text-xs font-medium transition border ' +
+                      (varsActivas.includes(v.key) ? 'text-gray-900 border-transparent' : 'bg-gray-800 text-gray-400 border-gray-700')}
+                    style={varsActivas.includes(v.key) ? { background: v.color, borderColor: v.color } : {}}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), fatiga: r.fatiga, estres: r.estres, animo: r.animo, motivacion: r.motivacion, calidad_sueno: r.calidad_sueno, dolor_muscular: r.dolor_muscular }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[1, 7]} stroke="#9ca3af" tick={{ fontSize: 10 }} ticks={[1,2,3,4,5,6,7]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
+                  {[
+                    { key: 'fatiga', label: 'Fatiga', color: '#f87171' },
+                    { key: 'estres', label: 'Estrés', color: '#fb923c' },
+                    { key: 'animo', label: 'Ánimo', color: '#4ade80' },
+                    { key: 'motivacion', label: 'Motivación', color: '#a78bfa' },
+                    { key: 'calidad_sueno', label: 'Sueño', color: '#34d399' },
+                    { key: 'dolor_muscular', label: 'Dolor', color: '#fbbf24' },
+                  ].filter(v => varsActivas.includes(v.key)).map(v => (
+                    <Line key={v.key} type="monotone" dataKey={v.key} stroke={v.color} strokeWidth={2} dot={{ fill: v.color, r: 3 }} name={v.label} connectNulls />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
         {registros.length === 0 ? (
           <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">💚</div><p>No hay registros de wellness todavia.</p></div>
         ) : (
