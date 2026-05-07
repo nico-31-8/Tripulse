@@ -30,6 +30,28 @@ function getDiasDelMes(año: number, mes: number) {
   return dias
 }
 
+function getVolumenSesion(sesion: any): string {
+  const disc = sesion.disciplina
+  const min = sesion.duracion_minutos ? sesion.duracion_minutos + 'm' : ''
+  const metros = sesion.metros_total || 0
+  const seg = sesion.seg_total || 0
+
+  if (disc === 'Fuerza') return min
+  if (disc === 'Ciclismo') {
+    if (seg > 0) return Math.floor(seg/60) + 'm'
+    return min
+  }
+  if (disc === 'Natacion' || disc === 'Carrera') {
+    if (metros > 0) {
+      const vol = metros >= 1000 ? (metros/1000).toFixed(1) + 'km' : metros + 'm'
+      return min ? min + ' · ' + vol : vol
+    }
+    if (seg > 0) return Math.floor(seg/60) + 'm'
+    return min
+  }
+  return min
+}
+
 function fechaStr(d: Date) {
   return d.toISOString().split('T')[0]
 }
@@ -48,7 +70,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const hoy = new Date()
     return { año: hoy.getFullYear(), mes: hoy.getMonth() }
   })
-  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|null>(null)
+  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|null>(null)
+  const [sesionEditando, setSesionEditando] = useState<any>(null)
+  const [vistaDetalle, setVistaDetalle] = useState<'multi'|'mes'>('multi')
   const [fechaSel, setFechaSel] = useState('')
   const [macroSel, setMacroSel] = useState<any>(null)
   const [mesoSel, setMesoSel] = useState<any>(null)
@@ -85,7 +109,28 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (!mi?.length) return
     const miIds = mi.map(m => m.id)
     const { data: ses } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).order('fecha_sesion')
-    setSesiones(ses || [])
+    if (ses?.length) {
+      const sesIds = ses.map(s => s.id)
+      const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series').in('id_sesion', sesIds)
+      const tareaIds = tareas?.map(t => t.id) || []
+      const { data: dists } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
+      const { data: durs } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
+      const sesConVolumen = ses.map(s => {
+        const tarSes = tareas?.filter(t => t.id_sesion === s.id) || []
+        const metros = tarSes.reduce((acc, t) => {
+          const d = dists?.find(d => d.id_tarea === t.id)
+          return acc + (d ? d.metros_planeados * (t.series || 1) : 0)
+        }, 0)
+        const seg = tarSes.reduce((acc, t) => {
+          const d = durs?.find(d => d.id_tarea === t.id)
+          return acc + (d ? d.tiempo_planeado * (t.series || 1) : 0)
+        }, 0)
+        return { ...s, metros_total: metros, seg_total: seg }
+      })
+      setSesiones(sesConVolumen)
+    } else {
+      setSesiones([])
+    }
   }
 
   const mesesAMostrar = Array.from({ length: rango }, (_, i) => {
@@ -128,6 +173,35 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (meso) { setMesoSel(meso); setMacroSel(macro); setModalTipo('micro'); return }
     if (macro) { setMacroSel(macro); setModalTipo('meso'); return }
     setModalTipo('macro')
+  }
+
+  const editarSesion = (ses: any, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSesionEditando(ses)
+    setSesionDisc(ses.disciplina || '')
+    setSesionDuracion(ses.duracion_minutos || '')
+    setSesionRpe(ses.rpe_estimado || '')
+    setSesionNotas(ses.notas_entrenador || '')
+    setModalTipo('editarSesion')
+  }
+
+  const borrarSesion = async (sesId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('¿Borrar esta sesión?')) return
+    await supabase.from('sesion').delete().eq('id', sesId)
+    await cargarDatos()
+  }
+
+  const guardarEdicionSesion = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('sesion').update({
+      disciplina: sesionDisc,
+      duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null,
+      rpe_estimado: sesionRpe ? Number(sesionRpe) : null,
+      notas_entrenador: sesionNotas,
+    }).eq('id', sesionEditando.id)
+    setSesionEditando(null); setModalTipo(null)
+    await cargarDatos(); setLoading(false)
   }
 
   const guardarMacro = async (e: React.FormEvent) => {
@@ -180,6 +254,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
+              <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}
+                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
+                  (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
+                📅 1 mes
+              </button>
               <button onClick={() => { setVista('calendario'); setCapaCalendario('mesos') }}
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
                   (vista === 'calendario' && capaCalendario === 'mesos' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
@@ -234,8 +313,73 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-white opacity-70"/><span className="text-gray-400">Sesión planificada</span></div>
         </div>
 
+        {/* VISTA 1 MES DETALLADA */}
+        {vistaDetalle === 'mes' && vista === 'calendario' && (() => {
+          const { mes, año } = mesesAMostrar[0]
+          const diasMes = getDiasDelMes(año, mes)
+          return (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-800 bg-gray-800 flex justify-between items-center">
+                <p className="font-bold text-lg">{['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes]} {año}</p>
+                <p className="text-gray-400 text-sm">{sesiones.length} sesiones</p>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-7 gap-1 mb-2">
+                  {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => (
+                    <div key={d} className="text-center text-xs text-gray-500 py-1">{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {diasMes.map((dia, i) => {
+                    if (!dia) return <div key={i} />
+                    const f = fechaStr(dia)
+                    const meso = getMesoDelDia(f)
+                    const micro = getMicroDelDia(f)
+                    const sesDia = getSesionesDia(f)
+                    const esHoy = f === hoy
+                    return (
+                      <div key={f}
+                        onClick={() => abrirModal(f)}
+                        className={'min-h-20 rounded-xl border p-1.5 cursor-pointer transition ' +
+                          (esHoy ? 'ring-2 ring-orange-500 ' : '') +
+                          (meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-800') + ' bg-opacity-20 border-gray-700 hover:bg-opacity-30 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ')}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{dia.getDate()}</span>
+                          {micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          {sesDia.map(s => (
+                            <div key={s.id}
+                              className={'rounded px-1 py-0.5 flex justify-between items-center group ' +
+                                (s.disciplina === 'Natacion' ? 'bg-blue-800 text-blue-200' :
+                                 s.disciplina === 'Ciclismo' ? 'bg-yellow-800 text-yellow-200' :
+                                 s.disciplina === 'Carrera' ? 'bg-green-800 text-green-200' :
+                                 s.disciplina === 'Fuerza' ? 'bg-red-800 text-red-200' :
+                                 'bg-purple-800 text-purple-200')}>
+                              <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}</span>
+                              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
+                                <button onClick={e => borrarSesion(s.id, e)} className="text-white hover:text-red-300 text-xs">🗑</button>
+                              </div>
+                            </div>
+                          ))}
+                          {sesDia.length === 0 && (
+                            <div className="text-center py-1">
+                              <span className="text-gray-700 text-xs">+</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* VISTA CALENDARIO */}
-        {vista === 'calendario' && (
+        {vistaDetalle === 'multi' && vista === 'calendario' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {mesesAMostrar.map(({ mes, año }) => (
               <div key={`${año}-${mes}`} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
@@ -374,7 +518,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <h3 className="text-lg font-bold">
                   {modalTipo === 'macro' ? '+ Nuevo macrociclo' :
                    modalTipo === 'meso' ? '+ Nuevo mesociclo' :
-                   modalTipo === 'micro' ? '+ Nueva semana' : '+ Nueva sesión'}
+                   modalTipo === 'micro' ? '+ Nueva semana' :
+                   modalTipo === 'editarSesion' ? '✏️ Editar sesión' : '+ Nueva sesión'}
                 </h3>
                 <p className="text-gray-400 text-sm">{fechaSel}</p>
                 {modalTipo === 'meso' && <p className="text-orange-400 text-xs mt-0.5">Macro: {macroSel?.objetivo}</p>}
@@ -421,6 +566,18 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               </form>
             )}
 
+            {modalTipo === 'editarSesion' && (
+              <form onSubmit={guardarEdicionSesion} className="flex flex-col gap-3">
+                <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
+                  <option value="">Disciplina</option>
+                  <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
+                </select>
+                <input type="number" placeholder="Duración en minutos" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                <input type="number" min="1" max="10" placeholder="RPE estimado" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+                <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
+              </form>
+            )}
             {modalTipo === 'sesion' && (
               <form onSubmit={guardarSesion} className="flex flex-col gap-3">
                 <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>

@@ -2,6 +2,7 @@
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
+import DatosReales from './DatosReales'
 import SessionLoadChart from '@/components/SessionLoadChart'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
@@ -37,6 +38,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [hrvDia, setHrvDia] = useState('')
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   const [grupoMuscularSel, setGrupoMuscularSel] = useState('')
+  const [tipoSerie, setTipoSerie] = useState('Normal')
+  const [grupoMuscular2, setGrupoMuscular2] = useState('')
+  const [ejercicioSel2, setEjercicioSel2] = useState<any>(null)
+  const [escalonDrop, setEscalonDrop] = useState('')
   const [ejercicioSel, setEjercicioSel] = useState<any>(null)
   const [repsFuerza, setRepsFuerza] = useState('')
   const [seriesFuerza, setSeriesFuerza] = useState('')
@@ -83,6 +88,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }
 
   useEffect(() => { cargarDatos() }, [id])
+  useEffect(() => {
+    supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre').then(({ data }) => {
+      setEjerciciosBiblioteca(data || [])
+    })
+  }, [])
 
   useEffect(() => {
     if (cronometroActivo) {
@@ -170,9 +180,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }).select().single()
     if (errorTarea) { setError('Error: ' + errorTarea.message); setLoading(false); return }
     if (tarea) {
+      const ejBib2 = ejercicioSel2
       await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
-        nombre_ejercicio: ejercicioSel.nombre,
+        nombre: ejercicioSel.nombre,
+        tipo_serie: tipoSerie,
+        ejercicio_encadenado_nombre: ejBib2?.nombre || null,
+        ejercicio_encadenado_id: ejBib2?.id || null,
+        escalones_drop: escalonDrop || null,
         grupo_muscular: ejercicioSel.grupo_muscular,
         series: seriesFuerza ? Number(seriesFuerza) : null,
         repeticiones: repsFuerza ? Number(repsFuerza) : null,
@@ -188,7 +203,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       p_repeticiones: repsFuerza ? [{ repeticiones_planteadas: Number(repsFuerza) }] : [],
     }
     setTareas(prev => [...prev, tareaLocal])
-    setGrupoMuscularSel(''); setEjercicioSel(null); setRepsFuerza('')
+    setGrupoMuscularSel(''); setEjercicioSel(null); setRepsFuerza(''); setTipoSerie('Normal'); setGrupoMuscular2(''); setEjercicioSel2(null); setEscalonDrop('')
     setSeriesFuerza(''); setDescansoFuerza(''); setRir(''); setConfigSerie('')
     setMostrarForm(false)
     setLoading(false)
@@ -256,9 +271,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         </div>
 
         {sesion.estado !== 'Realizada' && esDeportista && (
-          <div className="mb-6">
+          <div className="mb-6 flex flex-col gap-3">
+            <button onClick={() => window.location.href = '/sesion/' + id + '/ejecutar'}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
+              ▶ Modo entreno
+            </button>
             {!sesionIniciada ? (
-              <button onClick={iniciarSesion} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg transition">▶ Iniciar sesion</button>
+              <button onClick={iniciarSesion} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-medium text-sm transition">Ver sesión completa</button>
             ) : (
               <div className="bg-gray-900 rounded-xl p-6 border border-green-500">
                 {sesion.usar_cronometro && (
@@ -274,9 +293,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         )}
 
         {sesion.estado === 'Realizada' && (
-          <div className="bg-green-900 border border-green-500 rounded-xl p-4 mb-6 text-center">
-            <p className="text-green-300 font-bold">✓ Sesion completada</p>
-            {sesion.duracion_real && <p className="text-green-400 text-sm">{sesion.duracion_real} min realizados</p>}
+          <div className="mb-6">
+            <div className="bg-green-900 border border-green-500 rounded-xl p-4 mb-4 text-center">
+              <p className="text-green-300 font-bold">✓ Sesion completada</p>
+              {sesion.duracion_real && <p className="text-green-400 text-sm">{sesion.duracion_real} min realizados</p>}
+            </div>
+            <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
           </div>
         )}
 
@@ -339,10 +361,41 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             {mostrarForm && !esDeportista && sesion.disciplina === 'Fuerza' && (
               <form onSubmit={crearTareaFuerza} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
                 <h4 className="font-bold">Nuevo ejercicio de fuerza</h4>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Tipo de serie</label>
+                  <select value={tipoSerie} onChange={e => { setTipoSerie(e.target.value); setGrupoMuscular2(''); setEjercicioSel2(null); setEscalonDrop('') }} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
+                    <option value="Normal">Normal</option>
+                    <option value="Superserie">Superserie</option>
+                    <option value="Drop set">Drop set</option>
+                    <option value="Complex">Complex</option>
+                  </select>
+                </div>
                 <select value={grupoMuscularSel} onChange={e => { setGrupoMuscularSel(e.target.value); setEjercicioSel(null) }} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
                   <option value="">Grupo muscular</option>
                   {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
+                {(tipoSerie === 'Superserie' || tipoSerie === 'Complex') && ejercicioSel && (
+                  <div className="bg-gray-800 rounded-xl p-4 border border-orange-500 border-opacity-50">
+                    <p className="text-orange-400 text-sm font-medium mb-3">+ Ejercicio encadenado</p>
+                    <select value={grupoMuscular2} onChange={e => { setGrupoMuscular2(e.target.value); setEjercicioSel2(null) }} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2">
+                      <option value="">Grupo muscular</option>
+                      {[...new Set(ejerciciosBiblioteca.map((e: any) => e.grupo_muscular))].map((g: any) => <option key={g as string} value={g as string}>{g as string}</option>)}
+                    </select>
+                    {grupoMuscular2 && (
+                      <select value={ejercicioSel2?.id || ''} onChange={e => setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => ej.id === Number(e.target.value)) || null)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
+                        <option value="">Selecciona ejercicio</option>
+                        {ejerciciosBiblioteca.filter((ej: any) => ej.grupo_muscular === grupoMuscular2).map((ej: any) => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+                {tipoSerie === 'Drop set' && ejercicioSel && (
+                  <div className="bg-gray-800 rounded-xl p-4 border border-yellow-500 border-opacity-50">
+                    <p className="text-yellow-400 text-sm font-medium mb-2">Escalones de peso (kg)</p>
+                    <input type="text" placeholder="ej: 80, 60, 40" value={escalonDrop} onChange={e => setEscalonDrop(e.target.value)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
+                    <p className="text-gray-500 text-xs mt-1">Separa los pesos con comas</p>
+                  </div>
+                )}
                 {grupoMuscularSel && (
                   <div>
                     <select value={ejercicioSel?.id || ''} onChange={e => setEjercicioSel(ejerciciosBiblioteca.find(ej => ej.id === Number(e.target.value)) || null)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required>

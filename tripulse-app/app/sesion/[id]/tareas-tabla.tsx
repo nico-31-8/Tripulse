@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -118,12 +119,19 @@ interface FilaFuerza {
   orden: number
   grupoMuscularSel: string
   ejercicioSelId: string
+  tipoSerie: string
   series: string
   repsFuerza: string
   kgFuerza: string
   rir: string
   descanso: string
   comentario: string
+  grupoMuscular2: string
+  ejercicioSelId2: string
+  series2: string
+  repsFuerza2: string
+  kgFuerza2: string
+  escalonDrop: string
   guardado?: boolean
 }
 
@@ -155,7 +163,17 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
     setEjerciciosBiblioteca(ejBib || [])
     const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId).order('orden')
-    setTareasGuardadas(tar || [])
+    if (tar && tar.length > 0) {
+      const tareaIds = tar.map((t: any) => t.id)
+      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
+      const tarConEjs = tar.map((t: any) => ({
+        ...t,
+        ejercicios: ejs?.filter((e: any) => e.id_tarea === t.id) || []
+      }))
+      setTareasGuardadas(tarConEjs)
+    } else {
+      setTareasGuardadas([])
+    }
   }
 
   const nuevaFilaR = (): FilaResistencia => ({
@@ -168,7 +186,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const nuevaFilaF = (): FilaFuerza => ({
     orden: filasF.length + tareasGuardadas.length + 1,
     grupoMuscularSel: '', ejercicioSelId: '',
+    tipoSerie: 'Normal',
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
+    grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
   })
 
   const updateR = (i: number, key: string, val: any) => {
@@ -184,7 +204,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const { data: tarea } = await supabase.from('tarea').insert({
       id_sesion: sesionId, zona_entrenamiento: f.zona ? 'Z' + f.zona : null,
       disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
-      descanso_segundos: f.descanso ? Number(f.descanso) : null,
+      descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
       comentario: f.comentario || null, orden: f.orden
     }).select().single()
     if (tarea) {
@@ -206,20 +226,26 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const { data: tarea } = await supabase.from('tarea').insert({
       id_sesion: sesionId, disciplina: 'Fuerza',
       series: f.series ? Number(f.series) : null,
-      descanso_segundos: f.descanso ? Number(f.descanso) : null,
+      descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
       comentario: f.comentario || null, orden: f.orden
     }).select().single()
     if (tarea && ejBib) {
+      const ejBib2 = f.ejercicioSelId2 ? ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2)) : null
+      // Si hay ejercicio 2, añadirlo como nota en notas_ejecucion
+      const notasEj2 = ejBib2 ? ' | EJ2: ' + ejBib2.nombre + (f.series2 ? ' ' + f.series2 + 'x' : '') + (f.repsFuerza2 ? f.repsFuerza2 : '') + (f.kgFuerza2 ? ' @' + f.kgFuerza2 + 'kg' : '') : ''
       await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
-        nombre_ejercicio: ejBib.nombre,
+        nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
         series: f.series ? Number(f.series) : null,
         repeticiones: f.repsFuerza ? Number(f.repsFuerza) : null,
         intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
-        descanso: f.descanso ? Number(f.descanso) : null,
-        notas_ejecucion: [f.rir ? 'RIR: ' + f.rir : '', f.comentario || ''].filter(Boolean).join(' · '),
-        url_video: ejBib.url_video || null
+        descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
+        notas_ejecucion: [f.rir ? 'RIR: ' + f.rir : '', f.comentario || ''].filter(Boolean).join(' · ') + notasEj2,
+        tipo_serie: f.tipoSerie || 'Normal',
+        ejercicio_encadenado_nombre: ejBib2?.nombre || null,
+        ejercicio_encadenado_id: ejBib2?.id || null,
+        escalones_drop: f.escalonDrop || null,
       })
       if (f.repsFuerza) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
     }
@@ -272,12 +298,24 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <td className="py-2 px-2 text-orange-400 font-bold">{i + 1}</td>
                     {esFuerza ? (
                       <>
-                        <td className="py-2 px-2 text-white">{t.comentario || '—'}</td>
-                        <td className="py-2 px-2 text-gray-300">{t.series || '—'}</td>
-                        <td className="py-2 px-2 text-blue-400">{mostrarValorGuardado(t)}</td>
-                        <td className="py-2 px-2 text-gray-300">—</td>
-                        <td className="py-2 px-2 text-gray-300">—</td>
-                        <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? t.descanso_segundos + 's' : '—'}</td>
+                        <td className="py-2 px-2 text-white">
+                          {t.ejercicios?.[0] ? (
+                            <div className="flex flex-col gap-0.5">
+                              {t.ejercicios.map((ej: any) => (
+                                <div key={ej.id} className="flex items-center gap-1.5">
+                                  {ej.tipo_serie && ej.tipo_serie !== 'Normal' && <span className="text-xs bg-orange-900 text-orange-300 px-1.5 rounded">{ej.tipo_serie}</span>}
+                                  <span className="text-sm">{ej.nombre}</span>
+                                  {ej.ejercicio_encadenado_nombre && <span className="text-orange-400 text-xs">+ {ej.ejercicio_encadenado_nombre}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : t.comentario || '—'}
+                        </td>
+                        <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
+                        <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.repeticiones ? t.ejercicios[0].repeticiones + ' reps' : mostrarValorGuardado(t)}</td>
+                        <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
+                        <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.notas_ejecucion?.includes('RIR') ? t.ejercicios[0].notas_ejecucion.match(/RIR: (\d)/)?.[1] || '—' : '—'}</td>
+                        <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
                         <td className="py-2 px-2 text-gray-500 text-xs">{t.notas_post || ''}</td>
                       </>
                     ) : (
@@ -285,7 +323,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-white">{t.zona_entrenamiento || '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.disciplina || '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.series || '—'}</td>
-                        <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? t.descanso_segundos + 's' : '—'}</td>
+                        <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
                         <td className="py-2 px-2 text-blue-400 font-medium">{mostrarValorGuardado(t)}</td>
                         <td className="py-2 px-2 text-orange-400 font-medium">{mostrarTotal(t)}</td>
                         <td className="py-2 px-2 text-xs">
@@ -345,7 +383,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       </select>
                     </td>
                     <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateR(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                    <td className="py-1 px-1"><input type="number" value={f.descanso} onChange={e => updateR(i, 'descanso', e.target.value)} className={inputCls} placeholder="60" /></td>
+                    <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateR(i, 'descanso', e.target.value)} className={inputCls} placeholder="1:30" /></td>
                     <td className="py-1 px-1">
                       <select value={f.tipoMedicion} onChange={e => updateR(i, 'tipoMedicion', e.target.value)} className={inputCls}>
                         <option value="">—</option>
@@ -384,20 +422,30 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             <thead>
               <tr className="text-gray-400 text-xs border-b border-gray-700">
                 <th className="text-left py-2 px-1 w-8">#</th>
+                <th className="text-left py-2 px-1 w-24">Tipo</th>
                 <th className="text-left py-2 px-1">Músculo / Ejercicio</th>
                 <th className="text-left py-2 px-1 w-16">Series</th>
                 <th className="text-left py-2 px-1 w-16">Reps</th>
                 <th className="text-left py-2 px-1 w-16">Kg</th>
                 <th className="text-left py-2 px-1 w-14">RIR</th>
                 <th className="text-left py-2 px-1 w-20">Descanso</th>
-                <th className="text-left py-2 px-1">Comentario</th>
+                <th className="text-left py-2 px-1">Notas</th>
                 <th className="py-2 px-1 w-16"></th>
               </tr>
             </thead>
             <tbody>
               {filasF.map((f, i) => (
-                <tr key={i} className="border-b border-gray-800">
+                <React.Fragment key={i}>
+                <tr className="border-b border-gray-800">
                   <td className="py-1 px-1 text-orange-400 font-bold">{f.orden}</td>
+                  <td className="py-1 px-1">
+                    <select value={f.tipoSerie} onChange={e => updateF(i, 'tipoSerie', e.target.value)} className={inputCls}>
+                      <option value="Normal">Normal</option>
+                      <option value="Superserie">Superserie</option>
+                      <option value="Drop set">Drop set</option>
+                      <option value="Complex">Complex</option>
+                    </select>
+                  </td>
                   <td className="py-1 px-1">
                     <div className="flex flex-col gap-1">
                       <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={inputCls}>
@@ -410,13 +458,35 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                         </select>
                       )}
+                      {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
+                        <div className="border-t border-orange-800 pt-1 mt-1">
+                          <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>
+                          <select value={f.grupoMuscular2} onChange={e => updateF(i, 'grupoMuscular2', e.target.value)} className={inputCls}>
+                            <option value="">Grupo muscular</option>
+                            {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
+                          </select>
+                          {f.grupoMuscular2 && (
+                            <select value={f.ejercicioSelId2} onChange={e => updateF(i, 'ejercicioSelId2', e.target.value)} className={inputCls + ' mt-1'}>
+                              <option value="">Ejercicio 2</option>
+                              {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscular2).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                            </select>
+                          )}
+
+                        </div>
+                      )}
+                      {f.tipoSerie === 'Drop set' && (
+                        <div className="border-t border-yellow-800 pt-1 mt-1">
+                          <p className="text-yellow-400 text-xs mb-1">Escalones kg:</p>
+                          <input type="text" value={f.escalonDrop} onChange={e => updateF(i, 'escalonDrop', e.target.value)} className={inputCls} placeholder="80,60,40" />
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
                   <td className="py-1 px-1"><input type="number" value={f.repsFuerza} onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls} placeholder="10" /></td>
                   <td className="py-1 px-1"><input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)} className={inputCls} placeholder="kg" /></td>
                   <td className="py-1 px-1"><input type="number" min="0" max="4" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)} className={inputCls} placeholder="0-4" /></td>
-                  <td className="py-1 px-1"><input type="number" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="60" /></td>
+                  <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                   <td className="py-1 px-1">
                     <div className="flex gap-1">
@@ -425,6 +495,27 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                 </tr>
+                {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && f.ejercicioSelId2 && (
+                  <tr className="border-b border-orange-900 bg-orange-950 bg-opacity-20">
+                    <td className="py-1 px-1"></td>
+                    <td className="py-1 px-1">
+                      <span className="text-orange-400 text-xs font-medium">↳ EJ2</span>
+                    </td>
+                    <td className="py-1 px-1">
+                      <p className="text-orange-300 text-xs px-2 py-1 truncate">
+                        {ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2))?.nombre || '—'}
+                      </p>
+                    </td>
+                    <td className="py-1 px-1"><input type="number" value={f.series2} onChange={e => updateF(i, 'series2', e.target.value)} className={inputCls} placeholder="4" /></td>
+                    <td className="py-1 px-1"><input type="number" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)} className={inputCls} placeholder="10" /></td>
+                    <td className="py-1 px-1"><input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)} className={inputCls} placeholder="kg" /></td>
+                    <td className="py-1 px-1"><input type="number" min="0" max="4" value={(f as any).rir2 || ''} onChange={e => updateF(i, 'rir2', e.target.value)} className={inputCls} placeholder="0-4" /></td>
+                    <td className="py-1 px-1"></td>
+                    <td className="py-1 px-1"></td>
+                    <td className="py-1 px-1"></td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

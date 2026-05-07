@@ -20,9 +20,16 @@ function calcularF1(sesiones: any[]) {
 }
 
 function calcularF2(sesiones: any[]) {
+  // Ponderación: 20% post-sesión inmediato, 40% a 24h, 40% a 48h
   const validas = sesiones.filter(s => s.dolor_muscular)
   if (!validas.length) return null
-  const media = validas.reduce((acc, s) => acc + s.dolor_muscular, 0) / validas.length
+  const scores = validas.map(s => {
+    const d0 = s.dolor_muscular || 0          // post-sesión: 20%
+    const d24 = s.dolor_24h || s.dolor_muscular || 0  // 24h: 40%
+    const d48 = s.dolor_48h || s.dolor_muscular || 0  // 48h: 40%
+    return d0 * 0.2 + d24 * 0.4 + d48 * 0.4
+  })
+  const media = scores.reduce((acc, s) => acc + s, 0) / scores.length
   return Math.min(4, Math.max(1, Math.round(media * 0.8)))
 }
 
@@ -95,7 +102,7 @@ export default function EcoPage() {
     for (const disc of DISCIPLINAS) {
       const { data: sesiones } = await supabase
         .from('sesion')
-        .select('id, disciplina, rpe_estimado')
+        .select('id, disciplina, rpe_estimado, fecha_sesion')
         .eq('disciplina', disc)
         .eq('estado', 'Realizada')
         .in('id_microciclo', await getMicrosDeportista(dep.id))
@@ -109,11 +116,26 @@ export default function EcoPage() {
 
       const { data: tareas } = await supabase
         .from('tarea')
-        .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, valoracion_tecnica_entrenador, hrv_del_dia')
+        .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, valoracion_tecnica_entrenador, hrv_del_dia, id_sesion')
         .in('id_sesion', sesionIds)
         .not('rpe_reportado', 'is', null)
 
-      const t = tareas || []
+      // Enriquecer con dolor muscular de wellness a 24h y 48h
+      const sesionesConFecha = sesiones || []
+      const tareasEnriquecidas = await Promise.all((tareas || []).map(async tarea => {
+        const sesion = sesionesConFecha.find(s => s.id === tarea.id_sesion)
+        if (!sesion?.fecha_sesion) return tarea
+        const fecha = new Date(sesion.fecha_sesion)
+        const fecha24 = new Date(fecha); fecha24.setDate(fecha.getDate() + 1)
+        const fecha48 = new Date(fecha); fecha48.setDate(fecha.getDate() + 2)
+        const f24 = fecha24.toISOString().split('T')[0]
+        const f48 = fecha48.toISOString().split('T')[0]
+        const { data: w24 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f24).single()
+        const { data: w48 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f48).single()
+        return { ...tarea, dolor_24h: w24?.dolor_muscular || null, dolor_48h: w48?.dolor_muscular || null }
+      }))
+
+      const t = tareasEnriquecidas
       const f1 = calcularF1(t)
       const f2 = calcularF2(t)
       const f3 = calcularF3(t)

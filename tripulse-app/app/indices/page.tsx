@@ -43,6 +43,7 @@ export default function IndicesPage() {
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingSes, setLoadingSes] = useState(false)
+  const [rango, setRango] = useState(30)
 
   useEffect(() => {
     const cargar = async () => {
@@ -98,6 +99,22 @@ export default function IndicesPage() {
     setLoadingSes(false)
   }
 
+  const sesionesConDatos = sesiones.filter(s => s.indices)
+  const sesionesRango = rango === 365 ? sesionesConDatos : sesionesConDatos.filter(s => {
+    const d = new Date(s.fecha_sesion)
+    const limite = new Date(); limite.setDate(limite.getDate() - rango)
+    return d >= limite
+  })
+
+  const mediaPercepcion = sesionesRango.length ? sesionesRango.reduce((acc, s) => acc + s.indices.indicePer, 0) / sesionesRango.length : null
+  const mediaPlanificacion = sesionesRango.filter(s => s.indices.indicePlan !== null).length ?
+    sesionesRango.filter(s => s.indices.indicePlan !== null).reduce((acc, s) => acc + s.indices.indicePlan, 0) /
+    sesionesRango.filter(s => s.indices.indicePlan !== null).length : null
+
+  const semaforoMediaPer = semaforo(mediaPercepcion, 'percepcion')
+  const semaforoMediaPlan = semaforo(mediaPlanificacion, 'planificacion')
+  const lecturaMedia = semaforoMediaPer && semaforoMediaPlan ? lecturaDoble(semaforoMediaPer, semaforoMediaPlan) : null
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
@@ -120,6 +137,51 @@ export default function IndicesPage() {
             </button>
           ))}
         </div>
+
+        {/* Selector de rango */}
+        {seleccionado && !loadingSes && sesiones.length > 0 && (
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex gap-2 flex-wrap items-center">
+              <p className="text-gray-500 text-xs uppercase tracking-wide mr-1">Período de análisis</p>
+              {[{l:'7 días',v:7},{l:'14 días',v:14},{l:'30 días',v:30},{l:'Todo',v:365}].map(r => (
+                <button key={r.v} onClick={() => setRango(r.v)}
+                  className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' +
+                    (rango === r.v ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                  {r.l}
+                </button>
+              ))}
+              <span className="text-gray-600 text-xs ml-2">{sesionesRango.length} sesiones con datos</span>
+            </div>
+
+            {sesionesRango.length > 0 && (
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <p className="text-sm font-medium text-gray-300 mb-4">Media del período</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Media percepción */}
+                  <div className={'rounded-xl p-4 border ' + semaforoMediaPer.bg}>
+                    <p className="text-xs text-gray-400 mb-1">Índice percepción medio</p>
+                    <p className="text-3xl font-bold mb-1">{mediaPercepcion ? mediaPercepcion.toFixed(2) : '—'}</p>
+                    <p className="font-medium text-sm">{semaforoMediaPer.texto}</p>
+                    {'desc' in semaforoMediaPer && <p className="text-xs text-gray-400 mt-1">{(semaforoMediaPer as any).desc}</p>}
+                  </div>
+                  {/* Media planificación */}
+                  <div className={'rounded-xl p-4 border ' + semaforoMediaPlan.bg}>
+                    <p className="text-xs text-gray-400 mb-1">Índice planificación medio</p>
+                    <p className="text-3xl font-bold mb-1">{mediaPlanificacion ? mediaPlanificacion.toFixed(2) : '—'}</p>
+                    <p className="font-medium text-sm">{semaforoMediaPlan.texto}</p>
+                    {'desc' in semaforoMediaPlan && <p className="text-xs text-gray-400 mt-1">{(semaforoMediaPlan as any).desc}</p>}
+                  </div>
+                </div>
+                {lecturaMedia && (
+                  <div className="mt-4 bg-gray-800 rounded-xl p-4">
+                    <p className={'font-bold ' + lecturaMedia.color}>{lecturaMedia.texto}</p>
+                    <p className="text-gray-400 text-sm mt-1">{lecturaMedia.accion}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {loadingSes && <div className="text-center py-16 text-gray-400">Calculando índices...</div>}
 

@@ -1,0 +1,451 @@
+'use client'
+import { useState, useEffect, use } from 'react'
+import { supabase } from '@/lib/supabase'
+import FuerzaRegistro from './FuerzaRegistro'
+
+function segAMmss(seg: number): string {
+  const min = Math.floor(seg / 60)
+  const s = seg % 60
+  return min + ':' + String(s).padStart(2, '0')
+}
+
+function mmssASeg(str: string): number {
+  if (!str) return 0
+  const p = str.split(':')
+  if (p.length === 2) return (parseInt(p[0]) || 0) * 60 + (parseInt(p[1]) || 0)
+  return parseInt(str) || 0
+}
+
+const COLOR_ZONA: Record<string, string> = {
+  'Z1': 'bg-gray-700 border-gray-500',
+  'Z2': 'bg-blue-900 border-blue-600',
+  'Z3': 'bg-green-900 border-green-600',
+  'Z4': 'bg-yellow-900 border-yellow-600',
+  'Z5': 'bg-orange-900 border-orange-600',
+  'Z6': 'bg-red-900 border-red-600',
+  'Z7': 'bg-purple-900 border-purple-600',
+}
+
+export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const [sesion, setSesion] = useState<any>(null)
+  const [tareas, setTareas] = useState<any[]>([])
+  const [fase, setFase] = useState<'preview'|'ejecutar'|'post'>('preview')
+  const [tareaActual, setTareaActual] = useState(0)
+  const [resultados, setResultados] = useState<Record<number, any>>({})
+  const [loading, setLoading] = useState(true)
+  const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, any[]>>({})
+  const [guardando, setGuardando] = useState(false)
+
+  // Post sesión
+  const [rpe, setRpe] = useState(5)
+  const [sensacion, setSensacion] = useState(3)
+  const [dolor, setDolor] = useState(1)
+  const [notasPost, setNotasPost] = useState('')
+
+  useEffect(() => { cargarDatos() }, [id])
+
+  const cargarDatos = async () => {
+    const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
+    setSesion(ses)
+    const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
+    setTareas(tar || [])
+    // Cargar ejercicios de todas las tareas
+    if (tar && tar.length > 0) {
+      const tareaIds = tar.map((t: any) => t.id)
+      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
+      const ejMap: Record<number, any[]> = {}
+      tareaIds.forEach((tid: number) => { ejMap[tid] = [] })
+      ejs?.forEach((e: any) => {
+        if (!ejMap[e.id_tarea]) ejMap[e.id_tarea] = []
+        ejMap[e.id_tarea].push(e)
+      })
+      setEjerciciosPorTarea(ejMap)
+    }
+    setLoading(false)
+  }
+
+  const [seriesFuerza, setSeriesFuerza] = useState<Record<number, any[]>>({})
+
+  const updateSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number, campo: string, valor: any) => {
+    setSeriesFuerza(prev => {
+      const key = ejercicioId
+      const arr = prev[key] ? [...prev[key]] : []
+      const idx = arr.findIndex(s => s.numero_serie === numSerie && s.ejercicio_numero === ejNum)
+      if (idx >= 0) arr[idx] = { ...arr[idx], [campo]: valor }
+      else arr.push({ numero_serie: numSerie, ejercicio_numero: ejNum, [campo]: valor })
+      return { ...prev, [key]: arr }
+    })
+  }
+
+  const getSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number) => {
+    return seriesFuerza[ejercicioId]?.find(s => s.numero_serie === numSerie && s.ejercicio_numero === ejNum) || {}
+  }
+
+  const updateResultado = (tareaId: number, campo: string, valor: string) => {
+    setResultados(prev => ({ ...prev, [tareaId]: { ...prev[tareaId], [campo]: valor } }))
+  }
+
+  const guardarYCerrar = async () => {
+    setGuardando(true)
+    // Guardar series de fuerza
+    for (const [ejId, series] of Object.entries(seriesFuerza)) {
+      for (const serie of series) {
+        await supabase.from('series_realizadas').insert({
+          id_ejercicio: Number(ejId),
+          numero_serie: serie.numero_serie,
+          peso_real: serie.peso_real ? Number(serie.peso_real) : null,
+          repeticiones_reales: serie.repeticiones_reales ? Number(serie.repeticiones_reales) : null,
+          rir_real: serie.rir_real ? Number(serie.rir_real) : null,
+          completada: serie.completada || false,
+          ejercicio_numero: serie.ejercicio_numero || 1,
+        })
+      }
+    }
+
+    // Guardar resultados de cada tarea con detalle por series
+    for (const tarea of tareas) {
+      const r = resultados[tarea.id]
+      if (!r) continue
+      // Construir resumen de series
+      const seriesData = Object.keys(r)
+        .filter(k => k.startsWith('serie_'))
+        .map((k, i) => {
+          const s = r[k]
+          const parts = []
+          if (s.tiempo) parts.push('T:' + s.tiempo)
+          if (s.metros) parts.push(s.metros + 'm')
+          if (s.ritmo) parts.push(s.ritmo)
+          if (s.sensacion) parts.push('S:' + s.sensacion + '/5')
+          return 'S' + (i+1) + '[' + parts.join(' ') + ']'
+        }).join(' | ')
+      if (seriesData) {
+        await supabase.from('tarea').update({
+          sensacion_general: seriesData
+        }).eq('id', tarea.id)
+      }
+      // Guardar métricas agregadas de la primera serie si existen
+      const s0 = r['serie_0']
+      if (s0) {
+        if (tarea.p_distancia?.[0] && s0.metros) await supabase.from('p_distancia').update({ metros_reales: Number(s0.metros) }).eq('id_tarea', tarea.id)
+        if (tarea.p_duracion?.[0] && s0.tiempo) await supabase.from('p_duracion').update({ tiempo_real: mmssASeg(s0.tiempo) }).eq('id_tarea', tarea.id)
+      }
+    }
+    // Marcar sesión como realizada y guardar post-sesión
+    await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', id)
+    // Guardar RPE y sensación en la primera tarea
+    if (tareas.length > 0) {
+      await supabase.from('tarea').update({
+        rpe_reportado: rpe,
+        sensacion_tecnica: sensacion,
+        dolor_muscular: dolor,
+        notas_post: notasPost,
+      }).eq('id_sesion', Number(id))
+    }
+    window.location.href = '/dashboard-deportista'
+  }
+
+  const completarSinDatos = async () => {
+    setGuardando(true)
+    await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', id)
+    setFase('post')
+    setGuardando(false)
+  }
+
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!sesion) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Sesión no encontrada</div>
+
+  const colorDisciplina = (d: string) => {
+    if (d?.includes('Nat')) return 'bg-blue-600'
+    if (d === 'Ciclismo') return 'bg-yellow-600'
+    if (d === 'Carrera') return 'bg-green-600'
+    return 'bg-orange-600'
+  }
+
+  const getTipoMedicion = (tarea: any) => {
+    if (tarea.p_duracion?.[0]) return 'duracion'
+    if (tarea.p_distancia?.[0]) return 'distancia'
+    if (tarea.p_repeticiones?.[0]) return 'repeticiones'
+    return null
+  }
+
+  const getObjetivo = (tarea: any) => {
+    if (tarea.p_duracion?.[0]) return segAMmss(tarea.p_duracion[0].tiempo_planeado) + ' min'
+    if (tarea.p_distancia?.[0]) {
+      const m = tarea.p_distancia[0].metros_planeados
+      return m >= 1000 ? (m/1000).toFixed(1) + ' km' : m + ' m'
+    }
+    if (tarea.p_repeticiones?.[0]) return tarea.p_repeticiones[0].repeticiones_planteadas + ' reps'
+    return '—'
+  }
+
+  // VISTA PREVIA
+  if (fase === 'preview') return (
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
+        <button onClick={() => window.history.back()} className="text-gray-400 text-sm">← Volver</button>
+        <h1 className="text-orange-500 font-bold">TRIPULSE</h1>
+        <div className="w-16" />
+      </nav>
+
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+        <div className="mb-6">
+          <span className={'text-xs px-3 py-1 rounded-full text-white font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
+          <h2 className="text-2xl font-bold mt-2">{sesion.fecha_sesion}</h2>
+          <div className="flex gap-4 text-gray-400 text-sm mt-1">
+            {sesion.duracion_minutos && <span>⏱ {sesion.duracion_minutos} min</span>}
+            {sesion.rpe_estimado && <span>💪 RPE est: {sesion.rpe_estimado}</span>}
+          </div>
+          {sesion.notas_entrenador && (
+            <div className="bg-gray-900 rounded-xl p-4 mt-3 border border-gray-700">
+              <p className="text-xs text-gray-500 mb-1">Notas del entrenador</p>
+              <p className="text-gray-300 text-sm italic">"{sesion.notas_entrenador}"</p>
+            </div>
+          )}
+        </div>
+
+        <h3 className="font-bold text-lg mb-3">Plan de entrenamiento</h3>
+        <div className="flex flex-col gap-3 mb-8">
+          {tareas.length === 0 ? (
+            <p className="text-gray-500 text-sm">No hay tareas planificadas.</p>
+          ) : tareas.map((t, i) => (
+            <div key={t.id} className={'rounded-xl p-4 border ' + (COLOR_ZONA[t.zona_entrenamiento] || 'bg-gray-900 border-gray-700')}>
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
+                  {t.zona_entrenamiento && <span className="text-xs bg-black bg-opacity-30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
+                </div>
+                <span className="text-xs text-gray-400">{t.disciplina}</span>
+              </div>
+              <div className="flex gap-4 text-sm">
+                {t.series && <span>🔁 {t.series} series</span>}
+                <span>🎯 {getObjetivo(t)}</span>
+                {t.descanso_segundos && <span>⏸ {segAMmss(t.descanso_segundos)}</span>}
+              </div>
+              {t.comentario && <p className="text-gray-400 text-xs mt-2">{t.comentario}</p>}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <button onClick={() => setFase('ejecutar')}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
+            ▶ Iniciar entreno con registro
+          </button>
+          <button onClick={completarSinDatos} disabled={guardando}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl font-medium transition disabled:opacity-50">
+            ✓ Entreno completado (sin registro)
+          </button>
+        </div>
+      </div>
+    </main>
+  )
+
+  // MODO EJECUCIÓN
+  if (fase === 'ejecutar') {
+    const tarea = tareas[tareaActual]
+    const tipo = getTipoMedicion(tarea)
+    const r = resultados[tarea?.id] || {}
+    const esUltima = tareaActual === tareas.length - 1
+
+    return (
+      <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+        <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
+          <button onClick={() => setFase('preview')} className="text-gray-400 text-sm">← Plan</button>
+          <span className="text-orange-500 font-bold text-sm">{tareaActual + 1} / {tareas.length}</span>
+          <button onClick={() => setFase('post')} className="text-gray-400 text-sm">Finalizar</button>
+        </nav>
+
+        {/* Barra de progreso */}
+        <div className="h-1 bg-gray-800">
+          <div className="h-1 bg-orange-500 transition-all" style={{ width: ((tareaActual + 1) / tareas.length * 100) + '%' }} />
+        </div>
+
+        <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full flex flex-col">
+          {/* Tarea actual */}
+          <div className={'rounded-xl p-5 border mb-6 ' + (COLOR_ZONA[tarea?.zona_entrenamiento] || 'bg-gray-900 border-gray-700')}>
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-bold text-orange-400">Tarea {tareaActual + 1}</span>
+              {tarea?.zona_entrenamiento && <span className="text-sm bg-black bg-opacity-40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              {tarea?.series && (
+                <div className="bg-black bg-opacity-30 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">Series</p>
+                  <p className="font-bold text-lg">{tarea.series}</p>
+                </div>
+              )}
+              <div className="bg-black bg-opacity-30 rounded-lg p-2">
+                <p className="text-xs text-gray-400">Objetivo</p>
+                <p className="font-bold text-lg">{getObjetivo(tarea)}</p>
+              </div>
+              {tarea?.descanso_segundos && (
+                <div className="bg-black bg-opacity-30 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">Descanso</p>
+                  <p className="font-bold text-lg">{segAMmss(tarea.descanso_segundos)}</p>
+                </div>
+              )}
+            </div>
+            {tarea?.comentario && <p className="text-gray-300 text-sm mt-3 italic">{tarea.comentario}</p>}
+          </div>
+
+          {/* FUERZA: Registro por ejercicio y serie */}
+          {tarea && (tarea.disciplina === 'Fuerza' || sesion.disciplina === 'Fuerza') && (
+            <div className="flex flex-col gap-4 mb-6">
+              <FuerzaRegistro
+                tarea={tarea}
+                ejercicios={ejerciciosPorTarea[tarea?.id] || []}
+                seriesFuerza={seriesFuerza}
+                updateSerieFuerza={updateSerieFuerza}
+                getSerieFuerza={getSerieFuerza}
+              />
+            </div>
+          )}
+
+          {/* RESISTENCIA: Registro por series */}
+          {tarea && tarea.disciplina !== 'Fuerza' && sesion.disciplina !== 'Fuerza' && (
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <p className="font-medium text-gray-300">Registro por serie (opcional)</p>
+              <span className="text-xs text-gray-500">{tarea?.series || 1} series</span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: tarea?.series || 1 }, (_, serieIdx) => {
+                const serieKey = 'serie_' + serieIdx
+                const serieData = r[serieKey] || {}
+                const completada = serieData.completada
+                return (
+                  <div key={serieIdx} className={'rounded-xl p-4 border transition ' + (completada ? 'bg-green-900 border-green-600' : 'bg-gray-800 border-gray-700')}>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="font-bold text-sm">Serie {serieIdx + 1}</span>
+                      <button onClick={() => updateResultado(tarea.id, serieKey, { ...serieData, completada: !completada })}
+                        className={'text-xs px-3 py-1 rounded-full transition ' + (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
+                        {completada ? '✓ Hecha' : 'Marcar'}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {tipo === 'duracion' && (
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1 block">Tiempo (mm:ss)</label>
+                          <input type="text" placeholder={tarea?.p_duracion?.[0] ? segAMmss(tarea.p_duracion[0].tiempo_planeado) : '—'}
+                            value={serieData.tiempo || ''}
+                            onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, tiempo: e.target.value })}
+                            className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-orange-500" />
+                        </div>
+                      )}
+                      {tipo === 'distancia' && (
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1 block">Metros</label>
+                          <input type="number" placeholder={tarea?.p_distancia?.[0]?.metros_planeados}
+                            value={serieData.metros || ''}
+                            onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, metros: e.target.value })}
+                            className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-orange-500" />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-gray-400 text-xs mb-1 block">Ritmo / Potencia</label>
+                        <input type="text" placeholder="4:25/km"
+                          value={serieData.ritmo || ''}
+                          onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, ritmo: e.target.value })}
+                          className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-orange-500" />
+                      </div>
+                      <div>
+                        <label className="text-gray-400 text-xs mb-1 block">Sensación (1-5)</label>
+                        <input type="number" min="1" max="5" placeholder="3"
+                          value={serieData.sensacion || ''}
+                          onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, sensacion: e.target.value })}
+                          className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-orange-500" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Resumen rápido */}
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <p className="text-xs text-gray-500">
+                {Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length} / {tarea?.series || 1} series completadas
+              </p>
+            </div>
+          </div>
+
+          )}
+
+          {/* Navegación tareas */}
+          <div className="flex gap-3 mt-auto">
+            {tareaActual > 0 && (
+              <button onClick={() => setTareaActual(prev => prev - 1)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-medium transition">
+                ← Anterior
+              </button>
+            )}
+            {!esUltima ? (
+              <button onClick={() => setTareaActual(prev => prev + 1)}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold transition">
+                Siguiente →
+              </button>
+            ) : (
+              <button onClick={() => setFase('post')}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold transition">
+                ✓ Finalizar entreno
+              </button>
+            )}
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  // POST SESIÓN
+  return (
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <nav className="bg-gray-900 px-4 py-4 flex items-center border-b border-gray-800">
+        <h1 className="text-orange-500 font-bold mx-auto">Post sesión</h1>
+      </nav>
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+        <p className="text-gray-400 text-sm mb-6">¡Bien hecho! Registra cómo te has sentido.</p>
+
+        <div className="flex flex-col gap-5">
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">RPE — Esfuerzo percibido</label>
+              <span className="text-orange-400 font-bold text-xl">{rpe}</span>
+            </div>
+            <input type="range" min="1" max="10" value={rpe} onChange={e => setRpe(Number(e.target.value))} className="w-full accent-orange-500" />
+            <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy fácil</span><span>Máximo</span></div>
+          </div>
+
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">Sensación técnica</label>
+              <span className="text-blue-400 font-bold text-xl">{sensacion}/5</span>
+            </div>
+            <input type="range" min="1" max="5" value={sensacion} onChange={e => setSensacion(Number(e.target.value))} className="w-full accent-blue-500" />
+            <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy mala</span><span>Perfecta</span></div>
+          </div>
+
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">Dolor muscular</label>
+              <span className="text-yellow-400 font-bold text-xl">{dolor}/5</span>
+            </div>
+            <input type="range" min="1" max="5" value={dolor} onChange={e => setDolor(Number(e.target.value))} className="w-full accent-yellow-500" />
+            <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Sin dolor</span><span>Mucho</span></div>
+          </div>
+
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <label className="font-medium block mb-2">Notas (opcional)</label>
+            <textarea value={notasPost} onChange={e => setNotasPost(e.target.value)} rows={3}
+              placeholder="¿Cómo fue el entreno? ¿Algo que destacar?"
+              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+          </div>
+
+          <button onClick={guardarYCerrar} disabled={guardando}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition disabled:opacity-50">
+            {guardando ? 'Guardando...' : '✓ Guardar y finalizar'}
+          </button>
+        </div>
+      </div>
+    </main>
+  )
+}

@@ -84,6 +84,28 @@ export default function DashboardDeportista() {
         <h2 className="text-2xl font-bold mb-1">Hola, {perfil?.nombre} 👋</h2>
         <p className="text-gray-400 mb-6">Tu panel de entrenamiento</p>
 
+        {/* Banner wellness pendiente */}
+        {(() => {
+          const hoyStr = new Date().toISOString().split('T')[0]
+          const wellnessHoy = ultimoWellness?.fecha === hoyStr
+          if (wellnessHoy) return null
+          return (
+            <button onClick={() => window.location.href = deportista ? '/wellness/' + deportista.id : '#'}
+              className="w-full bg-green-900 border-2 border-green-500 rounded-xl p-5 mb-6 text-left hover:bg-green-800 transition">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-green-300 font-bold text-lg">💚 Registra tu wellness de hoy</p>
+                  <p className="text-green-400 text-sm mt-1">Tu entrenador necesita estos datos para ajustar tu entrenamiento.</p>
+                  {ultimoWellness && (
+                    <p className="text-green-600 text-xs mt-1">Último registro: {ultimoWellness.fecha}</p>
+                  )}
+                </div>
+                <span className="text-green-400 text-2xl ml-4">→</span>
+              </div>
+            </button>
+          )
+        })()}
+
         {/* Sesión de hoy */}
         {sesionesHoy.length > 0 && (
           <div className="mb-8">

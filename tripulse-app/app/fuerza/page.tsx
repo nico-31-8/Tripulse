@@ -22,6 +22,12 @@ export default function FuerzaPage() {
   const [claveCorrecta, setClaveCorrecta] = useState(false)
   const [claveError, setClaveError] = useState(false)
   const [nombre, setNombre] = useState('')
+  const [ejercicioEditando, setEjercicioEditando] = useState<any>(null)
+  const [editNombre, setEditNombre] = useState('')
+  const [editGrupo, setEditGrupo] = useState('')
+  const [editVideo, setEditVideo] = useState('')
+  const [editDescripcion, setEditDescripcion] = useState('')
+  const [guardandoEdit, setGuardandoEdit] = useState(false)
   const [grupo, setGrupo] = useState('')
   const [urlVideo, setUrlVideo] = useState('')
   const [descripcion, setDescripcion] = useState('')
@@ -63,6 +69,36 @@ export default function FuerzaPage() {
   const getYoutubeId = (url: string) => {
     const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
     return match ? match[1] : null
+  }
+
+  const abrirEdicion = (ej: any) => {
+    setEjercicioEditando(ej)
+    setEditNombre(ej.nombre || '')
+    setEditGrupo(ej.grupo_muscular || '')
+    setEditVideo(ej.url_video || '')
+    setEditDescripcion(ej.descripcion || '')
+  }
+
+  const guardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setGuardandoEdit(true)
+    await supabase.from('ejercicios_biblioteca').update({
+      nombre: editNombre,
+      grupo_muscular: editGrupo,
+      url_video: editVideo || null,
+      descripcion: editDescripcion || null,
+    }).eq('id', ejercicioEditando.id)
+    const { data } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
+    setEjercicios(data || [])
+    setEjercicioEditando(null)
+    setGuardandoEdit(false)
+  }
+
+  const eliminarEjercicio = async (id: number) => {
+    if (!confirm('¿Seguro que quieres eliminar este ejercicio?')) return
+    await supabase.from('ejercicios_biblioteca').delete().eq('id', id)
+    const { data } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
+    setEjercicios(data || [])
   }
 
   const gruposConEjercicios = [...new Set(ejercicios.map(e => e.grupo_muscular))]
@@ -121,7 +157,15 @@ export default function FuerzaPage() {
                     {ejercsGrupo.map(ej => (
                       <div key={ej.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-800 transition">
                         <div>
-                          <p className="font-medium text-sm">{ej.nombre}</p>
+                          <div className="flex justify-between items-start">
+                            <p className="font-medium text-sm">{ej.nombre}</p>
+                            {claveCorrecta && (
+                              <div className="flex gap-1 ml-2">
+                                <button onClick={() => abrirEdicion(ej)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-0.5 rounded transition">✏️</button>
+                                <button onClick={() => eliminarEjercicio(ej.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-0.5 rounded transition">🗑</button>
+                              </div>
+                            )}
+                          </div>
                           {ej.descripcion && <p className="text-gray-500 text-xs mt-0.5">{ej.descripcion}</p>}
                         </div>
                         {ej.url_video && (
@@ -204,6 +248,45 @@ export default function FuerzaPage() {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal edición */}
+      {ejercicioEditando && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-bold">Editar ejercicio</h3>
+              <button onClick={() => setEjercicioEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <form onSubmit={guardarEdicion} className="flex flex-col gap-3">
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Nombre</label>
+                <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Grupo muscular</label>
+                <input type="text" value={editGrupo} onChange={e => setEditGrupo(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">URL video (YouTube)</label>
+                <input type="text" value={editVideo} onChange={e => setEditVideo(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                  placeholder="https://youtube.com/..." />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Descripción</label>
+                <textarea value={editDescripcion} onChange={e => setEditDescripcion(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+              </div>
+              <button type="submit" disabled={guardandoEdit}
+                className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
+                {guardandoEdit ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </form>
           </div>
         </div>
       )}

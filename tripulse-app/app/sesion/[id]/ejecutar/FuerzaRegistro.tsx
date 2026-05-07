@@ -1,0 +1,164 @@
+'use client'
+
+function segAMmss(seg: number): string {
+  const min = Math.floor(seg / 60)
+  const s = seg % 60
+  return min + ':' + String(s).padStart(2, '0')
+}
+
+export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, updateSerieFuerza, getSerieFuerza }: {
+  tarea: any
+  ejercicios: any[]
+  seriesFuerza: Record<number, any[]>
+  updateSerieFuerza: (ejId: number, numSerie: number, ejNum: number, campo: string, valor: any) => void
+  getSerieFuerza: (ejId: number, numSerie: number, ejNum: number) => any
+}) {
+  if (!ejercicios.length) return (
+    <div className="text-gray-500 text-sm text-center py-6 bg-gray-900 rounded-xl border border-gray-800">
+      Sin ejercicios planificados para esta tarea.
+    </div>
+  )
+
+  const inputCls = "bg-gray-700 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-1 focus:ring-orange-500 w-full text-center"
+
+  return (
+    <div className="flex flex-col gap-4">
+      {ejercicios.map(ej => {
+        const numSeries = ej.series || 3
+        const tipoSerie = ej.tipo_serie || 'Normal'
+        const tieneEj2 = tipoSerie === 'Superserie' || tipoSerie === 'Complex'
+        const esDropSet = tipoSerie === 'Drop set'
+        const escalones = esDropSet && ej.escalones_drop ? ej.escalones_drop.split(',').map((s: string) => s.trim()) : []
+
+        return (
+          <div key={ej.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-800 border-b border-gray-700">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className={'text-xs px-2 py-0.5 rounded-full mr-2 ' +
+                    (tipoSerie === 'Normal' ? 'bg-gray-700 text-gray-300' :
+                     tipoSerie === 'Superserie' ? 'bg-orange-900 text-orange-300' :
+                     tipoSerie === 'Complex' ? 'bg-purple-900 text-purple-300' :
+                     'bg-yellow-900 text-yellow-300')}>
+                    {tipoSerie}
+                  </span>
+                  <span className="font-bold text-white">{ej.nombre}</span>
+                  {ej.ejercicio_encadenado_nombre && (
+                    <span className="text-orange-400 text-sm"> + {ej.ejercicio_encadenado_nombre}</span>
+                  )}
+                </div>
+                <span className="text-gray-400 text-xs">{ej.grupo_muscular}</span>
+              </div>
+              <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+                <span>{numSeries} series</span>
+                {ej.repeticiones && <span>{ej.repeticiones} reps obj.</span>}
+                {ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
+                {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
+              </div>
+            </div>
+
+            <div className="p-3 flex flex-col gap-2">
+              {Array.from({ length: numSeries }, (_, serieIdx) => {
+                const numSerie = serieIdx + 1
+                const s1 = getSerieFuerza(ej.id, numSerie, 1)
+                const s2 = getSerieFuerza(ej.id, numSerie, 2)
+                const completada = s1.completada
+
+                return (
+                  <div key={serieIdx} className={'rounded-xl border transition ' + (completada ? 'bg-green-900 bg-opacity-30 border-green-700' : 'bg-gray-800 border-gray-700')}>
+                    
+                    {/* Normal */}
+                    {!esDropSet && !tieneEj2 && (
+                      <div className="grid grid-cols-4 gap-2 items-center p-3">
+                        <button onClick={() => updateSerieFuerza(ej.id, numSerie, 1, 'completada', !completada)}
+                          className={'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition ' +
+                            (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
+                          {completada ? '✓' : numSerie}
+                        </button>
+                        <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad || 'Kg'}
+                          onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
+                          className={inputCls} />
+                        <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones || 'Reps'}
+                          onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
+                          className={inputCls} />
+                        <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR"
+                          onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'rir_real', e.target.value)}
+                          className={inputCls} />
+                      </div>
+                    )}
+
+                    {/* Superserie / Complex */}
+                    {tieneEj2 && (
+                      <div className="p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium">Serie {numSerie}</span>
+                          <button onClick={() => updateSerieFuerza(ej.id, numSerie, 1, 'completada', !completada)}
+                            className={'text-xs px-3 py-1 rounded-full transition ' + (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400')}>
+                            {completada ? '✓ Hecha' : 'Marcar'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-gray-700 rounded-lg p-2">
+                            <p className="text-xs text-orange-400 mb-2 truncate font-medium">{ej.nombre}</p>
+                            <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad || 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR" onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'rir_real', e.target.value)} className={inputCls} />
+                          </div>
+                          <div className="bg-gray-700 rounded-lg p-2">
+                            <p className="text-xs text-orange-300 mb-2 truncate font-medium">{ej.ejercicio_encadenado_nombre}</p>
+                            <input type="number" value={s2.peso_real || ''} placeholder="Kg" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s2.repeticiones_reales || ''} placeholder="Reps" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" min="0" max="4" value={s2.rir_real || ''} placeholder="RIR" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'rir_real', e.target.value)} className={inputCls} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Drop set */}
+                    {esDropSet && (
+                      <div className="p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium">Serie {numSerie}</span>
+                          <button onClick={() => updateSerieFuerza(ej.id, numSerie, 1, 'completada', !completada)}
+                            className={'text-xs px-3 py-1 rounded-full transition ' + (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400')}>
+                            {completada ? '✓ Hecha' : 'Marcar'}
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {escalones.map((kg: string, eIdx: number) => {
+                            const sd = getSerieFuerza(ej.id, numSerie, eIdx + 1)
+                            return (
+                              <div key={eIdx} className="grid grid-cols-3 gap-2 items-center">
+                                <div className="bg-yellow-900 bg-opacity-50 rounded-lg px-2 py-2 text-center">
+                                  <p className="text-xs text-yellow-400">Escalón {eIdx + 1}</p>
+                                  <p className="text-sm font-bold">{kg} kg</p>
+                                </div>
+                                <input type="number" value={sd.repeticiones_reales || ''} placeholder="Reps"
+                                  onChange={e => updateSerieFuerza(ej.id, numSerie, eIdx + 1, 'repeticiones_reales', e.target.value)}
+                                  className={inputCls} />
+                                <input type="number" min="0" max="4" value={sd.rir_real || ''} placeholder="RIR"
+                                  onChange={e => updateSerieFuerza(ej.id, numSerie, eIdx + 1, 'rir_real', e.target.value)}
+                                  className={inputCls} />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Cabecera columnas para normal */}
+              {!esDropSet && !tieneEj2 && (
+                <div className="grid grid-cols-4 gap-2 text-xs text-gray-600 text-center px-1">
+                  <div></div><div>Kg</div><div>Reps</div><div>RIR</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
