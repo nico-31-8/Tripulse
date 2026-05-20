@@ -26,6 +26,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [repeticiones, setRepeticiones] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [ritmoManual, setRitmoManual] = useState('')
+  const [ritmoSugerido, setRitmoSugerido] = useState('')
+  const [testsData, setTestsData] = useState<any>(null)
+  const [tareaEditando, setTareaEditando] = useState<any>(null)
+  const [editZona, setEditZona] = useState('')
+  const [editSeries, setEditSeries] = useState('')
+  const [editDescanso, setEditDescanso] = useState('')
+  const [editComentario, setEditComentario] = useState('')
   const [cronometroActivo, setCronometroActivo] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const [sesionIniciada, setSesionIniciada] = useState(false)
@@ -49,6 +57,40 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [rir, setRir] = useState('')
   const [configSerie, setConfigSerie] = useState('')
   const [modalVideoFuerza, setModalVideoFuerza] = useState<string | null>(null)
+  // Cálculo de ritmo/potencia sugerido por zona
+  const VAM_ZONAS: Record<string, number> = { Z1: 0.525, Z2: 0.65, Z3: 0.75, Z4: 0.85, Z5: 0.95, Z6: 1.075, Z7: 1.2 }
+  const FTP_ZONAS: Record<string, number> = { Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.98, Z5: 1.13, Z6: 1.30, Z7: 1.50 }
+  const CSS_ZONAS: Record<string, number> = { Z1: 0.65, Z2: 0.75, Z3: 0.85, Z4: 0.95, Z5: 1.03, Z6: 1.12, Z7: 1.20 }
+
+  const calcularRitmo = (zonaKey: string, disc: string, tests: any): string => {
+    if (!zonaKey || !disc || !tests) return ''
+    const z = zonaKey.toUpperCase()
+    if (disc === 'Carrera' && tests.vam) {
+      const pct = VAM_ZONAS[z]
+      if (!pct) return ''
+      const velocidad = tests.vam * pct // km/h
+      const ritmoSeg = 3600 / velocidad // seg/km
+      const min = Math.floor(ritmoSeg / 60)
+      const seg = Math.round(ritmoSeg % 60)
+      return min + ':' + String(seg).padStart(2, '0') + ' min/km'
+    }
+    if (disc === 'Ciclismo' && tests.ftp) {
+      const pct = FTP_ZONAS[z]
+      if (!pct) return ''
+      return Math.round(tests.ftp * pct) + ' W'
+    }
+    if ((disc === 'Natacion' || disc === 'Natación') && tests.css) {
+      const pct = CSS_ZONAS[z]
+      if (!pct) return ''
+      const velocidad = tests.css * pct // m/s
+      const ritmoSeg = 100 / velocidad // seg/100m
+      const min = Math.floor(ritmoSeg / 60)
+      const seg = Math.round(ritmoSeg % 60)
+      return min + ':' + String(seg).padStart(2, '0') + ' min/100m'
+    }
+    return ''
+  }
+
   const mmssASegundos = (str: string): number => {
     const partes = str.split(':')
     if (partes.length === 2) {
@@ -88,6 +130,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }
 
   useEffect(() => { cargarDatos() }, [id])
+
+  useEffect(() => {
+    if (zona && disciplina && testsData) {
+      const sugerido = calcularRitmo(zona, disciplina, testsData)
+      setRitmoSugerido(sugerido)
+    } else {
+      setRitmoSugerido('')
+    }
+  }, [zona, disciplina, testsData])
   useEffect(() => {
     supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre').then(({ data }) => {
       setEjerciciosBiblioteca(data || [])
@@ -119,7 +170,21 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
         if (meso) {
           const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
-          if (macro) setDeportistaId(macro.id_deportista)
+          if (macro) {
+            setDeportistaId(macro.id_deportista)
+            // Cargar tests del deportista
+            const depId = macro.id_deportista
+            const [t1, t2, t3] = await Promise.all([
+              supabase.from('test1_carrera').select('vam').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+            ])
+            setTestsData({
+              vam: t1.data?.[0]?.vam || null,
+              css: t2.data?.[0]?.velocidad_critica_natacion || null,
+              ftp: t3.data?.[0]?.ftp || null,
+            })
+          }
         }
       }
     }
@@ -161,6 +226,44 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setMostrarPostSesion(false)
     setLoading(false)
     if (esDeportista) window.location.href = '/dashboard-deportista'
+  }
+
+  const borrarTarea = async (tareaId: number) => {
+    if (!confirm('¿Borrar esta tarea?')) return
+    await supabase.from('p_distancia').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_duracion').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaId)
+    await supabase.from('ejercicios').delete().eq('id_tarea', tareaId)
+    await supabase.from('tarea').delete().eq('id', tareaId)
+    setTareas(prev => prev.filter(t => t.id !== tareaId))
+  }
+
+  const abrirEditarTarea = (t: any) => {
+    setTareaEditando(t)
+    setEditZona(t.zona_entrenamiento || '')
+    setEditSeries(t.series || '')
+    setEditDescanso(t.descanso_segundos || '')
+    setEditComentario(t.comentario || '')
+  }
+
+  const guardarEditarTarea = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    await supabase.from('tarea').update({
+      zona_entrenamiento: editZona || null,
+      series: editSeries ? Number(editSeries) : null,
+      descanso_segundos: editDescanso ? Number(editDescanso) : null,
+      comentario: editComentario || null,
+    }).eq('id', tareaEditando.id)
+    setTareas(prev => prev.map(t => t.id === tareaEditando.id ? {
+      ...t,
+      zona_entrenamiento: editZona || null,
+      series: editSeries ? Number(editSeries) : null,
+      descanso_segundos: editDescanso ? Number(editDescanso) : null,
+      comentario: editComentario || null,
+    } : t))
+    setTareaEditando(null)
+    setLoading(false)
   }
 
   const crearTareaFuerza = async (e: React.FormEvent) => {
@@ -224,10 +327,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       orden
     }).select().single()
     if (errorTarea) { setError('Error: ' + errorTarea.message); setLoading(false); return }
-    if (tipoMedicion === 'distancia' && tarea) await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(metros) })
+    if (tipoMedicion === 'distancia' && tarea) await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(metros), ritmo_objetivo: ritmoManual || ritmoSugerido || null })
     else if (tipoMedicion === 'duracion' && tarea) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASegundos(tiempoDisplay) })
     else if (tipoMedicion === 'repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(repeticiones) })
-    setZona(''); setDisciplina(''); setSeries(''); setDescanso(''); setComentario('')
+    setZona(''); setDisciplina(''); setSeries(''); setDescanso(''); setComentario(''); setRitmoManual(''); setRitmoSugerido('')
     const _tipo = tipoMedicion; const _metros = metros; const _tiempo = tiempo; const _reps = repeticiones
     setTipoMedicion(''); setMetros(''); setTiempo(''); setTiempoDisplay(''); setRepeticiones('')
     setMostrarForm(false)
@@ -256,7 +359,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
-        <button onClick={() => window.location.href = '/microciclo/' + sesion.id_microciclo} className="text-gray-400 hover:text-white text-sm transition">← Semana</button>
+        <div className="flex items-center gap-3"><button onClick={() => window.location.href = '/planificacion-visual/' + deportistaId + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button><button onClick={() => window.location.href = '/microciclo/' + sesion.id_microciclo} className="text-gray-400 hover:text-white text-sm transition">← Semana</button></div>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
@@ -439,6 +542,25 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   <option value="repeticiones">Repeticiones</option>
                 </select>
                 {tipoMedicion === 'distancia' && <input type="number" placeholder="Metros" value={metros} onChange={e => setMetros(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+                {tipoMedicion === 'distancia' && (
+                  <div>
+                    <label className="text-gray-400 text-xs mb-1 block">
+                      Ritmo objetivo
+                      {ritmoSugerido && <span className="ml-2 text-orange-400">Sugerido: {ritmoSugerido}</span>}
+                    </label>
+                    <input type="text"
+                      placeholder={ritmoSugerido || 'Ej: 4:30 min/km'}
+                      value={ritmoManual}
+                      onChange={e => setRitmoManual(e.target.value)}
+                      className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
+                  </div>
+                )}
+                {tipoMedicion === 'duracion' && zona && disciplina && ritmoSugerido && (
+                  <div className="bg-gray-800 rounded-lg px-4 py-3 flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Referencia {zona}</span>
+                    <span className="text-orange-400 font-bold">{ritmoSugerido}</span>
+                  </div>
+                )}
                 {tipoMedicion === 'duracion' && (
                 <div>
                   <input
@@ -472,9 +594,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                     <div className="flex items-start gap-3">
                       <span className="bg-orange-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">{i+1}</span>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {t.zona_entrenamiento && <span className="text-orange-400 font-bold text-sm">{t.zona_entrenamiento}</span>}
-                          {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>}
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            {t.zona_entrenamiento && <span className="text-orange-400 font-bold text-sm">{t.zona_entrenamiento}</span>}
+                            {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>}
+                          </div>
+                          {!esDeportista && (
+                            <div className="flex gap-1">
+                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>
+                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
+                            </div>
+                          )}
                         </div>
                         <p className="text-gray-300 text-sm">{t.series ? t.series+' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
                         {mostrarMedicion(t) && <p className="text-blue-400 text-sm font-medium">{mostrarMedicion(t)}</p>}
@@ -489,6 +619,24 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           </div>
         )}
       </div>
+      {tareaEditando && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Editar tarea</h3>
+              <button onClick={() => setTareaEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <form onSubmit={guardarEditarTarea} className="flex flex-col gap-4">
+              <input type="text" placeholder="Zona (ej: Z2, Z4)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <input type="number" placeholder="Series" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <input type="number" placeholder="Descanso (seg)" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <textarea placeholder="Comentario" value={editComentario} onChange={e => setEditComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+              <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {modalVideoFuerza && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl w-full max-w-md border border-gray-700 p-6 text-center">

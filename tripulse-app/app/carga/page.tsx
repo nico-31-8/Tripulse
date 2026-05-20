@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
+import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -88,6 +89,7 @@ export default function CargaPage() {
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
   const [mostrarCarga, setMostrarCarga] = useState(false)
+  const [pestana, setPestana] = useState<'global'|'disciplina'>('global')
 
   useEffect(() => {
     const cargar = async () => {
@@ -147,8 +149,22 @@ export default function CargaPage() {
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-2">Carga de entrenamiento</h2>
-        <p className="text-gray-400 mb-6">ATL · CTL · TSB · ACWR</p>
 
+        {/* Pestañas */}
+        <div className="flex gap-1 border-b border-gray-800 mb-6">
+          <button onClick={() => setPestana('global')}
+            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
+              (pestana === 'global' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
+            📈 Carga global
+          </button>
+          <button onClick={() => setPestana('disciplina')}
+            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
+              (pestana === 'disciplina' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
+            🏊 Por disciplina
+          </button>
+        </div>
+
+        {/* Selector deportista — común a las dos pestañas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
           {deportistas.map(d => (
             <button key={d.id} onClick={() => { setRango(56); verCarga(d, 56) }}
@@ -166,7 +182,18 @@ export default function CargaPage() {
           )}
         </div>
 
-        {seleccionado && (
+        {/* PESTAÑA POR DISCIPLINA */}
+        {pestana === 'disciplina' && (
+          <div>
+            {seleccionado
+              ? <CargaPorDisciplina depId={seleccionado.id} diasRango={rango} />
+              : <div className="text-center py-12 text-gray-500"><p>Selecciona un deportista arriba para ver la carga por disciplina.</p></div>
+            }
+          </div>
+        )}
+
+        {/* PESTAÑA GLOBAL */}
+        {pestana === 'global' && seleccionado && (
           <div>
             {loadingDatos ? (
               <div className="text-center py-16 text-gray-400">Calculando cargas...</div>
@@ -289,6 +316,7 @@ export default function CargaPage() {
                     ))}
                   </div>
                 </div>
+
                 <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
                   <p className="text-sm font-medium text-gray-300 mb-3">Referencia ACWR</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">

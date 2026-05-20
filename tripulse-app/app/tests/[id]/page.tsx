@@ -2,8 +2,106 @@
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
+
+function GraficaEvolucion({ datos, dataKey, color, unidad, label }: { datos: any[], dataKey: string, color: string, unidad: string, label: string }) {
+  if (datos.length < 2) return (
+    <div className="bg-gray-800 rounded-xl p-4 text-center text-gray-600 text-sm mb-4">
+      Necesitas al menos 2 tests para ver la evolución
+    </div>
+  )
+  const datosGrafica = datos.slice().reverse().map(t => ({
+    fecha: t.fecha?.slice(5),
+    valor: t[dataKey],
+  }))
+  const ultimo = datosGrafica[datosGrafica.length - 1]?.valor
+  const primero = datosGrafica[0]?.valor
+  const mejora = ultimo && primero ? Math.round((ultimo - primero) * 100) / 100 : null
+  return (
+    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+      <div className="flex justify-between items-center mb-3">
+        <p className="text-sm font-semibold text-gray-300">📈 Evolución {label}</p>
+        {mejora !== null && (
+          <span className={'text-xs font-bold px-2 py-1 rounded-lg ' + (mejora > 0 ? 'bg-green-900/50 text-green-400' : mejora < 0 ? 'bg-red-900/50 text-red-400' : 'bg-gray-800 text-gray-400')}>
+            {mejora > 0 ? '▲' : mejora < 0 ? '▼' : '='} {Math.abs(mejora)} {unidad}
+          </span>
+        )}
+      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={datosGrafica}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+          <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+          <Tooltip
+            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }}
+            formatter={(val: any) => [val + ' ' + unidad, label]}
+          />
+          <Line type="monotone" dataKey="valor" stroke={color} strokeWidth={2.5} dot={{ fill: color, r: 4 }} name={label} connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function GraficaFuerza({ datos }: { datos: any[] }) {
+  if (!datos.length) return null
+  // Agrupar por ejercicio
+  const ejercicios = [...new Set(datos.map(t => t.ejercicio))]
+  const [ejercicioSel, setEjercicioSel] = useState(ejercicios[0] || '')
+  const datosFiltrados = datos.filter(t => t.ejercicio === ejercicioSel).slice().reverse()
+
+  if (datosFiltrados.length < 2) return (
+    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+      <div className="flex gap-2 flex-wrap mb-3">
+        {ejercicios.map(e => (
+          <button key={e} onClick={() => setEjercicioSel(e)}
+            className={'text-xs px-3 py-1.5 rounded-lg transition ' + (ejercicioSel === e ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+            {e}
+          </button>
+        ))}
+      </div>
+      <p className="text-gray-600 text-sm text-center py-4">Necesitas al menos 2 tests de {ejercicioSel} para ver la evolución</p>
+    </div>
+  )
+
+  const datosGrafica = datosFiltrados.map(t => ({ fecha: t.fecha?.slice(5), rm: t.rm_estimado }))
+  const mejora = datosGrafica[datosGrafica.length-1]?.rm - datosGrafica[0]?.rm
+
+  return (
+    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+      <div className="flex justify-between items-center mb-3">
+        <p className="text-sm font-semibold text-gray-300">📈 Evolución 1RM</p>
+        {mejora !== 0 && (
+          <span className={'text-xs font-bold px-2 py-1 rounded-lg ' + (mejora > 0 ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400')}>
+            {mejora > 0 ? '▲' : '▼'} {Math.abs(Math.round(mejora))} kg
+          </span>
+        )}
+      </div>
+      <div className="flex gap-2 flex-wrap mb-3">
+        {ejercicios.map(e => (
+          <button key={e} onClick={() => setEjercicioSel(e)}
+            className={'text-xs px-3 py-1.5 rounded-lg transition ' + (ejercicioSel === e ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+            {e}
+          </button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={datosGrafica}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+          <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+          <Tooltip
+            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }}
+            formatter={(val: any) => [val + ' kg', '1RM']}
+          />
+          <Line type="monotone" dataKey="rm" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 4 }} name="1RM" connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
 
 export default function PaginaTests({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -140,20 +238,35 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           <h2 className="text-2xl font-bold mb-1">Tests — {deportista.nombre}</h2>
           <p className="text-gray-400 text-sm">Resultados de tests de rendimiento</p>
         </div>
+
         <div className="flex gap-2 mb-6 flex-wrap">
           {['carrera','natacion','ciclismo','fuerza'].map(t => (
-            <button key={t} onClick={() => { setTab(t); setMostrarForm(false) }} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+            <button key={t} onClick={() => { setTab(t); setMostrarForm(false) }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
               {t === 'carrera' ? '🏃 Carrera' : t === 'natacion' ? '🏊 Natacion' : t === 'ciclismo' ? '🚴 Ciclismo' : '🏋️ Fuerza'}
             </button>
           ))}
         </div>
+
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">{tab === 'carrera' ? 'Test incremental carrera' : tab === 'natacion' ? 'Test CSS natacion' : tab === 'ciclismo' ? 'Test FTP ciclismo' : 'Test 1RM fuerza'}</h3>
-          <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">{mostrarForm ? 'Cancelar' : '+ Nuevo test'}</button>
+          <h3 className="text-xl font-bold">
+            {tab === 'carrera' ? 'Test incremental carrera' : tab === 'natacion' ? 'Test CSS natacion' : tab === 'ciclismo' ? 'Test FTP ciclismo' : 'Test 1RM fuerza'}
+          </h3>
+          <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
+            {mostrarForm ? 'Cancelar' : '+ Nuevo test'}
+          </button>
         </div>
+
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
         <ProtocoloTest tipo={tab} />
 
+        {/* GRÁFICAS DE EVOLUCIÓN */}
+        {tab === 'carrera' && <GraficaEvolucion datos={tests1} dataKey="vam" color="#4ade80" unidad="km/h" label="VAM" />}
+        {tab === 'natacion' && <GraficaEvolucion datos={tests2} dataKey="css" color="#60a5fa" unidad="m/s" label="CSS" />}
+        {tab === 'ciclismo' && <GraficaEvolucion datos={tests3} dataKey="ftp" color="#facc15" unidad="W" label="FTP" />}
+        {tab === 'fuerza' && <GraficaFuerza datos={testsFuerza} />}
+
+        {/* FORMULARIOS */}
         {mostrarForm && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test incremental de carrera</h4>
@@ -218,11 +331,79 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </form>
         )}
 
-        {tab === 'carrera' && (tests1.length === 0 ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>No hay tests de carrera todavia.</p></div> : <div className="grid gap-4">{tests1.map(t => <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800"><p className="text-gray-400 text-sm">{t.fecha}</p><p className="font-bold text-lg text-orange-400">{t.vam} km/h VAM</p><p className="text-gray-300 text-sm">{formatVAM(t.vam)}</p></div>)}</div>)}
-        {tab === 'natacion' && (tests2.length === 0 ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>No hay tests de natacion todavia.</p></div> : <div className="grid gap-4">{tests2.map(t => <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800"><p className="text-gray-400 text-sm">{t.fecha}</p><p className="font-bold text-lg text-orange-400">{t.css} m/s CSS</p><p className="text-gray-300 text-sm">{formatCSS(t.css)}</p></div>)}</div>)}
-        {tab === 'ciclismo' && (tests3.length === 0 ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>No hay tests de ciclismo todavia.</p></div> : <div className="grid gap-4">{tests3.map(t => <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800"><p className="text-gray-400 text-sm">{t.fecha}</p><p className="font-bold text-lg text-orange-400">{t.ftp} W FTP</p></div>)}</div>)}
-        {tab === 'fuerza' && (testsFuerza.length === 0 ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏋️</div><p>No hay tests de fuerza todavia.</p></div> : <div className="grid gap-4">{testsFuerza.map(t => <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800"><div className="flex justify-between items-center"><div><p className="font-bold text-lg">{t.ejercicio}</p><p className="text-gray-400 text-sm">{t.grupo_muscular} · {t.fecha}</p><p className="text-gray-300 text-sm">{t.peso_kg} kg × {t.repeticiones} reps</p>{t.notas && <p className="text-gray-400 text-sm mt-1">{t.notas}</p>}</div><div className="text-right"><p className="text-orange-400 font-bold text-2xl">{t.rm_estimado} kg</p><p className="text-gray-400 text-sm">1RM estimado</p></div></div></div>)}</div>)}
+        {/* LISTAS DE TESTS */}
+        {tab === 'carrera' && (tests1.length === 0 ?
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>No hay tests de carrera todavia.</p></div> :
+          <div className="grid gap-4">{tests1.map(t => (
+            <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-gray-400 text-sm">{t.fecha}</p>
+                  <p className="text-gray-300 text-sm mt-1">{formatVAM(t.vam)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-2xl text-green-400">{t.vam}</p>
+                  <p className="text-gray-500 text-xs">km/h VAM</p>
+                </div>
+              </div>
+            </div>
+          ))}</div>
+        )}
 
+        {tab === 'natacion' && (tests2.length === 0 ?
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>No hay tests de natacion todavia.</p></div> :
+          <div className="grid gap-4">{tests2.map(t => (
+            <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-gray-400 text-sm">{t.fecha}</p>
+                  <p className="text-gray-300 text-sm mt-1">{formatCSS(t.css)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-2xl text-blue-400">{t.css}</p>
+                  <p className="text-gray-500 text-xs">m/s CSS</p>
+                </div>
+              </div>
+            </div>
+          ))}</div>
+        )}
+
+        {tab === 'ciclismo' && (tests3.length === 0 ?
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>No hay tests de ciclismo todavia.</p></div> :
+          <div className="grid gap-4">{tests3.map(t => (
+            <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div className="flex justify-between items-center">
+                <div><p className="text-gray-400 text-sm">{t.fecha}</p></div>
+                <div className="text-right">
+                  <p className="font-bold text-2xl text-yellow-400">{t.ftp}</p>
+                  <p className="text-gray-500 text-xs">W FTP</p>
+                </div>
+              </div>
+            </div>
+          ))}</div>
+        )}
+
+        {tab === 'fuerza' && (testsFuerza.length === 0 ?
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏋️</div><p>No hay tests de fuerza todavia.</p></div> :
+          <div className="grid gap-4">{testsFuerza.map(t => (
+            <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-bold text-lg">{t.ejercicio}</p>
+                  <p className="text-gray-400 text-sm">{t.grupo_muscular} · {t.fecha}</p>
+                  <p className="text-gray-300 text-sm">{t.peso_kg} kg × {t.repeticiones} reps</p>
+                  {t.notas && <p className="text-gray-400 text-sm mt-1">{t.notas}</p>}
+                </div>
+                <div className="text-right">
+                  <p className="text-orange-400 font-bold text-2xl">{t.rm_estimado} kg</p>
+                  <p className="text-gray-400 text-sm">1RM estimado</p>
+                </div>
+              </div>
+            </div>
+          ))}</div>
+        )}
+
+        {/* OTROS TESTS */}
         <div className="mt-12 border-t border-gray-800 pt-8">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Otros tests</h3>
@@ -241,7 +422,24 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
               <button type="submit" disabled={loading} className="bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
             </form>
           )}
-          {testsLibres.length === 0 ? <div className="text-center py-8 text-gray-500"><p>No hay otros tests registrados todavia.</p></div> : <div className="grid gap-3">{testsLibres.map(t => <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800"><div className="flex justify-between items-center"><div><h4 className="font-bold">{t.nombre}</h4><p className="text-gray-400 text-sm">{t.fecha}</p>{t.notas && <p className="text-gray-400 text-sm mt-1">{t.notas}</p>}</div><div className="text-right"><p className="text-orange-400 font-bold text-lg">{t.resultado}</p><p className="text-gray-400 text-sm">{t.unidad}</p></div></div></div>)}</div>}
+          {testsLibres.length === 0 ?
+            <div className="text-center py-8 text-gray-500"><p>No hay otros tests registrados todavia.</p></div> :
+            <div className="grid gap-3">{testsLibres.map(t => (
+              <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold">{t.nombre}</h4>
+                    <p className="text-gray-400 text-sm">{t.fecha}</p>
+                    {t.notas && <p className="text-gray-400 text-sm mt-1">{t.notas}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-orange-400 font-bold text-lg">{t.resultado}</p>
+                    <p className="text-gray-400 text-sm">{t.unidad}</p>
+                  </div>
+                </div>
+              </div>
+            ))}</div>
+          }
         </div>
       </div>
     </main>

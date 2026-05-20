@@ -148,6 +148,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [fcMax, setFcMax] = useState(0)
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
+  const [tareaEditando, setTareaEditando] = useState<any>(null)
+  const [editZona, setEditZona] = useState('')
+  const [editSeries, setEditSeries] = useState('')
+  const [editDescanso, setEditDescanso] = useState('')
+  const [editComentario, setEditComentario] = useState('')
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
 
   useEffect(() => { cargarDatos() }, [deportistaId, sesionId])
@@ -174,6 +179,44 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     } else {
       setTareasGuardadas([])
     }
+  }
+
+  const borrarTarea = async (tareaId: number) => {
+    if (!confirm('Borrar esta tarea?')) return
+    await supabase.from('p_distancia').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_duracion').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaId)
+    await supabase.from('ejercicios').delete().eq('id_tarea', tareaId)
+    await supabase.from('tarea').delete().eq('id', tareaId)
+    setTareasGuardadas(prev => prev.filter(t => t.id !== tareaId))
+  }
+
+  const abrirEditarTarea = (t: any) => {
+    setTareaEditando(t)
+    setEditZona(t.zona_entrenamiento || '')
+    setEditSeries(t.series || '')
+    setEditDescanso(t.descanso_segundos || '')
+    setEditComentario(t.comentario || '')
+  }
+
+  const guardarEditarTarea = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    await supabase.from('tarea').update({
+      zona_entrenamiento: editZona || null,
+      series: editSeries ? Number(editSeries) : null,
+      descanso_segundos: editDescanso ? Number(editDescanso) : null,
+      comentario: editComentario || null,
+    }).eq('id', tareaEditando.id)
+    setTareasGuardadas(prev => prev.map(t => t.id === tareaEditando.id ? {
+      ...t,
+      zona_entrenamiento: editZona || null,
+      series: editSeries ? Number(editSeries) : null,
+      descanso_segundos: editDescanso ? Number(editDescanso) : null,
+      comentario: editComentario || null,
+    } : t))
+    setTareaEditando(null)
+    setLoading(false)
   }
 
   const nuevaFilaR = (): FilaResistencia => ({
@@ -208,7 +251,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       comentario: f.comentario || null, orden: f.orden
     }).select().single()
     if (tarea) {
-      if (f.tipoMedicion === 'distancia') await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(f.valorMedicion) })
+      const _zonaObj = ZONAS.find(z => z.num === f.zona)
+      const _ref = getReferencia(_zonaObj, f.disciplina, tests, fcMax)
+      if (f.tipoMedicion === 'distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(f.valorMedicion) }).select().single(); if (pd && _ref?.ritmo) { const { error: errR } = await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id); console.log('ritmo update:', _ref.ritmo, errR) } }
       else if (f.tipoMedicion === 'duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASeg(f.valorMedicion) })
       else if (f.tipoMedicion === 'repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.valorMedicion) })
     }
@@ -274,6 +319,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <th className="text-left py-2 px-2">RIR</th>
                     <th className="text-left py-2 px-2">Descanso</th>
                     <th className="text-left py-2 px-2">Notas</th>
+                    {!esDeportista && <th className="py-2 px-2 w-16"></th>}
                   </>
                 ) : (
                   <>
@@ -285,6 +331,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <th className="text-left py-2 px-2">Total</th>
                     <th className="text-left py-2 px-2">Referencia / Intensidad</th>
                     <th className="text-left py-2 px-2">Notas</th>
+                    {!esDeportista && <th className="py-2 px-2 w-16"></th>}
                   </>
                 )}
               </tr>
@@ -317,6 +364,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.notas_ejecucion?.includes('RIR') ? t.ejercicios[0].notas_ejecucion.match(/RIR: (\d)/)?.[1] || '—' : '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
                         <td className="py-2 px-2 text-gray-500 text-xs">{t.notas_post || ''}</td>
+                        {!esDeportista && (
+                          <td className="py-2 px-2">
+                            <div className="flex gap-1">
+                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
+                            </div>
+                          </td>
+                        )}
                       </>
                     ) : (
                       <>
@@ -334,6 +389,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           {!ref && <span className="text-gray-600">—</span>}
                         </td>
                         <td className="py-2 px-2 text-gray-400 text-xs">{t.comentario || '—'}</td>
+                        {!esDeportista && (
+                          <td className="py-2 px-2">
+                            <div className="flex gap-1">
+                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
+                            </div>
+                          </td>
+                        )}
                       </>
                     )}
                   </tr>
@@ -527,6 +590,24 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
           className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
           <span>+</span> Añadir {esFuerza ? 'ejercicio' : 'tarea'}
         </button>
+      )}
+
+      {tareaEditando && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Editar tarea</h3>
+              <button onClick={() => setTareaEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button>
+            </div>
+            <form onSubmit={guardarEditarTarea} className="flex flex-col gap-4">
+              <input type="text" placeholder="Zona (ej: Z2, Z4)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <input type="number" placeholder="Series" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <input type="number" placeholder="Descanso (seg)" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <textarea placeholder="Comentario" value={editComentario} onChange={e => setEditComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+              <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

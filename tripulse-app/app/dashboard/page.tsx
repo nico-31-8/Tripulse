@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 export default function Dashboard() {
   const [perfil, setPerfil] = useState<any>(null)
@@ -16,6 +17,7 @@ export default function Dashboard() {
   }, [])
 
   const [verInfo, setVerInfo] = useState(false)
+  const [verResumenes, setVerResumenes] = useState(false)
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
     window.location.href = '/'
@@ -33,6 +35,7 @@ export default function Dashboard() {
     { icon: '🎯', titulo: 'Análisis de Índices', descripcion: 'Índice de percepción y planificación por sesión. Semáforo de doble dimensión.', href: '/indices' },
     { icon: '🏋️', titulo: 'Tests', descripcion: 'Registra FTP, CSS, VAM y 1RM. Genera zonas de entrenamiento automáticas.', href: '/tests' },
     { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Gestiona ejercicios por grupo muscular con video de referencia. Acceso con clave de admin.', href: '/fuerza' },
+    { icon: '💬', titulo: 'Comunicacion', descripcion: 'Comentarios post-sesion de tus deportistas. Marca como leido cuando los hayas revisado.', href: '/comunicacion' },
   ]
 
   return (
@@ -47,13 +50,27 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-2">
           <h2 className="text-2xl font-bold">Bienvenido, {perfil?.nombre} 👋</h2>
-          <button onClick={() => setVerInfo(!verInfo)}
-            className={'px-4 py-2 rounded-lg text-sm font-medium transition border ' +
-              (verInfo ? 'bg-orange-500 border-orange-400 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500')}>
-            {verInfo ? '📖 Ocultar info' : 'ℹ️ Ver info'}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setVerResumenes(!verResumenes)}
+              className={'px-4 py-2 rounded-lg text-sm font-medium transition border ' +
+                (verResumenes ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500')}>
+              {verResumenes ? '📋 Ocultar resumenes' : '📋 Resumenes'}
+            </button>
+            <button onClick={() => setVerInfo(!verInfo)}
+              className={'px-4 py-2 rounded-lg text-sm font-medium transition border ' +
+                (verInfo ? 'bg-orange-500 border-orange-400 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500')}>
+              {verInfo ? '📖 Ocultar info' : 'ℹ️ Ver info'}
+            </button>
+          </div>
         </div>
-        <p className="text-gray-400 mb-8">Panel del entrenador</p>
+        <p className="text-gray-400 mb-4">Panel del entrenador</p>
+
+        {verResumenes && perfil && (
+          <div className="mb-8 bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <h3 className="font-bold text-white mb-4">Resumen semanal de deportistas</h3>
+            <ResumenEntrenador entrenadorId={perfil.id} />
+          </div>
+        )}
         <div className={'grid gap-4 ' + (verInfo ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
           {modulos.map(m => (
             <button key={m.titulo} onClick={() => ir(m.href)} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left w-full">

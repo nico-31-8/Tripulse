@@ -48,7 +48,6 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
-  const [rango, setRango] = useState(14)
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
   const [calidadSueno, setCalidadSueno] = useState(4)
   const [horasSueno, setHorasSueno] = useState(7)
@@ -58,6 +57,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [animo, setAnimo] = useState(4)
   const [motivacion, setMotivacion] = useState(4)
   const [hrv, setHrv] = useState('')
+  const [fcReposo, setFcReposo] = useState('')
   const [malestarGeneral, setMalestarGeneral] = useState(4)
 
   useEffect(() => { cargarDatos() }, [id])
@@ -65,7 +65,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
-    const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(14)
+    const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30)
     setRegistros(reg || [])
   }
 
@@ -87,6 +87,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
       animo,
       motivacion,
       hrv: hrv ? Number(hrv) : null,
+      fc_reposo: fcReposo ? Number(fcReposo) : null,
       malestar_general: malestarGeneral,
       score_wellness: score
     })
@@ -115,10 +116,14 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
           </button>
         </div>
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+
         {mostrarForm && (
           <form onSubmit={guardar} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold text-lg">Registro de hoy</h4>
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
+            <div>
+              <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required />
+            </div>
             <SliderInput label="Calidad del sueno" value={calidadSueno} onChange={setCalidadSueno} descripcionInf="Muy buena" descripcionSup="Muy mala" />
             <div className="bg-gray-800 rounded-xl p-4">
               <div className="flex justify-between items-center mb-2">
@@ -134,22 +139,35 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             <SliderInput label="Animo" value={animo} onChange={setAnimo} descripcionInf="Muy malo" descripcionSup="Muy bueno" />
             <SliderInput label="Motivacion" value={motivacion} onChange={setMotivacion} descripcionInf="Muy baja" descripcionSup="Muy alta" />
             <SliderInput label="Malestar general" value={malestarGeneral} onChange={setMalestarGeneral} descripcionInf="Sin malestar" descripcionSup="Mucho malestar" />
-            <div className="bg-gray-800 rounded-xl p-4">
-              <label className="text-white font-medium text-sm block mb-2">HRV matutina (ms) — opcional</label>
-              <input type="number" placeholder="Ej: 52 ms (de tu reloj Garmin)" value={hrv} onChange={e => setHrv(e.target.value)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
+
+            {/* Objetivos bloc */}
+            <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
+              <p className="text-white font-medium text-sm mb-1">Datos objetivos del reloj</p>
+              <div>
+                <label className="text-gray-400 text-xs mb-1 block">HRV matutina (ms) — opcional</label>
+                <input type="number" placeholder="Ej: 52" value={hrv} onChange={e => setHrv(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs mb-1 block">FC en reposo (ppm) — opcional</label>
+                <input type="number" placeholder="Ej: 48" value={fcReposo} onChange={e => setFcReposo(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+                <p className="text-gray-600 text-xs mt-1">Una FC en reposo elevada de forma sostenida puede indicar sobreentrenamiento</p>
+              </div>
             </div>
+
             <div className="bg-gray-800 rounded-xl p-4 text-center">
               <p className="text-gray-400 text-sm mb-1">Score wellness estimado</p>
               <p className={`text-3xl font-bold ${colorScore(preview)}`}>{preview}</p>
               <p className={`text-sm ${colorScore(preview)}`}>{estadoScore(preview)}</p>
             </div>
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar registro'}</button>
+            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
+              {loading ? 'Guardando...' : 'Guardar registro'}
+            </button>
           </form>
         )}
+
         {/* GRÁFICAS */}
         {registros.length > 1 && (
           <div className="flex flex-col gap-4 mb-6">
-            {/* Score wellness */}
             <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
               <p className="text-sm font-medium text-orange-400 mb-3">Score Wellness</p>
               <ResponsiveContainer width="100%" height={180}>
@@ -166,23 +184,27 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
               </ResponsiveContainer>
             </div>
 
-            {/* HRV */}
-            {registros.some(r => r.hrv) && (
+            {/* HRV + FC reposo juntas */}
+            {registros.some(r => r.hrv || r.fc_reposo) && (
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-                <p className="text-sm font-medium text-blue-400 mb-3">HRV (ms)</p>
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={registros.slice().reverse().filter(r => r.hrv).map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv }))}>
+                <p className="text-sm font-medium text-blue-400 mb-3">Datos objetivos — HRV y FC en reposo</p>
+                <div className="flex gap-4 mb-2 text-xs">
+                  {registros.some(r => r.hrv) && <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block"></span> HRV (ms)</span>}
+                  {registros.some(r => r.fc_reposo) && <span className="flex items-center gap-1 text-rose-400"><span className="w-3 h-0.5 bg-rose-400 inline-block"></span> FC reposo (ppm)</span>}
+                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv || null, fc_reposo: r.fc_reposo || null }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
-                    <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 3 }} name="HRV" connectNulls />
+                    {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
+                    {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.5} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             )}
 
-            {/* Variables subjetivas */}
             <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
               <p className="text-sm font-medium text-gray-200 mb-3">Variables subjetivas</p>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -235,7 +257,10 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                   <div>
                     <p className="font-medium">{r.fecha}</p>
                     <p className="text-gray-400 text-sm">Sueno: {r.horas_sueno}h · Fatiga: {r.fatiga}/7 · Estres: {r.estres}/7</p>
-                    {r.hrv && <p className="text-blue-400 text-sm">HRV: {r.hrv} ms</p>}
+                    <div className="flex gap-3 mt-1">
+                      {r.hrv && <p className="text-blue-400 text-sm">HRV: {r.hrv} ms</p>}
+                      {r.fc_reposo && <p className="text-rose-400 text-sm">FC reposo: {r.fc_reposo} ppm</p>}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className={`text-2xl font-bold ${colorScore(r.score_wellness)}`}>{r.score_wellness}</p>

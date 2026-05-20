@@ -26,6 +26,29 @@ const COLOR_ZONA: Record<string, string> = {
   'Z7': 'bg-purple-900 border-purple-600',
 }
 
+const VAM_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.60], Z2:[0.60,0.70], Z3:[0.70,0.80], Z4:[0.80,0.90], Z5:[0.90,1.00], Z6:[1.00,1.15], Z7:[1.15,1.30] }
+const FTP_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.55], Z2:[0.56,0.75], Z3:[0.76,0.90], Z4:[0.91,1.05], Z5:[1.06,1.20], Z6:[1.21,1.50], Z7:[1.51,2.00] }
+const CSS_ZONAS: Record<string, [number,number]> = { Z1:[0.55,0.65], Z2:[0.65,0.75], Z3:[0.76,0.85], Z4:[0.86,0.95], Z5:[0.96,1.05], Z6:[1.06,1.20], Z7:[1.21,1.40] }
+function calcularRango(zona: string, disciplina: string, tests: any): string {
+  if (!zona || !disciplina || !tests) return ''
+  const z = zona.toUpperCase()
+  if (disciplina === 'Carrera' && tests.vam && VAM_ZONAS[z]) {
+    const [p1, p2] = VAM_ZONAS[z]
+    const v1 = tests.vam * p1, v2 = tests.vam * p2
+    const fmt = (v: number) => { const s = 3600/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
+    return fmt(v2) + '–' + fmt(v1) + ' /km'
+  }
+  if (disciplina === 'Ciclismo' && tests.ftp && FTP_ZONAS[z]) {
+    const [p1, p2] = FTP_ZONAS[z]
+    return Math.round(tests.ftp*p1) + '–' + Math.round(tests.ftp*p2) + ' W'
+  }
+  if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css && CSS_ZONAS[z]) {
+    const [p1, p2] = CSS_ZONAS[z]
+    const fmt = (v: number) => { const s = 100/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
+    return fmt(v2) + '–' + fmt(v1) + ' /100m'
+  }
+  return ''
+}
 export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
@@ -36,18 +59,38 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, any[]>>({})
   const [guardando, setGuardando] = useState(false)
+  const [tests, setTests] = useState<any>(null)
 
   // Post sesión
   const [rpe, setRpe] = useState(5)
   const [sensacion, setSensacion] = useState(3)
   const [dolor, setDolor] = useState(1)
   const [notasPost, setNotasPost] = useState('')
+  const [fcMedia, setFcMedia] = useState('')
 
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
+    if (ses?.id_microciclo) {
+      const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
+      if (micro) {
+        const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
+        if (meso) {
+          const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
+          if (macro) {
+            const depId = macro.id_deportista
+            const [t1, t2, t3] = await Promise.all([
+              supabase.from('test1_carrera').select('vam').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+            ])
+            setTests({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.velocidad_critica_natacion || null, ftp: t3.data?.[0]?.ftp || null })
+          }
+        }
+      }
+    }
     const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
     setTareas(tar || [])
     // Cargar ejercicios de todas las tareas
@@ -140,6 +183,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         sensacion_tecnica: sensacion,
         dolor_muscular: dolor,
         notas_post: notasPost,
+        fc_media: fcMedia ? Number(fcMedia) : null,
       }).eq('id_sesion', Number(id))
     }
     window.location.href = '/dashboard-deportista'
@@ -244,6 +288,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   // MODO EJECUCIÓN
   if (fase === 'ejecutar') {
     const tarea = tareas[tareaActual]
+    if (!tarea) return null
     const tipo = getTipoMedicion(tarea)
     const r = resultados[tarea?.id] || {}
     const esUltima = tareaActual === tareas.length - 1
@@ -286,6 +331,23 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 </div>
               )}
             </div>
+            {/* Ritmo / Potencia objetivo */}
+            {(() => {
+              const ritmoGuardado = tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo
+              const ritmoCalculado = calcularRango(tarea?.zona_entrenamiento || '', tarea?.disciplina || sesion?.disciplina || '', tests)
+              const ritmoMostrar = ritmoGuardado || ritmoCalculado
+              if (!ritmoMostrar) return null
+              return (
+                <div className="mt-3 bg-black bg-opacity-30 rounded-lg px-4 py-2 flex justify-between items-center">
+                  <p className="text-xs text-gray-400">
+                    {(tarea?.disciplina || sesion?.disciplina) === 'Carrera' ? 'Ritmo objetivo' :
+                     (tarea?.disciplina || sesion?.disciplina) === 'Ciclismo' ? 'Potencia objetivo' :
+                     (tarea?.disciplina || sesion?.disciplina) === 'Natacion' ? 'Ritmo obj /100m' : 'Referencia'}
+                  </p>
+                  <p className="font-bold text-orange-300 text-lg">{ritmoMostrar}</p>
+                </div>
+              )
+            })()}
             {tarea?.comentario && <p className="text-gray-300 text-sm mt-3 italic">{tarea.comentario}</p>}
           </div>
 
@@ -343,8 +405,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                         </div>
                       )}
                       <div>
-                        <label className="text-gray-400 text-xs mb-1 block">Ritmo / Potencia</label>
-                        <input type="text" placeholder="4:25/km"
+                        <label className="text-gray-400 text-xs mb-1 flex justify-between">
+                          <span>Ritmo / Potencia</span>
+                          {(tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo) && (
+                            <span className="text-orange-400 font-medium">Objetivo: {tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo}</span>
+                          )}
+                        </label>
+                        <input type="text" placeholder={tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo || "Ritmo real"}
                           value={serieData.ritmo || ''}
                           onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, ritmo: e.target.value })}
                           className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-orange-500" />
@@ -433,6 +500,21 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Sin dolor</span><span>Mucho</span></div>
           </div>
 
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">FC media de la sesión (ppm)</label>
+              <span className="text-red-400 font-bold text-xl">{fcMedia || '—'}</span>
+            </div>
+            <p className="text-gray-500 text-xs mb-3">Consulta tu reloj Garmin — dato necesario para calcular la carga real</p>
+            <input
+              type="number"
+              placeholder="Ej: 148"
+              value={fcMedia}
+              onChange={e => setFcMedia(e.target.value)}
+              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-red-500"
+              min="40" max="220"
+            />
+          </div>
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
             <label className="font-medium block mb-2">Notas (opcional)</label>
             <textarea value={notasPost} onChange={e => setNotasPost(e.target.value)} rows={3}

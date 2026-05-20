@@ -1,9 +1,11 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import GraficaCarga from '@/components/GraficaCarga'
+import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
+import PlanPeriodizacion from '@/components/PlanPeriodizacion'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
 
 const COLOR_MESO: Record<string, string> = {
@@ -17,6 +19,14 @@ const COLOR_DISC: Record<string, string> = {
   'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
   'Ciclismo': 'bg-yellow-400', 'Carrera': 'bg-green-500',
   'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500',
+}
+
+const COLOR_DISC_FULL: Record<string, string> = {
+  'Natacion': 'bg-blue-800 text-blue-200 hover:bg-blue-700',
+  'Ciclismo': 'bg-yellow-800 text-yellow-200 hover:bg-yellow-700',
+  'Carrera': 'bg-green-800 text-green-200 hover:bg-green-700',
+  'Fuerza': 'bg-red-800 text-red-200 hover:bg-red-700',
+  'Brick': 'bg-purple-800 text-purple-200 hover:bg-purple-700',
 }
 
 function getDiasDelMes(año: number, mes: number) {
@@ -35,17 +45,10 @@ function getVolumenSesion(sesion: any): string {
   const min = sesion.duracion_minutos ? sesion.duracion_minutos + 'm' : ''
   const metros = sesion.metros_total || 0
   const seg = sesion.seg_total || 0
-
   if (disc === 'Fuerza') return min
-  if (disc === 'Ciclismo') {
-    if (seg > 0) return Math.floor(seg/60) + 'm'
-    return min
-  }
+  if (disc === 'Ciclismo') { if (seg > 0) return Math.floor(seg/60) + 'm'; return min }
   if (disc === 'Natacion' || disc === 'Carrera') {
-    if (metros > 0) {
-      const vol = metros >= 1000 ? (metros/1000).toFixed(1) + 'km' : metros + 'm'
-      return min ? min + ' · ' + vol : vol
-    }
+    if (metros > 0) { const vol = metros >= 1000 ? (metros/1000).toFixed(1) + 'km' : metros + 'm'; return min ? min + ' · ' + vol : vol }
     if (seg > 0) return Math.floor(seg/60) + 'm'
     return min
   }
@@ -53,7 +56,31 @@ function getVolumenSesion(sesion: any): string {
 }
 
 function fechaStr(d: Date) {
-  return d.toISOString().split('T')[0]
+  const y = d.getFullYear()
+  const m = String(d.getMonth()+1).padStart(2,'0')
+  const dd = String(d.getDate()).padStart(2,'0')
+  return y+'-'+m+'-'+dd
+}
+
+function getLunesDeSemana(fecha: string): string {
+  const d = new Date(fecha)
+  const dia = d.getDay()
+  const diff = dia === 0 ? -6 : 1 - dia
+  d.setDate(d.getDate() + diff)
+  return fechaStr(d)
+}
+
+function semanasHasta(fecha: string): number {
+  const hoy = new Date(); hoy.setHours(0,0,0,0)
+  const f = new Date(fecha); f.setHours(0,0,0,0)
+  return Math.ceil((f.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24 * 7))
+}
+
+function colorSemanas(semanas: number) {
+  if (semanas < 0) return 'text-gray-500'
+  if (semanas <= 2) return 'text-red-400'
+  if (semanas <= 6) return 'text-yellow-400'
+  return 'text-green-400'
 }
 
 export default function CalendarioPage({ params }: { params: Promise<{ id: string }> }) {
@@ -63,21 +90,24 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [mesos, setMesos] = useState<any[]>([])
   const [micros, setMicros] = useState<any[]>([])
   const [sesiones, setSesiones] = useState<any[]>([])
+  const [competiciones, setCompeticiones] = useState<any[]>([])
+  const [semanasBloqueadas, setSemanasBloqueadas] = useState<any[]>([])
   const [rango, setRango] = useState(6)
   const [vista, setVista] = useState<'calendario'|'semanas'>('calendario')
   const [capaCalendario, setCapaCalendario] = useState<'mesos'|'semanas'>('mesos')
-  const [mesInicio, setMesInicio] = useState(() => {
-    const hoy = new Date()
-    return { año: hoy.getFullYear(), mes: hoy.getMonth() }
-  })
-  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|null>(null)
-  const [sesionEditando, setSesionEditando] = useState<any>(null)
+  const [mesInicio, setMesInicio] = useState(() => { const hoy = new Date(); return { año: hoy.getFullYear(), mes: hoy.getMonth() } })
   const [vistaDetalle, setVistaDetalle] = useState<'multi'|'mes'>('multi')
+  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|'competicion'|'verCompeticion'|'bloquear'|'verBloqueo'|'pegarSemana'|null>(null)
+  const [sesionEditando, setSesionEditando] = useState<any>(null)
   const [fechaSel, setFechaSel] = useState('')
   const [macroSel, setMacroSel] = useState<any>(null)
   const [mesoSel, setMesoSel] = useState<any>(null)
   const [microSel, setMicroSel] = useState<any>(null)
+  const [compSel, setCompSel] = useState<any>(null)
+  const [bloqueoSel, setBloqueoSel] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+
+  // Estados formularios
   const [macroObj, setMacroObj] = useState('')
   const [macroDuracion, setMacroDuracion] = useState('')
   const [mesoObj, setMesoObj] = useState('')
@@ -90,6 +120,19 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [sesionDuracion, setSesionDuracion] = useState('')
   const [sesionRpe, setSesionRpe] = useState('')
   const [sesionNotas, setSesionNotas] = useState('')
+  const [compNombre, setCompNombre] = useState('')
+  const [tipoPeriodizacion, setTipoPeriodizacion] = useState('')
+  const [compTipo, setCompTipo] = useState('')
+  const [compNotas, setCompNotas] = useState('')
+  const [bloqueoMotivo, setBloqueoMotivo] = useState('')
+  const [mostrarGrafica, setMostrarGrafica] = useState(false)
+  const [mostrarPlan, setMostrarPlan] = useState(false)
+
+  // Copiar/pegar
+  const [sesionCopiada, setSesionCopiada] = useState<any>(null)
+  const [semanaCopiada, setSemanaCopiada] = useState<string|null>(null) // lunes de la semana copiada
+  const [semanaDestino, setSemanaDestino] = useState<string|null>(null)
+  const [mostrarToast, setMostrarToast] = useState('')
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -98,6 +141,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setDeportista(dep)
     const { data: mac } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
     setMacros(mac || [])
+    const { data: comps } = await supabase.from('competicion').select('*').eq('id_deportista', Number(id)).order('fecha')
+    setCompeticiones(comps || [])
+    const { data: bloqs } = await supabase.from('semana_bloqueada').select('*').eq('id_deportista', Number(id))
+    setSemanasBloqueadas(bloqs || [])
     if (!mac?.length) return
     const macIds = mac.map(m => m.id)
     const { data: me } = await supabase.from('mesociclo').select('*').in('id_macrociclo', macIds).order('fecha_inicio')
@@ -117,20 +164,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       const { data: durs } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
       const sesConVolumen = ses.map(s => {
         const tarSes = tareas?.filter(t => t.id_sesion === s.id) || []
-        const metros = tarSes.reduce((acc, t) => {
-          const d = dists?.find(d => d.id_tarea === t.id)
-          return acc + (d ? d.metros_planeados * (t.series || 1) : 0)
-        }, 0)
-        const seg = tarSes.reduce((acc, t) => {
-          const d = durs?.find(d => d.id_tarea === t.id)
-          return acc + (d ? d.tiempo_planeado * (t.series || 1) : 0)
-        }, 0)
+        const metros = tarSes.reduce((acc, t) => { const d = dists?.find(d => d.id_tarea === t.id); return acc + (d ? d.metros_planeados * (t.series || 1) : 0) }, 0)
+        const seg = tarSes.reduce((acc, t) => { const d = durs?.find(d => d.id_tarea === t.id); return acc + (d ? d.tiempo_planeado * (t.series || 1) : 0) }, 0)
         return { ...s, metros_total: metros, seg_total: seg }
       })
       setSesiones(sesConVolumen)
-    } else {
-      setSesiones([])
-    }
+    } else { setSesiones([]) }
   }
 
   const mesesAMostrar = Array.from({ length: rango }, (_, i) => {
@@ -139,35 +178,137 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     return { mes, año }
   })
 
-  const getMesoDelDia = (f: string) => mesos.find(m => {
-    if (!m.fecha_inicio) return false
-    const ini = new Date(m.fecha_inicio)
-    const fin = new Date(ini); fin.setDate(ini.getDate() + (m.duracion_semanas || 4) * 7)
-    const d = new Date(f); return d >= ini && d < fin
-  })
-
-  const getMacroDelDia = (f: string) => macros.find(m => {
-    if (!m.fecha_inicio) return false
-    const ini = new Date(m.fecha_inicio)
-    const fin = new Date(ini); fin.setDate(ini.getDate() + (m.duracion_semanas || 16) * 7)
-    const d = new Date(f); return d >= ini && d < fin
-  })
-
-  const getMicroDelDia = (f: string) => micros.find(m => {
-    if (!m.fecha_inicio) return false
-    const ini = new Date(m.fecha_inicio)
-    const fin = new Date(ini); fin.setDate(ini.getDate() + 7)
-    const d = new Date(f); return d >= ini && d < fin
-  })
-
+  const getMesoDelDia = (f: string) => mesos.find(m => { if (!m.fecha_inicio) return false; const ini = new Date(m.fecha_inicio); const fin = new Date(ini); fin.setDate(ini.getDate() + (m.duracion_semanas || 4) * 7); const d = new Date(f); return d >= ini && d < fin })
+  const getMacroDelDia = (f: string) => macros.find(m => { if (!m.fecha_inicio) return false; const ini = new Date(m.fecha_inicio); const fin = new Date(ini); fin.setDate(ini.getDate() + (m.duracion_semanas || 16) * 7); const d = new Date(f); return d >= ini && d < fin })
+  const getMicroDelDia = (f: string) => micros.find(m => { if (!m.fecha_inicio) return false; const ini = new Date(m.fecha_inicio); const fin = new Date(ini); fin.setDate(ini.getDate() + 7); const d = new Date(f); return d >= ini && d < fin })
   const getSesionesDia = (f: string) => sesiones.filter(s => s.fecha_sesion === f)
+  const getCompeticionDia = (f: string) => competiciones.find(c => c.fecha?.slice(0,10) === f)
+  const getBloqueoSemana = (f: string) => {
+    const lunes = getLunesDeSemana(f)
+    return semanasBloqueadas.find(b => b.fecha_inicio?.slice(0,10) === lunes)
+  }
+  const esSemanaCopiada = (f: string) => !!semanaCopiada && getLunesDeSemana(f) === semanaCopiada
+
+  const proximaCompeticion = competiciones.filter(c => new Date(c.fecha) >= new Date()).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0]
+
+  const toast = (msg: string) => { setMostrarToast(msg); setTimeout(() => setMostrarToast(''), 2500) }
+
+  // COPIAR SESIÓN
+  const copiarTareasASesion = async (idOrigen: number, idDestino: number) => {
+    const { data: tareas } = await supabase
+      .from('tarea')
+      .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)')
+      .eq('id_sesion', idOrigen)
+      .order('orden', { ascending: true })
+    if (!tareas || tareas.length === 0) return
+    for (const tarea of tareas) {
+      const { data: t } = await supabase.from('tarea').insert({
+        id_sesion: idDestino,
+        zona_entrenamiento: tarea.zona_entrenamiento,
+        disciplina: tarea.disciplina,
+        series: tarea.series,
+        descanso_segundos: tarea.descanso_segundos,
+        comentario: tarea.comentario,
+        orden: tarea.orden,
+      }).select().single()
+      if (!t) continue
+      const pd = Array.isArray(tarea.p_distancia) ? tarea.p_distancia[0] : tarea.p_distancia
+      if (pd) await supabase.from('p_distancia').insert({ id_tarea: t.id, metros_planeados: pd.metros_planeados, ritmo_objetivo: pd.ritmo_objetivo ?? null })
+      const pu = Array.isArray(tarea.p_duracion) ? tarea.p_duracion[0] : tarea.p_duracion
+      if (pu) await supabase.from('p_duracion').insert({ id_tarea: t.id, tiempo_planeado: pu.tiempo_planeado, potencia_objetivo: pu.potencia_objetivo ?? null })
+      const pr = Array.isArray(tarea.p_repeticiones) ? tarea.p_repeticiones[0] : tarea.p_repeticiones
+      if (pr) await supabase.from('p_repeticiones').insert({ id_tarea: t.id, repeticiones_planteadas: pr.repeticiones_planteadas })
+    }
+  }
+
+  const copiarSesion = (ses: any, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSesionCopiada(ses)
+    toast('Sesión copiada — pulsa un día para pegar')
+  }
+
+  // PEGAR SESIÓN en un día
+  const pegarSesion = async (f: string) => {
+    if (!sesionCopiada) return
+    const micro = getMicroDelDia(f)
+    if (!micro) { toast('Ese día no tiene semana asignada'); return }
+    setLoading(true)
+    const { data: sesNueva } = await supabase.from('sesion').insert({
+      id_microciclo: micro.id,
+      disciplina: sesionCopiada.disciplina,
+      fecha_sesion: f,
+      duracion_minutos: sesionCopiada.duracion_minutos,
+      rpe_estimado: sesionCopiada.rpe_estimado,
+      notas_entrenador: sesionCopiada.notas_entrenador,
+      estado: 'Planificada'
+    }).select().single()
+    if (sesNueva) await copiarTareasASesion(sesionCopiada.id, sesNueva.id)
+    setSesionCopiada(null)
+    await cargarDatos()
+    toast('Sesión pegada con todas sus tareas')
+    setLoading(false)
+  }
+
+  // COPIAR SEMANA
+  const copiarSemana = (f: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const lunes = getLunesDeSemana(f)
+    setSemanaCopiada(lunes)
+    setSesionCopiada(null)
+    toast('Semana copiada — pulsa otra semana para pegar')
+  }
+
+  // PEGAR SEMANA
+  const pegarSemana = async (lunesDestino: string) => {
+    if (!semanaCopiada) return
+    setLoading(true)
+    // Obtener sesiones de la semana origen
+    const sesionesSemana = sesiones.filter(s => getLunesDeSemana(s.fecha_sesion) === semanaCopiada)
+    if (!sesionesSemana.length) { toast('La semana copiada no tiene sesiones'); setLoading(false); return }
+    const lunesOrigen = new Date(semanaCopiada)
+    const lunesDest = new Date(lunesDestino)
+    const diffDias = Math.round((lunesDest.getTime() - lunesOrigen.getTime()) / (1000 * 60 * 60 * 24))
+    for (const s of sesionesSemana) {
+      const fechaOrigen = new Date(s.fecha_sesion)
+      fechaOrigen.setDate(fechaOrigen.getDate() + diffDias)
+      const nuevaFecha = fechaStr(fechaOrigen)
+      const micro = getMicroDelDia(nuevaFecha)
+      if (!micro) continue
+      const { data: sesNueva2 } = await supabase.from('sesion').insert({
+        id_microciclo: micro.id,
+        disciplina: s.disciplina,
+        fecha_sesion: nuevaFecha,
+        duracion_minutos: s.duracion_minutos,
+        rpe_estimado: s.rpe_estimado,
+        notas_entrenador: s.notas_entrenador,
+        estado: 'Planificada'
+      }).select().single()
+      if (sesNueva2) await copiarTareasASesion(s.id, sesNueva2.id)
+    }
+    setSemanaCopiada(null)
+    await cargarDatos()
+    toast(`${sesionesSemana.length} sesiones pegadas con sus tareas`)
+    setLoading(false)
+  }
 
   const abrirModal = (f: string) => {
+    // Si hay sesión copiada, pegar
+    if (sesionCopiada) { pegarSesion(f); return }
+    // Si hay semana copiada, confirmar pegado
+    if (semanaCopiada) {
+      const lunes = getLunesDeSemana(f)
+      if (lunes === semanaCopiada) { toast('Elige una semana diferente'); return }
+      setSemanaDestino(lunes)
+      setFechaSel(f)
+      setModalTipo('pegarSemana')
+      return
+    }
     setFechaSel(f)
-    const macro = getMacroDelDia(f)
-    const meso = getMesoDelDia(f)
-    const micro = getMicroDelDia(f)
-    const ses = getSesionesDia(f)
+    const macro = getMacroDelDia(f); const meso = getMesoDelDia(f); const micro = getMicroDelDia(f)
+    const ses = getSesionesDia(f); const comp = getCompeticionDia(f)
+    const bloqueoF = getBloqueoSemana(f)
+    if (bloqueoF) { setBloqueoSel(bloqueoF); setModalTipo('verBloqueo'); return }
+    if (comp) { setCompSel(comp); setModalTipo('verCompeticion'); return }
     if (ses.length > 0) { window.location.href = '/sesion/' + ses[0].id; return }
     if (micro) { setMicroSel(micro); setMesoSel(meso); setMacroSel(macro); setModalTipo('sesion'); return }
     if (meso) { setMesoSel(meso); setMacroSel(macro); setModalTipo('micro'); return }
@@ -175,64 +316,80 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setModalTipo('macro')
   }
 
-  const editarSesion = (ses: any, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setSesionEditando(ses)
-    setSesionDisc(ses.disciplina || '')
-    setSesionDuracion(ses.duracion_minutos || '')
-    setSesionRpe(ses.rpe_estimado || '')
-    setSesionNotas(ses.notas_entrenador || '')
-    setModalTipo('editarSesion')
+  const abrirModalNuevaSesion = (f: string) => {
+    if (sesionCopiada) { pegarSesion(f); return }
+    if (semanaCopiada) {
+      const lunes = getLunesDeSemana(f)
+      if (lunes === semanaCopiada) { toast('Elige una semana diferente'); return }
+      setSemanaDestino(lunes); setFechaSel(f); setModalTipo('pegarSemana'); return
+    }
+    setFechaSel(f)
+    const macro = getMacroDelDia(f); const meso = getMesoDelDia(f); const micro = getMicroDelDia(f)
+    const comp = getCompeticionDia(f)
+    const bloqueoF = getBloqueoSemana(f)
+    if (bloqueoF) { setBloqueoSel(bloqueoF); setModalTipo('verBloqueo'); return }
+    if (comp) { setCompSel(comp); setModalTipo('verCompeticion'); return }
+    if (micro) { setMicroSel(micro); setMesoSel(meso); setMacroSel(macro); setModalTipo('sesion'); return }
+    if (meso) { setMesoSel(meso); setMacroSel(macro); setModalTipo('micro'); return }
+    if (macro) { setMacroSel(macro); setModalTipo('meso'); return }
+    setModalTipo('macro')
   }
 
-  const borrarSesion = async (sesId: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirm('¿Borrar esta sesión?')) return
-    await supabase.from('sesion').delete().eq('id', sesId)
-    await cargarDatos()
-  }
+  const editarSesion = (ses: any, e: React.MouseEvent) => { e.stopPropagation(); setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || ''); setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || ''); setModalTipo('editarSesion') }
+  const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Borrar esta sesión?')) return; await supabase.from('sesion').delete().eq('id', sesId); await cargarDatos() }
 
-  const guardarEdicionSesion = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true)
-    await supabase.from('sesion').update({
-      disciplina: sesionDisc,
-      duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null,
-      rpe_estimado: sesionRpe ? Number(sesionRpe) : null,
-      notas_entrenador: sesionNotas,
-    }).eq('id', sesionEditando.id)
-    setSesionEditando(null); setModalTipo(null)
-    await cargarDatos(); setLoading(false)
-  }
-
-  const guardarMacro = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true)
-    await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion) })
-    setMacroObj(''); setMacroDuracion(''); setModalTipo(null)
-    await cargarDatos(); setLoading(false)
-  }
-
+  const guardarEdicionSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('sesion').update({ disciplina: sesionDisc, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas }).eq('id', sesionEditando.id); setSesionEditando(null); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarMacro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null }); setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
   const guardarMeso = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    const { error } = await supabase.from('mesociclo').insert({
+      id_macrociclo: macroSel.id,
+      objetivo: mesoObj,
+      tipo: mesoTipo,
+      fecha_inicio: fechaSel,
+      duracion_semanas: Number(mesoDuracion),
+      intensidad_relativa: mesoIntensidad ? Number(mesoIntensidad) : null
+    })
+    if (error) { alert('Error: ' + error.message); setLoading(false); return }
+    setMesoObj(''); setMesoTipo(''); setMesoDuracion(''); setMesoIntensidad('')
+    setModalTipo(null)
+    await cargarDatos()
+    setLoading(false)
+  }
+  const guardarMicro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 }); setMicroObj(''); setMicroTipo(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('sesion').insert({ id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, estado: 'Planificada' }); setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+
+  const guardarCompeticion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    await supabase.from('mesociclo').insert({ id_macrociclo: macroSel.id, objetivo: mesoObj, tipo: mesoTipo, fecha_inicio: fechaSel, duracion_semanas: Number(mesoDuracion), intensidad_relativa: mesoIntensidad ? Number(mesoIntensidad) : null })
-    setMesoObj(''); setMesoTipo(''); setMesoDuracion(''); setMesoIntensidad(''); setModalTipo(null)
+    await supabase.from('competicion').insert({ id_deportista: Number(id), nombre: compNombre, fecha: fechaSel, tipo: compTipo, notas: compNotas })
+    setCompNombre(''); setCompTipo(''); setCompNotas(''); setModalTipo(null)
     await cargarDatos(); setLoading(false)
   }
 
-  const guardarMicro = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true)
-    await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 })
-    setMicroObj(''); setMicroTipo(''); setModalTipo(null)
-    await cargarDatos(); setLoading(false)
+  const borrarCompeticion = async (compId: number) => {
+    if (!confirm('¿Borrar esta competición?')) return
+    await supabase.from('competicion').delete().eq('id', compId)
+    setModalTipo(null); await cargarDatos()
   }
 
-  const guardarSesion = async (e: React.FormEvent) => {
+  const guardarBloqueo = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    await supabase.from('sesion').insert({ id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, estado: 'Planificada' })
-    setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setModalTipo(null)
+    const lunes = getLunesDeSemana(fechaSel)
+    await supabase.from('semana_bloqueada').insert({ id_deportista: Number(id), fecha_inicio: lunes, motivo: bloqueoMotivo })
+    setBloqueoMotivo(''); setModalTipo(null)
     await cargarDatos(); setLoading(false)
+    toast('Semana bloqueada')
+  }
+
+  const borrarBloqueo = async (bloqId: number) => {
+    await supabase.from('semana_bloqueada').delete().eq('id', bloqId)
+    setModalTipo(null); await cargarDatos()
+    toast('Bloqueo eliminado')
   }
 
   const hoy = new Date().toISOString().split('T')[0]
+  const modoActivo = sesionCopiada ? 'pegar-sesion' : semanaCopiada ? 'pegar-semana' : null
 
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -246,32 +403,146 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         </div>
       </nav>
 
+      {/* Toast */}
+      {mostrarToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-orange-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg">
+          {mostrarToast}
+        </div>
+      )}
+
+      {/* Banner modo copiar */}
+      {modoActivo && (
+        <div className={'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-xl flex items-center gap-3 border ' +
+          (modoActivo === 'pegar-sesion' ? 'bg-blue-900 border-blue-500 text-blue-200' : 'bg-purple-900 border-purple-500 text-purple-200')}>
+          {modoActivo === 'pegar-sesion' ? (
+            <>
+              <span>📋 Sesión copiada — pulsa un día para pegar</span>
+              <button onClick={() => setSesionCopiada(null)} className="text-blue-400 hover:text-white ml-2">✕ Cancelar</button>
+            </>
+          ) : (
+            <>
+              <span>📋 Semana copiada — pulsa otro día para pegar</span>
+              <button onClick={() => setSemanaCopiada(null)} className="text-purple-400 hover:text-white ml-2">✕ Cancelar</button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex justify-end gap-2 mb-2">
+          {macros.some((m: any) => m.tipo_periodizacion) && (
+            <button
+              onClick={() => setMostrarPlan(v => !v)}
+              className={"flex items-center gap-2 text-sm px-4 py-2 rounded-xl border transition font-medium " +
+                (mostrarPlan
+                  ? "bg-green-600 border-green-500 text-white"
+                  : "bg-gray-800 border-gray-700 hover:border-green-500 text-gray-300 hover:text-white")}>
+              <span>📋</span>
+              <span>{mostrarPlan ? "Ocultar plan" : "Ver plan"}</span>
+            </button>
+          )}
+          <button
+            onClick={() => setMostrarGrafica(v => !v)}
+            className={"flex items-center gap-2 text-sm px-4 py-2 rounded-xl border transition font-medium " +
+              (mostrarGrafica
+                ? "bg-orange-500 border-orange-400 text-white"
+                : "bg-gray-800 border-gray-700 hover:border-orange-500 text-gray-300 hover:text-white")}>
+            <span>📊</span>
+            <span>{mostrarGrafica ? "Ocultar carga" : "Ver carga"}</span>
+          </button>
+        </div>
+
+        {mostrarPlan && macros.find((m: any) => m.tipo_periodizacion) && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-bold text-white">📋 Plan — {macros.find((m: any) => m.tipo_periodizacion)?.tipo_periodizacion}</h3>
+                <p className="text-gray-500 text-xs mt-0.5">{deportista?.nombre} · {macros.find((m: any) => m.tipo_periodizacion)?.duracion_semanas} semanas</p>
+              </div>
+              <button onClick={() => setMostrarPlan(false)} className="text-gray-500 hover:text-white text-xl leading-none">x</button>
+            </div>
+            <PlanPeriodizacion
+              depId={Number(id)}
+              macroId={macros.find((m: any) => m.tipo_periodizacion)?.id}
+              tipoPeriodizacion={macros.find((m: any) => m.tipo_periodizacion)?.tipo_periodizacion || ""}
+              fechaInicio={macros.find((m: any) => m.tipo_periodizacion)?.fecha_inicio || ""}
+              duracionSemanas={macros.find((m: any) => m.tipo_periodizacion)?.duracion_semanas || 12}
+              competiciones={competiciones}
+              vistaDetalle={vistaDetalle}
+              mesActual={vistaDetalle === "mes" ? mesesAMostrar[0] : undefined}
+            />
+          </div>
+        )}
+
+        {mostrarGrafica && deportista && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-bold text-white">📊 Carga real — {deportista.nombre}</h3>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {vistaDetalle === "mes" ? "Vista diaria" : "Vista semanal"} · Solo sesiones con RPE reportado
+                </p>
+              </div>
+              <button onClick={() => setMostrarGrafica(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <GraficaCarga
+              depId={Number(id)}
+              fcUmbral={deportista.fc_maxima ? Math.round(deportista.fc_maxima * 0.85) : 150}
+              modo={vistaDetalle === "mes" ? "dia" : "semana"}
+              fechaInicio={mesesAMostrar[0] ? mesesAMostrar[0].año + "-" + String(mesesAMostrar[0].mes+1).padStart(2,"0") + "-01" : undefined}
+              altura={300}
+            />
+          </div>
+        )}
+
+        {/* Banner próxima competición */}
+        {proximaCompeticion && (
+          <div className="mb-6 bg-yellow-900/30 border border-yellow-600/50 rounded-xl px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🏆</span>
+              <div>
+                <p className="font-bold text-yellow-300">{proximaCompeticion.nombre}</p>
+                <p className="text-yellow-500 text-xs">{proximaCompeticion.tipo} · {proximaCompeticion.fecha}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={`text-2xl font-bold ${colorSemanas(semanasHasta(proximaCompeticion.fecha))}`}>
+                {Math.max(0, semanasHasta(proximaCompeticion.fecha))}
+              </p>
+              <p className="text-yellow-600 text-xs">semanas</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
             <h2 className="text-2xl font-bold">Calendario — {deportista.nombre}</h2>
             <p className="text-gray-400 text-sm">Pulsa un día para planificar</p>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
+            <button onClick={() => { setFechaSel(hoy); setModalTipo('competicion') }}
+              className="flex items-center gap-1.5 bg-yellow-600 hover:bg-yellow-500 text-white text-sm px-3 py-2 rounded-lg transition font-medium">
+              🏆 <span>+ Competición</span>
+            </button>
+            <button onClick={() => { setFechaSel(hoy); setModalTipo('bloquear') }}
+              className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white text-sm px-3 py-2 rounded-lg transition">
+              🚫 <span>Bloquear semana</span>
+            </button>
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
               <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}
-                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
-                  (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
+                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📅 1 mes
               </button>
               <button onClick={() => { setVista('calendario'); setCapaCalendario('mesos') }}
-                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
-                  (vista === 'calendario' && capaCalendario === 'mesos' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
+                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vista === 'calendario' && capaCalendario === 'mesos' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📅 Mesociclos
               </button>
               <button onClick={() => { setVista('calendario'); setCapaCalendario('semanas') }}
-                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
-                  (vista === 'calendario' && capaCalendario === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
+                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vista === 'calendario' && capaCalendario === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📋 Semanas
               </button>
               <button onClick={() => setVista('semanas')}
-                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' +
-                  (vista === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
+                className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vista === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📝 Lista
               </button>
             </div>
@@ -284,10 +555,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <div className="flex gap-1">
                   {[3,6,12].map(r => (
-                    <button key={r} onClick={() => setRango(r)}
-                      className={'px-3 py-2 rounded-lg text-xs font-medium transition ' + (rango===r ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-                      {r} meses
-                    </button>
+                    <button key={r} onClick={() => setRango(r)} className={'px-3 py-2 rounded-lg text-xs font-medium transition ' + (rango===r ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>{r} meses</button>
                   ))}
                 </div>
               </>
@@ -298,30 +566,38 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         {/* Leyenda */}
         <div className="flex gap-4 flex-wrap mb-5 text-xs">
           {capaCalendario === 'mesos' ? (
-            <>
-              {[['bg-orange-500','Acumulación'],['bg-yellow-500','Transmutación'],['bg-red-500','Realización'],['bg-green-500','Recuperación']].map(([c,l]) => (
-                <div key={l} className="flex items-center gap-1.5"><div className={'w-3 h-3 rounded-sm '+c}/><span className="text-gray-400">{l}</span></div>
-              ))}
-            </>
+            <>{[['bg-orange-500','Acumulación'],['bg-yellow-500','Transmutación'],['bg-red-500','Realización'],['bg-green-500','Recuperación']].map(([c,l]) => (
+              <div key={l} className="flex items-center gap-1.5"><div className={'w-3 h-3 rounded-sm '+c}/><span className="text-gray-400">{l}</span></div>
+            ))}</>
           ) : (
-            <>
-              {[['bg-orange-400','Carga'],['bg-green-400','Recuperación'],['bg-blue-400','Competición']].map(([c,l]) => (
-                <div key={l} className="flex items-center gap-1.5"><div className={'w-3 h-3 rounded-sm '+c}/><span className="text-gray-400">{l}</span></div>
-              ))}
-            </>
+            <>{[['bg-orange-400','Carga'],['bg-green-400','Recuperación'],['bg-blue-400','Competición']].map(([c,l]) => (
+              <div key={l} className="flex items-center gap-1.5"><div className={'w-3 h-3 rounded-sm '+c}/><span className="text-gray-400">{l}</span></div>
+            ))}</>
           )}
-          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-white opacity-70"/><span className="text-gray-400">Sesión planificada</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-white opacity-70"/><span className="text-gray-400">Sesión</span></div>
+          <div className="flex items-center gap-1.5"><span>🏆</span><span className="text-gray-400">Competición</span></div>
+          <div className="flex items-center gap-1.5"><span>🚫</span><span className="text-gray-400">Semana bloqueada</span></div>
         </div>
 
-        {/* VISTA 1 MES DETALLADA */}
+        {/* VISTA 1 MES */}
         {vistaDetalle === 'mes' && vista === 'calendario' && (() => {
           const { mes, año } = mesesAMostrar[0]
           const diasMes = getDiasDelMes(año, mes)
+          const compsDelMes = competiciones.filter(c => { const f = new Date(c.fecha); return f.getFullYear() === año && f.getMonth() === mes })
           return (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-800 bg-gray-800 flex justify-between items-center">
-                <p className="font-bold text-lg">{['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes]} {año}</p>
-                <p className="text-gray-400 text-sm">{sesiones.length} sesiones</p>
+                <p className="font-bold text-lg">{MESES[mes]} {año}</p>
+                <div className="flex items-center gap-3">
+                  {compsDelMes.map(c => (
+                    <span key={c.id} className="text-yellow-400 text-xs flex items-center gap-1">
+                      🏆 {c.nombre}
+                      <span className={`font-bold ml-1 ${colorSemanas(semanasHasta(c.fecha))}`}>
+                        {semanasHasta(c.fecha) > 0 ? `${semanasHasta(c.fecha)}sem` : 'Esta semana'}
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="p-4">
                 <div className="grid grid-cols-7 gap-1 mb-2">
@@ -336,39 +612,51 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     const meso = getMesoDelDia(f)
                     const micro = getMicroDelDia(f)
                     const sesDia = getSesionesDia(f)
+                    const comp = getCompeticionDia(f)
+                    const bloqueo = getBloqueoSemana(f)
                     const esHoy = f === hoy
+                    const esCopiadaSemana = esSemanaCopiada(f)
                     return (
                       <div key={f}
-                        onClick={() => abrirModal(f)}
+                        onClick={() => abrirModalNuevaSesion(f)}
                         className={'min-h-20 rounded-xl border p-1.5 cursor-pointer transition ' +
-                          (esHoy ? 'ring-2 ring-orange-500 ' : '') +
-                          (meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-800') + ' bg-opacity-20 border-gray-700 hover:bg-opacity-30 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ')}>
+                          (bloqueo ? 'bg-gray-800 border-red-900 opacity-60 ' :
+                           comp ? 'ring-2 ring-yellow-500 bg-yellow-900/20 border-yellow-700 ' :
+                           esCopiadaSemana ? 'ring-2 ring-purple-500 border-purple-700 bg-purple-900/20 ' :
+                           esHoy ? 'ring-2 ring-orange-500 ' : '') +
+                          (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-800') + ' bg-opacity-20 border-gray-700 hover:bg-opacity-30 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
                         <div className="flex justify-between items-start mb-1">
-                          <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{dia.getDate()}</span>
-                          {micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
+                          <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : comp ? 'text-yellow-400' : bloqueo ? 'text-red-400' : 'text-gray-400')}>{dia.getDate()}</span>
+                          {comp ? <span className="text-sm">🏆</span> : bloqueo ? <span className="text-sm">🚫</span> : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
                         </div>
-                        <div className="flex flex-col gap-0.5">
-                          {sesDia.map(s => (
-                            <div key={s.id}
-                              className={'rounded px-1 py-0.5 flex justify-between items-center group ' +
-                                (s.disciplina === 'Natacion' ? 'bg-blue-800 text-blue-200' :
-                                 s.disciplina === 'Ciclismo' ? 'bg-yellow-800 text-yellow-200' :
-                                 s.disciplina === 'Carrera' ? 'bg-green-800 text-green-200' :
-                                 s.disciplina === 'Fuerza' ? 'bg-red-800 text-red-200' :
-                                 'bg-purple-800 text-purple-200')}>
-                              <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}</span>
-                              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
-                                <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
-                                <button onClick={e => borrarSesion(s.id, e)} className="text-white hover:text-red-300 text-xs">🗑</button>
+                        {bloqueo && <p className="text-red-400 text-xs truncate">{bloqueo.motivo || 'Bloqueada'}</p>}
+                        {comp && <p className="text-yellow-400 text-xs font-medium truncate mb-1">{comp.nombre}</p>}
+                        {!bloqueo && (
+                          <div className="flex flex-col gap-0.5">
+                            {sesDia.map(s => (
+                              <div key={s.id}
+                                onClick={e => { e.stopPropagation(); window.location.href = '/sesion/' + s.id }}
+                                className={'rounded px-1 py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
+                                <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}</span>
+                                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                  <button onClick={e => { e.stopPropagation(); copiarSesion(s, e) }} className="text-white hover:text-blue-300 text-xs" title="Copiar">📋</button>
+                                  <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
+                                  <button onClick={e => borrarSesion(s.id, e)} className="text-white hover:text-red-300 text-xs">🗑</button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                          {sesDia.length === 0 && (
-                            <div className="text-center py-1">
+                            ))}
+                            <div className="text-center py-0.5 flex justify-between items-center px-1">
                               <span className="text-gray-700 text-xs">+</span>
+                              {sesDia.length > 0 && (
+                                <button onClick={e => copiarSemana(f, e)} className="text-gray-600 hover:text-purple-400 text-xs transition" title="Copiar semana">📋sem</button>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
+                        {bloqueo && (
+                          <button onClick={e => { e.stopPropagation(); setBloqueoSel(bloqueo); setModalTipo('verBloqueo') }}
+                            className="text-xs text-red-400 hover:text-red-300 mt-1">Ver →</button>
+                        )}
                       </div>
                     )
                   })}
@@ -378,13 +666,16 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           )
         })()}
 
-        {/* VISTA CALENDARIO */}
+        {/* VISTA MULTI MES */}
         {vistaDetalle === 'multi' && vista === 'calendario' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {mesesAMostrar.map(({ mes, año }) => (
               <div key={`${año}-${mes}`} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-800 bg-gray-800">
+                <div className="px-4 py-3 border-b border-gray-800 bg-gray-800 flex justify-between items-center">
                   <p className="font-bold">{MESES[mes]} {año}</p>
+                  {competiciones.filter(c => { const f = new Date(c.fecha); return f.getFullYear() === año && f.getMonth() === mes }).map(c => (
+                    <span key={c.id} className="text-yellow-400 text-xs">🏆 {semanasHasta(c.fecha) > 0 ? semanasHasta(c.fecha) + 'sem' : 'Ya'}</span>
+                  ))}
                 </div>
                 <div className="p-3">
                   <div className="grid grid-cols-7 gap-0.5 mb-1">
@@ -397,19 +688,25 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       const meso = getMesoDelDia(f)
                       const micro = getMicroDelDia(f)
                       const ses = getSesionesDia(f)
+                      const comp = getCompeticionDia(f)
+                      const bloqueo = getBloqueoSemana(f)
+                      const esCopiadaSemana = esSemanaCopiada(f)
                       const esHoy = f === hoy
                       return (
                         <button key={f} onClick={() => abrirModal(f)}
                           className={'relative rounded text-xs py-1.5 text-center transition flex flex-col items-center justify-center min-h-8 ' +
-                            (esHoy ? 'ring-2 ring-orange-500 font-bold ' : '') +
-                            (capaCalendario === 'semanas' && micro ?
+                            (bloqueo ? 'bg-red-900/30 text-red-400 ' :
+                             comp ? 'bg-yellow-500 bg-opacity-30 ring-1 ring-yellow-500 text-yellow-300 ' :
+                             esCopiadaSemana ? 'bg-purple-500 bg-opacity-30 ring-1 ring-purple-500 text-purple-300 ' :
+                             esHoy ? 'ring-2 ring-orange-500 font-bold ' : '') +
+                            (!bloqueo && !comp && !esCopiadaSemana ? (capaCalendario === 'semanas' && micro ?
                               (micro.tipo === 'Carga' ? 'bg-orange-400 bg-opacity-40 hover:bg-opacity-60 text-white ' :
                                micro.tipo?.includes('Recup') ? 'bg-green-400 bg-opacity-40 hover:bg-opacity-60 text-white ' :
                                'bg-blue-400 bg-opacity-40 hover:bg-opacity-60 text-white ') :
                               capaCalendario === 'mesos' && meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-700') + ' bg-opacity-40 hover:bg-opacity-60 text-white ' :
-                              'text-gray-400 hover:bg-gray-800 ')}>
-                          <span>{dia.getDate()}</span>
-                          {ses.length > 0 && (
+                              'text-gray-400 hover:bg-gray-800 ') : '')}>
+                          <span>{bloqueo ? '🚫' : comp ? '🏆' : dia.getDate()}</span>
+                          {ses.length > 0 && !comp && !bloqueo && (
                             <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center">
                               {ses.slice(0,3).map((s, i) => (
                                 <div key={i} className={'w-1.5 h-1.5 rounded-full ' + (COLOR_DISC[s.disciplina] || 'bg-gray-400')} />
@@ -429,69 +726,80 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         {/* VISTA SEMANAS */}
         {vista === 'semanas' && (
           <div className="flex flex-col gap-4">
-            {macros.length === 0 ? (
-              <div className="text-center py-16 text-gray-500">
-                <div className="text-5xl mb-4">📋</div>
-                <p>No hay macrociclos todavía.</p>
-                <p className="text-sm mt-2">Ve al calendario y pulsa un día para crear el primero.</p>
+            {competiciones.length > 0 && (
+              <div className="bg-gray-900 rounded-xl border border-yellow-700/50 overflow-hidden">
+                <div className="px-5 py-3 bg-yellow-900/20 border-b border-yellow-700/30"><p className="font-bold text-yellow-400">🏆 Competiciones</p></div>
+                <div className="divide-y divide-gray-800">
+                  {competiciones.map(c => {
+                    const sem = semanasHasta(c.fecha)
+                    return (
+                      <div key={c.id} className="flex justify-between items-center px-5 py-3">
+                        <div>
+                          <p className="font-medium text-white">{c.nombre}</p>
+                          <p className="text-gray-500 text-xs">{c.tipo} · {c.fecha}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className={`text-xl font-bold ${colorSemanas(sem)}`}>{Math.max(0, sem)}</p>
+                            <p className="text-gray-600 text-xs">semanas</p>
+                          </div>
+                          <button onClick={() => borrarCompeticion(c.id)} className="text-gray-600 hover:text-red-400 transition text-sm">🗑</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
+            )}
+            {semanasBloqueadas.length > 0 && (
+              <div className="bg-gray-900 rounded-xl border border-red-900/50 overflow-hidden">
+                <div className="px-5 py-3 bg-red-900/20 border-b border-red-900/30"><p className="font-bold text-red-400">🚫 Semanas bloqueadas</p></div>
+                <div className="divide-y divide-gray-800">
+                  {semanasBloqueadas.map(b => (
+                    <div key={b.id} className="flex justify-between items-center px-5 py-3">
+                      <div>
+                        <p className="font-medium text-white">Semana del {b.fecha_inicio?.slice(0,10)}</p>
+                        {b.motivo && <p className="text-gray-500 text-xs">{b.motivo}</p>}
+                      </div>
+                      <button onClick={() => borrarBloqueo(b.id)} className="text-gray-600 hover:text-red-400 transition text-sm">🗑</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {macros.length === 0 ? (
+              <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📋</div><p>No hay macrociclos todavía.</p></div>
             ) : macros.map(mac => {
               const mesosMac = mesos.filter(m => m.id_macrociclo === mac.id)
               return (
                 <div key={mac.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                  <div className="px-5 py-3 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-orange-400">{mac.objetivo}</p>
-                      <p className="text-gray-400 text-xs">{mac.fecha_inicio} · {mac.duracion_semanas} semanas</p>
-                    </div>
-                  </div>
+                  <div className="px-5 py-3 bg-gray-800 border-b border-gray-700"><p className="font-bold text-orange-400">{mac.objetivo}</p><p className="text-gray-400 text-xs">{mac.fecha_inicio} · {mac.duracion_semanas} semanas</p></div>
                   {mesosMac.map(meso => {
                     const microsMeso = micros.filter(m => m.id_mesociclo === meso.id)
                     return (
                       <div key={meso.id} className="border-b border-gray-800">
-                        <div className={'px-5 py-2.5 flex justify-between items-center ' +
-                          (meso.tipo?.includes('Acum') ? 'bg-orange-900 bg-opacity-20' :
-                           meso.tipo?.includes('Trans') ? 'bg-yellow-900 bg-opacity-20' :
-                           meso.tipo?.includes('Real') ? 'bg-red-900 bg-opacity-20' :
-                           'bg-green-900 bg-opacity-20')}>
-                          <div>
-                            <p className="font-medium text-sm">{meso.objetivo}</p>
-                            <p className="text-gray-400 text-xs">{meso.tipo} · {meso.duracion_semanas} sem · {meso.fecha_inicio}</p>
-                          </div>
-                          <button onClick={() => { setMacroSel(mac); setMesoSel(meso); setFechaSel(meso.fecha_inicio || ''); setModalTipo('micro') }}
-                            className="bg-gray-800 hover:bg-gray-700 text-white text-xs px-3 py-1.5 rounded-lg transition">
-                            + Semana
-                          </button>
+                        <div className={'px-5 py-2.5 flex justify-between items-center ' + (meso.tipo?.includes('Acum') ? 'bg-orange-900 bg-opacity-20' : meso.tipo?.includes('Trans') ? 'bg-yellow-900 bg-opacity-20' : meso.tipo?.includes('Real') ? 'bg-red-900 bg-opacity-20' : 'bg-green-900 bg-opacity-20')}>
+                          <div><p className="font-medium text-sm">{meso.objetivo}</p><p className="text-gray-400 text-xs">{meso.tipo} · {meso.duracion_semanas} sem · {meso.fecha_inicio}</p></div>
+                          <button onClick={() => { setMacroSel(mac); setMesoSel(meso); setFechaSel(meso.fecha_inicio || ''); setModalTipo('micro') }} className="bg-gray-800 hover:bg-gray-700 text-white text-xs px-3 py-1.5 rounded-lg transition">+ Semana</button>
                         </div>
-                        {microsMeso.length === 0 && (
-                          <p className="text-gray-600 text-xs px-6 py-2">Sin semanas creadas</p>
-                        )}
                         {microsMeso.map((micro, idx) => {
                           const sesMicro = sesiones.filter(s => s.id_microciclo === micro.id)
+                          const bloqueada = micro.fecha_inicio ? getBloqueoSemana(micro.fecha_inicio) : null
                           return (
-                            <div key={micro.id} className="flex justify-between items-center px-6 py-2 hover:bg-gray-800 transition border-t border-gray-800">
+                            <div key={micro.id} className={'flex justify-between items-center px-6 py-2 transition border-t border-gray-800 ' + (bloqueada ? 'bg-red-900/10' : 'hover:bg-gray-800')}>
                               <div className="flex items-center gap-3">
-                                <span className={'text-xs px-2 py-0.5 rounded-full ' +
-                                  (micro.tipo === 'Carga' ? 'bg-orange-900 text-orange-300' :
-                                   micro.tipo?.includes('Recup') ? 'bg-green-900 text-green-300' :
-                                   'bg-blue-900 text-blue-300')}>
-                                  Sem {idx+1}
-                                </span>
+                                <span className={'text-xs px-2 py-0.5 rounded-full ' + (micro.tipo === 'Carga' ? 'bg-orange-900 text-orange-300' : micro.tipo?.includes('Recup') ? 'bg-green-900 text-green-300' : 'bg-blue-900 text-blue-300')}>Sem {idx+1}</span>
                                 <div>
-                                  <p className="text-sm text-white">{micro.objetivo}</p>
+                                  <p className="text-sm text-white">{micro.objetivo} {bloqueada ? '🚫' : ''}</p>
                                   <p className="text-gray-500 text-xs">{micro.fecha_inicio} · {micro.tipo}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="flex gap-1">
-                                  {sesMicro.map(s => (
-                                    <div key={s.id} className={'w-2 h-2 rounded-full ' + (COLOR_DISC[s.disciplina] || 'bg-gray-500')} title={s.disciplina} />
-                                  ))}
-                                </div>
-                                <button onClick={() => { setMicroSel(micro); setMesoSel(meso); setMacroSel(mac); setFechaSel(micro.fecha_inicio || ''); setModalTipo('sesion') }}
-                                  className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-lg transition">
-                                  + Sesión
-                                </button>
+                                <div className="flex gap-1">{sesMicro.map(s => <div key={s.id} className={'w-2 h-2 rounded-full ' + (COLOR_DISC[s.disciplina] || 'bg-gray-500')} title={s.disciplina} />)}</div>
+                                {sesMicro.length > 0 && (
+                                  <button onClick={e => { if (micro.fecha_inicio) copiarSemana(micro.fecha_inicio, e) }} className="bg-purple-900/50 hover:bg-purple-800 text-purple-300 text-xs px-2 py-1 rounded-lg transition" title="Copiar semana">📋</button>
+                                )}
+                                <button onClick={() => { setMicroSel(micro); setMesoSel(meso); setMacroSel(mac); setFechaSel(micro.fecha_inicio || ''); setModalTipo('sesion') }} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-lg transition">+ Sesión</button>
                               </div>
                             </div>
                           )
@@ -499,9 +807,6 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       </div>
                     )
                   })}
-                  {mesosMac.length === 0 && (
-                    <p className="text-gray-500 text-xs px-5 py-3">Sin mesociclos — ve al calendario y pulsa un día para crear</p>
-                  )}
                 </div>
               )
             })}
@@ -519,7 +824,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   {modalTipo === 'macro' ? '+ Nuevo macrociclo' :
                    modalTipo === 'meso' ? '+ Nuevo mesociclo' :
                    modalTipo === 'micro' ? '+ Nueva semana' :
-                   modalTipo === 'editarSesion' ? '✏️ Editar sesión' : '+ Nueva sesión'}
+                   modalTipo === 'editarSesion' ? '✏️ Editar sesión' :
+                   modalTipo === 'competicion' ? '🏆 Nueva competición' :
+                   modalTipo === 'verCompeticion' ? '🏆 Competición' :
+                   modalTipo === 'bloquear' ? '🚫 Bloquear semana' :
+                   modalTipo === 'verBloqueo' ? '🚫 Semana bloqueada' :
+                   modalTipo === 'pegarSemana' ? '📋 Pegar semana' : '+ Nueva sesión'}
                 </h3>
                 <p className="text-gray-400 text-sm">{fechaSel}</p>
                 {modalTipo === 'meso' && <p className="text-orange-400 text-xs mt-0.5">Macro: {macroSel?.objetivo}</p>}
@@ -529,30 +839,142 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               <button onClick={() => setModalTipo(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
 
+            {modalTipo === 'pegarSemana' && (
+              <div className="flex flex-col gap-4">
+                <div className="bg-purple-900/30 border border-purple-700/50 rounded-xl p-4">
+                  <p className="text-purple-300 text-sm font-medium mb-1">Pegar semana copiada</p>
+                  <p className="text-gray-400 text-xs">Las sesiones de la semana del <span className="text-white font-medium">{semanaCopiada}</span> se copiarán en la semana del <span className="text-white font-medium">{semanaDestino}</span>.</p>
+                  <p className="text-gray-500 text-xs mt-2">Las sesiones existentes en el destino no se borran.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => { if(semanaDestino) pegarSemana(semanaDestino); setModalTipo(null) }}
+                    className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-medium transition text-sm">
+                    Pegar semana
+                  </button>
+                  <button onClick={() => setModalTipo(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-3 rounded-lg text-sm transition">Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {modalTipo === 'bloquear' && (
+              <form onSubmit={guardarBloqueo} className="flex flex-col gap-3">
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Día de la semana a bloquear</label>
+                  <input type="date" value={fechaSel} onChange={e => setFechaSel(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500 w-full" required />
+                  <p className="text-gray-600 text-xs mt-1">Se bloqueará toda la semana que contiene ese día</p>
+                </div>
+                <input type="text" placeholder="Motivo (viaje, enfermedad, exámenes...)" value={bloqueoMotivo} onChange={e => setBloqueoMotivo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500" />
+                <button type="submit" disabled={loading} className="bg-red-700 hover:bg-red-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
+                  {loading ? 'Guardando...' : '🚫 Bloquear semana'}
+                </button>
+              </form>
+            )}
+
+            {modalTipo === 'verBloqueo' && bloqueoSel && (
+              <div className="flex flex-col gap-4">
+                <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 text-center">
+                  <p className="text-3xl mb-2">🚫</p>
+                  <p className="font-bold text-red-300">Semana bloqueada</p>
+                  <p className="text-gray-400 text-sm mt-1">Del {bloqueoSel.fecha_inicio?.slice(0,10)}</p>
+                  {bloqueoSel.motivo && <p className="text-gray-300 text-sm mt-2">{bloqueoSel.motivo}</p>}
+                </div>
+                <button onClick={() => borrarBloqueo(bloqueoSel.id)} className="text-red-400 hover:text-red-300 text-sm transition text-center">Eliminar bloqueo</button>
+              </div>
+            )}
+
+            {modalTipo === 'competicion' && (
+              <form onSubmit={guardarCompeticion} className="flex flex-col gap-3">
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Fecha</label>
+                  <input type="date" value={fechaSel} onChange={e => setFechaSel(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500 w-full" required />
+                </div>
+                <input type="text" placeholder="Nombre de la competición" value={compNombre} onChange={e => setCompNombre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" required />
+                <select value={compTipo} onChange={e => setCompTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500">
+                  <option value="">Tipo (opcional)</option>
+                  <option value="Sprint">Sprint</option>
+                  <option value="Olímpico">Olímpico</option>
+                  <option value="Half">Half (70.3)</option>
+                  <option value="Ironman">Ironman</option>
+                  <option value="Carrera">Carrera a pie</option>
+                  <option value="Cicloturismo">Cicloturismo</option>
+                  <option value="Otro">Otro</option>
+                </select>
+                <textarea placeholder="Notas (opcional)" value={compNotas} onChange={e => setCompNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" rows={2} />
+                <button type="submit" disabled={loading} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : '🏆 Guardar competición'}</button>
+              </form>
+            )}
+
+            {modalTipo === 'verCompeticion' && compSel && (
+              <div className="flex flex-col gap-4">
+                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-xl p-4 text-center">
+                  <p className="text-3xl mb-2">🏆</p>
+                  <p className="font-bold text-yellow-300 text-lg">{compSel.nombre}</p>
+                  {compSel.tipo && <p className="text-yellow-600 text-sm">{compSel.tipo}</p>}
+                  <p className="text-gray-400 text-sm mt-1">{compSel.fecha}</p>
+                  {compSel.notas && <p className="text-gray-500 text-xs mt-2">{compSel.notas}</p>}
+                </div>
+                <div className="text-center">
+                  <p className={`text-5xl font-bold ${colorSemanas(semanasHasta(compSel.fecha))}`}>{Math.max(0, semanasHasta(compSel.fecha))}</p>
+                  <p className="text-gray-400 text-sm mt-1">{semanasHasta(compSel.fecha) > 0 ? 'semanas restantes' : '¡Esta semana!'}</p>
+                </div>
+                <button onClick={() => borrarCompeticion(compSel.id)} className="text-red-400 hover:text-red-300 text-sm transition text-center">Eliminar competición</button>
+              </div>
+            )}
+
             {modalTipo === 'macro' && (
               <form onSubmit={guardarMacro} className="flex flex-col gap-3">
                 <input type="text" placeholder="Objetivo del macrociclo" value={macroObj} onChange={e => setMacroObj(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <input type="number" placeholder="Duración en semanas" value={macroDuracion} onChange={e => setMacroDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-gray-400 text-xs">Tipo de periodizacion</label>
+                    <button type="button" onClick={() => window.open('/periodizacion', '_blank')} className="text-orange-400 hover:text-orange-300 text-xs transition">📖 ¿Como elegir?</button>
+                  </div>
+                  <select value={tipoPeriodizacion} onChange={e => setTipoPeriodizacion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
+                    <option value="">Sin especificar</option>
+                    <option value="Tradicional">Tradicional</option>
+                    <option value="Inversa">Inversa</option>
+                    <option value="ATR">ATR (Acumulación-Transmutación-Realización)</option>
+                    <option value="Ondulatoria">Ondulatoria</option>
+                  </select>
+                </div>
+                {tipoPeriodizacion && (
+                  <GraficaPeriodizacion modelo={tipoPeriodizacion} mostrarInfo={true} />
+                )}
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear macrociclo'}</button>
               </form>
             )}
-
             {modalTipo === 'meso' && (
               <form onSubmit={guardarMeso} className="flex flex-col gap-3">
                 <input type="text" placeholder="Objetivo del mesociclo" value={mesoObj} onChange={e => setMesoObj(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <select value={mesoTipo} onChange={e => setMesoTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
                   <option value="">Tipo</option>
-                  <option value="Acumulación">Acumulación</option>
-                  <option value="Transmutación">Transmutación</option>
-                  <option value="Realización">Realización</option>
-                  <option value="Recuperación">Recuperación</option>
+                  {macroSel?.tipo_periodizacion === 'Tradicional' ? (<>
+                    <option value="General">General</option>
+                    <option value="Específica">Específica</option>
+                    <option value="Competitiva">Competitiva</option>
+                    <option value="Taper">Taper</option>
+                  </>) : macroSel?.tipo_periodizacion === 'Inversa' ? (<>
+                    <option value="Intensidad">Intensidad</option>
+                    <option value="Desarrollo">Desarrollo</option>
+                    <option value="Resistencia específica">Resistencia específica</option>
+                    <option value="Taper">Taper</option>
+                  </>) : macroSel?.tipo_periodizacion === 'Ondulatoria' ? (<>
+                    <option value="Carga alta">Carga alta</option>
+                    <option value="Carga media">Carga media</option>
+                    <option value="Recuperación">Recuperación</option>
+                  </>) : (<>
+                    <option value="Acumulación">Acumulación</option>
+                    <option value="Transmutación">Transmutación</option>
+                    <option value="Realización">Realización</option>
+                    <option value="Recuperación">Recuperación</option>
+                  </>)}
                 </select>
                 <input type="number" placeholder="Duración en semanas" value={mesoDuracion} onChange={e => setMesoDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <input type="number" min="1" max="10" placeholder="Intensidad relativa (1-10)" value={mesoIntensidad} onChange={e => setMesoIntensidad(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear mesociclo'}</button>
               </form>
             )}
-
             {modalTipo === 'micro' && (
               <form onSubmit={guardarMicro} className="flex flex-col gap-3">
                 <input type="text" placeholder="Objetivo de la semana" value={microObj} onChange={e => setMicroObj(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
@@ -565,7 +987,6 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear semana'}</button>
               </form>
             )}
-
             {modalTipo === 'editarSesion' && (
               <form onSubmit={guardarEdicionSesion} className="flex flex-col gap-3">
                 <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
