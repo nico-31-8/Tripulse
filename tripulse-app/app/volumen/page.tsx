@@ -76,7 +76,7 @@ export default function VolumenPage() {
 
     const { data: sesiones } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
       .in('id_microciclo', microIds)
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)
@@ -113,12 +113,12 @@ export default function VolumenPage() {
           if (metros) carrera += metros / 1000
           else if (seg) carrera += seg / 60 * 0.2
         }
-        if (s.disciplina === 'Fuerza') fuerza += (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+        if (s.disciplina === 'Fuerza') fuerza += (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       })
       if (!tareasSes.length) {
         if (s.disciplina === 'Ciclismo') ciclismo = (s.duracion_minutos || 0) * 0.3
         if (s.disciplina === 'Carrera') carrera = (s.duracion_minutos || 0) * 0.2
-        if (s.disciplina === 'Fuerza') fuerza = (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+        if (s.disciplina === 'Fuerza') fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       }
       return {
         fecha: s.fecha_sesion,
@@ -127,7 +127,7 @@ export default function VolumenPage() {
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
-        ua: Math.round((s.rpe_estimado || 5) * (s.duracion_minutos || 0)),
+        ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)),
         rpe: s.rpe_estimado,
         duracion: s.duracion_minutos,
       }
