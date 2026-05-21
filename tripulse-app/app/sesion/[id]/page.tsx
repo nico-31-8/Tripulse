@@ -296,7 +296,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         repeticiones: repsFuerza ? Number(repsFuerza) : null,
         descanso: descansoFuerza ? Number(descansoFuerza) : null,
         notas_ejecucion: (rir ? 'RIR: ' + rir : '') + (configSerie ? ' · ' + configSerie : ''),
-        url_video: ejercicioSel.url_video || null
+        url_video: ejercicioSel.url_video || null,
+        ejercicio_biblioteca_id: ejercicioSel.id || null
       })
     }
     const tareaLocal = {

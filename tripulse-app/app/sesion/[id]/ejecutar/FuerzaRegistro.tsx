@@ -49,6 +49,12 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 </div>
                 <span className="text-gray-400 text-xs">{ej.grupo_muscular}</span>
               </div>
+              {ej.url_video && (
+                <a href={ej.url_video} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 bg-red-900 hover:bg-red-800 text-red-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium transition">
+                  <span>▶</span> Ver vídeo
+                </a>
+              )}
               <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                 <span>{numSeries} series</span>
                 {ej.repeticiones && <span>{ej.repeticiones} reps obj.</span>}

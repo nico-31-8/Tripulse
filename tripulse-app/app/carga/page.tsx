@@ -16,7 +16,7 @@ function calcularCargas(sesiones: any[]) {
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
     const fecha = s.fecha_sesion
-    const carga = (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
     mapa[fecha] = (mapa[fecha] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()
@@ -117,7 +117,7 @@ export default function CargaPage() {
     if (microsDelDep.length > 0) {
       const { data: ses } = await supabase
         .from('sesion')
-        .select('fecha_sesion, rpe_estimado, duracion_minutos, estado')
+        .select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos, estado')
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
         .gte('fecha_sesion', desde.toISOString().split('T')[0])
