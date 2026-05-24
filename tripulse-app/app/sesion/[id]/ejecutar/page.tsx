@@ -53,7 +53,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
   const [tareas, setTareas] = useState<any[]>([])
-  const [fase, setFase] = useState<'preview'|'ejecutar'|'post'>('preview')
+  const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('preview')
   const [tareaActual, setTareaActual] = useState(0)
   const [resultados, setResultados] = useState<Record<number, any>>({})
   const [loading, setLoading] = useState(true)
@@ -186,7 +186,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         fc_media: fcMedia ? Number(fcMedia) : null,
       }).eq('id_sesion', Number(id))
     }
-    window.location.href = '/dashboard-deportista'
+    setFase('resumen')
+    setGuardando(false)
   }
 
   const completarSinDatos = async () => {
@@ -462,6 +463,133 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       </main>
     )
   }
+
+  // RESUMEN POST-SESIÓN
+  if (fase === 'resumen') return (
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <nav className="bg-gray-900 px-4 py-4 flex items-center border-b border-gray-800">
+        <h1 className="text-orange-500 font-bold mx-auto">Resumen de sesión</h1>
+      </nav>
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+        {/* Cabecera */}
+        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-3xl">✅</span>
+            <div>
+              <p className="font-bold text-lg">¡Sesión completada!</p>
+              <p className="text-gray-400 text-sm">{sesion.disciplina} · {sesion.fecha_sesion}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-800 rounded-lg p-3 text-center">
+              <p className="text-gray-500 text-xs mb-1">RPE planificado</p>
+              <p className="font-bold text-lg text-gray-300">{sesion.rpe_estimado || '—'}</p>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3 text-center">
+              <p className="text-gray-500 text-xs mb-1">RPE real</p>
+              <p className={'font-bold text-lg ' + (rpe > (sesion.rpe_estimado || 5) ? 'text-red-400' : rpe < (sesion.rpe_estimado || 5) ? 'text-green-400' : 'text-orange-400')}>{rpe}</p>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3 text-center">
+              <p className="text-gray-500 text-xs mb-1">Sensación técnica</p>
+              <p className="font-bold text-lg text-blue-400">{sensacion}/5</p>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3 text-center">
+              <p className="text-gray-500 text-xs mb-1">FC media</p>
+              <p className="font-bold text-lg text-red-400">{fcMedia || '—'} ppm</p>
+            </div>
+          </div>
+          {notasPost && (
+            <div className="mt-3 bg-gray-800 rounded-lg p-3">
+              <p className="text-gray-500 text-xs mb-1">Tus notas</p>
+              <p className="text-gray-300 text-sm italic">"{notasPost}"</p>
+            </div>
+          )}
+        </div>
+
+        {/* Tareas planificado vs real */}
+        <h3 className="font-bold mb-3 text-gray-300">Tareas — Planificado vs Real</h3>
+        <div className="flex flex-col gap-3 mb-6">
+          {tareas.map((t, i) => {
+            const r = resultados[t.id] || {}
+            const pd = t.p_distancia?.[0]
+            const pu = t.p_duracion?.[0]
+            const pr = t.p_repeticiones?.[0]
+            const s0 = r['serie_0'] || {}
+            const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
+            const totalSeries = t.series || 1
+
+            return (
+              <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-800 flex items-center gap-2">
+                  <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
+                  {t.zona_entrenamiento && <span className="text-xs bg-black bg-opacity-30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
+                  <span className="text-gray-400 text-xs">{t.disciplina}</span>
+                  {seriesCompletadas > 0 && (
+                    <span className="ml-auto text-xs text-green-400">{seriesCompletadas}/{totalSeries} series ✓</span>
+                  )}
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  {pd && (
+                    <>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Distancia plan</p>
+                        <p className="font-bold text-sm">{pd.metros_planeados ? pd.metros_planeados + 'm' : '—'}</p>
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Distancia real</p>
+                        <p className={'font-bold text-sm ' + (s0.metros ? 'text-green-400' : 'text-gray-500')}>{s0.metros ? s0.metros + 'm' : '—'}</p>
+                      </div>
+                    </>
+                  )}
+                  {pd?.ritmo_objetivo && (
+                    <>
+                      <div className="bg-orange-950 border border-orange-800 rounded-lg p-2 text-center">
+                        <p className="text-orange-400 text-xs">Ritmo objetivo</p>
+                        <p className="font-bold text-sm text-white">{(() => { const s = pd.ritmo_objetivo; const m = Math.floor(s/60); const ss = s%60; return m+':'+(ss<10?'0':'')+ss })()}/km</p>
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Ritmo real</p>
+                        <p className={'font-bold text-sm ' + (s0.ritmo ? 'text-green-400' : 'text-gray-500')}>{s0.ritmo || '—'}</p>
+                      </div>
+                    </>
+                  )}
+                  {pu && (
+                    <>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Duración plan</p>
+                        <p className="font-bold text-sm">{pu.tiempo_planeado ? Math.floor(pu.tiempo_planeado/60)+'min' : '—'}</p>
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Duración real</p>
+                        <p className={'font-bold text-sm ' + (s0.tiempo ? 'text-green-400' : 'text-gray-500')}>{s0.tiempo || '—'}</p>
+                      </div>
+                    </>
+                  )}
+                  {pr && (
+                    <>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Reps plan</p>
+                        <p className="font-bold text-sm">{pr.repeticiones_planteadas || '—'}</p>
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-2 text-center">
+                        <p className="text-gray-500 text-xs">Series completadas</p>
+                        <p className={'font-bold text-sm ' + (seriesCompletadas > 0 ? 'text-green-400' : 'text-gray-500')}>{seriesCompletadas}/{totalSeries}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <button onClick={() => window.location.href = '/dashboard-deportista'}
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
+          Volver al panel →
+        </button>
+      </div>
+    </main>
+  )
 
   // POST SESIÓN
   return (

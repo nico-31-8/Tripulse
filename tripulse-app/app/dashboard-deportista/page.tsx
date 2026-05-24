@@ -68,6 +68,7 @@ export default function DashboardDeportista() {
     { icon: '💚', titulo: 'Wellness', descripcion: 'Registra tu estado diario — sueño, fatiga, estrés, HRV. Tu entrenador lo consulta para ajustar la carga.', href: deportista ? '/wellness/' + deportista.id : '#', border: 'hover:border-green-500' },
     { icon: '🏋️', titulo: 'Mis tests', descripcion: 'Consulta tus resultados de tests — VAM, CSS, FTP, 1RM — y las zonas de entrenamiento generadas.', href: '/mis-tests', border: 'hover:border-blue-500' },
     { icon: '💬', titulo: 'Comunicación', descripcion: 'Habla directamente con tu entrenador. Consulta dudas, comparte cómo te sientes.', href: deportista ? '/chat/' + deportista.id : '#', border: 'hover:border-orange-500' },
+    { icon: '📊', titulo: 'Mis análisis', descripcion: 'Revisa tus sesiones realizadas y compara lo planificado con lo que hiciste realmente.', href: '/mis-analisis', border: 'hover:border-purple-500' },
     { icon: '👤', titulo: 'Mi perfil', descripcion: 'Gestiona tu cuenta, vincula o desvincula tu entrenador con su código.', href: '/perfil', border: 'hover:border-gray-500' },
   ]
 
