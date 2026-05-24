@@ -179,7 +179,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     ])
     setTests({ carrera: t1.data?.[0], natacion: t2.data?.[0], ciclismo: t3.data?.[0], fuerza: tf.data || [] })
 
-    const { data: z } = await supabase.from('zonas_entrenamiento').select('*').eq('id_deportista', id).eq('activa', 'Sí').order('disciplina').order('numero_zona')
+    const { data: z } = await supabase.from('zonas_entrenamiento').select('*').eq('id_deportista', id).order('disciplina').order('numero_zona')
     setZonas(z || [])
 
     const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
