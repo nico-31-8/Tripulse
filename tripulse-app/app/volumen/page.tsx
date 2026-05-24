@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const RANGOS = [
   { label: '2 sem', dias: 14 },
@@ -42,6 +42,8 @@ export default function VolumenPage() {
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
   const [agrupCarga, setAgrupCarga] = useState<'sesion'|'semana'|'mes'>('semana')
   const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza'])
+  const [subVista, setSubVista] = useState<'barras'|'evolucion'>('barras')
+  const [agrupEvol, setAgrupEvol] = useState<'semanas'|'meses'>('semanas')
 
   useEffect(() => {
     const cargar = async () => {
@@ -274,6 +276,108 @@ export default function VolumenPage() {
             {/* PESTAÑA VOLUMEN */}
             {pestana === 'volumen' && (
               <div className="flex flex-col gap-4">
+                {/* Selector de subvista */}
+                <div className="flex gap-2 flex-wrap items-center">
+                  <button onClick={() => setSubVista('barras')}
+                    className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (subVista === 'barras' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                    📊 Volumen total
+                  </button>
+                  <button onClick={() => setSubVista('evolucion')}
+                    className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (subVista === 'evolucion' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                    📈 Evolución
+                  </button>
+                </div>
+
+                {/* SUBVISTA EVOLUCIÓN */}
+                {subVista === 'evolucion' && (() => {
+                  const datosEvol = agrupEvol === 'semanas' ? datosSemanas : (() => {
+                    const mesesMap: Record<string, any> = {}
+                    datosSemanas.forEach(s => {
+                      const mes = s.semana ? s.semana.slice(0,5) : s.fecha?.slice(0,5)
+                      if (!mes) return
+                      if (!mesesMap[mes]) mesesMap[mes] = { periodo: mes, Natacion: 0, Ciclismo: 0, Carrera: 0 }
+                      mesesMap[mes].Natacion += s.Natacion || 0
+                      mesesMap[mes].Ciclismo += s.Ciclismo || 0
+                      mesesMap[mes].Carrera += s.Carrera || 0
+                    })
+                    return Object.values(mesesMap)
+                  })()
+
+                  const calcCambio = (datos: any[], key: string) => {
+                    if (datos.length < 2) return null
+                    const ultimo = datos[datos.length - 1]?.[key] || 0
+                    const anterior = datos[datos.length - 2]?.[key] || 0
+                    if (!anterior) return null
+                    return Math.round(((ultimo - anterior) / anterior) * 100)
+                  }
+
+                  return (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex gap-2 items-center">
+                        <button onClick={() => setAgrupEvol('semanas')}
+                          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (agrupEvol === 'semanas' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                          Por semanas
+                        </button>
+                        <button onClick={() => setAgrupEvol('meses')}
+                          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (agrupEvol === 'meses' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                          Por meses
+                        </button>
+                      </div>
+
+                      {/* Tarjetas de % cambio */}
+                      <div className="grid grid-cols-3 gap-3">
+                        {[
+                          { key: 'Natacion', label: 'Natación', color: '#60a5fa', unidad: 'm' },
+                          { key: 'Ciclismo', label: 'Ciclismo', color: '#fbbf24', unidad: 'km' },
+                          { key: 'Carrera', label: 'Carrera', color: '#4ade80', unidad: 'km' },
+                        ].map(d => {
+                          const cambio = calcCambio(datosEvol, d.key)
+                          const ultimoVal = datosEvol[datosEvol.length - 1]?.[d.key]
+                          return (
+                            <div key={d.key} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                              <p className="text-xs text-gray-500 mb-1">{d.label}</p>
+                              <p className="font-bold text-lg" style={{ color: d.color }}>
+                                {ultimoVal ? Math.round(ultimoVal) + ' ' + d.unidad : '—'}
+                              </p>
+                              {cambio !== null && (
+                                <p className={'text-xs font-medium mt-1 ' + (cambio > 0 ? 'text-green-400' : cambio < 0 ? 'text-red-400' : 'text-gray-400')}>
+                                  {cambio > 0 ? '▲' : cambio < 0 ? '▼' : '='} {Math.abs(cambio)}% vs {agrupEvol === 'semanas' ? 'sem anterior' : 'mes anterior'}
+                                </p>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Gráfica de líneas */}
+                      {datosEvol.length > 0 ? (
+                        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                          <p className="text-sm font-medium text-gray-300 mb-3">
+                            Evolución del volumen por {agrupEvol === 'semanas' ? 'semana' : 'mes'}
+                          </p>
+                          <ResponsiveContainer width="100%" height={280}>
+                            <LineChart data={datosEvol}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                              <XAxis dataKey={agrupEvol === 'semanas' ? 'semana' : 'periodo'} stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                              <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                              <Tooltip contentStyle={tooltipStyle} />
+                              <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+                              <Line type="monotone" dataKey="Natacion" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 4 }} name="Natación (m)" connectNulls />
+                              <Line type="monotone" dataKey="Ciclismo" stroke="#fbbf24" strokeWidth={2.5} dot={{ r: 4 }} name="Ciclismo (km)" connectNulls />
+                              <Line type="monotone" dataKey="Carrera" stroke="#4ade80" strokeWidth={2.5} dot={{ r: 4 }} name="Carrera (km)" connectNulls />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="text-center py-12 text-gray-500">No hay datos suficientes para mostrar la evolución.</div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* SUBVISTA BARRAS — vista original */}
+                {subVista === 'barras' && (
+                <div className="flex flex-col gap-4">
                 <div className="flex gap-2 flex-wrap items-center">
                   <button onClick={() => setVista('dias')}
                     className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (vista === 'dias' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
@@ -345,6 +449,8 @@ export default function VolumenPage() {
                       </div>
                     )}
                   </>
+                )}
+                </div>
                 )}
               </div>
             )}
