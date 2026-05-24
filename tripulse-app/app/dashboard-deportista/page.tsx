@@ -16,7 +16,7 @@ export default function DashboardDeportista() {
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)
       if (p?.rol !== 'deportista') { window.location.href = '/dashboard'; return }
-      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).single()
+      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDeportista(dep)
       if (dep) {
         const hoy = new Date().toISOString().split('T')[0]

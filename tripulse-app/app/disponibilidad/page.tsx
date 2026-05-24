@@ -17,7 +17,7 @@ export default function DisponibilidadPage() {
   const cargar = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/login'; return }
-    const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).single()
+    const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
     if (!dep) { setLoading(false); return }
     setDeportistaId(dep.id)
     const { data: disp } = await supabase.from('disponibilidad').select('*').eq('id_deportista', dep.id).order('hora_inicio')

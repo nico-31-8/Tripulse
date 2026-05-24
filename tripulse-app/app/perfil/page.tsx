@@ -30,7 +30,7 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
     setLoading(true)
     setMensaje('')
     const codigoLimpio = codigo.toUpperCase().trim()
-    const { data: entrenadorEncontrado } = await supabase.from('perfiles').select('id, nombre').eq('codigo_entrenador', codigoLimpio).single()
+    const { data: entrenadorEncontrado } = await supabase.from('perfiles').select('id, nombre').eq('codigo_entrenador', codigoLimpio).maybeSingle()
     if (!entrenadorEncontrado) { setMensaje('Codigo no encontrado, revisa que este bien escrito'); setLoading(false); return }
     let { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', perfil.id).single()
     if (!dep) {
@@ -112,7 +112,7 @@ export default function PerfilPage() {
     setCodigo(p?.codigo_entrenador || '')
 
     if (p?.rol === 'deportista') {
-      const { data: dep } = await supabase.from('deportista').select('id_entrenador').eq('id_usuario', user.id).single()
+      const { data: dep } = await supabase.from('deportista').select('id_entrenador').eq('id_usuario', user.id).maybeSingle()
       if (dep?.id_entrenador) {
         const { data: ent } = await supabase.from('perfiles').select('nombre, email').eq('id', dep.id_entrenador).single()
         setEntrenador(ent)

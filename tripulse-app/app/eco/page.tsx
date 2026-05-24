@@ -369,8 +369,8 @@ export default function EcoPage() {
         const fecha48 = new Date(fecha); fecha48.setDate(fecha.getDate() + 2)
         const f24 = fecha24.toISOString().split('T')[0]
         const f48 = fecha48.toISOString().split('T')[0]
-        const { data: w24 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f24).single()
-        const { data: w48 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f48).single()
+        const { data: w24 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f24).maybeSingle()
+        const { data: w48 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f48).maybeSingle()
         return { ...tarea, dolor_24h: w24?.dolor_muscular || null, dolor_48h: w48?.dolor_muscular || null }
       }))
 

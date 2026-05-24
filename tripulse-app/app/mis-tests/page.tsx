@@ -12,7 +12,7 @@ export default function MisTests() {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/login'; return }
-      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).single()
+      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
       setDeportista(dep)
 
