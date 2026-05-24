@@ -5,6 +5,7 @@ import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 export default function Dashboard() {
   const [perfil, setPerfil] = useState<any>(null)
+  const [avisos, setAvisos] = useState<string[]>([])
 
   useEffect(() => {
     const cargarPerfil = async () => {
@@ -12,9 +13,46 @@ export default function Dashboard() {
       if (!user) { window.location.href = '/login'; return }
       const { data } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(data)
+      if (user) await comprobarAvisos(user.id)
     }
     cargarPerfil()
   }, [])
+
+  const comprobarAvisos = async (userId: string) => {
+    const mensajes: string[] = []
+    const hoy = new Date()
+    const hoyStr = hoy.toISOString().split('T')[0]
+
+    // Cargar deportistas del entrenador
+    const { data: deps } = await supabase.from('deportista').select('id, nombre, tec_fecha_actualizacion').eq('id_entrenador', userId)
+    if (!deps?.length) return
+
+    for (const dep of deps) {
+      // Aviso 1: valoración técnica sin rellenar o con más de 4 semanas
+      const fechaTec = dep.tec_fecha_actualizacion
+      if (!fechaTec) {
+        mensajes.push(`${dep.nombre} no tiene valoración técnica registrada — recomendado antes del próximo mesociclo`)
+      } else {
+        const diasDesde = Math.floor((hoy.getTime() - new Date(fechaTec).getTime()) / (1000 * 60 * 60 * 24))
+        if (diasDesde >= 28) {
+          mensajes.push(`${dep.nombre} lleva ${Math.floor(diasDesde/7)} semanas sin valoración técnica actualizada`)
+        }
+      }
+
+      // Aviso 2: mesociclo que empieza hoy o en los próximos 2 días
+      const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
+      if (!macros?.length) continue
+      const { data: mesos } = await supabase.from('mesociclo').select('fecha_inicio, objetivo').in('id_macrociclo', macros.map((m:any) => m.id))
+      for (const meso of (mesos || [])) {
+        if (!meso.fecha_inicio) continue
+        const diasHasta = Math.floor((new Date(meso.fecha_inicio).getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+        if (diasHasta >= 0 && diasHasta <= 2) {
+          mensajes.push(`${dep.nombre} empieza mesociclo "${meso.objetivo}" en ${diasHasta === 0 ? 'hoy' : diasHasta + ' días'} — revisa la valoración técnica`)
+        }
+      }
+    }
+    setAvisos(mensajes)
+  }
 
   const [verInfo, setVerInfo] = useState(false)
   const [verResumenes, setVerResumenes] = useState(false)
@@ -64,6 +102,27 @@ export default function Dashboard() {
           </div>
         </div>
         <p className="text-gray-400 mb-4">Panel del entrenador</p>
+
+        {avisos.length > 0 && (
+          <div className="mb-6 bg-orange-950 border border-orange-600 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">🔔</span>
+              <p className="font-bold text-orange-400">Recomendaciones técnicas</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {avisos.map((a, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-orange-200">
+                  <span className="text-orange-500 mt-0.5">·</span>
+                  <p>{a}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => window.location.href = '/deportistas'}
+              className="mt-3 text-xs text-orange-400 hover:text-orange-300 transition underline">
+              Ir a perfiles de deportistas →
+            </button>
+          </div>
+        )}
 
         {verResumenes && perfil && (
           <div className="mb-8 bg-gray-900 rounded-xl p-5 border border-gray-800">

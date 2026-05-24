@@ -159,6 +159,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [editSexo, setEditSexo] = useState('')
   const [editFcMaxima, setEditFcMaxima] = useState('')
   const [editHrvBasal, setEditHrvBasal] = useState('')
+  const [editTecNatacion, setEditTecNatacion] = useState('')
+  const [editTecCiclismo, setEditTecCiclismo] = useState('')
+  const [editTecCarrera, setEditTecCarrera] = useState('')
   const [editExperiencia, setEditExperiencia] = useState('')
   const [guardandoEdit, setGuardandoEdit] = useState(false)
 
@@ -227,6 +230,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     setEditSexo(deportista.sexo || '')
     setEditFcMaxima(deportista.fc_maxima || '')
     setEditHrvBasal(deportista.hrv_basal || '')
+    setEditTecNatacion(deportista.tec_natacion || '')
+    setEditTecCiclismo(deportista.tec_ciclismo || '')
+    setEditTecCarrera(deportista.tec_carrera || '')
     setEditExperiencia(deportista.experiencia_previa || '')
     setEditando(true)
   }
@@ -241,6 +247,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       fc_maxima: editFcMaxima ? Number(editFcMaxima) : null,
       hrv_basal: editHrvBasal ? Number(editHrvBasal) : null,
       experiencia_previa: editExperiencia || null,
+      tec_natacion: editTecNatacion ? Number(editTecNatacion) : null,
+      tec_ciclismo: editTecCiclismo ? Number(editTecCiclismo) : null,
+      tec_carrera: editTecCarrera ? Number(editTecCarrera) : null,
+      tec_fecha_actualizacion: new Date().toISOString().split('T')[0],
     }).eq('id', id)
     await cargarDatos()
     setEditando(false)
@@ -654,6 +664,26 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">HRV basal (ms)</label>
                 <input type="number" value={editHrvBasal} onChange={e => setEditHrvBasal(e.target.value)}
                   className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="ej: 65" />
+              </div>
+              <div className="col-span-2">
+                <p className="text-gray-400 text-xs uppercase tracking-wide mb-3 mt-2 border-t border-gray-700 pt-3">Valoración técnica (1–5)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-gray-400 text-xs mb-1 block">🏊 Natación</label>
+                    <input type="number" min="1" max="5" step="0.1" value={editTecNatacion} onChange={e => setEditTecNatacion(e.target.value)}
+                      className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="1–5" />
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs mb-1 block">🚴 Ciclismo</label>
+                    <input type="number" min="1" max="5" step="0.1" value={editTecCiclismo} onChange={e => setEditTecCiclismo(e.target.value)}
+                      className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="1–5" />
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs mb-1 block">🏃 Carrera</label>
+                    <input type="number" min="1" max="5" step="0.1" value={editTecCarrera} onChange={e => setEditTecCarrera(e.target.value)}
+                      className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="1–5" />
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Experiencia previa</label>
