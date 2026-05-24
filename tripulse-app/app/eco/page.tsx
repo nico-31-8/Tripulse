@@ -332,15 +332,23 @@ export default function EcoPage() {
     const hrvBasal = dep.hrv_basal || 0
     const resultados: any = {}
 
-    for (const disc of DISCIPLINAS) {
-      const { data: sesiones } = await supabase
-        .from('sesion')
-        .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
-        .eq('disciplina', disc)
-        .eq('estado', 'Realizada')
-        .in('id_microciclo', await getMicrosDeportista(dep.id))
+    const microsIds = await getMicrosDeportista(dep.id)
+    if (!microsIds.length) {
+      DISCIPLINAS.forEach(d => { resultados[d] = { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null } })
+      setScores(resultados)
+      setLoadingScores(false)
+      return
+    }
 
-      const sesionIds = (sesiones || []).map((s: any) => s.id)
+    const { data: todasSesiones } = await supabase
+      .from('sesion')
+      .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
+      .eq('estado', 'Realizada')
+      .in('id_microciclo', microsIds)
+
+    for (const disc of DISCIPLINAS) {
+      const sesiones = (todasSesiones || []).filter((s: any) => s.disciplina === disc)
+      const sesionIds = sesiones.map((s: any) => s.id)
 
       if (!sesionIds.length) {
         resultados[disc] = { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null }
@@ -351,9 +359,8 @@ export default function EcoPage() {
         .from('tarea')
         .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, valoracion_tecnica_entrenador, hrv_del_dia, id_sesion')
         .in('id_sesion', sesionIds)
-        .not('rpe_reportado', 'is', null)
 
-      const sesionesConFecha = sesiones || []
+      const sesionesConFecha = sesiones
       const tareasEnriquecidas = await Promise.all((tareas || []).map(async tarea => {
         const sesion = sesionesConFecha.find(s => s.id === tarea.id_sesion)
         if (!sesion?.fecha_sesion) return tarea
