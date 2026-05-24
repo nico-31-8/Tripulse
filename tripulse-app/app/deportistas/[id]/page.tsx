@@ -354,6 +354,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   { label: 'HRV basal', val: deportista.hrv_basal ? deportista.hrv_basal + ' ms' : '—' },
                   { label: 'F. nacimiento', val: deportista.fecha_nacimiento || '—' },
                   { label: 'Experiencia', val: deportista.experiencia_previa || '—' },
+                  { label: '🏊 Tec. Natación', val: deportista.tec_natacion ? deportista.tec_natacion + '/5' : '—' },
+                  { label: '🚴 Tec. Ciclismo', val: deportista.tec_ciclismo ? deportista.tec_ciclismo + '/5' : '—' },
+                  { label: '🏃 Tec. Carrera', val: deportista.tec_carrera ? deportista.tec_carrera + '/5' : '—' },
                 ].map(({ label, val }) => (
                   <div key={label} className="bg-gray-800 rounded-lg p-3">
                     <p className="text-gray-500 text-xs mb-1">{label}</p>

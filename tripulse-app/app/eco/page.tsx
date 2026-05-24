@@ -12,10 +12,23 @@ const TABLA_ECO_ORIGINAL = [
   { factor: 'Coste energético',  natacion: 3, ciclismo: 2, carrera: 3 },
 ]
 
-function calcularF1(sesiones: any[]) {
-  const validas = sesiones.filter(s => s.sensacion_tecnica && s.valoracion_tecnica_entrenador)
-  if (!validas.length) return null
-  const media = validas.reduce((acc, s) => acc + (s.sensacion_tecnica + s.valoracion_tecnica_entrenador) / 2, 0) / validas.length
+function calcularF1(sesiones: any[], valoracionEntrenador: number | null) {
+  // Usar valoración técnica global del perfil del deportista
+  // combinada con la sensación técnica media del deportista en sesiones
+  const validas = sesiones.filter(s => s.sensacion_tecnica)
+  const sensacionMedia = validas.length
+    ? validas.reduce((acc, s) => acc + s.sensacion_tecnica, 0) / validas.length
+    : null
+  // Si tenemos ambos datos, promediamos. Si solo uno, usamos ese.
+  let media: number | null = null
+  if (sensacionMedia !== null && valoracionEntrenador !== null) {
+    media = (sensacionMedia + valoracionEntrenador) / 2
+  } else if (sensacionMedia !== null) {
+    media = sensacionMedia
+  } else if (valoracionEntrenador !== null) {
+    media = valoracionEntrenador
+  }
+  if (media === null) return null
   return Math.min(4, Math.max(1, Math.round(5 - media)))
 }
 
@@ -315,14 +328,14 @@ export default function EcoPage() {
     setLoadingScores(true)
     setScores(null)
 
-    const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
+    const fcUmbral = dep.fc_maxima || 0  // FC máxima directa, no umbral
     const hrvBasal = dep.hrv_basal || 0
     const resultados: any = {}
 
     for (const disc of DISCIPLINAS) {
       const { data: sesiones } = await supabase
         .from('sesion')
-        .select('id, disciplina, rpe_estimado, fecha_sesion')
+        .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
         .eq('disciplina', disc)
         .eq('estado', 'Realizada')
         .in('id_microciclo', await getMicrosDeportista(dep.id))
@@ -355,7 +368,10 @@ export default function EcoPage() {
       }))
 
       const t = tareasEnriquecidas
-      const f1 = calcularF1(t)
+      const valoracionTec = disc === 'Natacion' ? dep.tec_natacion
+        : disc === 'Ciclismo' ? dep.tec_ciclismo
+        : dep.tec_carrera
+      const f1 = calcularF1(t, valoracionTec ?? null)
       const f2 = calcularF2(t)
       const f3 = calcularF3(t)
       const f4 = calcularF4(t, fcUmbral)
