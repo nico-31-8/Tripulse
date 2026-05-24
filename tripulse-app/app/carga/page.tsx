@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 
 const RANGOS = [
@@ -89,7 +89,8 @@ export default function CargaPage() {
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
   const [mostrarCarga, setMostrarCarga] = useState(false)
-  const [pestana, setPestana] = useState<'global'|'disciplina'>('global')
+  const [pestana, setPestana] = useState<'global'|'disciplina'|'diaria'>('global')
+  const [datosDiarios, setDatosDiarios] = useState<any[]>([])
 
   useEffect(() => {
     const cargar = async () => {
@@ -139,6 +140,66 @@ export default function CargaPage() {
   const monotonia = calcularMonotonia(datos)
   const strain = calcularStrain(datos)
 
+  const cargarDiaria = async (dep: any) => {
+    const desde = new Date()
+    desde.setDate(desde.getDate() - 30)
+    const desdeStr = desde.toISOString().split('T')[0]
+
+    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
+    const macroIds = (macros || []).map((m: any) => m.id)
+    if (!macroIds.length) { setDatosDiarios([]); return }
+    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+    const mesoIds = (mesos || []).map((m: any) => m.id)
+    if (!mesoIds.length) { setDatosDiarios([]); return }
+    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+    const microsDelDep = (micros || []).map((m: any) => m.id)
+    if (!microsDelDep.length) { setDatosDiarios([]); return }
+
+    const { data: sesiones } = await supabase
+      .from('sesion')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .in('id_microciclo', microsDelDep)
+      .gte('fecha_sesion', desdeStr)
+      .order('fecha_sesion')
+
+    // Generar array de 30 días
+    const dias: any[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const fechaStr = d.toISOString().split('T')[0]
+      const label = d.toLocaleDateString('es', { day: '2-digit', month: '2-digit' })
+
+      const sesDia = (sesiones || []).filter(s => s.fecha_sesion === fechaStr)
+      const planificadas = sesDia.filter(s => s.estado === 'Planificada')
+      const realizadas = sesDia.filter(s => s.estado === 'Realizada')
+
+      const uaPlanificada = planificadas.reduce((acc, s) =>
+        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+
+      // UA realizada por disciplina
+      const uaNatacion = realizadas.filter(s => s.disciplina === 'Natacion')
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+      const uaCiclismo = realizadas.filter(s => s.disciplina === 'Ciclismo')
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+      const uaCarrera = realizadas.filter(s => s.disciplina === 'Carrera')
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+      const uaFuerza = realizadas.filter(s => s.disciplina === 'Fuerza')
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+
+      dias.push({
+        fecha: label,
+        planificada: Math.round(uaPlanificada),
+        Natacion: Math.round(uaNatacion),
+        Ciclismo: Math.round(uaCiclismo),
+        Carrera: Math.round(uaCarrera),
+        Fuerza: Math.round(uaFuerza),
+        total: Math.round(uaNatacion + uaCiclismo + uaCarrera + uaFuerza),
+      })
+    }
+    setDatosDiarios(dias)
+  }
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
@@ -162,6 +223,11 @@ export default function CargaPage() {
               (pestana === 'disciplina' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
             🏊 Por disciplina
           </button>
+          <button onClick={() => { setPestana('diaria'); if (seleccionado) cargarDiaria(seleccionado) }}
+            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
+              (pestana === 'diaria' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
+            📅 Visión diaria
+          </button>
         </div>
 
         {/* Selector deportista — común a las dos pestañas */}
@@ -181,6 +247,58 @@ export default function CargaPage() {
             </div>
           )}
         </div>
+
+        {/* PESTAÑA VISIÓN DIARIA */}
+        {pestana === 'diaria' && (
+          <div>
+            {!seleccionado ? (
+              <div className="text-center py-12 text-gray-500">Selecciona un deportista arriba.</div>
+            ) : datosDiarios.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay sesiones en los últimos 30 días.</div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-sm font-medium text-gray-300 mb-1">Carga diaria — últimos 30 días</p>
+                  <p className="text-xs text-gray-500 mb-4">UA = RPE × duración · Barra transparente = carga planificada</p>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={datosDiarios} barSize={14}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 9 }} interval={2} />
+                      <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" UA" />
+                      <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
+                      <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
+                      <Bar dataKey="planificada" fill="#ffffff" fillOpacity={0.08} name="Planificada" radius={[2,2,0,0]} />
+                      <Bar dataKey="Natacion" stackId="real" fill="#60a5fa" name="Natación" radius={[0,0,0,0]} />
+                      <Bar dataKey="Ciclismo" stackId="real" fill="#fbbf24" name="Ciclismo" radius={[0,0,0,0]} />
+                      <Bar dataKey="Carrera" stackId="real" fill="#4ade80" name="Carrera" radius={[0,0,0,0]} />
+                      <Bar dataKey="Fuerza" stackId="real" fill="#f87171" name="Fuerza" radius={[2,2,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Resumen del mes */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { key: 'Natacion', label: 'Natación', color: 'text-blue-400' },
+                    { key: 'Ciclismo', label: 'Ciclismo', color: 'text-yellow-400' },
+                    { key: 'Carrera', label: 'Carrera', color: 'text-green-400' },
+                    { key: 'Fuerza', label: 'Fuerza', color: 'text-red-400' },
+                  ].map(d => {
+                    const total = datosDiarios.reduce((acc, dia) => acc + (dia[d.key] || 0), 0)
+                    const diasActivos = datosDiarios.filter(dia => dia[d.key] > 0).length
+                    return (
+                      <div key={d.key} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                        <p className="text-xs text-gray-500 mb-1">{d.label}</p>
+                        <p className={'text-xl font-bold ' + d.color}>{Math.round(total)} UA</p>
+                        <p className="text-xs text-gray-600 mt-1">{diasActivos} días activos</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* PESTAÑA POR DISCIPLINA */}
         {pestana === 'disciplina' && (
