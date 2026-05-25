@@ -45,7 +45,7 @@ function calcularRango(zona: string, disciplina: string, tests: any): string {
   if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css && CSS_ZONAS[z]) {
     const [p1, p2] = CSS_ZONAS[z]
     const fmt = (v: number) => { const s = 100/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
-    return fmt(v2) + '–' + fmt(v1) + ' /100m'
+    return fmt(p2) + '–' + fmt(p1) + ' /100m'
   }
   return ''
 }
