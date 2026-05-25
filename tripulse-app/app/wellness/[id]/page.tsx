@@ -59,6 +59,11 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [hrv, setHrv] = useState('')
   const [fcReposo, setFcReposo] = useState('')
   const [malestarGeneral, setMalestarGeneral] = useState(4)
+  const [registrosPeso, setRegistrosPeso] = useState<any[]>([])
+  const [mostrarFormPeso, setMostrarFormPeso] = useState(false)
+  const [pesoKg, setPesoKg] = useState('')
+  const [fechaPeso, setFechaPeso] = useState(new Date().toISOString().split('T')[0])
+  const [guardandoPeso, setGuardandoPeso] = useState(false)
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -67,6 +72,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     setDeportista(dep)
     const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30)
     setRegistros(reg || [])
+    const { data: pesos } = await supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60)
+    setRegistrosPeso(pesos || [])
   }
 
   const preview = scoreWellness({ calidad_sueno: calidadSueno, fatiga, estres, dolor_muscular: dolorMuscular, animo, motivacion })
@@ -94,6 +101,22 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     if (error) setError('Error: ' + error.message)
     else { setMostrarForm(false); cargarDatos() }
     setLoading(false)
+  }
+
+  const guardarPeso = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pesoKg) return
+    setGuardandoPeso(true)
+    await supabase.from('registro_peso').insert({
+      id_deportista: Number(id),
+      fecha: fechaPeso,
+      peso_kg: Number(pesoKg),
+    })
+    setPesoKg('')
+    setMostrarFormPeso(false)
+    const { data: pesos } = await supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60)
+    setRegistrosPeso(pesos || [])
+    setGuardandoPeso(false)
   }
 
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
@@ -271,6 +294,93 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             ))}
           </div>
         )}
+        {/* SECCIÓN PESO */}
+        <div className="mt-8 bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-800 flex justify-between items-center">
+            <div>
+              <p className="font-bold text-white">⚖️ Control de peso</p>
+              <p className="text-gray-500 text-xs mt-0.5">Registro opcional — añade cuando quieras</p>
+            </div>
+            <button onClick={() => setMostrarFormPeso(!mostrarFormPeso)}
+              className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-3 py-1.5 rounded-lg transition">
+              {mostrarFormPeso ? 'Cancelar' : '+ Registrar peso'}
+            </button>
+          </div>
+
+          {mostrarFormPeso && (
+            <form onSubmit={guardarPeso} className="px-5 py-4 border-b border-gray-800 flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="text-gray-400 text-xs mb-1 block">Fecha</label>
+                <input type="date" value={fechaPeso} onChange={e => setFechaPeso(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+              </div>
+              <div className="flex-1">
+                <label className="text-gray-400 text-xs mb-1 block">Peso (kg)</label>
+                <input type="number" step="0.1" placeholder="Ej: 72.5" value={pesoKg} onChange={e => setPesoKg(e.target.value)}
+                  className="w-full bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  required />
+              </div>
+              <button type="submit" disabled={guardandoPeso}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50">
+                {guardandoPeso ? '...' : 'Guardar'}
+              </button>
+            </form>
+          )}
+
+          {registrosPeso.length === 0 ? (
+            <div className="px-5 py-8 text-center text-gray-500 text-sm">
+              No hay registros de peso todavía.
+            </div>
+          ) : (
+            <div className="p-5">
+              {/* Último peso y variación */}
+              <div className="flex items-center gap-6 mb-4">
+                <div>
+                  <p className="text-gray-500 text-xs">Último registro</p>
+                  <p className="text-2xl font-bold text-white">{registrosPeso[registrosPeso.length-1]?.peso_kg} kg</p>
+                  <p className="text-gray-500 text-xs">{registrosPeso[registrosPeso.length-1]?.fecha}</p>
+                </div>
+                {registrosPeso.length > 1 && (() => {
+                  const diff = Math.round((registrosPeso[registrosPeso.length-1].peso_kg - registrosPeso[0].peso_kg) * 10) / 10
+                  return (
+                    <div>
+                      <p className="text-gray-500 text-xs">Variación total</p>
+                      <p className={'text-xl font-bold ' + (diff < 0 ? 'text-green-400' : diff > 0 ? 'text-red-400' : 'text-gray-400')}>
+                        {diff > 0 ? '+' : ''}{diff} kg
+                      </p>
+                      <p className="text-gray-500 text-xs">desde {registrosPeso[0]?.fecha}</p>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Gráfica evolución peso */}
+              {registrosPeso.length > 1 && (
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={registrosPeso.map(p => ({ fecha: p.fecha.slice(5), peso: p.peso_kg }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                    <YAxis domain={['auto', 'auto']} stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" kg" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }}
+                      formatter={(v: any) => [v + ' kg', 'Peso']} />
+                    <Line type="monotone" dataKey="peso" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 4 }} name="Peso (kg)" connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+
+              {/* Lista últimos registros */}
+              <div className="mt-4 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                {[...registrosPeso].reverse().slice(0, 10).map(p => (
+                  <div key={p.id} className="flex justify-between items-center text-sm py-1 border-b border-gray-800">
+                    <span className="text-gray-400">{p.fecha}</span>
+                    <span className="font-medium text-white">{p.peso_kg} kg</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
     </main>
   )

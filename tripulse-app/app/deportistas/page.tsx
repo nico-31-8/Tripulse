@@ -18,22 +18,6 @@ function calcularFCMaxima(fechaNacimiento: string): number {
 
 function TooltipHRV() {
   const [visible, setVisible] = useState(false)
-  const generarEnlaceInvitacion = async (dep: any) => {
-    setGenerandoEnlace(dep.id)
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
-    const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('invitacion_deportista').insert({
-      token,
-      id_entrenador: user?.id,
-      id_deportista: dep.id,
-      nombre_deportista: dep.nombre,
-      usado: false,
-    })
-    const url = window.location.origin + '/invitacion/' + token
-    setEnlaceInvitacion(url)
-    setGenerandoEnlace(null)
-  }
-
   return (
     <div className="relative inline-block ml-2">
       <button type="button" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)} onClick={() => setVisible(!visible)} className="w-5 h-5 rounded-full bg-gray-600 hover:bg-orange-500 text-white text-xs font-bold transition flex items-center justify-center">?</button>
