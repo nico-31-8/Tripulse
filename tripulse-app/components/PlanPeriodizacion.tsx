@@ -391,7 +391,7 @@ export default function PlanPeriodizacion({
           <BarChart data={semanasFiltradas} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
             onClick={(data) => {
               if (data && data.activeIndex !== undefined && data.activeIndex !== null) {
-                const s = semanasFiltradas[data.activeIndex]
+                const s = semanasFiltradas[data.activeIndex as number]
                 if (s) setSemanaSeleccionada(s.num === semanaSeleccionada ? null : s.num)
               }
             }}>

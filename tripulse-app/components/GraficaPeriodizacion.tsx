@@ -127,7 +127,7 @@ export default function GraficaPeriodizacion({ modelo, semanas, mostrarInfo = tr
             <YAxis domain={[0, 100]} stroke="#4b5563" tick={false} tickLine={false} />
             <Tooltip
               contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 11 }}
-              formatter={(val: any, name: string) => [val + '%', name === 'volumen' ? 'Volumen' : 'Intensidad']}
+              formatter={(val: any, name: any) => [val + '%', name === 'volumen' ? 'Volumen' : 'Intensidad'] as [string, string]}
               labelFormatter={(l) => 'Semana ' + l}
             />
             <Area type="monotone" dataKey="volumen" stroke={color} fill={color} fillOpacity={0.15} strokeWidth={2} name="volumen" />
