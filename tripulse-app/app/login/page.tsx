@@ -90,6 +90,9 @@ export default function Login() {
             ¿No tienes cuenta?{' '}
             <a href="/registro" className="text-orange-400 hover:text-orange-300 transition">Regístrate</a>
           </p>
+          <p className="text-center text-sm mt-2">
+            <a href="/reset-password" className="text-gray-500 hover:text-orange-400 transition">¿Olvidaste tu contraseña?</a>
+          </p>
         </div>
 
         {/* Indicadores */}
