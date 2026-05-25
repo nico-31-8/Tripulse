@@ -18,6 +18,22 @@ function calcularFCMaxima(fechaNacimiento: string): number {
 
 function TooltipHRV() {
   const [visible, setVisible] = useState(false)
+  const generarEnlaceInvitacion = async (dep: any) => {
+    setGenerandoEnlace(dep.id)
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('invitacion_deportista').insert({
+      token,
+      id_entrenador: user?.id,
+      id_deportista: dep.id,
+      nombre_deportista: dep.nombre,
+      usado: false,
+    })
+    const url = window.location.origin + '/invitacion/' + token
+    setEnlaceInvitacion(url)
+    setGenerandoEnlace(null)
+  }
+
   return (
     <div className="relative inline-block ml-2">
       <button type="button" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)} onClick={() => setVisible(!visible)} className="w-5 h-5 rounded-full bg-gray-600 hover:bg-orange-500 text-white text-xs font-bold transition flex items-center justify-center">?</button>
@@ -40,6 +56,8 @@ export default function Deportistas() {
   const [hrvBasal, setHrvBasal] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [enlaceInvitacion, setEnlaceInvitacion] = useState<string | null>(null)
+  const [generandoEnlace, setGenerandoEnlace] = useState<number | null>(null)
 
   useEffect(() => { cargarDeportistas() }, [])
 
@@ -73,6 +91,22 @@ export default function Deportistas() {
       cargarDeportistas()
     }
     setLoading(false)
+  }
+
+  const generarEnlaceInvitacion = async (dep: any) => {
+    setGenerandoEnlace(dep.id)
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('invitacion_deportista').insert({
+      token,
+      id_entrenador: user?.id,
+      id_deportista: dep.id,
+      nombre_deportista: dep.nombre,
+      usado: false,
+    })
+    const url = window.location.origin + '/invitacion/' + token
+    setEnlaceInvitacion(url)
+    setGenerandoEnlace(null)
   }
 
   return (
@@ -138,12 +172,43 @@ export default function Deportistas() {
                     HRV basal: {d.hrv_basal || '—'} ms
                   </p>
                 </div>
-                <a href={`/deportistas/${d.id}`} className="text-orange-500 hover:underline text-sm">Ver perfil →</a>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => generarEnlaceInvitacion(d)}
+                    disabled={generandoEnlace === d.id}
+                    className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-orange-500">
+                    {generandoEnlace === d.id ? 'Generando...' : '🔗 Invitar'}
+                  </button>
+                  <a href={`/deportistas/${d.id}`} className="text-orange-500 hover:underline text-sm">Ver perfil →</a>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {/* Modal enlace invitación */}
+      {enlaceInvitacion && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 px-4">
+          <div className="bg-gray-900 rounded-2xl p-6 border border-gray-700 w-full max-w-md">
+            <h3 className="font-bold text-lg mb-2">🔗 Enlace de invitación</h3>
+            <p className="text-gray-400 text-sm mb-4">Manda este enlace al deportista. Solo tendrá que poner su email y contraseña para quedar vinculado a ti automáticamente.</p>
+            <div className="bg-gray-800 rounded-lg p-3 mb-4 break-all text-xs text-orange-400 border border-gray-700">
+              {enlaceInvitacion}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { navigator.clipboard.writeText(enlaceInvitacion); }}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg text-sm font-medium transition">
+                📋 Copiar enlace
+              </button>
+              <button
+                onClick={() => setEnlaceInvitacion(null)}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-lg text-sm transition">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
