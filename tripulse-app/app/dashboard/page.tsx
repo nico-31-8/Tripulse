@@ -5,6 +5,12 @@ import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 export default function Dashboard() {
   const [perfil, setPerfil] = useState<any>(null)
+  const [numDeportistas, setNumDeportistas] = useState<number | null>(null)
+  const [pasosOmitidos, setPasosOmitidos] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return []
+    const saved = localStorage.getItem('tripulse_pasos_omitidos')
+    return saved ? JSON.parse(saved) : []
+  })
   const [avisos, setAvisos] = useState<string[]>([])
 
   useEffect(() => {
@@ -13,6 +19,8 @@ export default function Dashboard() {
       if (!user) { window.location.href = '/login'; return }
       const { data } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(data)
+      const { count } = await supabase.from('deportista').select('*', { count: 'exact', head: true }).eq('id_entrenador', user.id)
+      setNumDeportistas(count || 0)
       if (user) await comprobarAvisos(user.id)
     }
     cargarPerfil()
@@ -62,6 +70,12 @@ export default function Dashboard() {
   }
 
   const ir = (ruta: string) => { window.location.href = ruta }
+
+  const omitirPaso = (num: number) => {
+    const nuevos = [...pasosOmitidos, num]
+    setPasosOmitidos(nuevos)
+    localStorage.setItem('tripulse_pasos_omitidos', JSON.stringify(nuevos))
+  }
 
   const modulos = [
     { icon: '👥', titulo: 'Deportistas', descripcion: 'Añade y gestiona tus atletas. Accede a su perfil, tests y zonas de entrenamiento.', href: '/deportistas' },
@@ -130,6 +144,53 @@ export default function Dashboard() {
             <ResumenEntrenador entrenadorId={perfil.id} />
           </div>
         )}
+        {/* ONBOARDING — solo si no tiene deportistas */}
+        {numDeportistas === 0 && (
+          <div className="mb-8 bg-gray-900 rounded-xl border border-orange-500 border-opacity-50 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">🚀</span>
+              <div>
+                <p className="font-bold text-lg">Primeros pasos</p>
+                <p className="text-gray-400 text-sm">Sigue esta guía para empezar a usar TRIPULSE</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              {[
+                { num: 1, titulo: 'Añade tu primer deportista', desc: 'Crea el perfil de tu atleta con sus datos básicos.', href: '/deportistas', omitible: false },
+                { num: 2, titulo: 'Envíale el enlace de invitación', desc: 'Desde la lista de deportistas pulsa 🔗 Invitar y mándale el enlace.', href: '/deportistas', omitible: false },
+                { num: 3, titulo: 'Registra sus tests', desc: 'VAM, CSS y FTP para calcular zonas y ritmos automáticamente.', href: '/tests', omitible: true },
+                { num: 4, titulo: 'Crea su primer macrociclo', desc: 'La estructura base de toda la planificación de la temporada.', href: '/planificacion-visual', omitible: false },
+                { num: 5, titulo: 'Planifica la primera semana', desc: 'Añade sesiones con disciplina, zona y tareas detalladas.', href: '/planificacion-visual', omitible: false },
+              ].map(paso => {
+                const omitido = pasosOmitidos.includes(paso.num)
+                return (
+                  <div key={paso.num} className={'flex items-start gap-4 p-4 rounded-xl border transition ' + (omitido ? 'border-gray-800 bg-gray-800 opacity-50' : 'border-gray-800 bg-gray-800 hover:border-orange-500')}>
+                    <div className={'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ' + (omitido ? 'bg-gray-600 text-gray-400' : 'bg-orange-500 text-white')}>
+                      {omitido ? '⏭' : paso.num}
+                    </div>
+                    <div className="flex-1">
+                      <p className={'font-medium text-sm ' + (omitido ? 'text-gray-500 line-through' : 'text-white')}>{paso.titulo}</p>
+                      {!omitido && <p className="text-gray-500 text-xs mt-0.5">{paso.desc}</p>}
+                    </div>
+                    {!omitido && (
+                      <div className="flex gap-2 flex-shrink-0">
+                        {paso.omitible && (
+                          <button onClick={() => omitirPaso(paso.num)} className="text-xs text-gray-500 hover:text-gray-300 transition px-2 py-1 rounded-lg hover:bg-gray-700">
+                            Saltar
+                          </button>
+                        )}
+                        <button onClick={() => ir(paso.href)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition font-medium">
+                          Ir →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className={'grid gap-4 ' + (verInfo ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
           {modulos.map(m => (
             <button key={m.titulo} onClick={() => ir(m.href)} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left w-full">
