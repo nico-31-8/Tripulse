@@ -89,6 +89,32 @@ export default function DashboardDeportista() {
 
         {deportista && <ResumenDeportista depId={deportista.id} />}
 
+        {/* Aviso si no tiene entrenador asignado */}
+        {deportista && !deportista.id_entrenador && (
+          <div className="bg-yellow-950 border-2 border-yellow-600 rounded-xl p-5 mb-6">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="font-bold text-yellow-300 text-lg mb-1">No tienes entrenador asignado</p>
+                <p className="text-yellow-400 text-sm mb-3">
+                  Para recibir tu planificación de entrenamiento necesitas estar vinculado a un entrenador.
+                </p>
+                <div className="bg-yellow-900 rounded-lg p-3 mb-3">
+                  <p className="text-yellow-300 text-xs font-medium mb-1">¿Cómo vincularte?</p>
+                  <p className="text-yellow-400 text-xs">Tu entrenador puede enviarte un enlace de invitación directamente, o puedes ir a <strong>Mi perfil</strong> e introducir el código de tu entrenador.</p>
+                </div>
+                <button
+                  onClick={() => window.location.href = '/perfil'}
+                  className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                  Ir a Mi perfil →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Aviso si tiene entrenador pero no hay sesiones hoy */}
+
         {/* Banner wellness pendiente */}
         {(() => {
           const hoyStr = new Date().toISOString().split('T')[0]
