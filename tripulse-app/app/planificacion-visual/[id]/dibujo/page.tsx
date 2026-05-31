@@ -95,6 +95,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [editTipo, setEditTipo] = useState('')
   const [editDur, setEditDur] = useState(4)
   const [editInt, setEditInt] = useState(7)
+  const [sesZonas, setSesZonas] = useState<{id:string;semana:number;disciplina:string;zona:string}[]>([])
+  const [popupZona, setPopupZona] = useState<{semana:number;x:number;y:number}|null>(null)
+  const [zonaSelDisc, setZonaSelDisc] = useState('Natacion')
+  const [zonaSelZona, setZonaSelZona] = useState('Z1')
+  const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza'])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragBandRef = useRef<'macro' | 'meso' | null>(null)
@@ -105,14 +110,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const dragSfRef = useRef(0)
   const macrosRef = useRef<MacroD[]>([])
   const mesosRef = useRef<MesoD[]>([])
+  const movePreviewRef = useRef<{tipo: string, si: number, sf: number, id: string} | null>(null)
+  const sesZonasRef = useRef<{id:string;semana:number;disciplina:string;zona:string}[]>([])
 
   useEffect(() => {
     macrosRef.current = macros
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem)
+    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [macros])
   useEffect(() => {
     mesosRef.current = mesos
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem)
+    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [mesos])
 
   // Carga inicial — detecta si hay ciclos existentes
@@ -132,8 +139,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }, [id])
 
   useEffect(() => {
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem)
+    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [sems])
+  useEffect(() => {
+    sesZonasRef.current = sesZonas
+    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
+  }, [sesZonas])
 
   useEffect(() => {
     if (pantalla !== 'canvas') return
@@ -196,6 +207,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       }
 
       setModoEdicion(true)
+      const { data: bz } = await supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', Number(id)).single()
+      if (bz && bz.sesiones_zonas && bz.sesiones_zonas.length) setSesZonas(bz.sesiones_zonas)
       setPantalla('canvas')
     } catch (e: any) { alert('Error al cargar: ' + e.message) }
     setCargandoDatos(false)
@@ -204,6 +217,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const cargarBorrador = async () => {
     const { data } = await supabase.from('dibujo_borrador').select('*').eq('id_deportista', Number(id)).single()
     if (!data) return null
+    if (data.sesiones_zonas) setSesZonas(data.sesiones_zonas)
     return data
   }
 
@@ -234,7 +248,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           if (mac) {
             const dur = mac.sf - mac.si
             const newSf = Math.min(newSi + dur, totalSem - 1)
-            setMovePreview({ tipo: 'macro', si: newSi, sf: newSf, id })
+            movePreviewRef.current = { tipo: 'macro', si: newSi, sf: newSf, id }
+        setMovePreview({ tipo: 'macro', si: newSi, sf: newSf, id })
           }
         } else {
           const me = mesosRef.current.find(m => m.id === id)
@@ -243,7 +258,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             const dur = me.sf - me.si
             const safeSi = mac ? Math.max(mac.si, newSi) : newSi
             const safeSf = mac ? Math.min(mac.sf, safeSi + dur) : safeSi + dur
-            setMovePreview({ tipo: 'meso', si: safeSi, sf: safeSf, id })
+            movePreviewRef.current = { tipo: 'meso', si: safeSi, sf: safeSf, id }
+        setMovePreview({ tipo: 'meso', si: safeSi, sf: safeSf, id })
           }
         }
         return
@@ -256,23 +272,29 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     }
     const onUp = () => {
       // Confirmar movimiento de bloque
-      if (movingBlockRef.current && movePreview) {
+      if (movingBlockRef.current) {
         const { tipo, id } = movingBlockRef.current
-        if (tipo === 'macro') {
-          setMacros(p => p.map(m => m.id === id ? { ...m, si: movePreview.si, sf: movePreview.sf } : m))
-          // Ajustar mesos que salgan del nuevo rango del macro
-          setMesos(p => p.map(me => {
-            if (me.macroId !== id) return me
-            const dur = me.sf - me.si
-            const offset = me.si - mesosRef.current.find(m => m.id === me.id)!.si + (movePreview.si - macrosRef.current.find(m => m.id === id)!.si)
-            const newSi = Math.max(movePreview.si, me.si + (movePreview.si - macrosRef.current.find(m => m.id === id)!.si))
-            const newSf = Math.min(movePreview.sf, newSi + dur)
-            return { ...me, si: newSi, sf: newSf }
-          }))
-        } else {
-          setMesos(p => p.map(m => m.id === id ? { ...m, si: movePreview.si, sf: movePreview.sf } : m))
+        const preview = movePreviewRef.current
+        if (preview) {
+          if (tipo === 'macro') {
+            const oldMac = macrosRef.current.find(m => m.id === id)
+            if (oldMac) {
+              const delta = preview.si - oldMac.si
+              setMacros(p => p.map(m => m.id === id ? { ...m, si: preview.si, sf: preview.sf } : m))
+              setMesos(p => p.map(me => {
+                if (me.macroId !== id) return me
+                const dur = me.sf - me.si
+                const newSi = Math.max(preview.si, Math.min(preview.sf - dur, me.si + delta))
+                const newSf = newSi + dur
+                return { ...me, si: newSi, sf: newSf }
+              }))
+            }
+          } else {
+            setMesos(p => p.map(m => m.id === id ? { ...m, si: preview.si, sf: preview.sf } : m))
+          }
         }
         movingBlockRef.current = null
+        movePreviewRef.current = null
         setMovePreview(null)
         return
       }
@@ -459,7 +481,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setModalEditar(null)
   }
 
-  const guardarBorrador = async (macrosData: MacroD[], mesosData: MesoD[], semsData: SemanaD[], fi: string, total: number) => {
+  const guardarBorrador = async (macrosData: MacroD[], mesosData: MesoD[], semsData: SemanaD[], fi: string, total: number, zonasData: any[] = []) => {
     if (!fi || macrosData.length === 0) return
     setGuardandoBorrador(true)
     try {
@@ -471,6 +493,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         macros: macrosData,
         mesos: mesosData,
         semanas: semsData,
+        sesiones_zonas: zonasData,
         updated_at: new Date().toISOString(),
       }
       if (existing) {
@@ -483,10 +506,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setGuardandoBorrador(false)
   }
 
-  const dispararGuardado = (macrosData: MacroD[], mesosData: MesoD[], semsData: SemanaD[], fi: string, total: number) => {
+  const dispararGuardado = (macrosData: MacroD[], mesosData: MesoD[], semsData: SemanaD[], fi: string, total: number, zonasData: any[] = []) => {
     if (guardadoTimerRef.current) clearTimeout(guardadoTimerRef.current)
     guardadoTimerRef.current = setTimeout(() => {
-      guardarBorrador(macrosData, mesosData, semsData, fi, total)
+      guardarBorrador(macrosData, mesosData, semsData, fi, total, zonasData)
     }, 1500)
   }
 
@@ -730,6 +753,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   title="Mostrar/ocultar curva de periodizacion teorica">
                   ~ Curva
                 </button>
+                <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700">
+                  <button onClick={() => setTotalSem(s => Math.max(s - 1, macros.reduce((a, m) => Math.max(a, m.sf + 1), 4)))} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition text-sm font-bold">−</button>
+                  <span className="text-white text-xs font-medium px-1 min-w-8 text-center">{totalSem}s</span>
+                  <button onClick={() => setTotalSem(s => s + 1)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition text-sm font-bold">+</button>
+                </div>
                 <button onClick={() => setPantalla('elegir')} className="text-gray-500 hover:text-gray-300 text-xs transition px-2 py-1 rounded-lg hover:bg-gray-800">← Cambiar</button>
                 <button onClick={generado ? () => window.location.href = '/planificacion-visual/' + id : generar}
                   disabled={generando || (!generado && macros.length === 0)}
@@ -1065,6 +1093,133 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   </div>
                 )}
 
+                {/* GRAFICA ZONAS */}
+                <div className="border-t border-gray-800">
+                  <div className="flex" style={{ minHeight: 180 }}>
+                    <div className="flex-shrink-0 w-14 bg-gray-950 flex items-center justify-center">
+                      <span className="text-gray-500 text-xs font-bold tracking-widest" style={{writingMode:'vertical-rl',transform:'rotate(180deg)'}}>ZONAS</span>
+                    </div>
+                    {sems.map(s => {
+                      const sesEsta = sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina))
+                      const C_DISC: Record<string,string> = { Natacion:'#3B82F6', Natación:'#3B82F6', Ciclismo:'#EAB308', Carrera:'#22C55E', Fuerza:'#EF4444' }
+                      return (
+                        <div key={s.i} className="flex-shrink-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 relative group/zona"
+                          style={{ width: SEMANA_W, minHeight: 180 }}
+                          onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonaSelZona('Z1') }}>
+                          {sesEsta.map(sz => (
+                            <div key={sz.id}
+                              className="flex-shrink-0 flex items-center justify-center rounded text-white font-bold border relative group/sq"
+                              style={{ width: SEMANA_W - 6, height: 22, backgroundColor: (C_DISC[sz.disciplina] || '#888') + '30', borderColor: C_DISC[sz.disciplina] || '#888', fontSize: 9 }}
+                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
+                              {sz.zona}
+                              <span className="absolute inset-0 bg-red-500/0 group-hover/sq:bg-red-500/10 rounded transition pointer-events-none" />
+                            </div>
+                          ))}
+                          {sesEsta.length === 0 && (
+                            <span className="text-gray-800 text-xs group-hover/zona:text-gray-600 transition absolute bottom-2">+</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {/* Totales por semana */}
+                  <div className="flex border-t border-gray-800/50">
+                    <div className="flex-shrink-0 w-14 bg-gray-950" />
+                    {sems.map(s => {
+                      const n = sesZonas.filter(sz => sz.semana === s.i).length
+                      return (
+                        <div key={s.i} className="flex-shrink-0 flex items-center justify-center" style={{ width: SEMANA_W, height: 18 }}>
+                          {n > 0 && <span className="text-gray-500 font-medium" style={{ fontSize: 9 }}>{n}</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {/* Leyenda disciplinas con filtro */}
+                  <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-800/50 flex-wrap">
+                    <span className="text-gray-600 text-xs mr-1">Filtro:</span>
+                    {[{l:'Natación',k:'Natacion',c:'#3B82F6'},{l:'Ciclismo',k:'Ciclismo',c:'#EAB308'},{l:'Carrera',k:'Carrera',c:'#22C55E'},{l:'Fuerza',k:'Fuerza',c:'#EF4444'}].map(d => {
+                      const act = filtroDisc.includes(d.k)
+                      return (
+                        <button key={d.k} onClick={() => setFiltroDisc(prev => prev.includes(d.k) ? prev.filter(x => x !== d.k) : [...prev, d.k])}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition"
+                          style={act ? {backgroundColor:d.c+'30',borderColor:d.c,color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#4b5563'}}>
+                          <span className="w-2.5 h-2.5 rounded-sm inline-block border" style={{backgroundColor:act?d.c+'50':'transparent',borderColor:act?d.c:'#374151'}}/>
+                          {d.l}
+                        </button>
+                      )
+                    })}
+                    <span className="text-gray-700 text-xs ml-auto">{sesZonas.length} sesiones total</span>
+                  </div>
+                </div>
+                {/* POPUP AÑADIR ZONA */}
+                {popupZona && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setPopupZona(null)}>
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 shadow-2xl w-72" onClick={e => e.stopPropagation()}>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-white font-bold text-sm">Añadir sesión — Semana {popupZona.semana + 1}</h3>
+                        <button onClick={() => setPopupZona(null)} className="text-gray-500 hover:text-white text-lg leading-none">×</button>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1.5 block">Disciplina</label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {['Natacion','Ciclismo','Carrera','Fuerza'].map(d => {
+                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444'}
+                              const sel = zonaSelDisc === d
+                              return (
+                                <button key={d} onClick={() => setZonaSelDisc(d)}
+                                  className="py-2 rounded-lg text-xs font-medium transition border"
+                                  style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
+                                  {d === 'Natacion' ? 'Natación' : d}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1.5 block">Zona</label>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {['Z1','Z2','Z3','Z4','Z5','Z6','Z7'].map(z => (
+                              <button key={z} onClick={() => setZonaSelZona(z)}
+                                className={'py-2 rounded-lg text-xs font-bold transition ' + (zonaSelZona === z ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                                {z}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          <button onClick={() => {
+                            setSesZonas(prev => [...prev, {id: Math.random().toString(36).slice(2), semana: popupZona.semana, disciplina: zonaSelDisc, zona: zonaSelZona}])
+                            setPopupZona(null)
+                          }} className="flex-1 bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition">
+                            Añadir
+                          </button>
+                          <button onClick={() => setPopupZona(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-sm text-gray-400 transition">
+                            Cancelar
+                          </button>
+                        </div>
+                        {sesZonas.filter(sz => sz.semana === popupZona.semana).length > 0 && (
+                          <div className="border-t border-gray-800 pt-3">
+                            <p className="text-gray-500 text-xs mb-2">Sesiones esta semana:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {sesZonas.filter(sz => sz.semana === popupZona.semana).map(sz => {
+                                const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444'}
+                                return (
+                                  <div key={sz.id} className="flex items-center gap-1 rounded-lg px-2 py-1 border text-xs"
+                                    style={{backgroundColor:(C[sz.disciplina]||'#888')+'20',borderColor:C[sz.disciplina]||'#888'}}>
+                                    <span className="text-white font-bold">{sz.zona}</span>
+                                    <span className="text-gray-400">{sz.disciplina === 'Natacion' ? 'Nat' : sz.disciplina === 'Ciclismo' ? 'Cic' : sz.disciplina === 'Carrera' ? 'Car' : 'Fue'}</span>
+                                    <button onClick={() => setSesZonas(prev => prev.filter(x => x.id !== sz.id))} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* FECHAS */}
                 <div className="flex" style={{ height: 24 }}>
                   <div className="flex-shrink-0 w-14 bg-gray-950" />
