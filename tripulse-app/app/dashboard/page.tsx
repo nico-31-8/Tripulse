@@ -88,6 +88,7 @@ export default function Dashboard() {
     { icon: '🏋️', titulo: 'Tests', descripcion: 'Registra FTP, CSS, VAM y 1RM. Genera zonas de entrenamiento automáticas.', href: '/tests' },
     { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Gestiona ejercicios por grupo muscular con video de referencia. Acceso con clave de admin.', href: '/fuerza' },
     { icon: '💬', titulo: 'Comunicacion', descripcion: 'Comentarios post-sesion de tus deportistas. Marca como leido cuando los hayas revisado.', href: '/comunicacion' },
+    { icon: '🗑', titulo: 'Papelera', descripcion: 'Sesiones eliminadas. Recupéralas o bórralas definitivamente.', href: '/papelera' },
   ]
 
   return (

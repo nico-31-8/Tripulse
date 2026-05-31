@@ -160,7 +160,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
 
   const verSesiones = async (micro: any) => {
     setMicroSel(micro)
-    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).order('fecha_sesion')
+    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).eq('eliminada', false).order('fecha_sesion')
     setSesiones(data || [])
     setNivel('sesiones')
   }
@@ -279,6 +279,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
         <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
         <div className="flex flex-col items-end gap-1">
           <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/dibujo'} className="text-orange-400 hover:text-orange-300 text-xs transition">✏️ Dibujo</button>
           <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
         </div>
       </nav>

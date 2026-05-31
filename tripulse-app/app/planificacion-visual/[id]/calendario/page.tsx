@@ -155,7 +155,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setMicros(mi || [])
     if (!mi?.length) return
     const miIds = mi.map(m => m.id)
-    const { data: ses } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).order('fecha_sesion')
+    const { data: ses } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).eq('eliminada', false).order('fecha_sesion')
     if (ses?.length) {
       const sesIds = ses.map(s => s.id)
       const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series').in('id_sesion', sesIds)
@@ -336,7 +336,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
 
   const editarSesion = (ses: any, e: React.MouseEvent) => { e.stopPropagation(); setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || ''); setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || ''); setModalTipo('editarSesion') }
-  const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Borrar esta sesión?')) return; await supabase.from('sesion').delete().eq('id', sesId); await cargarDatos() }
+  const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Mover esta sesión a la papelera?')) return; await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId); await cargarDatos() }
 
   const guardarEdicionSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('sesion').update({ disciplina: sesionDisc, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas }).eq('id', sesionEditando.id); setSesionEditando(null); setModalTipo(null); await cargarDatos(); setLoading(false) }
   const guardarMacro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null }); setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false) }

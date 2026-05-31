@@ -153,7 +153,10 @@ export default function ComunicacionPage() {
                     </div>
                     <p className="text-gray-300 text-sm italic mb-3">"{c.notas}"</p>
                     <div className="flex justify-between items-center">
-                      <button onClick={() => window.location.href = '/chat/' + c.depId}
+                      <button onClick={() => {
+                        const p = new URLSearchParams({ cita: c.notas, disciplina: c.disciplina, fecha: c.fecha })
+                        window.location.href = '/chat/' + c.depId + '?' + p.toString()
+                      }}
                         className="text-orange-400 hover:text-orange-300 text-xs transition font-medium">
                         💬 Responder en chat →
                       </button>

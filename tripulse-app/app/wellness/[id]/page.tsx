@@ -24,17 +24,37 @@ function estadoScore(score: number) {
   return 'Critico'
 }
 
-function SliderInput({ label, value, onChange, min = 1, max = 7, descripcionInf, descripcionSup }: any) {
+const EMOJI_CONFIG: Record<string, { label: string; opciones: { emoji: string; texto: string }[] }> = {
+  calidad_sueno: { label: 'Calidad del sueno', opciones: [{ emoji: '😴', texto: 'Perfecta' },{ emoji: '😊', texto: 'Muy buena' },{ emoji: '🙂', texto: 'Buena' },{ emoji: '😐', texto: 'Regular' },{ emoji: '😪', texto: 'Mala' },{ emoji: '😩', texto: 'Muy mala' },{ emoji: '💀', texto: 'Pesima' }] },
+  fatiga: { label: 'Fatiga percibida', opciones: [{ emoji: '⚡', texto: 'Sin fatiga' },{ emoji: '💪', texto: 'Muy leve' },{ emoji: '🙂', texto: 'Leve' },{ emoji: '😐', texto: 'Moderada' },{ emoji: '😓', texto: 'Alta' },{ emoji: '😩', texto: 'Muy alta' },{ emoji: '💀', texto: 'Agotado' }] },
+  estres: { label: 'Estres general', opciones: [{ emoji: '😌', texto: 'Ninguno' },{ emoji: '🙂', texto: 'Muy bajo' },{ emoji: '😐', texto: 'Bajo' },{ emoji: '😤', texto: 'Moderado' },{ emoji: '😰', texto: 'Alto' },{ emoji: '😱', texto: 'Muy alto' },{ emoji: '🤯', texto: 'Extremo' }] },
+  dolor_muscular: { label: 'Dolor muscular', opciones: [{ emoji: '✅', texto: 'Sin dolor' },{ emoji: '🟢', texto: 'Muy leve' },{ emoji: '🟡', texto: 'Leve' },{ emoji: '🟠', texto: 'Moderado' },{ emoji: '🔴', texto: 'Alto' },{ emoji: '😣', texto: 'Muy alto' },{ emoji: '🚨', texto: 'Intenso' }] },
+  animo: { label: 'Estado de animo', opciones: [{ emoji: '😭', texto: 'Muy malo' },{ emoji: '😞', texto: 'Malo' },{ emoji: '😕', texto: 'Regular' },{ emoji: '😐', texto: 'Neutro' },{ emoji: '🙂', texto: 'Bueno' },{ emoji: '😊', texto: 'Muy bueno' },{ emoji: '🤩', texto: 'Excelente' }] },
+  motivacion: { label: 'Motivacion', opciones: [{ emoji: '😶', texto: 'Ninguna' },{ emoji: '😴', texto: 'Muy baja' },{ emoji: '😕', texto: 'Baja' },{ emoji: '😐', texto: 'Normal' },{ emoji: '🙂', texto: 'Buena' },{ emoji: '💪', texto: 'Alta' },{ emoji: '🔥', texto: 'Maxima' }] },
+  malestar_general: { label: 'Malestar general', opciones: [{ emoji: '💚', texto: 'Ninguno' },{ emoji: '🙂', texto: 'Muy leve' },{ emoji: '😐', texto: 'Leve' },{ emoji: '😕', texto: 'Moderado' },{ emoji: '🤢', texto: 'Alto' },{ emoji: '🤒', texto: 'Muy alto' },{ emoji: '🏥', texto: 'Extremo' }] },
+}
+
+function EmojiSelector({ campo, value, onChange }: { campo: string; value: number; onChange: (v: number) => void }) {
+  const config = EMOJI_CONFIG[campo]
+  if (!config) return null
   return (
     <div className="bg-gray-800 rounded-xl p-4">
-      <div className="flex justify-between items-center mb-2">
-        <label className="text-white font-medium text-sm">{label}</label>
-        <span className="text-orange-400 font-bold text-lg">{value}</span>
+      <div className="flex justify-between items-center mb-3">
+        <label className="text-white font-medium text-sm">{config.label}</label>
+        <span className="text-orange-400 font-bold text-sm">{config.opciones[value - 1]?.texto}</span>
       </div>
-      <input type="range" min={min} max={max} value={value} onChange={e => onChange(Number(e.target.value))} className="w-full accent-orange-500" />
-      <div className="flex justify-between text-gray-500 text-xs mt-1">
-        <span>{descripcionInf}</span>
-        <span>{descripcionSup}</span>
+      <div className="grid grid-cols-7 gap-1">
+        {config.opciones.map((op, i) => {
+          const val = i + 1
+          const seleccionado = value === val
+          return (
+            <button key={val} type="button" onClick={() => onChange(val)}
+              className={`flex flex-col items-center gap-1 rounded-lg py-2 px-1 transition-all ${seleccionado ? 'bg-orange-500 ring-2 ring-orange-300 scale-105' : 'bg-gray-700 hover:bg-gray-600'}`}>
+              <span className="text-xl leading-none">{op.emoji}</span>
+              <span className={`text-xs font-bold leading-none ${seleccionado ? 'text-white' : 'text-gray-400'}`}>{val}</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -147,7 +167,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
               <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
               <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required />
             </div>
-            <SliderInput label="Calidad del sueno" value={calidadSueno} onChange={setCalidadSueno} descripcionInf="Muy buena" descripcionSup="Muy mala" />
+            <EmojiSelector campo="calidad_sueno" value={calidadSueno} onChange={setCalidadSueno} />
             <div className="bg-gray-800 rounded-xl p-4">
               <div className="flex justify-between items-center mb-2">
                 <label className="text-white font-medium text-sm">Horas de sueno</label>
@@ -156,12 +176,12 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
               <input type="range" min={3} max={12} step={0.5} value={horasSueno} onChange={e => setHorasSueno(Number(e.target.value))} className="w-full accent-orange-500" />
               <div className="flex justify-between text-gray-500 text-xs mt-1"><span>3h</span><span>12h</span></div>
             </div>
-            <SliderInput label="Fatiga percibida" value={fatiga} onChange={setFatiga} descripcionInf="Sin fatiga" descripcionSup="Agotado" />
-            <SliderInput label="Estres general" value={estres} onChange={setEstres} descripcionInf="Sin estres" descripcionSup="Muy estresado" />
-            <SliderInput label="Dolor muscular" value={dolorMuscular} onChange={setDolorMuscular} descripcionInf="Sin dolor" descripcionSup="Dolor intenso" />
-            <SliderInput label="Animo" value={animo} onChange={setAnimo} descripcionInf="Muy malo" descripcionSup="Muy bueno" />
-            <SliderInput label="Motivacion" value={motivacion} onChange={setMotivacion} descripcionInf="Muy baja" descripcionSup="Muy alta" />
-            <SliderInput label="Malestar general" value={malestarGeneral} onChange={setMalestarGeneral} descripcionInf="Sin malestar" descripcionSup="Mucho malestar" />
+            <EmojiSelector campo="fatiga" value={fatiga} onChange={setFatiga} />
+            <EmojiSelector campo="estres" value={estres} onChange={setEstres} />
+            <EmojiSelector campo="dolor_muscular" value={dolorMuscular} onChange={setDolorMuscular} />
+            <EmojiSelector campo="animo" value={animo} onChange={setAnimo} />
+            <EmojiSelector campo="motivacion" value={motivacion} onChange={setMotivacion} />
+            <EmojiSelector campo="malestar_general" value={malestarGeneral} onChange={setMalestarGeneral} />
 
             {/* Objetivos bloc */}
             <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
