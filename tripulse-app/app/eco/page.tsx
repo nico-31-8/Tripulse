@@ -89,7 +89,7 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
       <div className="relative w-full max-w-3xl bg-gray-900 border border-gray-700 rounded-2xl my-8 shadow-2xl">
         <div className="sticky top-0 bg-gray-900 rounded-t-2xl border-b border-gray-700 px-6 py-4 flex justify-between items-center z-10">
           <div>
-            <h2 className="text-xl font-bold text-white">¿Cómo funciona el Sistema ECO?</h2>
+            <h2 className="text-xl font-bold text-white">¿Cómo funciona el SICAT?</h2>
             <p className="text-gray-400 text-xs mt-0.5">Coste Energético individualizado por disciplina</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition text-2xl leading-none">×</button>
@@ -98,9 +98,9 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
         <div className="px-6 py-6 space-y-8">
 
           <section>
-            <h3 className="text-orange-400 font-bold text-base mb-2">¿Qué es el Sistema ECO?</h3>
+            <h3 className="text-orange-400 font-bold text-base mb-2">¿Qué es el SICAT?</h3>
             <p className="text-gray-300 text-sm leading-relaxed">
-              El Sistema ECO reemplaza los valores poblacionales genéricos de coste energético por datos reales
+              El SICAT (Sistema de Individualización de la Carga en Triatlón) reemplaza los valores poblacionales genéricos de coste energético por datos reales
               del propio deportista. En lugar de asumir que la carrera siempre es más exigente que el ciclismo,
               el sistema construye el perfil real de cada atleta a partir de sus sesiones acumuladas.
             </p>
@@ -428,14 +428,13 @@ export default function EcoPage() {
     <main className="min-h-screen bg-gray-950 text-white">
       {mostrarExplicacion && <ModalExplicacion onClose={() => setMostrarExplicacion(false)} />}
 
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-start justify-between mb-1">
-          <h2 className="text-2xl font-bold">Sistema ECO Individual</h2>
+          <h2 className="text-2xl font-bold">SICAT</h2>
           <button
             onClick={() => setMostrarExplicacion(true)}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-orange-500 text-gray-300 hover:text-white text-sm px-4 py-2 rounded-lg transition"

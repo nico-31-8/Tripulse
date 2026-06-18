@@ -83,7 +83,7 @@ export default function Dashboard() {
     { icon: '💚', titulo: 'Wellness', descripcion: 'Consulta el estado diario de tus atletas. Score, HRV, fatiga, estrés y evolución gráfica.', href: '/wellness-entrenador' },
     { icon: '📈', titulo: 'Carga', descripcion: 'Monitoriza ATL, CTL, TSB, ACWR, monotonía y strain. Control del estrés de entrenamiento.', href: '/carga' },
     { icon: '📊', titulo: 'Volumen', descripcion: 'Visualiza el volumen de entrenamiento por disciplina. Metros, minutos y carga UA por semana.', href: '/volumen' },
-    { icon: '🔬', titulo: 'Sistema ECO', descripcion: 'Análisis individualizado del coste energético por disciplina. Factores F1-F4 y corrector HRV.', href: '/eco' },
+    { icon: '🔬', titulo: 'SICAT', descripcion: 'Análisis individualizado del coste energético por disciplina. Factores F1-F4 y corrector HRV.', href: '/eco' },
     { icon: '🎯', titulo: 'Análisis de Índices', descripcion: 'Índice de percepción y planificación por sesión. Semáforo de doble dimensión.', href: '/indices' },
     { icon: '🏋️', titulo: 'Tests', descripcion: 'Registra FTP, CSS, VAM y 1RM. Genera zonas de entrenamiento automáticas.', href: '/tests' },
     { icon: '💪', titulo: 'Biblioteca Fuerza', descripcion: 'Gestiona ejercicios por grupo muscular con video de referencia. Acceso con clave de admin.', href: '/fuerza' },
@@ -93,8 +93,7 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesion</button>

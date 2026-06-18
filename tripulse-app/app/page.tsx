@@ -5,7 +5,7 @@ import Image from 'next/image'
 const FEATURES = [
   {
     icon: '🔬',
-    titulo: 'Sistema ECO Individual',
+    titulo: 'SICAT',
     desc: 'El único sistema que calcula el coste energético real de cada disciplina para cada deportista. No valores genéricos — datos reales acumulados de tus atletas.',
     color: 'border-orange-500',
   },
@@ -96,7 +96,7 @@ export default function Landing() {
             />
           </div>
           <div className="inline-flex items-center gap-2 bg-gray-800 border border-orange-500 rounded-full px-4 py-2 mb-6">
-            <span className="text-white text-sm font-medium">🔬 Sistema ECO Individual — único en el mercado</span>
+            <span className="text-white text-sm font-medium">🔬 SICAT — único en el mercado</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
             Entrena con
@@ -118,7 +118,7 @@ export default function Landing() {
           <div className="grid grid-cols-3 gap-6 mt-16 max-w-lg mx-auto">
             {[
               { num: '7', label: 'Zonas de entrenamiento' },
-              { num: '4', label: 'Factores ECO individuales' },
+              { num: '4', label: 'Factores SICAT individuales' },
               { num: '3', label: 'Disciplinas + Fuerza' },
             ].map(s => (
               <div key={s.label} className="text-center">
@@ -154,7 +154,7 @@ export default function Landing() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <span className="text-orange-500 text-sm font-bold uppercase tracking-widest">Lo que nos diferencia</span>
-            <h2 className="text-4xl font-bold mt-3 mb-4">El Sistema ECO Individual</h2>
+            <h2 className="text-4xl font-bold mt-3 mb-4">El SICAT (Sistema de Individualización de la Carga en Triatlón)</h2>
             <p className="text-gray-400 text-lg">
               Mientras otras plataformas usan valores genéricos de población, TRIPULSE construye el perfil real de cada deportista a partir de sus propios datos acumulados.
             </p>

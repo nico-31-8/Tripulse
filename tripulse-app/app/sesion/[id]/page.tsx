@@ -284,7 +284,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     if (errorTarea) { setError('Error: ' + errorTarea.message); setLoading(false); return }
     if (tarea) {
       const ejBib2 = ejercicioSel2
-      await supabase.from('ejercicios').insert({
+      const { error: errorEjercicio } = await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
         nombre: ejercicioSel.nombre,
         tipo_serie: tipoSerie,
@@ -296,9 +296,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         repeticiones: repsFuerza ? Number(repsFuerza) : null,
         descanso: descansoFuerza ? Number(descansoFuerza) : null,
         notas_ejecucion: (rir ? 'RIR: ' + rir : '') + (configSerie ? ' · ' + configSerie : ''),
-        url_video: ejercicioSel.url_video || null,
-        ejercicio_biblioteca_id: ejercicioSel.id || null
+        url_video: ejercicioSel.url_video || null
       })
+      if (errorEjercicio) { setError('Error al guardar ejercicio: ' + errorEjercicio.message); setLoading(false); return }
     }
     const tareaLocal = {
       ...tarea,
@@ -358,8 +358,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center gap-3"><button onClick={() => window.location.href = '/planificacion-visual/' + deportistaId + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button><button onClick={() => window.location.href = '/microciclo/' + sesion.id_microciclo} className="text-gray-400 hover:text-white text-sm transition">← Semana</button></div>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">

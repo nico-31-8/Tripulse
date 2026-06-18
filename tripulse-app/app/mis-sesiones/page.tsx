@@ -36,7 +36,7 @@ export default function MisSesiones() {
         const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
         const microIds = (micros || []).map((m: any) => m.id)
         if (!microIds.length) { setLoading(false); return }
-        const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).order('fecha_sesion')
+        const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
         setSesiones(data || [])
       }
       setLoading(false)
@@ -135,8 +135,7 @@ export default function MisSesiones() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
       </nav>
 

@@ -26,7 +26,7 @@ export default function DashboardDeportista() {
         const mesoIds = (mesos || []).map((m: any) => m.id)
         const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
         const microIds = (micros || []).map((m: any) => m.id)
-        const { data: sesHoy } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).eq('fecha_sesion', hoy)
+        const { data: sesHoy } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).eq('fecha_sesion', hoy).or('eliminada.is.null,eliminada.eq.false')
         setSesionesHoy(sesHoy || [])
         const { data: wellness } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1)
         setUltimoWellness(wellness?.[0] || null)
@@ -76,8 +76,7 @@ export default function DashboardDeportista() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesión</button>

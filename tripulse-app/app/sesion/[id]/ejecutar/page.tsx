@@ -229,7 +229,6 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.history.back()} className="text-gray-400 text-sm">← Volver</button>
-        <h1 className="text-orange-500 font-bold">TRIPULSE</h1>
         <div className="w-16" />
       </nav>
 

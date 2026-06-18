@@ -67,8 +67,12 @@ export default function FuerzaPage() {
   }
 
   const getYoutubeId = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([^&\n?#/]+)/)
     return match ? match[1] : null
+  }
+
+  const esYoutubeShort = (url: string) => {
+    return /youtube\.com\/shorts\//.test(url)
   }
 
   const abrirEdicion = (ej: any) => {
@@ -108,8 +112,7 @@ export default function FuerzaPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
@@ -192,7 +195,17 @@ export default function FuerzaPage() {
               <button onClick={() => setModalVideo(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
             <div className="p-4">
-              {getYoutubeId(modalVideo) ? (
+              {esYoutubeShort(modalVideo) ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                  <p className="text-gray-400 text-sm text-center">
+                    Este vídeo es un Short de YouTube y no se puede mostrar dentro de la app.
+                  </p>
+                  <a href={modalVideo} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-lg text-sm font-medium transition">
+                    <span>▶</span> Abrir en YouTube
+                  </a>
+                </div>
+              ) : getYoutubeId(modalVideo) ? (
                 <iframe
                   width="100%" height="360"
                   src={`https://www.youtube.com/embed/${getYoutubeId(modalVideo)}`}

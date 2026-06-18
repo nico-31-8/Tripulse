@@ -269,8 +269,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500 hover:text-orange-400 transition">TRIPULSE</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/deportistas'} className="text-gray-400 hover:text-white text-sm transition">← Deportistas</button>
       </nav>
 
@@ -497,7 +496,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             </div>
 
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="font-bold mb-4 text-blue-400">🔬 Sistema ECO Individual</h3>
+              <h3 className="font-bold mb-4 text-blue-400">🔬 SICAT</h3>
               {ecoScores.length > 0 ? (
                 <div className="grid gap-2">
                   {ecoScores.map(e => (

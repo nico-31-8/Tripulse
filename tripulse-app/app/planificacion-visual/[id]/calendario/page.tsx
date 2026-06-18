@@ -395,8 +395,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 px-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-xl font-bold text-orange-500">TRIPULSE</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
           <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
           <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>

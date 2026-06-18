@@ -291,6 +291,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
         escalones_drop: f.escalonDrop || null,
+        url_video: ejBib.url_video || null,
       })
       if (f.repsFuerza) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
     }
