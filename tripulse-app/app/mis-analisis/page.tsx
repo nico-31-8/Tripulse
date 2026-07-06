@@ -1,6 +1,8 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
+import type { TestsDeportista } from '@/lib/duracion'
 
 function secAMinSeg(seg: number): string {
   const m = Math.floor(seg / 60)
@@ -57,7 +59,14 @@ export default function MisAnalisis() {
         .order('fecha_sesion', { ascending: false })
         .limit(20)
 
-      setSesiones(ses || [])
+      const [tc, tn, tci] = await Promise.all([
+        supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      ])
+      const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+      const durs = await estimarDuraciones(supabase, (ses || []).map((s: any) => s.id), testsDep)
+      setSesiones((ses || []).map((s: any) => ({ ...s, dur_estimada: durs[s.id] })))
       setLoading(false)
     }
     cargar()
@@ -86,7 +95,7 @@ export default function MisAnalisis() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => sesionSel ? setSesionSel(null) : window.location.href = '/dashboard-deportista'}
           className="text-gray-400 hover:text-white text-sm transition">
           {sesionSel ? '← Volver a sesiones' : '← Mi panel'}
@@ -107,7 +116,7 @@ export default function MisAnalisis() {
             ) : (
               <div className="flex flex-col gap-3">
                 {sesiones.map(s => {
-                  const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+                  const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (minutosEfectivos(s.duracion_minutos, s.dur_estimada) || 0)
                   return (
                     <button key={s.id} onClick={() => verAnalisis(s)}
                       className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left w-full">
@@ -120,7 +129,7 @@ export default function MisAnalisis() {
                               <span className="text-gray-400 text-xs">{s.fecha_sesion}</span>
                             </div>
                             <p className="text-gray-300 text-sm">
-                              {s.duracion_minutos ? s.duracion_minutos + ' min' : '—'} ·
+                              {duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} ·
                               RPE plan {s.rpe_estimado || '—'} →
                               <span className={' font-bold ' + rpeColor(s.rpe_reportado, s.rpe_estimado)}>
                                 {s.rpe_reportado || '—'}
@@ -306,3 +315,4 @@ export default function MisAnalisis() {
     </main>
   )
 }
+

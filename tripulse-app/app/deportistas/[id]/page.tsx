@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
 
@@ -144,8 +145,10 @@ function DisponibilidadDeportista({ depId }: { depId: number }) {
 
 export default function PerfilDeportista({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
-  const [pestana, setPestana] = useState<'perfil'|'resumen'|'sesiones'|'disponibilidad'|'cargadisc'|'adherencia'>('perfil')
+  const [pestana, setPestana] = useState<'perfil'|'resumen'|'sesiones'|'disponibilidad'|'cargadisc'|'adherencia'|'anamnesis'>('perfil')
+  const [anamnesis, setAnamnesis] = useState<any>(null)
   const [tests, setTests] = useState<any>({})
   const [zonas, setZonas] = useState<any[]>([])
   const [ultimoWellness, setUltimoWellness] = useState<any>(null)
@@ -170,6 +173,8 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    const { data: an } = await supabase.from('anamnesis').select('*').eq('id_deportista', id).maybeSingle()
+    setAnamnesis(an || null)
 
     const [t1, t2, t3, tf] = await Promise.all([
       supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
@@ -269,7 +274,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/deportistas'} className="text-gray-400 hover:text-white text-sm transition">← Deportistas</button>
       </nav>
 
@@ -332,6 +337,13 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
               (pestana === 'disponibilidad' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
             🗓 Disponibilidad
+          </button>
+          <button onClick={() => setPestana('anamnesis')}
+            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 flex items-center gap-1.5 ' +
+              (pestana === 'anamnesis' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
+            📋 Anamnesis
+            {anamnesis?.estado === 'enviada' && pestana !== 'anamnesis' && <span className="w-2 h-2 bg-green-400 rounded-full"></span>}
+            {!anamnesis && <span className="text-xs bg-gray-700 text-gray-400 px-1.5 rounded">Pendiente</span>}
           </button>
         </div>
 
@@ -626,6 +638,177 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         {/* PESTAÑA DISPONIBILIDAD */}
         {pestana === 'disponibilidad' && (
           <DisponibilidadDeportista depId={Number(id)} />
+        )}
+
+        {pestana === 'anamnesis' && (
+          <div className="flex flex-col gap-6">
+            {!anamnesis && (
+              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center">
+                <p className="text-4xl mb-3">📋</p>
+                <p className="text-white font-bold mb-1">Anamnesis pendiente</p>
+                <p className="text-gray-400 text-sm">El deportista aún no ha completado su ficha inicial.</p>
+              </div>
+            )}
+            {anamnesis && anamnesis.estado === 'borrador' && (
+              <div className="bg-yellow-950 border border-yellow-700 rounded-xl p-4 flex items-center gap-3">
+                <span className="text-yellow-400 text-xl">⏳</span>
+                <p className="text-yellow-300 text-sm">El deportista tiene la anamnesis en borrador — aún no la ha enviado.</p>
+              </div>
+            )}
+            {anamnesis && [anamnesis.salud_cardiaca, anamnesis.salud_familia_infarto, anamnesis.salud_tension_alta, anamnesis.salud_diabetes, anamnesis.salud_asma, anamnesis.salud_medicacion, anamnesis.salud_alergia, anamnesis.salud_razon_medica].some(v => v === true) && (
+              <div className="bg-orange-950 border border-orange-600 rounded-xl p-4">
+                <p className="text-orange-300 font-bold text-sm">⚠️ Alertas de salud</p>
+                <p className="text-orange-400 text-xs mt-1">Este deportista ha indicado antecedentes médicos. Revisa su ficha antes de planificar.</p>
+              </div>
+            )}
+            {anamnesis && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* S1 */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos personales</p>
+                  {[
+                    ['Nombre', anamnesis.nombre_completo],
+                    ['F. nacimiento', anamnesis.fecha_nacimiento],
+                    ['Sexo', anamnesis.sexo],
+                    ['Peso', anamnesis.peso ? anamnesis.peso + ' kg' : null],
+                    ['Talla', anamnesis.talla ? anamnesis.talla + ' cm' : null],
+                    ['Contacto emergencia', anamnesis.contacto_emergencia_nombre],
+                    ['Tel. emergencia', anamnesis.contacto_emergencia_telefono],
+                  ].map(([k, v]) => v ? (
+                    <div key={k as string} className="flex justify-between py-1.5 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-500 text-sm">{k}</span>
+                      <span className="text-white text-sm">{v as string}</span>
+                    </div>
+                  ) : null)}
+                </div>
+                {/* S4 */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Perfil deportivo</p>
+                  {[
+                    ['Años triatlón', anamnesis.anios_triatlon],
+                    ['Distancias', anamnesis.distancias_completadas?.join(', ')],
+                    ['Nivel', anamnesis.nivel_competitivo],
+                    ['Disciplina fuerte', anamnesis.disciplina_fuerte],
+                    ['Disciplina débil', anamnesis.disciplina_debil],
+                    ['Volumen semanal', anamnesis.volumen_semanal],
+                    ['Días/semana', anamnesis.dias_semana],
+                  ].map(([k, v]) => v ? (
+                    <div key={k as string} className="flex justify-between py-1.5 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-500 text-sm">{k}</span>
+                      <span className="text-white text-sm">{v as string}</span>
+                    </div>
+                  ) : null)}
+                </div>
+                {/* S5 */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Parámetros de rendimiento</p>
+                  {[
+                    ['FC máxima', anamnesis.fc_maxima ? anamnesis.fc_maxima + ' ppm' : null],
+                    ['FC reposo', anamnesis.fc_reposo ? anamnesis.fc_reposo + ' ppm' : null],
+                    ['FTP', anamnesis.ftp ? anamnesis.ftp + ' W' : null],
+                    ['CSS', anamnesis.css],
+                    ['Ritmo umbral', anamnesis.ritmo_umbral],
+                    ['Potenciómetro', anamnesis.tiene_potenciometro === true ? 'Sí' : anamnesis.tiene_potenciometro === false ? 'No' : null],
+                    ['Pulsómetro/GPS', anamnesis.usa_pulsometro === true ? 'Sí' : anamnesis.usa_pulsometro === false ? 'No' : null],
+                    ['HRV', anamnesis.mide_hrv === true ? ('Sí' + (anamnesis.hrv_dispositivo ? ' — ' + anamnesis.hrv_dispositivo : '')) : anamnesis.mide_hrv === false ? 'No' : null],
+                  ].map(([k, v]) => v ? (
+                    <div key={k as string} className="flex justify-between py-1.5 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-500 text-sm">{k}</span>
+                      <span className="text-white text-sm">{v as string}</span>
+                    </div>
+                  ) : null)}
+                  {!anamnesis.fc_maxima && !anamnesis.ftp && !anamnesis.css && (
+                    <p className="text-gray-600 text-sm">Sin parámetros registrados — completar tras los primeros tests.</p>
+                  )}
+                </div>
+                {/* S7 */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Objetivos</p>
+                  {[
+                    ['Prueba objetivo', anamnesis.prueba_objetivo],
+                    ['Fecha prueba', anamnesis.prueba_fecha],
+                    ['Distancia', anamnesis.prueba_distancia],
+                    ['Objetivo', anamnesis.objetivo_principal],
+                  ].map(([k, v]) => v ? (
+                    <div key={k as string} className="flex justify-between py-1.5 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-500 text-sm">{k}</span>
+                      <span className="text-white text-sm">{v as string}</span>
+                    </div>
+                  ) : null)}
+                  {anamnesis.motivacion && (
+                    <div className="mt-3 pt-3 border-t border-gray-800">
+                      <p className="text-gray-500 text-xs mb-1">Motivación</p>
+                      <p className="text-gray-300 text-sm">{anamnesis.motivacion}</p>
+                    </div>
+                  )}
+                  {anamnesis.mensaje_entrenador && (
+                    <div className="mt-3 pt-3 border-t border-gray-800">
+                      <p className="text-gray-500 text-xs mb-1">Mensaje al entrenador</p>
+                      <p className="text-orange-300 text-sm italic">"{anamnesis.mensaje_entrenador}"</p>
+                    </div>
+                  )}
+                </div>
+                {/* S2 salud */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 md:col-span-2">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Salud (PAR-Q)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ['Cardíaca/cardiovascular', anamnesis.salud_cardiaca, anamnesis.salud_cardiaca_detalle],
+                      ['Historia familiar infarto', anamnesis.salud_familia_infarto, null],
+                      ['Tensión alta', anamnesis.salud_tension_alta, null],
+                      ['Diabetes', anamnesis.salud_diabetes, anamnesis.salud_diabetes_tipo],
+                      ['Asma/respiratorio', anamnesis.salud_asma, anamnesis.salud_asma_detalle],
+                      ['Medicación habitual', anamnesis.salud_medicacion, anamnesis.salud_medicacion_detalle],
+                      ['Alergias', anamnesis.salud_alergia, anamnesis.salud_alergia_detalle],
+                      ['Razón médica ejercicio', anamnesis.salud_razon_medica, anamnesis.salud_razon_medica_detalle],
+                    ].map(([label, val, det]) => (
+                      <div key={label as string} className={'flex items-start gap-2 p-2 rounded-lg ' + (val === true ? 'bg-orange-950 border border-orange-800' : 'bg-gray-800')}>
+                        <span className={val === true ? 'text-orange-400' : 'text-gray-600'}>{val === true ? '⚠️' : '✓'}</span>
+                        <div>
+                          <p className="text-xs text-gray-400">{label as string}</p>
+                          <p className={val === true ? 'text-orange-300 text-xs font-medium' : 'text-gray-600 text-xs'}>{val === true ? 'Sí' + (det ? ' — ' + det : '') : val === false ? 'No' : '—'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* S3 lesiones */}
+                {anamnesis.lesiones_recientes && (
+                  <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 md:col-span-2">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Historial de lesiones</p>
+                    {anamnesis.lesiones_lista?.length > 0 ? (
+                      <div className="flex flex-col gap-2">
+                        {anamnesis.lesiones_lista.map((l: any, i: number) => (
+                          <div key={i} className="flex items-center gap-4 bg-gray-800 rounded-lg px-4 py-2 text-sm">
+                            <span className="text-white font-medium">{l.zona}</span>
+                            <span className="text-gray-400">{l.tipo}</span>
+                            <span className="text-gray-500">{l.anio}</span>
+                            <span className={l.recuperado === 'Sí' ? 'text-green-400' : l.recuperado === 'Parcialmente' ? 'text-yellow-400' : 'text-red-400'}>{l.recuperado}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="text-gray-600 text-sm">No especificó lesiones detalladas.</p>}
+                    {anamnesis.lesiones_dolor_cronico && <p className="text-orange-300 text-sm mt-3">⚠️ Dolor crónico: {anamnesis.lesiones_dolor_cronico_detalle}</p>}
+                  </div>
+                )}
+                {/* S6 hábitos */}
+                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Hábitos de vida</p>
+                  {[
+                    ['Sueño', anamnesis.horas_sueno],
+                    ['Actividad diaria', anamnesis.actividad_diaria],
+                    ['Estrés', anamnesis.nivel_estres],
+                    ['Dieta', anamnesis.dieta],
+                  ].map(([k, v]) => v ? (
+                    <div key={k as string} className="flex justify-between py-1.5 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-500 text-sm">{k}</span>
+                      <span className="text-white text-sm">{v as string}</span>
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

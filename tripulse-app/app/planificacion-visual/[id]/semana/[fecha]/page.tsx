@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -27,6 +28,7 @@ function diasDeSemana(lunes: string): { fecha: string; dia: string; diaCorto: st
 
 export default function SemanaPage({ params }: { params: Promise<{ id: string; fecha: string }> }) {
   const { id, fecha } = use(params)
+  useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
   const [microciclo, setMicrociclo] = useState<any>(null)
   const [sesiones, setSesiones] = useState<any[]>([])
@@ -161,10 +163,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800 flex-shrink-0">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-gray-300 text-sm font-medium">{dep?.nombre} — Semana del {fecha}</span>
-          <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver al Dibujo</button>
+          <button onClick={() => window.location.href = `/planificacion-visual/${id}/dibujo?editar=1`} className="text-gray-400 hover:text-white text-sm transition">← Volver al Dibujo</button>
           <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
         </div>
       </nav>

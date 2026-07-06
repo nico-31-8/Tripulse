@@ -2,6 +2,7 @@
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
@@ -105,6 +106,7 @@ function GraficaFuerza({ datos }: { datos: any[] }) {
 
 export default function PaginaTests({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
   const [tests1, setTests1] = useState<any[]>([])
   const [tests2, setTests2] = useState<any[]>([])
@@ -229,7 +231,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">

@@ -1,8 +1,11 @@
 'use client'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
-const SEMANA_W = 90
+const SEMANA_W_DEFAULT = 90
+const SEMANA_W_MIN = 40
+const SEMANA_W_MAX = 160
 const UA_H = 180
 
 interface MacroD { id: string; si: number; sf: number; nombre: string; tipo: string; dbId?: number }
@@ -50,6 +53,7 @@ function weeksBetween(f1: string, f2: string): number {
 
 export default function DibujoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
   const [pantalla, setPantalla] = useState<'cargando'|'elegir'|'setup'|'canvas'>('cargando')
   const [macrosExistentes, setMacrosExistentes] = useState<any[]>([])
@@ -62,6 +66,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [dragWk, setDragWk] = useState<number | null>(null)
   const [dragY0, setDragY0] = useState(0)
   const [dragUA0, setDragUA0] = useState(0)
+  const [dragMaxUA0, setDragMaxUA0] = useState(200)
   const [editWk, setEditWk] = useState<number | null>(null)
   const [editVal, setEditVal] = useState('')
   const [modal, setModal] = useState<string | null>(null)
@@ -100,6 +105,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [zonaSelDisc, setZonaSelDisc] = useState('Natacion')
   const [zonaSelZona, setZonaSelZona] = useState('Z1')
   const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza'])
+  const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragBandRef = useRef<'macro' | 'meso' | null>(null)
@@ -130,7 +136,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       const { data: macs } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
       if (macs && macs.length > 0) {
         setMacrosExistentes(macs)
-        setPantalla('elegir')
+        const autoEditar = new URLSearchParams(window.location.search).get('editar') === '1'
+        if (autoEditar) {
+          await cargarExistente()
+        } else {
+          setPantalla('elegir')
+        }
       } else {
         setPantalla('setup')
       }
@@ -233,7 +244,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     const container = scrollRef.current; if (!container) return 0
     const rect = container.getBoundingClientRect()
     const x = clientX - rect.left + container.scrollLeft
-    return Math.max(0, Math.min(totalSem - 1, Math.floor(x / SEMANA_W)))
+    return Math.max(0, Math.min(totalSem - 1, Math.floor(x / semanaW)))
   }
 
   useEffect(() => {
@@ -324,12 +335,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     if (dragWk === null) return
     const onMove = (e: MouseEvent) => {
       const dy = dragY0 - e.clientY
-      setSems(prev => prev.map(s => s.i === dragWk ? { ...s, ua: Math.max(0, Math.round((dragUA0 + dy * 5) / 25) * 25) } : s))
+      setSems(prev => prev.map(s => s.i === dragWk ? { ...s, ua: Math.max(0, Math.round((dragUA0 + dy * dragMaxUA0 / UA_H) / 25) * 25) } : s))
     }
     const onUp = () => setDragWk(null)
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [dragWk, dragY0, dragUA0])
+  }, [dragWk, dragY0, dragUA0, dragMaxUA0])
 
   const macAt = (wi: number) => macros.find(m => wi >= m.si && wi <= m.sf)
   const mesoAt = (wi: number) => mesos.find(m => wi >= m.si && wi <= m.sf)
@@ -603,7 +614,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800 flex-shrink-0">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-gray-300 text-sm font-medium">Dibujo — {dep.nombre}</span>
           <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-gray-400 hover:text-white text-sm transition">Bloques</button>
@@ -747,6 +758,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 ) : null}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700" title="Zoom del canvas">
+                  <button onClick={() => setSemanaW(w => Math.max(SEMANA_W_MIN, w - 10))} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition font-bold text-base">−</button>
+                  <span className="text-gray-400 text-xs select-none" style={{ minWidth: 20, textAlign: 'center' }}>🔍</span>
+                  <button onClick={() => setSemanaW(w => Math.min(SEMANA_W_MAX, w + 10))} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition font-bold text-base">+</button>
+                </div>
                 <button onClick={() => setMostrarCurva(v => !v)}
                   className={'text-xs px-2 py-1.5 rounded-lg transition border ' + (mostrarCurva ? 'bg-orange-500/20 border-orange-500/50 text-orange-400' : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300')}
                   title="Mostrar/ocultar curva de periodizacion teorica">
@@ -767,7 +783,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto bg-gray-950">
-              <div style={{ width: Math.max(totalSem * SEMANA_W, 600) + 'px' }} className="select-none pb-4">
+              <div style={{ width: Math.max(totalSem * semanaW, 600) + 'px' }} className="select-none pb-4">
 
                 {/* MACRO */}
                 <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 52 }}
@@ -781,11 +797,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 pointer-events-none bg-gray-950">
                     <span className="text-gray-500 text-xs font-bold tracking-widest">MACRO</span>
                   </div>
-                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * SEMANA_W, width: SEMANA_W }} />)}
+                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * semanaW, width: semanaW }} />)}
                   {macros.map(mac => (
                     <div key={mac.id}
                       className="absolute inset-y-2 rounded-xl flex items-center px-3 z-10 overflow-hidden group/mac cursor-pointer"
-                      style={{ left: mac.si * SEMANA_W + 1, width: (mac.sf - mac.si + 1) * SEMANA_W - 2, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }}
+                      style={{ left: mac.si * semanaW + 1, width: (mac.sf - mac.si + 1) * semanaW - 2, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }}
                       onDoubleClick={e => abrirEditarMacro(mac, e)}
                       onMouseDown={e => {
                         if (e.detail === 2) return // doble clic — no mover
@@ -813,11 +829,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   ))}
                   {movePreview?.tipo === 'macro' && movePreview.id && (
                     <div className="absolute inset-y-2 rounded-xl z-40 pointer-events-none"
-                      style={{ left: movePreview.si * SEMANA_W + 1, width: (movePreview.sf - movePreview.si + 1) * SEMANA_W - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }} />
+                      style={{ left: movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }} />
                   )}
                   {dragPreview?.band === 'macro' && (
                     <div className="absolute inset-y-2 rounded-xl z-30 pointer-events-none flex items-center justify-center"
-                      style={{ left: dragPreview.si * SEMANA_W + 1, width: (dragPreview.sf - dragPreview.si + 1) * SEMANA_W - 2, backgroundColor: '#EA580C30', border: '2px dashed #EA580C' }}>
+                      style={{ left: dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C30', border: '2px dashed #EA580C' }}>
                       <span className="text-orange-300 text-xs font-bold">{dragPreview.sf - dragPreview.si + 1} sem</span>
                     </div>
                   )}
@@ -836,17 +852,17 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 pointer-events-none bg-gray-950">
                     <span className="text-gray-500 text-xs font-bold tracking-widest">MESO</span>
                   </div>
-                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * SEMANA_W, width: SEMANA_W }} />)}
+                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * semanaW, width: semanaW }} />)}
                   {macros.map(mac => (
                     <div key={mac.id} className="absolute inset-y-0 pointer-events-none opacity-10"
-                      style={{ left: mac.si * SEMANA_W, width: (mac.sf - mac.si + 1) * SEMANA_W, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }} />
+                      style={{ left: mac.si * semanaW, width: (mac.sf - mac.si + 1) * semanaW, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }} />
                   ))}
                   {mesos.map(me => {
                     const col = C_MESO[me.tipo] || '#EA580C'
                     return (
                       <div key={me.id}
                         className="absolute inset-y-1.5 rounded-lg flex items-center px-2 z-10 border overflow-hidden group/meso cursor-pointer"
-                        style={{ left: me.si * SEMANA_W + 1, width: (me.sf - me.si + 1) * SEMANA_W - 2, backgroundColor: col + '25', borderColor: col }}
+                        style={{ left: me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
                         onDoubleClick={e => abrirEditarMeso(me, e)}
                         onMouseDown={e => {
                           if (e.detail === 2) return
@@ -879,7 +895,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const col = me ? (C_MESO[me.tipo] || '#EA580C') : '#EA580C'
                     return (
                       <div className="absolute inset-y-1.5 rounded-lg z-40 pointer-events-none"
-                        style={{ left: movePreview.si * SEMANA_W + 1, width: (movePreview.sf - movePreview.si + 1) * SEMANA_W - 2, backgroundColor: col + '30', border: '2px dashed ' + col }} />
+                        style={{ left: movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: col + '30', border: '2px dashed ' + col }} />
                     )
                   })()}
                   {dragPreview?.band === 'meso' && (() => {
@@ -887,7 +903,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const col = mac ? (C_MACRO[mac.tipo] || '#EA580C') : '#EA580C'
                     return (
                       <div className="absolute inset-y-1.5 rounded-lg z-30 pointer-events-none flex items-center justify-center"
-                        style={{ left: dragPreview.si * SEMANA_W + 1, width: (dragPreview.sf - dragPreview.si + 1) * SEMANA_W - 2, backgroundColor: col + '20', border: '2px dashed ' + col }}>
+                        style={{ left: dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: col + '20', border: '2px dashed ' + col }}>
                         <span className="text-white/70 text-xs font-bold">{dragPreview.sf - dragPreview.si + 1} sem</span>
                       </div>
                     )
@@ -903,7 +919,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const col = C_TIPO[s.tipo] || '#EA580C'
                     return (
                       <div key={s.i} className="flex-shrink-0 border-r border-gray-800 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-gray-800/40 transition"
-                        style={{ width: SEMANA_W, outline: semSelIdx === s.i && capas.has('prog') ? '2px solid #3B82F6' : 'none' }}
+                        style={{ width: semanaW, outline: semSelIdx === s.i && capas.has('prog') ? '2px solid #3B82F6' : 'none' }}
                         onClick={() => capas.has('prog') ? cargarDetalleSemana(s.i) : toggleTipo(s.i)}>
                         <div className="flex items-center gap-1">
                           <span className="text-gray-500 text-xs">S{s.i + 1}</span>
@@ -939,7 +955,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     return (
                       <div key={s.i}
                         className="flex-shrink-0 border-r border-gray-800/30 flex flex-col items-center justify-end group relative"
-                        style={{ width: SEMANA_W, height: '100%' }}
+                        style={{ width: semanaW, height: '100%' }}
                         onMouseEnter={() => setHoveredWeek(s.i)}
                         onMouseLeave={() => setHoveredWeek(null)}>
 
@@ -997,7 +1013,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         {capas.has('plan') && (
                           <div className="rounded-t z-10"
                             style={{ width: '68%', height: Math.max(planH, 3) + 'px', backgroundColor: barColor, opacity: isDragging ? 1 : (s.ua ? 0.85 : 0.12), marginBottom: 36, transition: isDragging ? 'none' : 'height 0.08s', cursor: canDrag ? 'ns-resize' : 'default' }}
-                            onMouseDown={e => { if (!canDrag) return; e.preventDefault(); setDragWk(s.i); setDragY0(e.clientY); setDragUA0(s.ua || 0); setEditWk(null) }}
+                            onMouseDown={e => { if (!canDrag) return; e.preventDefault(); setDragWk(s.i); setDragY0(e.clientY); setDragUA0(s.ua || 0); setDragMaxUA0(allMaxUA); setEditWk(null) }}
                             onDoubleClick={() => { if (canDrag) { setEditWk(s.i); setEditVal(s.ua?.toString() || '') } }}
                             onClick={e => { if (!isDragging && canDrag && s.ua) { e.stopPropagation(); setPopupBarra(popupBarra === s.i ? null : s.i); setPanelTab('plan') } }}
                             title="Arrastra hacia arriba para cambiar UA · Clic para opciones" />
@@ -1047,9 +1063,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <svg
                       className="absolute pointer-events-none"
                       style={{ bottom: 36, left: 0, zIndex: 20 }}
-                      width={totalSem * SEMANA_W}
+                      width={totalSem * semanaW}
                       height={UA_H + 10}
-                      viewBox={'0 0 ' + (totalSem * SEMANA_W) + ' ' + (UA_H + 10)}>
+                      viewBox={'0 0 ' + (totalSem * semanaW) + ' ' + (UA_H + 10)}>
                       {macros.map(mac => {
                         const curva = calcularCurvaTeoria(mac)
                         const col = C_MACRO[mac.tipo] || '#EA580C'
@@ -1057,7 +1073,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         // Calcular puntos de la curva
                         const puntos = curva.map((v, i) => {
                           const semIdx = mac.si + i
-                          const x = semIdx * SEMANA_W + SEMANA_W / 2
+                          const x = semIdx * semanaW + semanaW / 2
                           const uaRef = sems.filter(s => s.i >= mac.si && s.i <= mac.sf).reduce((a, s) => Math.max(a, s.ua || 0), 0)
                           const refUA = uaRef > 0 ? uaRef : uaMaxMac * 0.7
                           const y = UA_H - Math.round(v * Math.min(refUA, uaMaxMac) / uaMaxMac * UA_H)
@@ -1079,7 +1095,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             {/* Puntos en cada semana */}
                             {curva.map((v, i) => {
                               const semIdx = mac.si + i
-                              const x = semIdx * SEMANA_W + SEMANA_W / 2
+                              const x = semIdx * semanaW + semanaW / 2
                               const uaRef = sems.filter(s => s.i >= mac.si && s.i <= mac.sf).reduce((a, s) => Math.max(a, s.ua || 0), 0)
                               const refUA = uaRef > 0 ? uaRef : uaMaxMac * 0.7
                               const y = UA_H - Math.round(v * Math.min(refUA, uaMaxMac) / uaMaxMac * UA_H)
@@ -1100,17 +1116,19 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     </div>
                     {sems.map(s => {
                       const sesEsta = sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina))
-                      const C_DISC: Record<string,string> = { Natacion:'#3B82F6', Natación:'#3B82F6', Ciclismo:'#EAB308', Carrera:'#22C55E', Fuerza:'#EF4444' }
+                      const C_ZONA: Record<string,string> = { Z1:'#6B7280', Z2:'#3B82F6', Z3:'#EAB308', Z4:'#F97316', Z5:'#EF4444', Z6:'#7C3AED', Z7:'#EC4899' }
+                      const DISC_LABEL: Record<string,string> = { Natacion:'Nat', Natación:'Nat', Ciclismo:'Cic', Carrera:'Car', Fuerza:'Fue', Brick:'Brk' }
                       return (
                         <div key={s.i} className="flex-shrink-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 relative group/zona"
-                          style={{ width: SEMANA_W, minHeight: 180 }}
+                          style={{ width: semanaW, minHeight: 180 }}
                           onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonaSelZona('Z1') }}>
                           {sesEsta.map(sz => (
                             <div key={sz.id}
-                              className="flex-shrink-0 flex items-center justify-center rounded text-white font-bold border relative group/sq"
-                              style={{ width: SEMANA_W - 6, height: 22, backgroundColor: (C_DISC[sz.disciplina] || '#888') + '30', borderColor: C_DISC[sz.disciplina] || '#888', fontSize: 9 }}
+                              className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq"
+                              style={{ width: semanaW - 6, height: 28, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8 }}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
-                              {sz.zona}
+                              <span style={{ fontSize: 9, fontWeight: 700 }}>{sz.zona}</span>
+                              <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
                               <span className="absolute inset-0 bg-red-500/0 group-hover/sq:bg-red-500/10 rounded transition pointer-events-none" />
                             </div>
                           ))}
@@ -1127,7 +1145,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     {sems.map(s => {
                       const n = sesZonas.filter(sz => sz.semana === s.i).length
                       return (
-                        <div key={s.i} className="flex-shrink-0 flex items-center justify-center" style={{ width: SEMANA_W, height: 18 }}>
+                        <div key={s.i} className="flex-shrink-0 flex items-center justify-center" style={{ width: semanaW, height: 18 }}>
                           {n > 0 && <span className="text-gray-500 font-medium" style={{ fontSize: 9 }}>{n}</span>}
                         </div>
                       )
@@ -1202,12 +1220,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <p className="text-gray-500 text-xs mb-2">Sesiones esta semana:</p>
                             <div className="flex flex-wrap gap-1.5">
                               {sesZonas.filter(sz => sz.semana === popupZona.semana).map(sz => {
-                                const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444'}
+                                const CZ: Record<string,string> = {Z1:'#6B7280',Z2:'#3B82F6',Z3:'#EAB308',Z4:'#F97316',Z5:'#EF4444',Z6:'#7C3AED',Z7:'#EC4899'}
+                                const DL: Record<string,string> = {Natacion:'Nat',Natación:'Nat',Ciclismo:'Cic',Carrera:'Car',Fuerza:'Fue',Brick:'Brk'}
                                 return (
                                   <div key={sz.id} className="flex items-center gap-1 rounded-lg px-2 py-1 border text-xs"
-                                    style={{backgroundColor:(C[sz.disciplina]||'#888')+'20',borderColor:C[sz.disciplina]||'#888'}}>
+                                    style={{backgroundColor:(CZ[sz.zona]||'#888')+'20',borderColor:CZ[sz.zona]||'#888'}}>
                                     <span className="text-white font-bold">{sz.zona}</span>
-                                    <span className="text-gray-400">{sz.disciplina === 'Natacion' ? 'Nat' : sz.disciplina === 'Ciclismo' ? 'Cic' : sz.disciplina === 'Carrera' ? 'Car' : 'Fue'}</span>
+                                    <span className="text-gray-400">{DL[sz.disciplina] || sz.disciplina}</span>
                                     <button onClick={() => setSesZonas(prev => prev.filter(x => x.id !== sz.id))} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
                                   </div>
                                 )
@@ -1223,7 +1242,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <div className="flex" style={{ height: 24 }}>
                   <div className="flex-shrink-0 w-14 bg-gray-950" />
                   {sems.map(s => (
-                    <div key={s.i} className="flex-shrink-0 border-r border-gray-800/30 flex items-center justify-center" style={{ width: SEMANA_W }}>
+                    <div key={s.i} className="flex-shrink-0 border-r border-gray-800/30 flex items-center justify-center" style={{ width: semanaW }}>
                       <span className="text-gray-700" style={{ fontSize: 10 }}>{semLabel(fechaInicio, s.i)}</span>
                     </div>
                   ))}

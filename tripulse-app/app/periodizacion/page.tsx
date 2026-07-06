@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 
@@ -73,7 +73,7 @@ export default function PeriodizacionPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
       </nav>
 
@@ -175,3 +175,4 @@ export default function PeriodizacionPage() {
     </main>
   )
 }
+

@@ -11,6 +11,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
   const [password, setPassword] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
+  const [aceptoTerminos, setAceptoTerminos] = useState(false)
 
   useEffect(() => {
     const cargar = async () => {
@@ -33,6 +34,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
 
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!aceptoTerminos) { setError('Debes aceptar la política de privacidad y los términos'); return }
     setGuardando(true)
     setError('')
 
@@ -50,21 +52,25 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
       rol: 'deportista',
       nombre: invitacion.nombre_deportista,
       email,
+      acepto_terminos: true,
+      fecha_consentimiento: new Date().toISOString(),
+      version_consentimiento: 'v1-2026-07',
     })
 
-    // 3. Vincular el usuario al deportista ya creado
-    await supabase.from('deportista').update({
-      id_usuario: data.user.id,
-    }).eq('id', invitacion.id_deportista)
-
-    // 4. Marcar invitación como usada
-    await supabase.from('invitacion_deportista').update({ usado: true }).eq('token', token)
+    // 3. Vincular el usuario al deportista y marcar la invitación como usada
+    //    (función segura gated por token, corre como definer)
+    const { error: errVinc } = await supabase.rpc('aceptar_invitacion', { p_token: token })
+    if (errVinc) {
+      setError('Error al vincular: ' + errVinc.message)
+      setGuardando(false)
+      return
+    }
 
     setExito(true)
     setGuardando(false)
 
     setTimeout(() => {
-      window.location.href = '/dashboard-deportista'
+      window.location.href = '/anamnesis'
     }, 2000)
   }
 
@@ -135,13 +141,20 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
             />
           </div>
 
+          <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
+            <input type="checkbox" checked={aceptoTerminos} onChange={e => setAceptoTerminos(e.target.checked)} className="mt-0.5 accent-orange-500" required />
+            <span>
+              He leído y acepto la <a href="/privacidad" target="_blank" className="text-orange-400 hover:underline">política de privacidad</a> y los <a href="/terminos" target="_blank" className="text-orange-400 hover:underline">términos de uso</a>. Entiendo que se tratarán mis datos de entrenamiento y salud para el seguimiento deportivo.
+            </span>
+          </label>
+
           {error && (
             <p className="text-red-400 text-sm">{error}</p>
           )}
 
           <button
             type="submit"
-            disabled={guardando}
+            disabled={guardando || !aceptoTerminos}
             className="bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-bold transition disabled:opacity-50"
           >
             {guardando ? 'Creando cuenta...' : 'Crear mi cuenta →'}

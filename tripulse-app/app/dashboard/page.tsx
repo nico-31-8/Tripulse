@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
@@ -12,6 +12,7 @@ export default function Dashboard() {
     return saved ? JSON.parse(saved) : []
   })
   const [avisos, setAvisos] = useState<string[]>([])
+  const [anamnesisNuevas, setAnamnesisNuevas] = useState<{nombre: string, id: number}[]>([])
 
   useEffect(() => {
     const cargarPerfil = async () => {
@@ -19,8 +20,19 @@ export default function Dashboard() {
       if (!user) { window.location.href = '/login'; return }
       const { data } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(data)
-      const { count } = await supabase.from('deportista').select('*', { count: 'exact', head: true }).eq('id_entrenador', user.id)
+      const { data: deps, count } = await supabase.from('deportista').select('id, nombre', { count: 'exact' }).eq('id_entrenador', user.id)
       setNumDeportistas(count || 0)
+      if (deps?.length) {
+        const depIds = deps.map((d: any) => d.id)
+        const { data: ans } = await supabase.from('anamnesis').select('id_deportista, estado').in('id_deportista', depIds).eq('estado', 'enviada')
+        if (ans?.length) {
+          const nuevas = ans.map((a: any) => {
+            const dep = deps.find((d: any) => d.id === a.id_deportista)
+            return { nombre: dep?.nombre || '', id: a.id_deportista }
+          })
+          setAnamnesisNuevas(nuevas)
+        }
+      }
       if (user) await comprobarAvisos(user.id)
     }
     cargarPerfil()
@@ -93,14 +105,14 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesion</button>
         </div>
       </nav>
       <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex flex-wrap items-center gap-4 mb-2">
           <h2 className="text-2xl font-bold">Bienvenido, {perfil?.nombre} 👋</h2>
           <div className="flex gap-2">
             <button onClick={() => setVerResumenes(!verResumenes)}
@@ -116,6 +128,27 @@ export default function Dashboard() {
           </div>
         </div>
         <p className="text-gray-400 mb-4">Panel del entrenador</p>
+
+        {anamnesisNuevas.length > 0 && (
+          <div className="mb-4 bg-blue-950 border border-blue-600 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">📋</span>
+              <p className="font-bold text-blue-300">Anamnesis completadas</p>
+              <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">{anamnesisNuevas.length}</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {anamnesisNuevas.map(a => (
+                <div key={a.id} className="flex items-center justify-between bg-blue-900 bg-opacity-30 rounded-lg px-3 py-2">
+                  <p className="text-blue-200 text-sm font-medium">{a.nombre}</p>
+                  <button onClick={() => window.location.href = `/deportistas/${a.id}?tab=anamnesis`}
+                    className="text-blue-400 hover:text-blue-200 text-xs transition">
+                    Ver ficha →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {avisos.length > 0 && (
           <div className="mb-6 bg-orange-950 border border-orange-600 rounded-xl p-4">
@@ -206,3 +239,4 @@ export default function Dashboard() {
     </main>
   )
 }
+

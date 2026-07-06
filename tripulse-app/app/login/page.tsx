@@ -35,7 +35,18 @@ export default function Login() {
     if (err) { setError('Email o contraseña incorrectos'); setLoading(false); return }
     if (data.user) {
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.user.id).single()
-      window.location.href = perfil?.rol === 'deportista' ? '/dashboard-deportista' : '/dashboard'
+      if (perfil?.rol === 'deportista') {
+        const { data: dep } = await supabase.from('deportista').select('id, id_entrenador').eq('id_usuario', data.user.id).single()
+        // Solo se exige anamnesis si tiene entrenador (es a quien le sirve)
+        if (dep && dep.id_entrenador) {
+          const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
+          window.location.href = (!an || an.estado === 'borrador') ? '/anamnesis' : '/dashboard-deportista'
+        } else {
+          window.location.href = '/dashboard-deportista'
+        }
+      } else {
+        window.location.href = '/dashboard'
+      }
     }
     setLoading(false)
   }

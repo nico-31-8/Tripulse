@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const COLOR_DISC: Record<string, string> = {
   Natacion: 'bg-blue-900 text-blue-300', Natación: 'bg-blue-900 text-blue-300',
@@ -9,6 +10,7 @@ const COLOR_DISC: Record<string, string> = {
 }
 
 export default function PapeleraPage() {
+  useRequireEntrenador()
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [restaurando, setRestaurando] = useState<number | null>(null)
@@ -84,7 +86,7 @@ export default function PapeleraPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-8">
@@ -135,3 +137,4 @@ export default function PapeleraPage() {
     </main>
   )
 }
+

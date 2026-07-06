@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 function calcularIndices(tarea: any, fcUmbral: number, rpeEstimado: number) {
   if (!tarea.fc_media || !tarea.rpe_reportado || !fcUmbral) return null
@@ -38,6 +39,7 @@ function lecturaDoble(per: any, plan: any) {
 }
 
 export default function IndicesPage() {
+  useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [sesiones, setSesiones] = useState<any[]>([])
@@ -119,7 +121,7 @@ export default function IndicesPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
@@ -283,3 +285,4 @@ export default function IndicesPage() {
     </main>
   )
 }
+

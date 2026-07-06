@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const GRUPOS_MUSCULARES = [
   'Cuádriceps', 'Isquiotibiales', 'Glúteos', 'Cadera y aductores',
@@ -13,6 +14,7 @@ const GRUPOS_MUSCULARES = [
 const CLAVE_ADMIN = 'fuerza25'
 
 export default function FuerzaPage() {
+  useRequireEntrenador()
   const [ejercicios, setEjercicios] = useState<any[]>([])
   const [grupoFiltro, setGrupoFiltro] = useState('')
   const [loading, setLoading] = useState(true)
@@ -112,7 +114,7 @@ export default function FuerzaPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
@@ -306,3 +308,4 @@ export default function FuerzaPage() {
     </main>
   )
 }
+

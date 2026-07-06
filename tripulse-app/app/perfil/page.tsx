@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -30,7 +30,7 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
     setLoading(true)
     setMensaje('')
     const codigoLimpio = codigo.toUpperCase().trim()
-    const { data: entrenadorEncontrado } = await supabase.from('perfiles').select('id, nombre').eq('codigo_entrenador', codigoLimpio).maybeSingle()
+    const { data: entrenadorEncontrado } = await supabase.rpc('buscar_entrenador', { p_codigo: codigoLimpio }).maybeSingle() as { data: { id: string; nombre: string } | null }
     if (!entrenadorEncontrado) { setMensaje('Codigo no encontrado, revisa que este bien escrito'); setLoading(false); return }
     let { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', perfil.id).single()
     if (!dep) {
@@ -40,9 +40,10 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
     }
     const { error } = await supabase.from('deportista').update({ id_entrenador: entrenadorEncontrado.id }).eq('id', dep!.id)
     if (error) { setMensaje('Error al vincularse: ' + error.message); setLoading(false); return }
-    setMensaje('Vinculado correctamente con ' + entrenadorEncontrado.nombre)
+    setMensaje('Vinculado correctamente con ' + entrenadorEncontrado.nombre + '. Te llevamos a tu anamnesis...')
     setLoading(false)
-    setTimeout(() => window.location.reload(), 1200)
+    // Al vincularse, el entrenador necesita la anamnesis → la mostramos
+    setTimeout(() => window.location.href = '/anamnesis', 1200)
   }
 
   const desvincularse = async () => {
@@ -144,13 +145,52 @@ export default function PerfilPage() {
     setTimeout(() => setCopiado(false), 2000)
   }
 
+  const [exportando, setExportando] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
+
+  // RGPD — Portabilidad: descarga los datos del usuario (RLS los limita a lo suyo).
+  // El deportista exporta TODO lo suyo (incluida salud). El entrenador exporta su
+  // perfil y su estructura de trabajo, NO los datos de salud de sus atletas (que
+  // son datos personales de ellos y los exporta cada uno).
+  const exportarDatos = async () => {
+    setExportando(true)
+    const tablas = perfil.rol === 'deportista'
+      ? ['perfiles','deportista','wellness','test1_carrera','test2_natacion','test3_ciclismo',
+         'test_fuerza','tests_libres','anamnesis','disponibilidad','competicion','registro_peso',
+         'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes']
+      : ['perfiles','deportista','macrociclo','mesociclo','microciclo','sesion','tarea','mensajes']
+    const out: any = { _exportado: new Date().toISOString(), _usuario: perfil.email, _rol: perfil.rol }
+    for (const t of tablas) {
+      const { data } = await supabase.from(t).select('*')
+      if (data && data.length) out[t] = data
+    }
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'mis-datos-tripulse.json'
+    document.body.appendChild(a); a.click(); a.remove()
+    setExportando(false)
+  }
+
+  // RGPD — Derecho al olvido: elimina cuenta y todos los datos
+  const eliminarCuenta = async () => {
+    const confirmacion = prompt('Esta acción borra tu cuenta y TODOS tus datos de forma permanente e irreversible.\n\nEscribe ELIMINAR para confirmar:')
+    if (confirmacion !== 'ELIMINAR') return
+    setEliminando(true)
+    const { error } = await supabase.rpc('eliminar_mi_cuenta')
+    if (error) { alert('Error al eliminar la cuenta: ' + error.message); setEliminando(false); return }
+    await supabase.auth.signOut()
+    alert('Tu cuenta y tus datos han sido eliminados.')
+    window.location.href = '/'
+  }
+
   if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   const esDeportista = perfil.rol === 'deportista'
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = esDeportista ? '/dashboard-deportista' : '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-2xl mx-auto px-6 py-8">
@@ -189,7 +229,37 @@ export default function PerfilPage() {
             </div>
           </>
         )}
+
+        {/* RGPD — Privacidad y datos */}
+        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mt-6">
+          <h3 className="text-xl font-bold mb-2">Privacidad y datos</h3>
+          <p className="text-gray-400 text-sm mb-4">Gestiona tus datos personales según tus derechos (RGPD).</p>
+
+          <button onClick={exportarDatos} disabled={exportando}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-lg text-sm transition border border-gray-700 mb-3 disabled:opacity-50">
+            {exportando ? 'Preparando...' : '⬇ Descargar todos mis datos (JSON)'}
+          </button>
+
+          <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
+            <a href="/privacidad" className="hover:text-orange-400 transition underline">Política de privacidad</a>
+            <a href="/terminos" className="hover:text-orange-400 transition underline">Términos de uso</a>
+          </div>
+
+          <div className="border-t border-gray-800 pt-4">
+            <p className="text-red-400 text-sm font-medium mb-1">Zona peligrosa</p>
+            <p className="text-gray-500 text-xs mb-3">
+              {esDeportista
+                ? 'Al eliminar tu cuenta se borran permanentemente todos tus datos de entrenamiento, salud y wellness.'
+                : 'Al eliminar tu cuenta tus deportistas quedarán desvinculados (sus datos se conservan). Se borra tu perfil y tu código.'}
+            </p>
+            <button onClick={eliminarCuenta} disabled={eliminando}
+              className="w-full bg-red-950 hover:bg-red-900 text-red-300 py-3 rounded-lg text-sm transition border border-red-900 disabled:opacity-50">
+              {eliminando ? 'Eliminando...' : '🗑 Eliminar mi cuenta y mis datos'}
+            </button>
+          </div>
+        </div>
       </div>
     </main>
   )
 }
+

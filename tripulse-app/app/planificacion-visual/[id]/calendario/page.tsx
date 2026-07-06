@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
+import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -55,6 +57,15 @@ function getVolumenSesion(sesion: any): string {
   return min
 }
 
+// Duración efectiva de una sesión: manual si existe, si no la estimada.
+// Devuelve el texto a mostrar ('' si no hay nada que mostrar).
+function getDuracionSesion(sesion: any): string {
+  if (sesion.duracion_minutos) return sesion.duracion_minutos + ' min'
+  const est = sesion.dur_estimada
+  if (est?.estimable && est.minutos > 0) return '~' + est.minutos + ' min'
+  return ''
+}
+
 function fechaStr(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth()+1).padStart(2,'0')
@@ -85,6 +96,7 @@ function colorSemanas(semanas: number) {
 
 export default function CalendarioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
   const [macros, setMacros] = useState<any[]>([])
   const [mesos, setMesos] = useState<any[]>([])
@@ -92,6 +104,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [sesiones, setSesiones] = useState<any[]>([])
   const [competiciones, setCompeticiones] = useState<any[]>([])
   const [semanasBloqueadas, setSemanasBloqueadas] = useState<any[]>([])
+  const [tests, setTests] = useState<TestsDeportista>({})
   const [rango, setRango] = useState(6)
   const [vista, setVista] = useState<'calendario'|'semanas'>('calendario')
   const [capaCalendario, setCapaCalendario] = useState<'mesos'|'semanas'>('mesos')
@@ -139,6 +152,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    // Tests más recientes para estimar ritmos por zona
+    const { data: tCarr } = await supabase.from('test1_carrera').select('vam').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: tNat } = await supabase.from('test2_natacion').select('css').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: tCic } = await supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const testsDep: TestsDeportista = { vam: tCarr?.[0]?.vam, css: tNat?.[0]?.css, ftp: tCic?.[0]?.ftp }
+    setTests(testsDep)
     const { data: mac } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
     setMacros(mac || [])
     const { data: comps } = await supabase.from('competicion').select('*').eq('id_deportista', Number(id)).order('fecha')
@@ -158,15 +177,27 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const { data: ses } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).eq('eliminada', false).order('fecha_sesion')
     if (ses?.length) {
       const sesIds = ses.map(s => s.id)
-      const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series').in('id_sesion', sesIds)
+      const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos').in('id_sesion', sesIds)
       const tareaIds = tareas?.map(t => t.id) || []
       const { data: dists } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
       const { data: durs } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
+      const { data: ejs } = tareaIds.length ? await supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds) : { data: [] }
       const sesConVolumen = ses.map(s => {
         const tarSes = tareas?.filter(t => t.id_sesion === s.id) || []
         const metros = tarSes.reduce((acc, t) => { const d = dists?.find(d => d.id_tarea === t.id); return acc + (d ? d.metros_planeados * (t.series || 1) : 0) }, 0)
         const seg = tarSes.reduce((acc, t) => { const d = durs?.find(d => d.id_tarea === t.id); return acc + (d ? d.tiempo_planeado * (t.series || 1) : 0) }, 0)
-        return { ...s, metros_total: metros, seg_total: seg }
+        // Duración estimada: reconstruye las tareas con sus parámetros hijo
+        const tareasDur = tarSes.map(t => ({
+          disciplina: t.disciplina,
+          series: t.series,
+          descanso_segundos: t.descanso_segundos,
+          zona_entrenamiento: t.zona_entrenamiento,
+          p_distancia: dists?.filter(d => d.id_tarea === t.id) || [],
+          p_duracion: durs?.filter(d => d.id_tarea === t.id) || [],
+          ejercicios: ejs?.filter(e => e.id_tarea === t.id) || [],
+        }))
+        const dur_estimada = calcularDuracionEstimada(tareasDur, testsDep)
+        return { ...s, metros_total: metros, seg_total: seg, dur_estimada }
       })
       setSesiones(sesConVolumen)
     } else { setSesiones([]) }
@@ -395,7 +426,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
           <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
           <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
@@ -636,7 +667,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                               <div key={s.id}
                                 onClick={e => { e.stopPropagation(); window.location.href = '/sesion/' + s.id }}
                                 className={'rounded px-1 py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
-                                <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}</span>
+                                <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}</span>
                                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
                                   <button onClick={e => { e.stopPropagation(); copiarSesion(s, e) }} className="text-white hover:text-blue-300 text-xs" title="Copiar">📋</button>
                                   <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
@@ -992,7 +1023,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <option value="">Disciplina</option>
                   <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
                 </select>
-                <input type="number" placeholder="Duración en minutos" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                <input type="number" placeholder="Duración manual en min (opcional — si vacío, se estima)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <input type="number" min="1" max="10" placeholder="RPE estimado" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
@@ -1004,7 +1035,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <option value="">Disciplina</option>
                   <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
                 </select>
-                <input type="number" placeholder="Duración en minutos (opcional)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                <p className="text-gray-500 text-xs px-1 -mb-1">La duración se estima automáticamente a partir de las tareas. Podrás ajustarla a mano después.</p>
                 <input type="number" min="1" max="10" placeholder="RPE estimado (1-10)" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear sesión'}</button>

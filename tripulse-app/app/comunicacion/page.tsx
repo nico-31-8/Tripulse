@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const COLOR_DISC: Record<string, string> = {
   'Natacion': 'bg-blue-900 text-blue-300',
@@ -12,6 +13,7 @@ const COLOR_DISC: Record<string, string> = {
 }
 
 export default function ComunicacionPage() {
+  useRequireEntrenador()
   const [tab, setTab] = useState<'feedback'|'chats'>('feedback')
   const [comentarios, setComentarios] = useState<any[]>([])
   const [deportistas, setDeportistas] = useState<any[]>([])
@@ -94,7 +96,7 @@ export default function ComunicacionPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-8">
@@ -206,3 +208,4 @@ export default function ComunicacionPage() {
     </main>
   )
 }
+

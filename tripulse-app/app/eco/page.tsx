@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
 
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera']
@@ -305,6 +306,7 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
 }
 
 export default function EcoPage() {
+  useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [scores, setScores] = useState<any>(null)
@@ -428,7 +430,7 @@ export default function EcoPage() {
     <main className="min-h-screen bg-gray-950 text-white">
       {mostrarExplicacion && <ModalExplicacion onClose={() => setMostrarExplicacion(false)} />}
 
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
@@ -570,3 +572,4 @@ export default function EcoPage() {
     </main>
   )
 }
+

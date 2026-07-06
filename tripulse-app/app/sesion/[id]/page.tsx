@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
 import DatosReales from './DatosReales'
 import SessionLoadChart from '@/components/SessionLoadChart'
+import { calcularDuracionEstimada } from '@/lib/duracion'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -57,6 +58,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [rir, setRir] = useState('')
   const [configSerie, setConfigSerie] = useState('')
   const [modalVideoFuerza, setModalVideoFuerza] = useState<string | null>(null)
+  const [editandoDuracion, setEditandoDuracion] = useState(false)
+  const [duracionManualInput, setDuracionManualInput] = useState('')
   // Cálculo de ritmo/potencia sugerido por zona
   const VAM_ZONAS: Record<string, number> = { Z1: 0.525, Z2: 0.65, Z3: 0.75, Z4: 0.85, Z5: 0.95, Z6: 1.075, Z7: 1.2 }
   const FTP_ZONAS: Record<string, number> = { Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.98, Z5: 1.13, Z6: 1.30, Z7: 1.50 }
@@ -162,7 +165,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
-    const { data: tar } = await supabase.from('tarea').select('*, p_duracion(tiempo_planeado), p_distancia(metros_planeados)').eq('id_sesion', id).order('orden')
+    const { data: tar } = await supabase.from('tarea').select('*, p_duracion(tiempo_planeado), p_distancia(metros_planeados), ejercicios(repeticiones)').eq('id_sesion', id).order('orden')
     setTareas(tar || [])
     if (ses) {
       const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
@@ -176,12 +179,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             const depId = macro.id_deportista
             const [t1, t2, t3] = await Promise.all([
               supabase.from('test1_carrera').select('vam').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test2_natacion').select('css').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
               supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
             ])
             setTestsData({
               vam: t1.data?.[0]?.vam || null,
-              css: t2.data?.[0]?.velocidad_critica_natacion || null,
+              css: t2.data?.[0]?.css || null,
               ftp: t3.data?.[0]?.ftp || null,
             })
           }
@@ -294,7 +297,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         grupo_muscular: ejercicioSel.grupo_muscular,
         series: seriesFuerza ? Number(seriesFuerza) : null,
         repeticiones: repsFuerza ? Number(repsFuerza) : null,
-        descanso: descansoFuerza ? Number(descansoFuerza) : null,
+        descanso_segundos: descansoFuerza ? Number(descansoFuerza) : null,
         notas_ejecucion: (rir ? 'RIR: ' + rir : '') + (configSerie ? ' · ' + configSerie : ''),
         url_video: ejercicioSel.url_video || null
       })
@@ -354,12 +357,28 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     return 'bg-purple-900 text-purple-300'
   }
 
+  const guardarDuracionManual = async () => {
+    const val = duracionManualInput ? Number(duracionManualInput) : null
+    await supabase.from('sesion').update({ duracion_minutos: val }).eq('id', id)
+    setSesion((prev: any) => ({ ...prev, duracion_minutos: val }))
+    setEditandoDuracion(false)
+  }
+
+  const volverAEstimado = async () => {
+    await supabase.from('sesion').update({ duracion_minutos: null }).eq('id', id)
+    setSesion((prev: any) => ({ ...prev, duracion_minutos: null }))
+    setDuracionManualInput('')
+    setEditandoDuracion(false)
+  }
+
   if (!sesion) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+
+  const durEstimada = calcularDuracionEstimada(tareas, testsData || {})
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <div className="flex items-center gap-3"><button onClick={() => window.location.href = '/planificacion-visual/' + deportistaId + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button><button onClick={() => window.location.href = '/microciclo/' + sesion.id_microciclo} className="text-gray-400 hover:text-white text-sm transition">← Semana</button></div>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
+        <div className="flex items-center gap-3"><button onClick={() => window.location.href = '/planificacion-visual/' + deportistaId + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button></div>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
@@ -369,7 +388,43 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">⏱ Cronometro</span>}
           </div>
           <h2 className="text-2xl font-bold">{sesion.fecha_sesion}</h2>
-          <p className="text-gray-400 text-sm mt-1">{sesion.duracion_minutos ? sesion.duracion_minutos + ' min' : '—'} · RPE est: {sesion.rpe_estimado || '—'}</p>
+          <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
+            <span className="text-gray-400">Duración:</span>
+            {editandoDuracion ? (
+              <span className="flex items-center gap-1.5">
+                <input type="number" autoFocus value={duracionManualInput} onChange={e => setDuracionManualInput(e.target.value)}
+                  placeholder="min" className="bg-gray-800 text-white w-20 px-2 py-1 rounded outline-none focus:ring-1 focus:ring-orange-500" />
+                <span className="text-gray-500 text-xs">min</span>
+                <button onClick={guardarDuracionManual} className="text-orange-400 hover:text-orange-300 text-xs px-1.5 py-1 rounded bg-gray-800">Guardar</button>
+                <button onClick={() => setEditandoDuracion(false)} className="text-gray-500 hover:text-white text-xs px-1">Cancelar</button>
+              </span>
+            ) : (
+              <>
+                {sesion.duracion_minutos ? (
+                  <span className="text-white font-medium">{sesion.duracion_minutos} min <span className="text-gray-500 text-xs font-normal">(manual)</span></span>
+                ) : durEstimada.estimable ? (
+                  <span className="text-white font-medium">~{durEstimada.minutos} min <span className="text-gray-500 text-xs font-normal">(estimada)</span></span>
+                ) : (
+                  <span className="text-gray-500">—</span>
+                )}
+                {!esDeportista && (
+                  <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
+                    className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>
+                )}
+                {!esDeportista && sesion.duracion_minutos && (
+                  <button onClick={volverAEstimado} className="text-gray-500 hover:text-blue-400 text-xs" title="Volver a estimado">↺ estimar</button>
+                )}
+              </>
+            )}
+            <span className="text-gray-600">·</span>
+            <span className="text-gray-400">RPE est: {sesion.rpe_estimado || '—'}</span>
+          </div>
+          {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
+            <p className="text-yellow-500/80 text-xs mt-1">⚠️ Hay tareas de ciclismo por distancia — la duración no se puede estimar (usa tiempo/potencia o ponla a mano).</p>
+          )}
+          {!sesion.duracion_minutos && durEstimada.faltanTests && (
+            <p className="text-yellow-500/80 text-xs mt-1">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
+          )}
           {sesion.notas_entrenador && <p className="text-gray-300 text-sm mt-2 italic bg-gray-800 rounded-lg px-3 py-2">"{sesion.notas_entrenador}"</p>}
         </div>
 

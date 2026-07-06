@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 
@@ -86,6 +87,7 @@ function MacroCard({ mac, onClick, onEditar, onBorrar }: { mac: any, onClick: ()
 
 export default function PlanificacionVisual({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
   const [macros, setMacros] = useState<any[]>([])
   const [nivel, setNivel] = useState<'macro'|'meso'|'micro'|'sesiones'>('macro')
@@ -275,12 +277,10 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <div className="flex flex-col items-end gap-1">
-          <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/dibujo'} className="text-orange-400 hover:text-orange-300 text-xs transition">✏️ Dibujo</button>
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
-        </div>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center gap-4 border-b border-gray-800">
+        <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
+        <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/dibujo'} className="text-orange-400 hover:text-orange-300 text-xs transition">✏️ Dibujo</button>
+        <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-6 flex gap-4">

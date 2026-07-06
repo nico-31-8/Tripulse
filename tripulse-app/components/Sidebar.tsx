@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-const RUTAS_PUBLICAS = ['/', '/login', '/registro']
+const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
 
 const modulosEntrenador = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
@@ -19,11 +19,13 @@ const modulosEntrenador = [
   { icon: '🗑️', titulo: 'Papelera', href: '/papelera' },
 ]
 
-const modulosDeportista = [
+// Los módulos del deportista se construyen con su id (wellness y chat lo necesitan)
+const modulosDeportistaFn = (depId: number | null) => [
   { icon: '📋', titulo: 'Mis sesiones', href: '/mis-sesiones' },
-  { icon: '💚', titulo: 'Wellness', href: '/wellness-deportista' },
+  { icon: '💚', titulo: 'Wellness', href: depId ? '/wellness/' + depId : '/dashboard-deportista' },
   { icon: '🏋️', titulo: 'Mis tests', href: '/mis-tests' },
   { icon: '📊', titulo: 'Mis análisis', href: '/mis-analisis' },
+  { icon: '💬', titulo: 'Comunicación', href: depId ? '/chat/' + depId : '/dashboard-deportista' },
   { icon: '🗓', titulo: 'Disponibilidad', href: '/disponibilidad' },
 ]
 
@@ -31,6 +33,7 @@ export default function Sidebar() {
   const [abierto, setAbierto] = useState(false)
   const [autenticado, setAutenticado] = useState(false)
   const [rol, setRol] = useState<string | null>(null)
+  const [depId, setDepId] = useState<number | null>(null)
   const pathname = usePathname()
   const panelRef = useRef<HTMLDivElement>(null)
   const botonRef = useRef<HTMLButtonElement>(null)
@@ -42,6 +45,10 @@ export default function Sidebar() {
       setAutenticado(true)
       const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       setRol(p?.rol || null)
+      if (p?.rol === 'deportista') {
+        const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
+        setDepId(dep?.id ?? null)
+      }
     }
     comprobar()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -75,7 +82,7 @@ export default function Sidebar() {
   if (!autenticado || RUTAS_PUBLICAS.includes(pathname)) return null
 
   const esDeportista = rol === 'deportista'
-  const modulos = esDeportista ? modulosDeportista : modulosEntrenador
+  const modulos = esDeportista ? modulosDeportistaFn(depId) : modulosEntrenador
   const dashboardHref = esDeportista ? '/dashboard-deportista' : '/dashboard'
 
   return (
@@ -84,7 +91,8 @@ export default function Sidebar() {
       <button
         ref={botonRef}
         onClick={() => setAbierto(!abierto)}
-        className="fixed left-0 top-0 z-50 px-3 py-4 bg-gray-900 border-r border-b border-gray-800 hover:bg-gray-800 transition"
+        style={{ height: 53 }}
+        className={'fixed left-0 top-0 z-50 px-4 flex items-center bg-gray-900 border-r hover:bg-gray-800 transition ' + (abierto ? '' : 'border-b border-gray-800')}
       >
         <span className="text-orange-500 font-bold text-lg">TRIPULSE</span>
       </button>
@@ -97,7 +105,8 @@ export default function Sidebar() {
       {/* Panel lateral */}
       <div
         ref={panelRef}
-        className={'fixed left-0 top-0 h-full w-48 bg-gray-900 border-r border-gray-800 z-50 flex flex-col pt-16 transition-transform duration-300 ' +
+        style={{ paddingTop: 53 }}
+        className={'fixed left-0 top-0 h-full w-48 bg-gray-900 border-r border-gray-800 z-50 flex flex-col transition-transform duration-300 ' +
           (abierto ? 'translate-x-0' : '-translate-x-full')}
       >
         <nav className="flex-1 py-2 overflow-y-auto">

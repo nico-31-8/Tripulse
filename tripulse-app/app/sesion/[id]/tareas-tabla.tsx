@@ -163,11 +163,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const { data: t1 } = await supabase.from('test1_carrera').select('vam').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
     const { data: t2 } = await supabase.from('test2_natacion').select('css').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
     const { data: t3 } = await supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    const { data: tf } = await supabase.from('test_fuerza').select('ejercicio, rm_estimado').eq('id_deportista', deportistaId).order('fecha', { ascending: false })
-    setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: tf || [] })
+    setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: [] })
     const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
     setEjerciciosBiblioteca(ejBib || [])
-    const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId).order('orden')
+    const { data: tar, error: errTar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId).order('id')
     if (tar && tar.length > 0) {
       const tareaIds = tar.map((t: any) => t.id)
       const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
@@ -244,22 +243,26 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const guardarFilaR = async (i: number) => {
     const f = filasR[i]
     setLoading(true)
-    const { data: tarea } = await supabase.from('tarea').insert({
-      id_sesion: sesionId, zona_entrenamiento: f.zona ? 'Z' + f.zona : null,
-      disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
-      descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
-      comentario: f.comentario || null, orden: f.orden
-    }).select().single()
-    if (tarea) {
-      const _zonaObj = ZONAS.find(z => z.num === f.zona)
-      const _ref = getReferencia(_zonaObj, f.disciplina, tests, fcMax)
-      if (f.tipoMedicion === 'distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(f.valorMedicion) }).select().single(); if (pd && _ref?.ritmo) { const { error: errR } = await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id); console.log('ritmo update:', _ref.ritmo, errR) } }
-      else if (f.tipoMedicion === 'duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASeg(f.valorMedicion) })
-      else if (f.tipoMedicion === 'repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.valorMedicion) })
+    try {
+      const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
+        id_sesion: sesionId, zona_entrenamiento: f.zona ? 'Z' + f.zona : null,
+        disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
+        descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
+        comentario: f.comentario || null,
+      }).select().single()
+      if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
+      if (tarea) {
+        const _zonaObj = ZONAS.find(z => z.num === f.zona)
+        const _ref = getReferencia(_zonaObj, f.disciplina, tests, fcMax)
+        if (f.tipoMedicion === 'distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(f.valorMedicion) }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
+        else if (f.tipoMedicion === 'duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASeg(f.valorMedicion) })
+        else if (f.tipoMedicion === 'repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.valorMedicion) })
+      }
+      await cargarDatos()
+      setFilasR(prev => prev.filter((_, idx) => idx !== i))
+    } catch (e: any) {
+      alert('Error inesperado: ' + e.message)
     }
-    const n = [...filasR]; n[i] = { ...n[i], guardado: true }; setFilasR(n)
-    await cargarDatos()
-    setFilasR(prev => prev.filter((_, idx) => idx !== i))
     setLoading(false)
   }
 
@@ -267,13 +270,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const f = filasF[i]
     if (!f.ejercicioSelId) return
     setLoading(true)
+    try {
     const ejBib = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
-    const { data: tarea } = await supabase.from('tarea').insert({
+    const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
       id_sesion: sesionId, disciplina: 'Fuerza',
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
-      comentario: f.comentario || null, orden: f.orden
+      comentario: f.comentario || null,
     }).select().single()
+    if (errTarea) { alert('Error al guardar ejercicio: ' + errTarea.message); setLoading(false); return }
     if (tarea && ejBib) {
       const ejBib2 = f.ejercicioSelId2 ? ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2)) : null
       // Si hay ejercicio 2, añadirlo como nota en notas_ejecucion
@@ -297,6 +302,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     }
     await cargarDatos()
     setFilasF(prev => prev.filter((_, idx) => idx !== i))
+    } catch (e: any) {
+      alert('Error inesperado: ' + e.message)
+    }
     setLoading(false)
   }
 

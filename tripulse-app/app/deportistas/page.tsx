@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 function calcularEdad(fechaNacimiento: string): number {
   const hoy = new Date()
@@ -32,6 +33,7 @@ function TooltipHRV() {
 }
 
 export default function Deportistas() {
+  useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [nombre, setNombre] = useState('')
@@ -95,7 +97,7 @@ export default function Deportistas() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <a href="/dashboard" className="text-gray-400 hover:text-white text-sm transition">← Dashboard</a>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -195,3 +197,4 @@ export default function Deportistas() {
     </main>
   )
 }
+

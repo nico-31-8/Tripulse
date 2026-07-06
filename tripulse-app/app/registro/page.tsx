@@ -8,20 +8,23 @@ export default function Registro() {
   const [nombre, setNombre] = useState('')
   const [rol, setRol] = useState('')
   const [codigoEntrenador, setCodigoEntrenador] = useState('')
+  const [aceptoTerminos, setAceptoTerminos] = useState(false)
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState('')
 
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!rol) { setMensaje('Selecciona si eres entrenador o deportista'); return }
+    if (!aceptoTerminos) { setMensaje('Debes aceptar la política de privacidad y los términos'); return }
     setLoading(true)
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) { setMensaje('Error: ' + error.message); setLoading(false); return }
     if (data.user) {
-      await supabase.from('perfiles').insert({ id: data.user.id, rol, nombre, email })
+      await supabase.from('perfiles').insert({ id: data.user.id, rol, nombre, email,
+        acepto_terminos: true, fecha_consentimiento: new Date().toISOString(), version_consentimiento: 'v1-2026-07' })
       if (rol === 'deportista') {
         if (codigoEntrenador) {
-          const { data: entrenador } = await supabase.from('perfiles').select('id').eq('codigo_entrenador', codigoEntrenador.toUpperCase()).maybeSingle()
+          const { data: entrenador } = await supabase.rpc('buscar_entrenador', { p_codigo: codigoEntrenador.toUpperCase() }).maybeSingle() as { data: { id: string } | null }
           if (entrenador) {
             await supabase.from('deportista').insert({ id_entrenador: entrenador.id, id_usuario: data.user.id, nombre })
           } else {
@@ -58,8 +61,14 @@ export default function Registro() {
               <p className="text-gray-500 text-xs mt-1">Tu entrenador te dara su codigo para vincularte</p>
             </div>
           )}
+          <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
+            <input type="checkbox" checked={aceptoTerminos} onChange={e => setAceptoTerminos(e.target.checked)} className="mt-0.5 accent-orange-500" required />
+            <span>
+              He leído y acepto la <a href="/privacidad" target="_blank" className="text-orange-400 hover:underline">política de privacidad</a> y los <a href="/terminos" target="_blank" className="text-orange-400 hover:underline">términos de uso</a>. Entiendo que se tratarán mis datos de entrenamiento y salud para el seguimiento deportivo.
+            </span>
+          </label>
           {mensaje && <p className="text-red-400 text-sm">{mensaje}</p>}
-          <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Creando cuenta...' : 'Crear cuenta'}</button>
+          <button type="submit" disabled={loading || !aceptoTerminos} className="bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Creando cuenta...' : 'Crear cuenta'}</button>
         </form>
         <p className="text-gray-400 text-sm mt-4 text-center">Ya tienes cuenta? <a href="/login" className="text-orange-500 hover:underline">Entra aqui</a></p>
       </div>

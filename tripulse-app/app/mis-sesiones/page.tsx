@@ -1,6 +1,8 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
+import type { TestsDeportista } from '@/lib/duracion'
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
@@ -37,7 +39,14 @@ export default function MisSesiones() {
         const microIds = (micros || []).map((m: any) => m.id)
         if (!microIds.length) { setLoading(false); return }
         const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
-        setSesiones(data || [])
+        const [tc, tn, tci] = await Promise.all([
+          supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        ])
+        const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+        const durs = await estimarDuraciones(supabase, (data || []).map((s: any) => s.id), testsDep)
+        setSesiones((data || []).map((s: any) => ({ ...s, dur_estimada: durs[s.id] })))
       }
       setLoading(false)
     }
@@ -135,7 +144,7 @@ export default function MisSesiones() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
       </nav>
 
@@ -185,7 +194,7 @@ export default function MisSesiones() {
                           <button key={s.id} onClick={() => window.location.href = '/sesion/' + s.id + '/ejecutar'} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
-                              <p className="text-gray-400 text-xs">{s.duracion_minutos ? s.duracion_minutos + ' min' : '—'} · RPE est: {s.rpe_estimado || '—'}</p>
+                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
@@ -269,7 +278,7 @@ export default function MisSesiones() {
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
-                              <p className="text-gray-400 text-xs">{s.duracion_minutos ? s.duracion_minutos + ' min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
+                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic">"{s.notas_entrenador}"</p>}
                             </div>
                           </div>
@@ -378,7 +387,7 @@ export default function MisSesiones() {
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
                       <p className="text-gray-500 text-xs">Duración</p>
-                      <p className="font-bold text-sm">{s.duracion_minutos ? s.duracion_minutos + ' min' : '—'}</p>
+                      <p className="font-bold text-sm">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)}</p>
                     </div>
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
                       <p className="text-gray-500 text-xs">RPE estimado</p>
@@ -412,3 +421,4 @@ export default function MisSesiones() {
     </main>
   )
 }
+

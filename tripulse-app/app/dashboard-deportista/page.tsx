@@ -1,13 +1,16 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
+import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
+import type { TestsDeportista } from '@/lib/duracion'
 
 export default function DashboardDeportista() {
   const [perfil, setPerfil] = useState<any>(null)
   const [deportista, setDeportista] = useState<any>(null)
   const [sesionesHoy, setSesionesHoy] = useState<any[]>([])
   const [ultimoWellness, setUltimoWellness] = useState<any>(null)
+  const [anamnesisPendiente, setAnamnesisPendiente] = useState(false)
 
   useEffect(() => {
     const cargar = async () => {
@@ -27,9 +30,22 @@ export default function DashboardDeportista() {
         const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
         const microIds = (micros || []).map((m: any) => m.id)
         const { data: sesHoy } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).eq('fecha_sesion', hoy).or('eliminada.is.null,eliminada.eq.false')
-        setSesionesHoy(sesHoy || [])
+        // Duración estimada de las sesiones de hoy
+        const [tc, tn, tci] = await Promise.all([
+          supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        ])
+        const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+        const durs = await estimarDuraciones(supabase, (sesHoy || []).map((s: any) => s.id), testsDep)
+        setSesionesHoy((sesHoy || []).map((s: any) => ({ ...s, dur_estimada: durs[s.id] })))
         const { data: wellness } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1)
         setUltimoWellness(wellness?.[0] || null)
+        // Anamnesis pendiente: solo relevante si tiene entrenador
+        if (dep.id_entrenador) {
+          const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
+          setAnamnesisPendiente(!an || an.estado !== 'enviada')
+        }
       }
     }
     cargar()
@@ -69,6 +85,7 @@ export default function DashboardDeportista() {
     { icon: '🏋️', titulo: 'Mis tests', descripcion: 'Consulta tus resultados de tests — VAM, CSS, FTP, 1RM — y las zonas de entrenamiento generadas.', href: '/mis-tests', border: 'hover:border-blue-500' },
     { icon: '💬', titulo: 'Comunicación', descripcion: 'Habla directamente con tu entrenador. Consulta dudas, comparte cómo te sientes.', href: deportista ? '/chat/' + deportista.id : '#', border: 'hover:border-orange-500' },
     { icon: '📊', titulo: 'Mis análisis', descripcion: 'Revisa tus sesiones realizadas y compara lo planificado con lo que hiciste realmente.', href: '/mis-analisis', border: 'hover:border-purple-500' },
+    { icon: '🗓', titulo: 'Disponibilidad', descripcion: 'Marca las franjas en las que puedes entrenar. Tu entrenador las verá al planificar.', href: '/disponibilidad', border: 'hover:border-blue-500' },
     { icon: '👤', titulo: 'Mi perfil', descripcion: 'Gestiona tu cuenta, vincula o desvincula tu entrenador con su código.', href: '/perfil', border: 'hover:border-gray-500' },
   ]
 
@@ -76,7 +93,7 @@ export default function DashboardDeportista() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-400 hover:text-white text-sm transition">Cerrar sesión</button>
@@ -87,6 +104,20 @@ export default function DashboardDeportista() {
         <p className="text-gray-400 mb-4">Tu panel de entrenamiento</p>
 
         {deportista && <ResumenDeportista depId={deportista.id} />}
+
+        {/* Anamnesis pendiente (solo si tiene entrenador) */}
+        {anamnesisPendiente && (
+          <button onClick={() => window.location.href = '/anamnesis'}
+            className="w-full bg-orange-950 border-2 border-orange-500 rounded-xl p-5 mb-6 text-left hover:bg-orange-900 transition">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-orange-300 font-bold text-lg">📋 Completa tu anamnesis</p>
+                <p className="text-orange-400 text-sm mt-1">Tu entrenador necesita tu historial de salud y deportivo para planificar tu preparación.</p>
+              </div>
+              <span className="text-orange-400 text-2xl ml-4">→</span>
+            </div>
+          </button>
+        )}
 
         {/* Aviso si no tiene entrenador asignado */}
         {deportista && !deportista.id_entrenador && (
@@ -144,7 +175,7 @@ export default function DashboardDeportista() {
               <div key={s.id} className="bg-gray-900 rounded-xl p-5 border border-orange-500 mb-3">
                 <div className="flex items-center gap-3 mb-3">
                   <span className={'text-xs px-2 py-1 rounded-full font-medium ' + colorDisciplina(s.disciplina)}>{s.disciplina}</span>
-                  <span className="text-gray-400 text-sm">{s.duracion_minutos ? s.duracion_minutos + ' min' : '—'}</span>
+                  <span className="text-gray-400 text-sm">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)}</span>
                   <span className="text-gray-400 text-sm">RPE est: {s.rpe_estimado || '—'}</span>
                 </div>
                 {s.notas_entrenador && <p className="text-gray-300 text-sm italic mb-4">"{s.notas_entrenador}"</p>}
@@ -198,3 +229,4 @@ export default function DashboardDeportista() {
     </main>
   )
 }
+

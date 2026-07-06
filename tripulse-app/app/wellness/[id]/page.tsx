@@ -63,6 +63,7 @@ function EmojiSelector({ campo, value, onChange }: { campo: string; value: numbe
 export default function WellnessPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
+  const [esDeportista, setEsDeportista] = useState(false)
   const [registros, setRegistros] = useState<any[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -88,6 +89,11 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      setEsDeportista(p?.rol === 'deportista')
+    }
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
     const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30)
@@ -143,8 +149,12 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
+        {esDeportista ? (
+          <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">🏠 Dashboard</button>
+        ) : (
+          <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
+        )}
       </nav>
       <div className="max-w-2xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8">
