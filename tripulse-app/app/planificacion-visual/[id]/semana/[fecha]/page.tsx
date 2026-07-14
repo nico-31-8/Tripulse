@@ -1,7 +1,9 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { cargaZona } from '@/lib/zonas'
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -13,6 +15,7 @@ const COLOR_DISC: Record<string, string> = {
   Fuerza: 'bg-red-900 text-red-300',
   Brick: 'bg-purple-900 text-purple-300',
 }
+const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Natación: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
 
 function fechaStr(d: Date): string {
   return d.toISOString().split('T')[0]
@@ -26,7 +29,16 @@ function diasDeSemana(lunes: string): { fecha: string; dia: string; diaCorto: st
   })
 }
 
+// Misma fórmula que en el Dibujo: índice de semana (0-based) desde el inicio del macrociclo.
+function weeksBetween(f1: string, f2: string): number {
+  const d1 = new Date(f1 + 'T12:00:00'); const d2 = new Date(f2 + 'T12:00:00')
+  return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24 * 7))
+}
+
+interface ChipZona { id: string; semana: number; disciplina: string; zona: string; hecho?: boolean; grupo?: string }
+
 export default function SemanaPage({ params }: { params: Promise<{ id: string; fecha: string }> }) {
+  const router = useRouter()
   const { id, fecha } = use(params)
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
@@ -42,6 +54,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [guardando, setGuardando] = useState(false)
   const [uaProg, setUaProg] = useState(0)
   const [uaReal, setUaReal] = useState(0)
+  const [sesZonasAll, setSesZonasAll] = useState<ChipZona[]>([])
+  const [borradorId, setBorradorId] = useState<number | null>(null)
+  const [weekIndex, setWeekIndex] = useState<number | null>(null)
+  const [dragOverDia, setDragOverDia] = useState<string | null>(null)
+  const [draggingChip, setDraggingChip] = useState<string | null>(null)
+  const [seleccion, setSeleccion] = useState<string[]>([])
 
   const dias = diasDeSemana(fecha)
   const hoy = fechaStr(new Date())
@@ -55,8 +73,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
     // Buscar el microciclo que corresponde a esta semana
     let sesiones_cargadas: any[] = []
-    const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
+    const { data: macs } = await supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', id).order('fecha_inicio')
     if (macs?.length) {
+      setWeekIndex(weeksBetween(macs[0].fecha_inicio, fecha))
       const macIds = macs.map((m: any) => m.id)
       const { data: mes } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macIds)
       if (mes?.length) {
@@ -71,6 +90,11 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         }
       }
     }
+
+    // Unidades planificadas (zonas) para esta semana, desde el Dibujo
+    const { data: borrador } = await supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', Number(id)).maybeSingle()
+    setBorradorId(borrador?.id ?? null)
+    setSesZonasAll(borrador?.sesiones_zonas || [])
 
     // Calcular UA programada y real
     const sesIds = sesiones_cargadas.map((s: any) => s.id)
@@ -105,36 +129,38 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setLoading(false)
   }
 
+  // Obtiene el microciclo de esta semana, creandolo automaticamente si aun no existe.
+  const obtenerOcrearMicrociclo = async (): Promise<number | null> => {
+    if (microciclo?.id) return microciclo.id
+    const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
+    if (!macs?.length) { alert('No hay macrociclo para este deportista'); return null }
+    const macIds = macs.map((m: any) => m.id)
+    const { data: mes } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macIds)
+    // Encontrar el meso que contiene esta fecha
+    const mesoContenedor = mes?.find((me: any) => {
+      const ini = new Date(me.fecha_inicio + 'T12:00:00')
+      const fin = new Date(ini); fin.setDate(ini.getDate() + me.duracion_semanas * 7)
+      const d = new Date(fecha + 'T12:00:00')
+      return d >= ini && d < fin
+    })
+    if (!mesoContenedor) { alert('Esta semana no pertenece a ningun mesociclo. Genera la planificacion primero desde el Dibujo.'); return null }
+    const { data: nuevoMicro } = await supabase.from('microciclo').insert({
+      id_mesociclo: mesoContenedor.id,
+      objetivo: 'Semana del ' + fecha,
+      tipo: 'Carga',
+      fecha_inicio: fecha,
+      duracion_dias: 7,
+    }).select().single()
+    if (!nuevoMicro) { alert('Error creando semana'); return null }
+    setMicrociclo(nuevoMicro)
+    return nuevoMicro.id
+  }
+
   const crearSesion = async (fechaDia: string) => {
     if (!disc) { alert('Elige una disciplina'); return }
     setGuardando(true)
-
-    let microId = microciclo?.id
-    // Si no hay microciclo para esta semana, crearlo automaticamente
-    if (!microId) {
-      const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
-      if (!macs?.length) { alert('No hay macrociclo para este deportista'); setGuardando(false); return }
-      const macIds = macs.map((m: any) => m.id)
-      const { data: mes } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macIds)
-      // Encontrar el meso que contiene esta fecha
-      const mesoContenedor = mes?.find((me: any) => {
-        const ini = new Date(me.fecha_inicio + 'T12:00:00')
-        const fin = new Date(ini); fin.setDate(ini.getDate() + me.duracion_semanas * 7)
-        const d = new Date(fecha + 'T12:00:00')
-        return d >= ini && d < fin
-      })
-      if (!mesoContenedor) { alert('Esta semana no pertenece a ningun mesociclo. Genera la planificacion primero desde el Dibujo.'); setGuardando(false); return }
-      const { data: nuevoMicro } = await supabase.from('microciclo').insert({
-        id_mesociclo: mesoContenedor.id,
-        objetivo: 'Semana del ' + fecha,
-        tipo: 'Carga',
-        fecha_inicio: fecha,
-        duracion_dias: 7,
-      }).select().single()
-      if (!nuevoMicro) { alert('Error creando semana'); setGuardando(false); return }
-      setMicrociclo(nuevoMicro)
-      microId = nuevoMicro.id
-    }
+    const microId = await obtenerOcrearMicrociclo()
+    if (!microId) { setGuardando(false); return }
 
     await supabase.from('sesion').insert({
       id_microciclo: microId,
@@ -159,15 +185,106 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setSesiones(p => p.filter(s => s.id !== sesId))
   }
 
+  // Persiste el array de chips de zona (tras usar uno o marcarlo como hecho) en dibujo_borrador.
+  const persistirZonas = async (nuevoArray: ChipZona[]) => {
+    setSesZonasAll(nuevoArray)
+    if (borradorId) await supabase.from('dibujo_borrador').update({ sesiones_zonas: nuevoArray }).eq('id', borradorId)
+  }
+
+  // Arrastrar una unidad a un día → UNA sesión (1 zona = simple, varias = compleja).
+  // Cada zona se materializa como una tarea real, así cuenta en la distribución de zonas.
+  const crearSesionDesdeUnidad = async (chips: ChipZona[], fechaDia: string) => {
+    if (!chips.length) return
+    setGuardando(true)
+    const microId = await obtenerOcrearMicrociclo()
+    if (!microId) { setGuardando(false); return }
+
+    const disciplina = chips[0].disciplina
+    const esFuerza = disciplina === 'Fuerza'
+    const compleja = chips.length > 1
+    const rpeEstim = Math.round(chips.reduce((a, c) => a + cargaZona(c.zona).rpe, 0) / chips.length)
+
+    const { data: nuevaSesion, error: errSes } = await supabase.from('sesion').insert({
+      id_microciclo: microId,
+      disciplina,
+      fecha_sesion: fechaDia,
+      rpe_estimado: rpeEstim,
+      estado: 'Planificada',
+      modo_fuerza: esFuerza ? (compleja ? 'compleja' : 'simple') : null,
+      zona_fuerza: esFuerza && !compleja ? chips[0].zona : null,
+      notas_entrenador: null,
+    }).select().single()
+    if (errSes || !nuevaSesion) { alert('Error creando la sesión: ' + (errSes?.message || '')); setGuardando(false); return }
+
+    // Fuerza simple deja la zona a nivel de sesión (zona_fuerza) sin tarea, como en el resto
+    // de la app. Resistencia (siempre) y fuerza compleja materializan una tarea por zona.
+    if (!(esFuerza && !compleja)) {
+      const tareas = chips.map((c, i) => ({ id_sesion: nuevaSesion.id, zona_entrenamiento: c.zona, disciplina, orden: i + 1 }))
+      const { error: errTar } = await supabase.from('tarea').insert(tareas)
+      if (errTar) alert('Sesión creada, pero error al crear las tareas: ' + errTar.message)
+    }
+
+    // Los chips usados se marcan como hechos: siguen visibles en el canvas de periodización
+    // pero salen del pool de "por arrastrar".
+    await persistirZonas(sesZonasAll.map(z => chips.some(c => c.id === z.id) ? { ...z, hecho: true } : z))
+    await cargar()
+    setGuardando(false)
+  }
+
+  const toggleSeleccion = (chipId: string) => setSeleccion(s => s.includes(chipId) ? s.filter(x => x !== chipId) : [...s, chipId])
+
+  // Fusiona todas las zonas seleccionadas (misma disciplina) en una unidad compleja.
+  const fusionarSeleccion = async () => {
+    const sel = sesZonasAll.filter(z => seleccion.includes(z.id))
+    if (sel.length < 2) return
+    if (!sel.every(z => z.disciplina === sel[0].disciplina)) { alert('Solo se pueden fusionar zonas de la misma disciplina'); return }
+    // Reutiliza un grupo existente entre las seleccionadas, si lo hay (para ampliar una unidad).
+    const grupoId = sel.find(z => z.grupo)?.grupo || ('g' + Math.random().toString(36).slice(2))
+    await persistirZonas(sesZonasAll.map(z => seleccion.includes(z.id) ? { ...z, grupo: grupoId } : z))
+    setSeleccion([])
+  }
+
+  // Marca las zonas seleccionadas como hechas: salen del pool sin crear sesión.
+  const marcarSeleccionHechas = async () => {
+    await persistirZonas(sesZonasAll.map(z => seleccion.includes(z.id) ? { ...z, hecho: true } : z))
+    setSeleccion([])
+  }
+
+  // Deshace una unidad fusionada: sus chips vuelven a ser sueltos.
+  const separar = async (grupoId: string) => {
+    await persistirZonas(sesZonasAll.map(z => z.grupo === grupoId ? { ...z, grupo: undefined } : z))
+  }
+
+  // Mueve una sesión ya colocada a otro día de la misma semana (corregir el día).
+  const moverSesion = async (sesId: number, fechaDia: string) => {
+    const s = sesiones.find(x => x.id === sesId)
+    if (!s || s.fecha_sesion === fechaDia) return
+    setSesiones(prev => prev.map(x => x.id === sesId ? { ...x, fecha_sesion: fechaDia } : x))
+    await supabase.from('sesion').update({ fecha_sesion: fechaDia }).eq('id', sesId)
+  }
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+
+  // Pool de esta semana agrupado en unidades: chips con el mismo `grupo` van juntos.
+  const chipsSemana = sesZonasAll.filter(z => z.semana === weekIndex && !z.hecho)
+  const unidadesPool: { grupo: string | null; chips: ChipZona[] }[] = []
+  const grupoPos: Record<string, number> = {}
+  chipsSemana.forEach(c => {
+    if (c.grupo) {
+      if (grupoPos[c.grupo] === undefined) { grupoPos[c.grupo] = unidadesPool.length; unidadesPool.push({ grupo: c.grupo, chips: [] }) }
+      unidadesPool[grupoPos[c.grupo]].chips.push(c)
+    } else unidadesPool.push({ grupo: null, chips: [c] })
+  })
+  const selChips = sesZonasAll.filter(z => seleccion.includes(z.id))
+  const puedeFusionar = selChips.length >= 2 && selChips.every(z => z.disciplina === selChips[0].disciplina)
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-gray-300 text-sm font-medium">{dep?.nombre} — Semana del {fecha}</span>
-          <button onClick={() => window.location.href = `/planificacion-visual/${id}/dibujo?editar=1`} className="text-gray-400 hover:text-white text-sm transition">← Volver al Dibujo</button>
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
+          <button onClick={() => router.push(`/planificacion-visual/${id}/dibujo?editar=1`)} className="text-gray-400 hover:text-white text-sm transition">← Volver al Dibujo</button>
+          <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
         </div>
       </nav>
 
@@ -236,14 +353,102 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
           </div>
         )}
 
+        {/* Unidades planificadas (zonas) — clic para seleccionar/fusionar; arrastra a un día */}
+        {unidadesPool.length > 0 && (
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+              <p className="text-gray-400 text-sm font-medium">Unidades planificadas esta semana — arrastra a un día</p>
+              {seleccion.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">{seleccion.length} sel.</span>
+                  <button onClick={fusionarSeleccion} disabled={!puedeFusionar}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={puedeFusionar ? 'Fusionar en una sesión compleja' : 'Selecciona 2+ zonas de la misma disciplina'}>
+                    🔗 Fusionar ({seleccion.length})
+                  </button>
+                  <button onClick={marcarSeleccionHechas} className="text-xs text-gray-400 hover:text-orange-400 px-2 py-1.5 transition" title="Quitar del pool sin crear sesión">✓ Hechas</button>
+                  <button onClick={() => setSeleccion([])} className="text-xs text-gray-500 hover:text-white px-1 transition">✕</button>
+                </div>
+              )}
+            </div>
+            <p className="text-gray-600 text-xs mb-3">Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja. Arrastra una unidad a un día para programarla.</p>
+            <div className="flex flex-wrap gap-2 items-start">
+              {unidadesPool.map(u => {
+                const disc = u.chips[0].disciplina
+
+                // Unidad suelta (una sola zona) — clic selecciona, arrastre coloca
+                if (u.chips.length === 1) {
+                  const chip = u.chips[0]
+                  const c = cargaZona(chip.zona)
+                  const sel = seleccion.includes(chip.id)
+                  return (
+                    <div key={chip.id}
+                      draggable
+                      onDragStart={e => { setDraggingChip(chip.id); e.dataTransfer.setData('text/plain', 'chip:' + chip.id) }}
+                      onDragEnd={() => setDraggingChip(null)}
+                      onClick={() => toggleSeleccion(chip.id)}
+                      className="cursor-pointer flex flex-col items-center justify-center rounded-lg border px-3 py-2 select-none transition"
+                      style={{ backgroundColor: c.color + '20', borderColor: sel ? '#fb923c' : c.color, opacity: draggingChip === chip.id ? 0.4 : 1, boxShadow: sel ? '0 0 0 2px #fb923c' : undefined }}
+                      title={c.nombre + ' · clic para seleccionar · arrástrala a un día'}>
+                      <span className="font-bold text-sm" style={{ color: c.color }}>{chip.zona}</span>
+                      <span className="text-xs text-gray-400">{DISC_CORTO[chip.disciplina] || chip.disciplina}</span>
+                    </div>
+                  )
+                }
+
+                // Unidad fusionada (sesión compleja)
+                const dragId = u.chips[0].id
+                return (
+                  <div key={u.grupo!}
+                    draggable
+                    onDragStart={e => { setDraggingChip(dragId); e.dataTransfer.setData('text/plain', 'chip:' + dragId) }}
+                    onDragEnd={() => setDraggingChip(null)}
+                    className="cursor-grab active:cursor-grabbing relative flex flex-col rounded-lg border-2 border-dashed p-2 select-none"
+                    style={{ borderColor: '#f97316', backgroundColor: '#f9731612', opacity: draggingChip === dragId ? 0.4 : 1 }}
+                    title="Sesión compleja · arrástrala a un día">
+                    <div className="flex items-center justify-between gap-3 mb-1.5">
+                      <span className="font-bold text-orange-400 uppercase tracking-wide" style={{ fontSize: 10 }}>Compleja · {DISC_CORTO[disc] || disc}</span>
+                      <button onClick={e => { e.stopPropagation(); separar(u.grupo!) }}
+                        className="text-gray-500 hover:text-red-400 leading-none" style={{ fontSize: 13 }} title="Separar de nuevo">⊗</button>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {u.chips.map(ch => {
+                        const c = cargaZona(ch.zona)
+                        return (
+                          <span key={ch.id} className="rounded px-2 py-1 font-bold border" style={{ fontSize: 11, color: c.color, borderColor: c.color, backgroundColor: c.color + '20' }}>{ch.zona}</span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Grid 7 dias */}
         <div className="grid grid-cols-7 gap-3">
           {dias.map(({ fecha: fechaDia, dia, diaCorto, dayNum }) => {
             const sesiones_dia = sesiones.filter(s => s.fecha_sesion === fechaDia)
             const esHoy = fechaDia === hoy
             return (
-              <div key={fechaDia} className={'rounded-2xl border flex flex-col overflow-hidden ' +
-                (esHoy ? 'border-orange-500' : 'border-gray-800')}>
+              <div key={fechaDia}
+                onDragOver={e => { e.preventDefault() }}
+                onDragEnter={e => { e.preventDefault(); setDragOverDia(fechaDia) }}
+                onDragLeave={() => setDragOverDia(d => d === fechaDia ? null : d)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setDragOverDia(null)
+                  const raw = e.dataTransfer.getData('text/plain')
+                  if (raw.startsWith('sesion:')) { moverSesion(Number(raw.slice(7)), fechaDia); return }
+                  const chipId = raw.startsWith('chip:') ? raw.slice(5) : raw
+                  const chip = sesZonasAll.find(z => z.id === chipId)
+                  if (!chip) return
+                  const unidad = chip.grupo ? sesZonasAll.filter(z => z.grupo === chip.grupo && z.semana === weekIndex && !z.hecho) : [chip]
+                  crearSesionDesdeUnidad(unidad, fechaDia)
+                }}
+                className={'rounded-2xl border flex flex-col overflow-hidden transition ' +
+                (dragOverDia === fechaDia ? 'border-orange-400 ring-2 ring-orange-400/40' : esHoy ? 'border-orange-500' : 'border-gray-800')}>
                 {/* Header dia */}
                 <div className={'px-3 py-2.5 border-b ' + (esHoy ? 'bg-orange-500/20 border-orange-500/30' : 'bg-gray-900 border-gray-800')}>
                   <p className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{diaCorto}</p>
@@ -253,10 +458,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 {/* Sesiones del dia */}
                 <div className="flex-1 p-2 bg-gray-900 flex flex-col gap-1.5 min-h-48">
                   {sesiones_dia.map(s => (
-                    <div key={s.id} className="group relative">
+                    <div key={s.id} className="group relative"
+                      draggable
+                      onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData('text/plain', 'sesion:' + s.id) }}>
                       <button
-                        onClick={() => window.location.href = '/sesion/' + s.id}
-                        className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
+                        onClick={() => router.push('/sesion/' + s.id)}
+                        className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
                         <p className="text-xs font-bold">{s.disciplina}</p>
                         <p className="text-xs opacity-80">{s.duracion_minutos ? s.duracion_minutos + 'min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
                         {s.estado === 'Realizada' && <p className="text-xs opacity-60 mt-0.5">✓ Realizada</p>}

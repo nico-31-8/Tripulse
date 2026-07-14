@@ -1,7 +1,11 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import FuerzaRegistro from './FuerzaRegistro'
+import { zonaResistencia, prescripcion, cargaZona } from '@/lib/zonas'
+import { calcularDuracionEstimada } from '@/lib/duracion'
+import { recomendarRecuperacion } from '@/lib/recuperacion'
 
 function segAMmss(seg: number): string {
   const min = Math.floor(seg / 60)
@@ -26,11 +30,21 @@ const COLOR_ZONA: Record<string, string> = {
   'Z7': 'bg-purple-900 border-purple-600',
 }
 
+// Clase de color de la tarjeta según zona (Z1–Z7 directo; siglas Zonas 2 por nivel equivalente).
+function claseZona(zona: string): string {
+  if (!zona) return 'bg-gray-900 border-gray-700'
+  return COLOR_ZONA[zona] || COLOR_ZONA['Z' + cargaZona(zona).nivel] || 'bg-gray-900 border-gray-700'
+}
+
 const VAM_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.60], Z2:[0.60,0.70], Z3:[0.70,0.80], Z4:[0.80,0.90], Z5:[0.90,1.00], Z6:[1.00,1.15], Z7:[1.15,1.30] }
 const FTP_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.55], Z2:[0.56,0.75], Z3:[0.76,0.90], Z4:[0.91,1.05], Z5:[1.06,1.20], Z6:[1.21,1.50], Z7:[1.51,2.00] }
 const CSS_ZONAS: Record<string, [number,number]> = { Z1:[0.55,0.65], Z2:[0.65,0.75], Z3:[0.76,0.85], Z4:[0.86,0.95], Z5:[0.96,1.05], Z6:[1.06,1.20], Z7:[1.21,1.40] }
 function calcularRango(zona: string, disciplina: string, tests: any): string {
   if (!zona || !disciplina || !tests) return ''
+  // Zonas 2 (resistencia): el catálogo da el rango real de ritmo/vatios/CSS.
+  const zr = zonaResistencia(zona)
+  if (zr) { const p = prescripcion(zr, disciplina, tests); return p && p !== '—' ? p : '' }
+  // Sistema clásico Z1–Z7.
   const z = zona.toUpperCase()
   if (disciplina === 'Carrera' && tests.vam && VAM_ZONAS[z]) {
     const [p1, p2] = VAM_ZONAS[z]
@@ -50,6 +64,7 @@ function calcularRango(zona: string, disciplina: string, tests: any): string {
   return ''
 }
 export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
   const [tareas, setTareas] = useState<any[]>([])
@@ -60,6 +75,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, any[]>>({})
   const [guardando, setGuardando] = useState(false)
   const [tests, setTests] = useState<any>(null)
+  const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
+  const [otraSesionHoy, setOtraSesionHoy] = useState(false)
+  const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
 
   // Post sesión
   const [rpe, setRpe] = useState(5)
@@ -81,12 +99,36 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
           if (macro) {
             const depId = macro.id_deportista
-            const [t1, t2, t3] = await Promise.all([
-              supabase.from('test1_carrera').select('vam').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+            const [t1, t2, t3, an] = await Promise.all([
+              supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
               supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
             ])
             setTests({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.velocidad_critica_natacion || null, ftp: t3.data?.[0]?.ftp || null })
+            setPesoDeportista(an.data?.peso || null)
+
+            // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
+            const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', meso.id_macrociclo)
+            const mesoIds = (mesos || []).map(m => m.id)
+            if (mesoIds.length) {
+              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio').in('id_mesociclo', mesoIds)
+              const microIds = (micros || []).map(m => m.id)
+              const fSes = new Date(ses.fecha_sesion)
+              let dias: number | null = null
+              for (const mi of micros || []) {
+                if (mi.tipo === 'Competición' && mi.fecha_inicio) {
+                  const d = Math.round((new Date(mi.fecha_inicio).getTime() - fSes.getTime()) / 86400000)
+                  if (d >= 0 && (dias === null || d < dias)) dias = d
+                }
+              }
+              setDiasHastaComp(dias)
+              if (microIds.length) {
+                const { data: mismasFecha } = await supabase.from('sesion')
+                  .select('id, estado').in('id_microciclo', microIds).eq('fecha_sesion', ses.fecha_sesion)
+                setOtraSesionHoy((mismasFecha || []).some(s => s.id !== Number(id) && s.estado !== 'Cancelada'))
+              }
+            }
           }
         }
       }
@@ -228,7 +270,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   if (fase === 'preview') return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
-        <button onClick={() => window.history.back()} className="text-gray-400 text-sm">← Volver</button>
+        <button onClick={() => router.back()} className="text-gray-400 text-sm">← Volver</button>
         <div className="w-16" />
       </nav>
 
@@ -253,11 +295,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           {tareas.length === 0 ? (
             <p className="text-gray-500 text-sm">No hay tareas planificadas.</p>
           ) : tareas.map((t, i) => (
-            <div key={t.id} className={'rounded-xl p-4 border ' + (COLOR_ZONA[t.zona_entrenamiento] || 'bg-gray-900 border-gray-700')}>
+            <div key={t.id} className={'rounded-xl p-4 border ' + claseZona(t.zona_entrenamiento)}>
               <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
-                  {t.zona_entrenamiento && <span className="text-xs bg-black bg-opacity-30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
+                  {t.zona_entrenamiento && <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
                 </div>
                 <span className="text-xs text-gray-400">{t.disciplina}</span>
               </div>
@@ -308,24 +350,24 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
 
         <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full flex flex-col">
           {/* Tarea actual */}
-          <div className={'rounded-xl p-5 border mb-6 ' + (COLOR_ZONA[tarea?.zona_entrenamiento] || 'bg-gray-900 border-gray-700')}>
+          <div className={'rounded-xl p-5 border mb-6 ' + claseZona(tarea?.zona_entrenamiento)}>
             <div className="flex justify-between items-center mb-3">
               <span className="font-bold text-orange-400">Tarea {tareaActual + 1}</span>
-              {tarea?.zona_entrenamiento && <span className="text-sm bg-black bg-opacity-40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
+              {tarea?.zona_entrenamiento && <span className="text-sm bg-black/40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
               {tarea?.series && (
-                <div className="bg-black bg-opacity-30 rounded-lg p-2">
+                <div className="bg-black/30 rounded-lg p-2">
                   <p className="text-xs text-gray-400">Series</p>
                   <p className="font-bold text-lg">{tarea.series}</p>
                 </div>
               )}
-              <div className="bg-black bg-opacity-30 rounded-lg p-2">
+              <div className="bg-black/30 rounded-lg p-2">
                 <p className="text-xs text-gray-400">Objetivo</p>
                 <p className="font-bold text-lg">{getObjetivo(tarea)}</p>
               </div>
               {tarea?.descanso_segundos && (
-                <div className="bg-black bg-opacity-30 rounded-lg p-2">
+                <div className="bg-black/30 rounded-lg p-2">
                   <p className="text-xs text-gray-400">Descanso</p>
                   <p className="font-bold text-lg">{segAMmss(tarea.descanso_segundos)}</p>
                 </div>
@@ -338,7 +380,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               const ritmoMostrar = ritmoGuardado || ritmoCalculado
               if (!ritmoMostrar) return null
               return (
-                <div className="mt-3 bg-black bg-opacity-30 rounded-lg px-4 py-2 flex justify-between items-center">
+                <div className="mt-3 bg-black/30 rounded-lg px-4 py-2 flex justify-between items-center">
                   <p className="text-xs text-gray-400">
                     {(tarea?.disciplina || sesion?.disciplina) === 'Carrera' ? 'Ritmo objetivo' :
                      (tarea?.disciplina || sesion?.disciplina) === 'Ciclismo' ? 'Potencia objetivo' :
@@ -505,6 +547,40 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           )}
         </div>
 
+        {/* Recomendación de recuperación */}
+        {sesion.disciplina !== 'Fuerza' && (() => {
+          const durMin = sesion.duracion_real || sesion.duracion_minutos || calcularDuracionEstimada(tareas, tests || {}).minutos || 0
+          const recup = recomendarRecuperacion({
+            duracionMin: durMin,
+            rpeReal: rpe,
+            disciplina: sesion.disciplina,
+            ayuno: !!sesion.nutricion_ayuno,
+            pesoKg: pesoDeportista,
+            otraSesionHoy,
+            diasHastaComp,
+          })
+          return (
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🍽</span>
+                <h3 className="text-white font-bold text-sm">{recup.titulo}</h3>
+              </div>
+              <p className="text-gray-300 text-sm mb-2">{recup.mensaje}</p>
+              {(recup.carboG != null || recup.proteinaG != null) && (
+                <div className="flex gap-3 flex-wrap text-xs mb-2">
+                  {recup.carboG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🥤 ~{recup.carboG} g carbohidrato</span>}
+                  {recup.proteinaG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🍗 ~{recup.proteinaG} g proteína</span>}
+                </div>
+              )}
+              {recup.ejemplos && <p className="text-gray-400 text-xs mb-1">{recup.ejemplos}</p>}
+              {recup.hidratacion && <p className="text-gray-400 text-xs mb-1">💧 {recup.hidratacion}</p>}
+              {recup.extra.map((e, i) => (
+                <p key={i} className="text-yellow-400/90 text-xs mt-1.5">⚠️ {e}</p>
+              ))}
+            </div>
+          )
+        })()}
+
         {/* Tareas planificado vs real */}
         <h3 className="font-bold mb-3 text-gray-300">Tareas — Planificado vs Real</h3>
         <div className="flex flex-col gap-3 mb-6">
@@ -521,7 +597,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
                 <div className="px-4 py-3 bg-gray-800 flex items-center gap-2">
                   <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
-                  {t.zona_entrenamiento && <span className="text-xs bg-black bg-opacity-30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
+                  {t.zona_entrenamiento && <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>}
                   <span className="text-gray-400 text-xs">{t.disciplina}</span>
                   {seriesCompletadas > 0 && (
                     <span className="ml-auto text-xs text-green-400">{seriesCompletadas}/{totalSeries} series ✓</span>
@@ -582,7 +658,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           })}
         </div>
 
-        <button onClick={() => window.location.href = '/dashboard-deportista'}
+        <button onClick={() => router.push('/dashboard-deportista')}
           className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
           Volver al panel →
         </button>

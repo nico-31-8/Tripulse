@@ -1,10 +1,11 @@
 'use client'
+import Link from 'next/link'
 
 export default function Terminos() {
   return (
     <main className="min-h-screen bg-gray-950 text-gray-300">
       <div className="max-w-3xl mx-auto px-6 py-12">
-        <a href="/" className="text-orange-400 hover:underline text-sm">← Volver</a>
+        <Link href="/" className="text-orange-400 hover:underline text-sm">← Volver</Link>
         <h1 className="text-3xl font-bold text-white mt-4 mb-2">Términos de uso</h1>
         <p className="text-gray-500 text-sm mb-8">Última actualización: julio de 2026 · Versión v1-2026-07</p>
 
@@ -60,8 +61,8 @@ export default function Terminos() {
         </div>
 
         <div className="mt-10 flex gap-4 text-sm">
-          <a href="/privacidad" className="text-orange-400 hover:underline">Política de privacidad</a>
-          <a href="/" className="text-gray-500 hover:text-white">Inicio</a>
+          <Link href="/privacidad" className="text-orange-400 hover:underline">Política de privacidad</Link>
+          <Link href="/" className="text-gray-500 hover:text-white">Inicio</Link>
         </div>
       </div>
     </main>

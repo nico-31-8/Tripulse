@@ -1,20 +1,10 @@
 'use client'
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { cargaZona } from '@/lib/zonas'
 
-const ZONAS = [
-  { n: 1, nombre: 'Recuperación',  color: '#94a3b8', rpe: 2.5 },
-  { n: 2, nombre: 'Aeróbica',      color: '#34d399', rpe: 4.5 },
-  { n: 3, nombre: 'Tempo',         color: '#a3e635', rpe: 6.5 },
-  { n: 4, nombre: 'Umbral',        color: '#fbbf24', rpe: 7.5 },
-  { n: 5, nombre: 'VO₂máx',        color: '#fb923c', rpe: 8.5 },
-  { n: 6, nombre: 'Anaeróbica',    color: '#f87171', rpe: 9.5 },
-  { n: 7, nombre: 'Neuromuscular', color: '#c084fc', rpe: 10  },
-]
-
+// Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
 function parseZonaNum(str: string): number {
-  if (!str) return 2
-  const m = str.match(/[Zz]\s*(\d)/)
-  return m ? Math.min(Math.max(parseInt(m[1]), 1), 7) : 2
+  return cargaZona(str).nivel
 }
 
 function estimarDurMin(t: any): number {
@@ -49,8 +39,9 @@ function volumenParaAncho(t: any): number {
   return Math.max(1, series * 3)
 }
 
-function getUA(zonaNum: number, durMin: number): number {
-  return Math.round((ZONAS[zonaNum - 1]?.rpe ?? 5) * durMin)
+// UA = RPE representativo de la zona × minutos (RPE real del catálogo).
+function getUA(rpe: number, durMin: number): number {
+  return Math.round(rpe * durMin)
 }
 
 export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
@@ -92,12 +83,16 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
   const chartW = svgW - PL - PR
   const chartH = H - PT - PB
 
-  const bars = tareas.map(t => ({
-    t,
-    zonaNum: parseZonaNum(t.zona_entrenamiento || ''),
-    durMin: estimarDurMin(t),
-    volumen: volumenParaAncho(t),
-  }))
+  const bars = tareas.map(t => {
+    const carga = cargaZona(t.zona_entrenamiento || '')
+    return {
+      t,
+      carga,
+      zonaNum: carga.nivel,
+      durMin: estimarDurMin(t),
+      volumen: volumenParaAncho(t),
+    }
+  })
 
   const totalVol = bars.reduce((s, b) => s + b.volumen, 0)
   const totalMin = bars.reduce((s, b) => s + b.durMin, 0)
@@ -106,7 +101,7 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
   let cursor = PL
   const rects: any[] = []
   bars.forEach((b, idx) => {
-    const zona = ZONAS[b.zonaNum - 1]
+    const zona = { color: b.carga.color, nombre: b.carga.nombre }
     const series = b.t.series && b.t.series > 1 ? b.t.series : 1
     const totalBW = b.volumen * pxPerMin
     const serieW = totalBW / series
@@ -120,10 +115,16 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
     cursor += totalBW
   })
 
-  const totalUA = bars.reduce((s, b) => s + getUA(b.zonaNum, b.durMin), 0)
+  const totalUA = bars.reduce((s, b) => s + getUA(b.carga.rpe, b.durMin), 0)
   const zonaMedia = totalMin > 0 ? (bars.reduce((s, b) => s + b.zonaNum * b.durMin, 0) / totalMin).toFixed(1) : '0'
   const zonaMax = Math.max(...bars.map(b => b.zonaNum))
-  const zonasUsadas = [...new Set(bars.map(b => b.zonaNum))].sort()
+  // Zonas realmente usadas (por etiqueta real: sigla Zonas 2 o Z1–Z7), con su color.
+  const zonasUsadas = Array.from(
+    new Map(bars.map(b => {
+      const label = b.t.zona_entrenamiento || `Z${b.carga.nivel}`
+      return [label, { label, color: b.carga.color }]
+    })).values()
+  )
 
   const ivs = [5, 10, 15, 20, 30, 60]
   const iv = ivs.find(i => totalMin / i <= 7) || 60
@@ -198,22 +199,19 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
             </div>
             <p className="text-gray-400">Por serie: <span className="text-white font-medium">{tipBar.durMin} min</span></p>
             {(() => { const v = calcularVolumenTotal(tipBar.t); return <p className="text-gray-400">Volumen total: <span className="text-orange-400 font-medium">{v.unidad === 'km' ? (v.valor/1000).toFixed(1) + ' km' : v.valor + ' ' + v.unidad}</span></p> })()}
-            <p className="text-gray-400">Carga: <span className="text-white font-medium">{getUA(tipBar.zonaNum, tipBar.durMin)} UA</span></p>
+            <p className="text-gray-400">Carga: <span className="text-white font-medium">{getUA(tipBar.carga.rpe, tipBar.durMin)} UA</span></p>
             {tipBar.t.comentario && <p className="text-gray-500 mt-1 truncate max-w-36">{tipBar.t.comentario}</p>}
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-3 mt-2">
-        {zonasUsadas.map(n => {
-          const z = ZONAS[n-1]
-          return (
-            <span key={n} className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span className="w-2 h-2 rounded-sm inline-block opacity-80" style={{ background: z.color }} />
-              Z{z.n} {z.nombre}
-            </span>
-          )
-        })}
+        {zonasUsadas.map(z => (
+          <span key={z.label} className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="w-2 h-2 rounded-sm inline-block opacity-80" style={{ background: z.color }} />
+            {z.label}
+          </span>
+        ))}
       </div>
     </div>
   )

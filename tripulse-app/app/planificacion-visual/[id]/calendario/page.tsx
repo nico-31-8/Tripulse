@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import GraficaCarga from '@/components/GraficaCarga'
@@ -6,6 +7,7 @@ import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
 import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { ZONAS_FUERZA } from '@/lib/zonas'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -15,6 +17,22 @@ const COLOR_MESO: Record<string, string> = {
   'Transmutación': 'bg-yellow-500', 'Transmutacion': 'bg-yellow-500',
   'Realización': 'bg-red-500', 'Realizacion': 'bg-red-500',
   'Recuperación': 'bg-green-500', 'Recuperacion': 'bg-green-500',
+}
+
+// Variantes translúcidas del color de meso. En Tailwind v4 la opacidad va en la
+// propia clase (bg-color/N), y debe ser un literal completo para que el compilador
+// la detecte — por eso mapas dedicados en vez de concatenar la opacidad en runtime.
+const COLOR_MESO_20: Record<string, string> = {
+  'Acumulación': 'bg-orange-500/20 hover:bg-orange-500/30', 'Acumulacion': 'bg-orange-500/20 hover:bg-orange-500/30',
+  'Transmutación': 'bg-yellow-500/20 hover:bg-yellow-500/30', 'Transmutacion': 'bg-yellow-500/20 hover:bg-yellow-500/30',
+  'Realización': 'bg-red-500/20 hover:bg-red-500/30', 'Realizacion': 'bg-red-500/20 hover:bg-red-500/30',
+  'Recuperación': 'bg-green-500/20 hover:bg-green-500/30', 'Recuperacion': 'bg-green-500/20 hover:bg-green-500/30',
+}
+const COLOR_MESO_40: Record<string, string> = {
+  'Acumulación': 'bg-orange-500/40 hover:bg-orange-500/60', 'Acumulacion': 'bg-orange-500/40 hover:bg-orange-500/60',
+  'Transmutación': 'bg-yellow-500/40 hover:bg-yellow-500/60', 'Transmutacion': 'bg-yellow-500/40 hover:bg-yellow-500/60',
+  'Realización': 'bg-red-500/40 hover:bg-red-500/60', 'Realizacion': 'bg-red-500/40 hover:bg-red-500/60',
+  'Recuperación': 'bg-green-500/40 hover:bg-green-500/60', 'Recuperacion': 'bg-green-500/40 hover:bg-green-500/60',
 }
 
 const COLOR_DISC: Record<string, string> = {
@@ -95,6 +113,7 @@ function colorSemanas(semanas: number) {
 }
 
 export default function CalendarioPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
@@ -130,6 +149,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [microObj, setMicroObj] = useState('')
   const [microTipo, setMicroTipo] = useState('')
   const [sesionDisc, setSesionDisc] = useState('')
+  const [sesionModoFuerza, setSesionModoFuerza] = useState('simple')
+  const [sesionZonaFuerza, setSesionZonaFuerza] = useState('')
   const [sesionDuracion, setSesionDuracion] = useState('')
   const [sesionRpe, setSesionRpe] = useState('')
   const [sesionNotas, setSesionNotas] = useState('')
@@ -153,9 +174,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
     // Tests más recientes para estimar ritmos por zona
-    const { data: tCarr } = await supabase.from('test1_carrera').select('vam').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    const { data: tNat } = await supabase.from('test2_natacion').select('css').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    const { data: tCic } = await supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: tCarr } = await supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: tNat } = await supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: tCic } = await supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     const testsDep: TestsDeportista = { vam: tCarr?.[0]?.vam, css: tNat?.[0]?.css, ftp: tCic?.[0]?.ftp }
     setTests(testsDep)
     const { data: mac } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
@@ -340,7 +361,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const bloqueoF = getBloqueoSemana(f)
     if (bloqueoF) { setBloqueoSel(bloqueoF); setModalTipo('verBloqueo'); return }
     if (comp) { setCompSel(comp); setModalTipo('verCompeticion'); return }
-    if (ses.length > 0) { window.location.href = '/sesion/' + ses[0].id; return }
+    if (ses.length > 0) { router.push('/sesion/' + ses[0].id); return }
     if (micro) { setMicroSel(micro); setMesoSel(meso); setMacroSel(macro); setModalTipo('sesion'); return }
     if (meso) { setMesoSel(meso); setMacroSel(macro); setModalTipo('micro'); return }
     if (macro) { setMacroSel(macro); setModalTipo('meso'); return }
@@ -366,10 +387,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setModalTipo('macro')
   }
 
-  const editarSesion = (ses: any, e: React.MouseEvent) => { e.stopPropagation(); setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || ''); setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || ''); setModalTipo('editarSesion') }
+  const editarSesion = (ses: any, e: React.MouseEvent) => { e.stopPropagation(); setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || ''); setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || ''); setSesionModoFuerza(ses.modo_fuerza || 'simple'); setSesionZonaFuerza(ses.zona_fuerza || ''); setModalTipo('editarSesion') }
   const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Mover esta sesión a la papelera?')) return; await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId); await cargarDatos() }
 
-  const guardarEdicionSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('sesion').update({ disciplina: sesionDisc, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas }).eq('id', sesionEditando.id); setSesionEditando(null); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarEdicionSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); const esF = sesionDisc === 'Fuerza'; await supabase.from('sesion').update({ disciplina: sesionDisc, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, modo_fuerza: esF ? sesionModoFuerza : null, zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null }).eq('id', sesionEditando.id); setSesionEditando(null); setModalTipo(null); await cargarDatos(); setLoading(false) }
   const guardarMacro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null }); setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
   const guardarMeso = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -389,7 +410,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setLoading(false)
   }
   const guardarMicro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 }); setMicroObj(''); setMicroTipo(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
-  const guardarSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('sesion').insert({ id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, estado: 'Planificada' }); setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); const esF = sesionDisc === 'Fuerza'; await supabase.from('sesion').insert({ id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, estado: 'Planificada', modo_fuerza: esF ? sesionModoFuerza : null, zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null }); setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionModoFuerza('simple'); setSesionZonaFuerza(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
 
   const guardarCompeticion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
@@ -428,8 +449,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
-          <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+          <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
+          <button onClick={() => router.push('/deportistas/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
         </div>
       </nav>
 
@@ -654,7 +675,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                            comp ? 'ring-2 ring-yellow-500 bg-yellow-900/20 border-yellow-700 ' :
                            esCopiadaSemana ? 'ring-2 ring-purple-500 border-purple-700 bg-purple-900/20 ' :
                            esHoy ? 'ring-2 ring-orange-500 ' : '') +
-                          (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-800') + ' bg-opacity-20 border-gray-700 hover:bg-opacity-30 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
+                          (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (COLOR_MESO_20[meso.tipo] || 'bg-gray-800/20 hover:bg-gray-800/30') + ' border-gray-700 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
                         <div className="flex justify-between items-start mb-1">
                           <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : comp ? 'text-yellow-400' : bloqueo ? 'text-red-400' : 'text-gray-400')}>{dia.getDate()}</span>
                           {comp ? <span className="text-sm">🏆</span> : bloqueo ? <span className="text-sm">🚫</span> : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
@@ -665,7 +686,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                           <div className="flex flex-col gap-0.5">
                             {sesDia.map(s => (
                               <div key={s.id}
-                                onClick={e => { e.stopPropagation(); window.location.href = '/sesion/' + s.id }}
+                                onClick={e => { e.stopPropagation(); router.push('/sesion/' + s.id)}}
                                 className={'rounded px-1 py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
                                 <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}</span>
                                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
@@ -726,14 +747,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                         <button key={f} onClick={() => abrirModal(f)}
                           className={'relative rounded text-xs py-1.5 text-center transition flex flex-col items-center justify-center min-h-8 ' +
                             (bloqueo ? 'bg-red-900/30 text-red-400 ' :
-                             comp ? 'bg-yellow-500 bg-opacity-30 ring-1 ring-yellow-500 text-yellow-300 ' :
-                             esCopiadaSemana ? 'bg-purple-500 bg-opacity-30 ring-1 ring-purple-500 text-purple-300 ' :
+                             comp ? 'bg-yellow-500/30 ring-1 ring-yellow-500 text-yellow-300 ' :
+                             esCopiadaSemana ? 'bg-purple-500/30 ring-1 ring-purple-500 text-purple-300 ' :
                              esHoy ? 'ring-2 ring-orange-500 font-bold ' : '') +
                             (!bloqueo && !comp && !esCopiadaSemana ? (capaCalendario === 'semanas' && micro ?
-                              (micro.tipo === 'Carga' ? 'bg-orange-400 bg-opacity-40 hover:bg-opacity-60 text-white ' :
-                               micro.tipo?.includes('Recup') ? 'bg-green-400 bg-opacity-40 hover:bg-opacity-60 text-white ' :
-                               'bg-blue-400 bg-opacity-40 hover:bg-opacity-60 text-white ') :
-                              capaCalendario === 'mesos' && meso ? (COLOR_MESO[meso.tipo] || 'bg-gray-700') + ' bg-opacity-40 hover:bg-opacity-60 text-white ' :
+                              (micro.tipo === 'Carga' ? 'bg-orange-400/40 hover:bg-orange-400/60 text-white ' :
+                               micro.tipo?.includes('Recup') ? 'bg-green-400/40 hover:bg-green-400/60 text-white ' :
+                               'bg-blue-400/40 hover:bg-blue-400/60 text-white ') :
+                              capaCalendario === 'mesos' && meso ? (COLOR_MESO_40[meso.tipo] || 'bg-gray-700/40 hover:bg-gray-700/60') + ' text-white ' :
                               'text-gray-400 hover:bg-gray-800 ') : '')}>
                           <span>{bloqueo ? '🚫' : comp ? '🏆' : dia.getDate()}</span>
                           {ses.length > 0 && !comp && !bloqueo && (
@@ -808,7 +829,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     const microsMeso = micros.filter(m => m.id_mesociclo === meso.id)
                     return (
                       <div key={meso.id} className="border-b border-gray-800">
-                        <div className={'px-5 py-2.5 flex justify-between items-center ' + (meso.tipo?.includes('Acum') ? 'bg-orange-900 bg-opacity-20' : meso.tipo?.includes('Trans') ? 'bg-yellow-900 bg-opacity-20' : meso.tipo?.includes('Real') ? 'bg-red-900 bg-opacity-20' : 'bg-green-900 bg-opacity-20')}>
+                        <div className={'px-5 py-2.5 flex justify-between items-center ' + (meso.tipo?.includes('Acum') ? 'bg-orange-900/20' : meso.tipo?.includes('Trans') ? 'bg-yellow-900/20' : meso.tipo?.includes('Real') ? 'bg-red-900/20' : 'bg-green-900/20')}>
                           <div><p className="font-medium text-sm">{meso.objetivo}</p><p className="text-gray-400 text-xs">{meso.tipo} · {meso.duracion_semanas} sem · {meso.fecha_inicio}</p></div>
                           <button onClick={() => { setMacroSel(mac); setMesoSel(meso); setFechaSel(meso.fecha_inicio || ''); setModalTipo('micro') }} className="bg-gray-800 hover:bg-gray-700 text-white text-xs px-3 py-1.5 rounded-lg transition">+ Semana</button>
                         </div>
@@ -846,7 +867,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
       {/* MODALES */}
       {modalTipo && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-4">
               <div>
@@ -1023,6 +1044,25 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <option value="">Disciplina</option>
                   <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
                 </select>
+                {sesionDisc === 'Fuerza' && (
+                  <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
+                    <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                    <div className="flex gap-2">
+                      {[{ v: 'simple', t: 'Simple', d: 'una cualidad' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
+                        <button type="button" key={o.v} onClick={() => setSesionModoFuerza(o.v)}
+                          className={'flex-1 rounded-lg px-3 py-2 text-xs border transition text-left ' + (sesionModoFuerza === o.v ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500')}>
+                          <span className="font-bold block">{o.t}</span><span className="text-[10px] text-gray-500">{o.d}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {sesionModoFuerza === 'simple' && (
+                      <select value={sesionZonaFuerza} onChange={e => setSesionZonaFuerza(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
+                        <option value="">Zona de fuerza de la sesión…</option>
+                        {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
                 <input type="number" placeholder="Duración manual en min (opcional — si vacío, se estima)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <input type="number" min="1" max="10" placeholder="RPE estimado" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
@@ -1035,6 +1075,25 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <option value="">Disciplina</option>
                   <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
                 </select>
+                {sesionDisc === 'Fuerza' && (
+                  <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
+                    <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                    <div className="flex gap-2">
+                      {[{ v: 'simple', t: 'Simple', d: 'una cualidad' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
+                        <button type="button" key={o.v} onClick={() => setSesionModoFuerza(o.v)}
+                          className={'flex-1 rounded-lg px-3 py-2 text-xs border transition text-left ' + (sesionModoFuerza === o.v ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500')}>
+                          <span className="font-bold block">{o.t}</span><span className="text-[10px] text-gray-500">{o.d}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {sesionModoFuerza === 'simple' && (
+                      <select value={sesionZonaFuerza} onChange={e => setSesionZonaFuerza(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
+                        <option value="">Zona de fuerza de la sesión…</option>
+                        {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
                 <p className="text-gray-500 text-xs px-1 -mb-1">La duración se estima automáticamente a partir de las tareas. Podrás ajustarla a mano después.</p>
                 <input type="number" min="1" max="10" placeholder="RPE estimado (1-10)" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />

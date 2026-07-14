@@ -1,8 +1,10 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function ChatPage({ params }: { params: Promise<{ deportistaId: string }> }) {
+  const router = useRouter()
   const { deportistaId } = use(params)
   const [mensajes, setMensajes] = useState<any[]>([])
   const [texto, setTexto] = useState('')
@@ -33,7 +35,7 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
 
   const cargar = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
     const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
     const rol = p?.rol === 'deportista' ? 'deportista' : 'entrenador'
     setMiRol(rol)
@@ -87,7 +89,7 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <nav className="bg-gray-900 px-4 py-4 flex items-center gap-3 border-b border-gray-800">
-        <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">←</button>
+        <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm transition">←</button>
         <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center font-bold text-sm flex-shrink-0">
           {deportista?.nombre?.[0]?.toUpperCase() || '?'}
         </div>

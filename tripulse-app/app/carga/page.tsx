@@ -1,9 +1,11 @@
 ﻿'use client'
-import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
+import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -12,12 +14,12 @@ const RANGOS = [
   { label: 'Todo', dias: 365 },
 ]
 
-function calcularCargas(sesiones: any[]) {
+function calcularCargas(sesiones: any[], factorFn: (disciplina: string) => number = () => 1) {
   if (!sesiones.length) return []
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
     const fecha = s.fecha_sesion
-    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s.disciplina)
     mapa[fecha] = (mapa[fecha] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()
@@ -83,21 +85,25 @@ function estadoACWR(acwr: number) {
 }
 
 export default function CargaPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
-  const [datos, setDatos] = useState<any[]>([])
+  const [sesionesRaw, setSesionesRaw] = useState<any[]>([])
   const [rango, setRango] = useState(56)
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
   const [mostrarCarga, setMostrarCarga] = useState(false)
   const [pestana, setPestana] = useState<'global'|'disciplina'|'diaria'>('global')
-  const [datosDiarios, setDatosDiarios] = useState<any[]>([])
+  const [diariaRaw, setDiariaRaw] = useState<any[]>([])
+  const [usarSicat, setUsarSicat] = useState(true)
+  const [sicat, setSicat] = useState<SicatResultado | null>(null)
+  const factorFn = (disc: string) => usarSicat ? factorSicat(disc, sicat) : 1
 
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
@@ -108,6 +114,8 @@ export default function CargaPage() {
   const verCarga = async (dep: any, dias: number) => {
     setSeleccionado(dep)
     setLoadingDatos(true)
+    setSicat(null)
+    calcularSICAT(dep).then(setSicat)
     const desde = new Date()
     desde.setDate(desde.getDate() - dias - 42)
     const { data: micros } = await supabase
@@ -120,15 +128,14 @@ export default function CargaPage() {
     if (microsDelDep.length > 0) {
       const { data: ses } = await supabase
         .from('sesion')
-        .select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+        .select('fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
         .gte('fecha_sesion', desde.toISOString().split('T')[0])
         .order('fecha_sesion')
       todasSesiones = ses || []
     }
-    const calculados = calcularCargas(todasSesiones)
-    setDatos(calculados.slice(-dias))
+    setSesionesRaw(todasSesiones)
     setLoadingDatos(false)
   }
 
@@ -137,6 +144,7 @@ export default function CargaPage() {
     if (seleccionado) verCarga(seleccionado, dias)
   }
 
+  const datos = useMemo(() => calcularCargas(sesionesRaw, factorFn).slice(-rango), [sesionesRaw, rango, usarSicat, sicat])
   const ultimo = datos[datos.length - 1]
   const acwr = calcularACWR(datos)
   const monotonia = calcularMonotonia(datos)
@@ -149,13 +157,13 @@ export default function CargaPage() {
 
     const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
     const macroIds = (macros || []).map((m: any) => m.id)
-    if (!macroIds.length) { setDatosDiarios([]); return }
+    if (!macroIds.length) { setDiariaRaw([]); return }
     const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
     const mesoIds = (mesos || []).map((m: any) => m.id)
-    if (!mesoIds.length) { setDatosDiarios([]); return }
+    if (!mesoIds.length) { setDiariaRaw([]); return }
     const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
     const microsDelDep = (micros || []).map((m: any) => m.id)
-    if (!microsDelDep.length) { setDatosDiarios([]); return }
+    if (!microsDelDep.length) { setDiariaRaw([]); return }
 
     const { data: sesiones } = await supabase
       .from('sesion')
@@ -164,7 +172,10 @@ export default function CargaPage() {
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
 
-    // Generar array de 30 días
+    setDiariaRaw(sesiones || [])
+  }
+
+  const datosDiarios = useMemo(() => {
     const dias: any[] = []
     for (let i = 29; i >= 0; i--) {
       const d = new Date()
@@ -172,22 +183,19 @@ export default function CargaPage() {
       const fechaStr = d.toISOString().split('T')[0]
       const label = d.toLocaleDateString('es', { day: '2-digit', month: '2-digit' })
 
-      const sesDia = (sesiones || []).filter(s => s.fecha_sesion === fechaStr)
+      const sesDia = diariaRaw.filter(s => s.fecha_sesion === fechaStr)
       const planificadas = sesDia.filter(s => s.estado === 'Planificada')
       const realizadas = sesDia.filter(s => s.estado === 'Realizada')
 
       const uaPlanificada = planificadas.reduce((acc, s) =>
-        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s.disciplina), 0)
 
-      // UA realizada por disciplina
-      const uaNatacion = realizadas.filter(s => s.disciplina === 'Natacion')
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
-      const uaCiclismo = realizadas.filter(s => s.disciplina === 'Ciclismo')
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
-      const uaCarrera = realizadas.filter(s => s.disciplina === 'Carrera')
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
-      const uaFuerza = realizadas.filter(s => s.disciplina === 'Fuerza')
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+      const uaPorDisc = (disc: string) => realizadas.filter(s => s.disciplina === disc)
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(disc), 0)
+      const uaNatacion = uaPorDisc('Natacion')
+      const uaCiclismo = uaPorDisc('Ciclismo')
+      const uaCarrera = uaPorDisc('Carrera')
+      const uaFuerza = uaPorDisc('Fuerza')
 
       dias.push({
         fecha: label,
@@ -199,15 +207,15 @@ export default function CargaPage() {
         total: Math.round(uaNatacion + uaCiclismo + uaCarrera + uaFuerza),
       })
     }
-    setDatosDiarios(dias)
-  }
+    return dias
+  }, [diariaRaw, usarSicat, sicat])
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-2">Carga de entrenamiento</h2>
@@ -248,6 +256,21 @@ export default function CargaPage() {
             </div>
           )}
         </div>
+
+        {seleccionado && (
+          <div className="flex items-center gap-3 mb-6 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+            <button onClick={() => setUsarSicat(v => !v)}
+              className={'px-3 py-1.5 rounded-lg text-xs font-bold transition ' +
+                (usarSicat ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+              🔬 SICAT {usarSicat ? 'activado' : 'desactivado'}
+            </button>
+            <p className="text-gray-500 text-xs">
+              {usarSicat
+                ? 'La carga (UA) se pondera según el coste real de cada disciplina para este atleta.'
+                : 'Carga sin ponderar — 1 min de RPE-X vale igual en cualquier disciplina.'}
+            </p>
+          </div>
+        )}
 
         {/* PESTAÑA VISIÓN DIARIA */}
         {pestana === 'diaria' && (
@@ -305,7 +328,7 @@ export default function CargaPage() {
         {pestana === 'disciplina' && (
           <div>
             {seleccionado
-              ? <CargaPorDisciplina depId={seleccionado.id} diasRango={rango} />
+              ? <CargaPorDisciplina depId={seleccionado.id} diasRango={rango} sicat={usarSicat ? sicat : null} />
               : <div className="text-center py-12 text-gray-500"><p>Selecciona un deportista arriba para ver la carga por disciplina.</p></div>
             }
           </div>

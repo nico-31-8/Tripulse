@@ -1,12 +1,35 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
+
+// Zonas clásicas Z1–Z7 (sistema 1) con su color.
+const ZONAS_CLASICAS = [
+  { sigla: 'Z1', color: '#6B7280' }, { sigla: 'Z2', color: '#3B82F6' }, { sigla: 'Z3', color: '#EAB308' },
+  { sigla: 'Z4', color: '#F97316' }, { sigla: 'Z5', color: '#EF4444' }, { sigla: 'Z6', color: '#7C3AED' },
+  { sigla: 'Z7', color: '#EC4899' },
+]
+// Mapa sigla → color válido para ambos sistemas (Z1–Z7 + siglas Zonas 2 resistencia y fuerza).
+const COLOR_ZONA: Record<string, string> = {
+  ...Object.fromEntries(ZONAS_CLASICAS.map(z => [z.sigla, z.color])),
+  ...Object.fromEntries(ZONAS_RESISTENCIA.map(z => [z.sigla, z.color])),
+  ...Object.fromEntries(ZONAS_FUERZA.map(z => [z.sigla, z.color])),
+}
+// Nombre completo de una zona (para tooltip), busca en resistencia y fuerza.
+const NOMBRE_ZONA = (sigla: string): string =>
+  ZONAS_RESISTENCIA.find(z => z.sigla === sigla)?.nombre ||
+  ZONAS_FUERZA.find(z => z.sigla === sigla)?.nombre || ''
 
 const SEMANA_W_DEFAULT = 90
 const SEMANA_W_MIN = 40
 const SEMANA_W_MAX = 160
 const UA_H = 180
+// Ancho de la columna de etiquetas (MACRO/MESO/MICRO/ZONAS). Es un margen real
+// reservado antes de la semana 1, no una superposición — así la semana 1 nunca
+// queda tapada ni encogida detrás de la etiqueta.
+const LABEL_W = 56
 
 interface MacroD { id: string; si: number; sf: number; nombre: string; tipo: string; dbId?: number }
 interface MesoD { id: string; macroId: string; si: number; sf: number; nombre: string; tipo: string; intensidad: number; dbId?: number }
@@ -14,6 +37,11 @@ interface SemanaD { i: number; ua: number | null; tipo: string; comp: string }
 interface Preview { band: string; si: number; sf: number }
 
 function uid() { return Math.random().toString(36).slice(2) }
+
+function hexToRgb(hex: string) {
+  const h = (hex || '#EA580C').replace('#', '')
+  return { r: parseInt(h.slice(0,2),16) || 234, g: parseInt(h.slice(2,4),16) || 88, b: parseInt(h.slice(4,6),16) || 12 }
+}
 
 const C_MACRO: Record<string, string> = {
   Tradicional: '#EA580C', Inversa: '#7C3AED', ATR: '#0D9488', Ondulatoria: '#B45309',
@@ -52,6 +80,7 @@ function weeksBetween(f1: string, f2: string): number {
 }
 
 export default function DibujoPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
@@ -100,24 +129,34 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [editTipo, setEditTipo] = useState('')
   const [editDur, setEditDur] = useState(4)
   const [editInt, setEditInt] = useState(7)
-  const [sesZonas, setSesZonas] = useState<{id:string;semana:number;disciplina:string;zona:string}[]>([])
+  const [sesZonas, setSesZonas] = useState<{id:string;semana:number;disciplina:string;zona:string;hecho?:boolean}[]>([])
   const [popupZona, setPopupZona] = useState<{semana:number;x:number;y:number}|null>(null)
+  const [popupMeso, setPopupMeso] = useState<{ me: MesoD; x: number; y: number } | null>(null)
   const [zonaSelDisc, setZonaSelDisc] = useState('Natacion')
   const [zonaSelZona, setZonaSelZona] = useState('Z1')
   const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza'])
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [exportando, setExportando] = useState(false)
   const dragBandRef = useRef<'macro' | 'meso' | null>(null)
   const movingBlockRef = useRef<{tipo: 'macro'|'meso', id: string, offsetSem: number} | null>(null)
   const [movePreview, setMovePreview] = useState<{tipo: string, si: number, sf: number, id: string} | null>(null)
   const [mostrarCurva, setMostrarCurva] = useState(true)
+  const [mostrarTendencia, setMostrarTendencia] = useState(false)
   const dragSiRef = useRef(0)
   const dragSfRef = useRef(0)
   const macrosRef = useRef<MacroD[]>([])
   const mesosRef = useRef<MesoD[]>([])
+  // Distinguir clic corto (abre popup) de arrastre (mueve) en la barra de meso
+  const mesoClickRef = useRef<{ x: number; y: number; me: MesoD } | null>(null)
+  const mesoMovedRef = useRef(false)
+  const mesoClickTimerRef = useRef<any>(null)
   const movePreviewRef = useRef<{tipo: string, si: number, sf: number, id: string} | null>(null)
-  const sesZonasRef = useRef<{id:string;semana:number;disciplina:string;zona:string}[]>([])
+  const sesZonasRef = useRef<{id:string;semana:number;disciplina:string;zona:string;hecho?:boolean}[]>([])
+  // Copia viva de todo lo autoguardable, para poder volcar el borrador al salir.
+  const flushDataRef = useRef<{ macros: MacroD[]; mesos: MesoD[]; sems: SemanaD[]; fechaInicio: string; totalSem: number; sesZonas: any[] }>({ macros: [], mesos: [], sems: [], fechaInicio: '', totalSem: 24, sesZonas: [] })
 
   useEffect(() => {
     macrosRef.current = macros
@@ -156,6 +195,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     sesZonasRef.current = sesZonas
     if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [sesZonas])
+
+  // Mantener flushDataRef al día en cada render.
+  useEffect(() => { flushDataRef.current = { macros, mesos, sems, fechaInicio, totalSem, sesZonas } })
+
+  // Volcar el borrador de inmediato al salir de la página (navegación / cierre / recarga),
+  // por si el autoguardado (1,5s) aún no había disparado. Solo si hay algo pendiente.
+  useEffect(() => {
+    const flush = () => {
+      if (!guardadoTimerRef.current) return
+      clearTimeout(guardadoTimerRef.current); guardadoTimerRef.current = null
+      const d = flushDataRef.current
+      if (d.fechaInicio && d.macros.length) guardarBorrador(d.macros, d.mesos, d.sems, d.fechaInicio, d.totalSem, d.sesZonas)
+    }
+    window.addEventListener('beforeunload', flush)
+    return () => { window.removeEventListener('beforeunload', flush); flush() }
+  }, [])
 
   useEffect(() => {
     if (pantalla !== 'canvas') return
@@ -218,8 +273,17 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       }
 
       setModoEdicion(true)
-      const { data: bz } = await supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', Number(id)).single()
-      if (bz && bz.sesiones_zonas && bz.sesiones_zonas.length) setSesZonas(bz.sesiones_zonas)
+      // Opción A: preferir el borrador autoguardado. Es el último estado que dibujó el
+      // entrenador; la carga/semanas que aún no se ha "Generado" no está en las tablas
+      // confirmadas, así que reconstruir solo desde ellas borraría lo dibujado.
+      const { data: bz } = await supabase.from('dibujo_borrador').select('*').eq('id_deportista', Number(id)).single()
+      if (bz) {
+        if (bz.total_semanas) setTotalSem(bz.total_semanas)
+        if (bz.macros?.length) setMacros(bz.macros)
+        if (bz.mesos?.length) setMesos(bz.mesos)
+        if (bz.semanas?.length) setSems(bz.semanas)
+        if (bz.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
+      }
       setPantalla('canvas')
     } catch (e: any) { alert('Error al cargar: ' + e.message) }
     setCargandoDatos(false)
@@ -243,7 +307,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const getWeekFromClientX = (clientX: number): number => {
     const container = scrollRef.current; if (!container) return 0
     const rect = container.getBoundingClientRect()
-    const x = clientX - rect.left + container.scrollLeft
+    const x = clientX - rect.left + container.scrollLeft - LABEL_W
     return Math.max(0, Math.min(totalSem - 1, Math.floor(x / semanaW)))
   }
 
@@ -252,6 +316,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       // Mover bloque existente
       if (movingBlockRef.current) {
         const { tipo, id, offsetSem } = movingBlockRef.current
+        if (tipo === 'meso' && mesoClickRef.current && Math.abs(e.clientX - mesoClickRef.current.x) > 4) mesoMovedRef.current = true
         const wi = getWeekFromClientX(e.clientX)
         const newSi = Math.max(0, wi - offsetSem)
         if (tipo === 'macro') {
@@ -285,6 +350,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       // Confirmar movimiento de bloque
       if (movingBlockRef.current) {
         const { tipo, id } = movingBlockRef.current
+        // Clic corto sobre un meso (sin arrastrar) → abrir popup en vez de mover.
+        // Se retrasa 220ms para que un doble clic (editar) pueda cancelarlo.
+        if (tipo === 'meso' && !mesoMovedRef.current && mesoClickRef.current) {
+          const c = mesoClickRef.current
+          movingBlockRef.current = null; movePreviewRef.current = null; setMovePreview(null); mesoClickRef.current = null
+          clearTimeout(mesoClickTimerRef.current)
+          mesoClickTimerRef.current = setTimeout(() => setPopupMeso({ me: c.me, x: c.x, y: c.y }), 220)
+          return
+        }
         const preview = movePreviewRef.current
         if (preview) {
           if (tipo === 'macro') {
@@ -606,6 +680,121 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   const uaMeso = mesos.map(m => ({ ...m, ua: sems.filter(s => s.i >= m.si && s.i <= m.sf).reduce((a, s) => a + (s.ua || 0), 0) }))
 
+  // Línea 2 — Tendencia del entrenador: media móvil de 3 semanas sobre las UA dibujadas
+  const tendencia = sems.map((s, i) => {
+    if (!s.ua || s.ua <= 0) return null
+    const vecinos = [sems[i - 1], sems[i], sems[i + 1]].filter(x => x && x.ua && x.ua > 0) as SemanaD[]
+    const avg = vecinos.reduce((a, x) => a + (x.ua || 0), 0) / vecinos.length
+    return { i, val: avg }
+  }).filter(Boolean) as { i: number; val: number }[]
+
+  const fechaDeSemana = (i: number): string => {
+    if (!fechaInicio) return ''
+    const d = new Date(fechaInicio); d.setDate(d.getDate() + i * 7)
+    return d.toLocaleDateString('es-ES')
+  }
+
+  // Exportar el canvas como imagen PNG
+  const exportarImagen = async () => {
+    if (!contentRef.current) return
+    setExportando(true)
+    try {
+      const { toPng } = await import('html-to-image')
+      const dataUrl = await toPng(contentRef.current, { pixelRatio: 2, backgroundColor: '#0b1220', cacheBust: true })
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `periodizacion-${(dep?.nombre || 'deportista').replace(/\s+/g, '_')}.png`
+      a.click()
+    } catch (e: any) { alert('Error al exportar imagen: ' + e.message) }
+    setExportando(false)
+  }
+
+  // Exportar informe PDF apaisado: pág.1 dibujo, pág.2 resumen
+  const exportarPDF = async () => {
+    if (!contentRef.current) return
+    setExportando(true)
+    try {
+      const { toPng } = await import('html-to-image')
+      const { jsPDF } = await import('jspdf')
+      const dataUrl = await toPng(contentRef.current, { pixelRatio: 2, backgroundColor: '#0b1220', cacheBust: true })
+      const img = new Image()
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl })
+
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pw = pdf.internal.pageSize.getWidth()
+      const ph = pdf.internal.pageSize.getHeight()
+      const margin = 12
+      const hoy = new Date().toLocaleDateString('es-ES')
+
+      // ---- Página 1: cabecera + dibujo ----
+      pdf.setFillColor(11, 18, 32); pdf.rect(0, 0, pw, ph, 'F')
+      pdf.setTextColor(234, 88, 12); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(20)
+      pdf.text('TRIPULSE', margin, 16)
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(13)
+      pdf.text('Plan de periodización', margin, 24)
+      pdf.setTextColor(180, 180, 190); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9)
+      pdf.text(`Deportista: ${dep?.nombre || '—'}    ·    ${totalSem} semanas    ·    Generado: ${hoy}`, margin, 31)
+
+      const availW = pw - margin * 2
+      const availH = ph - 40 - margin
+      const ratio = Math.min(availW / img.width, availH / img.height)
+      pdf.addImage(dataUrl, 'PNG', margin, 38, img.width * ratio, img.height * ratio)
+
+      // ---- Página 2: resumen ----
+      pdf.addPage()
+      pdf.setFillColor(11, 18, 32); pdf.rect(0, 0, pw, ph, 'F')
+      pdf.setTextColor(234, 88, 12); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16)
+      pdf.text('Resumen de la periodización', margin, 18)
+
+      let y = 30
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+      pdf.text('Datos generales', margin, y); y += 7
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
+      const modelos = [...new Set(macros.map(m => m.tipo).filter(Boolean))].join(', ') || '—'
+      const generales: [string, string][] = [
+        ['Deportista', dep?.nombre || '—'],
+        ['Modelo(s) de periodización', modelos],
+        ['Duración', `${totalSem} semanas`],
+        ['Macrociclos', String(macros.length)],
+        ['Mesociclos', String(mesos.length)],
+        ['UA total planificada', uaTotal.toLocaleString()],
+      ]
+      for (const [k, v] of generales) {
+        pdf.setTextColor(200, 200, 210); pdf.text(`${k}:`, margin, y)
+        pdf.setTextColor(255, 255, 255); pdf.text(v, margin + 75, y); y += 6
+      }
+
+      y += 6
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+      pdf.text('Distribución por fase (UA por tipo de mesociclo)', margin, y); y += 7
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
+      const porFase: Record<string, number> = {}
+      for (const m of uaMeso) porFase[m.tipo] = (porFase[m.tipo] || 0) + m.ua
+      const totalFase = Object.values(porFase).reduce((a, b) => a + b, 0) || 1
+      for (const [fase, ua] of Object.entries(porFase)) {
+        const pct = Math.round(ua / totalFase * 100)
+        const col = hexToRgb(C_MESO[fase] || '#EA580C')
+        pdf.setFillColor(col.r, col.g, col.b); pdf.rect(margin, y - 3, 3.5, 3.5, 'F')
+        pdf.setTextColor(200, 200, 210)
+        pdf.text(`${fase}: ${ua.toLocaleString()} UA (${pct}%)`, margin + 6, y); y += 6
+      }
+
+      const comps = sems.filter(s => s.comp)
+      y += 6
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+      pdf.text('Competiciones', margin, y); y += 7
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(200, 200, 210)
+      if (comps.length === 0) pdf.text('Sin competiciones marcadas.', margin, y)
+      else for (const c of comps) {
+        const f = fechaDeSemana(c.i)
+        pdf.text(`S${c.i + 1}   ·   ${c.comp}${f ? '   ·   ' + f : ''}`, margin, y); y += 6
+      }
+
+      pdf.save(`periodizacion-${(dep?.nombre || 'deportista').replace(/\s+/g, '_')}.pdf`)
+    } catch (e: any) { alert('Error al exportar PDF: ' + e.message) }
+    setExportando(false)
+  }
+
   if (pantalla === 'cargando' || !dep) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
       <div className="text-center"><div className="text-4xl mb-3">⏳</div><p className="text-gray-400">Cargando...</p></div>
@@ -617,8 +806,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-gray-300 text-sm font-medium">Dibujo — {dep.nombre}</span>
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-gray-400 hover:text-white text-sm transition">Bloques</button>
-          <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
+          <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">Bloques</button>
+          <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
         </div>
       </nav>
 
@@ -768,13 +957,24 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   title="Mostrar/ocultar curva de periodizacion teorica">
                   ~ Curva
                 </button>
+                <button onClick={() => setMostrarTendencia(v => !v)}
+                  className={'text-xs px-2 py-1.5 rounded-lg transition border ' + (mostrarTendencia ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300')}
+                  title="Línea de tendencia: patrón de carga que estás planificando (media móvil 3 semanas)">
+                  ∿ Tendencia
+                </button>
+                <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700" title="Exportar">
+                  <button onClick={exportarImagen} disabled={exportando || macros.length === 0}
+                    className="text-gray-400 hover:text-white px-2 h-6 flex items-center rounded transition text-xs disabled:opacity-40" title="Descargar imagen PNG">🖼️</button>
+                  <button onClick={exportarPDF} disabled={exportando || macros.length === 0}
+                    className="text-gray-400 hover:text-white px-2 h-6 flex items-center rounded transition text-xs disabled:opacity-40" title="Descargar informe PDF">{exportando ? '⏳' : '📄 PDF'}</button>
+                </div>
                 <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700">
                   <button onClick={() => setTotalSem(s => Math.max(s - 1, macros.reduce((a, m) => Math.max(a, m.sf + 1), 4)))} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition text-sm font-bold">−</button>
                   <span className="text-white text-xs font-medium px-1 min-w-8 text-center">{totalSem}s</span>
                   <button onClick={() => setTotalSem(s => s + 1)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition text-sm font-bold">+</button>
                 </div>
                 <button onClick={() => setPantalla('elegir')} className="text-gray-500 hover:text-gray-300 text-xs transition px-2 py-1 rounded-lg hover:bg-gray-800">← Cambiar</button>
-                <button onClick={generado ? () => window.location.href = '/planificacion-visual/' + id : generar}
+                <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
                   disabled={generando || (!generado && macros.length === 0)}
                   className={'px-5 py-2 rounded-xl text-sm font-bold transition disabled:opacity-50 ' + (generado ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
                   {generando ? 'Guardando...' : generado ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
@@ -783,7 +983,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto bg-gray-950">
-              <div style={{ width: Math.max(totalSem * semanaW, 600) + 'px' }} className="select-none pb-4">
+              <div ref={contentRef} style={{ width: Math.max(totalSem * semanaW + LABEL_W, 600) + 'px' }} className="select-none pb-4 bg-gray-950">
 
                 {/* MACRO */}
                 <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 52 }}
@@ -797,11 +997,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 pointer-events-none bg-gray-950">
                     <span className="text-gray-500 text-xs font-bold tracking-widest">MACRO</span>
                   </div>
-                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * semanaW, width: semanaW }} />)}
+                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: LABEL_W + s.i * semanaW, width: semanaW }} />)}
                   {macros.map(mac => (
                     <div key={mac.id}
                       className="absolute inset-y-2 rounded-xl flex items-center px-3 z-10 overflow-hidden group/mac cursor-pointer"
-                      style={{ left: mac.si * semanaW + 1, width: (mac.sf - mac.si + 1) * semanaW - 2, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }}
+                      style={{ left: LABEL_W + mac.si * semanaW + 1, width: (mac.sf - mac.si + 1) * semanaW - 2, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }}
                       onDoubleClick={e => abrirEditarMacro(mac, e)}
                       onMouseDown={e => {
                         if (e.detail === 2) return // doble clic — no mover
@@ -829,11 +1029,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   ))}
                   {movePreview?.tipo === 'macro' && movePreview.id && (
                     <div className="absolute inset-y-2 rounded-xl z-40 pointer-events-none"
-                      style={{ left: movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }} />
+                      style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }} />
                   )}
                   {dragPreview?.band === 'macro' && (
                     <div className="absolute inset-y-2 rounded-xl z-30 pointer-events-none flex items-center justify-center"
-                      style={{ left: dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C30', border: '2px dashed #EA580C' }}>
+                      style={{ left: LABEL_W + dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C30', border: '2px dashed #EA580C' }}>
                       <span className="text-orange-300 text-xs font-bold">{dragPreview.sf - dragPreview.si + 1} sem</span>
                     </div>
                   )}
@@ -852,18 +1052,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 pointer-events-none bg-gray-950">
                     <span className="text-gray-500 text-xs font-bold tracking-widest">MESO</span>
                   </div>
-                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: s.i * semanaW, width: semanaW }} />)}
+                  {sems.map(s => <div key={s.i} className="absolute inset-y-0 border-r border-gray-800/20 pointer-events-none" style={{ left: LABEL_W + s.i * semanaW, width: semanaW }} />)}
                   {macros.map(mac => (
                     <div key={mac.id} className="absolute inset-y-0 pointer-events-none opacity-10"
-                      style={{ left: mac.si * semanaW, width: (mac.sf - mac.si + 1) * semanaW, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }} />
+                      style={{ left: LABEL_W + mac.si * semanaW, width: (mac.sf - mac.si + 1) * semanaW, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }} />
                   ))}
                   {mesos.map(me => {
                     const col = C_MESO[me.tipo] || '#EA580C'
                     return (
                       <div key={me.id}
                         className="absolute inset-y-1.5 rounded-lg flex items-center px-2 z-10 border overflow-hidden group/meso cursor-pointer"
-                        style={{ left: me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
-                        onDoubleClick={e => abrirEditarMeso(me, e)}
+                        style={{ left: LABEL_W + me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
+                        onDoubleClick={e => { clearTimeout(mesoClickTimerRef.current); abrirEditarMeso(me, e) }}
                         onMouseDown={e => {
                           if (e.detail === 2) return
                           e.stopPropagation(); e.preventDefault()
@@ -871,10 +1071,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           const offset = wi - me.si
                           movingBlockRef.current = { tipo: 'meso', id: me.id, offsetSem: offset }
                           setMovePreview({ tipo: 'meso', si: me.si, sf: me.sf, id: me.id })
+                          mesoClickRef.current = { x: e.clientX, y: e.clientY, me }
+                          mesoMovedRef.current = false
                         }}>
                         <span className="text-white text-xs font-medium truncate mr-2">{me.nombre}</span>
                         <span className="text-white/40 text-xs flex-shrink-0">{me.sf - me.si + 1}s</span>
-                        <button onClick={e => { e.stopPropagation(); borrarMeso(me.id) }}
+                        <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); borrarMeso(me.id) }}
                           className="ml-auto flex-shrink-0 text-white/0 group-hover/meso:text-white/70 hover:text-white transition text-base leading-none pl-2">x</button>
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover/meso:block z-50 pointer-events-none">
@@ -895,7 +1097,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const col = me ? (C_MESO[me.tipo] || '#EA580C') : '#EA580C'
                     return (
                       <div className="absolute inset-y-1.5 rounded-lg z-40 pointer-events-none"
-                        style={{ left: movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: col + '30', border: '2px dashed ' + col }} />
+                        style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: col + '30', border: '2px dashed ' + col }} />
                     )
                   })()}
                   {dragPreview?.band === 'meso' && (() => {
@@ -903,7 +1105,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const col = mac ? (C_MACRO[mac.tipo] || '#EA580C') : '#EA580C'
                     return (
                       <div className="absolute inset-y-1.5 rounded-lg z-30 pointer-events-none flex items-center justify-center"
-                        style={{ left: dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: col + '20', border: '2px dashed ' + col }}>
+                        style={{ left: LABEL_W + dragPreview.si * semanaW + 1, width: (dragPreview.sf - dragPreview.si + 1) * semanaW - 2, backgroundColor: col + '20', border: '2px dashed ' + col }}>
                         <span className="text-white/70 text-xs font-bold">{dragPreview.sf - dragPreview.si + 1} sem</span>
                       </div>
                     )
@@ -911,15 +1113,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </div>
 
                 {/* MICRO */}
-                <div className="flex border-b border-gray-800" style={{ height: 44 }}>
-                  <div className="flex-shrink-0 w-14 flex items-center pl-2 bg-gray-950">
+                <div className="relative border-b border-gray-800" style={{ height: 44 }}>
+                  <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 pointer-events-none bg-gray-950">
                     <span className="text-gray-500 text-xs font-bold tracking-widest">MICRO</span>
                   </div>
                   {sems.map(s => {
                     const col = C_TIPO[s.tipo] || '#EA580C'
                     return (
-                      <div key={s.i} className="flex-shrink-0 border-r border-gray-800 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-gray-800/40 transition"
-                        style={{ width: semanaW, outline: semSelIdx === s.i && capas.has('prog') ? '2px solid #3B82F6' : 'none' }}
+                      <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-gray-800/40 transition"
+                        style={{ left: LABEL_W + s.i * semanaW, width: semanaW, outline: semSelIdx === s.i && capas.has('prog') ? '2px solid #3B82F6' : 'none' }}
                         onClick={() => capas.has('prog') ? cargarDetalleSemana(s.i) : toggleTipo(s.i)}>
                         <div className="flex items-center gap-1">
                           <span className="text-gray-500 text-xs">S{s.i + 1}</span>
@@ -936,9 +1138,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
                 {/* UA BARS */}
                 <div className="flex items-end bg-gray-950 border-b border-gray-800 relative" style={{ height: UA_H + 36 }}>
+                  <div className="flex-shrink-0 w-14" />
                   {[25, 50, 75].map(pct => (
-                    <div key={pct} className="absolute left-0 right-0 border-t border-gray-800/40 pointer-events-none"
-                      style={{ bottom: 36 + Math.round(pct / 100 * UA_H) }}>
+                    <div key={pct} className="absolute border-t border-gray-800/40 pointer-events-none"
+                      style={{ left: LABEL_W, right: 0, bottom: 36 + Math.round(pct / 100 * UA_H) }}>
                       <span className="text-gray-700 pl-1" style={{ fontSize: 9 }}>{Math.round(maxUA * pct / 100)}</span>
                     </div>
                   ))}
@@ -996,7 +1199,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               onClick={e => {
                                 e.stopPropagation()
                                 const fechaSem = semFecha(fechaInicio, s.i)
-                                window.location.href = '/planificacion-visual/' + id + '/semana/' + fechaSem
+                                router.push('/planificacion-visual/' + id + '/semana/' + fechaSem)
                               }}
                               className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 rounded-lg transition">
                               + Añadir sesiones →
@@ -1063,9 +1266,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <svg
                       className="absolute pointer-events-none"
                       style={{ bottom: 36, left: 0, zIndex: 20 }}
-                      width={totalSem * semanaW}
+                      width={totalSem * semanaW + LABEL_W}
                       height={UA_H + 10}
-                      viewBox={'0 0 ' + (totalSem * semanaW) + ' ' + (UA_H + 10)}>
+                      viewBox={'0 0 ' + (totalSem * semanaW + LABEL_W) + ' ' + (UA_H + 10)}>
                       {macros.map(mac => {
                         const curva = calcularCurvaTeoria(mac)
                         const col = C_MACRO[mac.tipo] || '#EA580C'
@@ -1073,7 +1276,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         // Calcular puntos de la curva
                         const puntos = curva.map((v, i) => {
                           const semIdx = mac.si + i
-                          const x = semIdx * semanaW + semanaW / 2
+                          const x = LABEL_W + semIdx * semanaW + semanaW / 2
                           const uaRef = sems.filter(s => s.i >= mac.si && s.i <= mac.sf).reduce((a, s) => Math.max(a, s.ua || 0), 0)
                           const refUA = uaRef > 0 ? uaRef : uaMaxMac * 0.7
                           const y = UA_H - Math.round(v * Math.min(refUA, uaMaxMac) / uaMaxMac * UA_H)
@@ -1095,7 +1298,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             {/* Puntos en cada semana */}
                             {curva.map((v, i) => {
                               const semIdx = mac.si + i
-                              const x = semIdx * semanaW + semanaW / 2
+                              const x = LABEL_W + semIdx * semanaW + semanaW / 2
                               const uaRef = sems.filter(s => s.i >= mac.si && s.i <= mac.sf).reduce((a, s) => Math.max(a, s.ua || 0), 0)
                               const refUA = uaRef > 0 ? uaRef : uaMaxMac * 0.7
                               const y = UA_H - Math.round(v * Math.min(refUA, uaMaxMac) / uaMaxMac * UA_H)
@@ -1108,27 +1311,69 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   </div>
                 )}
 
+                {/* LINEA 2 — TENDENCIA DEL ENTRENADOR */}
+                {mostrarTendencia && capas.has('plan') && tendencia.length > 1 && allMaxUA > 0 && (
+                  <div className="relative pointer-events-none" style={{ height: 0 }}>
+                    <svg className="absolute pointer-events-none"
+                      style={{ bottom: 36, left: 0, zIndex: 21 }}
+                      width={totalSem * semanaW + LABEL_W} height={UA_H + 10}
+                      viewBox={'0 0 ' + (totalSem * semanaW + LABEL_W) + ' ' + (UA_H + 10)}>
+                      {(() => {
+                        const pts = tendencia.map(t => (LABEL_W + t.i * semanaW + semanaW / 2) + ',' + (UA_H - Math.round(t.val / allMaxUA * UA_H)))
+                        const pathD = pts.reduce((acc, p, i) => {
+                          if (i === 0) return 'M ' + p
+                          const prev = pts[i - 1].split(','); const curr = p.split(',')
+                          const cpx = (Number(prev[0]) + Number(curr[0])) / 2
+                          return acc + ' C ' + cpx + ',' + prev[1] + ' ' + cpx + ',' + curr[1] + ' ' + p
+                        }, '')
+                        return (
+                          <g>
+                            <path d={pathD} fill="none" stroke="#3B82F6" strokeWidth="4" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d={pathD} fill="none" stroke="#3B82F6" strokeWidth="2" strokeOpacity="0.9" strokeLinecap="round" strokeLinejoin="round" />
+                            {tendencia.map(t => (
+                              <circle key={t.i} cx={LABEL_W + t.i * semanaW + semanaW / 2} cy={UA_H - Math.round(t.val / allMaxUA * UA_H)} r="2.5" fill="#3B82F6" />
+                            ))}
+                          </g>
+                        )
+                      })()}
+                    </svg>
+                  </div>
+                )}
+
                 {/* GRAFICA ZONAS */}
                 <div className="border-t border-gray-800">
-                  <div className="flex" style={{ minHeight: 180 }}>
-                    <div className="flex-shrink-0 w-14 bg-gray-950 flex items-center justify-center">
+                  {(() => {
+                    // Altura de la fila de ZONAS dinámica: crece con la semana que más chips
+                    // tiene (hasta un tope), y a partir de ahí los chips se encogen para que
+                    // quepan todos sin solaparse con la gráfica de arriba ni obligar a scroll.
+                    const CHIP_MAX = 28, CHIP_MIN = 13, GAP = 3, PAD = 8, ROW_MIN = 120, ROW_MAX = 300
+                    const maxChips = Math.max(1, ...sems.map(s => sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina)).length))
+                    const idealH = maxChips * (CHIP_MAX + GAP) + PAD
+                    const rowH = Math.min(ROW_MAX, Math.max(ROW_MIN, idealH))
+                    const chipH = Math.max(CHIP_MIN, Math.min(CHIP_MAX, Math.floor((rowH - PAD) / maxChips) - GAP))
+                    const showDisc = chipH >= 22   // solo cabe la sub-etiqueta de disciplina si el chip es alto
+                    return (
+                  <div className="relative" style={{ height: rowH }}>
+                    <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center justify-center z-20 pointer-events-none bg-gray-950">
                       <span className="text-gray-500 text-xs font-bold tracking-widest" style={{writingMode:'vertical-rl',transform:'rotate(180deg)'}}>ZONAS</span>
                     </div>
                     {sems.map(s => {
                       const sesEsta = sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina))
-                      const C_ZONA: Record<string,string> = { Z1:'#6B7280', Z2:'#3B82F6', Z3:'#EAB308', Z4:'#F97316', Z5:'#EF4444', Z6:'#7C3AED', Z7:'#EC4899' }
+                      const C_ZONA = COLOR_ZONA
                       const DISC_LABEL: Record<string,string> = { Natacion:'Nat', Natación:'Nat', Ciclismo:'Cic', Carrera:'Car', Fuerza:'Fue', Brick:'Brk' }
                       return (
-                        <div key={s.i} className="flex-shrink-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 relative group/zona"
-                          style={{ width: semanaW, minHeight: 180 }}
-                          onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonaSelZona('Z1') }}>
+                        <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
+                          style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
+                          onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonaSelZona(dep?.sistema_zonas === 2 ? 'AER' : 'Z1') }}>
                           {sesEsta.map(sz => (
                             <div key={sz.id}
-                              className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq"
-                              style={{ width: semanaW - 6, height: 28, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8 }}
+                              className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq overflow-hidden"
+                              style={{ width: semanaW - 6, height: chipH, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
+                              title={sz.hecho ? 'Ya programada en el calendario' : (showDisc ? '' : (DISC_LABEL[sz.disciplina] || sz.disciplina))}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
-                              <span style={{ fontSize: 9, fontWeight: 700 }}>{sz.zona}</span>
-                              <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
+                              {sz.hecho && <span className="absolute -top-1 -right-1 text-green-400 leading-none" style={{ fontSize: 9 }}>✓</span>}
+                              <span style={{ fontSize: showDisc ? 9 : 8, fontWeight: 700 }}>{sz.zona}</span>
+                              {showDisc && <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>}
                               <span className="absolute inset-0 bg-red-500/0 group-hover/sq:bg-red-500/10 rounded transition pointer-events-none" />
                             </div>
                           ))}
@@ -1139,13 +1384,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       )
                     })}
                   </div>
+                    )
+                  })()}
                   {/* Totales por semana */}
-                  <div className="flex border-t border-gray-800/50">
-                    <div className="flex-shrink-0 w-14 bg-gray-950" />
+                  <div className="relative border-t border-gray-800/50" style={{ height: 18 }}>
+                    <div className="absolute left-0 top-0 bottom-0 w-14 bg-gray-950" />
                     {sems.map(s => {
                       const n = sesZonas.filter(sz => sz.semana === s.i).length
                       return (
-                        <div key={s.i} className="flex-shrink-0 flex items-center justify-center" style={{ width: semanaW, height: 18 }}>
+                        <div key={s.i} className="absolute top-0 flex items-center justify-center" style={{ left: LABEL_W + s.i * semanaW, width: semanaW, height: 18 }}>
                           {n > 0 && <span className="text-gray-500 font-medium" style={{ fontSize: 9 }}>{n}</span>}
                         </div>
                       )
@@ -1169,6 +1416,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   </div>
                 </div>
                 {/* POPUP AÑADIR ZONA */}
+                {popupMeso && (
+                  <div className="fixed inset-0 z-50" onClick={() => setPopupMeso(null)}>
+                    <div className="absolute bg-gray-800 border border-gray-600 rounded-xl shadow-2xl p-2 min-w-52"
+                      style={{ left: Math.min(popupMeso.x, window.innerWidth - 230), top: Math.min(popupMeso.y, window.innerHeight - 120) }}
+                      onClick={e => e.stopPropagation()}>
+                      <p className="text-white text-xs font-bold px-2 py-1 truncate">{popupMeso.me.nombre}</p>
+                      <p className="text-xs px-2 pb-1.5" style={{ color: C_MESO[popupMeso.me.tipo] || '#EA580C' }}>{popupMeso.me.tipo} · {popupMeso.me.sf - popupMeso.me.si + 1} sem</p>
+                      {popupMeso.me.dbId ? (
+                        <button onClick={() => { const d = popupMeso.me.dbId; setPopupMeso(null); router.push('/mesociclo/' + d + '/vista') }}
+                          className="w-full text-left text-sm text-gray-200 hover:bg-gray-700 rounded-lg px-3 py-2 transition">🔍 Vista de ciclo</button>
+                      ) : (
+                        <p className="text-gray-500 text-xs px-3 py-2">Guarda la planificación primero para ver el ciclo</p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {popupZona && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setPopupZona(null)}>
                     <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 shadow-2xl w-72" onClick={e => e.stopPropagation()}>
@@ -1184,7 +1447,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444'}
                               const sel = zonaSelDisc === d
                               return (
-                                <button key={d} onClick={() => setZonaSelDisc(d)}
+                                <button key={d} onClick={() => { setZonaSelDisc(d); if (dep?.sistema_zonas === 2) setZonaSelZona(d === 'Fuerza' ? 'AFG' : 'AER') }}
                                   className="py-2 rounded-lg text-xs font-medium transition border"
                                   style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
                                   {d === 'Natacion' ? 'Natación' : d}
@@ -1193,17 +1456,32 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             })}
                           </div>
                         </div>
-                        <div>
-                          <label className="text-gray-400 text-xs mb-1.5 block">Zona</label>
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {['Z1','Z2','Z3','Z4','Z5','Z6','Z7'].map(z => (
-                              <button key={z} onClick={() => setZonaSelZona(z)}
-                                className={'py-2 rounded-lg text-xs font-bold transition ' + (zonaSelZona === z ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-                                {z}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        {(() => {
+                          const esFuerza = zonaSelDisc === 'Fuerza'
+                          const z2 = dep?.sistema_zonas === 2
+                          const zonaList = z2
+                            ? (esFuerza ? ZONAS_FUERZA.map(z => z.sigla) : ZONAS_RESISTENCIA.map(z => z.sigla))
+                            : ['Z1','Z2','Z3','Z4','Z5','Z6','Z7']
+                          const etiqueta = z2 ? (esFuerza ? '(Zonas 2 — fuerza)' : '(Zonas 2 — resistencia)') : ''
+                          return (
+                            <div>
+                              <label className="text-gray-400 text-xs mb-1.5 block">{esFuerza && z2 ? 'Cualidad de fuerza' : 'Zona'} {etiqueta}</label>
+                              <div className={'grid gap-1.5 ' + (z2 ? 'grid-cols-3' : 'grid-cols-4')}>
+                                {zonaList.map(z => {
+                                  const sel = zonaSelZona === z
+                                  const col = COLOR_ZONA[z] || '#F97316'
+                                  return (
+                                    <button key={z} onClick={() => setZonaSelZona(z)} title={z2 ? NOMBRE_ZONA(z) : ''}
+                                      className="py-2 rounded-lg text-xs font-bold transition border"
+                                      style={sel ? { backgroundColor: col + '40', borderColor: col, color: 'white' } : { backgroundColor: '#1f2937', borderColor: '#374151', color: '#9ca3af' }}>
+                                      {z}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })()}
                         <div className="flex gap-2 mt-1">
                           <button onClick={() => {
                             setSesZonas(prev => [...prev, {id: Math.random().toString(36).slice(2), semana: popupZona.semana, disciplina: zonaSelDisc, zona: zonaSelZona}])
@@ -1220,7 +1498,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <p className="text-gray-500 text-xs mb-2">Sesiones esta semana:</p>
                             <div className="flex flex-wrap gap-1.5">
                               {sesZonas.filter(sz => sz.semana === popupZona.semana).map(sz => {
-                                const CZ: Record<string,string> = {Z1:'#6B7280',Z2:'#3B82F6',Z3:'#EAB308',Z4:'#F97316',Z5:'#EF4444',Z6:'#7C3AED',Z7:'#EC4899'}
+                                const CZ = COLOR_ZONA
                                 const DL: Record<string,string> = {Natacion:'Nat',Natación:'Nat',Ciclismo:'Cic',Carrera:'Car',Fuerza:'Fue',Brick:'Brk'}
                                 return (
                                   <div key={sz.id} className="flex items-center gap-1 rounded-lg px-2 py-1 border text-xs"
@@ -1312,7 +1590,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           )
                         }
 
-                        const ZONA_COL: Record<string, string> = { Z1: '#6B7280', Z2: '#3B82F6', Z3: '#EAB308', Z4: '#F97316', Z5: '#EF4444', Z6: '#7C3AED', Z7: '#EC4899' }
+                        const ZONA_COL = COLOR_ZONA
                         const zonas: Record<string, number> = {}
                         let totalVol = 0
                         tareasDisc.forEach((t: any) => {
@@ -1480,7 +1758,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       ))}
                     </div>
                   )}
-                  <button onClick={generado ? () => window.location.href = '/planificacion-visual/' + id : generar}
+                  <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
                     disabled={generando || (!generado && macros.length === 0)}
                     className={'w-full py-3 rounded-xl font-bold text-sm transition disabled:opacity-50 ' + (generado ? 'bg-green-600 hover:bg-green-500 text-white' : macros.length === 0 ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
                     {generando ? 'Guardando...' : generado ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
@@ -1499,7 +1777,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <div className="bg-gray-800 rounded-xl p-5 text-center">
                       <p className="text-3xl mb-2">📋</p>
                       <p className="text-gray-500 text-xs mb-2">No hay sesiones programadas todavia</p>
-                      <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="text-orange-400 hover:text-orange-300 text-xs transition">Ir a planificar sesiones →</button>
+                      <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-orange-400 hover:text-orange-300 text-xs transition">Ir a planificar sesiones →</button>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
@@ -1567,7 +1845,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           </div>
                         ))}
                       </div>
-                      <button onClick={() => window.location.href = '/planificacion-visual/' + id} className="w-full bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-xs text-gray-400 hover:text-white transition">
+                      <button onClick={() => router.push('/planificacion-visual/' + id)} className="w-full bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-xs text-gray-400 hover:text-white transition">
                         Ver planificacion completa →
                       </button>
                     </div>

@@ -178,7 +178,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                             </thead>
                             <tbody>
                               {srEj.filter(sr => sr.ejercicio_numero === 1).map((sr: any) => (
-                                <tr key={sr.id} className={'border-b border-gray-800 ' + (sr.completada ? 'bg-green-900 bg-opacity-20' : '')}>
+                                <tr key={sr.id} className={'border-b border-gray-800 ' + (sr.completada ? 'bg-green-900/20' : '')}>
                                   <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                   <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
                                   <td className="py-1.5 px-2 text-center text-blue-400">{sr.repeticiones_reales || '—'}</td>

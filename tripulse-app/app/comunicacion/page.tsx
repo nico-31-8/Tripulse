@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -13,6 +14,7 @@ const COLOR_DISC: Record<string, string> = {
 }
 
 export default function ComunicacionPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [tab, setTab] = useState<'feedback'|'chats'>('feedback')
   const [comentarios, setComentarios] = useState<any[]>([])
@@ -27,7 +29,7 @@ export default function ComunicacionPage() {
   const cargar = async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
     setUserId(user.id)
 
     const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
@@ -97,7 +99,7 @@ export default function ComunicacionPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex justify-between items-start mb-6">
@@ -150,13 +152,13 @@ export default function ComunicacionPage() {
                         <span className="text-gray-500 text-xs">{c.fecha}</span>
                         {c.rpe && <span className="text-gray-500 text-xs">RPE: {c.rpe}/10</span>}
                       </div>
-                      <button onClick={() => window.location.href = '/sesion/' + c.sesionId} className="text-gray-500 hover:text-orange-400 text-xs transition flex-shrink-0">Ver sesion →</button>
+                      <button onClick={() => router.push('/sesion/' + c.sesionId)} className="text-gray-500 hover:text-orange-400 text-xs transition flex-shrink-0">Ver sesion →</button>
                     </div>
                     <p className="text-gray-300 text-sm italic mb-3">"{c.notas}"</p>
                     <div className="flex justify-between items-center">
                       <button onClick={() => {
                         const p = new URLSearchParams({ cita: c.notas, disciplina: c.disciplina, fecha: c.fecha })
-                        window.location.href = '/chat/' + c.depId + '?' + p.toString()
+                        router.push('/chat/' + c.depId + '?' + p.toString())
                       }}
                         className="text-orange-400 hover:text-orange-300 text-xs transition font-medium">
                         💬 Responder en chat →
@@ -186,7 +188,7 @@ export default function ComunicacionPage() {
               deportistas.map((dep: any) => {
                 const noLeidos = mensajesNoLeidos[dep.id] || 0
                 return (
-                  <button key={dep.id} onClick={() => window.location.href = '/chat/' + dep.id}
+                  <button key={dep.id} onClick={() => router.push('/chat/' + dep.id)}
                     className="bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-orange-500/50 rounded-xl p-4 flex items-center gap-4 transition text-left w-full">
                     <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center font-bold flex-shrink-0">
                       {dep.nombre?.[0]?.toUpperCase() || '?'}

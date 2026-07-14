@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
@@ -61,6 +62,7 @@ function EmojiSelector({ campo, value, onChange }: { campo: string; value: numbe
 }
 
 export default function WellnessPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
   const [esDeportista, setEsDeportista] = useState(false)
@@ -151,9 +153,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         {esDeportista ? (
-          <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">🏠 Dashboard</button>
+          <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">🏠 Dashboard</button>
         ) : (
-          <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
+          <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
         )}
       </nav>
       <div className="max-w-2xl mx-auto px-6 py-8">

@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -77,6 +78,7 @@ async function getMicroIds(depId: number): Promise<number[]> {
 
 // RESUMEN ENTRENADOR
 export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
+  const router = useRouter()
   const [resumenes, setResumenes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const lunesAnt = getLunesAnterior()
@@ -143,7 +145,7 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
                 <div className={'w-2.5 h-2.5 rounded-full ' + estilos.dot} />
                 <p className="font-bold text-white">{r.dep.nombre}</p>
               </div>
-              <button onClick={() => window.location.href = '/deportistas/' + r.dep.id}
+              <button onClick={() => router.push('/deportistas/' + r.dep.id)}
                 className="text-gray-500 hover:text-orange-400 text-xs transition">Ver perfil →</button>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">

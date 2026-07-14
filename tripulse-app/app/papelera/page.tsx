@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -10,6 +11,7 @@ const COLOR_DISC: Record<string, string> = {
 }
 
 export default function PapeleraPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,7 +22,7 @@ export default function PapeleraPage() {
   const cargar = async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
 
     const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
     if (!deps?.length) { setLoading(false); return }
@@ -87,7 +89,7 @@ export default function PapeleraPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
+        <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex justify-between items-start mb-6">

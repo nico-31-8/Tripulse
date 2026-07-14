@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -6,6 +7,7 @@ const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', '
 const HORAS = Array.from({ length: 17 }, (_, i) => `${String(i + 6).padStart(2, '0')}:00`)
 
 export default function DisponibilidadPage() {
+  const router = useRouter()
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -16,7 +18,7 @@ export default function DisponibilidadPage() {
 
   const cargar = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
     const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
     if (!dep) { setLoading(false); return }
     setDeportistaId(dep.id)
@@ -70,7 +72,7 @@ export default function DisponibilidadPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
       <div className="max-w-2xl mx-auto px-6 py-8">

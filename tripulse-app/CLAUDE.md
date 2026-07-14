@@ -90,18 +90,20 @@ SICAT es el módulo de análisis de economía de movimiento (`/eco`). La ruta ap
 
 ## Hoja de ruta (orden de prioridad)
 
-1. **Canvas de periodización** — zoom, exportación imagen/PDF, mejoras UX arrastre, nuevas capas de datos, conexión bidireccional con sesiones reales, plantillas reutilizables.
+1. **Canvas de periodización** — ✅ zoom, exportación imagen/PDF, conexión bidireccional con sesiones reales (chips de zona arrastrables → sesión real) y mejoras UX de arrastre (alineación de filas, margen de etiquetas) ya implementados. Pendiente: nuevas capas de datos, plantillas reutilizables.
 2. **Elementos fundacionales pendientes** — piezas base sin cerrar antes de IA e integraciones.
 3. **IA Nivel 1** — alertas en lenguaje natural usando Claude Haiku + contexto SICAT/ATL/CTL/wellness, guardadas en tabla `insights_ia` via cron por deportista/día.
 4. **Integración Garmin Connect** — OAuth2/PKCE, lectura primero (Health API + Activity API), escritura después. ⚠️ Solicitar acceso al programa de desarrolladores Garmin cuanto antes — la aprobación es externa y tarda.
-5. **Zonas 2** — sistema de 9 zonas (AER, AEL, AEM, AEI, PAE, CLA, PLA, CALA, PALA) controlado por `deportista.sistema_zonas` (1=clásico 7 zonas, 2=nuevo). PLA/CALA/PALA requieren tests ASR/APR (sprint).
+5. **Zonas 2** — ✅ completo: sistema de 9 zonas (AER, AEL, AEM, AEI, PAE, CLA, PLA, CALA, PALA) controlado por `deportista.sistema_zonas` (1=clásico 7 zonas, 2=nuevo), incluyendo tests ASR/APR (sprint) para PLA/CALA/PALA.
 6. **Análisis post-sesión con IA**
 7. **Envío de entrenamientos al dispositivo Garmin**
 8. **IA Nivel 2** (generación de planificación) e **IA Nivel 3** (chat conversacional sobre datos propios)
 
 ## Funcionalidades diferidas (sin fecha)
 
-Notificaciones opt-in, Tlim por zona, tests máximos por distancia, dashboards de equipo, modo pacing, exportación PDF, historial lesiones cruzado con carga, onboarding deportistas autoentrenados, PWA/offline.
+Notificaciones opt-in, tests máximos por distancia, dashboards de equipo, modo pacing, historial lesiones cruzado con carga, onboarding deportistas autoentrenados, PWA/offline.
+
+Tlim por zona: marcado como "listo" por el usuario, pero no hay ninguna referencia en el código ni en el esquema de Supabase — pendiente confirmar si es un concepto ya cerrado a nivel de diseño/papel o si falta implementarlo en la app.
 
 ## Contexto del proyecto
 

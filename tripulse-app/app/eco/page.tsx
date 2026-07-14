@@ -1,10 +1,12 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { DISCIPLINAS_SICAT, calcularSICAT } from '@/lib/sicat'
 
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera']
+const DISCIPLINAS = DISCIPLINAS_SICAT
 
 const TABLA_ECO_ORIGINAL = [
   { factor: 'Dificultad técnica', natacion: 3, ciclismo: 1, carrera: 2 },
@@ -12,63 +14,6 @@ const TABLA_ECO_ORIGINAL = [
   { factor: 'Densidad',          natacion: 1, ciclismo: 2, carrera: 3 },
   { factor: 'Coste energético',  natacion: 3, ciclismo: 2, carrera: 3 },
 ]
-
-function calcularF1(sesiones: any[], valoracionEntrenador: number | null) {
-  // Usar valoración técnica global del perfil del deportista
-  // combinada con la sensación técnica media del deportista en sesiones
-  const validas = sesiones.filter(s => s.sensacion_tecnica)
-  const sensacionMedia = validas.length
-    ? validas.reduce((acc, s) => acc + s.sensacion_tecnica, 0) / validas.length
-    : null
-  // Si tenemos ambos datos, promediamos. Si solo uno, usamos ese.
-  let media: number | null = null
-  if (sensacionMedia !== null && valoracionEntrenador !== null) {
-    media = (sensacionMedia + valoracionEntrenador) / 2
-  } else if (sensacionMedia !== null) {
-    media = sensacionMedia
-  } else if (valoracionEntrenador !== null) {
-    media = valoracionEntrenador
-  }
-  if (media === null) return null
-  return Math.min(4, Math.max(1, Math.round(5 - media)))
-}
-
-function calcularF2(sesiones: any[]) {
-  const validas = sesiones.filter(s => s.dolor_muscular)
-  if (!validas.length) return null
-  const scores = validas.map(s => {
-    const d0 = s.dolor_muscular || 0
-    const d24 = s.dolor_24h || s.dolor_muscular || 0
-    const d48 = s.dolor_48h || s.dolor_muscular || 0
-    return d0 * 0.2 + d24 * 0.4 + d48 * 0.4
-  })
-  const media = scores.reduce((acc, s) => acc + s, 0) / scores.length
-  return Math.min(4, Math.max(1, Math.round(media * 0.8)))
-}
-
-function calcularF3(sesiones: any[]) {
-  const duras = sesiones.filter(s => s.rpe_reportado > 7)
-  if (!duras.length) return 1
-  const degradadas = duras.filter(s => s.sensacion_tecnica < 3)
-  const degradacion = degradadas.length / duras.length
-  return Math.min(4, Math.max(1, 1 + Math.round(degradacion * 3)))
-}
-
-function calcularF4(sesiones: any[], fcUmbral: number) {
-  const validas = sesiones.filter(s => s.fc_media && s.rpe_reportado && fcUmbral > 0)
-  if (!validas.length) return null
-  const fcRel = validas.reduce((acc, s) => acc + s.fc_media / fcUmbral, 0) / validas.length
-  const mediaRpe = validas.reduce((acc, s) => acc + s.rpe_reportado, 0) / validas.length
-  return Math.min(4, Math.max(1, Math.round((fcRel * 2) + (mediaRpe / 10 * 2))))
-}
-
-function calcularCorrectorHRV(sesiones: any[], hrvBasal: number) {
-  const validas = sesiones.filter(s => s.hrv_del_dia && hrvBasal > 0)
-  if (!validas.length) return 1
-  const hrvMedia = validas.reduce((acc, s) => acc + s.hrv_del_dia, 0) / validas.length
-  const ratio = hrvMedia / hrvBasal
-  return 1 + (1 - ratio) * 0.3
-}
 
 function colorPorcentaje(p: number) {
   if (p <= 40) return 'text-green-400'
@@ -119,9 +64,9 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
                   <span className="font-semibold text-white">Dificultad técnica</span>
                   <span className="text-gray-500 text-xs ml-auto">Escala invertida</span>
                 </div>
-                <p className="text-gray-400 text-xs mb-2">Promedia la sensación técnica del atleta (1–5) con la valoración del entrenador (1–5). A peor técnica, mayor coste.</p>
+                <p className="text-gray-400 text-xs mb-2">Promedia la sensación técnica media del atleta en sus sesiones (1–5) con la valoración técnica que el entrenador da en el perfil del deportista para esa disciplina (1–5). No es por sesión — el entrenador no puede estar presente en cada una, así que es una valoración general. A peor técnica, mayor coste.</p>
                 <div className="bg-gray-900 rounded-lg p-2 font-mono text-xs text-green-400">
-                  <p>media = (sensación_atleta + valoración_entrenador) / 2</p>
+                  <p>media = (sensación_atleta + valoración_entrenador_perfil) / 2</p>
                   <p>F1 = redondear(5 − media)  →  rango 1–4</p>
                 </div>
               </div>
@@ -182,11 +127,12 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
           <section>
             <h3 className="text-orange-400 font-bold text-base mb-3">Corrector HRV</h3>
             <p className="text-gray-300 text-sm mb-3">
-              La HRV es el indicador más objetivo de recuperación. Si el atleta entrena con HRV baja respecto a su basal,
+              La HRV es el indicador más objetivo de recuperación. Se toma del registro diario de wellness del atleta
+              (el mismo día de la sesión). Si entrena con HRV baja respecto a su basal,
               el sistema aumenta el peso de esa sesión automáticamente porque el cuerpo estaba en peores condiciones.
             </p>
             <div className="bg-gray-800 rounded-xl p-4 font-mono text-xs text-green-400 space-y-1">
-              <p>HRV_ratio = HRV_del_día / HRV_basal_atleta</p>
+              <p>HRV_ratio = HRV_del_día (wellness) / HRV_basal_atleta</p>
               <p>factor_corrector = 1 + (1 − HRV_ratio) × 0,3</p>
               <p>score_corregido = (F1+F2+F3+F4) × factor_corrector</p>
             </div>
@@ -275,9 +221,9 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
               {[
                 { quien: 'Atleta (post-sesión)', datos: ['RPE reportado (1–10)', 'Sensación técnica (1–5)', 'Dolor muscular (1–5)'] },
-                { quien: 'Entrenador (pre-sesión)', datos: ['RPE estimado (1–10)', 'Valoración técnica (1–5)'] },
-                { quien: 'Reloj Garmin (automático)', datos: ['FC media de la sesión', 'HRV matutina del día'] },
-                { quien: 'Perfil del deportista', datos: ['FC máxima (para calcular umbral)', 'HRV basal (media 7–14 días)'] },
+                { quien: 'Entrenador', datos: ['RPE estimado (1–10, al planificar)'] },
+                { quien: 'Wellness diario del atleta', datos: ['HRV del día', 'Dolor muscular a 24h/48h'] },
+                { quien: 'Perfil del deportista', datos: ['FC máxima', 'HRV basal (media 7–14 días)', 'Valoración técnica por disciplina (1–5, la da el entrenador)'] },
               ].map(bloque => (
                 <div key={bloque.quien} className="bg-gray-800 rounded-xl p-3">
                   <p className="text-gray-400 font-semibold mb-2">{bloque.quien}</p>
@@ -306,6 +252,7 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
 }
 
 export default function EcoPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
@@ -317,7 +264,7 @@ export default function EcoPage() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
@@ -329,93 +276,9 @@ export default function EcoPage() {
     setSeleccionado(dep)
     setLoadingScores(true)
     setScores(null)
-
-    const fcUmbral = dep.fc_maxima || 0  // FC máxima directa, no umbral
-    const hrvBasal = dep.hrv_basal || 0
-    const resultados: any = {}
-
-    const microsIds = await getMicrosDeportista(dep.id)
-    if (!microsIds.length) {
-      DISCIPLINAS.forEach(d => { resultados[d] = { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null } })
-      setScores(resultados)
-      setLoadingScores(false)
-      return
-    }
-
-    const { data: todasSesiones } = await supabase
-      .from('sesion')
-      .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
-      .eq('estado', 'Realizada')
-      .in('id_microciclo', microsIds)
-
-    for (const disc of DISCIPLINAS) {
-      const sesiones = (todasSesiones || []).filter((s: any) => s.disciplina === disc)
-      const sesionIds = sesiones.map((s: any) => s.id)
-
-      if (!sesionIds.length) {
-        resultados[disc] = { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null }
-        continue
-      }
-
-      const { data: tareas } = await supabase
-        .from('tarea')
-        .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, valoracion_tecnica_entrenador, hrv_del_dia, id_sesion')
-        .in('id_sesion', sesionIds)
-
-      const sesionesConFecha = sesiones
-      const tareasEnriquecidas = await Promise.all((tareas || []).map(async tarea => {
-        const sesion = sesionesConFecha.find(s => s.id === tarea.id_sesion)
-        if (!sesion?.fecha_sesion) return tarea
-        const fecha = new Date(sesion.fecha_sesion)
-        const fecha24 = new Date(fecha); fecha24.setDate(fecha.getDate() + 1)
-        const fecha48 = new Date(fecha); fecha48.setDate(fecha.getDate() + 2)
-        const f24 = fecha24.toISOString().split('T')[0]
-        const f48 = fecha48.toISOString().split('T')[0]
-        const { data: w24 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f24).maybeSingle()
-        const { data: w48 } = await supabase.from('wellness').select('dolor_muscular').eq('id_deportista', dep.id).eq('fecha', f48).maybeSingle()
-        return { ...tarea, dolor_24h: w24?.dolor_muscular || null, dolor_48h: w48?.dolor_muscular || null }
-      }))
-
-      const t = tareasEnriquecidas
-      const valoracionTec = disc === 'Natacion' ? dep.tec_natacion
-        : disc === 'Ciclismo' ? dep.tec_ciclismo
-        : dep.tec_carrera
-      const f1 = calcularF1(t, valoracionTec ?? null)
-      const f2 = calcularF2(t)
-      const f3 = calcularF3(t)
-      const f4 = calcularF4(t, fcUmbral)
-      const corrector = calcularCorrectorHRV(t, hrvBasal)
-
-      const factoresValidos = [f1, f2, f3, f4].filter(f => f !== null)
-      const total = factoresValidos.length === 4
-        ? Math.round((f1! + f2! + f3! + f4!) * corrector * 10) / 10
-        : null
-
-      resultados[disc] = { sesiones: t.length, f1, f2, f3, f4, total, corrector }
-    }
-
-    const totalesValidos = DISCIPLINAS.map(d => resultados[d].total).filter(t => t !== null)
-    const maxTotal = totalesValidos.length ? Math.max(...totalesValidos) : 16
-
-    DISCIPLINAS.forEach(d => {
-      if (resultados[d].total !== null) {
-        resultados[d].porcentaje = Math.round((resultados[d].total / maxTotal) * 100)
-      }
-    })
-
+    const resultados = await calcularSICAT(dep)
     setScores(resultados)
     setLoadingScores(false)
-  }
-
-  const getMicrosDeportista = async (depId: number): Promise<number[]> => {
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    const macroIds = (macros || []).map((m: any) => m.id)
-    if (!macroIds.length) return []
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-    const mesoIds = (mesos || []).map((m: any) => m.id)
-    if (!mesoIds.length) return []
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-    return (micros || []).map((m: any) => m.id)
   }
 
   const radarData = scores ? DISCIPLINAS.map(d => ({
@@ -431,7 +294,7 @@ export default function EcoPage() {
       {mostrarExplicacion && <ModalExplicacion onClose={() => setMostrarExplicacion(false)} />}
 
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-8">

@@ -1,8 +1,10 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function NuevaPassword() {
+  const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -26,7 +28,7 @@ export default function NuevaPassword() {
       setError('Error: ' + error.message)
     } else {
       setExito(true)
-      setTimeout(() => { window.location.href = '/login' }, 2000)
+      setTimeout(() => { router.push('/login')}, 2000)
     }
     setGuardando(false)
   }

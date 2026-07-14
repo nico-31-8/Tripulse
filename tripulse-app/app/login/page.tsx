@@ -1,31 +1,19 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
-const IMAGENES = [
-  'https://images.unsplash.com/photo-1530549387789-4c1017266635?w=1920&q=80',
-  'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1920&q=80',
-  'https://images.unsplash.com/photo-1519311965067-36d3e5f33d39?w=1920&q=80',
-  'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=1920&q=80',
-  'https://images.unsplash.com/photo-1486218119243-13301be4cb28?w=1920&q=80',
-  'https://images.unsplash.com/photo-1544717305-2782549b5136?w=1920&q=80',
-]
-
 export default function Login() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [imgActual, setImgActual] = useState(0)
-  const [imgAnterior, setImgAnterior] = useState(-1)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setImgAnterior(imgActual)
-      setImgActual(prev => (prev + 1) % IMAGENES.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [imgActual])
+  // Forzar la reproducción (algunos navegadores no autoarrancan aunque esté muteado).
+  useEffect(() => { videoRef.current?.play().catch(() => {}) }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,12 +28,12 @@ export default function Login() {
         // Solo se exige anamnesis si tiene entrenador (es a quien le sirve)
         if (dep && dep.id_entrenador) {
           const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
-          window.location.href = (!an || an.estado === 'borrador') ? '/anamnesis' : '/dashboard-deportista'
+          router.push((!an || an.estado === 'borrador') ? '/anamnesis' : '/dashboard-deportista')
         } else {
-          window.location.href = '/dashboard-deportista'
+          router.push('/dashboard-deportista')
         }
       } else {
-        window.location.href = '/dashboard'
+        router.push('/dashboard')
       }
     }
     setLoading(false)
@@ -53,27 +41,27 @@ export default function Login() {
 
   return (
     <main className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center">
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .fade-in { animation: fadeIn 1.5s ease-in-out forwards; }
-      `}</style>
+      {/* Fondo: imagen fija de respaldo + vídeo encima (poster para que nunca haya negro) */}
+      <img
+        src="/login/hero-poster.jpg"
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover z-0"
+      />
+      <video
+        ref={videoRef}
+        src="/login/hero-bg-web.mp4"
+        poster="/login/hero-poster.jpg"
+        autoPlay muted loop playsInline preload="auto"
+        onCanPlay={e => e.currentTarget.play().catch(() => {})}
+        className="absolute inset-0 w-full h-full object-cover z-0"
+      />
 
-      {/* Imágenes de fondo con transición */}
-      {IMAGENES.map((img, i) => (
-        <div key={img} className="absolute inset-0" style={{ opacity: i === imgActual ? 1 : 0, zIndex: i === imgActual ? 1 : 0, transition: 'opacity 1.5s ease-in-out' }}>
-          <img src={img} alt="" className="w-full h-full object-cover" />
-        </div>
-      ))}
-
-      {/* Overlay oscuro */}
-      <div className="absolute inset-0 bg-black bg-opacity-60 z-10" />
+      {/* Overlay oscuro (ligero: la imagen ya es oscura de por sí) */}
+      <div className="absolute inset-0 bg-black/40 z-10" />
 
       {/* Formulario */}
       <div className="relative z-20 w-full max-w-sm px-6">
-        <div className="bg-gray-900 bg-opacity-90 backdrop-blur-sm rounded-2xl p-8 border border-gray-800 shadow-2xl">
+        <div className="bg-gray-900/90 backdrop-blur-sm rounded-2xl p-8 border border-gray-800 shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-black text-orange-500 tracking-tight mb-1">TRIPULSE</h1>
             <p className="text-gray-400 text-sm">Triatlón & Fuerza</p>
@@ -91,7 +79,7 @@ export default function Login() {
                 className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition"
                 placeholder="••••••••" required />
             </div>
-            {error && <div className="bg-red-900 bg-opacity-50 border border-red-700 text-red-300 px-4 py-3 rounded-xl text-sm">{error}</div>}
+            {error && <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-xl text-sm">{error}</div>}
             <button type="submit" disabled={loading}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-xl font-bold tracking-wide transition disabled:opacity-50 mt-2">
               {loading ? 'Entrando...' : 'Entrar'}
@@ -99,19 +87,11 @@ export default function Login() {
           </form>
           <p className="text-gray-500 text-sm mt-6 text-center">
             ¿No tienes cuenta?{' '}
-            <a href="/registro" className="text-orange-400 hover:text-orange-300 transition">Regístrate</a>
+            <Link href="/registro" className="text-orange-400 hover:text-orange-300 transition">Regístrate</Link>
           </p>
           <p className="text-center text-sm mt-2">
-            <a href="/reset-password" className="text-gray-500 hover:text-orange-400 transition">¿Olvidaste tu contraseña?</a>
+            <Link href="/reset-password" className="text-gray-500 hover:text-orange-400 transition">¿Olvidaste tu contraseña?</Link>
           </p>
-        </div>
-
-        {/* Indicadores */}
-        <div className="flex justify-center gap-2 mt-6">
-          {IMAGENES.map((_, i) => (
-            <button key={i} onClick={() => setImgActual(i)}
-              className={'w-2 h-2 rounded-full transition-all ' + (i === imgActual ? 'bg-orange-500 w-6' : 'bg-white bg-opacity-40')} />
-          ))}
         </div>
       </div>
 

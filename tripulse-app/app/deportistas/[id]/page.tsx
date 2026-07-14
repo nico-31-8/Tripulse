@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -130,7 +131,7 @@ function DisponibilidadDeportista({ depId }: { depId: number }) {
                       return hora >= ini && hora < fin
                     })
                     return (
-                      <div key={dia+hora} className={'h-6 rounded ' + (ocupado ? 'bg-orange-500 bg-opacity-60' : 'bg-gray-800')} />
+                      <div key={dia+hora} className={'h-6 rounded ' + (ocupado ? 'bg-orange-500/60' : 'bg-gray-800')} />
                     )
                   })}
                 </>
@@ -144,6 +145,7 @@ function DisponibilidadDeportista({ depId }: { depId: number }) {
 }
 
 export default function PerfilDeportista({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
@@ -262,6 +264,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     setGuardandoEdit(false)
   }
 
+  const cambiarSistemaZonas = async (v: number) => {
+    await supabase.from('deportista').update({ sistema_zonas: v }).eq('id', id)
+    setDeportista((prev: any) => ({ ...prev, sistema_zonas: v }))
+  }
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Deportista no encontrado</div>
 
@@ -275,7 +282,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/deportistas'} className="text-gray-400 hover:text-white text-sm transition">← Deportistas</button>
+        <button onClick={() => router.push('/deportistas')} className="text-gray-400 hover:text-white text-sm transition">← Deportistas</button>
       </nav>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -294,11 +301,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               {deportista.experiencia_previa && <p className="text-gray-500 text-sm mt-2">Historial: {deportista.experiencia_previa}</p>}
             </div>
             <div className="flex gap-2 flex-wrap">
-              <button onClick={() => window.location.href = '/planificacion-visual/' + id}
+              <button onClick={() => router.push('/planificacion-visual/' + id)}
                 className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
                 📅 Planificación
               </button>
-              <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'}
+              <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')}
                 className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition">
                 🗓 Calendario
               </button>
@@ -378,6 +385,26 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             </div>
 
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 className="font-bold mb-1 text-orange-400">Sistema de zonas</h3>
+              <p className="text-gray-500 text-xs mb-4">Define qué zonas de entrenamiento se usan al planificar con este deportista.</p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                {[
+                  { v: 1, t: 'Clásico', d: '7 zonas (Z1–Z7)' },
+                  { v: 2, t: 'Zonas 2', d: '9 metabólicas + fuerza' },
+                ].map(op => (
+                  <button key={op.v} onClick={() => cambiarSistemaZonas(op.v)}
+                    className={'flex-1 text-left rounded-xl p-4 border-2 transition ' + ((deportista.sistema_zonas || 1) === op.v ? 'border-orange-500 bg-orange-500/10' : 'border-gray-700 bg-gray-800 hover:border-gray-500')}>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-sm">{op.t}</p>
+                      {(deportista.sistema_zonas || 1) === op.v && <span className="text-orange-400 text-xs">✓ activo</span>}
+                    </div>
+                    <p className="text-gray-400 text-xs mt-0.5">{op.d}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <h3 className="font-bold mb-4 text-orange-400">Últimos tests</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-gray-800 rounded-lg p-4">
@@ -418,7 +445,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   ) : <p className="text-gray-600 text-sm">Sin test</p>}
                 </div>
               </div>
-              <button onClick={() => window.location.href = '/tests/' + id}
+              <button onClick={() => router.push('/tests/' + id)}
                 className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
                 Ver todos los tests →
               </button>
@@ -501,7 +528,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   </div>
                 </div>
               ) : <p className="text-gray-500 text-sm">Sin sesiones realizadas para calcular la carga.</p>}
-              <button onClick={() => window.location.href = '/carga'}
+              <button onClick={() => router.push('/carga')}
                 className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
                 Ver análisis completo de carga →
               </button>
@@ -525,7 +552,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   ))}
                 </div>
               ) : <p className="text-gray-500 text-sm">Sin scores ECO calculados todavía.</p>}
-              <button onClick={() => window.location.href = '/eco'}
+              <button onClick={() => router.push('/eco')}
                 className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
                 Ver análisis ECO completo →
               </button>
@@ -538,7 +565,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 { icon: '💚', label: 'Wellness detallado', href: '/wellness-entrenador' },
                 { icon: '🏋️', label: 'Tests completos', href: '/tests/' + id },
               ].map(({ icon, label, href }) => (
-                <button key={label} onClick={() => window.location.href = href}
+                <button key={label} onClick={() => router.push(href)}
                   className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left flex items-center gap-3">
                   <span className="text-2xl">{icon}</span>
                   <span className="text-sm font-medium">{label}</span>
@@ -577,7 +604,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             ) : (
               <div className="flex flex-col gap-3">
                 {ultimasSesiones.map(s => (
-                  <button key={s.id} onClick={() => window.location.href = '/sesion/' + s.id}
+                  <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
                     className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-orange-500 transition text-left w-full">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3">
@@ -607,7 +634,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               </div>
             )}
 
-            <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'}
+            <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')}
               className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl text-sm transition">
               🗓 Ver calendario completo →
             </button>
@@ -814,7 +841,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
       {/* Modal edición */}
       {editando && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-lg font-bold">Editar datos personales</h3>

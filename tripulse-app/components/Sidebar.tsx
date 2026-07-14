@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
@@ -35,6 +35,7 @@ export default function Sidebar() {
   const [rol, setRol] = useState<string | null>(null)
   const [depId, setDepId] = useState<number | null>(null)
   const pathname = usePathname()
+  const router = useRouter()
   const panelRef = useRef<HTMLDivElement>(null)
   const botonRef = useRef<HTMLButtonElement>(null)
 
@@ -111,7 +112,7 @@ export default function Sidebar() {
       >
         <nav className="flex-1 py-2 overflow-y-auto">
           {modulos.map(m => (
-            <button key={m.titulo} onClick={() => window.location.href = m.href}
+            <button key={m.titulo} onClick={() => router.push(m.href)}
               className={'w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left ' +
                 (pathname === m.href ? 'bg-gray-800 border-l-2 border-orange-500' : '')}>
               <span className="text-xl flex-shrink-0">{m.icon}</span>
@@ -121,17 +122,17 @@ export default function Sidebar() {
         </nav>
 
         <div className="border-t border-gray-800 py-2">
-          <button onClick={() => window.history.back()}
+          <button onClick={() => router.back()}
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
             <span className="text-xl flex-shrink-0">◀️</span>
             <span className="text-gray-300 text-sm whitespace-nowrap">Atrás</span>
           </button>
-          <button onClick={() => window.location.href = '/perfil'}
+          <button onClick={() => router.push('/perfil')}
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
             <span className="text-xl flex-shrink-0">⚙️</span>
             <span className="text-gray-300 text-sm whitespace-nowrap">Mi perfil</span>
           </button>
-          <button onClick={() => window.location.href = dashboardHref}
+          <button onClick={() => router.push(dashboardHref)}
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
             <span className="text-xl flex-shrink-0">🏠</span>
             <span className="text-gray-300 text-sm whitespace-nowrap">Dashboard</span>

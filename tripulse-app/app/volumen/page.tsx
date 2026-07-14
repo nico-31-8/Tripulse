@@ -1,8 +1,10 @@
 ﻿'use client'
-import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 
 const RANGOS = [
   { label: '2 sem', dias: 14 },
@@ -28,15 +30,16 @@ function getSemana(fecha: string) {
 }
 
 export default function VolumenPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [datosDias, setDatosDias] = useState<any[]>([])
   const [datosSemanas, setDatosSemanas] = useState<any[]>([])
   const [datosMusculo, setDatosMusculo] = useState<any[]>([])
-  const [cargaSesiones, setCargaSesiones] = useState<any[]>([])
-  const [cargaSemanas, setCargaSemanas] = useState<any[]>([])
-  const [cargaMeses, setCargaMeses] = useState<any[]>([])
+  const [volSesionRaw, setVolSesionRaw] = useState<any[]>([])
+  const [usarSicat, setUsarSicat] = useState(true)
+  const [sicat, setSicat] = useState<SicatResultado | null>(null)
   const [rango, setRango] = useState(28)
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
@@ -50,7 +53,7 @@ export default function VolumenPage() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
@@ -61,6 +64,8 @@ export default function VolumenPage() {
   const verVolumen = async (dep: any, dias: number) => {
     setSeleccionado(dep)
     setLoadingDatos(true)
+    setSicat(null)
+    calcularSICAT(dep).then(setSicat)
 
     const desde = new Date()
     desde.setDate(desde.getDate() - dias)
@@ -86,7 +91,7 @@ export default function VolumenPage() {
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
 
-    if (!sesiones?.length) { setDatosDias([]); setDatosSemanas([]); setCargaSesiones([]); setCargaSemanas([]); setCargaMeses([]); setLoadingDatos(false); return }
+    if (!sesiones?.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
 
     const sesIds = sesiones.map(s => s.id)
     const { data: tareas } = await supabase.from('tarea').select('id, id_sesion').in('id_sesion', sesIds)
@@ -168,31 +173,42 @@ export default function VolumenPage() {
     })
     setDatosMusculo(Object.entries(musculoMap).map(([grupo, series]) => ({ grupo, series })).sort((a, b) => b.series - a.series))
 
-    // Carga por sesión
-    setCargaSesiones(volSesion.map(s => ({ ...s, fecha: s.fecha.slice(5) })))
-
-    // Carga por semana
-    const cSemMap: Record<string, any> = {}
-    volSesion.forEach(s => {
-      const k = getSemana(s.fecha).slice(5)
-      if (!cSemMap[k]) cSemMap[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      cSemMap[k][s.disciplina] = (cSemMap[k][s.disciplina] || 0) + s.ua
-      cSemMap[k].total += s.ua
-    })
-    setCargaSemanas(Object.values(cSemMap))
-
-    // Carga por mes
-    const cMesMap: Record<string, any> = {}
-    volSesion.forEach(s => {
-      const k = s.fecha.slice(0, 7)
-      if (!cMesMap[k]) cMesMap[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      cMesMap[k][s.disciplina] = (cMesMap[k][s.disciplina] || 0) + s.ua
-      cMesMap[k].total += s.ua
-    })
-    setCargaMeses(Object.values(cMesMap))
+    // Carga: guardamos las sesiones en bruto y derivamos sesión/semana/mes vía useMemo
+    // (así el toggle SICAT recalcula al vuelo sin volver a consultar la base de datos).
+    setVolSesionRaw(volSesion)
 
     setLoadingDatos(false)
   }
+
+  const factorFn = (disc: string) => usarSicat ? factorSicat(disc, sicat) : 1
+
+  const cargaSesiones = useMemo(() =>
+    volSesionRaw.map(s => ({ ...s, fecha: s.fecha.slice(5), ua: Math.round(s.ua * factorFn(s.disciplina)) })),
+    [volSesionRaw, usarSicat, sicat])
+
+  const cargaSemanas = useMemo(() => {
+    const map: Record<string, any> = {}
+    volSesionRaw.forEach(s => {
+      const k = getSemana(s.fecha).slice(5)
+      if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
+      const uaPond = s.ua * factorFn(s.disciplina)
+      map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
+      map[k].total += uaPond
+    })
+    return Object.values(map)
+  }, [volSesionRaw, usarSicat, sicat])
+
+  const cargaMeses = useMemo(() => {
+    const map: Record<string, any> = {}
+    volSesionRaw.forEach(s => {
+      const k = s.fecha.slice(0, 7)
+      if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
+      const uaPond = s.ua * factorFn(s.disciplina)
+      map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
+      map[k].total += uaPond
+    })
+    return Object.values(map)
+  }, [volSesionRaw, usarSicat, sicat])
 
   const cambiarRango = (dias: number) => {
     setRango(dias)
@@ -213,7 +229,7 @@ export default function VolumenPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-1">Volumen y Carga</h2>
@@ -521,6 +537,18 @@ export default function VolumenPage() {
             {/* PESTAÑA CARGA */}
             {pestana === 'carga' && (
               <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+                  <button onClick={() => setUsarSicat(v => !v)}
+                    className={'px-3 py-1.5 rounded-lg text-xs font-bold transition ' +
+                      (usarSicat ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+                    🔬 SICAT {usarSicat ? 'activado' : 'desactivado'}
+                  </button>
+                  <p className="text-gray-500 text-xs">
+                    {usarSicat
+                      ? 'UA ponderada por el coste real de cada disciplina para este atleta.'
+                      : 'UA sin ponderar — todas las disciplinas cuentan igual.'}
+                  </p>
+                </div>
                 <div className="flex gap-2 flex-wrap items-center">
                   <p className="text-gray-500 text-xs uppercase tracking-wide mr-1">Agrupar por</p>
                   {[{k:'sesion',l:'Sesión'},{k:'semana',l:'Semana'},{k:'mes',l:'Mes'}].map(a => (

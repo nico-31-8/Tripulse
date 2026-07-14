@@ -15,6 +15,8 @@
 //
 // El % de zona es el punto medio del rango de ZONAS_REF (ver tareas-tabla.tsx).
 // Z1 tiene rango [0, x] así que usamos un valor fijo del 60%.
+// Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
+import { cargaZona } from './zonas'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
 // Z1 fijo al 60% porque su rango real empieza en 0.
@@ -58,10 +60,9 @@ export interface ResultadoDuracion {
   faltanTests: boolean      // hay tareas por distancia sin el test necesario
 }
 
-function numZona(zona?: string | null): number | null {
-  if (!zona) return null
-  const n = parseInt(String(zona).replace(/[^0-9]/g, ''))
-  return isNaN(n) ? null : n
+// Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
+function numZona(zona?: string | null): number {
+  return cargaZona(zona).nivel
 }
 
 // Tiempo de trabajo de UNA serie de la tarea, en segundos. null si no es estimable.
@@ -71,7 +72,7 @@ function segTrabajoPorSerie(t: TareaDuracion, tests: TestsDeportista): number | 
 
   const metros = t.p_distancia?.[0]?.metros_planeados
   if (metros != null && metros > 0) {
-    const z = numZona(t.zona_entrenamiento) ?? 2
+    const z = numZona(t.zona_entrenamiento)
     const pct = PCT_ZONA[z] || PCT_ZONA[2]
     const disc = t.disciplina
     if (disc === 'Carrera' && tests.vam) {
@@ -101,11 +102,14 @@ export function calcularDuracionEstimada(
   for (const t of tareas) {
     const series = t.series && t.series > 0 ? t.series : 1
 
-    // Fuerza: se calcula a partir de reps × tempo, no de tiempo/distancia
+    // Fuerza: reps × tempo (normal) o series × segundos (isométrico)
     if (t.disciplina === 'Fuerza') {
       const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + (e.repeticiones || 0), 0)
-      if (totalReps > 0) {
-        const trabajo = series * totalReps * SEG_POR_REP
+      const isoSeg = t.p_duracion?.[0]?.tiempo_planeado || 0
+      let trabajo = 0
+      if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
+      else if (isoSeg > 0) trabajo = series * isoSeg
+      if (trabajo > 0) {
         const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
         segundos += trabajo + descanso
         ejerciciosFuerza++

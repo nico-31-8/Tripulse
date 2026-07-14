@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 
 const MODELOS = [
@@ -68,13 +69,14 @@ const MODELOS = [
 ]
 
 export default function PeriodizacionPage() {
+  const router = useRouter()
   const [modeloActivo, setModeloActivo] = useState('Tradicional')
   const modelo = MODELOS.find(m => m.key === modeloActivo)!
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.history.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
+        <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm transition">← Volver</button>
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-8">

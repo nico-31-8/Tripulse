@@ -1,16 +1,18 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 export default function PlanificacionVisualIndex() {
+  const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
 
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(data || [])
     }
@@ -20,7 +22,7 @@ export default function PlanificacionVisualIndex() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-2">Planificacion visual</h2>
@@ -30,7 +32,7 @@ export default function PlanificacionVisualIndex() {
         ) : (
           <div className="grid gap-4">
             {deportistas.map(d => (
-              <button key={d.id} onClick={() => window.location.href = '/planificacion-visual/' + d.id} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left">
+              <button key={d.id} onClick={() => router.push('/planificacion-visual/' + d.id)} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-bold text-lg">{d.nombre}</h3>

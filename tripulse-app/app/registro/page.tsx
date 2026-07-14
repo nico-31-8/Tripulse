@@ -1,8 +1,11 @@
 'use client'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function Registro() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nombre, setNombre] = useState('')
@@ -34,7 +37,7 @@ export default function Registro() {
           await supabase.from('deportista').insert({ id_usuario: data.user.id, nombre })
         }
       }
-      window.location.href = rol === 'entrenador' ? '/dashboard' : '/dashboard-deportista'
+      router.push(rol === 'entrenador' ? '/dashboard' : '/dashboard-deportista')
     }
     setLoading(false)
   }
@@ -70,7 +73,7 @@ export default function Registro() {
           {mensaje && <p className="text-red-400 text-sm">{mensaje}</p>}
           <button type="submit" disabled={loading || !aceptoTerminos} className="bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Creando cuenta...' : 'Crear cuenta'}</button>
         </form>
-        <p className="text-gray-400 text-sm mt-4 text-center">Ya tienes cuenta? <a href="/login" className="text-orange-500 hover:underline">Entra aqui</a></p>
+        <p className="text-gray-400 text-sm mt-4 text-center">Ya tienes cuenta? <Link href="/login" className="text-orange-500 hover:underline">Entra aqui</Link></p>
       </div>
     </main>
   )

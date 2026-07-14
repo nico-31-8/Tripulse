@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function ResetPassword() {
@@ -36,9 +37,9 @@ export default function ResetPassword() {
             <p className="text-gray-400 text-sm mb-6">
               Revisa tu bandeja de entrada y sigue el enlace para crear una nueva contraseña.
             </p>
-            <a href="/login" className="text-orange-500 hover:underline text-sm">
+            <Link href="/login" className="text-orange-500 hover:underline text-sm">
               Volver al login
-            </a>
+            </Link>
           </div>
         ) : (
           <form onSubmit={handleReset} className="flex flex-col gap-4">
@@ -61,9 +62,9 @@ export default function ResetPassword() {
             >
               {loading ? 'Enviando...' : 'Enviar enlace →'}
             </button>
-            <a href="/login" className="text-center text-gray-500 hover:text-white text-sm transition">
+            <Link href="/login" className="text-center text-gray-500 hover:text-white text-sm transition">
               ← Volver al login
-            </a>
+            </Link>
           </form>
         )}
       </div>

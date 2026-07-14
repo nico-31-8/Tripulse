@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -32,7 +33,7 @@ function fechaLocal(d: Date): string {
 
 function Modal({ titulo, onClose, children }: { titulo: string, onClose: () => void, children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700 max-h-screen overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold">{titulo}</h3>
@@ -86,6 +87,7 @@ function MacroCard({ mac, onClick, onEditar, onBorrar }: { mac: any, onClick: ()
 }
 
 export default function PlanificacionVisual({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
@@ -278,9 +280,9 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center gap-4 border-b border-gray-800">
-        <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/calendario'} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
-        <button onClick={() => window.location.href = '/planificacion-visual/' + id + '/dibujo'} className="text-orange-400 hover:text-orange-300 text-xs transition">✏️ Dibujo</button>
-        <button onClick={() => window.location.href = '/deportistas/' + id} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+        <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="text-orange-400 hover:text-orange-300 text-xs transition">📅 Calendario</button>
+        <button onClick={() => router.push('/planificacion-visual/' + id + '/dibujo')} className="text-orange-400 hover:text-orange-300 text-xs transition">✏️ Dibujo</button>
+        <button onClick={() => router.push('/deportistas/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-6 flex gap-4">
@@ -399,7 +401,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                         const esHoyDia = str === hoy
                         return (
                           <button key={str}
-                            onClick={() => tieneSesion ? window.location.href = '/sesion/' + ses[0].id : abrirModalSesion(str)}
+                            onClick={() => tieneSesion ? router.push('/sesion/' + ses[0].id) : abrirModalSesion(str)}
                             className={'rounded text-xs py-1 text-center transition ' +
                               (esHoyDia ? 'bg-orange-500 text-white font-bold' :
                                tieneSesion ? 'bg-blue-800 text-blue-200 hover:bg-blue-700' :
@@ -529,7 +531,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                     {ses.length > 0 && (
                       <div className="px-2 pb-2 flex flex-col gap-1">
                         {ses.map((s: any) => (
-                          <button key={s.id} onClick={() => window.location.href='/sesion/'+s.id}
+                          <button key={s.id} onClick={() => router.push('/sesion/'+s.id)}
                             className={'w-full rounded-lg p-2 text-left hover:opacity-80 transition '+(COLOR_DISC[s.disciplina]||'bg-gray-700')}>
                             <p className="text-white text-xs font-bold">{s.disciplina}</p>
                             <p className="text-white text-xs opacity-80">{s.duracion_minutos?s.duracion_minutos+'min':'—'}</p>

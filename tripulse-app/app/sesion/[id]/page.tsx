@@ -1,18 +1,24 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
 import DatosReales from './DatosReales'
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
+import { ZONAS_FUERZA, zonaResistencia, prescripcion } from '@/lib/zonas'
+import { sugerirNutricion } from '@/lib/nutricion'
+import { recomendarRecuperacion } from '@/lib/recuperacion'
+import { tablaMedicion, valorCanonico, type UnidadMedicion } from '@/lib/medicion'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   const [esDeportista, setEsDeportista] = useState(false)
-  const [vistaTabla, setVistaTabla] = useState(false)
+  const [vistaTabla, setVistaTabla] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [mostrarPostSesion, setMostrarPostSesion] = useState(false)
   const [zona, setZona] = useState('')
@@ -60,6 +66,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [modalVideoFuerza, setModalVideoFuerza] = useState<string | null>(null)
   const [editandoDuracion, setEditandoDuracion] = useState(false)
   const [duracionManualInput, setDuracionManualInput] = useState('')
+  const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
+  const [otraSesionHoy, setOtraSesionHoy] = useState(false)
+  const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
+  const [mostrarNutricion, setMostrarNutricion] = useState(false)
+  const [nutrCarboGh, setNutrCarboGh] = useState('')
+  const [nutrAguaMlh, setNutrAguaMlh] = useState('')
+  const [nutrSodioMgh, setNutrSodioMgh] = useState('')
+  const [nutrCafeinaMg, setNutrCafeinaMg] = useState('')
+  const [nutrCafeinaTiming, setNutrCafeinaTiming] = useState('')
+  const [nutrAyuno, setNutrAyuno] = useState(false)
+  const [nutrNotas, setNutrNotas] = useState('')
   // Cálculo de ritmo/potencia sugerido por zona
   const VAM_ZONAS: Record<string, number> = { Z1: 0.525, Z2: 0.65, Z3: 0.75, Z4: 0.85, Z5: 0.95, Z6: 1.075, Z7: 1.2 }
   const FTP_ZONAS: Record<string, number> = { Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.98, Z5: 1.13, Z6: 1.30, Z7: 1.50 }
@@ -67,6 +84,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   const calcularRitmo = (zonaKey: string, disc: string, tests: any): string => {
     if (!zonaKey || !disc || !tests) return ''
+    // Zonas 2 (resistencia): el catálogo calcula ritmo/vatios/CSS reales de la zona.
+    const zr = zonaResistencia(zonaKey)
+    if (zr) { const p = prescripcion(zr, disc, tests); return p && p !== '—' ? p : '' }
+    // Sistema clásico Z1–Z7.
     const z = zonaKey.toUpperCase()
     if (disc === 'Carrera' && tests.vam) {
       const pct = VAM_ZONAS[z]
@@ -177,16 +198,46 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             setDeportistaId(macro.id_deportista)
             // Cargar tests del deportista
             const depId = macro.id_deportista
-            const [t1, t2, t3] = await Promise.all([
-              supabase.from('test1_carrera').select('vam').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test2_natacion').select('css').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+            const [t1, t2, t3, an] = await Promise.all([
+              supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+              supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
             ])
             setTestsData({
               vam: t1.data?.[0]?.vam || null,
               css: t2.data?.[0]?.css || null,
               ftp: t3.data?.[0]?.ftp || null,
             })
+            setPesoDeportista(an.data?.peso || null)
+
+            // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
+            // Se recorre toda la cadena meso→micro del deportista (una vez).
+            const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', meso.id_macrociclo)
+            const mesoIds = (mesos || []).map(m => m.id)
+            if (mesoIds.length) {
+              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio').in('id_mesociclo', mesoIds)
+              const microIds = (micros || []).map(m => m.id)
+
+              // Días hasta la próxima competición (semana marcada como 'Competición')
+              const fSes = new Date(ses.fecha_sesion)
+              let dias: number | null = null
+              for (const mi of micros || []) {
+                if (mi.tipo === 'Competición' && mi.fecha_inicio) {
+                  const d = Math.round((new Date(mi.fecha_inicio).getTime() - fSes.getTime()) / 86400000)
+                  if (d >= 0 && (dias === null || d < dias)) dias = d
+                }
+              }
+              setDiasHastaComp(dias)
+
+              // ¿Otra sesión el mismo día (no cancelada)?
+              if (microIds.length) {
+                const { data: mismasFecha } = await supabase.from('sesion')
+                  .select('id, estado').in('id_microciclo', microIds).eq('fecha_sesion', ses.fecha_sesion)
+                const otra = (mismasFecha || []).some(s => s.id !== Number(id) && s.estado !== 'Cancelada')
+                setOtraSesionHoy(otra)
+              }
+            }
           }
         }
       }
@@ -228,7 +279,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     await cargarDatos()
     setMostrarPostSesion(false)
     setLoading(false)
-    if (esDeportista) window.location.href = '/dashboard-deportista'
+    if (esDeportista) router.push('/dashboard-deportista')
   }
 
   const borrarTarea = async (tareaId: number) => {
@@ -331,18 +382,22 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       orden
     }).select().single()
     if (errorTarea) { setError('Error: ' + errorTarea.message); setLoading(false); return }
-    if (tipoMedicion === 'distancia' && tarea) await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(metros), ritmo_objetivo: ritmoManual || ritmoSugerido || null })
-    else if (tipoMedicion === 'duracion' && tarea) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASegundos(tiempoDisplay) })
-    else if (tipoMedicion === 'repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(repeticiones) })
+    // La unidad elegida define la tabla y el valor canónico (metros / segundos / reps).
+    const _u = tipoMedicion as UnidadMedicion
+    const _tabla = tablaMedicion(_u)
+    const _valorInput = (_u === 'm' || _u === 'km') ? metros : (_u === 'seg' || _u === 'min') ? tiempo : _u === 'mmss' ? tiempoDisplay : repeticiones
+    const _valorC = valorCanonico(_u, _valorInput)
+    if (_tabla === 'p_distancia' && tarea) await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: _valorC, ritmo_objetivo: ritmoManual || ritmoSugerido || null })
+    else if (_tabla === 'p_duracion' && tarea) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: _valorC })
+    else if (_tabla === 'p_repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valorC })
     setZona(''); setDisciplina(''); setSeries(''); setDescanso(''); setComentario(''); setRitmoManual(''); setRitmoSugerido('')
-    const _tipo = tipoMedicion; const _metros = metros; const _tiempo = tiempo; const _reps = repeticiones
     setTipoMedicion(''); setMetros(''); setTiempo(''); setTiempoDisplay(''); setRepeticiones('')
     setMostrarForm(false)
     const tareaLocal = {
       ...tarea,
-      p_duracion: _tipo === 'duracion' ? [{ tiempo_planeado: Number(_tiempo) }] : [],
-      p_distancia: _tipo === 'distancia' ? [{ metros_planeados: Number(_metros) }] : [],
-      p_repeticiones: _tipo === 'repeticiones' ? [{ repeticiones_planteadas: Number(_reps) }] : [],
+      p_duracion: _tabla === 'p_duracion' ? [{ tiempo_planeado: _valorC }] : [],
+      p_distancia: _tabla === 'p_distancia' ? [{ metros_planeados: _valorC }] : [],
+      p_repeticiones: _tabla === 'p_repeticiones' ? [{ repeticiones_planteadas: _valorC }] : [],
     }
     setTareas(prev => { const next = [...prev, tareaLocal]; console.log("tareas actualizadas:", next.length); return next; })
     setLoading(false)
@@ -371,14 +426,82 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setEditandoDuracion(false)
   }
 
+  const actualizarFuerza = async (patch: any) => {
+    await supabase.from('sesion').update(patch).eq('id', id)
+    setSesion((prev: any) => ({ ...prev, ...patch }))
+  }
+
+  const nutricionGuardada = (s: any) =>
+    s.nutricion_carbo_gh != null || s.nutricion_agua_mlh != null || s.nutricion_sodio_mgh != null ||
+    s.nutricion_cafeina_mg != null || s.nutricion_ayuno === true || !!s.nutricion_notas
+
+  const abrirNutricion = () => {
+    if (nutricionGuardada(sesion)) {
+      setNutrCarboGh(sesion.nutricion_carbo_gh?.toString() || '')
+      setNutrAguaMlh(sesion.nutricion_agua_mlh?.toString() || '')
+      setNutrSodioMgh(sesion.nutricion_sodio_mgh?.toString() || '')
+      setNutrCafeinaMg(sesion.nutricion_cafeina_mg?.toString() || '')
+      setNutrCafeinaTiming(sesion.nutricion_cafeina_timing || '')
+      setNutrAyuno(!!sesion.nutricion_ayuno)
+      setNutrNotas(sesion.nutricion_notas || '')
+    } else {
+      const s = sugerirNutricion(tareas, testsData || {}, sesion.disciplina, pesoDeportista)
+      setNutrCarboGh(s.carboGh?.toString() || '')
+      setNutrAguaMlh(s.aguaMlh?.toString() || '')
+      setNutrSodioMgh(s.sodioMgh?.toString() || '')
+      setNutrCafeinaMg(s.cafeinaMg?.toString() || '')
+      setNutrCafeinaTiming(s.cafeinaTiming || '')
+      setNutrAyuno(false)
+      setNutrNotas(s.notas || '')
+    }
+    setError('')
+    setMostrarNutricion(true)
+  }
+
+  const guardarNutricion = async () => {
+    const patch = {
+      nutricion_carbo_gh: nutrCarboGh ? Number(nutrCarboGh) : null,
+      nutricion_agua_mlh: nutrAguaMlh ? Number(nutrAguaMlh) : null,
+      nutricion_sodio_mgh: nutrSodioMgh ? Number(nutrSodioMgh) : null,
+      nutricion_cafeina_mg: nutrCafeinaMg ? Number(nutrCafeinaMg) : null,
+      nutricion_cafeina_timing: nutrCafeinaTiming || null,
+      nutricion_ayuno: nutrAyuno,
+      nutricion_notas: nutrNotas || null,
+    }
+    const { data, error: errNutricion } = await supabase.from('sesion').update(patch).eq('id', id).select().single()
+    if (errNutricion) {
+      setError('Error al guardar nutrición: ' + errNutricion.message)
+      return
+    }
+    setSesion((prev: any) => ({ ...prev, ...data }))
+    setError('')
+    setMostrarNutricion(false)
+  }
+
   if (!sesion) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   const durEstimada = calcularDuracionEstimada(tareas, testsData || {})
 
+  // Recomendación de recuperación (en vivo, solo para sesiones completadas)
+  const rpeReportado = tareas.reduce((max: number | null, t: any) =>
+    t.rpe_reportado != null ? Math.max(max ?? 0, t.rpe_reportado) : max, null as number | null)
+  const durRecup = sesion.duracion_real || sesion.duracion_minutos || durEstimada.minutos || 0
+  const recup = sesion.estado === 'Realizada' && sesion.disciplina !== 'Fuerza'
+    ? recomendarRecuperacion({
+        duracionMin: durRecup,
+        rpeReal: rpeReportado,
+        disciplina: sesion.disciplina,
+        ayuno: !!sesion.nutricion_ayuno,
+        pesoKg: pesoDeportista,
+        otraSesionHoy,
+        diasHastaComp,
+      })
+    : null
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <div className="flex items-center gap-3"><button onClick={() => window.location.href = '/planificacion-visual/' + deportistaId + '/calendario'} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button></div>
+        <div className="flex items-center gap-3"><button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button></div>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
@@ -426,11 +549,30 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             <p className="text-yellow-500/80 text-xs mt-1">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
           )}
           {sesion.notas_entrenador && <p className="text-gray-300 text-sm mt-2 italic bg-gray-800 rounded-lg px-3 py-2">"{sesion.notas_entrenador}"</p>}
+
+          {!esDeportista && (
+            <button onClick={abrirNutricion} className="mt-3 text-xs bg-gray-800 hover:bg-gray-700 text-orange-400 px-3 py-1.5 rounded-lg transition">
+              🍽 {nutricionGuardada(sesion) ? 'Editar nutrición' : 'Sugerir nutrición'}
+            </button>
+          )}
+
+          {nutricionGuardada(sesion) && (
+            <div className="mt-3 bg-gray-800 rounded-lg px-3 py-2 flex flex-col gap-1">
+              <div className="flex items-center gap-3 flex-wrap text-xs text-gray-300">
+                {sesion.nutricion_carbo_gh != null && <span>🥤 {sesion.nutricion_carbo_gh} g/h carbohidrato</span>}
+                {sesion.nutricion_agua_mlh != null && <span>💧 {sesion.nutricion_agua_mlh} ml/h</span>}
+                {sesion.nutricion_sodio_mgh != null && <span>🧂 {sesion.nutricion_sodio_mgh} mg/h sodio</span>}
+                {sesion.nutricion_cafeina_mg != null && <span>☕ {sesion.nutricion_cafeina_mg} mg{sesion.nutricion_cafeina_timing ? ' — ' + sesion.nutricion_cafeina_timing : ''}</span>}
+                {sesion.nutricion_ayuno && <span className="text-yellow-400">🌙 En ayunas</span>}
+              </div>
+              {sesion.nutricion_notas && <p className="text-gray-400 text-xs italic">{sesion.nutricion_notas}</p>}
+            </div>
+          )}
         </div>
 
         {sesion.estado !== 'Realizada' && esDeportista && (
           <div className="mb-6 flex flex-col gap-3">
-            <button onClick={() => window.location.href = '/sesion/' + id + '/ejecutar'}
+            <button onClick={() => router.push('/sesion/' + id + '/ejecutar')}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
               ▶ Modo entreno
             </button>
@@ -456,12 +598,34 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               <p className="text-green-300 font-bold">✓ Sesion completada</p>
               {sesion.duracion_real && <p className="text-green-400 text-sm">{sesion.duracion_real} min realizados</p>}
             </div>
+
+            {recup && (
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🍽</span>
+                  <h3 className="text-white font-bold text-sm">{recup.titulo}</h3>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">{recup.mensaje}</p>
+                {(recup.carboG != null || recup.proteinaG != null) && (
+                  <div className="flex gap-3 flex-wrap text-xs mb-2">
+                    {recup.carboG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🥤 ~{recup.carboG} g carbohidrato</span>}
+                    {recup.proteinaG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🍗 ~{recup.proteinaG} g proteína</span>}
+                  </div>
+                )}
+                {recup.ejemplos && <p className="text-gray-400 text-xs mb-1">{recup.ejemplos}</p>}
+                {recup.hidratacion && <p className="text-gray-400 text-xs mb-1">💧 {recup.hidratacion}</p>}
+                {recup.extra.map((e, i) => (
+                  <p key={i} className="text-yellow-400/90 text-xs mt-1.5">⚠️ {e}</p>
+                ))}
+              </div>
+            )}
+
             <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
           </div>
         )}
 
         {mostrarPostSesion && (
-          <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-orange-500 max-h-screen overflow-y-auto">
               <h3 className="text-xl font-bold mb-4">Post-sesion — Como fue?</h3>
               {sesion.usar_cronometro && <p className="text-green-400 text-sm mb-4">Duracion: {formatTiempo(segundos)} ({Math.round(segundos/60)} min)</p>}
@@ -490,9 +654,85 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           </div>
         )}
 
+        {mostrarNutricion && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 rounded-xl p-6 w-full max-w-lg border border-orange-500 max-h-screen overflow-y-auto">
+              <h3 className="text-xl font-bold mb-1">🍽 Nutrición para esta sesión</h3>
+              <p className="text-gray-500 text-xs mb-4">Sugerencia automática según duración, zona y disciplina — ajusta lo que no te convenza.</p>
+              {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Carbohidrato (g/h)</span>
+                    <input type="number" value={nutrCarboGh} onChange={e => setNutrCarboGh(e.target.value)} placeholder="—"
+                      className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Agua (ml/h)</span>
+                    <input type="number" value={nutrAguaMlh} onChange={e => setNutrAguaMlh(e.target.value)} placeholder="—"
+                      className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Sodio (mg/h)</span>
+                    <input type="number" value={nutrSodioMgh} onChange={e => setNutrSodioMgh(e.target.value)} placeholder="—"
+                      className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Cafeína (mg)</span>
+                    <input type="number" value={nutrCafeinaMg} onChange={e => setNutrCafeinaMg(e.target.value)} placeholder="—"
+                      className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Cuándo tomar la cafeína</span>
+                  <input type="text" value={nutrCafeinaTiming} onChange={e => setNutrCafeinaTiming(e.target.value)} placeholder="ej. 45-60 min antes"
+                    className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                  <input type="checkbox" checked={nutrAyuno} onChange={e => setNutrAyuno(e.target.checked)} className="accent-orange-500" />
+                  Recomendar hacer esta sesión en ayunas
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Notas</span>
+                  <textarea value={nutrNotas} onChange={e => setNutrNotas(e.target.value)} rows={3}
+                    className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+                {!pesoDeportista && (
+                  <p className="text-yellow-500/80 text-xs">⚠️ El deportista no tiene peso registrado en su anamnesis — no se pudo calcular la dosis de cafeína automáticamente.</p>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={guardarNutricion} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-bold transition">Guardar</button>
+                  <button onClick={() => setMostrarNutricion(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-lg transition">Cancelar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         
 
         <SessionLoadChart tareas={tareas} />
+
+        {sesion.disciplina === 'Fuerza' && !esDeportista && (
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
+            <span className="text-gray-400 text-sm">Sesión de fuerza:</span>
+            <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
+              {['simple', 'compleja'].map(m => (
+                <button key={m} onClick={() => actualizarFuerza({ modo_fuerza: m, ...(m === 'compleja' ? { zona_fuerza: null } : {}) })}
+                  className={'text-xs px-3 py-1.5 rounded-md transition capitalize ' + ((sesion.modo_fuerza || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
+              ))}
+            </div>
+            {(sesion.modo_fuerza || 'simple') === 'simple' ? (
+              <select value={sesion.zona_fuerza || ''} onChange={e => actualizarFuerza({ zona_fuerza: e.target.value || null })}
+                className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">Zona de fuerza…</option>
+                {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+              </select>
+            ) : (
+              <span className="text-gray-500 text-xs">Cada tarea elige su cualidad</span>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold">Tareas</h3>
@@ -504,7 +744,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <TareasTabla sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} />
+            <TareasTabla sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} />
           </div>
         ) : (
           <div>
@@ -533,7 +773,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
                 {(tipoSerie === 'Superserie' || tipoSerie === 'Complex') && ejercicioSel && (
-                  <div className="bg-gray-800 rounded-xl p-4 border border-orange-500 border-opacity-50">
+                  <div className="bg-gray-800 rounded-xl p-4 border border-orange-500/50">
                     <p className="text-orange-400 text-sm font-medium mb-3">+ Ejercicio encadenado</p>
                     <select value={grupoMuscular2} onChange={e => { setGrupoMuscular2(e.target.value); setEjercicioSel2(null) }} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2">
                       <option value="">Grupo muscular</option>
@@ -548,7 +788,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   </div>
                 )}
                 {tipoSerie === 'Drop set' && ejercicioSel && (
-                  <div className="bg-gray-800 rounded-xl p-4 border border-yellow-500 border-opacity-50">
+                  <div className="bg-gray-800 rounded-xl p-4 border border-yellow-500/50">
                     <p className="text-yellow-400 text-sm font-medium mb-2">Escalones de peso (kg)</p>
                     <input type="text" placeholder="ej: 80, 60, 40" value={escalonDrop} onChange={e => setEscalonDrop(e.target.value)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                     <p className="text-gray-500 text-xs mt-1">Separa los pesos con comas</p>
@@ -591,13 +831,20 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 <input type="number" placeholder="Series" value={series} onChange={e => setSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <input type="number" placeholder="Descanso (seg)" value={descanso} onChange={e => setDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <select value={tipoMedicion} onChange={e => setTipoMedicion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                  <option value="">Tipo de medicion</option>
-                  <option value="distancia">Distancia (m)</option>
-                  <option value="duracion">Duracion (seg)</option>
-                  <option value="repeticiones">Repeticiones</option>
+                  <option value="">Tipo de medición</option>
+                  <optgroup label="Distancia">
+                    <option value="m">Metros</option>
+                    <option value="km">Kilómetros</option>
+                  </optgroup>
+                  <optgroup label="Tiempo">
+                    <option value="seg">Segundos</option>
+                    <option value="min">Minutos</option>
+                    <option value="mmss">mm:ss</option>
+                  </optgroup>
+                  <option value="reps">Repeticiones</option>
                 </select>
-                {tipoMedicion === 'distancia' && <input type="number" placeholder="Metros" value={metros} onChange={e => setMetros(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
-                {tipoMedicion === 'distancia' && (
+                {(tipoMedicion === 'm' || tipoMedicion === 'km') && <input type="number" placeholder={tipoMedicion === 'km' ? 'Kilómetros' : 'Metros'} value={metros} onChange={e => setMetros(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+                {(tipoMedicion === 'm' || tipoMedicion === 'km') && (
                   <div>
                     <label className="text-gray-400 text-xs mb-1 block">
                       Ritmo objetivo
@@ -610,13 +857,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                       className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                   </div>
                 )}
-                {tipoMedicion === 'duracion' && zona && disciplina && ritmoSugerido && (
+                {(tipoMedicion === 'seg' || tipoMedicion === 'min' || tipoMedicion === 'mmss') && zona && disciplina && ritmoSugerido && (
                   <div className="bg-gray-800 rounded-lg px-4 py-3 flex justify-between items-center">
                     <span className="text-gray-400 text-sm">Referencia {zona}</span>
                     <span className="text-orange-400 font-bold">{ritmoSugerido}</span>
                   </div>
                 )}
-                {tipoMedicion === 'duracion' && (
+                {(tipoMedicion === 'seg' || tipoMedicion === 'min') && <input type="number" placeholder={tipoMedicion === 'min' ? 'Minutos' : 'Segundos'} value={tiempo} onChange={e => setTiempo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+                {tipoMedicion === 'mmss' && (
                 <div>
                   <input
                     type="text"
@@ -635,7 +883,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   )}
                 </div>
               )}
-                {tipoMedicion === 'repeticiones' && <input type="number" placeholder="Repeticiones" value={repeticiones} onChange={e => setRepeticiones(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+                {tipoMedicion === 'reps' && <input type="number" placeholder="Repeticiones" value={repeticiones} onChange={e => setRepeticiones(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
                 <textarea placeholder="Comentario" value={comentario} onChange={e => setComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar tarea'}</button>
               </form>
@@ -675,7 +923,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         )}
       </div>
       {tareaEditando && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Editar tarea</h3>
@@ -693,7 +941,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       )}
 
       {modalVideoFuerza && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl w-full max-w-md border border-gray-700 p-6 text-center">
             <div className="flex justify-between items-center mb-4">
               <p className="font-medium">Video del ejercicio</p>

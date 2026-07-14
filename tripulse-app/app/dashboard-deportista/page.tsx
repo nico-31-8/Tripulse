@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
@@ -6,6 +7,7 @@ import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 
 export default function DashboardDeportista() {
+  const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
   const [deportista, setDeportista] = useState<any>(null)
   const [sesionesHoy, setSesionesHoy] = useState<any[]>([])
@@ -15,10 +17,10 @@ export default function DashboardDeportista() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)
-      if (p?.rol !== 'deportista') { window.location.href = '/dashboard'; return }
+      if (p?.rol !== 'deportista') { router.push('/dashboard'); return }
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDeportista(dep)
       if (dep) {
@@ -32,9 +34,9 @@ export default function DashboardDeportista() {
         const { data: sesHoy } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).eq('fecha_sesion', hoy).or('eliminada.is.null,eliminada.eq.false')
         // Duración estimada de las sesiones de hoy
         const [tc, tn, tci] = await Promise.all([
-          supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
         ])
         const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
         const durs = await estimarDuraciones(supabase, (sesHoy || []).map((s: any) => s.id), testsDep)
@@ -53,7 +55,7 @@ export default function DashboardDeportista() {
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
-    window.location.href = '/'
+    router.push('/')
   }
 
   const colorScore = (score: number) => {
@@ -107,7 +109,7 @@ export default function DashboardDeportista() {
 
         {/* Anamnesis pendiente (solo si tiene entrenador) */}
         {anamnesisPendiente && (
-          <button onClick={() => window.location.href = '/anamnesis'}
+          <button onClick={() => router.push('/anamnesis')}
             className="w-full bg-orange-950 border-2 border-orange-500 rounded-xl p-5 mb-6 text-left hover:bg-orange-900 transition">
             <div className="flex justify-between items-center">
               <div>
@@ -134,7 +136,7 @@ export default function DashboardDeportista() {
                   <p className="text-yellow-400 text-xs">Tu entrenador puede enviarte un enlace de invitación directamente, o puedes ir a <strong>Mi perfil</strong> e introducir el código de tu entrenador.</p>
                 </div>
                 <button
-                  onClick={() => window.location.href = '/perfil'}
+                  onClick={() => router.push('/perfil')}
                   className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                   Ir a Mi perfil →
                 </button>
@@ -151,7 +153,7 @@ export default function DashboardDeportista() {
           const wellnessHoy = ultimoWellness?.fecha === hoyStr
           if (wellnessHoy) return null
           return (
-            <button onClick={() => window.location.href = deportista ? '/wellness/' + deportista.id : '#'}
+            <button onClick={() => router.push(deportista ? '/wellness/' + deportista.id : '#')}
               className="w-full bg-green-900 border-2 border-green-500 rounded-xl p-5 mb-6 text-left hover:bg-green-800 transition">
               <div className="flex justify-between items-center">
                 <div>
@@ -179,7 +181,7 @@ export default function DashboardDeportista() {
                   <span className="text-gray-400 text-sm">RPE est: {s.rpe_estimado || '—'}</span>
                 </div>
                 {s.notas_entrenador && <p className="text-gray-300 text-sm italic mb-4">"{s.notas_entrenador}"</p>}
-                <button onClick={() => window.location.href = '/sesion/' + s.id}
+                <button onClick={() => router.push('/sesion/' + s.id)}
                   className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition w-full">
                   Ver sesión completa
                 </button>
@@ -215,7 +217,7 @@ export default function DashboardDeportista() {
         {/* Módulos */}
         <div className="grid grid-cols-1 gap-3">
           {modulos.map(m => (
-            <button key={m.titulo} onClick={() => window.location.href = m.href}
+            <button key={m.titulo} onClick={() => router.push(m.href)}
               className={'bg-gray-900 rounded-xl p-5 border border-gray-800 text-left transition w-full flex items-start gap-4 ' + m.border}>
               <span className="text-3xl flex-shrink-0">{m.icon}</span>
               <div>

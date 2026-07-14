@@ -1,6 +1,80 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
+
+function TablaZonas2({ disciplina, tests, fcMax }: { disciplina: string; tests: { vam?: number | null; ftp?: number | null; css?: number | null }; fcMax: number }) {
+  return (
+    <div className="flex flex-col gap-5">
+      {FACTORES_RESISTENCIA.map(factor => {
+        const zs = ZONAS_RESISTENCIA.filter(z => z.factor === factor)
+        if (!zs.length) return null
+        return (
+          <div key={factor}>
+            <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">{factor}</p>
+            <div className="grid gap-2">
+              {zs.map(z => {
+                const fc = (z.fcMin || z.fcMax) && fcMax > 0
+                  ? `${z.fcMin ? Math.round(fcMax * z.fcMin / 100) : ''}${z.fcMin && z.fcMax ? '–' : ''}${z.fcMax ? Math.round(fcMax * z.fcMax / 100) : ''} ppm`
+                  : null
+                return (
+                  <div key={z.sigla} className="bg-gray-900 rounded-xl p-4 border border-gray-800 flex justify-between items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs px-2 py-1 rounded-full font-bold text-white flex-shrink-0" style={{ backgroundColor: z.color }}>{z.sigla}</span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm">{z.nombre}</p>
+                        <p className="text-gray-500 text-xs">RPE {z.rpeMin}{z.rpeMax !== z.rpeMin ? `–${z.rpeMax}` : ''} · {z.indicador} · {z.duracion}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-orange-400 text-sm font-medium">{prescripcion(z, disciplina, tests)}</p>
+                      {fc && <p className="text-gray-500 text-xs">{fc}</p>}
+                      {z.requiereSprint && <p className="text-yellow-500/80 text-xs">⚡ requiere test sprint</p>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function TablaZonas2Fuerza() {
+  return (
+    <div className="flex flex-col gap-5">
+      {FACTORES_FUERZA.map(factor => {
+        const zs = ZONAS_FUERZA.filter(z => z.factor === factor)
+        if (!zs.length) return null
+        return (
+          <div key={factor}>
+            <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">{factor}</p>
+            <div className="grid gap-2">
+              {zs.map(z => (
+                <div key={z.sigla} className="bg-gray-900 rounded-xl p-4 border border-gray-800 flex justify-between items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs px-2 py-1 rounded-full font-bold text-white flex-shrink-0" style={{ backgroundColor: z.color }}>{z.sigla}</span>
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{z.nombre}</p>
+                      <p className="text-gray-500 text-xs">{z.series} series · {z.repTiempo} · desc {z.descanso} · RPE {z.rpeMin}–{z.rpeMax}</p>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-orange-400 text-sm font-medium">{z.rmMin != null ? `${z.rmMin}–${z.rmMax}% 1RM` : '—'}</p>
+                    <p className="text-gray-500 text-xs">{z.indicador}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function formatRitmoKm(velocidadKmh: number): string {
   const segPorKm = 3600 / velocidadKmh
@@ -113,6 +187,7 @@ function TablaZonas({ zonas, tipo, fcMax }: { zonas: any[], tipo: string, fcMax:
 }
 
 export default function PaginaZonas({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
   const [tab, setTab] = useState('carrera')
@@ -125,38 +200,51 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
-    const { data: t1 } = await supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: t1 } = await supabase.from('test1_carrera').select('*').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     setTestCarrera(t1?.[0] || null)
-    const { data: t2 } = await supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: t2 } = await supabase.from('test2_natacion').select('*').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     setTestNatacion(t2?.[0] || null)
-    const { data: t3 } = await supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    const { data: t3 } = await supabase.from('test3_ciclismo').select('*').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     setTestCiclismo(t3?.[0] || null)
   }
 
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   const fcMax = deportista.fc_maxima || 0
+  const sistema = deportista.sistema_zonas || 1
+  const tabsList = sistema === 2 ? ['carrera', 'natacion', 'ciclismo', 'fuerza'] : ['carrera', 'natacion', 'ciclismo']
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
+        <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8">
-          <h2 className="text-2xl font-bold mb-1">Zonas de entrenamiento — {deportista.nombre}</h2>
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
+            <h2 className="text-2xl font-bold">Zonas de entrenamiento — {deportista.nombre}</h2>
+            <span className={'text-xs px-2 py-1 rounded-full font-medium ' + (sistema === 2 ? 'bg-orange-900 text-orange-300' : 'bg-gray-700 text-gray-300')}>
+              {sistema === 2 ? 'Zonas 2 (metabólico)' : 'Clásico Z1–Z7'}
+            </span>
+          </div>
           <p className="text-gray-400 text-sm">Calculadas a partir de los tests mas recientes · FC max: {fcMax || '—'} ppm</p>
         </div>
-        <div className="flex gap-2 mb-6">
-          {['carrera','natacion','ciclismo'].map(t => (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          {tabsList.map(t => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-              {t === 'carrera' ? '🏃 Carrera' : t === 'natacion' ? '🏊 Natacion' : '🚴 Ciclismo'}
+              {t === 'carrera' ? '🏃 Carrera' : t === 'natacion' ? '🏊 Natacion' : t === 'ciclismo' ? '🚴 Ciclismo' : '🏋️ Fuerza'}
             </button>
           ))}
         </div>
-        {tab === 'carrera' && (!testCarrera ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>No hay test de carrera. <button onClick={() => window.location.href = `/tests/${id}`} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en VAM: <span className="text-orange-400 font-bold">{testCarrera.vam} km/h</span> · Test del {testCarrera.fecha}</p><TablaZonas zonas={zonasCarrera(testCarrera.vam, fcMax)} tipo="carrera" fcMax={fcMax} /></div>)}
-        {tab === 'natacion' && (!testNatacion ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>No hay test de natacion. <button onClick={() => window.location.href = `/tests/${id}`} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en CSS: <span className="text-orange-400 font-bold">{testNatacion.css} m/s</span> · Test del {testNatacion.fecha}</p><TablaZonas zonas={zonasNatacion(testNatacion.css, fcMax)} tipo="natacion" fcMax={fcMax} /></div>)}
-        {tab === 'ciclismo' && (!testCiclismo ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>No hay test de ciclismo. <button onClick={() => window.location.href = `/tests/${id}`} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en FTP: <span className="text-orange-400 font-bold">{testCiclismo.ftp} W</span> · Test del {testCiclismo.fecha}</p><TablaZonas zonas={zonasCiclismo(testCiclismo.ftp, fcMax)} tipo="ciclismo" fcMax={fcMax} /></div>)}
+
+        {sistema === 2 ? (
+          tab === 'fuerza' ? <TablaZonas2Fuerza /> :
+          <TablaZonas2 disciplina={tab === 'carrera' ? 'Carrera' : tab === 'natacion' ? 'Natacion' : 'Ciclismo'} tests={{ vam: testCarrera?.vam, ftp: testCiclismo?.ftp, css: testNatacion?.css }} fcMax={fcMax} />
+        ) : (<>
+          {tab === 'carrera' && (!testCarrera ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>No hay test de carrera. <button onClick={() => router.push(`/tests/${id}`)} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en VAM: <span className="text-orange-400 font-bold">{testCarrera.vam} km/h</span> · Test del {testCarrera.fecha}</p><TablaZonas zonas={zonasCarrera(testCarrera.vam, fcMax)} tipo="carrera" fcMax={fcMax} /></div>)}
+          {tab === 'natacion' && (!testNatacion ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>No hay test de natacion. <button onClick={() => router.push(`/tests/${id}`)} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en CSS: <span className="text-orange-400 font-bold">{testNatacion.css} m/s</span> · Test del {testNatacion.fecha}</p><TablaZonas zonas={zonasNatacion(testNatacion.css, fcMax)} tipo="natacion" fcMax={fcMax} /></div>)}
+          {tab === 'ciclismo' && (!testCiclismo ? <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>No hay test de ciclismo. <button onClick={() => router.push(`/tests/${id}`)} className="text-orange-500 hover:underline">Hacer test →</button></p></div> : <div><p className="text-gray-400 text-sm mb-4">Basado en FTP: <span className="text-orange-400 font-bold">{testCiclismo.ftp} W</span> · Test del {testCiclismo.fecha}</p><TablaZonas zonas={zonasCiclismo(testCiclismo.ftp, fcMax)} tipo="ciclismo" fcMax={fcMax} /></div>)}
+        </>)}
       </div>
     </main>
   )

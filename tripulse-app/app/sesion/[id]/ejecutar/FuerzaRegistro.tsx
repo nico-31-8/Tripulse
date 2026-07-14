@@ -83,7 +83,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 const completada = s1.completada
 
                 return (
-                  <div key={serieIdx} className={'rounded-xl border transition ' + (completada ? 'bg-green-900 bg-opacity-30 border-green-700' : 'bg-gray-800 border-gray-700')}>
+                  <div key={serieIdx} className={'rounded-xl border transition ' + (completada ? 'bg-green-900/30 border-green-700' : 'bg-gray-800 border-gray-700')}>
                     
                     {/* Normal */}
                     {!esDropSet && !tieneEj2 && (
@@ -147,7 +147,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             const sd = getSerieFuerza(ej.id, numSerie, eIdx + 1)
                             return (
                               <div key={eIdx} className="grid grid-cols-3 gap-2 items-center">
-                                <div className="bg-yellow-900 bg-opacity-50 rounded-lg px-2 py-2 text-center">
+                                <div className="bg-yellow-900/50 rounded-lg px-2 py-2 text-center">
                                   <p className="text-xs text-yellow-400">Escalón {eIdx + 1}</p>
                                   <p className="text-sm font-bold">{kg} kg</p>
                                 </div>
@@ -179,7 +179,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
       })}
 
       {modalVideo && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl w-full max-w-2xl border border-gray-700">
             <div className="flex justify-between items-center p-4 border-b border-gray-800">
               <p className="font-medium">Video del ejercicio</p>

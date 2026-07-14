@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
@@ -28,6 +29,7 @@ const colorBar = (d: string) => {
 }
 
 export default function MisAnalisis() {
+  const router = useRouter()
   const [sesiones, setSesiones] = useState<any[]>([])
   const [sesionSel, setSesionSel] = useState<any>(null)
   const [tareasSel, setTareasSel] = useState<any[]>([])
@@ -37,7 +39,7 @@ export default function MisAnalisis() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
 
@@ -60,9 +62,9 @@ export default function MisAnalisis() {
         .limit(20)
 
       const [tc, tn, tci] = await Promise.all([
-        supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
       ])
       const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
       const durs = await estimarDuraciones(supabase, (ses || []).map((s: any) => s.id), testsDep)
@@ -96,7 +98,7 @@ export default function MisAnalisis() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => sesionSel ? setSesionSel(null) : window.location.href = '/dashboard-deportista'}
+        <button onClick={() => sesionSel ? setSesionSel(null) : router.push('/dashboard-deportista')}
           className="text-gray-400 hover:text-white text-sm transition">
           {sesionSel ? '← Volver a sesiones' : '← Mi panel'}
         </button>
@@ -200,7 +202,7 @@ export default function MisAnalisis() {
                       <div className="px-4 py-3 bg-gray-800 flex items-center gap-2">
                         <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
                         {t.zona_entrenamiento && (
-                          <span className="text-xs bg-black bg-opacity-30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>
+                          <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>
                         )}
                         {t.disciplina && (
                           <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>

@@ -1,9 +1,11 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 export default function Dashboard() {
+  const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
   const [numDeportistas, setNumDeportistas] = useState<number | null>(null)
   const [pasosOmitidos, setPasosOmitidos] = useState<number[]>(() => {
@@ -17,7 +19,7 @@ export default function Dashboard() {
   useEffect(() => {
     const cargarPerfil = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(data)
       const { data: deps, count } = await supabase.from('deportista').select('id, nombre', { count: 'exact' }).eq('id_entrenador', user.id)
@@ -78,10 +80,10 @@ export default function Dashboard() {
   const [verResumenes, setVerResumenes] = useState(false)
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
-    window.location.href = '/'
+    router.push('/')
   }
 
-  const ir = (ruta: string) => { window.location.href = ruta }
+  const ir = (ruta: string) => { router.push(ruta)}
 
   const omitirPaso = (num: number) => {
     const nuevos = [...pasosOmitidos, num]
@@ -138,9 +140,9 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-col gap-1.5">
               {anamnesisNuevas.map(a => (
-                <div key={a.id} className="flex items-center justify-between bg-blue-900 bg-opacity-30 rounded-lg px-3 py-2">
+                <div key={a.id} className="flex items-center justify-between bg-blue-900/30 rounded-lg px-3 py-2">
                   <p className="text-blue-200 text-sm font-medium">{a.nombre}</p>
-                  <button onClick={() => window.location.href = `/deportistas/${a.id}?tab=anamnesis`}
+                  <button onClick={() => router.push(`/deportistas/${a.id}?tab=anamnesis`)}
                     className="text-blue-400 hover:text-blue-200 text-xs transition">
                     Ver ficha →
                   </button>
@@ -164,7 +166,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <button onClick={() => window.location.href = '/deportistas'}
+            <button onClick={() => router.push('/deportistas')}
               className="mt-3 text-xs text-orange-400 hover:text-orange-300 transition underline">
               Ir a perfiles de deportistas →
             </button>
@@ -179,7 +181,7 @@ export default function Dashboard() {
         )}
         {/* ONBOARDING — solo si no tiene deportistas */}
         {numDeportistas === 0 && (
-          <div className="mb-8 bg-gray-900 rounded-xl border border-orange-500 border-opacity-50 p-6">
+          <div className="mb-8 bg-gray-900 rounded-xl border border-orange-500/50 p-6">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">🚀</span>
               <div>

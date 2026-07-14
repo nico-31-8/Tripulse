@@ -2,6 +2,17 @@
 import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
+import { tablaMedicion, valorCanonico, type UnidadMedicion } from '@/lib/medicion'
+
+// Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
+function refZona2(z: ZonaResistencia, disciplina: string, tests: any, fcMax: number) {
+  const fc = (z.fcMin || z.fcMax) && fcMax > 0
+    ? `${z.fcMin ? Math.round(fcMax * z.fcMin / 100) : ''}${z.fcMin && z.fcMax ? '–' : ''}${z.fcMax ? Math.round(fcMax * z.fcMax / 100) : ''} ppm`
+    : null
+  const rpe = 'RPE ' + z.rpeMin + (z.rpeMax !== z.rpeMin ? '–' + z.rpeMax : '')
+  return { fc, rpe, porcentaje: z.sigla + ' · ' + z.factor, ritmo: prescripcion(z, disciplina, tests) }
+}
 
 const ZONAS = [
   { num: 1, nombre: 'Z1 Recuperación',   pct: [0, 75],    rpe: [2,3] },
@@ -104,7 +115,7 @@ function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number)
 
 interface FilaResistencia {
   orden: number
-  zona: number | null
+  zona: string
   disciplina: string
   series: string
   descanso: string
@@ -132,20 +143,24 @@ interface FilaFuerza {
   repsFuerza2: string
   kgFuerza2: string
   escalonDrop: string
+  zonaFuerzaTarea: string
   guardado?: boolean
 }
 
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '' }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
   esDeportista?: boolean
+  modoFuerza?: string
+  zonaFuerza?: string
 }) {
   const esFuerza = disciplinaSesion === 'Fuerza'
   const [filasR, setFilasR] = useState<FilaResistencia[]>([])
   const [filasF, setFilasF] = useState<FilaFuerza[]>([])
   const [tests, setTests] = useState<any>({})
   const [fcMax, setFcMax] = useState(0)
+  const [sistema, setSistema] = useState(1)
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
   const [tareaEditando, setTareaEditando] = useState<any>(null)
@@ -158,11 +173,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   useEffect(() => { cargarDatos() }, [deportistaId, sesionId])
 
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('fc_maxima').eq('id', deportistaId).single()
+    const { data: dep } = await supabase.from('deportista').select('fc_maxima, sistema_zonas').eq('id', deportistaId).single()
     setFcMax(dep?.fc_maxima || 0)
-    const { data: t1 } = await supabase.from('test1_carrera').select('vam').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    const { data: t2 } = await supabase.from('test2_natacion').select('css').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    const { data: t3 } = await supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
+    setSistema(dep?.sistema_zonas || 1)
+    const { data: t1 } = await supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
+    const { data: t2 } = await supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
+    const { data: t3 } = await supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
     setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: [] })
     const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
     setEjerciciosBiblioteca(ejBib || [])
@@ -218,9 +234,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(false)
   }
 
+  // Referencia de una zona por su código: sistema 2 (siglas) o clásico ('Zn')
+  const getRef = (codigo: string | null | undefined, disciplina: string) => {
+    if (!codigo) return null
+    const z2 = zonaResistencia(codigo)
+    if (z2) return refZona2(z2, disciplina, tests, fcMax)
+    const zonaObj = ZONAS.find(z => 'Z' + z.num === codigo)
+    return getReferencia(zonaObj, disciplina, tests, fcMax)
+  }
+
   const nuevaFilaR = (): FilaResistencia => ({
     orden: filasR.length + tareasGuardadas.length + 1,
-    zona: null, disciplina: disciplinaSesion || '',
+    zona: '', disciplina: disciplinaSesion || '',
     series: '', descanso: '', tipoMedicion: '', valorMedicion: '',
     intensidadPersonalizada: '', comentario: '',
   })
@@ -231,6 +256,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     tipoSerie: 'Normal',
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
     grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
+    zonaFuerzaTarea: '',
   })
 
   const updateR = (i: number, key: string, val: any) => {
@@ -245,18 +271,19 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(true)
     try {
       const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
-        id_sesion: sesionId, zona_entrenamiento: f.zona ? 'Z' + f.zona : null,
+        id_sesion: sesionId, zona_entrenamiento: f.zona || null,
         disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
         descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
         comentario: f.comentario || null,
       }).select().single()
       if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
       if (tarea) {
-        const _zonaObj = ZONAS.find(z => z.num === f.zona)
-        const _ref = getReferencia(_zonaObj, f.disciplina, tests, fcMax)
-        if (f.tipoMedicion === 'distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: Number(f.valorMedicion) }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
-        else if (f.tipoMedicion === 'duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: mmssASeg(f.valorMedicion) })
-        else if (f.tipoMedicion === 'repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.valorMedicion) })
+        const _ref = getRef(f.zona, f.disciplina)
+        const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
+        const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
+        if (_tabla === 'p_distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: _valor }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
+        else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: _valor })
+        else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valor })
       }
       await cargarDatos()
       setFilasR(prev => prev.filter((_, idx) => idx !== i))
@@ -272,8 +299,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(true)
     try {
     const ejBib = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
+    const esIso = f.tipoSerie === 'Isométrico'
+    const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
     const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
       id_sesion: sesionId, disciplina: 'Fuerza',
+      zona_entrenamiento: zonaF,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
       comentario: f.comentario || null,
@@ -288,17 +318,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
         series: f.series ? Number(f.series) : null,
-        repeticiones: f.repsFuerza ? Number(f.repsFuerza) : null,
+        repeticiones: (!esIso && f.repsFuerza) ? Number(f.repsFuerza) : null,
         intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
         descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
-        notas_ejecucion: [f.rir ? 'RIR: ' + f.rir : '', f.comentario || ''].filter(Boolean).join(' · ') + notasEj2,
+        notas_ejecucion: [esIso && f.repsFuerza ? f.repsFuerza + 's isométrico' : '', f.rir ? 'RIR: ' + f.rir : '', f.comentario || ''].filter(Boolean).join(' · ') + notasEj2,
         tipo_serie: f.tipoSerie || 'Normal',
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
       })
-      if (f.repsFuerza) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
+      if (f.repsFuerza) {
+        if (esIso) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: Number(f.repsFuerza) })
+        else await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
+      }
     }
     await cargarDatos()
     setFilasF(prev => prev.filter((_, idx) => idx !== i))
@@ -347,8 +380,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             </thead>
             <tbody>
               {tareasGuardadas.map((t, i) => {
-                const zonaObj = ZONAS.find(z => z.num === parseInt(t.zona_entrenamiento?.replace('Z', '') || '0'))
-                const ref = getReferencia(zonaObj, t.disciplina, tests, fcMax)
+                const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 return (
                   <tr key={t.id} className="border-b border-gray-800 hover:bg-gray-800">
                     <td className="py-2 px-2 text-orange-400 font-bold">{i + 1}</td>
@@ -437,15 +469,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             </thead>
             <tbody>
               {filasR.map((f, i) => {
-                const zonaObj = ZONAS.find(z => z.num === f.zona)
-                const ref = getReferencia(zonaObj, f.disciplina, tests, fcMax)
+                const ref = getRef(f.zona, f.disciplina)
                 return (
                   <tr key={i} className="border-b border-gray-800">
                     <td className="py-1 px-1 text-orange-400 font-bold">{f.orden}</td>
                     <td className="py-1 px-1">
-                      <select value={f.zona || ''} onChange={e => updateR(i, 'zona', e.target.value ? Number(e.target.value) : null)} className={inputCls}>
+                      <select value={f.zona} onChange={e => updateR(i, 'zona', e.target.value)} className={inputCls}>
                         <option value="">—</option>
-                        {ZONAS.map(z => <option key={z.num} value={z.num}>Z{z.num}</option>)}
+                        {sistema === 2
+                          ? FACTORES_RESISTENCIA.map(factor => (
+                              <optgroup key={factor} label={factor}>
+                                {ZONAS_RESISTENCIA.filter(z => z.factor === factor).map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                              </optgroup>
+                            ))
+                          : ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
                       </select>
                     </td>
                     <td className="py-1 px-1">
@@ -459,9 +496,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <td className="py-1 px-1">
                       <select value={f.tipoMedicion} onChange={e => updateR(i, 'tipoMedicion', e.target.value)} className={inputCls}>
                         <option value="">—</option>
-                        <option value="distancia">m</option>
-                        <option value="duracion">min</option>
-                        <option value="repeticiones">reps</option>
+                        <optgroup label="Distancia">
+                          <option value="m">m</option>
+                          <option value="km">km</option>
+                        </optgroup>
+                        <optgroup label="Tiempo">
+                          <option value="seg">seg</option>
+                          <option value="min">min</option>
+                          <option value="mmss">mm:ss</option>
+                        </optgroup>
+                        <option value="reps">reps</option>
                       </select>
                     </td>
                     <td className="py-1 px-1"><input type="text" value={f.valorMedicion} onChange={e => updateR(i, 'valorMedicion', e.target.value)} className={inputCls} placeholder="200" /></td>
@@ -516,7 +560,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       <option value="Superserie">Superserie</option>
                       <option value="Drop set">Drop set</option>
                       <option value="Complex">Complex</option>
+                      <option value="Isométrico">Isométrico</option>
                     </select>
+                    {modoFuerza === 'compleja' && (
+                      <select value={f.zonaFuerzaTarea} onChange={e => updateF(i, 'zonaFuerzaTarea', e.target.value)} className={inputCls + ' mt-1'} title="Cualidad de fuerza">
+                        <option value="">Cualidad…</option>
+                        {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
+                      </select>
+                    )}
                   </td>
                   <td className="py-1 px-1">
                     <div className="flex flex-col gap-1">
@@ -555,7 +606,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                   <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                  <td className="py-1 px-1"><input type="number" value={f.repsFuerza} onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls} placeholder="10" /></td>
+                  <td className="py-1 px-1"><input type="number" value={f.repsFuerza} onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls} placeholder={f.tipoSerie === 'Isométrico' ? 'seg' : '10'} title={f.tipoSerie === 'Isométrico' ? 'Segundos por serie' : 'Repeticiones'} /></td>
                   <td className="py-1 px-1"><input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)} className={inputCls} placeholder="kg" /></td>
                   <td className="py-1 px-1"><input type="number" min="0" max="4" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)} className={inputCls} placeholder="0-4" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
@@ -568,7 +619,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                   </td>
                 </tr>
                 {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && f.ejercicioSelId2 && (
-                  <tr className="border-b border-orange-900 bg-orange-950 bg-opacity-20">
+                  <tr className="border-b border-orange-900 bg-orange-950/20">
                     <td className="py-1 px-1"></td>
                     <td className="py-1 px-1">
                       <span className="text-orange-400 text-xs font-medium">↳ EJ2</span>
@@ -602,7 +653,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       )}
 
       {tareaEditando && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Editar tarea</h3>

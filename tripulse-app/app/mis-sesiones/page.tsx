@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
@@ -9,6 +10,7 @@ const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueve
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
 export default function MisSesiones() {
+  const router = useRouter()
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<'lista'|'calendario'|'semana'>('lista')
@@ -26,7 +28,7 @@ export default function MisSesiones() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       if (dep) {
         const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
@@ -40,9 +42,9 @@ export default function MisSesiones() {
         if (!microIds.length) { setLoading(false); return }
         const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
         const [tc, tn, tci] = await Promise.all([
-          supabase.from('test1_carrera').select('vam').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test2_natacion').select('css').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test3_ciclismo').select('ftp').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
         ])
         const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
         const durs = await estimarDuraciones(supabase, (data || []).map((s: any) => s.id), testsDep)
@@ -145,7 +147,7 @@ export default function MisSesiones() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
+        <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -191,7 +193,7 @@ export default function MisSesiones() {
                     {sesionesDia.length > 0 && (
                       <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-2">
                         {sesionesDia.map(s => (
-                          <button key={s.id} onClick={() => window.location.href = '/sesion/' + s.id + '/ejecutar'} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                          <button key={s.id} onClick={() => router.push('/sesion/' + s.id + '/ejecutar')} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
                               <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
@@ -273,7 +275,7 @@ export default function MisSesiones() {
                     </div>
                     <div className="px-4 py-3 flex flex-col gap-2">
                       {sesionesDia.map(s => (
-                        <button key={s.id} onClick={() => window.location.href = '/sesion/' + s.id + '/ejecutar'} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                        <button key={s.id} onClick={() => router.push('/sesion/' + s.id + '/ejecutar')} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                           <div className="flex items-center gap-3">
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
                             <div>
@@ -322,7 +324,7 @@ export default function MisSesiones() {
                   <div key={dia.fechaStr}
                     onClick={() => tieneSesion && setDiaModal({ fechaStr: dia.fechaStr, sesiones: dia.sesiones })}
                     className={'rounded-xl p-1.5 min-h-14 transition ' +
-                      (esHoy ? 'bg-orange-500 bg-opacity-20 border border-orange-500' :
+                      (esHoy ? 'bg-orange-500/20 border border-orange-500' :
                        tieneSesion ? 'bg-gray-800 hover:bg-gray-700 cursor-pointer border border-transparent hover:border-orange-500' :
                        'bg-gray-900 border border-transparent')}>
                     <p className={'text-xs font-medium mb-1 ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{dia.fecha.getDate()}</p>
@@ -354,7 +356,7 @@ export default function MisSesiones() {
 
       {/* MODAL — detalle del día */}
       {diaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-end justify-center z-50 px-4 pb-4"
+        <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 px-4 pb-4"
           onClick={() => setDiaModal(null)}>
           <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-lg shadow-2xl"
             onClick={e => e.stopPropagation()}>
@@ -403,7 +405,7 @@ export default function MisSesiones() {
                   )}
 
                   <button
-                    onClick={() => window.location.href = '/sesion/' + s.id + '/ejecutar'}
+                    onClick={() => router.push('/sesion/' + s.id + '/ejecutar')}
                     className={'w-full py-2.5 rounded-xl font-medium text-sm transition ' +
                       (s.estado === 'Realizada'
                         ? 'bg-gray-700 text-gray-400 cursor-default'

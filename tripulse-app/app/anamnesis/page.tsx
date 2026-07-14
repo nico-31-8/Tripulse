@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -23,6 +24,7 @@ type Lesion = {
 }
 
 export default function PaginaAnamnesis() {
+  const router = useRouter()
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   const [anamnesisId, setAnamnesisId] = useState<number | null>(null)
   const [seccion, setSeccion] = useState(0)
@@ -106,9 +108,9 @@ export default function PaginaAnamnesis() {
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).single()
-      if (!dep) { window.location.href = '/dashboard-deportista'; return }
+      if (!dep) { router.push('/dashboard-deportista'); return }
       setDeportistaId(dep.id)
 
       const { data: an } = await supabase.from('anamnesis').select('*').eq('id_deportista', dep.id).maybeSingle()
@@ -325,7 +327,7 @@ export default function PaginaAnamnesis() {
         <div className="text-6xl mb-4">✅</div>
         <h2 className="text-2xl font-bold text-white mb-2">¡Anamnesis enviada!</h2>
         <p className="text-gray-400 text-sm mb-6">Tu entrenador ya puede ver tu ficha completa y preparar tu planificación.</p>
-        <button onClick={() => window.location.href = '/dashboard-deportista'}
+        <button onClick={() => router.push('/dashboard-deportista')}
           className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-bold transition">
           Ir a mi panel →
         </button>

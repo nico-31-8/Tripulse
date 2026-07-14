@@ -1,8 +1,11 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
+  const router = useRouter()
   const [deportistas, setDeportistas] = useState<any[]>([])
   useEffect(() => {
     supabase.from('deportista').select('*').eq('id_entrenador', entrenadorId).then(({ data }) => setDeportistas(data || []))
@@ -13,7 +16,7 @@ function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
       {deportistas.map(d => (
         <div key={d.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-3">
           <p className="font-medium">{d.nombre}</p>
-          <button onClick={() => window.location.href = '/deportistas/' + d.id} className="text-orange-500 text-sm hover:underline">Ver perfil →</button>
+          <button onClick={() => router.push('/deportistas/' + d.id)} className="text-orange-500 text-sm hover:underline">Ver perfil →</button>
         </div>
       ))}
     </div>
@@ -21,6 +24,7 @@ function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
 }
 
 function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: any, entrenador: any, onDesvincularse: () => void }) {
+  const router = useRouter()
   const [codigo, setCodigo] = useState('')
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState('')
@@ -43,7 +47,7 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
     setMensaje('Vinculado correctamente con ' + entrenadorEncontrado.nombre + '. Te llevamos a tu anamnesis...')
     setLoading(false)
     // Al vincularse, el entrenador necesita la anamnesis → la mostramos
-    setTimeout(() => window.location.href = '/anamnesis', 1200)
+    setTimeout(() => router.push('/anamnesis'), 1200)
   }
 
   const desvincularse = async () => {
@@ -96,6 +100,7 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
 }
 
 export default function PerfilPage() {
+  const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
   const [entrenador, setEntrenador] = useState<any>(null)
   const [codigo, setCodigo] = useState('')
@@ -107,7 +112,7 @@ export default function PerfilPage() {
 
   const cargar = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
     const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
     setPerfil(p)
     setCodigo(p?.codigo_entrenador || '')
@@ -181,7 +186,7 @@ export default function PerfilPage() {
     if (error) { alert('Error al eliminar la cuenta: ' + error.message); setEliminando(false); return }
     await supabase.auth.signOut()
     alert('Tu cuenta y tus datos han sido eliminados.')
-    window.location.href = '/'
+    router.push('/')
   }
 
   if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
@@ -191,7 +196,7 @@ export default function PerfilPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = esDeportista ? '/dashboard-deportista' : '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push(esDeportista ? '/dashboard-deportista' : '/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-2xl mx-auto px-6 py-8">
 
@@ -241,8 +246,8 @@ export default function PerfilPage() {
           </button>
 
           <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
-            <a href="/privacidad" className="hover:text-orange-400 transition underline">Política de privacidad</a>
-            <a href="/terminos" className="hover:text-orange-400 transition underline">Términos de uso</a>
+            <Link href="/privacidad" className="hover:text-orange-400 transition underline">Política de privacidad</Link>
+            <Link href="/terminos" className="hover:text-orange-400 transition underline">Términos de uso</Link>
           </div>
 
           <div className="border-t border-gray-800 pt-4">

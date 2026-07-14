@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { factorSicat, type SicatResultado } from '@/lib/sicat'
 
 const DISCIPLINAS = [
   { key: 'Natacion', label: '🏊 Natación', color: '#60a5fa' },
@@ -10,11 +11,11 @@ const DISCIPLINAS = [
   { key: 'Fuerza', label: '🏋️ Fuerza', color: '#f87171' },
 ]
 
-function calcularCargasDisc(sesiones: any[]) {
+function calcularCargasDisc(sesiones: any[], factor: number) {
   if (!sesiones.length) return []
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
-    const carga = (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+    const carga = (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factor
     mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()
@@ -46,10 +47,11 @@ function semaforo(tsb: number) {
 interface Props {
   depId: number | string
   diasRango?: number
+  sicat?: SicatResultado | null
 }
 
-export default function CargaPorDisciplina({ depId, diasRango = 56 }: Props) {
-  const [datosPorDisc, setDatosPorDisc] = useState<Record<string, any[]>>({})
+export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null }: Props) {
+  const [sesionesPorDisc, setSesionesPorDisc] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
   const [discActiva, setDiscActiva] = useState('Carrera')
 
@@ -67,11 +69,11 @@ export default function CargaPorDisciplina({ depId, diasRango = 56 }: Props) {
 
     // Obtener microciclos del deportista
     const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    if (!macros?.length) { setDatosPorDisc({}); setLoading(false); return }
+    if (!macros?.length) { setSesionesPorDisc({}); setLoading(false); return }
     const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-    if (!mesos?.length) { setDatosPorDisc({}); setLoading(false); return }
+    if (!mesos?.length) { setSesionesPorDisc({}); setLoading(false); return }
     const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-    if (!micros?.length) { setDatosPorDisc({}); setLoading(false); return }
+    if (!micros?.length) { setSesionesPorDisc({}); setLoading(false); return }
     const microIds = micros.map(m => m.id)
 
     const resultado: Record<string, any[]> = {}
@@ -86,13 +88,21 @@ export default function CargaPorDisciplina({ depId, diasRango = 56 }: Props) {
         .gte('fecha_sesion', desdeStr)
         .order('fecha_sesion')
 
-      const calculados = calcularCargasDisc(ses || [])
-      resultado[disc.key] = calculados.slice(-diasRango)
+      resultado[disc.key] = ses || []
     }
 
-    setDatosPorDisc(resultado)
+    setSesionesPorDisc(resultado)
     setLoading(false)
   }
+
+  const datosPorDisc = useMemo(() => {
+    const resultado: Record<string, any[]> = {}
+    for (const disc of DISCIPLINAS) {
+      const factor = sicat ? factorSicat(disc.key, sicat) : 1
+      resultado[disc.key] = calcularCargasDisc(sesionesPorDisc[disc.key] || [], factor).slice(-diasRango)
+    }
+    return resultado
+  }, [sesionesPorDisc, sicat, diasRango])
 
   if (loading) return <div className="text-center py-8 text-gray-500 text-sm">Calculando carga por disciplina...</div>
 

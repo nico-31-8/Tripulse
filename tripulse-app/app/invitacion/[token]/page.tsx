@@ -1,8 +1,11 @@
 'use client'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function PaginaInvitacion({ params }: { params: Promise<{ token: string }> }) {
+  const router = useRouter()
   const { token } = use(params)
   const [invitacion, setInvitacion] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -70,7 +73,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
     setGuardando(false)
 
     setTimeout(() => {
-      window.location.href = '/anamnesis'
+      router.push('/anamnesis')
     }, 2000)
   }
 
@@ -86,7 +89,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
         <div className="text-5xl mb-4">❌</div>
         <h2 className="text-xl font-bold text-white mb-2">Enlace no válido</h2>
         <p className="text-gray-400 text-sm mb-6">{error}</p>
-        <a href="/" className="text-orange-500 hover:underline text-sm">Volver al inicio</a>
+        <Link href="/" className="text-orange-500 hover:underline text-sm">Volver al inicio</Link>
       </div>
     </main>
   )

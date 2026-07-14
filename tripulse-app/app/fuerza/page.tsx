@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -14,6 +15,7 @@ const GRUPOS_MUSCULARES = [
 const CLAVE_ADMIN = 'fuerza25'
 
 export default function FuerzaPage() {
+  const router = useRouter()
   useRequireEntrenador()
   const [ejercicios, setEjercicios] = useState<any[]>([])
   const [grupoFiltro, setGrupoFiltro] = useState('')
@@ -115,7 +117,7 @@ export default function FuerzaPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard'} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex justify-between items-start mb-6">
@@ -190,7 +192,7 @@ export default function FuerzaPage() {
       </div>
 
       {modalVideo && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl w-full max-w-2xl border border-gray-700">
             <div className="flex justify-between items-center p-4 border-b border-gray-800">
               <p className="font-medium">Video del ejercicio</p>
@@ -225,7 +227,7 @@ export default function FuerzaPage() {
       )}
 
       {modalAñadir && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl w-full max-w-md border border-gray-700 p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Añadir ejercicio</h3>
@@ -269,7 +271,7 @@ export default function FuerzaPage() {
 
       {/* Modal edición */}
       {ejercicioEditando && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-lg font-bold">Editar ejercicio</h3>

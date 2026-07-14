@@ -1,8 +1,10 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function MisTests() {
+  const router = useRouter()
   const [deportista, setDeportista] = useState<any>(null)
   const [tests, setTests] = useState<any>({ carrera: [], natacion: [], ciclismo: [], fuerza: [] })
   const [loading, setLoading] = useState(true)
@@ -11,7 +13,7 @@ export default function MisTests() {
   useEffect(() => {
     const cargar = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/login'; return }
+      if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
       setDeportista(dep)
@@ -40,7 +42,7 @@ export default function MisTests() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = '/dashboard-deportista'} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
+        <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-1">Mis tests</h2>

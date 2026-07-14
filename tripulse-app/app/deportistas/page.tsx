@@ -1,4 +1,5 @@
 ﻿'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -33,6 +34,7 @@ function TooltipHRV() {
 }
 
 export default function Deportistas() {
+  const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
@@ -49,7 +51,7 @@ export default function Deportistas() {
 
   const cargarDeportistas = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/login'; return }
+    if (!user) { router.push('/login'); return }
     const { data, error } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
     if (error) setError('Error al cargar: ' + error.message)
     setDeportistas(data || [])
@@ -98,7 +100,7 @@ export default function Deportistas() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <a href="/dashboard" className="text-gray-400 hover:text-white text-sm transition">← Dashboard</a>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-6">
@@ -172,7 +174,7 @@ export default function Deportistas() {
       </div>
       {/* Modal enlace invitación */}
       {enlaceInvitacion && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 rounded-2xl p-6 border border-gray-700 w-full max-w-md">
             <h3 className="font-bold text-lg mb-2">🔗 Enlace de invitación</h3>
             <p className="text-gray-400 text-sm mb-4">Manda este enlace al deportista. Solo tendrá que poner su email y contraseña para quedar vinculado a ti automáticamente.</p>

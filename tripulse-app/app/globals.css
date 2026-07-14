@@ -24,3 +24,30 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ===== Cursor personalizado TRIPULSE (sutil, sin JS) =====
+   Flecha naranja con borde blanco. En navegadores sin soporte de cursor SVG
+   (p. ej. Safari) cae automáticamente al cursor nativo del fallback. */
+@layer base {
+  html, body {
+    cursor: url("/cursor/arrow.svg") 2 1, auto;
+  }
+  /* Los campos de texto conservan el cursor de texto. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  textarea,
+  [contenteditable="true"] {
+    cursor: text;
+  }
+}
+
+@layer utilities {
+  /* Elementos clicables → variante con punto. Va en la capa utilities para que
+     las clases semánticas del canvas (.cursor-grab, .cursor-ns-resize, .cursor-move…)
+     ganen por especificidad de clase y no se pisen. */
+  a[href], button, [role="button"], select, summary,
+  input[type="checkbox"], input[type="radio"],
+  input[type="submit"], input[type="button"], input[type="reset"],
+  .cursor-pointer {
+    cursor: url("/cursor/pointer.svg") 2 1, pointer;
+  }
+}

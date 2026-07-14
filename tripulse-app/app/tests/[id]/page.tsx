@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
@@ -6,6 +7,40 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
+
+// Protocolos combinados (sprint + aeróbico en una sesión). Orden: anaeróbico primero.
+const PROTOCOLO_COMBINADO: Record<string, { titulo: string; pasos: string[]; nota: string }> = {
+  carrera: {
+    titulo: 'Carrera — Sprint (MSS) + VAM',
+    pasos: [
+      'Calentamiento 10–15 min + movilidad + 3–4 aceleraciones progresivas.',
+      'SPRINT (fresco): 2–3 × sprint lanzado 30–40m a máxima velocidad, recuperación completa 3–5 min entre repeticiones. Registra el mejor.',
+      'Recuperación 10–15 min de trote muy suave.',
+      'TEST VAM: protocolo incremental hasta agotamiento voluntario.',
+    ],
+    nota: 'El sprint va primero para medirlo fresco; con recuperación adecuada apenas afecta al test de VAM posterior.',
+  },
+  ciclismo: {
+    titulo: 'Ciclismo — Wingate 6s (MPP) + FTP',
+    pasos: [
+      'Calentamiento 15–20 min con alguna aceleración.',
+      'SPRINT (fresco): 2–3 × sprint máximo de 6 s, recuperación completa 3–5 min. Registra la potencia pico.',
+      'Recuperación 10–15 min de rodaje suave.',
+      'TEST FTP: 20 min máximos (o test rampa).',
+    ],
+    nota: 'El sprint de 6 s es aláctico y se recupera en minutos; hecho primero no compromete el FTP posterior.',
+  },
+  natacion: {
+    titulo: 'Natación — Sprints (V25/V50) + CSS',
+    pasos: [
+      'Calentamiento 400–600m + técnica.',
+      'SPRINTS (fresco): 25m y 50m máximos con recuperación completa 3–5 min. Registra los tiempos.',
+      'Recuperación 10–15 min de nado suave.',
+      'TEST CSS: 400m máximo (el 50m del sprint puede servir como distancia corta).',
+    ],
+    nota: 'Los sprints van primero para medirlos frescos; el 400m del CSS al final por ser el más fatigante.',
+  },
+}
 
 function GraficaEvolucion({ datos, dataKey, color, unidad, label }: { datos: any[], dataKey: string, color: string, unidad: string, label: string }) {
   if (datos.length < 2) return (
@@ -105,6 +140,7 @@ function GraficaFuerza({ datos }: { datos: any[] }) {
 }
 
 export default function PaginaTests({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
@@ -142,6 +178,14 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const [resultadoLibre, setResultadoLibre] = useState('')
   const [unidadLibre, setUnidadLibre] = useState('')
   const [notasLibre, setNotasLibre] = useState('')
+  // Tests de sprint (ASR/APR)
+  const [testTipo, setTestTipo] = useState<'aerobico'|'sprint'>('aerobico')
+  const [mostrarProtocolo, setMostrarProtocolo] = useState(false)
+  const [sprintDist, setSprintDist] = useState('40')   // carrera: metros del sprint lanzado
+  const [sprintTiempo, setSprintTiempo] = useState('') // carrera: segundos
+  const [mppSprint, setMppSprint] = useState('')        // ciclismo: W potencia pico
+  const [t25, setT25] = useState('')                    // natacion: seg 25m
+  const [t50, setT50] = useState('')                    // natacion: seg 50m
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -184,6 +228,15 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const formatCSS = (css: number) => { const s = 100/css; return `${Math.floor(s/60)}:${Math.round(s%60).toString().padStart(2,'0')} /100m` }
   const formatVAM = (vam: number) => { const s = 3600/vam; return `${Math.floor(s/60)}:${Math.round(s%60).toString().padStart(2,'0')} /km` }
 
+  // Sprint: MSS (km/h) desde distancia + tiempo; V25/V50 (m/s) desde tiempo
+  const calcularMSS = () => (sprintDist && sprintTiempo && Number(sprintTiempo) > 0) ? Math.round((Number(sprintDist) / Number(sprintTiempo)) * 3.6 * 10) / 10 : null
+  const calcularVsprint = (t: string, d: number) => (t && Number(t) > 0) ? Math.round((d / Number(t)) * 1000) / 1000 : null
+  // Reservas anaeróbicas (sobre el último test aeróbico disponible)
+  const ultimaVAM = tests1.find(t => t.vam)?.vam
+  const ultimoFTP = tests3.find(t => t.ftp)?.ftp
+  const asrPreview = (calcularMSS() && ultimaVAM) ? Math.round((calcularMSS()! - ultimaVAM) * 10) / 10 : null
+  const aprPreview = (mppSprint && ultimoFTP) ? (Number(mppSprint) - ultimoFTP) : null
+
   const guardarTest1 = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('')
     const { error } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM() })
@@ -225,6 +278,32 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
+  const resetSprint = () => { setSprintDist('40'); setSprintTiempo(''); setMppSprint(''); setT25(''); setT50('') }
+
+  // Guardar test de SPRINT suelto
+  const guardarSprint = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true); setError('')
+    let err: any = null
+    if (tab === 'carrera') ({ error: err } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, mss: calcularMSS() }))
+    else if (tab === 'ciclismo') ({ error: err } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, mpp: Number(mppSprint) }))
+    else if (tab === 'natacion') ({ error: err } = await supabase.from('test2_natacion').insert({ id_deportista: Number(id), fecha, v25: calcularVsprint(t25, 25), v50: calcularVsprint(t50, 50) }))
+    if (err) setError('Error: ' + err.message)
+    else { resetSprint(); setFecha(''); setMostrarForm(false); cargarDatos() }
+    setLoading(false)
+  }
+
+  // Guardar PROTOCOLO combinado (aeróbico + sprint en una sesión, un solo registro)
+  const guardarProtocolo = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true); setError('')
+    let err: any = null
+    if (tab === 'carrera') ({ error: err } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM(), mss: calcularMSS() }))
+    else if (tab === 'ciclismo') ({ error: err } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, potencia_pico: Number(potenciaPico), tiempo_escalon_completado: Number(tiempoCompletado), tiempo_escalon_no_completado: Number(tiempoNoCompletado), duracion_escalones: Number(durEscalones), incremento_potencia: Number(incrementoPot), ftp: calcularFTP(), mpp: Number(mppSprint) }))
+    else if (tab === 'natacion') ({ error: err } = await supabase.from('test2_natacion').insert({ id_deportista: Number(id), fecha, distancia_grande: Number(distGrande), distancia_pequena: Number(distPequena), tiempo_distancia_grande: Number(tiempoGrande), tiempo_distancia_pequena: Number(tiempoPequeno), css: calcularCSS(), v25: calcularVsprint(t25, 25), v50: calcularVsprint(t50, 50) }))
+    if (err) setError('Error: ' + err.message)
+    else { setMostrarProtocolo(false); resetSprint(); setFecha(''); cargarDatos() }
+    setLoading(false)
+  }
+
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   const rmPreview = calcularRM()
@@ -232,7 +311,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => window.location.href = `/deportistas/${id}`} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
+        <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8">
@@ -249,13 +328,24 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           ))}
         </div>
 
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">
-            {tab === 'carrera' ? 'Test incremental carrera' : tab === 'natacion' ? 'Test CSS natacion' : tab === 'ciclismo' ? 'Test FTP ciclismo' : 'Test 1RM fuerza'}
-          </h3>
-          <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
-            {mostrarForm ? 'Cancelar' : '+ Nuevo test'}
-          </button>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="text-xl font-bold">{tab === 'carrera' ? 'Carrera' : tab === 'natacion' ? 'Natación' : tab === 'ciclismo' ? 'Ciclismo' : 'Fuerza'}</h3>
+            {tab !== 'fuerza' && (
+              <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
+                <button onClick={() => { setTestTipo('aerobico'); setMostrarForm(false) }} className={'text-xs px-3 py-1.5 rounded-md transition ' + (testTipo === 'aerobico' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>🫀 Aeróbico</button>
+                <button onClick={() => { setTestTipo('sprint'); setMostrarForm(false) }} className={'text-xs px-3 py-1.5 rounded-md transition ' + (testTipo === 'sprint' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>⚡ Sprint</button>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {tab !== 'fuerza' && (
+              <button onClick={() => setMostrarProtocolo(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition">🔬 Protocolo</button>
+            )}
+            <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
+              {mostrarForm ? 'Cancelar' : '+ Nuevo test'}
+            </button>
+          </div>
         </div>
 
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
@@ -268,7 +358,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {tab === 'fuerza' && <GraficaFuerza datos={testsFuerza} />}
 
         {/* FORMULARIOS */}
-        {mostrarForm && tab === 'carrera' && (
+        {mostrarForm && testTipo === 'aerobico' && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test incremental de carrera</h4>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
@@ -281,7 +371,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </form>
         )}
 
-        {mostrarForm && tab === 'natacion' && (
+        {mostrarForm && testTipo === 'aerobico' && tab === 'natacion' && (
           <form onSubmit={guardarTest2} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test CSS natacion</h4>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
@@ -298,7 +388,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </form>
         )}
 
-        {mostrarForm && tab === 'ciclismo' && (
+        {mostrarForm && testTipo === 'aerobico' && tab === 'ciclismo' && (
           <form onSubmit={guardarTest3} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test FTP ciclismo</h4>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
@@ -308,6 +398,46 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             <input type="number" placeholder="Tiempo aguantado escalon no completado (seg)" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Incremento de potencia por escalon (vatios)" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             {calcularFTP() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">FTP calculado: </span><span className="text-orange-400 font-bold">{calcularFTP()} W</span></div>}
+            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+          </form>
+        )}
+
+        {/* FORMULARIOS SPRINT */}
+        {mostrarForm && testTipo === 'sprint' && tab === 'carrera' && (
+          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <h4 className="font-bold">Test de sprint — Velocidad máxima (MSS)</h4>
+            <p className="text-gray-400 text-sm">Sprint lanzado de 30–40m a máxima velocidad (con 10–20m previos de lanzamiento). Introduce la distancia cronometrada y el tiempo.</p>
+            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <input type="number" step="0.5" placeholder="Distancia (m)" value={sprintDist} onChange={e => setSprintDist(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+              <input type="number" step="0.01" placeholder="Tiempo (s)" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            </div>
+            {calcularMSS() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">MSS: </span><span className="text-orange-400 font-bold">{calcularMSS()} km/h</span>{asrPreview !== null && <span className="text-blue-400 ml-3">· ASR = MSS − VAM: {asrPreview} km/h</span>}</div>}
+            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+          </form>
+        )}
+
+        {mostrarForm && testTipo === 'sprint' && tab === 'ciclismo' && (
+          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <h4 className="font-bold">Test de sprint — Potencia pico (MPP)</h4>
+            <p className="text-gray-400 text-sm">Sprint máximo de 6 segundos (tras calentamiento). Introduce la potencia pico registrada por el potenciómetro.</p>
+            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
+            <input type="number" placeholder="Potencia pico MPP (vatios)" value={mppSprint} onChange={e => setMppSprint(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            {mppSprint && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">MPP: </span><span className="text-orange-400 font-bold">{mppSprint} W</span>{aprPreview !== null && <span className="text-blue-400 ml-3">· APR = MPP − FTP: {aprPreview} W</span>}</div>}
+            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+          </form>
+        )}
+
+        {mostrarForm && testTipo === 'sprint' && tab === 'natacion' && (
+          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <h4 className="font-bold">Test de sprint — Velocidades máximas (V25/V50)</h4>
+            <p className="text-gray-400 text-sm">Sprints máximos de 25m y 50m (con recuperación completa entre ellos). Introduce los tiempos.</p>
+            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <input type="number" step="0.01" placeholder="Tiempo 25m (s)" value={t25} onChange={e => setT25(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+              <input type="number" step="0.01" placeholder="Tiempo 50m (s)" value={t50} onChange={e => setT50(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            </div>
+            {(calcularVsprint(t25, 25) || calcularVsprint(t50, 50)) && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">V25: </span><span className="text-orange-400 font-bold">{calcularVsprint(t25, 25) || '—'} m/s</span><span className="text-gray-400 ml-3">V50: </span><span className="text-orange-400 font-bold">{calcularVsprint(t50, 50) || '—'} m/s</span></div>}
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
           </form>
         )}
@@ -443,6 +573,99 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           }
         </div>
       </div>
+
+      {/* MODAL PROTOCOLO COMBINADO */}
+      {mostrarProtocolo && tab !== 'fuerza' && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-800 sticky top-0 bg-gray-900 z-10">
+              <h3 className="text-lg font-bold">🔬 {PROTOCOLO_COMBINADO[tab].titulo}</h3>
+              <button onClick={() => setMostrarProtocolo(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="p-6">
+              <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl p-4 mb-6 text-sm">
+                <p className="text-blue-300 font-bold mb-2">Orden: sprint fresco primero, aeróbico al final</p>
+                <ol className="list-decimal list-inside text-gray-300 space-y-1">
+                  {PROTOCOLO_COMBINADO[tab].pasos.map((p, i) => <li key={i}>{p}</li>)}
+                </ol>
+                <p className="text-gray-500 text-xs mt-3">{PROTOCOLO_COMBINADO[tab].nota}</p>
+              </div>
+
+              {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+
+              <form onSubmit={guardarProtocolo} className="flex flex-col gap-4">
+                <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
+
+                <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700">
+                  <p className="text-orange-400 font-medium mb-3">⚡ 1 · Sprint (fresco)</p>
+                  {tab === 'carrera' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="number" step="0.5" placeholder="Distancia (m)" value={sprintDist} onChange={e => setSprintDist(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                      <input type="number" step="0.01" placeholder="Tiempo (s)" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    </div>
+                  )}
+                  {tab === 'ciclismo' && (
+                    <input type="number" placeholder="Potencia pico MPP (W)" value={mppSprint} onChange={e => setMppSprint(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm w-full" required />
+                  )}
+                  {tab === 'natacion' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="number" step="0.01" placeholder="Tiempo 25m (s)" value={t25} onChange={e => setT25(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                      <input type="number" step="0.01" placeholder="Tiempo 50m (s)" value={t50} onChange={e => setT50(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700 flex flex-col gap-3">
+                  <p className="text-orange-400 font-medium">🫀 2 · Test aeróbico (tras recuperar)</p>
+                  {tab === 'carrera' && (<>
+                    <input type="number" step="0.1" placeholder="Velocidad último escalón (km/h)" value={velUltimo} onChange={e => setVelUltimo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Duración total del escalón (s)" value={durTotal} onChange={e => setDurTotal(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Tiempo aguantado último escalón (s)" value={tiempoAguantado} onChange={e => setTiempoAguantado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" step="0.1" placeholder="Incremento velocidad por escalón (km/h)" value={incrementoVel} onChange={e => setIncrementoVel(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                  </>)}
+                  {tab === 'ciclismo' && (<>
+                    <input type="number" placeholder="Potencia pico test incremental (W)" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Duración de los escalones (s)" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Tiempo escalón completado (s)" value={tiempoCompletado} onChange={e => setTiempoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Tiempo escalón no completado (s)" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    <input type="number" placeholder="Incremento potencia por escalón (W)" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                  </>)}
+                  {tab === 'natacion' && (<>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="number" placeholder="Distancia grande (m)" value={distGrande} onChange={e => setDistGrande(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                      <input type="number" placeholder="Distancia pequeña (m)" value={distPequena} onChange={e => setDistPequena(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="number" placeholder="Tiempo dist. grande (s)" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                      <input type="number" placeholder="Tiempo dist. pequeña (s)" value={tiempoPequeno} onChange={e => setTiempoPequeno(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" required />
+                    </div>
+                  </>)}
+                </div>
+
+                <div className="bg-gray-800 rounded-lg px-4 py-3 text-sm flex flex-wrap gap-x-4 gap-y-1">
+                  {tab === 'carrera' && (<>
+                    {calcularVAM() && <span className="text-gray-400">VAM: <b className="text-orange-400">{calcularVAM()} km/h</b></span>}
+                    {calcularMSS() && <span className="text-gray-400">MSS: <b className="text-orange-400">{calcularMSS()} km/h</b></span>}
+                    {calcularVAM() && calcularMSS() && <span className="text-blue-400 font-medium">ASR: {Math.round((calcularMSS()! - calcularVAM()!) * 10) / 10} km/h</span>}
+                  </>)}
+                  {tab === 'ciclismo' && (<>
+                    {calcularFTP() && <span className="text-gray-400">FTP: <b className="text-orange-400">{calcularFTP()} W</b></span>}
+                    {mppSprint && <span className="text-gray-400">MPP: <b className="text-orange-400">{mppSprint} W</b></span>}
+                    {calcularFTP() && mppSprint && <span className="text-blue-400 font-medium">APR: {Number(mppSprint) - calcularFTP()!} W</span>}
+                  </>)}
+                  {tab === 'natacion' && (<>
+                    {calcularCSS() && <span className="text-gray-400">CSS: <b className="text-orange-400">{calcularCSS()} m/s</b></span>}
+                    {calcularVsprint(t25, 25) && <span className="text-gray-400">V25: <b className="text-orange-400">{calcularVsprint(t25, 25)} m/s</b></span>}
+                    {calcularVsprint(t50, 50) && <span className="text-gray-400">V50: <b className="text-orange-400">{calcularVsprint(t50, 50)} m/s</b></span>}
+                  </>)}
+                </div>
+
+                <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar protocolo completo'}</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
