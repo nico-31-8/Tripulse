@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
+import { analizarWellness } from '@/lib/wellness-analisis'
 
 const VARS_SUBJETIVAS = [
   { key: 'fatiga',         label: 'Fatiga',         color: '#f87171' },
@@ -63,8 +64,9 @@ export default function WellnessEntrenador() {
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       if (deps) {
         const conWellness = await Promise.all(deps.map(async d => {
-          const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1)
-          return { ...d, ultimoWellness: w?.[0] || null }
+          const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(14)
+          const recientes = w || []
+          return { ...d, ultimoWellness: recientes[0] || null, readiness: analizarWellness(recientes).readiness }
         }))
         setDeportistas(conWellness)
       }
@@ -161,7 +163,12 @@ export default function WellnessEntrenador() {
               className={'bg-gray-900 rounded-xl p-5 border-2 text-left transition hover:opacity-90 ' + (d.ultimoWellness ? bgScore(d.ultimoWellness.score_wellness) : 'border-gray-700')}>
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-bold text-lg">{d.nombre}</h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-lg">{d.nombre}</h3>
+                    {d.readiness && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: d.readiness.color + '22', color: d.readiness.color }}>{d.readiness.label}</span>
+                    )}
+                  </div>
                   {d.ultimoWellness ? (
                     <div>
                       <p className="text-gray-400 text-sm">Último: {d.ultimoWellness.fecha}</p>
@@ -202,6 +209,31 @@ export default function WellnessEntrenador() {
               </div>
             ) : (
               <>
+                {/* ANÁLISIS — readiness + conclusiones (mismo motor que ve el atleta) */}
+                {(() => {
+                  const a = analizarWellness(registros)
+                  if (!a.readiness) return null
+                  return (
+                    <div className="bg-gray-900 rounded-xl border overflow-hidden" style={{ borderColor: a.readiness.color + '55' }}>
+                      <div className="p-4 flex items-center gap-3" style={{ borderLeft: '5px solid ' + a.readiness.color }}>
+                        <span className="text-xl font-black leading-none" style={{ color: a.readiness.color }}>{a.readiness.label}</span>
+                        <p className="text-gray-300 text-sm flex-1">{a.readiness.recomendacion}</p>
+                      </div>
+                      <div className="px-4 pb-4 flex flex-col gap-1.5">
+                        {a.conclusiones.map((c, i) => {
+                          const ic = c.tipo === 'rojo' ? '🔴' : c.tipo === 'ambar' ? '🟠' : c.tipo === 'positivo' ? '🟢' : 'ℹ️'
+                          return (
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <span style={{ fontSize: 11 }} className="mt-0.5">{ic}</span>
+                              <span className="text-gray-300">{c.texto}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* GRÁFICA 1 — Score wellness */}
                 <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
                   <div className="flex justify-between items-center mb-3">

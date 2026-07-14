@@ -6,6 +6,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
+import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -14,12 +15,12 @@ const RANGOS = [
   { label: 'Todo', dias: 365 },
 ]
 
-function calcularCargas(sesiones: any[], factorFn: (disciplina: string) => number = () => 1) {
+function calcularCargas(sesiones: any[], factorFn: (s: any) => number = () => 1) {
   if (!sesiones.length) return []
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
     const fecha = s.fecha_sesion
-    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s.disciplina)
+    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s)
     mapa[fecha] = (mapa[fecha] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()
@@ -98,7 +99,18 @@ export default function CargaPage() {
   const [diariaRaw, setDiariaRaw] = useState<any[]>([])
   const [usarSicat, setUsarSicat] = useState(true)
   const [sicat, setSicat] = useState<SicatResultado | null>(null)
-  const factorFn = (disc: string) => usarSicat ? factorSicat(disc, sicat) : 1
+  const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
+  const [pondZona, setPondZona] = useState(false)
+  // Ponderación por zona: se activa desde el módulo SICAT (/eco) y se lee aquí.
+  useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
+  const factorFn = (s: any) => {
+    if (!usarSicat) return 1
+    if (pondZona && s?.zonaPico) {
+      const fz = factorSicatZona(s.disciplina, s.zonaPico, zonasRes)
+      if (fz != null) return fz
+    }
+    return factorSicat(s.disciplina, sicat)
+  }
 
   useEffect(() => {
     const cargar = async () => {
@@ -115,7 +127,9 @@ export default function CargaPage() {
     setSeleccionado(dep)
     setLoadingDatos(true)
     setSicat(null)
+    setZonasRes(null)
     calcularSICAT(dep).then(setSicat)
+    calcularSicatZonas(dep).then(setZonasRes)
     const desde = new Date()
     desde.setDate(desde.getDate() - dias - 42)
     const { data: micros } = await supabase
@@ -128,12 +142,12 @@ export default function CargaPage() {
     if (microsDelDep.length > 0) {
       const { data: ses } = await supabase
         .from('sesion')
-        .select('fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
         .gte('fecha_sesion', desde.toISOString().split('T')[0])
         .order('fecha_sesion')
-      todasSesiones = ses || []
+      todasSesiones = await attachZonaPico(ses || [])
     }
     setSesionesRaw(todasSesiones)
     setLoadingDatos(false)
@@ -144,7 +158,7 @@ export default function CargaPage() {
     if (seleccionado) verCarga(seleccionado, dias)
   }
 
-  const datos = useMemo(() => calcularCargas(sesionesRaw, factorFn).slice(-rango), [sesionesRaw, rango, usarSicat, sicat])
+  const datos = useMemo(() => calcularCargas(sesionesRaw, factorFn).slice(-rango), [sesionesRaw, rango, usarSicat, sicat, pondZona, zonasRes])
   const ultimo = datos[datos.length - 1]
   const acwr = calcularACWR(datos)
   const monotonia = calcularMonotonia(datos)
@@ -172,7 +186,7 @@ export default function CargaPage() {
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
 
-    setDiariaRaw(sesiones || [])
+    setDiariaRaw(await attachZonaPico(sesiones || []))
   }
 
   const datosDiarios = useMemo(() => {
@@ -188,10 +202,10 @@ export default function CargaPage() {
       const realizadas = sesDia.filter(s => s.estado === 'Realizada')
 
       const uaPlanificada = planificadas.reduce((acc, s) =>
-        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s.disciplina), 0)
+        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s), 0)
 
       const uaPorDisc = (disc: string) => realizadas.filter(s => s.disciplina === disc)
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(disc), 0)
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s), 0)
       const uaNatacion = uaPorDisc('Natacion')
       const uaCiclismo = uaPorDisc('Ciclismo')
       const uaCarrera = uaPorDisc('Carrera')
@@ -208,7 +222,7 @@ export default function CargaPage() {
       })
     }
     return dias
-  }, [diariaRaw, usarSicat, sicat])
+  }, [diariaRaw, usarSicat, sicat, pondZona, zonasRes])
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -266,9 +280,12 @@ export default function CargaPage() {
             </button>
             <p className="text-gray-500 text-xs">
               {usarSicat
-                ? 'La carga (UA) se pondera según el coste real de cada disciplina para este atleta.'
+                ? (pondZona
+                    ? 'La carga (UA) se pondera por disciplina y por zona de entrenamiento (donde hay datos, n≥3). Ponderación por zona activada desde SICAT.'
+                    : 'La carga (UA) se pondera según el coste real de cada disciplina para este atleta.')
                 : 'Carga sin ponderar — 1 min de RPE-X vale igual en cualquier disciplina.'}
             </p>
+            {usarSicat && pondZona && <span className="text-orange-400 text-xs font-bold ml-auto">· por zona</span>}
           </div>
         )}
 

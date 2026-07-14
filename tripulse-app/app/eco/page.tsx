@@ -1,12 +1,39 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { DISCIPLINAS_SICAT, calcularSICAT } from '@/lib/sicat'
+import { calcularSicatZonas, type SicatZonasResultado, type CeldaZona } from '@/lib/sicat-zonas'
+import { cargaZona } from '@/lib/zonas'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
+
+const iconoDisc = (d: string) => d === 'Natacion' ? '🏊 Nat' : d === 'Ciclismo' ? '🚴 Cic' : '🏃 Car'
+const nombreDisc = (d: string) => d === 'Natacion' ? 'natación' : d === 'Ciclismo' ? 'ciclismo' : 'carrera'
+function colMult(m: number) { return m < 0.8 ? '#22c55e' : m < 1.2 ? '#eab308' : m < 1.8 ? '#f97316' : '#ef4444' }
+
+// Conclusiones automáticas de la matriz de coste por zona (solo celdas fiables, n≥3).
+function conclusionesZonas(celdas: CeldaZona[]): { ic: string; texto: string }[] {
+  const fiables = celdas.filter(c => c.n >= 3)
+  if (!fiables.length) return [{ ic: 'ℹ️', texto: 'Faltan sesiones para conclusiones firmes (mín. 3 por zona y disciplina). Las celdas actuales son orientativas.' }]
+  const out: { ic: string; texto: string }[] = []
+  const caro = [...fiables].sort((a, b) => b.multiplicador - a.multiplicador)[0]
+  if (caro.multiplicador >= 1.3) out.push({ ic: '🔴', texto: `Tu entreno más caro: ${caro.zona} en ${nombreDisc(caro.disciplina)} (${caro.multiplicador.toFixed(1)}×, n=${caro.n}) → programa 48h de recuperación y no lo encadenes con otra sesión dura.` })
+  const porZona: Record<string, CeldaZona[]> = {}
+  fiables.forEach(c => { (porZona[c.zona] ||= []).push(c) })
+  for (const z of Object.keys(porZona)) {
+    const arr = porZona[z].sort((a, b) => b.multiplicador - a.multiplicador)
+    if (arr.length >= 2 && arr[0].multiplicador - arr[arr.length - 1].multiplicador >= 0.6) {
+      out.push({ ic: '🟡', texto: `La misma ${z} te cuesta ${arr[0].multiplicador.toFixed(1)}× en ${nombreDisc(arr[0].disciplina)} pero ${arr[arr.length - 1].multiplicador.toFixed(1)}× en ${nombreDisc(arr[arr.length - 1].disciplina)}: mete calidad por el lado barato cuando quieras dosificar el desgaste.` })
+      break
+    }
+  }
+  const baratas = fiables.filter(c => c.multiplicador < 0.8)
+  if (baratas.length) out.push({ ic: '🟢', texto: `Zonas de bajo coste (${[...new Set(baratas.map(c => c.zona))].join(', ')}): ideales para recuperación activa y volumen.` })
+  return out.slice(0, 3)
+}
 
 const TABLA_ECO_ORIGINAL = [
   { factor: 'Dificultad técnica', natacion: 3, ciclismo: 1, carrera: 2 },
@@ -260,6 +287,15 @@ export default function EcoPage() {
   const [loading, setLoading] = useState(true)
   const [loadingScores, setLoadingScores] = useState(false)
   const [mostrarExplicacion, setMostrarExplicacion] = useState(false)
+  const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
+  const [pondZona, setPondZona] = useState(false)
+
+  useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
+  const togglePond = () => setPondZona(v => {
+    const n = !v
+    if (typeof window !== 'undefined') localStorage.setItem('sicat_pond_zona', n ? '1' : '0')
+    return n
+  })
 
   useEffect(() => {
     const cargar = async () => {
@@ -276,8 +312,10 @@ export default function EcoPage() {
     setSeleccionado(dep)
     setLoadingScores(true)
     setScores(null)
-    const resultados = await calcularSICAT(dep)
+    setZonasRes(null)
+    const [resultados, zres] = await Promise.all([calcularSICAT(dep), calcularSicatZonas(dep)])
     setScores(resultados)
+    setZonasRes(zres)
     setLoadingScores(false)
   }
 
@@ -429,6 +467,82 @@ export default function EcoPage() {
                 </table>
               </div>
             </div>
+
+            {/* ===== MATRIZ DE COSTE POR ZONA Y DISCIPLINA ===== */}
+            {zonasRes && (
+              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mt-6">
+                <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
+                  <div>
+                    <h3 className="font-bold">Coste por zona y disciplina</h3>
+                    <p className="text-gray-500 text-xs">Cuánto le cuesta cada tipo de entreno (DOMS 48h + caída HRV + RPE). <b className="text-gray-400">1.0× = su coste medio</b> · {zonasRes.nSesiones} sesiones</p>
+                  </div>
+                  <button onClick={togglePond}
+                    className={'text-sm px-3 py-1.5 rounded-lg transition ' + (pondZona ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700')}>
+                    {pondZona ? '✓ Ponderación por zona activada' : 'Activar ponderación por zona'}
+                  </button>
+                </div>
+
+                {zonasRes.celdas.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-6">Aún no hay sesiones realizadas con zona y datos post-sesión suficientes para calcular el coste por zona.</p>
+                ) : (() => {
+                  const zonasOrden = [...new Set(zonasRes.celdas.map(c => c.zona))].sort((a, b) => cargaZona(b).nivel - cargaZona(a).nivel)
+                  const cell = (disc: string, zona: string) => zonasRes.celdas.find(c => c.disciplina === disc && c.zona === zona)
+                  const cs = conclusionesZonas(zonasRes.celdas)
+                  return (
+                    <div className={pondZona ? '' : 'opacity-70'}>
+                      <div className="grid gap-1.5 mt-4" style={{ gridTemplateColumns: '120px repeat(3, 1fr)' }}>
+                        <div />
+                        {DISCIPLINAS.map(d => <div key={d} className="text-center text-xs font-bold text-gray-300 pb-1">{iconoDisc(d)}</div>)}
+                        {zonasOrden.map(z => (
+                          <Fragment key={z}>
+                            <div className="flex flex-col justify-center">
+                              <span className="text-sm font-bold text-white">{z}</span>
+                              <span className="text-gray-600" style={{ fontSize: 9 }}>{cargaZona(z).nombre}</span>
+                            </div>
+                            {DISCIPLINAS.map(d => {
+                              const c = cell(d, z)
+                              if (!c) return <div key={d + z} className="rounded-lg border border-dashed border-gray-700 min-h-12 flex items-center justify-center text-gray-600 text-xs">—</div>
+                              const col = colMult(c.multiplicador)
+                              const border = c.confianza === 'alta' ? ('1.5px solid ' + col) : c.confianza === 'media' ? ('1px solid ' + col + '99') : ('1px dashed ' + col + '99')
+                              return (
+                                <div key={d + z} className="rounded-lg min-h-12 flex flex-col items-center justify-center" style={{ backgroundColor: col + '1f', border, opacity: c.confianza === 'baja' ? 0.7 : 1 }}>
+                                  <span className="font-bold" style={{ color: col, fontSize: 15 }}>{c.multiplicador.toFixed(1)}×</span>
+                                  <span className="text-gray-400" style={{ fontSize: 9 }}>n={c.n} · {c.confianza}</span>
+                                </div>
+                              )
+                            })}
+                          </Fragment>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-3 flex-wrap text-xs text-gray-400 mt-3">
+                        {([['#22c55e', 'bajo <0.8×'], ['#eab308', 'medio'], ['#f97316', 'alto'], ['#ef4444', 'muy alto >1.8×']] as [string, string][]).map(([c, l]) => (
+                          <span key={l} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: c }} />{l}</span>
+                        ))}
+                        <span className="text-gray-600">punteado = pocos datos (n&lt;3), respaldo al SICAT de disciplina</span>
+                      </div>
+
+                      {cs.length > 0 && (
+                        <div className="mt-4 border-t border-gray-800 pt-4 flex flex-col gap-2">
+                          {cs.map((c, i) => (
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <span style={{ fontSize: 10 }} className="mt-0.5">{c.ic}</span>
+                              <span className="text-gray-300">{c.texto}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-gray-600 text-xs mt-4">
+                        {pondZona
+                          ? '✓ Con la ponderación activada, la carga (UA) de cada sesión se pesa por el coste de su zona donde hay datos (n≥3), y cae al SICAT de disciplina en el resto.'
+                          : 'Ahora mismo es informativo. Actívala para que estos multiplicadores pesen la carga por zona.'}
+                      </p>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
+import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { cargaZona } from '@/lib/zonas'
 
 const RANGOS = [
   { label: '2 sem', dias: 14 },
@@ -40,6 +42,9 @@ export default function VolumenPage() {
   const [volSesionRaw, setVolSesionRaw] = useState<any[]>([])
   const [usarSicat, setUsarSicat] = useState(true)
   const [sicat, setSicat] = useState<SicatResultado | null>(null)
+  const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
+  const [pondZona, setPondZona] = useState(false)
+  useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
   const [rango, setRango] = useState(28)
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
@@ -65,7 +70,9 @@ export default function VolumenPage() {
     setSeleccionado(dep)
     setLoadingDatos(true)
     setSicat(null)
+    setZonasRes(null)
     calcularSICAT(dep).then(setSicat)
+    calcularSicatZonas(dep).then(setZonasRes)
 
     const desde = new Date()
     desde.setDate(desde.getDate() - dias)
@@ -94,7 +101,7 @@ export default function VolumenPage() {
     if (!sesiones?.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
 
     const sesIds = sesiones.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento').in('id_sesion', sesIds)
     const tareaIds = tareas?.map(t => t.id) || []
 
     const { data: distancias } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
@@ -129,9 +136,12 @@ export default function VolumenPage() {
         if (s.disciplina === 'Carrera') carrera = (s.duracion_minutos || 0) * 0.2
         if (s.disciplina === 'Fuerza') fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       }
+      const zs = tareasSes.map((t: any) => t.zona_entrenamiento).filter(Boolean)
+      const zonaPico = zs.length ? zs.reduce((b: string, z: string) => (cargaZona(z).nivel > cargaZona(b).nivel ? z : b), zs[0]) : null
       return {
         fecha: s.fecha_sesion,
         disciplina: s.disciplina,
+        zonaPico,
         Natacion: Math.round(natacion),
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
@@ -180,35 +190,42 @@ export default function VolumenPage() {
     setLoadingDatos(false)
   }
 
-  const factorFn = (disc: string) => usarSicat ? factorSicat(disc, sicat) : 1
+  const factorFn = (s: any) => {
+    if (!usarSicat) return 1
+    if (pondZona && s?.zonaPico) {
+      const fz = factorSicatZona(s.disciplina, s.zonaPico, zonasRes)
+      if (fz != null) return fz
+    }
+    return factorSicat(s.disciplina, sicat)
+  }
 
   const cargaSesiones = useMemo(() =>
-    volSesionRaw.map(s => ({ ...s, fecha: s.fecha.slice(5), ua: Math.round(s.ua * factorFn(s.disciplina)) })),
-    [volSesionRaw, usarSicat, sicat])
+    volSesionRaw.map(s => ({ ...s, fecha: s.fecha.slice(5), ua: Math.round(s.ua * factorFn(s)) })),
+    [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])
 
   const cargaSemanas = useMemo(() => {
     const map: Record<string, any> = {}
     volSesionRaw.forEach(s => {
       const k = getSemana(s.fecha).slice(5)
       if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      const uaPond = s.ua * factorFn(s.disciplina)
+      const uaPond = s.ua * factorFn(s)
       map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
       map[k].total += uaPond
     })
     return Object.values(map)
-  }, [volSesionRaw, usarSicat, sicat])
+  }, [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])
 
   const cargaMeses = useMemo(() => {
     const map: Record<string, any> = {}
     volSesionRaw.forEach(s => {
       const k = s.fecha.slice(0, 7)
       if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      const uaPond = s.ua * factorFn(s.disciplina)
+      const uaPond = s.ua * factorFn(s)
       map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
       map[k].total += uaPond
     })
     return Object.values(map)
-  }, [volSesionRaw, usarSicat, sicat])
+  }, [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])
 
   const cambiarRango = (dias: number) => {
     setRango(dias)
