@@ -8,6 +8,29 @@ import type { TestsDeportista } from '@/lib/duracion'
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick']
+
+// Microciclo de la semana de una fecha si cae dentro de un mesociclo del atleta (creándolo
+// si no existe). Si la fecha queda fuera de todo plan → null (sesión "libre").
+async function resolverMicro(depId: number, fechaStr: string): Promise<number | null> {
+  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
+  const macroIds = (macros || []).map((m: any) => m.id)
+  if (!macroIds.length) return null
+  const { data: mesos } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macroIds)
+  const d = new Date(fechaStr + 'T12:00:00')
+  const meso = (mesos || []).find((me: any) => {
+    const ini = new Date(me.fecha_inicio + 'T12:00:00'); const fin = new Date(ini); fin.setDate(ini.getDate() + me.duracion_semanas * 7)
+    return d >= ini && d < fin
+  })
+  if (!meso) return null
+  const off = (d.getDay() + 6) % 7; const monday = new Date(d); monday.setDate(d.getDate() - off)
+  const mondayStr = monday.toISOString().slice(0, 10)
+  const { data: micros } = await supabase.from('microciclo').select('id, fecha_inicio').eq('id_mesociclo', meso.id)
+  const ex = (micros || []).find((mi: any) => mi.fecha_inicio === mondayStr)
+  if (ex) return ex.id
+  const { data: nuevo } = await supabase.from('microciclo').insert({ id_mesociclo: meso.id, id_deportista: depId, objetivo: 'Semana del ' + mondayStr, tipo: 'Carga', fecha_inicio: mondayStr, duracion_dias: 7 }).select('id').single()
+  return nuevo?.id ?? null
+}
 
 export default function MisSesiones() {
   const router = useRouter()
@@ -24,36 +47,79 @@ export default function MisSesiones() {
   })
   // Modal calendario
   const [diaModal, setDiaModal] = useState<{ fechaStr: string, sesiones: any[] } | null>(null)
+  const [dep, setDep] = useState<any>(null)
+  // Modal añadir sesión (deportista)
+  const [modalAnadir, setModalAnadir] = useState(false)
+  const [fDisc, setFDisc] = useState('Natacion')
+  const [fFecha, setFFecha] = useState(() => new Date().toISOString().split('T')[0])
+  const [fDur, setFDur] = useState('')
+  const [fNotas, setFNotas] = useState('')
+  const [fModo, setFModo] = useState<'planificada' | 'realizada'>('planificada')
+  const [fRpe, setFRpe] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
-  useEffect(() => {
-    const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
-      if (dep) {
-        const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-        const macroIds = (macros || []).map((m: any) => m.id)
-        if (!macroIds.length) { setLoading(false); return }
-        const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-        const mesoIds = (mesos || []).map((m: any) => m.id)
-        if (!mesoIds.length) { setLoading(false); return }
+  useEffect(() => { cargar() }, [])
+
+  const cargar = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/login'); return }
+    const { data: d } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
+    setDep(d)
+    if (!d) { setLoading(false); return }
+
+    // Planificadas (cadena de microciclos)
+    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', d.id)
+    const macroIds = (macros || []).map((m: any) => m.id)
+    let planificadas: any[] = []
+    if (macroIds.length) {
+      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+      const mesoIds = (mesos || []).map((m: any) => m.id)
+      if (mesoIds.length) {
         const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
         const microIds = (micros || []).map((m: any) => m.id)
-        if (!microIds.length) { setLoading(false); return }
-        const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
-        const [tc, tn, tci] = await Promise.all([
-          supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-        ])
-        const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
-        const durs = await estimarDuraciones(supabase, (data || []).map((s: any) => s.id), testsDep)
-        setSesiones((data || []).map((s: any) => ({ ...s, dur_estimada: durs[s.id] })))
+        if (microIds.length) {
+          const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
+          planificadas = data || []
+        }
       }
-      setLoading(false)
     }
-    cargar()
-  }, [])
+    // Sesiones libres añadidas por el atleta (sin microciclo)
+    const { data: libres } = await supabase.from('sesion').select('*').eq('id_deportista', d.id).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
+    const todas = [...planificadas, ...(libres || [])]
+
+    const [tc, tn, tci] = await Promise.all([
+      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
+    ])
+    const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+    const durs = await estimarDuraciones(supabase, todas.map((s: any) => s.id), testsDep)
+    setSesiones(todas.map((s: any) => ({ ...s, dur_estimada: durs[s.id] })).sort((a: any, b: any) => (a.fecha_sesion < b.fecha_sesion ? -1 : 1)))
+    setLoading(false)
+  }
+
+  const crearSesion = async () => {
+    if (!dep) return
+    setGuardando(true)
+    const micro = await resolverMicro(dep.id, fFecha)
+    const realizada = fModo === 'realizada'
+    const { error } = await supabase.from('sesion').insert({
+      id_deportista: dep.id,
+      id_microciclo: micro,
+      origen: 'deportista',
+      disciplina: fDisc,
+      fecha_sesion: fFecha,
+      duracion_minutos: fDur ? Number(fDur) : null,
+      estado: realizada ? 'Realizada' : 'Planificada',
+      rpe_estimado: !realizada && fRpe ? Number(fRpe) : null,
+      rpe_reportado: realizada && fRpe ? Number(fRpe) : null,
+      notas_entrenador: fNotas || null,
+    })
+    if (error) { alert('Error al crear la sesión: ' + error.message); setGuardando(false); return }
+    setModalAnadir(false); setFDur(''); setFNotas(''); setFRpe(''); setFModo('planificada')
+    await cargar()
+    setGuardando(false)
+  }
 
   const colorDisciplina = (d: string) => {
     if (!d) return 'bg-gray-500'
@@ -160,6 +226,11 @@ export default function MisSesiones() {
           </div>
         </div>
 
+        <button onClick={() => { setFFecha(new Date().toISOString().split('T')[0]); setModalAnadir(true) }}
+          className="w-full mb-6 border border-dashed border-gray-700 text-gray-300 hover:text-white hover:border-orange-500 rounded-xl py-3 text-sm font-medium transition">
+          ＋ Añadir una sesión que vas a hacer
+        </button>
+
         {/* VISTA LISTA */}
         {vista === 'lista' && (
           <div>
@@ -200,6 +271,7 @@ export default function MisSesiones() {
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
+                              {s.origen === 'deportista' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/50 text-orange-300">🙋 Tú</span>}
                               <span className={'text-xs px-2 py-0.5 rounded-full ' + estadoColor(s.estado)}>{s.estado}</span>
                               <span className="text-orange-500 text-sm">→</span>
                             </div>
@@ -416,6 +488,51 @@ export default function MisSesiones() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL — añadir sesión (deportista) */}
+      {modalAnadir && (
+        <div className="fixed inset-0 bg-black/75 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0" onClick={() => setModalAnadir(false)}>
+          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center px-5 py-4 border-b border-gray-800">
+              <p className="font-bold text-lg">Añadir sesión</p>
+              <button onClick={() => setModalAnadir(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-2">
+                {([['planificada', 'La voy a hacer'], ['realizada', 'Ya la hice']] as [typeof fModo, string][]).map(([k, l]) => (
+                  <button key={k} onClick={() => setFModo(k)} className={'py-2 rounded-lg text-sm font-medium transition ' + (fModo === k ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>{l}</button>
+                ))}
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Disciplina</label>
+                <select value={fDisc} onChange={e => setFDisc(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
+                  {DISCIPLINAS.map(d => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
+                <input type="date" value={fFecha} onChange={e => setFFecha(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Duración (min) — opcional</label>
+                <input type="number" value={fDur} onChange={e => setFDur(e.target.value)} placeholder="Ej: 60" className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">{fModo === 'realizada' ? 'RPE real (1-10)' : 'RPE estimado (1-10) — opcional'}</label>
+                <input type="number" min={1} max={10} value={fRpe} onChange={e => setFRpe(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Notas — opcional</label>
+                <textarea value={fNotas} onChange={e => setFNotas(e.target.value)} rows={2} placeholder={fModo === 'realizada' ? '¿Cómo fue?' : '¿Qué vas a hacer?'} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <button onClick={crearSesion} disabled={guardando} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition disabled:opacity-50">
+                {guardando ? 'Guardando...' : 'Añadir sesión'}
+              </button>
+              <p className="text-gray-600 text-xs text-center">Tu entrenador la verá marcada como añadida por ti.</p>
             </div>
           </div>
         </div>
