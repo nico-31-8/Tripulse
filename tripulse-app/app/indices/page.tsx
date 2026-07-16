@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 function calcularIndices(tarea: any, fcUmbral: number, rpeEstimado: number) {
   if (!tarea.fc_media || !tarea.rpe_reportado || !fcUmbral) return null
@@ -56,12 +57,15 @@ export default function IndicesPage() {
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
+      const d0 = (deps || []).find(d => d.id === getAtletaActivo())
+      if (d0) verIndices(d0)
     }
     cargar()
   }, [])
 
   const verIndices = async (dep: any) => {
     setSeleccionado(dep)
+    setAtletaActivo(dep.id)
     setLoadingSes(true)
     const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
 
@@ -130,16 +134,23 @@ export default function IndicesPage() {
         <h2 className="text-2xl font-bold mb-1">Análisis de Índices</h2>
         <p className="text-gray-400 mb-6 text-sm">Índice de percepción · Índice de planificación · Semáforo de doble dimensión</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-          {deportistas.map(d => (
-            <button key={d.id} onClick={() => verIndices(d)}
-              className={'rounded-xl p-5 border-2 text-left transition ' +
-                (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
-              <h3 className="font-bold text-lg">{d.nombre}</h3>
-              <p className="text-sm opacity-70">FC máx: {d.fc_maxima || '—'} ppm · FC umbral est: {d.fc_maxima ? Math.round(d.fc_maxima * 0.85) : '—'} ppm</p>
-            </button>
-          ))}
-        </div>
+        {seleccionado ? (
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+            <p className="text-sm text-gray-400">Deportista · <span className="text-white font-semibold">{seleccionado.nombre}</span></p>
+            <button onClick={() => setSeleccionado(null)} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">Cambiar deportista</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+            {deportistas.map(d => (
+              <button key={d.id} onClick={() => verIndices(d)}
+                className={'rounded-xl p-5 border-2 text-left transition ' +
+                  (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
+                <h3 className="font-bold text-lg">{d.nombre}</h3>
+                <p className="text-sm opacity-70">FC máx: {d.fc_maxima || '—'} ppm · FC umbral est: {d.fc_maxima ? Math.round(d.fc_maxima * 0.85) : '—'} ppm</p>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Selector de rango */}
         {seleccionado && !loadingSes && sesiones.length > 0 && (

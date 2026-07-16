@@ -100,8 +100,8 @@ export function rango(min: number | null, max: number | null, sufijo = '%'): str
 function paceKm(vam: number, pct: number): string {
   const vel = vam * pct / 100
   if (vel <= 0) return '—'
-  const seg = 3600 / vel
-  return `${Math.floor(seg / 60)}:${Math.round(seg % 60).toString().padStart(2, '0')}`
+  const seg = Math.round(3600 / vel)
+  return `${Math.floor(seg / 60)}:${(seg % 60).toString().padStart(2, '0')}`
 }
 
 // Prescripción de una zona de resistencia por disciplina, dados los tests del atleta
@@ -131,6 +131,63 @@ export function prescripcion(z: ZonaResistencia, disciplina: string, tests: { va
 }
 
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// Tabla de intensidades del deportista (VAM / FTP / CSS → objetivos por zona)
+// ------------------------------------------------------------
+
+// Offset numérico de natación por zona: segundos por 100 m respecto al CSS
+// (negativo = más rápido que CSS). Derivado del texto del catálogo.
+const CSS_OFFSET: Record<string, [number | null, number | null]> = {
+  AER: [20, null], AEL: [10, 20], AEM: [4, 8], AEI: [-3, 3],
+  PAE: [-8, -4], CLA: [-15, -8], PLA: [null, null], CALA: [null, null], PALA: [null, null],
+}
+
+// Segundos → "m:ss"
+function fmtSeg(s: number): string {
+  if (!isFinite(s) || s <= 0) return '—'
+  const t = Math.round(s)
+  return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`
+}
+
+// Ritmo de natación por 100 m para una zona, dado el CSS en m/s.
+function paceNatacion(sigla: string, css: number, textoFallback: string): string {
+  const off = CSS_OFFSET[sigla]
+  if (!off || (off[0] == null && off[1] == null)) return 'Máx. (series)'
+  const base = 100 / css // seg/100m a CSS
+  const [oMin, oMax] = off
+  const lo = oMin != null ? base + oMin : null // borde más rápido (menos tiempo)
+  const hi = oMax != null ? base + oMax : null // borde más lento (más tiempo)
+  if (lo != null && hi != null) return `${fmtSeg(lo)}–${fmtSeg(hi)} /100m`
+  if (lo != null) return `> ${fmtSeg(lo)} /100m` // AER: CSS+20 o más lento
+  if (hi != null) return `< ${fmtSeg(hi)} /100m`
+  return textoFallback
+}
+
+export interface FilaIntensidad {
+  sigla: string; nombre: string; color: string; factor: string
+  carrera: string; ciclismo: string; natacion: string; fc: string; rpe: string
+}
+
+// Construye la tabla de intensidades para las 9 zonas de resistencia.
+export function tablaIntensidades(
+  tests: { vam?: number | null; ftp?: number | null; css?: number | null },
+  fcMax?: number | null,
+): FilaIntensidad[] {
+  return ZONAS_RESISTENCIA.map(z => ({
+    sigla: z.sigla,
+    nombre: z.nombre,
+    color: z.color,
+    factor: z.factor,
+    carrera: prescripcion(z, 'Carrera', tests),
+    ciclismo: prescripcion(z, 'Ciclismo', tests),
+    natacion: tests.css ? paceNatacion(z.sigla, tests.css, z.css) : (z.css || '—'),
+    fc: (fcMax && z.fcMin != null && z.fcMax != null)
+      ? `${Math.round(fcMax * z.fcMin / 100)}–${Math.round(fcMax * z.fcMax / 100)} ppm`
+      : '—',
+    rpe: z.rpeMin === z.rpeMax ? String(z.rpeMin) : `${z.rpeMin}–${z.rpeMax}`,
+  }))
+}
+
 // Carga: resolver único para cualquier sigla (Z1–Z7 o Zonas 2)
 // Devuelve intensidad representativa para los cálculos/gráficos de carga.
 // El RPE sale del propio catálogo (punto medio del rango); el "nivel" 1–7

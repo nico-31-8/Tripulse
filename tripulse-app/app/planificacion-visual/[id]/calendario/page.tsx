@@ -6,6 +6,7 @@ import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
 import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
+import { PRUEBAS, CATEGORIAS_PRUEBA, pruebaPorId, resumenSegmentos } from '@/lib/pruebas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_FUERZA } from '@/lib/zonas'
 
@@ -158,6 +159,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [tipoPeriodizacion, setTipoPeriodizacion] = useState('')
   const [compTipo, setCompTipo] = useState('')
   const [compNotas, setCompNotas] = useState('')
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false)
   const [bloqueoMotivo, setBloqueoMotivo] = useState('')
   const [mostrarGrafica, setMostrarGrafica] = useState(false)
   const [mostrarPlan, setMostrarPlan] = useState(false)
@@ -195,8 +197,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setMicros(mi || [])
     if (!mi?.length) return
     const miIds = mi.map(m => m.id)
-    const { data: ses } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).eq('eliminada', false).order('fecha_sesion')
-    if (ses?.length) {
+    const { data: sesChain } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).eq('eliminada', false).order('fecha_sesion')
+    // Sesiones "libres" añadidas por el atleta (sin microciclo)
+    const { data: sesLibres } = await supabase.from('sesion').select('*').eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
+    const ses = [...(sesChain || []), ...(sesLibres || [])]
+    if (ses.length) {
       const sesIds = ses.map(s => s.id)
       const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos').in('id_sesion', sesIds)
       const tareaIds = tareas?.map(t => t.id) || []
@@ -414,7 +419,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   const guardarCompeticion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    await supabase.from('competicion').insert({ id_deportista: Number(id), nombre: compNombre, fecha: fechaSel, tipo: compTipo, notas: compNotas })
+    const tipoNombre = pruebaPorId(compTipo)?.nombre ?? (compTipo === 'otro' ? 'Otro' : compTipo)
+    await supabase.from('competicion').insert({ id_deportista: Number(id), nombre: compNombre, fecha: fechaSel, tipo: tipoNombre, notas: compNotas })
     setCompNombre(''); setCompTipo(''); setCompNotas(''); setModalTipo(null)
     await cargarDatos(); setLoading(false)
   }
@@ -574,6 +580,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             <button onClick={() => { setFechaSel(hoy); setModalTipo('competicion') }}
               className="flex items-center gap-1.5 bg-yellow-600 hover:bg-yellow-500 text-white text-sm px-3 py-2 rounded-lg transition font-medium">
               🏆 <span>+ Competición</span>
+            </button>
+            <button onClick={() => setMostrarCatalogo(true)}
+              className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm px-3 py-2 rounded-lg transition">
+              ℹ️ <span>Tipos de prueba</span>
             </button>
             <button onClick={() => { setFechaSel(hoy); setModalTipo('bloquear') }}
               className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white text-sm px-3 py-2 rounded-lg transition">
@@ -941,15 +951,21 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <input type="text" placeholder="Nombre de la competición" value={compNombre} onChange={e => setCompNombre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" required />
                 <select value={compTipo} onChange={e => setCompTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500">
-                  <option value="">Tipo (opcional)</option>
-                  <option value="Sprint">Sprint</option>
-                  <option value="Olímpico">Olímpico</option>
-                  <option value="Half">Half (70.3)</option>
-                  <option value="Ironman">Ironman</option>
-                  <option value="Carrera">Carrera a pie</option>
-                  <option value="Cicloturismo">Cicloturismo</option>
-                  <option value="Otro">Otro</option>
+                  <option value="">Tipo de prueba (opcional)</option>
+                  {CATEGORIAS_PRUEBA.map(cat => (
+                    <optgroup key={cat} label={cat}>
+                      {PRUEBAS.filter(p => p.categoria === cat).map(p => (
+                        <option key={p.id} value={p.id}>{p.nombre}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  <option value="otro">Otro</option>
                 </select>
+                {pruebaPorId(compTipo) && (
+                  <p className="text-xs text-gray-400 -mt-1 px-1">
+                    {resumenSegmentos(pruebaPorId(compTipo)!)}{pruebaPorId(compTipo)!.aprox ? ' · distancias aprox.' : ''}
+                  </p>
+                )}
                 <textarea placeholder="Notas (opcional)" value={compNotas} onChange={e => setCompNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : '🏆 Guardar competición'}</button>
               </form>
@@ -1100,6 +1116,36 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear sesión'}</button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: catálogo de tipos de prueba */}
+      {mostrarCatalogo && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setMostrarCatalogo(false)}>
+          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start gap-4 p-5 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-bold">🏁 Tipos de prueba</h3>
+                <p className="text-gray-500 text-xs mt-1">Formatos de competición y sus distancias de referencia</p>
+              </div>
+              <button onClick={() => setMostrarCatalogo(false)} className="text-gray-400 hover:text-white text-2xl leading-none flex-shrink-0">×</button>
+            </div>
+            <div className="overflow-auto p-4 flex flex-col gap-5">
+              {CATEGORIAS_PRUEBA.map(cat => (
+                <div key={cat}>
+                  <p className="text-xs font-semibold text-orange-400 uppercase tracking-wide mb-2">{cat}</p>
+                  <div className="flex flex-col divide-y divide-gray-800/70">
+                    {PRUEBAS.filter(p => p.categoria === cat).map(p => (
+                      <div key={p.id} className="flex justify-between items-baseline gap-4 py-2">
+                        <span className="text-sm font-medium text-gray-200 flex-shrink-0">{p.nombre}</span>
+                        <span className="text-xs text-gray-400 text-right">{resumenSegmentos(p)}{p.aprox ? ' · aprox.' : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

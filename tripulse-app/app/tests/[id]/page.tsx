@@ -4,6 +4,9 @@ import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { tablaIntensidades } from '@/lib/zonas'
+import { calcularObjetivos, idsConPacing } from '@/lib/pacing'
+import { pruebaPorId } from '@/lib/pruebas'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
@@ -181,6 +184,10 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   // Tests de sprint (ASR/APR)
   const [testTipo, setTestTipo] = useState<'aerobico'|'sprint'>('aerobico')
   const [mostrarProtocolo, setMostrarProtocolo] = useState(false)
+  const [mostrarIntensidades, setMostrarIntensidades] = useState(false)
+  const [intTab, setIntTab] = useState<'zonas' | 'objetivos'>('zonas')
+  const [objPrueba, setObjPrueba] = useState('tri-olimpico')
+  const [velBici, setVelBici] = useState('32')
   const [sprintDist, setSprintDist] = useState('40')   // carrera: metros del sprint lanzado
   const [sprintTiempo, setSprintTiempo] = useState('') // carrera: segundos
   const [mppSprint, setMppSprint] = useState('')        // ciclismo: W potencia pico
@@ -308,15 +315,29 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
 
   const rmPreview = calcularRM()
 
+  // Intensidades por zona a partir de los tests más recientes
+  const intVals = { vam: tests1[0]?.vam ?? null, css: tests2[0]?.css ?? null, ftp: tests3[0]?.ftp ?? null }
+  const hayIntensidades = !!(intVals.vam || intVals.css || intVals.ftp)
+  const filasInt = hayIntensidades ? tablaIntensidades(intVals, deportista.fc_maxima) : []
+  const objetivos = calcularObjetivos(objPrueba, intVals, Number(velBici) || 32)
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8">
-          <h2 className="text-2xl font-bold mb-1">Tests — {deportista.nombre}</h2>
-          <p className="text-gray-400 text-sm">Resultados de tests de rendimiento</p>
+        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8 flex justify-between items-start gap-4 flex-wrap">
+          <div>
+            <h2 className="text-2xl font-bold mb-1">Tests — {deportista.nombre}</h2>
+            <p className="text-gray-400 text-sm">Resultados de tests de rendimiento</p>
+          </div>
+          {hayIntensidades && (
+            <button onClick={() => setMostrarIntensidades(true)}
+              className="bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300 px-4 py-2 rounded-xl text-sm font-semibold transition flex-shrink-0">
+              🎯 Ver intensidades
+            </button>
+          )}
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
@@ -663,6 +684,124 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar protocolo completo'}</button>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: tabla de intensidades por zona */}
+      {mostrarIntensidades && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setMostrarIntensidades(false)}>
+          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start gap-4 p-5 pb-0">
+              <div>
+                <h3 className="text-xl font-bold">🎯 Intensidades y objetivos — {deportista.nombre}</h3>
+                <p className="text-gray-500 text-xs mt-1">
+                  {intVals.vam && <>VAM <b className="text-gray-300">{intVals.vam} km/h</b> · </>}
+                  {intVals.css && <>CSS <b className="text-gray-300">{intVals.css} m/s</b> · </>}
+                  {intVals.ftp && <>FTP <b className="text-gray-300">{intVals.ftp} W</b> · </>}
+                  {deportista.fc_maxima && <>FC máx <b className="text-gray-300">{deportista.fc_maxima} ppm</b></>}
+                </p>
+              </div>
+              <button onClick={() => setMostrarIntensidades(false)} className="text-gray-400 hover:text-white text-2xl leading-none flex-shrink-0">×</button>
+            </div>
+
+            <div className="flex gap-1 px-5 pt-3 border-b border-gray-800">
+              {([['zonas', 'Zonas de entrenamiento'], ['objetivos', 'Objetivos de carrera']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setIntTab(k)}
+                  className={'px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ' + (intTab === k ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>{l}</button>
+              ))}
+            </div>
+
+            {intTab === 'zonas' ? (
+              <div className="overflow-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 bg-gray-900">
+                    <tr className="text-left text-gray-500 text-xs">
+                      <th className="px-4 py-2.5 font-medium">Zona</th>
+                      <th className="px-4 py-2.5 font-medium">🏃 Carrera</th>
+                      <th className="px-4 py-2.5 font-medium">🚴 Ciclismo</th>
+                      <th className="px-4 py-2.5 font-medium">🏊 Natación</th>
+                      <th className="px-4 py-2.5 font-medium">FC</th>
+                      <th className="px-4 py-2.5 font-medium">RPE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasInt.map(f => (
+                      <tr key={f.sigla} className="border-t border-gray-800/70">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: f.color }} />
+                            <div>
+                              <p className="font-semibold text-gray-200 leading-tight">{f.sigla}</p>
+                              <p className="text-[11px] text-gray-500 leading-tight">{f.nombre}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{f.carrera}</td>
+                        <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{f.ciclismo}</td>
+                        <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{f.natacion}</td>
+                        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{f.fc}</td>
+                        <td className="px-4 py-3 text-gray-400">{f.rpe}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="p-3 border-t border-gray-800 text-[11px] text-gray-600">
+                  Calculado desde los tests más recientes. Donde falta el test, se muestra el rango en % (VAM/FTP) o el offset de CSS.
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 overflow-auto">
+                <div className="flex flex-wrap items-end gap-3 mb-4">
+                  <div>
+                    <label className="text-[11px] text-gray-500 block mb-1">Tipo de prueba</label>
+                    <select value={objPrueba} onChange={e => setObjPrueba(e.target.value)} className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60">
+                      {idsConPacing().map(id => <option key={id} value={id}>{pruebaPorId(id)?.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 block mb-1">Vel. media bici (km/h)</label>
+                    <input type="number" value={velBici} onChange={e => setVelBici(e.target.value)} className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none w-28 focus-visible:ring-2 focus-visible:ring-orange-500/60" />
+                  </div>
+                </div>
+                {objetivos ? (
+                  <>
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="text-left text-gray-500 text-xs">
+                          <th className="px-3 py-2 font-medium">Segmento</th>
+                          <th className="px-3 py-2 font-medium">Zona</th>
+                          <th className="px-3 py-2 font-medium">Objetivo</th>
+                          <th className="px-3 py-2 font-medium">Tiempo est.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {objetivos.filas.map((f, i) => (
+                          <tr key={i} className="border-t border-gray-800/70">
+                            <td className="px-3 py-3 whitespace-nowrap">
+                              <span className="font-semibold text-gray-200">{f.disc === 'Natación' ? '🏊' : f.disc === 'Ciclismo' ? '🚴' : '🏃'} {f.disc}</span>
+                              {f.km != null && <span className="text-gray-500 text-xs"> · {f.km} km</span>}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: f.zonaColor + '22', color: f.zonaColor }}>{f.zona}</span>
+                              <span className="text-[11px] text-gray-500 ml-1.5">{f.zonaNombre}</span>
+                            </td>
+                            <td className="px-3 py-3 text-gray-300 whitespace-nowrap">{f.intensidad}</td>
+                            <td className="px-3 py-3 text-gray-200 font-semibold whitespace-nowrap">{f.tiempo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-800">
+                      <span className="text-sm text-gray-400">Tiempo total estimado</span>
+                      <span className="text-lg font-bold text-orange-400">{objetivos.total}</span>
+                    </div>
+                    {objetivos.faltanTests && <p className="text-[11px] text-yellow-500/80 mt-2">Falta algún test (VAM/CSS/FTP): ese segmento muestra el % objetivo en vez del ritmo.</p>}
+                    <p className="text-[11px] text-gray-600 mt-2">Intensidades de triatlón según B1-13 (Friel). La bici usa la velocidad media que introduzcas; nado y carrera salen de los tests. No incluye transiciones (~2–4 min).</p>
+                  </>
+                ) : <p className="text-gray-500 text-sm py-4">Esta prueba no tiene pacing definido todavía.</p>}
+              </div>
+            )}
           </div>
         </div>
       )}

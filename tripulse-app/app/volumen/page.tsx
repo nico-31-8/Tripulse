@@ -7,6 +7,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargaZona } from '@/lib/zonas'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const RANGOS = [
   { label: '2 sem', dias: 14 },
@@ -62,6 +63,9 @@ export default function VolumenPage() {
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
+      const act = getAtletaActivo()
+      const d0 = (deps || []).find(d => d.id === act)
+      if (d0) verVolumen(d0, 28)
     }
     cargar()
   }, [])
@@ -69,6 +73,7 @@ export default function VolumenPage() {
   const verVolumen = async (dep: any, dias: number) => {
     setSeleccionado(dep)
     setLoadingDatos(true)
+    setAtletaActivo(dep.id)
     setSicat(null)
     setZonasRes(null)
     calcularSICAT(dep).then(setSicat)
@@ -90,15 +95,22 @@ export default function VolumenPage() {
     const microIds = (micros || []).map((m: any) => m.id)
     if (!microIds.length) { setDatosDias([]); setDatosSemanas([]); setLoadingDatos(false); return }
 
-    const { data: sesiones } = await supabase
+    const { data: sesChain } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
       .in('id_microciclo', microIds)
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
+    // Sesiones "libres" del atleta (sin microciclo) también cuentan en el volumen.
+    const { data: sesLibres } = await supabase
+      .from('sesion')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .eq('id_deportista', dep.id).is('id_microciclo', null)
+      .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
+    const sesiones = [...(sesChain || []), ...(sesLibres || [])]
 
-    if (!sesiones?.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
+    if (!sesiones.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
 
     const sesIds = sesiones.map(s => s.id)
     const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento').in('id_sesion', sesIds)
@@ -252,22 +264,29 @@ export default function VolumenPage() {
         <h2 className="text-2xl font-bold mb-1">Volumen y Carga</h2>
         <p className="text-gray-400 mb-6 text-sm">Metros · Kilómetros · RPE × duración · Volumen muscular</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-          {deportistas.map(d => (
-            <button key={d.id} onClick={() => { setRango(28); verVolumen(d, 28) }}
-              className={'rounded-xl p-5 border-2 text-left transition ' +
-                (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
-              <h3 className="font-bold text-lg">{d.nombre}</h3>
-              <p className="text-sm opacity-70">{d.sexo || 'Sin especificar'}</p>
-            </button>
-          ))}
-          {deportistas.length === 0 && (
-            <div className="col-span-2 text-center py-12 text-gray-500">
-              <div className="text-5xl mb-4">📊</div>
-              <p>No tienes deportistas todavía.</p>
-            </div>
-          )}
-        </div>
+        {seleccionado ? (
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+            <p className="text-sm text-gray-400">Deportista · <span className="text-white font-semibold">{seleccionado.nombre}</span></p>
+            <button onClick={() => setSeleccionado(null)} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">Cambiar deportista</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+            {deportistas.map(d => (
+              <button key={d.id} onClick={() => { setRango(28); verVolumen(d, 28) }}
+                className={'rounded-xl p-5 border-2 text-left transition ' +
+                  (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
+                <h3 className="font-bold text-lg">{d.nombre}</h3>
+                <p className="text-sm opacity-70">{d.sexo || 'Sin especificar'}</p>
+              </button>
+            ))}
+            {deportistas.length === 0 && (
+              <div className="col-span-2 text-center py-12 text-gray-500">
+                <div className="text-5xl mb-4">📊</div>
+                <p>No tienes deportistas todavía.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {seleccionado && loadingDatos && (
           <div className="text-center py-16 text-gray-400">Calculando datos...</div>

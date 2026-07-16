@@ -69,7 +69,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     }
     const microIds = (mi || []).map(x => x.id)
     if (microIds.length) {
-      const { data: ses } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo').in('id_microciclo', microIds).eq('eliminada', false)
+      const { data: ses } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen').in('id_microciclo', microIds).eq('eliminada', false)
       setSesiones(ses || [])
       const sesIds = (ses || []).map(s => s.id)
       if (sesIds.length) {
@@ -208,7 +208,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
             className={'text-sm px-3 py-1 rounded-lg transition ml-2 ' + (editMode ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-800 text-gray-300 hover:text-white')}>
             {editMode ? '✓ Listo' : '✏️ Editar'}
           </button>
-          <button onClick={() => router.push('/mesociclo/' + id)} className="text-orange-400 hover:text-orange-300 text-sm transition">Gestionar →</button>
+          <button onClick={() => depId && router.push('/planificacion-visual/' + depId + '/dibujo?editar=1')} className="text-orange-400 hover:text-orange-300 text-sm transition">← Volver al dibujo</button>
         </div>
       </nav>
 
@@ -285,6 +285,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                                 style={{ backgroundColor: (C_DISC[s.disciplina] || '#6b7280') + (s.estado === 'Realizada' ? 'ff' : '55'), borderLeft: '2px solid ' + (C_DISC[s.disciplina] || '#6b7280'), boxShadow: isSel ? '0 0 0 2px #fb923c' : undefined }}>
                                 <div className="flex items-center gap-1">
                                   <span style={{ fontSize: 10 }} className="font-medium truncate">{DISC_CORTO[s.disciplina] || s.disciplina?.slice(0, 3)}</span>
+                                  {s.origen === 'deportista' && <span style={{ fontSize: 9 }} title="Añadida por el atleta">🙋</span>}
                                   {s.estado === 'Realizada' && <span className="ml-auto text-green-300" style={{ fontSize: 9 }}>✓</span>}
                                 </div>
                                 {zs.length > 0 && (

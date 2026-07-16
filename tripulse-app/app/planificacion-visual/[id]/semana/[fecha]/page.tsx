@@ -91,6 +91,14 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       }
     }
 
+    // Sesiones "libres" (añadidas por el atleta, sin microciclo) que caen en esta semana.
+    const domISO = (() => { const d = new Date(fecha + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10) })()
+    const { data: libres } = await supabase.from('sesion').select('*')
+      .eq('id_deportista', Number(id)).is('id_microciclo', null)
+      .gte('fecha_sesion', fecha).lte('fecha_sesion', domISO)
+      .or('eliminada.is.null,eliminada.eq.false')
+    if (libres?.length) { sesiones_cargadas = [...sesiones_cargadas, ...libres]; setSesiones(sesiones_cargadas) }
+
     // Unidades planificadas (zonas) para esta semana, desde el Dibujo
     const { data: borrador } = await supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', Number(id)).maybeSingle()
     setBorradorId(borrador?.id ?? null)
@@ -464,7 +472,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                       <button
                         onClick={() => router.push('/sesion/' + s.id)}
                         className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
-                        <p className="text-xs font-bold">{s.disciplina}</p>
+                        <p className="text-xs font-bold">{s.disciplina}{s.origen === 'deportista' && <span className="ml-1" title="Añadida por el atleta">🙋</span>}</p>
                         <p className="text-xs opacity-80">{s.duracion_minutos ? s.duracion_minutos + 'min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
                         {s.estado === 'Realizada' && <p className="text-xs opacity-60 mt-0.5">✓ Realizada</p>}
                       </button>

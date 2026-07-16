@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 function calcularEdad(fechaNacimiento: string): number {
   const hoy = new Date()
@@ -24,6 +25,9 @@ export default function TestsPage() {
       if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(data || [])
+      // Si hay un deportista activo, entramos directo a sus tests (sin volver a elegir).
+      const act = getAtletaActivo()
+      if (act && (data || []).some(d => d.id === act)) { router.replace('/tests/' + act); return }
     }
     cargar()
   }, [])
@@ -44,7 +48,7 @@ export default function TestsPage() {
         ) : (
           <div className="grid gap-4">
             {deportistas.map(d => (
-              <button key={d.id} onClick={() => router.push(`/tests/${d.id}`)} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left w-full">
+              <button key={d.id} onClick={() => { setAtletaActivo(d.id); router.push(`/tests/${d.id}`) }} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left w-full">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-bold text-lg">{d.nombre}</h3>

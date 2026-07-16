@@ -7,6 +7,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -119,12 +120,16 @@ export default function CargaPage() {
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])
       setLoading(false)
+      const act = getAtletaActivo()
+      const d0 = (deps || []).find(d => d.id === act)
+      if (d0) verCarga(d0, 56)
     }
     cargar()
   }, [])
 
   const verCarga = async (dep: any, dias: number) => {
     setSeleccionado(dep)
+    setAtletaActivo(dep.id)
     setLoadingDatos(true)
     setSicat(null)
     setZonasRes(null)
@@ -138,17 +143,25 @@ export default function CargaPage() {
     const microsDelDep = (micros || []).filter((m: any) =>
       m.mesociclo?.macrociclo?.id_deportista === dep.id
     ).map((m: any) => m.id)
-    let todasSesiones: any[] = []
+    const desdeStr = desde.toISOString().split('T')[0]
+    let baseSes: any[] = []
     if (microsDelDep.length > 0) {
       const { data: ses } = await supabase
         .from('sesion')
         .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
-        .gte('fecha_sesion', desde.toISOString().split('T')[0])
+        .gte('fecha_sesion', desdeStr)
         .order('fecha_sesion')
-      todasSesiones = await attachZonaPico(ses || [])
+      baseSes = ses || []
     }
+    // Sesiones "libres" del atleta (sin microciclo) también cuentan en la carga.
+    const { data: libres } = await supabase
+      .from('sesion')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .eq('id_deportista', dep.id).is('id_microciclo', null)
+      .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
+    const todasSesiones = await attachZonaPico([...baseSes, ...(libres || [])])
     setSesionesRaw(todasSesiones)
     setLoadingDatos(false)
   }
@@ -185,8 +198,12 @@ export default function CargaPage() {
       .in('id_microciclo', microsDelDep)
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
+    const { data: libresD } = await supabase
+      .from('sesion')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', desdeStr)
 
-    setDiariaRaw(await attachZonaPico(sesiones || []))
+    setDiariaRaw(await attachZonaPico([...(sesiones || []), ...(libresD || [])]))
   }
 
   const datosDiarios = useMemo(() => {
@@ -253,23 +270,30 @@ export default function CargaPage() {
           </button>
         </div>
 
-        {/* Selector deportista — común a las dos pestañas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-          {deportistas.map(d => (
-            <button key={d.id} onClick={() => { setRango(56); verCarga(d, 56) }}
-              className={'rounded-xl p-5 border-2 text-left transition ' +
-                (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
-              <h3 className="font-bold text-lg">{d.nombre}</h3>
-              <p className="text-sm opacity-70">{d.sexo || 'Sin especificar'} · FC máx: {d.fc_maxima || '—'} ppm</p>
-            </button>
-          ))}
-          {deportistas.length === 0 && (
-            <div className="col-span-2 text-center py-12 text-gray-500">
-              <div className="text-5xl mb-4">📈</div>
-              <p>No tienes deportistas todavía.</p>
-            </div>
-          )}
-        </div>
+        {/* Selector deportista: solo cuando no hay uno activo */}
+        {seleccionado ? (
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+            <p className="text-sm text-gray-400">Deportista · <span className="text-white font-semibold">{seleccionado.nombre}</span></p>
+            <button onClick={() => setSeleccionado(null)} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">Cambiar deportista</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+            {deportistas.map(d => (
+              <button key={d.id} onClick={() => { setRango(56); verCarga(d, 56) }}
+                className={'rounded-xl p-5 border-2 text-left transition ' +
+                  (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
+                <h3 className="font-bold text-lg">{d.nombre}</h3>
+                <p className="text-sm opacity-70">{d.sexo || 'Sin especificar'} · FC máx: {d.fc_maxima || '—'} ppm</p>
+              </button>
+            ))}
+            {deportistas.length === 0 && (
+              <div className="col-span-2 text-center py-12 text-gray-500">
+                <div className="text-5xl mb-4">📈</div>
+                <p>No tienes deportistas todavía.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {seleccionado && (
           <div className="flex items-center gap-3 mb-6 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">

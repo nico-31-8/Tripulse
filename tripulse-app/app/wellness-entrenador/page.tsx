@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
 import { analizarWellness } from '@/lib/wellness-analisis'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const VARS_SUBJETIVAS = [
   { key: 'fatiga',         label: 'Fatiga',         color: '#f87171' },
@@ -69,6 +70,9 @@ export default function WellnessEntrenador() {
           return { ...d, ultimoWellness: recientes[0] || null, readiness: analizarWellness(recientes).readiness }
         }))
         setDeportistas(conWellness)
+        const act = getAtletaActivo()
+        const d0 = conWellness.find(d => d.id === act)
+        if (d0) verDetalle(d0)
       }
       setLoading(false)
     }
@@ -90,6 +94,7 @@ export default function WellnessEntrenador() {
 
   const verDetalle = async (dep: any) => {
     setSeleccionado(dep)
+    setAtletaActivo(dep.id)
     await cargarRegistros(dep.id, rango, fechaDesde, fechaHasta, usarFechasCustom)
   }
 

@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { setAtletaActivo } from '@/lib/atletaActivo'
 
 export default function Login() {
   const router = useRouter()
@@ -22,6 +23,8 @@ export default function Login() {
     const { data, error: err } = await supabase.auth.signInWithPassword({ email, password })
     if (err) { setError('Email o contraseña incorrectos'); setLoading(false); return }
     if (data.user) {
+      // Login fresco: olvidamos el deportista activo para que el entrenador vea el selector.
+      setAtletaActivo(null)
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.user.id).single()
       if (perfil?.rol === 'deportista') {
         const { data: dep } = await supabase.from('deportista').select('id, id_entrenador').eq('id_usuario', data.user.id).single()

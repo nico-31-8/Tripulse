@@ -54,3 +54,8 @@ html, body {
     cursor: url("/cursor/pointer.svg") 2 1, pointer;
   }
 }
+
+/* Entrada escalonada (selector de deportista). */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp .55s cubic-bezier(.22,1,.36,1) both; }
+@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
