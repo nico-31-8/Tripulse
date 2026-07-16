@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
+import { cargarBloques, type Bloque } from '@/lib/atribucion'
 
 const DISCIPLINAS = [
   { key: 'Natacion', label: '🏊 Natación', color: '#60a5fa' },
@@ -11,12 +12,13 @@ const DISCIPLINAS = [
   { key: 'Fuerza', label: '🏋️ Fuerza', color: '#f87171' },
 ]
 
-function calcularCargasDisc(sesiones: any[], factor: number) {
-  if (!sesiones.length) return []
+// Recibe BLOQUES, no sesiones: un brick aporta a la bici y a la carrera por
+// separado, cada una con sus minutos reales (ver lib/atribucion).
+function calcularCargasDisc(bloques: Bloque[], factor: number) {
+  if (!bloques.length) return []
   const mapa: Record<string, number> = {}
-  sesiones.forEach(s => {
-    const carga = (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factor
-    mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + carga
+  bloques.forEach(b => {
+    mapa[b.fecha] = (mapa[b.fecha] || 0) + b.ua * factor
   })
   const fechas = Object.keys(mapa).sort()
   let atl = 0, ctl = 0
@@ -51,7 +53,7 @@ interface Props {
 }
 
 export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null }: Props) {
-  const [sesionesPorDisc, setSesionesPorDisc] = useState<Record<string, any[]>>({})
+  const [bloques, setBloques] = useState<Bloque[]>([])
   const [loading, setLoading] = useState(true)
   const [discActiva, setDiscActiva] = useState('Carrera')
 
@@ -69,29 +71,26 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
 
     // Obtener microciclos del deportista
     const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    if (!macros?.length) { setSesionesPorDisc({}); setLoading(false); return }
+    if (!macros?.length) { setBloques([]); setLoading(false); return }
     const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-    if (!mesos?.length) { setSesionesPorDisc({}); setLoading(false); return }
+    if (!mesos?.length) { setBloques([]); setLoading(false); return }
     const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-    if (!micros?.length) { setSesionesPorDisc({}); setLoading(false); return }
+    if (!micros?.length) { setBloques([]); setLoading(false); return }
     const microIds = micros.map(m => m.id)
 
-    const resultado: Record<string, any[]> = {}
+    // Una sola consulta sin filtrar por disciplina: el deporte lo pone el bloque.
+    const { data: ses } = await supabase
+      .from('sesion')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos')
+      .in('id_microciclo', microIds)
+      .eq('estado', 'Realizada')
+      .gte('fecha_sesion', desdeStr)
+      .order('fecha_sesion')
 
-    for (const disc of DISCIPLINAS) {
-      const { data: ses } = await supabase
-        .from('sesion')
-        .select('fecha_sesion, rpe_estimado, duracion_minutos')
-        .in('id_microciclo', microIds)
-        .eq('estado', 'Realizada')
-        .eq('disciplina', disc.key)
-        .gte('fecha_sesion', desdeStr)
-        .order('fecha_sesion')
-
-      resultado[disc.key] = ses || []
-    }
-
-    setSesionesPorDisc(resultado)
+    setBloques(await cargarBloques(supabase, ses || [], {
+      rpe: s => s.rpe_estimado || 5,   // como antes: aquí se usa el RPE planificado
+      estimar: false,                  // sin duración manual la sesión pesa 0, como antes
+    }))
     setLoading(false)
   }
 
@@ -99,10 +98,11 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     const resultado: Record<string, any[]> = {}
     for (const disc of DISCIPLINAS) {
       const factor = sicat ? factorSicat(disc.key, sicat) : 1
-      resultado[disc.key] = calcularCargasDisc(sesionesPorDisc[disc.key] || [], factor).slice(-diasRango)
+      const suyos = bloques.filter(b => b.disciplina === disc.key)
+      resultado[disc.key] = calcularCargasDisc(suyos, factor).slice(-diasRango)
     }
     return resultado
-  }, [sesionesPorDisc, sicat, diasRango])
+  }, [bloques, sicat, diasRango])
 
   if (loading) return <div className="text-center py-8 text-gray-500 text-sm">Calculando carga por disciplina...</div>
 

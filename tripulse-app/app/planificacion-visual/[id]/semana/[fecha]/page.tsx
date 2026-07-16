@@ -4,6 +4,9 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
+import ConstructorBrick from '@/components/ConstructorBrick'
+import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
+import type { ChipZona } from '@/lib/chips'
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -16,9 +19,18 @@ const COLOR_DISC: Record<string, string> = {
   Brick: 'bg-purple-900 text-purple-300',
 }
 const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Natación: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
+// Para leer de un vistazo la secuencia de un brick en la tarjeta.
+const EMOJI_DISC: Record<string, string> = { Natacion: '🏊', Natación: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
 function fechaStr(d: Date): string {
   return d.toISOString().split('T')[0]
+}
+
+// Color de texto legible (oscuro/blanco) según la luminancia del fondo del chip.
+function txtSobre(hex: string): string {
+  const c = (hex || '#888888').replace('#', '')
+  const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16)
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#0a0b0f' : '#ffffff'
 }
 
 function diasDeSemana(lunes: string): { fecha: string; dia: string; diaCorto: string; dayNum: number }[] {
@@ -35,7 +47,6 @@ function weeksBetween(f1: string, f2: string): number {
   return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24 * 7))
 }
 
-interface ChipZona { id: string; semana: number; disciplina: string; zona: string; hecho?: boolean; grupo?: string }
 
 export default function SemanaPage({ params }: { params: Promise<{ id: string; fecha: string }> }) {
   const router = useRouter()
@@ -51,6 +62,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [rpe, setRpe] = useState('')
   const [notas, setNotas] = useState('')
   const [cronometro, setCronometro] = useState(false)
+  const [brick, setBrick] = useState<BrickValor>(BRICK_VACIO)
   const [guardando, setGuardando] = useState(false)
   const [uaProg, setUaProg] = useState(0)
   const [uaReal, setUaReal] = useState(0)
@@ -107,7 +119,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     // Calcular UA programada y real
     const sesIds = sesiones_cargadas.map((s: any) => s.id)
     if (sesIds.length > 0) {
-      const { data: tareasData } = await supabase.from('tarea').select('id, id_sesion, series').in('id_sesion', sesIds)
+      const { data: tareasData } = await supabase.from('tarea').select('id, id_sesion, series, zona_entrenamiento, disciplina, orden').in('id_sesion', sesIds).order('orden')
       const tareaIds = (tareasData || []).map((t: any) => t.id)
       const [{ data: dists }, { data: durs }] = await Promise.all([
         tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },
@@ -130,6 +142,20 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         realTotal += (s.rpe_reportado || 0) * (s.duracion_minutos || 0)
       })
       setUaReal(Math.round(realTotal))
+
+      // Bloques de cada sesión, en orden (para la tarjeta: simple/compleja + siglas,
+      // y en un brick la secuencia de deportes: 🚴 AEM → 🏃 AEM).
+      const bloquesPorSes: Record<number, { zona: string; disciplina: string | null }[]> = {}
+      ;(tareasData || []).forEach((t: any) => {
+        if (!t.zona_entrenamiento) return
+        if (!bloquesPorSes[t.id_sesion]) bloquesPorSes[t.id_sesion] = []
+        bloquesPorSes[t.id_sesion].push({ zona: t.zona_entrenamiento, disciplina: t.disciplina })
+      })
+      setSesiones(sesiones_cargadas.map((s: any) => {
+        let bloques = bloquesPorSes[s.id] || []
+        if (bloques.length === 0 && s.zona_fuerza) bloques = [{ zona: s.zona_fuerza, disciplina: 'Fuerza' }]
+        return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
+      }))
     } else {
       setUaProg(0)
       setUaReal(0)
@@ -166,22 +192,30 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
   const crearSesion = async (fechaDia: string) => {
     if (!disc) { alert('Elige una disciplina'); return }
+    const esB = disc === 'Brick'
+    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
     setGuardando(true)
     const microId = await obtenerOcrearMicrociclo()
     if (!microId) { setGuardando(false); return }
 
-    await supabase.from('sesion').insert({
+    // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
+    const { data: nueva } = await supabase.from('sesion').insert({
       id_microciclo: microId,
       disciplina: disc,
       fecha_sesion: fechaDia,
-      duracion_minutos: duracion ? Number(duracion) : null,
-      rpe_estimado: rpe ? Number(rpe) : null,
+      duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (duracion ? Number(duracion) : null),
+      rpe_estimado: esB ? (rpe ? Number(rpe) : rpeBrick(brick)) : (rpe ? Number(rpe) : null),
       notas_entrenador: notas,
       estado: 'Planificada',
       usar_cronometro: cronometro,
-    })
+    }).select().single()
+    if (esB) {
+      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setGuardando(false); return }
+      const err = await guardarBrick(supabase, nueva.id, brick)
+      if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setGuardando(false); return }
+    }
 
-    setDisc(''); setDuracion(''); setRpe(''); setNotas(''); setCronometro(false)
+    setDisc(''); setDuracion(''); setRpe(''); setNotas(''); setCronometro(false); setBrick(BRICK_VACIO)
     setModal(null)
     await cargar()
     setGuardando(false)
@@ -210,12 +244,22 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const disciplina = chips[0].disciplina
     const esFuerza = disciplina === 'Fuerza'
     const compleja = chips.length > 1
-    const rpeEstim = Math.round(chips.reduce((a, c) => a + cargaZona(c.zona).rpe, 0) / chips.length)
+    // Un chip de brick trae sus bloques del canvas: manda él, no la zona del chip.
+    const chipBrick = chips.length === 1 && chips[0].disciplina === 'Brick' ? chips[0].brick : null
+    // Red de seguridad: un brick nunca debe caer al camino normal, que crearía tareas
+    // con disciplina 'Brick' y dejaría su volumen sin atribuir a ningún deporte.
+    if (!chipBrick && chips.some(c => c.disciplina === 'Brick')) {
+      alert('Un brick se arrastra solo, no agrupado con otras zonas.'); setGuardando(false); return
+    }
+    const rpeEstim = chipBrick
+      ? rpeBrick(chipBrick)
+      : Math.round(chips.reduce((a, c) => a + cargaZona(c.zona).rpe, 0) / chips.length)
 
     const { data: nuevaSesion, error: errSes } = await supabase.from('sesion').insert({
       id_microciclo: microId,
       disciplina,
       fecha_sesion: fechaDia,
+      duracion_minutos: chipBrick ? chipBrick.bloques.reduce((a, b) => a + b.minutos, 0) : null,
       rpe_estimado: rpeEstim,
       estado: 'Planificada',
       modo_fuerza: esFuerza ? (compleja ? 'compleja' : 'simple') : null,
@@ -224,9 +268,13 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     }).select().single()
     if (errSes || !nuevaSesion) { alert('Error creando la sesión: ' + (errSes?.message || '')); setGuardando(false); return }
 
-    // Fuerza simple deja la zona a nivel de sesión (zona_fuerza) sin tarea, como en el resto
-    // de la app. Resistencia (siempre) y fuerza compleja materializan una tarea por zona.
-    if (!(esFuerza && !compleja)) {
+    if (chipBrick) {
+      // El brick materializa una tarea por bloque, cada una con su propio deporte.
+      const err = await guardarBrick(supabase, nuevaSesion.id, chipBrick)
+      if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setGuardando(false); return }
+    } else if (!(esFuerza && !compleja)) {
+      // Fuerza simple deja la zona a nivel de sesión (zona_fuerza) sin tarea, como en el resto
+      // de la app. Resistencia (siempre) y fuerza compleja materializan una tarea por zona.
       const tareas = chips.map((c, i) => ({ id_sesion: nuevaSesion.id, zona_entrenamiento: c.zona, disciplina, orden: i + 1 }))
       const { error: errTar } = await supabase.from('tarea').insert(tareas)
       if (errTar) alert('Sesión creada, pero error al crear las tareas: ' + errTar.message)
@@ -246,6 +294,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const sel = sesZonasAll.filter(z => seleccion.includes(z.id))
     if (sel.length < 2) return
     if (!sel.every(z => z.disciplina === sel[0].disciplina)) { alert('Solo se pueden fusionar zonas de la misma disciplina'); return }
+    // Un brick ya ES una unidad de varios bloques: fusionarlo con otro no significa nada
+    // y rompería la atribución (acabaría con tareas de disciplina 'Brick').
+    if (sel.some(z => z.disciplina === 'Brick')) { alert('Un brick ya es una unidad: edítalo desde el canvas para cambiar sus bloques.'); return }
     // Reutiliza un grupo existente entre las seleccionadas, si lo hay (para ampliar una unidad).
     const grupoId = sel.find(z => z.grupo)?.grupo || ('g' + Math.random().toString(36).slice(2))
     await persistirZonas(sesZonasAll.map(z => seleccion.includes(z.id) ? { ...z, grupo: grupoId } : z))
@@ -472,9 +523,36 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                       <button
                         onClick={() => router.push('/sesion/' + s.id)}
                         className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
-                        <p className="text-xs font-bold">{s.disciplina}{s.origen === 'deportista' && <span className="ml-1" title="Añadida por el atleta">🙋</span>}</p>
-                        <p className="text-xs opacity-80">{s.duracion_minutos ? s.duracion_minutos + 'min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
-                        {s.estado === 'Realizada' && <p className="text-xs opacity-60 mt-0.5">✓ Realizada</p>}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <p className="text-xs font-bold truncate">
+                            {s.disciplina === 'Brick' ? '🔀 Brick' : s.disciplina}
+                            {s.origen === 'deportista' && <span className="ml-1" title="Añadida por el atleta">🙋</span>}
+                          </p>
+                          {s._zonas?.length > 0 && (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-black/30 flex-shrink-0">
+                              {/* En un brick «compleja» no dice nada: lo que importa es cuántos esfuerzos encadena. */}
+                              {s.disciplina === 'Brick' ? s._bloques.length + ' bloques' : (s._zonas.length > 1 ? 'Compleja' : 'Simple')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                          {s._bloques?.length > 0
+                            ? s._bloques.map((b: any, i: number) => {
+                                const col = cargaZona(b.zona).color
+                                return (
+                                  <span key={i} className="flex items-center gap-1">
+                                    {/* La flecha marca la transición: es lo que convierte dos bloques en un brick. */}
+                                    {i > 0 && s.disciplina === 'Brick' && <span className="text-[9px] opacity-50">→</span>}
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ background: col, color: txtSobre(col) }}>
+                                      {s.disciplina === 'Brick' && EMOJI_DISC[b.disciplina] ? EMOJI_DISC[b.disciplina] + ' ' : ''}{b.zona}
+                                    </span>
+                                  </span>
+                                )
+                              })
+                            : <span className="text-[9px] font-medium px-1.5 py-0.5 rounded leading-none bg-white/10 text-white/50">sin zona</span>}
+                        </div>
+                        <p className="text-[10px] opacity-70 mt-1.5">{s.duracion_minutos ? s.duracion_minutos + 'min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
+                        {s.estado === 'Realizada' && <p className="text-[10px] opacity-60 mt-0.5">✓ Realizada</p>}
                       </button>
                       <button
                         onClick={() => borrarSesion(s.id)}
@@ -545,9 +623,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 <option value="">Disciplina</option>
                 <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
               </select>
-              <input type="number" placeholder="Duracion en minutos (opcional)" value={duracion} onChange={e => setDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              {disc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
+              {disc !== 'Brick' && <input type="number" placeholder="Duracion en minutos (opcional)" value={duracion} onChange={e => setDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />}
               <div>
-                <label className="text-gray-400 text-sm mb-1.5 block">RPE estimado (1-10)</label>
+                <label className="text-gray-400 text-sm mb-1.5 block">RPE estimado (1-10){disc === 'Brick' && <span className="text-gray-600"> — si lo dejas vacío se calcula de las zonas</span>}</label>
                 <input type="number" min="1" max="10" value={rpe} onChange={e => setRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 w-full" />
               </div>
               <textarea placeholder="Notas para el atleta (opcional)" value={notas} onChange={e => setNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" rows={2} />

@@ -7,6 +7,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { cargarBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const RANGOS = [
@@ -203,7 +204,29 @@ export default function CargaPage() {
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
       .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', desdeStr)
 
-    setDiariaRaw(await attachZonaPico([...(sesiones || []), ...(libresD || [])]))
+    const sesDia = [...(sesiones || []), ...(libresD || [])]
+    const conZona = await attachZonaPico(sesDia)
+
+    // Reparto de la UA de cada sesión entre los deportes de sus BLOQUES. En una sesión
+    // normal es [{su deporte, 1}] → los números de siempre no se mueven. En un brick, la
+    // bici y la carrera se llevan su parte; si no, su UA no contaría en ninguna disciplina
+    // (sesion.disciplina vale 'Brick', que no es un deporte — ver lib/atribucion).
+    // usarRpeDeBloque: la UA de aquí solo sirve de PESO para repartir (la absoluta se
+    // calcula abajo). En un brick, el RPE real de cada bloque es lo que reparte bien.
+    const bloques = await cargarBloques(supabase, sesDia, { estimar: false, usarRpeDeBloque: true })
+    const uaSes: Record<number, number> = {}
+    bloques.forEach(b => { uaSes[b.id_sesion] = (uaSes[b.id_sesion] || 0) + b.ua })
+    const reparto: Record<number, { disciplina: string; peso: number }[]> = {}
+    bloques.forEach(b => {
+      const total = uaSes[b.id_sesion]
+      if (!total) return
+      ;(reparto[b.id_sesion] ||= []).push({ disciplina: b.disciplina, peso: b.ua / total })
+    })
+
+    setDiariaRaw(conZona.map(s => ({
+      ...s,
+      _reparto: reparto[s.id] || [{ disciplina: s.disciplina, peso: 1 }],
+    })))
   }
 
   const datosDiarios = useMemo(() => {
@@ -221,8 +244,14 @@ export default function CargaPage() {
       const uaPlanificada = planificadas.reduce((acc, s) =>
         acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s), 0)
 
-      const uaPorDisc = (disc: string) => realizadas.filter(s => s.disciplina === disc)
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s), 0)
+      // Por el deporte del BLOQUE, no por sesion.disciplina: un brick reparte su UA
+      // entre la bici y la carrera según el peso de cada bloque.
+      const uaPorDisc = (disc: string) => realizadas.reduce((acc, s) => {
+        const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s)
+        const parte = (s._reparto || []).filter((r: any) => r.disciplina === disc)
+          .reduce((a: number, r: any) => a + r.peso, 0)
+        return acc + ua * parte
+      }, 0)
       const uaNatacion = uaPorDisc('Natacion')
       const uaCiclismo = uaPorDisc('Ciclismo')
       const uaCarrera = uaPorDisc('Carrera')

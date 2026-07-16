@@ -4,6 +4,9 @@ import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
+import ConstructorBrick from '@/components/ConstructorBrick'
+import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
+import type { ChipZona } from '@/lib/chips'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -129,7 +132,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [editTipo, setEditTipo] = useState('')
   const [editDur, setEditDur] = useState(4)
   const [editInt, setEditInt] = useState(7)
-  const [sesZonas, setSesZonas] = useState<{id:string;semana:number;disciplina:string;zona:string;hecho?:boolean}[]>([])
+  const [sesZonas, setSesZonas] = useState<ChipZona[]>([])
+  const [zonaSelBrick, setZonaSelBrick] = useState<BrickValor>(BRICK_VACIO)
   const [popupZona, setPopupZona] = useState<{semana:number;x:number;y:number}|null>(null)
   const [popupMeso, setPopupMeso] = useState<{ me: MesoD; x: number; y: number } | null>(null)
   const [zonaSelDisc, setZonaSelDisc] = useState('Natacion')
@@ -154,7 +158,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const mesoMovedRef = useRef(false)
   const mesoClickTimerRef = useRef<any>(null)
   const movePreviewRef = useRef<{tipo: string, si: number, sf: number, id: string} | null>(null)
-  const sesZonasRef = useRef<{id:string;semana:number;disciplina:string;zona:string;hecho?:boolean}[]>([])
+  const sesZonasRef = useRef<ChipZona[]>([])
   // Copia viva de todo lo autoguardable, para poder volcar el borrador al salir.
   const flushDataRef = useRef<{ macros: MacroD[]; mesos: MesoD[]; sems: SemanaD[]; fechaInicio: string; totalSem: number; sesZonas: any[] }>({ macros: [], mesos: [], sems: [], fechaInicio: '', totalSem: 24, sesZonas: [] })
 
@@ -1434,7 +1438,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 )}
                 {popupZona && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setPopupZona(null)}>
-                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 shadow-2xl w-72" onClick={e => e.stopPropagation()}>
+                    <div className={'bg-gray-900 border border-gray-700 rounded-2xl p-5 shadow-2xl max-h-[85vh] overflow-y-auto ' + (zonaSelDisc === 'Brick' ? 'w-[28rem]' : 'w-72')} onClick={e => e.stopPropagation()}>
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="text-white font-bold text-sm">Añadir sesión — Semana {popupZona.semana + 1}</h3>
                         <button onClick={() => setPopupZona(null)} className="text-gray-500 hover:text-white text-lg leading-none">×</button>
@@ -1443,20 +1447,23 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         <div>
                           <label className="text-gray-400 text-xs mb-1.5 block">Disciplina</label>
                           <div className="grid grid-cols-2 gap-1.5">
-                            {['Natacion','Ciclismo','Carrera','Fuerza'].map(d => {
-                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444'}
+                            {['Natacion','Ciclismo','Carrera','Fuerza','Brick'].map(d => {
+                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444',Brick:'#A855F7'}
                               const sel = zonaSelDisc === d
                               return (
                                 <button key={d} onClick={() => { setZonaSelDisc(d); if (dep?.sistema_zonas === 2) setZonaSelZona(d === 'Fuerza' ? 'AFG' : 'AER') }}
-                                  className="py-2 rounded-lg text-xs font-medium transition border"
+                                  className={'py-2 rounded-lg text-xs font-medium transition border ' + (d === 'Brick' ? 'col-span-2' : '')}
                                   style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
-                                  {d === 'Natacion' ? 'Natación' : d}
+                                  {d === 'Natacion' ? 'Natación' : d === 'Brick' ? '🔀 Brick' : d}
                                 </button>
                               )
                             })}
                           </div>
                         </div>
-                        {(() => {
+                        {/* Un brick no cabe en un par zona+deporte: se monta con su constructor
+                            y el chip se lleva los bloques encima. */}
+                        {zonaSelDisc === 'Brick' && <ConstructorBrick valor={zonaSelBrick} onChange={setZonaSelBrick} depId={Number(id)} />}
+                        {zonaSelDisc !== 'Brick' && (() => {
                           const esFuerza = zonaSelDisc === 'Fuerza'
                           const z2 = dep?.sistema_zonas === 2
                           const zonaList = z2
@@ -1484,7 +1491,17 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         })()}
                         <div className="flex gap-2 mt-1">
                           <button onClick={() => {
-                            setSesZonas(prev => [...prev, {id: Math.random().toString(36).slice(2), semana: popupZona.semana, disciplina: zonaSelDisc, zona: zonaSelZona}])
+                            const esB = zonaSelDisc === 'Brick'
+                            if (esB && !brickValido(zonaSelBrick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
+                            setSesZonas(prev => [...prev, {
+                              id: Math.random().toString(36).slice(2),
+                              semana: popupZona.semana,
+                              disciplina: zonaSelDisc,
+                              // El chip enseña la zona más dura del brick, que es la que marca el día.
+                              zona: esB ? zonaPicoBrick(zonaSelBrick) : zonaSelZona,
+                              ...(esB ? { brick: zonaSelBrick } : {}),
+                            }])
+                            setZonaSelBrick(BRICK_VACIO)
                             setPopupZona(null)
                           }} className="flex-1 bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition">
                             Añadir

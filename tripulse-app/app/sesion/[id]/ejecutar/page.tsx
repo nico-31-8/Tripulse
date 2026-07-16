@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona } from '@/lib/zonas'
 import { calcularDuracionEstimada } from '@/lib/duracion'
+
+const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 
 function segAMmss(seg: number): string {
@@ -68,6 +70,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
   const [tareas, setTareas] = useState<any[]>([])
+  // 'Brick' es la etiqueta de la sesión; el deporte real lo pone cada bloque (tarea).
+  const esBrick = sesion?.disciplina === 'Brick'
+  // Feedback por bloque de un brick (el dolor y las notas siguen siendo del día).
+  const [postBloques, setPostBloques] = useState<Record<number, { rpe: number; sensacion: number }>>({})
   const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('preview')
   const [tareaActual, setTareaActual] = useState(0)
   const [resultados, setResultados] = useState<Record<number, any>>({})
@@ -218,15 +224,26 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     }
     // Marcar sesión como realizada y guardar post-sesión
     await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', id)
-    // Guardar RPE y sensación en la primera tarea
     if (tareas.length > 0) {
-      await supabase.from('tarea').update({
-        rpe_reportado: rpe,
-        sensacion_tecnica: sensacion,
-        dolor_muscular: dolor,
-        notas_post: notasPost,
-        fc_media: fcMedia ? Number(fcMedia) : null,
-      }).eq('id_sesion', Number(id))
+      // El dolor y las notas son del DÍA: van igual en todos los bloques.
+      const delDia = { dolor_muscular: dolor, notas_post: notasPost }
+      if (esBrick) {
+        // Cada bloque guarda SU esfuerzo, que es lo que deja al SICAT distinguir
+        // si el coste vino de la bici o de la carrera.
+        await Promise.all(tareas.map((t: any) => supabase.from('tarea').update({
+          ...delDia,
+          rpe_reportado: postBloques[t.id]?.rpe ?? rpe,
+          sensacion_tecnica: postBloques[t.id]?.sensacion ?? sensacion,
+          fc_media: fcMedia ? Number(fcMedia) : null,
+        }).eq('id', t.id)))
+      } else {
+        await supabase.from('tarea').update({
+          ...delDia,
+          rpe_reportado: rpe,
+          sensacion_tecnica: sensacion,
+          fc_media: fcMedia ? Number(fcMedia) : null,
+        }).eq('id_sesion', Number(id))
+      }
     }
     setFase('resumen')
     setGuardando(false)
@@ -676,23 +693,55 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <p className="text-gray-400 text-sm mb-6">¡Bien hecho! Registra cómo te has sentido.</p>
 
         <div className="flex flex-col gap-5">
-          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-            <div className="flex justify-between items-center mb-2">
-              <label className="font-medium">RPE — Esfuerzo percibido</label>
-              <span className="text-orange-400 font-bold text-xl">{rpe}</span>
+          {/* En un brick el esfuerzo se pregunta POR BLOQUE: correr después de la bici no
+              se parece a la bici, y un solo número impide al SICAT saber qué deporte le
+              cuesta (ver lib/sicat). El dolor y las notas siguen siendo del día. */}
+          {esBrick ? (
+            <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
+              <p className="text-purple-300 text-sm font-semibold">🔀 ¿Cómo fue cada parte?</p>
+              {tareas.map((t: any, i: number) => {
+                const b = postBloques[t.id] || { rpe: 5, sensacion: 3 }
+                const set = (campo: 'rpe' | 'sensacion', v: number) =>
+                  setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
+                return (
+                  <div key={t.id} className="bg-gray-900 rounded-lg p-4 flex flex-col gap-3">
+                    <p className="text-white text-sm font-bold">
+                      {EMOJI_BLOQUE[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                      {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5 text-xs">{t.zona_entrenamiento}</span>}
+                    </p>
+                    <div>
+                      <div className="flex justify-between items-center mb-1"><label className="text-gray-400 text-xs">RPE — Esfuerzo percibido</label><span className="text-orange-400 font-bold">{b.rpe}</span></div>
+                      <input type="range" min="1" max="10" value={b.rpe} onChange={e => set('rpe', Number(e.target.value))} className="w-full accent-orange-500" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1"><label className="text-gray-400 text-xs">Sensación técnica</label><span className="text-blue-400 font-bold">{b.sensacion}/5</span></div>
+                      <input type="range" min="1" max="5" value={b.sensacion} onChange={e => set('sensacion', Number(e.target.value))} className="w-full accent-blue-500" />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <input type="range" min="1" max="10" value={rpe} onChange={e => setRpe(Number(e.target.value))} className="w-full accent-orange-500" />
-            <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy fácil</span><span>Máximo</span></div>
-          </div>
+          ) : (
+            <>
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="font-medium">RPE — Esfuerzo percibido</label>
+                  <span className="text-orange-400 font-bold text-xl">{rpe}</span>
+                </div>
+                <input type="range" min="1" max="10" value={rpe} onChange={e => setRpe(Number(e.target.value))} className="w-full accent-orange-500" />
+                <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy fácil</span><span>Máximo</span></div>
+              </div>
 
-          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-            <div className="flex justify-between items-center mb-2">
-              <label className="font-medium">Sensación técnica</label>
-              <span className="text-blue-400 font-bold text-xl">{sensacion}/5</span>
-            </div>
-            <input type="range" min="1" max="5" value={sensacion} onChange={e => setSensacion(Number(e.target.value))} className="w-full accent-blue-500" />
-            <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy mala</span><span>Perfecta</span></div>
-          </div>
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="font-medium">Sensación técnica</label>
+                  <span className="text-blue-400 font-bold text-xl">{sensacion}/5</span>
+                </div>
+                <input type="range" min="1" max="5" value={sensacion} onChange={e => setSensacion(Number(e.target.value))} className="w-full accent-blue-500" />
+                <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy mala</span><span>Perfecta</span></div>
+              </div>
+            </>
+          )}
 
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
             <div className="flex justify-between items-center mb-2">

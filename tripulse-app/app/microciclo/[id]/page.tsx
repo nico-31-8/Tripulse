@@ -3,7 +3,11 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick']
+// Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
+// aquí no hay constructor. Sin bloques, su carga no se puede atribuir a ningún deporte
+// y desaparecería de volumen, carga y SICAT (ver lib/atribucion). Los bricks se crean
+// en planificación (bloques, calendario, semana o canvas).
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
 export default function PaginaMicrociclo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)

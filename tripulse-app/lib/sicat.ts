@@ -143,15 +143,28 @@ export async function calcularSICAT(dep: any): Promise<SicatResultado> {
   const sesionIds = sesiones.map(s => s.id)
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, hrv_del_dia, id_sesion')
+    .select('rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, hrv_del_dia, id_sesion, disciplina')
     .in('id_sesion', sesionIds)
 
-  // Cada SESIÓN realizada cuenta una vez (los valores post-sesión se guardan iguales
-  // en todas sus tareas) — evita que sesiones con más tareas pesen de más en la media.
-  const porSesion = new Map<number, any>()
-  ;(tareas || []).forEach((t: any) => { if (!porSesion.has(t.id_sesion)) porSesion.set(t.id_sesion, t) })
+  const discDeSesion: Record<number, string> = {}
+  sesiones.forEach(s => { discDeSesion[s.id] = s.disciplina })
 
-  const filas = Array.from(porSesion.entries()).map(([idSesion, t]) => {
+  // Una fila por SESIÓN y DEPORTE. En una sesión normal todas sus tareas son del mismo
+  // deporte → 1 fila, como siempre (los valores post-sesión se guardan iguales en todas
+  // sus tareas, y así una sesión con más tareas no pesa de más en la media).
+  // En un BRICK cada bloque es un deporte distinto → una fila por deporte, con el
+  // feedback de ESE bloque. Si no, el brick no contaría en ninguna disciplina, que es
+  // absurdo siendo la sesión más exigente (ver lib/atribucion).
+  const porSesionDeporte = new Map<string, any>()
+  ;(tareas || []).forEach((t: any) => {
+    const disc = t.disciplina || discDeSesion[t.id_sesion]
+    if (!disc) return
+    const clave = t.id_sesion + '|' + disc
+    if (!porSesionDeporte.has(clave)) porSesionDeporte.set(clave, { ...t, disciplina: disc })
+  })
+
+  const filas = Array.from(porSesionDeporte.values()).map((t: any) => {
+    const idSesion = t.id_sesion
     const fecha = sesionIdAFecha[idSesion]
     if (!fecha) return { ...t, id_sesion: idSesion }
     const f = new Date(fecha + 'T12:00:00')
@@ -168,8 +181,9 @@ export async function calcularSICAT(dep: any): Promise<SicatResultado> {
   })
 
   for (const disc of DISCIPLINAS_SICAT) {
-    const idsDisc = new Set(sesiones.filter(s => s.disciplina === disc).map(s => s.id))
-    const filasDisc = filas.filter(f => idsDisc.has(f.id_sesion))
+    // Por el DEPORTE DEL BLOQUE, nunca por sesion.disciplina: en un brick vale 'Brick'
+    // y no casaría con ninguna disciplina → el brick desaparecería del SICAT.
+    const filasDisc = filas.filter((f: any) => f.disciplina === disc)
     if (!filasDisc.length) { resultados[disc] = vacio(); continue }
 
     const valoracionGlobal = disc === 'Natacion' ? dep.tec_natacion

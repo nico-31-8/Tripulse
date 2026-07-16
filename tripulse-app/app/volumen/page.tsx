@@ -7,6 +7,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargaZona } from '@/lib/zonas'
+import { expandirEnBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const RANGOS = [
@@ -113,40 +114,62 @@ export default function VolumenPage() {
     if (!sesiones.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
 
     const sesIds = sesiones.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos').in('id_sesion', sesIds)
     const tareaIds = tareas?.map(t => t.id) || []
 
     const { data: distancias } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
     const { data: duraciones } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
-    const { data: ejercicios } = tareaIds.length ? await supabase.from('ejercicios').select('id_tarea, grupo_muscular, series').in('id_tarea', tareaIds) : { data: [] }
+    const { data: ejercicios } = tareaIds.length ? await supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones').in('id_tarea', tareaIds) : { data: [] }
 
     const distMap: Record<number, number> = {}
     distancias?.forEach((d: any) => { distMap[d.id_tarea] = d.metros_planeados })
     const durMap: Record<number, number> = {}
     duraciones?.forEach((d: any) => { durMap[d.id_tarea] = d.tiempo_planeado })
 
+    // La Fuerza no se mide en metros: su volumen es UA (RPE × minutos), que es de
+    // SESIÓN. Los minutos que le tocan salen de la capa de atribución, así una
+    // sesión de fuerza con varios ejercicios cuenta una vez (no una por tarea) y
+    // un brick con fuerza dentro solo se lleva su parte.
+    const bloques = expandirEnBloques(sesiones, (tareas || []).map((t: any) => ({
+      id_sesion: t.id_sesion,
+      orden: t.orden,
+      disciplina: t.disciplina,
+      series: t.series,
+      descanso_segundos: t.descanso_segundos,
+      zona_entrenamiento: t.zona_entrenamiento,
+      p_distancia: (distancias || []).filter((d: any) => d.id_tarea === t.id),
+      p_duracion: (duraciones || []).filter((d: any) => d.id_tarea === t.id),
+      ejercicios: (ejercicios || []).filter((e: any) => e.id_tarea === t.id),
+    })), { estimar: false })
+    const minFuerza: Record<number, number> = {}
+    bloques.filter(b => b.disciplina === 'Fuerza').forEach(b => {
+      minFuerza[b.id_sesion] = (minFuerza[b.id_sesion] || 0) + b.minutos
+    })
+
     // Volumen por sesión
     const volSesion = sesiones.map(s => {
       const tareasSes = tareas?.filter(t => t.id_sesion === s.id) || []
-      let natacion = 0, ciclismo = 0, carrera = 0, fuerza = 0
+      let natacion = 0, ciclismo = 0, carrera = 0
+      const fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (minFuerza[s.id] || 0)
       tareasSes.forEach(t => {
         const metros = distMap[t.id]
         const seg = durMap[t.id]
-        if (s.disciplina === 'Natacion' && metros) natacion += metros
-        if (s.disciplina === 'Ciclismo') {
+        // El volumen se atribuye a la disciplina del BLOQUE (tarea), no a la de la
+        // sesión: así un brick reparte su bici y su carrera en su deporte real.
+        const disc = t.disciplina || s.disciplina
+        if (disc === 'Natacion' && metros) natacion += metros
+        if (disc === 'Ciclismo') {
           if (metros) ciclismo += metros / 1000
           else if (seg) ciclismo += seg / 60 * 0.3
         }
-        if (s.disciplina === 'Carrera') {
+        if (disc === 'Carrera') {
           if (metros) carrera += metros / 1000
           else if (seg) carrera += seg / 60 * 0.2
         }
-        if (s.disciplina === 'Fuerza') fuerza += (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       })
       if (!tareasSes.length) {
         if (s.disciplina === 'Ciclismo') ciclismo = (s.duracion_minutos || 0) * 0.3
         if (s.disciplina === 'Carrera') carrera = (s.duracion_minutos || 0) * 0.2
-        if (s.disciplina === 'Fuerza') fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       }
       const zs = tareasSes.map((t: any) => t.zona_entrenamiento).filter(Boolean)
       const zonaPico = zs.length ? zs.reduce((b: string, z: string) => (cargaZona(z).nivel > cargaZona(b).nivel ? z : b), zs[0]) : null

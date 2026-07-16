@@ -9,13 +9,18 @@
 //   · duración      → lib/duracion-carga.ts (estimarDuraciones)
 
 import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
+import { cargarBloques } from './atribucion'
 
 // ---- Disciplinas (colores alineados con app/volumen/page.tsx) ----
+// 'Brick' está aquí solo para PINTAR (es la etiqueta de la sesión, morada en toda
+// la app). No entra en DISC_ORDEN: no es un deporte y su volumen se reparte entre
+// los deportes reales de sus bloques (ver lib/atribucion).
 export const DISC_META: Record<string, { label: string; color: string }> = {
   Natacion: { label: 'Natación', color: '#60a5fa' },
   Ciclismo: { label: 'Ciclismo', color: '#fbbf24' },
   Carrera: { label: 'Carrera', color: '#4ade80' },
   Fuerza: { label: 'Fuerza', color: '#f87171' },
+  Brick: { label: 'Brick', color: '#a855f7' },
 }
 const DISC_ORDEN = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
@@ -156,13 +161,20 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   // Volumen por disciplina. Si hay duración estimable → minutos; si no, conteo de sesiones.
   let volumen: MetricasPanel['volumen'] = null
   if (sesSemana.length) {
-    const estim = await estimarDuraciones(supabase, sesSemana.map(s => s.id), tests)
+    // Por BLOQUE, no por sesión: un brick suma sus minutos a la bici y a la
+    // carrera por separado, no a una disciplina 'Brick' inexistente.
+    const bloques = await cargarBloques(supabase, sesSemana, { tests })
     const minPorDisc: Record<string, number> = {}
     const nPorDisc: Record<string, number> = {}
+    bloques.forEach(b => {
+      minPorDisc[b.disciplina] = (minPorDisc[b.disciplina] || 0) + b.minutos
+    })
+    // El conteo sigue siendo de sesiones (un brick es UNA sesión), pero cuenta
+    // en cada disciplina que toca.
     sesSemana.forEach(s => {
-      const k = s.disciplina || 'Otra'
-      minPorDisc[k] = (minPorDisc[k] || 0) + (minutosEfectivos(s.duracion_minutos, estim[s.id]) || 0)
-      nPorDisc[k] = (nPorDisc[k] || 0) + 1
+      const suyos = bloques.filter(b => b.id_sesion === s.id)
+      const discs = new Set(suyos.length ? suyos.map(b => b.disciplina) : [s.disciplina || 'Otra'])
+      discs.forEach(k => { nPorDisc[k] = (nPorDisc[k] || 0) + 1 })
     })
     const total = Math.round(Object.values(minPorDisc).reduce((a, b) => a + b, 0))
     const modo: 'tiempo' | 'conteo' = total > 0 ? 'tiempo' : 'conteo'

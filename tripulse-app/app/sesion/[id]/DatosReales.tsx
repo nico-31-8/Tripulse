@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
+const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
+
 function segAMmss(seg: number): string {
   if (!seg) return '—'
   const min = Math.floor(seg / 60)
@@ -60,23 +62,66 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
   if (!tienePostSesion && !tieneDatosEjecucion) return null
 
   const esFuerza = disciplina === 'Fuerza'
+  // 'Brick' es la etiqueta de la sesión: el deporte real lo pone cada bloque, y su
+  // feedback también (ver el reporte por bloque en app/sesion/[id]/page.tsx).
+  const esBrick = disciplina === 'Brick'
 
   return (
     <div className="flex flex-col gap-4">
       <h3 className="font-bold text-lg text-orange-400">📊 Datos registrados por el deportista</h3>
 
+      {/* Post sesión POR BLOQUE de un brick. Los paneles de abajo hacen
+          `tareas.find(...)`, es decir: enseñan el primer bloque y esconden el resto.
+          En un brick eso es justo lo que el entrenador necesita comparar (¿sufrió en
+          la bici o en la carrera?), así que aquí va desglosado. */}
+      {esBrick && tienePostSesion && (
+        <div className="bg-purple-900/20 rounded-xl p-5 border border-purple-800/50">
+          <p className="font-medium text-purple-300 mb-3 text-sm">🔀 Cómo fue cada parte del brick</p>
+          <div className="flex flex-col gap-2">
+            {tareas.map((t, i) => (
+              <div key={t.id} className="bg-gray-900/60 rounded-lg p-3 flex items-center gap-3 flex-wrap">
+                <span className="text-white text-xs font-bold">
+                  {EMOJI[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                </span>
+                {t.zona_entrenamiento && <span className="text-gray-500 text-xs">{t.zona_entrenamiento}</span>}
+                <div className="flex gap-4 ml-auto text-xs">
+                  {t.rpe_reportado != null && <span className="text-gray-500">RPE <span className="text-orange-400 font-bold">{t.rpe_reportado}/10</span></span>}
+                  {t.sensacion_tecnica != null && <span className="text-gray-500">Técnica <span className="text-blue-400 font-bold">{t.sensacion_tecnica}/5</span></span>}
+                  {t.fc_media != null && <span className="text-gray-500">FC <span className="text-red-400 font-bold">{t.fc_media}</span></span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          {(() => {
+            // La comparación que le interesa al entrenador: si el bloque de después de
+            // la transición se sufrió más, el brick está haciendo su trabajo.
+            const conRpe = tareas.filter(t => t.rpe_reportado != null)
+            if (conRpe.length < 2) return null
+            const salto = conRpe[conRpe.length - 1].rpe_reportado - conRpe[0].rpe_reportado
+            if (salto === 0) return null
+            return (
+              <p className="text-xs text-gray-500 mt-3">
+                {salto > 0
+                  ? `El ${conRpe[conRpe.length - 1].disciplina?.toLowerCase()} le costó ${salto} punto${salto > 1 ? 's' : ''} más de RPE que el ${conRpe[0].disciplina?.toLowerCase()}.`
+                  : `El ${conRpe[0].disciplina?.toLowerCase()} le costó ${Math.abs(salto)} punto${Math.abs(salto) > 1 ? 's' : ''} más que el ${conRpe[conRpe.length - 1].disciplina?.toLowerCase()}.`}
+              </p>
+            )
+          })()}
+        </div>
+      )}
+
       {/* Post sesión general */}
       {tienePostSesion && (
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="font-medium text-gray-300 mb-3 text-sm">Valoración post-sesión</p>
+          <p className="font-medium text-gray-300 mb-3 text-sm">Valoración post-sesión{esBrick && <span className="text-gray-600 font-normal"> · del día</span>}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {tareas.find(t => t.rpe_reportado) && (
+            {!esBrick && tareas.find(t => t.rpe_reportado) && (
               <div className="bg-gray-800 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500 mb-1">RPE real</p>
                 <p className="text-2xl font-bold text-orange-400">{tareas.find(t => t.rpe_reportado)?.rpe_reportado}/10</p>
               </div>
             )}
-            {tareas.find(t => t.sensacion_tecnica) && (
+            {!esBrick && tareas.find(t => t.sensacion_tecnica) && (
               <div className="bg-gray-800 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500 mb-1">Sensación técnica</p>
                 <p className="text-2xl font-bold text-blue-400">{tareas.find(t => t.sensacion_tecnica)?.sensacion_tecnica}/5</p>
@@ -88,7 +133,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                 <p className="text-2xl font-bold text-yellow-400">{tareas.find(t => t.dolor_muscular)?.dolor_muscular}/5</p>
               </div>
             )}
-            {tareas.find(t => t.fc_media) && (
+            {!esBrick && tareas.find(t => t.fc_media) && (
               <div className="bg-gray-800 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500 mb-1">FC media</p>
                 <p className="text-2xl font-bold text-red-400">{tareas.find(t => t.fc_media)?.fc_media} ppm</p>

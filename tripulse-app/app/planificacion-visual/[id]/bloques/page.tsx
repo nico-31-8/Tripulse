@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
+import ConstructorBrick from '@/components/ConstructorBrick'
+import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 
 const COLOR_MESO: Record<string, string> = {
   'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
@@ -123,6 +125,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const [sesionRpe, setSesionRpe] = useState('')
   const [sesionNotas, setSesionNotas] = useState('')
   const [sesionCronometro, setSesionCronometro] = useState(false)
+  const [brick, setBrick] = useState<BrickValor>(BRICK_VACIO)
   const [modalEditarMacro, setModalEditarMacro] = useState(false)
   const [macroEditando, setMacroEditando] = useState<any>(null)
   const [editMacroObj, setEditMacroObj] = useState("")
@@ -204,16 +207,25 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const guardarSesion = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await supabase.from('sesion').insert({
+    const esB = sesionDisc === 'Brick'
+    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
+    const { data: nueva } = await supabase.from('sesion').insert({
       id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: diaSeleccionado,
-      duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null,
-      rpe_estimado: sesionRpe ? Number(sesionRpe) : null,
+      duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
+      rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
       notas_entrenador: sesionNotas, estado: 'Planificada', usar_cronometro: sesionCronometro
-    })
+    }).select().single()
+    if (esB) {
+      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setLoading(false); return }
+      const err = await guardarBrick(supabase, nueva.id, brick)
+      if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
+    }
     const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', microSel.id).order('fecha_sesion')
     setSesiones(data || [])
     setModalSesion(false)
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionCronometro(false)
+    setBrick(BRICK_VACIO)
     setLoading(false)
   }
 
@@ -625,8 +637,9 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
               <option value="">Disciplina</option>
               <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
             </select>
-            <input type="number" placeholder="Duracion en minutos (opcional)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-            <div><label className="text-gray-400 text-sm mb-1 block">RPE estimado (1-10)</label><input type="number" min="1" max="10" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" /></div>
+            {sesionDisc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
+            {sesionDisc !== 'Brick' && <input type="number" placeholder="Duracion en minutos (opcional)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+            <div><label className="text-gray-400 text-sm mb-1 block">RPE estimado (1-10){sesionDisc === 'Brick' && <span className="text-gray-600"> — si lo dejas vacío se calcula de las zonas</span>}</label><input type="number" min="1" max="10" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" /></div>
             <textarea placeholder="Notas para el atleta (opcional)" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
             <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
               <input type="checkbox" checked={sesionCronometro} onChange={e => setSesionCronometro(e.target.checked)} className="w-4 h-4 accent-orange-500" />

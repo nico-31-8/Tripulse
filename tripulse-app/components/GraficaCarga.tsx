@@ -2,13 +2,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { cargarBloques } from '@/lib/atribucion'
+
+// Solo deportes: un brick no es una disciplina, se reparte entre las suyas.
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
 const DISC_COLORS: Record<string, string> = {
   'Natacion': '#60a5fa',
   'Ciclismo': '#facc15',
   'Carrera': '#4ade80',
   'Fuerza': '#f87171',
-  'Brick': '#c084fc',
 }
 
 const DISC_LABELS: Record<string, string> = {
@@ -16,7 +19,6 @@ const DISC_LABELS: Record<string, string> = {
   'Ciclismo': '🚴 Ciclismo',
   'Carrera': '🏃 Carrera',
   'Fuerza': '🏋️ Fuerza',
-  'Brick': '🔀 Brick',
 }
 
 function getLunesDeSemana(fecha: string): string {
@@ -47,7 +49,7 @@ interface Props {
 export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fechaFin, altura = 280 }: Props) {
   const [datos, setDatos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [disciplinasActivas, setDisciplinasActivas] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza','Brick'])
+  const [disciplinasActivas, setDisciplinasActivas] = useState<string[]>(DISCIPLINAS)
 
   useEffect(() => {
     if (!depId || !fcUmbral) return
@@ -96,29 +98,48 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
       const fcRelativa = fcMediaProm && fcUmbral > 0 ? fcMediaProm / fcUmbral : null
       const cargaObjetiva = fcRelativa ? fcRelativa * 10 : rpeProm
       const uac = Math.round(((cargaObjetiva + rpeProm) / 2) * (s.duracion_minutos || 0))
-      return { fecha: s.fecha_sesion, disciplina: s.disciplina || 'Carrera', uac: uac > 0 ? uac : 0 }
-    }).filter(Boolean) as { fecha: string, disciplina: string, uac: number }[]
+      return { id: s.id, fecha: s.fecha_sesion, uac: uac > 0 ? uac : 0 }
+    }).filter(Boolean) as { id: number, fecha: string, uac: number }[]
+
+    // El UAC es de sesión (mezcla FC media y RPE reportado), así que no se
+    // recalcula: se REPARTE entre los bloques según su peso en UA. En una sesión
+    // normal hay un solo bloque y el reparto es la identidad; en un brick, cada
+    // deporte se lleva lo suyo (ver lib/atribucion).
+    // usarRpeDeBloque: aquí la UA solo sirve de PESO para repartir. En una sesión normal
+    // hay un bloque y el peso es 1 pase lo que pase; en un brick, usar el RPE real de
+    // cada bloque es exactamente lo que hace que la bici y la carrera se lleven lo suyo.
+    const bloques = await cargarBloques(supabase, sesiones, { estimar: false, usarRpeDeBloque: true })
+    const uaPorSesion: Record<number, number> = {}
+    bloques.forEach(b => { uaPorSesion[b.id_sesion] = (uaPorSesion[b.id_sesion] || 0) + b.ua })
 
     const mapa: Record<string, Record<string, number>> = {}
     sesionesConCarga.forEach(s => {
       const clave = modo === 'dia' ? s.fecha : getLunesDeSemana(s.fecha)
       if (!mapa[clave]) mapa[clave] = {}
-      mapa[clave][s.disciplina] = (mapa[clave][s.disciplina] || 0) + s.uac
+      const suyos = bloques.filter(b => b.id_sesion === s.id)
+      const totalUA = uaPorSesion[s.id] || 0
+      if (!suyos.length || totalUA <= 0) {
+        const disc = sesiones.find((x: any) => x.id === s.id)?.disciplina || 'Carrera'
+        mapa[clave][disc] = (mapa[clave][disc] || 0) + s.uac
+        return
+      }
+      suyos.forEach(b => {
+        mapa[clave][b.disciplina] = (mapa[clave][b.disciplina] || 0) + s.uac * (b.ua / totalUA)
+      })
     })
 
     const resultado = Object.entries(mapa)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([clave, discs]) => ({
-        label: modo === 'dia'
-          ? String(new Date(clave).getDate()).padStart(2,'0')+'/'+String(new Date(clave).getMonth()+1).padStart(2,'0')
-          : getEtiquetaSemana(clave),
-        Natacion: discs['Natacion'] || 0,
-        Ciclismo: discs['Ciclismo'] || 0,
-        Carrera: discs['Carrera'] || 0,
-        Fuerza: discs['Fuerza'] || 0,
-        Brick: discs['Brick'] || 0,
-        total: Object.values(discs).reduce((a, b) => a + b, 0),
-      }))
+      .map(([clave, discs]) => {
+        const fila: any = {
+          label: modo === 'dia'
+            ? String(new Date(clave).getDate()).padStart(2,'0')+'/'+String(new Date(clave).getMonth()+1).padStart(2,'0')
+            : getEtiquetaSemana(clave),
+        }
+        DISCIPLINAS.forEach(d => { fila[d] = Math.round(discs[d] || 0) })
+        fila.total = DISCIPLINAS.reduce((a, d) => a + fila[d], 0)
+        return fila
+      })
 
     setDatos(resultado)
     setLoading(false)
@@ -134,8 +155,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
     ? Math.round(datos.reduce((acc, d) => acc + d.total, 0) / datos.length)
     : 0
 
-  const disciplinas = ['Natacion','Ciclismo','Carrera','Fuerza','Brick']
-  const disciplinasPresentes = disciplinas.filter(d => datos.some(row => row[d] > 0))
+  const disciplinasPresentes = DISCIPLINAS.filter(d => datos.some(row => row[d] > 0))
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null

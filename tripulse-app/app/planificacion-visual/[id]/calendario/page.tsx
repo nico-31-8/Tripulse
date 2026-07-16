@@ -9,6 +9,8 @@ import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
 import { PRUEBAS, CATEGORIAS_PRUEBA, pruebaPorId, resumenSegmentos } from '@/lib/pruebas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_FUERZA } from '@/lib/zonas'
+import ConstructorBrick from '@/components/ConstructorBrick'
+import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -151,6 +153,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [microTipo, setMicroTipo] = useState('')
   const [sesionDisc, setSesionDisc] = useState('')
   const [sesionModoFuerza, setSesionModoFuerza] = useState('simple')
+  const [brick, setBrick] = useState<BrickValor>(BRICK_VACIO)
   const [sesionZonaFuerza, setSesionZonaFuerza] = useState('')
   const [sesionDuracion, setSesionDuracion] = useState('')
   const [sesionRpe, setSesionRpe] = useState('')
@@ -392,10 +395,36 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setModalTipo('macro')
   }
 
-  const editarSesion = (ses: any, e: React.MouseEvent) => { e.stopPropagation(); setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || ''); setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || ''); setSesionModoFuerza(ses.modo_fuerza || 'simple'); setSesionZonaFuerza(ses.zona_fuerza || ''); setModalTipo('editarSesion') }
+  const editarSesion = async (ses: any, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || '')
+    setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || '')
+    setSesionModoFuerza(ses.modo_fuerza || 'simple'); setSesionZonaFuerza(ses.zona_fuerza || '')
+    // Un brick se edita con sus bloques delante: hay que reconstruirlo de la BD.
+    setBrick(ses.disciplina === 'Brick' ? await cargarBrick(supabase, ses.id) : BRICK_VACIO)
+    setModalTipo('editarSesion')
+  }
   const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Mover esta sesión a la papelera?')) return; await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId); await cargarDatos() }
 
-  const guardarEdicionSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); const esF = sesionDisc === 'Fuerza'; await supabase.from('sesion').update({ disciplina: sesionDisc, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, modo_fuerza: esF ? sesionModoFuerza : null, zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null }).eq('id', sesionEditando.id); setSesionEditando(null); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarEdicionSesion = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true)
+    const esF = sesionDisc === 'Fuerza'
+    const esB = sesionDisc === 'Brick'
+    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    await supabase.from('sesion').update({
+      disciplina: sesionDisc,
+      duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
+      rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
+      notas_entrenador: sesionNotas,
+      modo_fuerza: esF ? sesionModoFuerza : null,
+      zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null,
+    }).eq('id', sesionEditando.id)
+    if (esB) {
+      const err = await guardarBrick(supabase, sesionEditando.id, brick)
+      if (err) { alert('Los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
+    }
+    setSesionEditando(null); setBrick(BRICK_VACIO); setModalTipo(null); await cargarDatos(); setLoading(false)
+  }
   const guardarMacro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null }); setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
   const guardarMeso = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -415,7 +444,29 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setLoading(false)
   }
   const guardarMicro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 }); setMicroObj(''); setMicroTipo(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
-  const guardarSesion = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); const esF = sesionDisc === 'Fuerza'; await supabase.from('sesion').insert({ id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel, duracion_minutos: sesionDuracion ? Number(sesionDuracion) : null, rpe_estimado: sesionRpe ? Number(sesionRpe) : null, notas_entrenador: sesionNotas, estado: 'Planificada', modo_fuerza: esF ? sesionModoFuerza : null, zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null }); setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionModoFuerza('simple'); setSesionZonaFuerza(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarSesion = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true)
+    const esF = sesionDisc === 'Fuerza'
+    const esB = sesionDisc === 'Brick'
+    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
+    const { data: nueva } = await supabase.from('sesion').insert({
+      id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel,
+      duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
+      rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
+      notas_entrenador: sesionNotas, estado: 'Planificada',
+      modo_fuerza: esF ? sesionModoFuerza : null,
+      zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null,
+    }).select().single()
+    if (esB) {
+      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setLoading(false); return }
+      const err = await guardarBrick(supabase, nueva.id, brick)
+      if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
+    }
+    setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas('')
+    setSesionModoFuerza('simple'); setSesionZonaFuerza(''); setBrick(BRICK_VACIO)
+    setModalTipo(null); await cargarDatos(); setLoading(false)
+  }
 
   const guardarCompeticion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
@@ -1079,8 +1130,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     )}
                   </div>
                 )}
-                <input type="number" placeholder="Duración manual en min (opcional — si vacío, se estima)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                <input type="number" min="1" max="10" placeholder="RPE estimado" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                {sesionDisc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
+                {sesionDisc !== 'Brick' && <input type="number" placeholder="Duración manual en min (opcional — si vacío, se estima)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+                <input type="number" min="1" max="10" placeholder={sesionDisc === 'Brick' ? 'RPE estimado (opcional — si vacío, se calcula de las zonas)' : 'RPE estimado'} value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
               </form>
@@ -1110,8 +1162,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     )}
                   </div>
                 )}
-                <p className="text-gray-500 text-xs px-1 -mb-1">La duración se estima automáticamente a partir de las tareas. Podrás ajustarla a mano después.</p>
-                <input type="number" min="1" max="10" placeholder="RPE estimado (1-10)" value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                {sesionDisc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
+                {sesionDisc !== 'Brick' && <p className="text-gray-500 text-xs px-1 -mb-1">La duración se estima automáticamente a partir de las tareas. Podrás ajustarla a mano después.</p>}
+                <input type="number" min="1" max="10" placeholder={sesionDisc === 'Brick' ? 'RPE estimado (opcional — si vacío, se calcula de las zonas)' : 'RPE estimado (1-10)'} value={sesionRpe} onChange={e => setSesionRpe(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas para el atleta" value={sesionNotas} onChange={e => setSesionNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear sesión'}</button>
               </form>

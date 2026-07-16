@@ -3,6 +3,9 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
+import ResumenBrick from '@/components/ResumenBrick'
+
+const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import DatosReales from './DatosReales'
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
@@ -15,6 +18,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const router = useRouter()
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
+  // 'Brick' es la etiqueta de la sesión; el deporte real lo pone cada bloque (tarea).
+  const esBrick = sesion?.disciplina === 'Brick'
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   const [esDeportista, setEsDeportista] = useState(false)
@@ -51,6 +56,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [dolorMuscular, setDolorMuscular] = useState(1)
   const [notasPost, setNotasPost] = useState('')
   const [hrvDia, setHrvDia] = useState('')
+  // Feedback POR BLOQUE de un brick: el esfuerzo y la técnica cambian entre la bici y
+  // la carrera, y el SICAT necesita saber de cuál viene el coste. El dolor, la HRV y
+  // las notas siguen siendo del día: no se pueden atribuir a un deporte concreto.
+  const [postBloques, setPostBloques] = useState<Record<number, { rpe: number; fc: string; sensacion: number }>>({})
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   const [grupoMuscularSel, setGrupoMuscularSel] = useState('')
   const [tipoSerie, setTipoSerie] = useState('Normal')
@@ -260,6 +269,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   const finalizarSesion = () => {
     setCronometroActivo(false)
+    if (esBrick) {
+      setPostBloques(Object.fromEntries(tareas.map(t => [t.id, {
+        rpe: t.rpe_reportado || 5,
+        fc: t.fc_media ? String(t.fc_media) : '',
+        sensacion: t.sensacion_tecnica || 3,
+      }])))
+    }
     setMostrarPostSesion(true)
   }
 
@@ -268,14 +284,34 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setLoading(true)
     const duracionReal = sesion.usar_cronometro ? Math.round(segundos/60) : null
     await supabase.from('sesion').update({ estado: 'Realizada', duracion_real: duracionReal }).eq('id', id)
-    await supabase.from('tarea').update({
-      rpe_reportado: rpeReal,
-      fc_media: fcMedia ? Number(fcMedia) : null,
-      sensacion_tecnica: sensacionTecnica,
+
+    // Lo que es del DÍA va igual en todos los bloques; el SICAT lo lee así.
+    const delDia = {
       dolor_muscular: dolorMuscular,
       notas_post: notasPost,
-      hrv_del_dia: hrvDia ? Number(hrvDia) : null
-    }).eq('id_sesion', id)
+      hrv_del_dia: hrvDia ? Number(hrvDia) : null,
+    }
+
+    if (esBrick) {
+      // Cada bloque guarda SU esfuerzo: es lo que permite al SICAT saber si el coste
+      // vino de la bici o de la carrera (ver lib/sicat).
+      await Promise.all(tareas.map(t => {
+        const b = postBloques[t.id]
+        return supabase.from('tarea').update({
+          ...delDia,
+          rpe_reportado: b?.rpe ?? rpeReal,
+          fc_media: b?.fc ? Number(b.fc) : null,
+          sensacion_tecnica: b?.sensacion ?? sensacionTecnica,
+        }).eq('id', t.id)
+      }))
+    } else {
+      await supabase.from('tarea').update({
+        ...delDia,
+        rpe_reportado: rpeReal,
+        fc_media: fcMedia ? Number(fcMedia) : null,
+        sensacion_tecnica: sensacionTecnica,
+      }).eq('id_sesion', id)
+    }
     await cargarDatos()
     setMostrarPostSesion(false)
     setLoading(false)
@@ -626,26 +662,61 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {mostrarPostSesion && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-orange-500 max-h-screen overflow-y-auto">
+            <div className={'bg-gray-900 rounded-xl p-6 w-full border border-orange-500 max-h-screen overflow-y-auto ' + (esBrick ? 'max-w-lg' : 'max-w-md')}>
               <h3 className="text-xl font-bold mb-4">Post-sesion — Como fue?</h3>
               {sesion.usar_cronometro && <p className="text-green-400 text-sm mb-4">Duracion: {formatTiempo(segundos)} ({Math.round(segundos/60)} min)</p>}
               <form onSubmit={guardarPostSesion} className="flex flex-col gap-4">
-                <div className="bg-gray-800 rounded-xl p-4">
-                  <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">RPE real</label><span className="text-orange-400 font-bold">{rpeReal}/10</span></div>
-                  <input type="range" min={1} max={10} value={rpeReal} onChange={e => setRpeReal(Number(e.target.value))} className="w-full accent-orange-500" />
-                  <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy facil</span><span>Maximo</span></div>
-                </div>
-                <div className="bg-gray-800 rounded-xl p-4">
-                  <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Sensacion tecnica</label><span className="text-orange-400 font-bold">{sensacionTecnica}/5</span></div>
-                  <input type="range" min={1} max={5} value={sensacionTecnica} onChange={e => setSensacionTecnica(Number(e.target.value))} className="w-full accent-orange-500" />
-                  <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy mala</span><span>Excelente</span></div>
-                </div>
+                {/* En un brick, el esfuerzo y la técnica se preguntan POR BLOQUE: correr
+                    después de la bici no se parece en nada a la bici, y si se mezclan en
+                    un solo número el SICAT no puede saber qué deporte le cuesta. */}
+                {esBrick ? (
+                  <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
+                    <p className="text-purple-300 text-sm font-semibold">🔀 Cómo fue cada parte del brick</p>
+                    {tareas.map((t, i) => {
+                      const b = postBloques[t.id] || { rpe: 5, fc: '', sensacion: 3 }
+                      const set = (campo: 'rpe' | 'fc' | 'sensacion', v: any) =>
+                        setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
+                      return (
+                        <div key={t.id} className="bg-gray-800 rounded-lg p-3 flex flex-col gap-2.5">
+                          <p className="text-white text-xs font-bold">
+                            {EMOJI_POST[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                            {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5">{t.zona_entrenamiento}</span>}
+                          </p>
+                          <div>
+                            <div className="flex justify-between mb-1"><label className="text-gray-400 text-xs">RPE real</label><span className="text-orange-400 font-bold text-xs">{b.rpe}/10</span></div>
+                            <input type="range" min={1} max={10} value={b.rpe} onChange={e => set('rpe', Number(e.target.value))} className="w-full accent-orange-500" />
+                          </div>
+                          <div>
+                            <div className="flex justify-between mb-1"><label className="text-gray-400 text-xs">Sensacion tecnica</label><span className="text-orange-400 font-bold text-xs">{b.sensacion}/5</span></div>
+                            <input type="range" min={1} max={5} value={b.sensacion} onChange={e => set('sensacion', Number(e.target.value))} className="w-full accent-orange-500" />
+                          </div>
+                          <input type="number" placeholder="FC media (ppm) — opcional" value={b.fc} onChange={e => set('fc', e.target.value)}
+                            className="bg-gray-900 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-gray-800 rounded-xl p-4">
+                      <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">RPE real</label><span className="text-orange-400 font-bold">{rpeReal}/10</span></div>
+                      <input type="range" min={1} max={10} value={rpeReal} onChange={e => setRpeReal(Number(e.target.value))} className="w-full accent-orange-500" />
+                      <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy facil</span><span>Maximo</span></div>
+                    </div>
+                    <div className="bg-gray-800 rounded-xl p-4">
+                      <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Sensacion tecnica</label><span className="text-orange-400 font-bold">{sensacionTecnica}/5</span></div>
+                      <input type="range" min={1} max={5} value={sensacionTecnica} onChange={e => setSensacionTecnica(Number(e.target.value))} className="w-full accent-orange-500" />
+                      <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy mala</span><span>Excelente</span></div>
+                    </div>
+                  </>
+                )}
+                {/* Del DÍA: no se pueden repartir entre deportes. */}
                 <div className="bg-gray-800 rounded-xl p-4">
                   <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Dolor muscular</label><span className="text-orange-400 font-bold">{dolorMuscular}/5</span></div>
                   <input type="range" min={1} max={5} value={dolorMuscular} onChange={e => setDolorMuscular(Number(e.target.value))} className="w-full accent-orange-500" />
                   <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Sin dolor</span><span>Mucho</span></div>
                 </div>
-                <input type="number" placeholder="FC media (ppm) — opcional" value={fcMedia} onChange={e => setFcMedia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                {!esBrick && <input type="number" placeholder="FC media (ppm) — opcional" value={fcMedia} onChange={e => setFcMedia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
                 <input type="number" placeholder="HRV del dia (ms) — opcional" value={hrvDia} onChange={e => setHrvDia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 <textarea placeholder="Notas (opcional)" value={notasPost} onChange={e => setNotasPost(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={3} />
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar y finalizar'}</button>
@@ -741,6 +812,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             <button onClick={() => setVistaTabla(true)} className={'px-3 py-2 rounded-lg text-sm transition ' + (vistaTabla ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>📊 Tabla</button>
           </div>
         </div>
+
+        {/* Resumen del brick: las transiciones NO son tareas (no deben contar como
+            carga de ninguna disciplina), así que no pueden salir en la tabla de abajo.
+            Aquí es donde se ven, que para eso son un paso entrenable. */}
+        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable={!esDeportista} depId={deportistaId} />}
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">

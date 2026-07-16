@@ -65,13 +65,21 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
   const { data: ses } = await supabase.from('sesion')
     .select('id, disciplina, rpe_reportado, fecha_sesion')
     .eq('estado', 'Realizada').in('id_microciclo', micros)
-  const sesiones = (ses || []).filter((s: any) => (DISCIPLINAS_SICAT as readonly string[]).includes(s.disciplina) && s.fecha_sesion)
+  // Los bricks entran aunque 'Brick' no sea una disciplina SICAT: sus BLOQUES sí lo son.
+  const sesiones = (ses || []).filter((s: any) =>
+    ((DISCIPLINAS_SICAT as readonly string[]).includes(s.disciplina) || s.disciplina === 'Brick') && s.fecha_sesion)
   if (!sesiones.length) return { celdas: [], costeMedioGlobal: null, nSesiones: 0 }
 
   const sesIds = sesiones.map((s: any) => s.id)
-  const { data: tareas } = await supabase.from('tarea').select('id_sesion, zona_entrenamiento').in('id_sesion', sesIds)
+  const { data: tareas } = await supabase.from('tarea')
+    .select('id_sesion, zona_entrenamiento, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden')
   const zonasPorSesion: Record<number, string[]> = {}
-  ;(tareas || []).forEach((t: any) => { if (t.zona_entrenamiento) (zonasPorSesion[t.id_sesion] ||= []).push(t.zona_entrenamiento) })
+  const bloquesPorSesion: Record<number, any[]> = {}
+  ;(tareas || []).forEach((t: any) => {
+    if (!t.zona_entrenamiento) return
+    ;(zonasPorSesion[t.id_sesion] ||= []).push(t.zona_entrenamiento)
+    ;(bloquesPorSesion[t.id_sesion] ||= []).push(t)
+  })
 
   // Wellness del rango (sesión + 2 días) para DOMS 24/48h y HRV del día siguiente.
   const fechas = sesiones.map((s: any) => s.fecha_sesion).sort()
@@ -88,16 +96,33 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
   for (const s of sesiones as any[]) {
     const zonas = zonasPorSesion[s.id]
     if (!zonas || !zonas.length) continue
-    const zonaPico = zonas.reduce((best, z) => (cargaZona(z).nivel > cargaZona(best).nivel ? z : best), zonas[0])
     const f = s.fecha_sesion
-    const coste = costeSesion(
+    // El coste sale del wellness (DOMS 24/48h, HRV) que es del DÍA, más el RPE reportado.
+    const costeCon = (rpe: number | null) => costeSesion(
       wByF[f]?.dolor_muscular ?? null,
       wByF[addDays(f, 1)]?.dolor_muscular ?? null,
       wByF[addDays(f, 2)]?.dolor_muscular ?? null,
       wByF[addDays(f, 1)]?.hrv ?? null,
       hrvBasal,
-      s.rpe_reportado ?? null,
+      rpe,
     )
+
+    // Un brick reparte su coste entre sus bloques: cada uno con su deporte, su zona y
+    // su propio RPE si el atleta lo reportó bloque a bloque.
+    if (s.disciplina === 'Brick') {
+      for (const b of bloquesPorSesion[s.id] || []) {
+        if (!(DISCIPLINAS_SICAT as readonly string[]).includes(b.disciplina)) continue
+        const coste = costeCon(b.rpe_reportado ?? s.rpe_reportado ?? null)
+        if (coste == null) continue
+        ;(acc[`${b.disciplina}|${b.zona_entrenamiento}`] ||= []).push(coste)
+        todos.push(coste)
+      }
+      continue
+    }
+
+    // Sesión normal: una celda, con la zona pico (comportamiento de siempre).
+    const zonaPico = zonas.reduce((best, z) => (cargaZona(z).nivel > cargaZona(best).nivel ? z : best), zonas[0])
+    const coste = costeCon(s.rpe_reportado ?? null)
     if (coste == null) continue
     ;(acc[`${s.disciplina}|${zonaPico}`] ||= []).push(coste)
     todos.push(coste)

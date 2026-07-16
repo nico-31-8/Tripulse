@@ -245,7 +245,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   const nuevaFilaR = (): FilaResistencia => ({
     orden: filasR.length + tareasGuardadas.length + 1,
-    zona: '', disciplina: disciplinaSesion || '',
+    // En un brick, 'Brick' NO es un deporte: cada bloque tiene el suyo, así que se
+    // deja vacío para que se elija (si no, el volumen del bloque no iría a ningún
+    // deporte real — ver lib/atribucion).
+    zona: '', disciplina: disciplinaSesion === 'Brick' ? '' : (disciplinaSesion || ''),
     series: '', descanso: '', tipoMedicion: '', valorMedicion: '',
     intensidadPersonalizada: '', comentario: '',
   })

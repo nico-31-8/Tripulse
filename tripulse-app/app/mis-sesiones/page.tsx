@@ -8,7 +8,11 @@ import type { TestsDeportista } from '@/lib/duracion'
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick']
+// Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
+// aquí no hay constructor. Sin bloques, su carga no se puede atribuir a ningún deporte
+// y desaparecería de volumen, carga y SICAT (ver lib/atribucion). Los bricks se crean
+// en planificación (bloques, calendario, semana o canvas).
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
 // Microciclo de la semana de una fecha si cae dentro de un mesociclo del atleta (creándolo
 // si no existe). Si la fecha queda fuera de todo plan → null (sesión "libre").
