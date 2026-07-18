@@ -80,7 +80,9 @@ export const ZONAS_FUERZA: ZonaFuerza[] = [
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
-export const zonaResistencia = (sigla: string) => ZONAS_RESISTENCIA.find(z => z.sigla === sigla) || null
+// La sigla puede llegar vacía: tarea.zona_entrenamiento es nullable.
+export const zonaResistencia = (sigla: string | null | undefined) =>
+  sigla ? ZONAS_RESISTENCIA.find(z => z.sigla === sigla) || null : null
 export const zonaFuerza = (sigla: string) => ZONAS_FUERZA.find(z => z.sigla === sigla) || null
 export const esZona2 = (sigla: string) => !!zonaResistencia(sigla) || !!zonaFuerza(sigla)
 
@@ -147,6 +149,48 @@ function fmtSeg(s: number): string {
   if (!isFinite(s) || s <= 0) return '—'
   const t = Math.round(s)
   return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`
+}
+
+// ------------------------------------------------------------
+// Intensidad real de una zona, para estimar duraciones (lib/duracion.ts).
+//
+// Ojo con el atajo fácil: cargaZona() comprime estas 9 zonas en 7 niveles (AER y AEL
+// caen las dos en el nivel 1; PLA y CALA en el 6). Si se estima con ese nivel, AEL
+// acaba corriendo al 60% de la VAM (el % de AER) cuando es 65–75%. Por eso estos
+// helpers leen el catálogo directamente, sin pasar por el nivel.
+// ------------------------------------------------------------
+
+// % de VAM del punto medio de una zona de carrera. Los extremos abiertos (AER sin
+// mínimo, CALA/PALA sin máximo) se resuelven con el único borde que tienen.
+export function pctVamZona(sigla: string | null | undefined): number | null {
+  const z = zonaResistencia(sigla)
+  if (!z) return null
+  const { vamMin, vamMax } = z
+  if (vamMin != null && vamMax != null) return (vamMin + vamMax) / 2
+  if (vamMax != null) return vamMax * 0.92   // AER: "hasta 65%" → se rueda por debajo
+  if (vamMin != null) return vamMin          // CALA/PALA: el suelo es la referencia
+  return null
+}
+
+// Velocidad de natación (m/s) de una zona, dado el CSS en m/s.
+// Se calcula desde el desfase real en segundos sobre el CSS (CSS_OFFSET), no con un
+// % sobre la velocidad: un "CSS +15s" no es un 85% del CSS, y tratarlo como % daba
+// ritmos absurdos.
+export function velNatacionZona(sigla: string | null | undefined, css: number): number | null {
+  if (!sigla || !css || css <= 0) return null
+  const off = CSS_OFFSET[sigla]
+  if (!off) return null
+  const base = 100 / css                       // seg/100m al CSS
+  const [oMin, oMax] = off
+  // Punto medio del rango de la zona; con un solo borde, ese borde manda.
+  const seg = oMin != null && oMax != null ? base + (oMin + oMax) / 2
+    : oMin != null ? base + oMin
+    : oMax != null ? base + oMax
+    : null
+  // PLA/CALA/PALA no tienen desfase: son series a velocidad máxima, no estimables
+  // por ritmo relativo al CSS.
+  if (seg == null || seg <= 0) return null
+  return 100 / seg
 }
 
 // Ritmo de natación por 100 m para una zona, dado el CSS en m/s.

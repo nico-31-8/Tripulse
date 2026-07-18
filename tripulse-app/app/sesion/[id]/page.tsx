@@ -4,6 +4,9 @@ import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
+import PanelPlantillas from '@/components/PanelPlantillas'
+import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
+import { cargaZona } from '@/lib/zonas'
 
 const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import DatosReales from './DatosReales'
@@ -20,9 +23,49 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [sesion, setSesion] = useState<any>(null)
   // 'Brick' es la etiqueta de la sesión; el deporte real lo pone cada bloque (tarea).
   const esBrick = sesion?.disciplina === 'Brick'
+  // Fuerza a TareasTabla a releer de la BD tras aplicar una plantilla (carga sus
+  // tareas al montar, así que cambiarle la key es lo que la refresca).
+  const [recargaTareas, setRecargaTareas] = useState(0)
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   const [esDeportista, setEsDeportista] = useState(false)
+  // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
+  // (aplicarlas reescribe las tareas). Fuerza y Brick no tienen: la fuerza va por
+  // cualidades y un brick se monta con su constructor.
+  const mostrarPlantillas = !esDeportista && sesion?.estado !== 'Realizada'
+    && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion?.disciplina)
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false)
+  const [refrescarPropias, setRefrescarPropias] = useState(0)
+
+  // Guarda las tareas de ESTA sesión como una plantilla reutilizable del entrenador.
+  // Solo se lleva el molde (zona, series, volumen, descanso): ni RPE, ni fechas, ni
+  // nada del atleta.
+  const guardarComoPlantilla = async () => {
+    // Se leen de la BD, no del estado: la tabla de tareas escribe por su cuenta y
+    // aunque ahora avisa (onTareasCambian), guardar una plantilla incompleta es
+    // silencioso y difícil de detectar. Aquí la fuente de verdad es la base de datos.
+    const { data: frescas } = await supabase.from('tarea')
+      .select('orden, zona_entrenamiento, series, descanso_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados)')
+      .eq('id_sesion', id).order('orden')
+    const bloques = bloquesDesdeTareas(frescas || [])
+    if (!bloques.length) {
+      alert('Esta sesión no tiene tareas con zona y volumen: no hay nada que guardar como plantilla.')
+      return
+    }
+    const nombre = prompt('Nombre de la plantilla:', 'Sesión de ' + cargaZona(zonaPico(bloques)).nombre.toLowerCase())
+    if (!nombre?.trim()) return
+    setGuardandoPlantilla(true)
+    const err = await guardarPropia(supabase, {
+      nombre: nombre.trim(),
+      disciplina: sesion.disciplina,
+      objetivo: sesion.notas_entrenador || null,
+      bloques,
+    })
+    setGuardandoPlantilla(false)
+    if (err) { alert('No se ha podido guardar la plantilla.\n\n' + err); return }
+    setRefrescarPropias(n => n + 1)
+    alert('Plantilla «' + nombre.trim() + '» guardada. La tienes en el panel, en «Propias».')
+  }
   const [vistaTabla, setVistaTabla] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [mostrarPostSesion, setMostrarPostSesion] = useState(false)
@@ -782,6 +825,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         
 
+        {/* Columna izquierda: gráfica + tareas. El panel de plantillas es la columna
+            derecha y arranca A LA ALTURA DE LA GRÁFICA — si el grid empezara más abajo,
+            al aparecer la gráfica el panel se hundiría con la sección y dejaría medio
+            lateral vacío. La fila se ensancha 21rem hacia la derecha (el contenedor es
+            max-w-5xl centrado) para no encoger la zona de tareas. Por debajo de 1700px
+            no cabe ese desbordamiento y el panel se apila debajo. */}
+        <div className={mostrarPlantillas
+          ? 'flex flex-col gap-4 min-[1700px]:grid min-[1700px]:grid-cols-[1fr_20rem] min-[1700px]:items-start min-[1700px]:w-[calc(100%+21rem)]'
+          : ''}>
+        <div className="min-w-0">
+
         <SessionLoadChart tareas={tareas} />
 
         {sesion.disciplina === 'Fuerza' && !esDeportista && (
@@ -805,9 +859,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           </div>
         )}
 
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-xl font-bold">Tareas</h3>
           <div className="flex gap-2">
+            {/* Guardar como plantilla: reutiliza esta misma pantalla como editor en
+                vez de montar un módulo aparte (decidido con el usuario). */}
+            {mostrarPlantillas && tareas.length > 0 && (
+              <button onClick={guardarComoPlantilla} disabled={guardandoPlantilla}
+                className="px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition disabled:opacity-50">
+                {guardandoPlantilla ? 'Guardando…' : '💾 Guardar como plantilla'}
+              </button>
+            )}
             <button onClick={() => setVistaTabla(false)} className={'px-3 py-2 rounded-lg text-sm transition ' + (!vistaTabla ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>📋 Formulario</button>
             <button onClick={() => setVistaTabla(true)} className={'px-3 py-2 rounded-lg text-sm transition ' + (vistaTabla ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>📊 Tabla</button>
           </div>
@@ -819,8 +881,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable={!esDeportista} depId={deportistaId} />}
 
         {vistaTabla && deportistaId ? (
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <TareasTabla sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} />
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
+            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} onTareasCambian={cargarDatos} />
           </div>
         ) : (
           <div>
@@ -997,6 +1059,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             )}
           </div>
         )}
+
+        </div>{/* /columna izquierda: gráfica + tareas */}
+
+        {mostrarPlantillas && (
+          <PanelPlantillas
+            sesionId={Number(id)}
+            disciplina={sesion.disciplina}
+            nTareas={tareas.length}
+            refrescar={refrescarPropias}
+            onAplicada={async () => { await cargarDatos(); setRecargaTareas(n => n + 1) }}
+          />
+        )}
+        </div>{/* /fila gráfica+tareas | plantillas */}
       </div>
       {tareaEditando && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">

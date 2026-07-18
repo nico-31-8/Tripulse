@@ -16,7 +16,7 @@
 // El % de zona es el punto medio del rango de ZONAS_REF (ver tareas-tabla.tsx).
 // Z1 tiene rango [0, x] así que usamos un valor fijo del 60%.
 // Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
-import { cargaZona } from './zonas'
+import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia } from './zonas'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
 // Z1 fijo al 60% porque su rango real empieza en 0.
@@ -65,6 +65,24 @@ function numZona(zona?: string | null): number {
   return cargaZona(zona).nivel
 }
 
+// Velocidad de CARRERA de una zona, en m/s. Si la zona es una sigla del catálogo
+// Zonas 2, su % sale del propio catálogo; si es una Z1–Z7 clásica, del mapa de
+// niveles. NO se pasa por cargaZona() para las siglas: comprime 9 zonas en 7 y AEL
+// acababa estimándose al 60% de VAM (el de AER) en vez de al 70%.
+function velCarrera(zona: string | null | undefined, vam: number): number | null {
+  const pct = pctVamZona(zona) ?? PCT_ZONA[numZona(zona)]?.vam ?? PCT_ZONA[2].vam
+  const velMs = (vam * pct / 100) / 3.6
+  return velMs > 0 ? velMs : null
+}
+
+// Velocidad de NATACIÓN de una zona, en m/s. Para las siglas se usa el desfase real
+// en segundos sobre el CSS; para las Z1–Z7 clásicas, el mapa de niveles.
+function velNatacion(zona: string | null | undefined, css: number): number | null {
+  if (zonaResistencia(zona)) return velNatacionZona(zona, css)
+  const velMs = css * (PCT_ZONA[numZona(zona)]?.css ?? PCT_ZONA[2].css) / 100
+  return velMs > 0 ? velMs : null
+}
+
 // Tiempo de trabajo de UNA serie de la tarea, en segundos. null si no es estimable.
 function segTrabajoPorSerie(t: TareaDuracion, tests: TestsDeportista): number | null {
   const dur = t.p_duracion?.[0]?.tiempo_planeado
@@ -72,16 +90,14 @@ function segTrabajoPorSerie(t: TareaDuracion, tests: TestsDeportista): number | 
 
   const metros = t.p_distancia?.[0]?.metros_planeados
   if (metros != null && metros > 0) {
-    const z = numZona(t.zona_entrenamiento)
-    const pct = PCT_ZONA[z] || PCT_ZONA[2]
     const disc = t.disciplina
     if (disc === 'Carrera' && tests.vam) {
-      const velMs = (tests.vam * pct.vam / 100) / 3.6
-      return velMs > 0 ? metros / velMs : null
+      const velMs = velCarrera(t.zona_entrenamiento, tests.vam)
+      return velMs ? metros / velMs : null
     }
     if (disc === 'Natacion' && tests.css) {
-      const velMs = tests.css * pct.css / 100
-      return velMs > 0 ? metros / velMs : null
+      const velMs = velNatacion(t.zona_entrenamiento, tests.css)
+      return velMs ? metros / velMs : null
     }
     // Ciclismo por distancia o falta el test → no estimable
     return null

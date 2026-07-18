@@ -7,8 +7,10 @@ import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
 import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
 import { PRUEBAS, CATEGORIAS_PRUEBA, pruebaPorId, resumenSegmentos } from '@/lib/pruebas'
+import { plantillasDe, bloquesDe, aplicarBloques, volumenPrincipal, NIVELES, type PlantillaSesion, type NivelPlantilla } from '@/lib/plantillas'
+import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { ZONAS_FUERZA } from '@/lib/zonas'
+import { ZONAS_FUERZA, cargaZona } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 
@@ -169,11 +171,22 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   // Copiar/pegar
   const [sesionCopiada, setSesionCopiada] = useState<any>(null)
+  // Plantilla "en la mano": elegida en el panel, se aplica al pulsar un día (mismo
+  // patrón que copiar/pegar sesión). Guarda ya sus bloques resueltos + un texto para
+  // el banner, así el pegado no depende de si es del sistema o propia.
+  const [plantillaEnMano, setPlantillaEnMano] = useState<{ nombre: string; disciplina: string; bloques: any[] } | null>(null)
+  const [panelPlantillas, setPanelPlantillas] = useState(false)
+  const [plantDisc, setPlantDisc] = useState<'Natacion' | 'Ciclismo' | 'Carrera'>('Natacion')
+  const [plantNivel, setPlantNivel] = useState<NivelPlantilla>('intermedio')
+  const [plantPestana, setPlantPestana] = useState<'tipo' | 'propias'>('tipo')
+  const [plantPropias, setPlantPropias] = useState<PlantillaPropia[]>([])
   const [semanaCopiada, setSemanaCopiada] = useState<string|null>(null) // lunes de la semana copiada
   const [semanaDestino, setSemanaDestino] = useState<string|null>(null)
   const [mostrarToast, setMostrarToast] = useState('')
 
   useEffect(() => { cargarDatos() }, [id])
+  // Las plantillas propias del panel del calendario, por disciplina (sin migración → lista vacía).
+  useEffect(() => { if (panelPlantillas) cargarPropias(supabase, plantDisc).then(setPlantPropias) }, [panelPlantillas, plantDisc])
 
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
@@ -288,6 +301,30 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
 
   // PEGAR SESIÓN en un día
+  // Crea una sesión en el día `f` a partir de la plantilla en la mano. La plantilla
+  // guarda ZONAS: el ritmo lo pondrá el atleta con sus tests. La duración y el RPE
+  // los deriva la app de las tareas, así que no se fijan aquí.
+  const pegarPlantilla = async (f: string) => {
+    if (!plantillaEnMano) return
+    const micro = getMicroDelDia(f)
+    if (!micro) { toast('Ese día no tiene semana asignada'); return }
+    setLoading(true)
+    const { data: nueva } = await supabase.from('sesion').insert({
+      id_microciclo: micro.id,
+      disciplina: plantillaEnMano.disciplina,
+      fecha_sesion: f,
+      estado: 'Planificada',
+    }).select().single()
+    if (nueva) {
+      const err = await aplicarBloques(supabase, nueva.id, plantillaEnMano.disciplina, plantillaEnMano.bloques)
+      if (err) { toast('Sesión creada, pero error al aplicar la plantilla'); }
+    }
+    // La plantilla NO se suelta: así se puede pegar en varios días seguidos.
+    await cargarDatos()
+    toast('«' + plantillaEnMano.nombre + '» aplicada al ' + f.slice(8) + '/' + f.slice(5, 7))
+    setLoading(false)
+  }
+
   const pegarSesion = async (f: string) => {
     if (!sesionCopiada) return
     const micro = getMicroDelDia(f)
@@ -352,6 +389,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
 
   const abrirModal = (f: string) => {
+    // Si hay una plantilla en la mano, crear la sesión con ella
+    if (plantillaEnMano) { pegarPlantilla(f); return }
     // Si hay sesión copiada, pegar
     if (sesionCopiada) { pegarSesion(f); return }
     // Si hay semana copiada, confirmar pegado
@@ -518,6 +557,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {/* Banner: plantilla en la mano */}
+      {plantillaEnMano && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-xl flex items-center gap-3 border bg-orange-900 border-orange-500 text-orange-100">
+          <span>📋 «{plantillaEnMano.nombre}» — pulsa un día para crear la sesión</span>
+          <button onClick={() => setPlantillaEnMano(null)} className="text-orange-300 hover:text-white ml-2">✕ Soltar</button>
+        </div>
+      )}
+
       {/* Banner modo copiar */}
       {modoActivo && (
         <div className={'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-xl flex items-center gap-3 border ' +
@@ -603,6 +650,76 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
 
+        {/* Panel de plantillas: elige una y luego pulsa el día donde crearla. */}
+        {panelPlantillas && (() => {
+          const delSistema = plantillasDe(plantDisc)
+          const lista: { key: string; nombre: string; zona: string; vol: string; bloques: any[] }[] =
+            plantPestana === 'tipo'
+              ? delSistema.map(p => ({ key: p.id, nombre: p.nombre, zona: p.zona, vol: volumenPrincipal(p, plantNivel), bloques: bloquesDe(p, plantNivel) }))
+              : plantPropias.map(p => ({ key: 'p' + p.id, nombre: p.nombre, zona: p.zona, vol: '', bloques: p.bloques }))
+          return (
+            <div className="mb-6 bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <p className="font-semibold text-white text-sm">📋 Plantillas — elige una y pulsa el día</p>
+                <p className="text-gray-500 text-[11px]">Guardan zonas, no ritmos: el ritmo lo pone el atleta con sus tests.</p>
+              </div>
+              {/* Disciplina */}
+              <div className="flex gap-1.5 mb-2">
+                {(['Natacion', 'Ciclismo', 'Carrera'] as const).map(d => (
+                  <button key={d} onClick={() => setPlantDisc(d)}
+                    className={'text-xs px-3 py-1.5 rounded-lg border transition ' +
+                      (plantDisc === d ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600')}>
+                    {d === 'Natacion' ? '🏊 Natación' : d === 'Ciclismo' ? '🚴 Ciclismo' : '🏃 Carrera'}
+                  </button>
+                ))}
+                <div className="ml-auto flex gap-1 bg-gray-800/60 p-0.5 rounded-lg">
+                  {([['tipo', 'Tipo'], ['propias', 'Propias']] as [typeof plantPestana, string][]).map(([id, label]) => (
+                    <button key={id} onClick={() => setPlantPestana(id)}
+                      className={'text-[11px] px-2.5 py-1 rounded-md transition ' + (plantPestana === id ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300')}>
+                      {label}{id === 'propias' && plantPropias.length > 0 ? ' · ' + plantPropias.length : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Nivel (solo del sistema) */}
+              {plantPestana === 'tipo' && (
+                <div className="flex gap-1 mb-3">
+                  {NIVELES.map(n => (
+                    <button key={n.id} onClick={() => setPlantNivel(n.id)}
+                      className={'text-[11px] px-2.5 py-1 rounded-lg border transition ' +
+                        (plantNivel === n.id ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-500 hover:border-gray-600')}>
+                      {n.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Rejilla de plantillas */}
+              {lista.length === 0 ? (
+                <p className="text-gray-600 text-xs py-3 text-center">
+                  {plantPestana === 'propias' ? 'Aún no tienes plantillas propias. Guárdalas desde una sesión.' : 'Sin plantillas.'}
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                  {lista.map(p => {
+                    const col = cargaZona(p.zona).color
+                    const activa = plantillaEnMano?.nombre === p.nombre
+                    return (
+                      <button key={p.key}
+                        onClick={() => setPlantillaEnMano(activa ? null : { nombre: p.nombre, disciplina: plantDisc, bloques: p.bloques })}
+                        className={'flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-left transition ' +
+                          (activa ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 bg-gray-800/40 hover:border-gray-700')}>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded leading-none flex-shrink-0" style={{ background: col, color: '#0a0b0f' }}>{p.zona}</span>
+                        <span className="text-xs text-white truncate flex-1">{p.nombre}</span>
+                        {p.vol && <span className="text-gray-600 text-[10px]">{p.vol}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Banner próxima competición */}
         {proximaCompeticion && (
           <div className="mb-6 bg-yellow-900/30 border border-yellow-600/50 rounded-xl px-5 py-4 flex items-center justify-between">
@@ -639,6 +756,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             <button onClick={() => { setFechaSel(hoy); setModalTipo('bloquear') }}
               className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white text-sm px-3 py-2 rounded-lg transition">
               🚫 <span>Bloquear semana</span>
+            </button>
+            <button onClick={() => setPanelPlantillas(v => !v)}
+              className={'flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg transition border ' +
+                (panelPlantillas ? 'bg-orange-500 border-orange-500 text-white' : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300 hover:text-white')}>
+              📋 <span>Plantillas</span>
             </button>
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
               <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}

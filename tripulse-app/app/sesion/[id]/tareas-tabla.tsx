@@ -147,13 +147,17 @@ interface FilaFuerza {
   guardado?: boolean
 }
 
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '' }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', onTareasCambian }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
   esDeportista?: boolean
   modoFuerza?: string
   zonaFuerza?: string
+  // Esta tabla escribe las tareas en la BD por su cuenta. Sin avisar al padre, su
+  // lista de tareas se quedaba congelada desde que cargó la página: la gráfica de
+  // carga y "Guardar como plantilla" se perdían todo lo añadido aquí.
+  onTareasCambian?: () => void
 }) {
   const esFuerza = disciplinaSesion === 'Fuerza'
   const [filasR, setFilasR] = useState<FilaResistencia[]>([])
@@ -204,6 +208,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     await supabase.from('ejercicios').delete().eq('id_tarea', tareaId)
     await supabase.from('tarea').delete().eq('id', tareaId)
     setTareasGuardadas(prev => prev.filter(t => t.id !== tareaId))
+    onTareasCambian?.()
   }
 
   const abrirEditarTarea = (t: any) => {
@@ -232,6 +237,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     } : t))
     setTareaEditando(null)
     setLoading(false)
+    onTareasCambian?.()
   }
 
   // Referencia de una zona por su código: sistema 2 (siglas) o clásico ('Zn')
@@ -290,6 +296,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       }
       await cargarDatos()
       setFilasR(prev => prev.filter((_, idx) => idx !== i))
+      onTareasCambian?.()
     } catch (e: any) {
       alert('Error inesperado: ' + e.message)
     }
@@ -338,6 +345,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     }
     await cargarDatos()
     setFilasF(prev => prev.filter((_, idx) => idx !== i))
+    onTareasCambian?.()
     } catch (e: any) {
       alert('Error inesperado: ' + e.message)
     }
