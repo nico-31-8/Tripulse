@@ -6,6 +6,7 @@ import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
+import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { cargaZona } from '@/lib/zonas'
 
 const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
@@ -15,7 +16,7 @@ import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, zonaResistencia, prescripcion } from '@/lib/zonas'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
-import { tablaMedicion, valorCanonico, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -88,6 +89,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [editZona, setEditZona] = useState('')
   const [editSeries, setEditSeries] = useState('')
   const [editDescanso, setEditDescanso] = useState('')
+  const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
+  const [editMedValor, setEditMedValor] = useState('')
   const [editComentario, setEditComentario] = useState('')
   const [cronometroActivo, setCronometroActivo] = useState(false)
   const [segundos, setSegundos] = useState(0)
@@ -117,6 +120,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [configSerie, setConfigSerie] = useState('')
   const [modalVideoFuerza, setModalVideoFuerza] = useState<string | null>(null)
   const [editandoDuracion, setEditandoDuracion] = useState(false)
+  // Arrastrar tareas para reordenarlas. `dragIdx` = la que se arrastra; `sobreIdx` =
+  // dónde caería, para pintar la guía. El orden se persiste en tarea.orden.
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [sobreIdx, setSobreIdx] = useState<number | null>(null)
+
+  const reordenarTareas = async (from: number, to: number) => {
+    const nuevo = moverItem(tareas, from, to)
+    if (nuevo === tareas) return
+    setTareas(nuevo)   // optimista: se ve al instante, se persiste detrás
+    await persistirOrden(supabase, nuevo)
+  }
   const [duracionManualInput, setDuracionManualInput] = useState('')
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
@@ -238,7 +252,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
-    const { data: tar } = await supabase.from('tarea').select('*, p_duracion(tiempo_planeado), p_distancia(metros_planeados), ejercicios(repeticiones)').eq('id_sesion', id).order('orden')
+    const { data: tar } = await ordenarTareasQuery(
+      supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones)').eq('id_sesion', id))
     setTareas(tar || [])
     if (ses) {
       const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
@@ -377,6 +392,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setEditSeries(t.series || '')
     setEditDescanso(t.descanso_segundos || '')
     setEditComentario(t.comentario || '')
+    const med = detectarMedicion(t)
+    setEditMedTipo(med.tipo)
+    setEditMedValor(med.valor)
   }
 
   const guardarEditarTarea = async (e: React.FormEvent) => {
@@ -388,13 +406,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       descanso_segundos: editDescanso ? Number(editDescanso) : null,
       comentario: editComentario || null,
     }).eq('id', tareaEditando.id)
-    setTareas(prev => prev.map(t => t.id === tareaEditando.id ? {
-      ...t,
-      zona_entrenamiento: editZona || null,
-      series: editSeries ? Number(editSeries) : null,
-      descanso_segundos: editDescanso ? Number(editDescanso) : null,
-      comentario: editComentario || null,
-    } : t))
+    await guardarMedicion(supabase, tareaEditando, editMedTipo, editMedValor)
+    // La medición cambia filas anidadas; recargar es más simple y fiable que
+    // reconstruir el estado a mano.
+    await cargarDatos()
     setTareaEditando(null)
     setLoading(false)
   }
@@ -1031,8 +1046,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             ) : (
               <div className="grid gap-3">
                 {tareas.map((t, i) => (
-                  <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                  <div key={t.id}
+                    draggable={!esDeportista}
+                    onDragStart={() => setDragIdx(i)}
+                    onDragOver={e => { e.preventDefault(); if (sobreIdx !== i) setSobreIdx(i) }}
+                    onDragEnd={() => { setDragIdx(null); setSobreIdx(null) }}
+                    onDrop={e => { e.preventDefault(); if (dragIdx !== null) reordenarTareas(dragIdx, i); setDragIdx(null); setSobreIdx(null) }}
+                    className={'bg-gray-900 rounded-xl p-5 border transition ' +
+                      (dragIdx === i ? 'border-orange-500/60 opacity-40 ' : 'border-gray-800 ') +
+                      (sobreIdx === i && dragIdx !== null && dragIdx !== i ? 'ring-2 ring-orange-500/70 ' : '')}>
                     <div className="flex items-start gap-3">
+                      {!esDeportista && (
+                        <span className="text-gray-500 hover:text-orange-400 cursor-grab active:cursor-grabbing select-none flex-shrink-0 text-2xl leading-none -mt-0.5" title="Arrastra para reordenar">⠿</span>
+                      )}
                       <span className="bg-orange-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">{i+1}</span>
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
@@ -1081,9 +1107,39 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               <button onClick={() => setTareaEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
             <form onSubmit={guardarEditarTarea} className="flex flex-col gap-4">
-              <input type="text" placeholder="Zona (ej: Z2, Z4)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              <input type="number" placeholder="Series" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              <input type="number" placeholder="Descanso (seg)" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <label className="flex flex-col gap-1">
+                <span className="text-gray-400 text-xs">Zona / intensidad</span>
+                <input type="text" placeholder="Zona (ej: Z2, AEM)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              </label>
+              {/* Medición: el usuario pedía poder cambiar el tiempo/distancia, no solo
+                  la zona. La unidad se puede cambiar (m↔km, seg↔min↔mm:ss). */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Medición</span>
+                  <select value={editMedTipo} onChange={e => setEditMedTipo(e.target.value as UnidadMedicion)} className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                    <option value="">Sin medición</option>
+                    <optgroup label="Distancia"><option value="m">Metros</option><option value="km">Kilómetros</option></optgroup>
+                    <optgroup label="Tiempo"><option value="seg">Segundos</option><option value="min">Minutos</option><option value="mmss">mm:ss</option></optgroup>
+                    <option value="reps">Repeticiones</option>
+                  </select>
+                </label>
+                {editMedTipo && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Valor {editMedTipo === 'mmss' ? '(mm:ss)' : ''}</span>
+                    <input type={editMedTipo === 'mmss' ? 'text' : 'number'} placeholder={editMedTipo === 'mmss' ? '2:30' : ''} value={editMedValor} onChange={e => setEditMedValor(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Series</span>
+                  <input type="number" placeholder="4" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Descanso (seg)</span>
+                  <input type="number" placeholder="90" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+              </div>
               <textarea placeholder="Comentario" value={editComentario} onChange={e => setEditComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
               <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
             </form>

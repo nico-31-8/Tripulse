@@ -2,8 +2,9 @@
 import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
-import { tablaMedicion, valorCanonico, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
 function refZona2(z: ZonaResistencia, disciplina: string, tests: any, fcMax: number) {
@@ -172,7 +173,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [editSeries, setEditSeries] = useState('')
   const [editDescanso, setEditDescanso] = useState('')
   const [editComentario, setEditComentario] = useState('')
+  const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
+  const [editMedValor, setEditMedValor] = useState('')
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
+  // Arrastrar filas para reordenarlas (mismo criterio que la vista Formulario).
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [sobreIdx, setSobreIdx] = useState<number | null>(null)
+
+  const reordenarTareas = async (from: number, to: number) => {
+    const nuevo = moverItem(tareasGuardadas, from, to)
+    if (nuevo === tareasGuardadas) return
+    setTareasGuardadas(nuevo)
+    await persistirOrden(supabase, nuevo)
+    onTareasCambian?.()
+  }
 
   useEffect(() => { cargarDatos() }, [deportistaId, sesionId])
 
@@ -186,7 +200,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: [] })
     const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
     setEjerciciosBiblioteca(ejBib || [])
-    const { data: tar, error: errTar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId).order('id')
+    const { data: tar, error: errTar } = await ordenarTareasQuery(
+      supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId))
     if (tar && tar.length > 0) {
       const tareaIds = tar.map((t: any) => t.id)
       const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
@@ -217,6 +232,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setEditSeries(t.series || '')
     setEditDescanso(t.descanso_segundos || '')
     setEditComentario(t.comentario || '')
+    const med = detectarMedicion(t)
+    setEditMedTipo(med.tipo)
+    setEditMedValor(med.valor)
   }
 
   const guardarEditarTarea = async (e: React.FormEvent) => {
@@ -228,15 +246,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       descanso_segundos: editDescanso ? Number(editDescanso) : null,
       comentario: editComentario || null,
     }).eq('id', tareaEditando.id)
-    setTareasGuardadas(prev => prev.map(t => t.id === tareaEditando.id ? {
-      ...t,
-      zona_entrenamiento: editZona || null,
-      series: editSeries ? Number(editSeries) : null,
-      descanso_segundos: editDescanso ? Number(editDescanso) : null,
-      comentario: editComentario || null,
-    } : t))
+    if (!esFuerza) await guardarMedicion(supabase, tareaEditando, editMedTipo, editMedValor)
     setTareaEditando(null)
     setLoading(false)
+    await cargarDatos()   // la medición toca filas anidadas: releer es lo fiable
     onTareasCambian?.()
   }
 
@@ -284,6 +297,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
         descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
         comentario: f.comentario || null,
+        // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
+        // se ordenaban distinto (ver lib/tareas-orden).
+        orden: tareasGuardadas.length + i + 1,
       }).select().single()
       if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
       if (tarea) {
@@ -393,8 +409,21 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               {tareasGuardadas.map((t, i) => {
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 return (
-                  <tr key={t.id} className="border-b border-gray-800 hover:bg-gray-800">
-                    <td className="py-2 px-2 text-orange-400 font-bold">{i + 1}</td>
+                  <tr key={t.id}
+                    draggable={!esDeportista}
+                    onDragStart={() => setDragIdx(i)}
+                    onDragOver={e => { e.preventDefault(); if (sobreIdx !== i) setSobreIdx(i) }}
+                    onDragEnd={() => { setDragIdx(null); setSobreIdx(null) }}
+                    onDrop={e => { e.preventDefault(); if (dragIdx !== null) reordenarTareas(dragIdx, i); setDragIdx(null); setSobreIdx(null) }}
+                    className={'border-b border-gray-800 hover:bg-gray-800 transition ' +
+                      (dragIdx === i ? 'opacity-40 ' : '') +
+                      (sobreIdx === i && dragIdx !== null && dragIdx !== i ? 'border-t-2 border-t-orange-500 ' : '')}>
+                    <td className="py-2 px-2 text-orange-400 font-bold whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        {!esDeportista && <span className="text-gray-500 hover:text-orange-400 text-xl leading-none cursor-grab active:cursor-grabbing select-none" title="Arrastra para reordenar">⠿</span>}
+                        {i + 1}
+                      </span>
+                    </td>
                     {esFuerza ? (
                       <>
                         <td className="py-2 px-2 text-white">
@@ -671,9 +700,41 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               <button onClick={() => setTareaEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button>
             </div>
             <form onSubmit={guardarEditarTarea} className="flex flex-col gap-4">
-              <input type="text" placeholder="Zona (ej: Z2, Z4)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              <input type="number" placeholder="Series" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              <input type="number" placeholder="Descanso (seg)" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              <label className="flex flex-col gap-1">
+                <span className="text-gray-400 text-xs">Zona / intensidad</span>
+                <input type="text" placeholder="Zona (ej: Z2, AEM)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+              </label>
+              {/* La medición (tiempo/distancia/reps) solo en resistencia: la fuerza se
+                  mide por ejercicios, no por estas tablas. */}
+              {!esFuerza && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Medición</span>
+                    <select value={editMedTipo} onChange={e => setEditMedTipo(e.target.value as UnidadMedicion)} className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                      <option value="">Sin medición</option>
+                      <optgroup label="Distancia"><option value="m">Metros</option><option value="km">Kilómetros</option></optgroup>
+                      <optgroup label="Tiempo"><option value="seg">Segundos</option><option value="min">Minutos</option><option value="mmss">mm:ss</option></optgroup>
+                      <option value="reps">Repeticiones</option>
+                    </select>
+                  </label>
+                  {editMedTipo && (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-gray-400 text-xs">Valor {editMedTipo === 'mmss' ? '(mm:ss)' : ''}</span>
+                      <input type={editMedTipo === 'mmss' ? 'text' : 'number'} placeholder={editMedTipo === 'mmss' ? '2:30' : ''} value={editMedValor} onChange={e => setEditMedValor(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                    </label>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Series</span>
+                  <input type="number" placeholder="4" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">Descanso (seg)</span>
+                  <input type="number" placeholder="90" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                </label>
+              </div>
               <textarea placeholder="Comentario" value={editComentario} onChange={e => setEditComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
               <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
             </form>

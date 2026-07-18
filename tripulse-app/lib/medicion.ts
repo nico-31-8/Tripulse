@@ -32,3 +32,49 @@ export function valorCanonico(u: UnidadMedicion, valor: string): number {
     default: return 0
   }
 }
+
+// Lee la medición ya guardada de una tarea (para rellenar el modal de edición).
+// Devuelve la unidad más natural: metros, segundos o reps. El entrenador puede
+// cambiarla a km / min / mm:ss en el propio modal si lo prefiere.
+export function detectarMedicion(t: any): { tipo: UnidadMedicion; valor: string } {
+  const m = t?.p_distancia?.[0]?.metros_planeados
+  if (m != null) return { tipo: 'm', valor: String(m) }
+  const s = t?.p_duracion?.[0]?.tiempo_planeado
+  if (s != null) return { tipo: 'seg', valor: String(s) }
+  const r = t?.p_repeticiones?.[0]?.repeticiones_planteadas
+  if (r != null) return { tipo: 'reps', valor: String(r) }
+  return { tipo: '', valor: '' }
+}
+
+const COL_MEDICION = {
+  p_distancia: 'metros_planeados',
+  p_duracion: 'tiempo_planeado',
+  p_repeticiones: 'repeticiones_planteadas',
+} as const
+
+// Guarda la medición de una tarea ya existente: escribe en la tabla que toca y
+// borra las otras dos (una tarea tiene UNA medición). `t` debe traer sus filas
+// p_distancia/p_duracion/p_repeticiones anidadas para saber cuáles ya existen.
+export async function guardarMedicion(
+  supabase: any,
+  t: any,
+  tipo: UnidadMedicion,
+  valorStr: string,
+): Promise<void> {
+  const destino = tablaMedicion(tipo)
+  const valor = destino ? valorCanonico(tipo, valorStr) : 0
+  const tablas = ['p_distancia', 'p_duracion', 'p_repeticiones'] as const
+
+  for (const tabla of tablas) {
+    const fila = t?.[tabla]?.[0]
+    const esDestino = tabla === destino && valor > 0
+    if (esDestino) {
+      const payload = { [COL_MEDICION[tabla]]: valor }
+      if (fila?.id) await supabase.from(tabla).update(payload).eq('id', fila.id)
+      else await supabase.from(tabla).insert({ id_tarea: t.id, ...payload })
+    } else if (fila?.id) {
+      // Cambió de tipo (o se quitó la medición): la fila vieja sobra.
+      await supabase.from(tabla).delete().eq('id', fila.id)
+    }
+  }
+}
