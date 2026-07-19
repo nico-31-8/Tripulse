@@ -134,6 +134,7 @@ export default function DashboardDeportista() {
     { icon: '🏋️', titulo: 'Tests', href: '/mis-tests' },
     { icon: '📊', titulo: 'Análisis', href: '/mis-analisis' },
     { icon: '💬', titulo: 'Chat', href: deportista ? '/chat/' + deportista.id : '#' },
+    { icon: '🤝', titulo: 'Comunidad', href: '/comunidad' },
     { icon: '🗓', titulo: 'Disponib.', href: '/disponibilidad' },
     { icon: '👤', titulo: 'Perfil', href: '/perfil' },
   ]

@@ -496,6 +496,14 @@ export default function Dashboard() {
                       ) : <p className="text-sm font-semibold text-gray-500">Vacía</p>}
                     </div>
                   </BentoBtn>
+                  {/* Comunidad no depende del atleta activo: es tu acceso personal. */}
+                  <BentoBtn href="/comunidad">
+                    {bhead('🤝', 'Comunidad', '#22c55e')}
+                    <div>
+                      <p className="text-[10px] text-gray-500">Gente, grupos y retos</p>
+                      <p className="text-sm font-semibold text-gray-300">Descubre y conecta</p>
+                    </div>
+                  </BentoBtn>
                 </div>
               </div>
 

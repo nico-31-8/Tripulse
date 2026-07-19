@@ -16,6 +16,7 @@ const modulosEntrenador = [
   { icon: '💪', titulo: 'Biblioteca Fuerza', href: '/fuerza' },
   { icon: '📊', titulo: 'Volumen', href: '/volumen' },
   { icon: '💬', titulo: 'Comunicación', href: '/comunicacion' },
+  { icon: '🤝', titulo: 'Comunidad', href: '/comunidad' },
   { icon: '🗑️', titulo: 'Papelera', href: '/papelera' },
 ]
 
@@ -26,6 +27,7 @@ const modulosDeportistaFn = (depId: number | null) => [
   { icon: '🏋️', titulo: 'Mis tests', href: '/mis-tests' },
   { icon: '📊', titulo: 'Mis análisis', href: '/mis-analisis' },
   { icon: '💬', titulo: 'Comunicación', href: depId ? '/chat/' + depId : '/dashboard-deportista' },
+  { icon: '🤝', titulo: 'Comunidad', href: '/comunidad' },
   { icon: '🗓', titulo: 'Disponibilidad', href: '/disponibilidad' },
 ]
 
