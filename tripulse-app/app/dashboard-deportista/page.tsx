@@ -6,6 +6,7 @@ import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { cargaZona } from '@/lib/zonas'
+import InvitacionesClub from '@/components/InvitacionesClub'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
@@ -155,6 +156,9 @@ export default function DashboardDeportista() {
           <h2 className="text-2xl font-bold">Hola, {perfil?.nombre} 👋</h2>
           <span className="text-gray-600 text-xs">{new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
         </div>
+
+        {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
+        <InvitacionesClub />
 
         {/* Anamnesis pendiente */}
         {anamnesisPendiente && (

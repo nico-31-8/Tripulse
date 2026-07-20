@@ -69,13 +69,25 @@ const TIPOS_CLUB = [
   { id: 'escuela', label: 'Escuela' },
   { id: 'equipo', label: 'Equipo' },
 ]
+const tipoLabel = (t: string) => TIPOS_CLUB.find(x => x.id === t)?.label || t
+
+interface Club {
+  id: string
+  nombre: string
+  descripcion: string | null
+  tipo: string
+  ciudad: string | null
+  logo_url: string | null
+}
+// Orden del roster: administradores, luego entrenadores, luego deportistas.
+const ORDEN_ROL: Record<string, number> = { admin: 0, entrenador: 1, deportista: 2 }
 
 export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }) {
   const [tab, setTab] = useState<'descubrir' | 'grupos' | 'retos' | 'club'>('descubrir')
   const [yoId, setYoId] = useState<string | null>(null)
   const [gente, setGente] = useState<Persona[]>([])
   const [roster, setRoster] = useState<any[]>([])
-  const [clubs, setClubs] = useState<Record<string, string>>({})
+  const [clubs, setClubs] = useState<Record<string, Club>>({})
   const [busca, setBusca] = useState('')
   const [cargando, setCargando] = useState(true)
 
@@ -91,6 +103,9 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   const [nClub, setNClub] = useState({ nombre: '', tipo: 'club', ciudad: '' })
   const [addA, setAddA] = useState<{ club: string; email: string; rol: string } | null>(null)
   const [addMsg, setAddMsg] = useState('')
+  // Edición de la identidad del club (solo admin). RLS `club_update` lo permite.
+  const [editClub, setEditClub] = useState<{ id: string; descripcion: string; ciudad: string; logo_url: string } | null>(null)
+  const [guardandoClub, setGuardandoClub] = useState(false)
   const [invitaciones, setInvitaciones] = useState<{ id: string; id_club: string; nombre_club: string; rol_club: string }[]>([])
   const [invPend, setInvPend] = useState<{ id: string; id_club: string; email: string; rol_club: string }[]>([])
 
@@ -105,8 +120,8 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
     setRoster(r || [])
     const idsClub = [...new Set((r || []).map((x: any) => x.id_club))]
     if (idsClub.length) {
-      const { data: c } = await supabase.from('club').select('id, nombre').in('id', idsClub)
-      setClubs(Object.fromEntries((c || []).map((x: any) => [x.id, x.nombre])))
+      const { data: c } = await supabase.from('club').select('id, nombre, descripcion, tipo, ciudad, logo_url').in('id', idsClub)
+      setClubs(Object.fromEntries((c || []).map((x: any) => [x.id, x as Club])))
     } else setClubs({})
 
     const { data: pl } = await supabase.rpc('soy_plataforma')
@@ -147,6 +162,21 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
     })
     if (error) { alert('No se ha podido crear el club.\n\n' + error.message); return }
     setCreandoClub(false); setNClub({ nombre: '', tipo: 'club', ciudad: '' }); await cargar()
+  }
+
+  // Guardar la identidad del club (descripción, ciudad, escudo). Update directo sobre
+  // `club`: la política RLS `club_update` solo deja hacerlo a un admin del club.
+  const guardarClub = async () => {
+    if (!editClub) return
+    setGuardandoClub(true)
+    const { error } = await supabase.from('club').update({
+      descripcion: editClub.descripcion.trim() || null,
+      ciudad: editClub.ciudad.trim() || null,
+      logo_url: editClub.logo_url.trim() || null,
+    }).eq('id', editClub.id)
+    setGuardandoClub(false)
+    if (error) { alert('No se ha podido guardar el club.\n\n' + error.message); return }
+    setEditClub(null); await cargar()
   }
 
   const enviarInvitacion = async () => {
@@ -325,14 +355,71 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                 <p className="text-gray-500 text-sm mt-1">{esPlataforma ? 'Crea uno arriba para empezar.' : 'Cuando un club te añada, aquí verás a tus compañeros.'}</p>
               </div>
             ) : (
-              Object.entries(clubs).map(([idClub, nombreClub]) => (
+              Object.values(clubs).map((c) => {
+                const idClub = c.id
+                const esAdmin = clubesAdmin.has(idClub)
+                const miembros = roster.filter(r => r.id_club === idClub)
+                const nDep = miembros.filter(r => r.rol_club === 'deportista').length
+                const nEnt = miembros.filter(r => r.rol_club === 'entrenador').length
+                const editando = editClub?.id === idClub
+                return (
                 <div key={idClub}>
-                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                    <p className="text-gray-300 text-sm font-semibold">{nombreClub}</p>
-                    {clubesAdmin.has(idClub) && (
-                      addA?.club === idClub ? null : (
-                        <button onClick={() => { setAddMsg(''); setAddA({ club: idClub, email: '', rol: 'deportista' }) }} className="text-orange-400 hover:text-orange-300 text-xs transition">✉️ Invitar a alguien</button>
-                      )
+                  {/* Casa del club: escudo + identidad + contadores (editar/invitar si soy admin) */}
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4 mb-3">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold text-white flex-shrink-0 overflow-hidden"
+                        style={{ background: 'linear-gradient(145deg,#f97316,#ea580c)' }}>
+                        {c.logo_url ? <img src={c.logo_url} alt="" className="w-full h-full object-cover" /> : (c.nombre || '?').trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-lg font-bold text-white truncate">{c.nombre}</h3>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full border border-gray-700 bg-gray-800 text-gray-400">{tipoLabel(c.tipo)}</span>
+                        </div>
+                        <div className="flex items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1 flex-wrap">
+                          {c.ciudad && <span>📍 {c.ciudad}</span>}
+                          <span>{nDep} {nDep === 1 ? 'deportista' : 'deportistas'}</span>
+                          <span>{nEnt} {nEnt === 1 ? 'entrenador' : 'entrenadores'}</span>
+                        </div>
+                        {c.descripcion && <p className="text-gray-400 text-sm mt-2 leading-snug whitespace-pre-line">{c.descripcion}</p>}
+                      </div>
+                      {esAdmin && !editando && (
+                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                          <button onClick={() => setEditClub({ id: idClub, descripcion: c.descripcion || '', ciudad: c.ciudad || '', logo_url: c.logo_url || '' })}
+                            className="text-gray-500 hover:text-gray-300 text-xs transition">✏️ Editar</button>
+                          {addA?.club !== idClub && (
+                            <button onClick={() => { setAddMsg(''); setAddA({ club: idClub, email: '', rol: 'deportista' }) }}
+                              className="text-orange-400 hover:text-orange-300 text-xs transition">✉️ Invitar</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Editor de la identidad del club (solo admin) */}
+                    {editando && editClub && (
+                      <div className="mt-4 pt-4 border-t border-gray-800 flex flex-col gap-3">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-gray-400 text-xs">Descripción</span>
+                          <textarea value={editClub.descripcion} onChange={e => setEditClub({ ...editClub, descripcion: e.target.value })}
+                            rows={3} placeholder="Presenta el club: quiénes sois, dónde entrenáis, qué ofrecéis…"
+                            className={inputCls + ' resize-y'} />
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                          <label className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                            <span className="text-gray-400 text-xs">Ciudad</span>
+                            <input value={editClub.ciudad} onChange={e => setEditClub({ ...editClub, ciudad: e.target.value })} placeholder="ej. Madrid" className={inputCls} />
+                          </label>
+                          <label className="flex flex-col gap-1 flex-[2] min-w-[200px]">
+                            <span className="text-gray-400 text-xs">Escudo (URL de imagen, opcional)</span>
+                            <input value={editClub.logo_url} onChange={e => setEditClub({ ...editClub, logo_url: e.target.value })} placeholder="https://…" className={inputCls} />
+                          </label>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={guardarClub} disabled={guardandoClub}
+                            className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50">{guardandoClub ? 'Guardando…' : 'Guardar'}</button>
+                          <button onClick={() => setEditClub(null)} className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm transition">Cancelar</button>
+                        </div>
+                      </div>
                     )}
                   </div>
                   {addA?.club === idClub && (
@@ -361,7 +448,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                     </div>
                   )}
                   <div className="grid sm:grid-cols-2 gap-3">
-                    {roster.filter(r => r.id_club === idClub).map(r => (
+                    {miembros.slice().sort((a, b) => (ORDEN_ROL[a.rol_club] ?? 9) - (ORDEN_ROL[b.rol_club] ?? 9) || (a.nombre || '').localeCompare(b.nombre || '')).map(r => (
                       <div key={r.id_perfil} className="flex flex-col gap-1.5">
                         <Ficha esYo={r.id_perfil === yoId}
                           p={{ id: r.id_perfil, nombre: r.nombre, rol: r.rol_club, ciudad: r.ciudad, deportes: null, avatar_url: r.avatar_url }} />
@@ -382,7 +469,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                     ))}
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         )}

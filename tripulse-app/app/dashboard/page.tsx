@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
+import InvitacionesClub from '@/components/InvitacionesClub'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -180,6 +181,7 @@ export default function Dashboard() {
       </nav>
 
       <div className={'relative mx-auto px-6 py-8 ' + (activo ? 'max-w-7xl' : 'max-w-3xl')}>
+        <InvitacionesClub />
         {deportistas.length === 0 ? (
           <>
             <h2 className="text-2xl font-bold tracking-tight mb-4">Hola, {perfil?.nombre} 👋</h2>

@@ -56,7 +56,8 @@ deportista         → tabla: perfiles (rol = 'deportista')
 
 Tablas auxiliares relevantes:
 - `perfiles` — usuarios con campo `rol` ('entrenador' | 'deportista')
-- `ejercicios_biblioteca` — catálogo de ejercicios de fuerza (grupo_muscular, nombre, url_video)
+- `ejercicios_biblioteca` — catálogo de ejercicios (nombre, descripcion, ejecucion, url_video) con etiquetas `text[]`: `tipo` (Fuerza/Movilidad/Técnica/Rehab), `region` (grupo anatómico), `disciplina`, `lesion` (protocolo rehab), `momento` (dinamico/estatico). Mantiene `grupo_muscular` (string, aún lo usan el constructor de sesiones y la analítica de volumen). La página `/fuerza` filtra por etiquetas
+- `tests_valoracion` — tests de valoración/detección de lesión (nombre, descripcion, protocolo, valor_referencia, interpretacion, url_video) con etiquetas `categoria`/`region`/`disciplina`/`lesion` `text[]`; se ve en la pestaña Tests de `/fuerza`
 - `ejercicios` — ejercicios de fuerza asignados a una tarea (id_tarea)
 - `test1_carrera`, `test2_natacion`, `test3_ciclismo` — tests físicos por deportista (VAM, CSS, FTP)
 - `invitaciones` — tokens para registrar deportistas vinculados al entrenador
