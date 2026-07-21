@@ -16,12 +16,13 @@ function esYoutubeShort(url: string) {
   return /youtube\.com\/shorts\//.test(url)
 }
 
-export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, updateSerieFuerza, getSerieFuerza }: {
+export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, updateSerieFuerza, getSerieFuerza, historial }: {
   tarea: any
   ejercicios: any[]
   seriesFuerza: Record<number, any[]>
   updateSerieFuerza: (ejId: number, numSerie: number, ejNum: number, campo: string, valor: any) => void
   getSerieFuerza: (ejId: number, numSerie: number, ejNum: number) => any
+  historial?: Record<string, { dias: number; series: any[] }>   // "modo mejora": última vez por nombre
 }) {
   const [modalVideo, setModalVideo] = useState<string | null>(null)
 
@@ -42,6 +43,23 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
         const esDropSet = tipoSerie === 'Drop set'
         const escalones = esDropSet && ej.escalones_drop ? ej.escalones_drop.split(',').map((s: string) => s.trim()) : []
 
+        // Modo mejora: qué hizo la última vez en este ejercicio (serie principal).
+        const prev = historial?.[ej.nombre]
+        const seriesPrev = prev ? prev.series.filter((s: any) => (s.ejercicio_numero ?? 1) === 1) : []
+        const resumenPrev = seriesPrev
+          .map((s: any) => s.peso_real ? `${Number(s.peso_real)}×${Number(s.repeticiones_reales) || '?'}` : `${Number(s.repeticiones_reales) || '?'} reps`)
+          .join(' · ')
+        const rirsPrev = seriesPrev.map((s: any) => s.rir_real).filter((v: any) => v != null)
+        const rirPrev = rirsPrev.length
+          ? (rirsPrev.every((r: any) => r === rirsPrev[0]) ? String(rirsPrev[0]) : `${Math.min(...rirsPrev)}-${Math.max(...rirsPrev)}`)
+          : ''
+        // Fantasma por serie (lo que hizo esa misma serie la vez pasada) y "¿ha superado el volumen?".
+        const prevSerie = (n: number) => seriesPrev.find((s: any) => s.numero_serie === n)
+        const volPrev = seriesPrev.reduce((a: number, s: any) => a + (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0), 0)
+        const volHoy = Array.from({ length: numSeries }, (_, i) => getSerieFuerza(ej.id, i + 1, 1))
+          .reduce((a: number, s: any) => a + (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0), 0)
+        const superado = !!prev && volPrev > 0 && volHoy >= volPrev
+
         return (
           <div key={ej.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <div className="px-4 py-3 bg-gray-800 border-b border-gray-700">
@@ -58,6 +76,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                   {ej.ejercicio_encadenado_nombre && (
                     <span className="text-orange-400 text-sm"> + {ej.ejercicio_encadenado_nombre}</span>
                   )}
+                  {superado && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white align-middle">✓ superado</span>}
                 </div>
                 <span className="text-gray-400 text-xs">{ej.grupo_muscular}</span>
               </div>
@@ -73,6 +92,16 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 {ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
                 {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
               </div>
+              {/* Modo mejora: la última vez que hiciste este ejercicio, para superarlo. */}
+              {prev && resumenPrev && (
+                <div className="flex items-center gap-2 mt-2 text-xs bg-gray-800/80 border border-gray-700 rounded-lg px-2.5 py-1.5 flex-wrap">
+                  <span className="text-orange-400 font-semibold">📊 Última vez</span>
+                  <span className="text-gray-500">{prev.dias === 0 ? 'hoy' : prev.dias === 1 ? 'ayer' : `hace ${prev.dias} d`}</span>
+                  <span className="text-gray-100 font-medium">{resumenPrev}</span>
+                  {rirPrev && <span className="text-gray-500">· RIR {rirPrev}</span>}
+                  <span className="ml-auto text-orange-300/70">↗ supéralo</span>
+                </div>
+              )}
             </div>
 
             <div className="p-3 flex flex-col gap-2">
@@ -93,10 +122,10 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
                           {completada ? '✓' : numSerie}
                         </button>
-                        <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad || 'Kg'}
+                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie).peso_real)) : (ej.intensidad || 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
-                        <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones || 'Reps'}
+                        <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie).repeticiones_reales)) : (ej.repeticiones || 'Reps')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                           className={inputCls} />
                         <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR"

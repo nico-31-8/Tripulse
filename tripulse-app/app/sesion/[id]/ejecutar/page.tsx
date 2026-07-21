@@ -84,6 +84,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
+  // Modo mejora: última ejecución de cada ejercicio de fuerza, indexada por nombre.
+  const [historialFuerza, setHistorialFuerza] = useState<Record<string, { dias: number; series: any[] }>>({})
 
   // Post sesión
   const [rpe, setRpe] = useState(5)
@@ -97,6 +99,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const cargarDatos = async () => {
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
+    // Deportista de la sesión: directo si es libre, o por la cadena macro si es planificada.
+    let depIdLocal: number | null = ses?.id_deportista ?? null
     if (ses?.id_microciclo) {
       const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
       if (micro) {
@@ -105,6 +109,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
           if (macro) {
             const depId = macro.id_deportista
+            depIdLocal = depId
             const [t1, t2, t3, an] = await Promise.all([
               supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
               supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
@@ -152,6 +157,20 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         ejMap[e.id_tarea].push(e)
       })
       setEjerciciosPorTarea(ejMap)
+
+      // Modo mejora: la última vez que se hizo cada ejercicio (por nombre + deportista).
+      if (depIdLocal && ejs && ejs.length) {
+        const nombres = [...new Set(ejs.map((e: any) => e.nombre).filter(Boolean))] as string[]
+        const hist: Record<string, { dias: number; series: any[] }> = {}
+        await Promise.all(nombres.map(async (nombre) => {
+          const { data } = await supabase.rpc('ultima_ejecucion_fuerza', { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
+          if (data && data.length) {
+            const dias = Math.max(0, Math.round((new Date(ses.fecha_sesion).getTime() - new Date(data[0].fecha).getTime()) / 86400000))
+            hist[nombre] = { dias, series: data }
+          }
+        }))
+        setHistorialFuerza(hist)
+      }
     }
     setLoading(false)
   }
@@ -419,6 +438,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 seriesFuerza={seriesFuerza}
                 updateSerieFuerza={updateSerieFuerza}
                 getSerieFuerza={getSerieFuerza}
+                historial={historialFuerza}
               />
             </div>
           )}

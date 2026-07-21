@@ -16,6 +16,7 @@ const modulosEntrenador = [
   { icon: '💪', titulo: 'Biblioteca Fuerza', href: '/fuerza' },
   { icon: '📊', titulo: 'Volumen', href: '/volumen' },
   { icon: '💬', titulo: 'Comunicación', href: '/comunicacion' },
+  { icon: '🤖', titulo: 'Asistente IA', href: '/asistente' },
   { icon: '🤝', titulo: 'Comunidad', href: '/comunidad' },
   { icon: '🗑️', titulo: 'Papelera', href: '/papelera' },
 ]

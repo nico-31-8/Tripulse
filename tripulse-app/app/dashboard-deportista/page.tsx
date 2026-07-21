@@ -52,15 +52,22 @@ export default function DashboardDeportista() {
       const { data: micros } = mesoIds.length ? await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds) : { data: [] }
       const microIds = (micros || []).map((m: any) => m.id)
 
+      const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, notas_entrenador'
       let sesiones: any[] = []
       if (microIds.length) {
-        const { data } = await supabase.from('sesion')
-          .select('id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, notas_entrenador')
+        const { data } = await supabase.from('sesion').select(selSes)
           .in('id_microciclo', microIds)
           .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
           .or('eliminada.is.null,eliminada.eq.false')
         sesiones = data || []
       }
+      // Sesiones libres (sin microciclo): sueltas o añadidas por el propio deportista.
+      // Antes no salían en el dashboard; ahora se cargan igual que las del plan.
+      const { data: libres } = await supabase.from('sesion').select(selSes)
+        .eq('id_deportista', dep.id).is('id_microciclo', null)
+        .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
+        .or('eliminada.is.null,eliminada.eq.false')
+      if (libres?.length) sesiones = [...sesiones, ...libres]
 
       // Sesiones de hoy + duración estimada + tareas para el preview de series
       const sesHoy = sesiones.filter(s => s.fecha_sesion === hoy)

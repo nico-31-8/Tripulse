@@ -498,6 +498,14 @@ export default function Dashboard() {
                       ) : <p className="text-sm font-semibold text-gray-500">Vacía</p>}
                     </div>
                   </BentoBtn>
+                  {/* Asistente de IA: usa el deportista activo para responder con sus datos. */}
+                  <BentoBtn href="/asistente">
+                    {bhead('🤖', 'Asistente IA', '#f97316')}
+                    <div>
+                      <p className="text-[10px] text-gray-500">Copiloto sobre {activo.nombre?.split(' ')[0]}</p>
+                      <p className="text-sm font-semibold text-gray-300">Pregúntale lo que quieras</p>
+                    </div>
+                  </BentoBtn>
                   {/* Comunidad no depende del atleta activo: es tu acceso personal. */}
                   <BentoBtn href="/comunidad">
                     {bhead('🤝', 'Comunidad', '#22c55e')}
