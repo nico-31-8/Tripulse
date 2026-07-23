@@ -7,6 +7,7 @@ import type { TestsDeportista } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { cargaZona } from '@/lib/zonas'
 import InvitacionesClub from '@/components/InvitacionesClub'
+import OnboardingDeportista from '@/components/OnboardingDeportista'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
@@ -115,10 +116,10 @@ export default function DashboardDeportista() {
       const { data: comp } = await supabase.from('competicion').select('nombre, fecha, tipo').eq('id_deportista', dep.id).gte('fecha', hoy).order('fecha').limit(1)
       setProximaComp(comp?.[0] || null)
 
-      if (dep.id_entrenador) {
-        const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
-        setAnamnesisPendiente(!an || an.estado !== 'enviada')
-      }
+      // Anamnesis: cargar SIEMPRE (también para el deportista que aún no tiene entrenador),
+      // para que el checklist de primeros pasos la muestre como paso pendiente.
+      const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
+      setAnamnesisPendiente(!an || an.estado !== 'enviada')
     }
     cargar()
   }, [])
@@ -167,26 +168,9 @@ export default function DashboardDeportista() {
         {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
         <InvitacionesClub />
 
-        {/* Anamnesis pendiente */}
-        {anamnesisPendiente && (
-          <button onClick={() => router.push('/anamnesis')}
-            className="w-full bg-orange-950 border-2 border-orange-500 rounded-xl p-4 mb-4 text-left hover:bg-orange-900 transition flex justify-between items-center">
-            <div>
-              <p className="text-orange-300 font-bold">📋 Completa tu anamnesis</p>
-              <p className="text-orange-400/80 text-sm mt-0.5">Tu entrenador la necesita para planificar tu preparación.</p>
-            </div>
-            <span className="text-orange-400 text-2xl ml-3">→</span>
-          </button>
-        )}
-
-        {/* Aviso sin entrenador */}
-        {deportista && !deportista.id_entrenador && (
-          <div className="bg-yellow-950 border-2 border-yellow-600 rounded-xl p-4 mb-4">
-            <p className="font-bold text-yellow-300 mb-1">⚠️ No tienes entrenador asignado</p>
-            <p className="text-yellow-400/90 text-sm mb-2">Vincúlate con el código de tu entrenador para recibir tu planificación.</p>
-            <button onClick={() => router.push('/perfil')} className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition">Ir a Mi perfil →</button>
-          </div>
-        )}
+        {/* Primeros pasos: checklist guiado (vincular entrenador + anamnesis). Se oculta solo
+            cuando ambos están hechos. Sustituye a los avisos sueltos de antes. */}
+        <OnboardingDeportista deportista={deportista} anamnesisPendiente={anamnesisPendiente} />
 
         {/* ===== BLOQUE SUPERIOR: recordatorio wellness ⇄ disposición ===== */}
         {!wellnessHoy ? (
