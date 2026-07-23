@@ -127,7 +127,9 @@ export function prescripcion(z: ZonaResistencia, disciplina: string, tests: { va
     if (wLo != null) return `> ${wLo} W`
   }
   if (disciplina === 'Natacion' || disciplina === 'Natación') {
-    return z.css
+    // Con CSS del deportista → ritmo concreto por 100 m (ej. "> 2:05 /100m").
+    // Sin test de CSS → cae a la etiqueta relativa del catálogo ("CSS +20s...").
+    return tests.css ? paceNatacion(z.sigla, tests.css, z.css) : z.css
   }
   return '—'
 }

@@ -420,7 +420,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   <p className="text-xs text-gray-500 mb-1">🏊 Natación — CSS</p>
                   {tests.natacion ? (
                     <div>
-                      <p className="text-2xl font-bold text-blue-400">{tests.natacion.velocidad_critica_natacion} <span className="text-sm font-normal text-gray-400">m/s</span></p>
+                      <p className="text-2xl font-bold text-blue-400">{tests.natacion.css} <span className="text-sm font-normal text-gray-400">m/s</span></p>
                       <p className="text-gray-500 text-xs">{tests.natacion.fecha}</p>
                     </div>
                   ) : <p className="text-gray-600 text-sm">Sin test</p>}

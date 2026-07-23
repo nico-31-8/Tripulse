@@ -108,16 +108,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         if (meso) {
           const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
           if (macro) {
-            const depId = macro.id_deportista
-            depIdLocal = depId
-            const [t1, t2, t3, an] = await Promise.all([
-              supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test2_natacion').select('velocidad_critica_natacion').eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
-            ])
-            setTests({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.velocidad_critica_natacion || null, ftp: t3.data?.[0]?.ftp || null })
-            setPesoDeportista(an.data?.peso || null)
+            depIdLocal = macro.id_deportista
 
             // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
             const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', meso.id_macrociclo)
@@ -143,6 +134,19 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           }
         }
       }
+    }
+    // Tests del deportista (VAM/CSS/FTP) + peso. Para planificadas Y libres: se
+    // cargan por depIdLocal (venga de la cadena macro o del id_deportista directo),
+    // para que el ritmo objetivo por zona salga siempre que haya test.
+    if (depIdLocal) {
+      const [t1, t2, t3, an] = await Promise.all([
+        supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+        supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
+      ])
+      setTests({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
+      setPesoDeportista(an.data?.peso || null)
     }
     const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
     setTareas(tar || [])

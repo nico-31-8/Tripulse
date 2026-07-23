@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { TablaZonas2 } from '@/components/TablaZonas2'
 
 export default function MisTests() {
   const router = useRouter()
@@ -38,6 +39,10 @@ export default function MisTests() {
   ]
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+
+  // Sistema de zonas del deportista (1 = clásico Z1–Z7, 2 = Zonas 2 metabólico) + FC máx.
+  const sistema = deportista?.sistema_zonas || 1
+  const fcMax = deportista?.fc_maxima || 0
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -86,7 +91,12 @@ export default function MisTests() {
                     <p className="font-bold">{t.tiempo_aguantado_ultimo}s</p>
                   </div>
                 </div>
-                {t.vam && (
+                {t.vam && (sistema === 2 ? (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de carrera</p>
+                    <TablaZonas2 disciplina="Carrera" tests={{ vam: t.vam }} fcMax={fcMax} />
+                  </div>
+                ) : (
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de carrera</p>
                     <div className="grid gap-1.5">
@@ -111,7 +121,7 @@ export default function MisTests() {
                       })}
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             ))}
           </div>
@@ -144,7 +154,12 @@ export default function MisTests() {
                     <p className="font-bold">{t.tiempo_distancia_pequena}s</p>
                   </div>
                 </div>
-                {t.css && (
+                {t.css && (sistema === 2 ? (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de natación</p>
+                    <TablaZonas2 disciplina="Natacion" tests={{ css: t.css }} fcMax={fcMax} />
+                  </div>
+                ) : (
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de natación</p>
                     <div className="grid gap-1.5">
@@ -168,7 +183,7 @@ export default function MisTests() {
                       })}
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             ))}
           </div>
@@ -201,7 +216,12 @@ export default function MisTests() {
                     <p className="font-bold">{t.incremento_potencia} W</p>
                   </div>
                 </div>
-                {t.ftp && (
+                {t.ftp && (sistema === 2 ? (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de potencia</p>
+                    <TablaZonas2 disciplina="Ciclismo" tests={{ ftp: t.ftp }} fcMax={fcMax} />
+                  </div>
+                ) : (
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Zonas de potencia</p>
                     <div className="grid gap-1.5">
@@ -224,7 +244,7 @@ export default function MisTests() {
                       })}
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             ))}
           </div>
