@@ -96,7 +96,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         const micro = micros?.find((m: any) => m.fecha_inicio === fecha)
         setMicrociclo(micro || null)
         if (micro) {
-          const { data: ses } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).eq('eliminada', false).order('fecha_sesion')
+          const { data: ses } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
           sesiones_cargadas = ses || []
           setSesiones(sesiones_cargadas)
         }
@@ -125,16 +125,13 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },
         tareaIds.length ? supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] },
       ])
+      // UA "programada" de la semana = Σ (RPE_estimado × duración_min) de cada sesión.
+      // Antes sumaba metros_planeados + tiempo_planeado (metros y segundos como si fueran
+      // la misma unidad), lo que inflaba la barra y marcaba "Semana completa" en falso.
+      // Ahora en la MISMA unidad (RPE×min) que uaReal, para que ambas sean comparables.
       let progTotal = 0
       sesiones_cargadas.forEach((s: any) => {
-        const tarSes = (tareasData || []).filter((t: any) => t.id_sesion === s.id)
-        tarSes.forEach((t: any) => {
-          const dist = (dists || []).find((d: any) => d.id_tarea === t.id)
-          const dur = (durs || []).find((d: any) => d.id_tarea === t.id)
-          const vol = ((dist?.metros_planeados || 0) + (dur?.tiempo_planeado || 0)) * (t.series || 1)
-          progTotal += vol
-        })
-        if (tarSes.length === 0) progTotal += (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+        progTotal += (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
       })
       setUaProg(Math.round(progTotal))
       let realTotal = 0

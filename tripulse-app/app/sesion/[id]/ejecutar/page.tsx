@@ -60,7 +60,7 @@ function calcularRango(zona: string, disciplina: string, tests: any): string {
   }
   if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css && CSS_ZONAS[z]) {
     const [p1, p2] = CSS_ZONAS[z]
-    const fmt = (v: number) => { const s = 100/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
+    const fmt = (p: number) => { const s = 100/(tests.css * p); return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
     return fmt(p2) + '–' + fmt(p1) + ' /100m'
   }
   return ''
@@ -673,7 +673,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                     <>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Duración plan</p>
-                        <p className="font-bold text-sm">{pu.tiempo_planeado ? Math.floor(pu.tiempo_planeado/60)+'min' : '—'}</p>
+                        <p className="font-bold text-sm">{pu.tiempo_planeado ? Math.floor(pu.tiempo_planeado/60)+':'+String(pu.tiempo_planeado%60).padStart(2,'0') : '—'}</p>
                       </div>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Duración real</p>

@@ -167,7 +167,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
 
   const verSesiones = async (micro: any) => {
     setMicroSel(micro)
-    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).eq('eliminada', false).order('fecha_sesion')
+    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
     setSesiones(data || [])
     setNivel('sesiones')
   }

@@ -183,20 +183,24 @@ export default function CargaPage() {
     desde.setDate(desde.getDate() - 30)
     const desdeStr = desde.toISOString().split('T')[0]
 
+    // Cadena de plan opcional: un atleta sin plan igual tiene sesiones libres, que
+    // también cuentan en la visión diaria. No cortar si la cadena está vacía.
     const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
     const macroIds = (macros || []).map((m: any) => m.id)
-    if (!macroIds.length) { setDiariaRaw([]); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-    const mesoIds = (mesos || []).map((m: any) => m.id)
-    if (!mesoIds.length) { setDiariaRaw([]); return }
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-    const microsDelDep = (micros || []).map((m: any) => m.id)
-    if (!microsDelDep.length) { setDiariaRaw([]); return }
+    let microsDelDep: number[] = []
+    if (macroIds.length) {
+      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+      const mesoIds = (mesos || []).map((m: any) => m.id)
+      if (mesoIds.length) {
+        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+        microsDelDep = (micros || []).map((m: any) => m.id)
+      }
+    }
 
     const { data: sesiones } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
-      .in('id_microciclo', microsDelDep)
+      .in('id_microciclo', microsDelDep.length ? microsDelDep : [-1])
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
     const { data: libresD } = await supabase

@@ -256,27 +256,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones)').eq('id_sesion', id))
     setTareas(tar || [])
     if (ses) {
+      let depIdLocal: number | null = ses.id_deportista ?? null
       const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
       if (micro) {
         const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
         if (meso) {
           const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
           if (macro) {
-            setDeportistaId(macro.id_deportista)
-            // Cargar tests del deportista
-            const depId = macro.id_deportista
-            const [t1, t2, t3, an] = await Promise.all([
-              supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-              supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
-            ])
-            setTestsData({
-              vam: t1.data?.[0]?.vam || null,
-              css: t2.data?.[0]?.css || null,
-              ftp: t3.data?.[0]?.ftp || null,
-            })
-            setPesoDeportista(an.data?.peso || null)
+            depIdLocal = macro.id_deportista
 
             // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
             // Se recorre toda la cadena meso→micro del deportista (una vez).
@@ -307,6 +294,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             }
           }
         }
+      }
+      // Tests del deportista (VAM/CSS/FTP) + peso. Por depIdLocal: cadena macro o
+      // sesión libre por id_deportista → los ritmos sugeridos salen también en libres.
+      if (depIdLocal) {
+        setDeportistaId(depIdLocal)
+        const [t1, t2, t3, an] = await Promise.all([
+          supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+          supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
+          supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
+        ])
+        setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
+        setPesoDeportista(an.data?.peso || null)
       }
     }
   }

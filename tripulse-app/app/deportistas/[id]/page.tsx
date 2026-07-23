@@ -205,11 +205,18 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
           // Carga ATL/CTL
           const desde = new Date(); desde.setDate(desde.getDate() - 42)
-          const { data: ses } = await supabase.from('sesion').select('fecha_sesion, rpe_estimado, duracion_minutos').in('id_microciclo', microIds).eq('estado', 'Realizada').gte('fecha_sesion', desde.toISOString().split('T')[0]).order('fecha_sesion')
+          const { data: ses } = await supabase.from('sesion').select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos').in('id_microciclo', microIds).eq('estado', 'Realizada').gte('fecha_sesion', desde.toISOString().split('T')[0]).order('fecha_sesion')
           if (ses?.length) {
-            let atl = 0, ctl = 0
+            // Agrupar por día y priorizar RPE reportado, igual que lib/panel-metricas,
+            // para que este TSB coincida con el del dashboard y /carga (antes usaba
+            // rpe_estimado e iteraba por sesión → dos sesiones el mismo día se componían dos veces).
+            const porDia: Record<string, number> = {}
             ses.forEach(s => {
-              const c = (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+              porDia[s.fecha_sesion] = (porDia[s.fecha_sesion] || 0) + (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+            })
+            let atl = 0, ctl = 0
+            Object.keys(porDia).sort().forEach(f => {
+              const c = porDia[f]
               atl = c * (2/8) + atl * (1 - 2/8)
               ctl = c * (2/43) + ctl * (1 - 2/43)
             })

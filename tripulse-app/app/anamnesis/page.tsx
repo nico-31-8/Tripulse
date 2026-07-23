@@ -283,6 +283,9 @@ export default function PaginaAnamnesis() {
 
   const enviar = async () => {
     if (!declaracion) { alert('Debes aceptar la declaración de responsabilidad en la sección de Salud.'); return }
+    // Cancelar el autoguardado pendiente: si dispara después del envío con anamnesisId
+    // aún null, crearía una 2ª fila y la próxima carga (maybeSingle) fallaría por duplicados.
+    if (guardadoTimer.current) clearTimeout(guardadoTimer.current)
     setEnviando(true)
     const payload = { ...buildPayload(), estado: 'enviada', fecha_envio: new Date().toISOString() }
     if (anamnesisId) {
@@ -290,6 +293,9 @@ export default function PaginaAnamnesis() {
     } else if (deportistaId) {
       await supabase.from('anamnesis').insert({ ...payload, id_deportista: deportistaId })
     }
+    // Propagar la FC máx declarada a deportista.fc_maxima (de donde leen las tablas de zonas).
+    const fcm = Number(fcMaxima)
+    if (deportistaId && fcm > 0) await supabase.from('deportista').update({ fc_maxima: fcm }).eq('id', deportistaId)
     setEnviando(false)
     setYaEnviada(true)
   }

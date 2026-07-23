@@ -84,22 +84,24 @@ export default function VolumenPage() {
     desde.setDate(desde.getDate() - dias)
     const desdeStr = desde.toISOString().split('T')[0]
 
+    // La cadena de plan puede estar vacía (atleta sin plan); NO cortar aquí, porque
+    // las sesiones libres (id_microciclo null) también cuentan en el volumen/carga.
     const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
     const macroIds = (macros || []).map((m: any) => m.id)
-    if (!macroIds.length) { setDatosDias([]); setDatosSemanas([]); setLoadingDatos(false); return }
-
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-    const mesoIds = (mesos || []).map((m: any) => m.id)
-    if (!mesoIds.length) { setDatosDias([]); setDatosSemanas([]); setLoadingDatos(false); return }
-
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-    const microIds = (micros || []).map((m: any) => m.id)
-    if (!microIds.length) { setDatosDias([]); setDatosSemanas([]); setLoadingDatos(false); return }
+    let microIds: number[] = []
+    if (macroIds.length) {
+      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+      const mesoIds = (mesos || []).map((m: any) => m.id)
+      if (mesoIds.length) {
+        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+        microIds = (micros || []).map((m: any) => m.id)
+      }
+    }
 
     const { data: sesChain } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
-      .in('id_microciclo', microIds)
+      .in('id_microciclo', microIds.length ? microIds : [-1])
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')

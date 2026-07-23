@@ -48,9 +48,16 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
       setGuardando(false)
       return
     }
+    if (!data.session) {
+      // Sin sesión (confirmación de email ON): NO seguir. aceptar_invitacion con auth.uid()
+      // null quemaría el token y dejaría al deportista huérfano (id_usuario a null).
+      setError('Cuenta creada. Confirma tu email y vuelve a abrir este enlace para completar la vinculación.')
+      setGuardando(false)
+      return
+    }
 
     // 2. Crear perfil
-    await supabase.from('perfiles').insert({
+    const { error: errPerfil } = await supabase.from('perfiles').insert({
       id: data.user.id,
       rol: 'deportista',
       nombre: invitacion.nombre_deportista,
@@ -59,6 +66,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
       fecha_consentimiento: new Date().toISOString(),
       version_consentimiento: 'v1-2026-07',
     })
+    if (errPerfil) { setError('Error al crear el perfil: ' + errPerfil.message); setGuardando(false); return }
 
     // 3. Vincular el usuario al deportista y marcar la invitación como usada
     //    (función segura gated por token, corre como definer)

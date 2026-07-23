@@ -58,10 +58,14 @@ export default function ComunidadGrupos({ yoId }: { yoId: string | null }) {
 
   const crearGrupo = async () => {
     if (!nuevo.nombre.trim()) return
-    const { error } = await supabase.rpc('crear_grupo', {
+    const { data: nuevoId, error } = await supabase.rpc('crear_grupo', {
       _nombre: nuevo.nombre.trim(), _ambito: 'abierto', _id_club: null, _disciplina: nuevo.disciplina || null,
     })
     if (error) { alert('No se ha podido crear el grupo.\n\n' + error.message); return }
+    // La RPC no acepta descripción; se guarda con un update aparte (RLS: el creador ya es
+    // admin del grupo → puede actualizarlo). Antes se descartaba y quedaba siempre null.
+    const desc = nuevo.descripcion?.trim()
+    if (nuevoId && desc) await supabase.from('grupo').update({ descripcion: desc }).eq('id', nuevoId)
     setCreando(false); setNuevo({ nombre: '', disciplina: '', descripcion: '' }); await cargar()
   }
 

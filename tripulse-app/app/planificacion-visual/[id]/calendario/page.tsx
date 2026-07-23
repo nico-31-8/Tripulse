@@ -213,7 +213,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setMicros(mi || [])
     if (!mi?.length) return
     const miIds = mi.map(m => m.id)
-    const { data: sesChain } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).eq('eliminada', false).order('fecha_sesion')
+    const { data: sesChain } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
     // Sesiones "libres" añadidas por el atleta (sin microciclo)
     const { data: sesLibres } = await supabase.from('sesion').select('*').eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
     const ses = [...(sesChain || []), ...(sesLibres || [])]
@@ -270,7 +270,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const copiarTareasASesion = async (idOrigen: number, idDestino: number) => {
     const { data: tareas } = await supabase
       .from('tarea')
-      .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)')
+      .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
       .eq('id_sesion', idOrigen)
       .order('orden', { ascending: true })
     if (!tareas || tareas.length === 0) return
@@ -291,6 +291,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       if (pu) await supabase.from('p_duracion').insert({ id_tarea: t.id, tiempo_planeado: pu.tiempo_planeado, potencia_objetivo: pu.potencia_objetivo ?? null })
       const pr = Array.isArray(tarea.p_repeticiones) ? tarea.p_repeticiones[0] : tarea.p_repeticiones
       if (pr) await supabase.from('p_repeticiones').insert({ id_tarea: t.id, repeticiones_planteadas: pr.repeticiones_planteadas })
+      // Ejercicios de fuerza de la tarea (antes se perdían al copiar → tarea vacía).
+      const ejs = Array.isArray(tarea.ejercicios) ? tarea.ejercicios : (tarea.ejercicios ? [tarea.ejercicios] : [])
+      if (ejs.length) {
+        await supabase.from('ejercicios').insert(ejs.map((e: any) => {
+          const { id: _i, created_at: _c, id_tarea: _t, ...rr } = e
+          return { ...rr, id_tarea: t.id }
+        }))
+      }
     }
   }
 
@@ -337,6 +345,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       duracion_minutos: sesionCopiada.duracion_minutos,
       rpe_estimado: sesionCopiada.rpe_estimado,
       notas_entrenador: sesionCopiada.notas_entrenador,
+      zona_fuerza: sesionCopiada.zona_fuerza ?? null,
+      modo_fuerza: sesionCopiada.modo_fuerza ?? null,
+      usar_cronometro: sesionCopiada.usar_cronometro ?? null,
       estado: 'Planificada'
     }).select().single()
     if (sesNueva) await copiarTareasASesion(sesionCopiada.id, sesNueva.id)

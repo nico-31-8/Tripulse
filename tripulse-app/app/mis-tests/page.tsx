@@ -139,7 +139,7 @@ export default function MisTests() {
               <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="font-bold text-lg text-blue-400">CSS: {t.css ? (t.css * 100).toFixed(1) + 's/100m' : '—'}</p>
+                    <p className="font-bold text-lg text-blue-400">CSS: {t.css ? (100 / t.css).toFixed(1) + 's/100m' : '—'}</p>
                     <p className="text-gray-400 text-sm">{t.fecha}</p>
                   </div>
                   <span className="bg-blue-900 text-blue-300 text-xs px-3 py-1 rounded-full">Test natación</span>

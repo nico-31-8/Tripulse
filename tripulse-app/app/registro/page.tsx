@@ -22,9 +22,17 @@ export default function Registro() {
     setLoading(true)
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) { setMensaje('Error: ' + error.message); setLoading(false); return }
+    if (!data.session) {
+      // Confirmación de email activada: signUp devuelve user pero SIN sesión → los inserts
+      // fallarían por RLS. Avisar en vez de redirigir a un estado roto (perfil sin crear).
+      setMensaje('Cuenta creada. Revisa tu email para confirmarla antes de entrar.')
+      setLoading(false)
+      return
+    }
     if (data.user) {
-      await supabase.from('perfiles').insert({ id: data.user.id, rol, nombre, email,
+      const { error: errPerfil } = await supabase.from('perfiles').insert({ id: data.user.id, rol, nombre, email,
         acepto_terminos: true, fecha_consentimiento: new Date().toISOString(), version_consentimiento: 'v1-2026-07' })
+      if (errPerfil) { setMensaje('Error al crear el perfil: ' + errPerfil.message); setLoading(false); return }
       if (rol === 'deportista') {
         if (codigoEntrenador) {
           const { data: entrenador } = await supabase.rpc('buscar_entrenador', { p_codigo: codigoEntrenador.toUpperCase() }).maybeSingle() as { data: { id: string } | null }
@@ -50,7 +58,7 @@ export default function Registro() {
         <form onSubmit={handleRegistro} className="flex flex-col gap-4">
           <input type="text" placeholder="Tu nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
           <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-          <input type="password" placeholder="Contrasena" value={password} onChange={e => setPassword(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+          <input type="password" placeholder="Contraseña (mín. 6)" value={password} onChange={e => setPassword(e.target.value)} minLength={6} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
           <div>
             <p className="text-gray-400 text-sm mb-2">Soy...</p>
             <div className="grid grid-cols-2 gap-3">

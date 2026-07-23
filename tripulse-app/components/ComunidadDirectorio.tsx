@@ -199,6 +199,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   // Cambiar el rol de un miembro. El RLS deja hacerlo al admin; el trigger de la BD
   // impide dejar el club sin ningún administrador.
   const cambiarRol = async (idClub: string, idPerfil: string, rol: string) => {
+    if (!confirm('¿Cambiar el rol de este miembro del club a «' + rol + '»?')) return
     const { error } = await supabase.from('club_miembro').update({ rol_club: rol }).eq('id_club', idClub).eq('id_perfil', idPerfil)
     if (error) { alert('No se ha podido cambiar el rol.\n\n' + error.message); return }
     await cargar()

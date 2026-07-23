@@ -264,8 +264,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         const { data: microsData } = await supabase.from('microciclo').select('*').in('id_mesociclo', mesoIds)
       const microIds = microsData?.map(m => m.id) || []
       if (microIds.length) {
-        const { data: sesData } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, duracion_minutos, rpe_estimado, rpe_reportado, estado, id_microciclo').in('id_microciclo', microIds)
-        setSesionesProg(sesData || [])
+        const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, rpe_estimado, rpe_reportado, estado, id_microciclo'
+        // Excluir borradas (antes contaban en Programado/Realizado) e incluir las libres.
+        const { data: sesData } = await supabase.from('sesion').select(selProg).in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
+        const { data: sesLibres } = await supabase.from('sesion').select(selProg).eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
+        setSesionesProg([...(sesData || []), ...(sesLibres || [])])
       }
         if (microsData?.length) {
           const semsD = Array.from({ length: Math.max(totalW, 12) }, (_, i) => {

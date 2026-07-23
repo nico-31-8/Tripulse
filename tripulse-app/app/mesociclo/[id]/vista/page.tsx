@@ -69,7 +69,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     }
     const microIds = (mi || []).map(x => x.id)
     if (microIds.length) {
-      const { data: ses } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen').in('id_microciclo', microIds).eq('eliminada', false)
+      const { data: ses } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
       setSesiones(ses || [])
       const sesIds = (ses || []).map(s => s.id)
       if (sesIds.length) {

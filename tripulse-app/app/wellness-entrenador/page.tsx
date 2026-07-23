@@ -112,7 +112,7 @@ export default function WellnessEntrenador() {
     setVarsActivas(prev => prev.includes(key) ? prev.filter(v => v !== key) : [...prev, key])
   }
 
-  const datos = registros.map(r => ({ fecha: r.fecha.slice(5), ...r }))
+  const datos = registros.map(r => ({ ...r, fecha: r.fecha.slice(5) }))
   const alertas = deportistas.filter(d => d.ultimoWellness && d.ultimoWellness.score_wellness > 75)
 
   // Selector de rango compartido

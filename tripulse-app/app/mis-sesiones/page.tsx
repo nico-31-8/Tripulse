@@ -14,6 +14,10 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 // en planificación (bloques, calendario, semana o canvas).
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
+// Fecha local YYYY-MM-DD. NO usar toISOString: en husos UTC+ (España) desplaza
+// una fecha a medianoche local al día anterior, y fecha_sesion es fecha local.
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 // Microciclo de la semana de una fecha si cae dentro de un mesociclo del atleta (creándolo
 // si no existe). Si la fecha queda fuera de todo plan → null (sesión "libre").
 async function resolverMicro(depId: number, fechaStr: string): Promise<number | null> {
@@ -28,7 +32,7 @@ async function resolverMicro(depId: number, fechaStr: string): Promise<number | 
   })
   if (!meso) return null
   const off = (d.getDay() + 6) % 7; const monday = new Date(d); monday.setDate(d.getDate() - off)
-  const mondayStr = monday.toISOString().slice(0, 10)
+  const mondayStr = ymd(monday)
   const { data: micros } = await supabase.from('microciclo').select('id, fecha_inicio').eq('id_mesociclo', meso.id)
   const ex = (micros || []).find((mi: any) => mi.fecha_inicio === mondayStr)
   if (ex) return ex.id
@@ -55,7 +59,7 @@ export default function MisSesiones() {
   // Modal añadir sesión (deportista)
   const [modalAnadir, setModalAnadir] = useState(false)
   const [fDisc, setFDisc] = useState('Natacion')
-  const [fFecha, setFFecha] = useState(() => new Date().toISOString().split('T')[0])
+  const [fFecha, setFFecha] = useState(() => ymd(new Date()))
   const [fDur, setFDur] = useState('')
   const [fNotas, setFNotas] = useState('')
   const [fModo, setFModo] = useState<'planificada' | 'realizada'>('planificada')
@@ -155,7 +159,7 @@ export default function MisSesiones() {
     for (let i = 0; i < 14; i++) {
       const dia = new Date(hoy)
       dia.setDate(hoy.getDate() + i)
-      const fechaStr = dia.toISOString().split('T')[0]
+      const fechaStr = ymd(dia)
       const sesionesDia = sesiones.filter(s => s.fecha_sesion === fechaStr)
       dias.push({ fecha: dia, fechaStr, sesiones: sesionesDia })
     }
@@ -171,7 +175,7 @@ export default function MisSesiones() {
     for (let i = 0; i < primerDia.getDay(); i++) dias.push(null)
     for (let d = 1; d <= ultimoDia.getDate(); d++) {
       const fecha = new Date(año, mes, d)
-      const fechaStr = fecha.toISOString().split('T')[0]
+      const fechaStr = ymd(fecha)
       const sesionesDia = sesiones.filter(s => s.fecha_sesion === fechaStr)
       dias.push({ fecha, fechaStr, sesiones: sesionesDia })
     }
@@ -183,7 +187,7 @@ export default function MisSesiones() {
     for (let i = 0; i < 7; i++) {
       const dia = new Date(semanaBase)
       dia.setDate(semanaBase.getDate() + i)
-      const fechaStr = dia.toISOString().split('T')[0]
+      const fechaStr = ymd(dia)
       const sesionesDia = sesiones.filter(s => s.fecha_sesion === fechaStr)
       dias.push({ fecha: dia, fechaStr, sesiones: sesionesDia })
     }
@@ -210,7 +214,7 @@ export default function MisSesiones() {
     setSemanaBase(lunes)
   }
 
-  const hoyStr = new Date().toISOString().split('T')[0]
+  const hoyStr = ymd(new Date())
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -230,7 +234,7 @@ export default function MisSesiones() {
           </div>
         </div>
 
-        <button onClick={() => { setFFecha(new Date().toISOString().split('T')[0]); setModalAnadir(true) }}
+        <button onClick={() => { setFFecha(ymd(new Date())); setModalAnadir(true) }}
           className="w-full mb-6 border border-dashed border-gray-700 text-gray-300 hover:text-white hover:border-orange-500 rounded-xl py-3 text-sm font-medium transition">
           ＋ Añadir una sesión que vas a hacer
         </button>

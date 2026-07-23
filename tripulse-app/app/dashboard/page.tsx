@@ -6,6 +6,7 @@ import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
 import InvitacionesClub from '@/components/InvitacionesClub'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -13,6 +14,7 @@ const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCod
 const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 export default function Dashboard() {
+  useRequireEntrenador()
   const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
   const [userId, setUserId] = useState<string | null>(null)
@@ -61,7 +63,7 @@ export default function Dashboard() {
     const w0 = (wells || [])[0]
     const hoyISO = new Date().toISOString().split('T')[0]
     setWellHoy({ hoy: w0?.fecha === hoyISO, score: w0?.score_wellness ?? null })
-    setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => w.score_wellness || 0))
+    setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => w.score_wellness ?? 0))
     const hoyStr = new Date().toISOString().split('T')[0]
     const { data: comp } = await supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id).gte('fecha', hoyStr).order('fecha').limit(1)
     setProximaComp(comp?.[0] || null)
@@ -339,7 +341,7 @@ export default function Dashboard() {
                       <div className="flex items-end justify-between gap-2">
                         <div>
                           <div className="flex items-baseline gap-1.5">
-                            <span className="text-[24px] font-bold leading-none" style={{ color: rc }}>{wellHoy.score || '—'}</span>
+                            <span className="text-[24px] font-bold leading-none" style={{ color: rc }}>{wellHoy.score ?? '—'}</span>
                             <span className="text-[11px] font-semibold" style={{ color: rc }}>{readiness.label}</span>
                           </div>
                           <p className="text-[10px] mt-1" style={{ color: wellHoy.hoy ? '#22c55e' : '#9ca3af' }}>{wellHoy.hoy ? '✓ registrado hoy' : 'sin registrar hoy'}</p>

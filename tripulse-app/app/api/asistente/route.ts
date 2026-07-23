@@ -23,9 +23,16 @@ export async function POST(req: Request) {
   // El cliente manda su token de Supabase; lo validamos aquí.
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return new Response('No autenticado.', { status: 401 })
-  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+  // Cliente autenticado como el usuario (su token) para que las lecturas respeten RLS.
+  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  })
   const { data: { user }, error: authErr } = await sb.auth.getUser(token)
   if (authErr || !user) return new Response('Sesión no válida.', { status: 401 })
+  // El asistente gasta créditos de Anthropic y es una herramienta del ENTRENADOR:
+  // no dejar que un deportista (u otro rol) lo dispare.
+  const { data: perfil } = await sb.from('perfiles').select('rol').eq('id', user.id).single()
+  if (perfil?.rol !== 'entrenador') return new Response('El asistente es solo para entrenadores.', { status: 403 })
 
   let body: any
   try { body = await req.json() } catch { return new Response('Petición inválida.', { status: 400 }) }

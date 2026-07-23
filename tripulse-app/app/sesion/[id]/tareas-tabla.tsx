@@ -100,7 +100,7 @@ function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number)
       const pMax = velMax > 0 ? Math.floor(60/velMax) + ':' + String(Math.round((60/velMax % 1)*60)).padStart(2,'0') : null
       if (pMin && pMax) ritmo = pMin + '–' + pMax + ' /km'
     }
-  } else if (disciplina === 'Natacion') {
+  } else if (disciplina === 'Natacion' || disciplina === 'Natación') {
     porcentaje = ref.cssPct[0] + '–' + ref.cssPct[1] + '% CSS'
     if (tests.css) {
       const velMin = tests.css * ref.cssPct[0] / 100

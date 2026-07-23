@@ -43,23 +43,25 @@ export default function MisAnalisis() {
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
 
+      // Sesiones Realizadas: por la cadena de plan Y las libres (id_microciclo null).
       const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
       const macroIds = (macros || []).map((m: any) => m.id)
-      if (!macroIds.length) { setLoading(false); return }
-      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-      const mesoIds = (mesos || []).map((m: any) => m.id)
-      if (!mesoIds.length) { setLoading(false); return }
-      const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-      const microIds = (micros || []).map((m: any) => m.id)
-      if (!microIds.length) { setLoading(false); return }
-
-      const { data: ses } = await supabase
-        .from('sesion')
-        .select('*')
-        .in('id_microciclo', microIds)
-        .eq('estado', 'Realizada')
-        .order('fecha_sesion', { ascending: false })
-        .limit(20)
+      let microIds: number[] = []
+      if (macroIds.length) {
+        const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
+        const mesoIds = (mesos || []).map((m: any) => m.id)
+        if (mesoIds.length) {
+          const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+          microIds = (micros || []).map((m: any) => m.id)
+        }
+      }
+      const [chainSes, libresSes] = await Promise.all([
+        supabase.from('sesion').select('*').in('id_microciclo', microIds.length ? microIds : [-1]).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
+        supabase.from('sesion').select('*').eq('id_deportista', dep.id).is('id_microciclo', null).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
+      ])
+      const ses = [...(chainSes.data || []), ...(libresSes.data || [])]
+        .sort((a: any, b: any) => (a.fecha_sesion > b.fecha_sesion ? -1 : 1))
+        .slice(0, 20)
 
       const [tc, tn, tci] = await Promise.all([
         supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),

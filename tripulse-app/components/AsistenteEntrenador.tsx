@@ -61,6 +61,7 @@ export default function AsistenteEntrenador() {
         },
         body: JSON.stringify({ messages: previos, contexto }),
       })
+      if (!res.ok) { const errTxt = await res.text().catch(() => ''); throw new Error(errTxt || ('Error ' + res.status)) }
       if (!res.body) throw new Error('sin cuerpo')
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -71,8 +72,8 @@ export default function AsistenteEntrenador() {
         acc += dec.decode(value, { stream: true })
         setMensajes(prev => { const c = [...prev]; c[c.length - 1] = { role: 'assistant', content: acc }; return c })
       }
-    } catch {
-      setMensajes(prev => { const c = [...prev]; c[c.length - 1] = { role: 'assistant', content: '⚠️ No se pudo contactar con el asistente. Revisa la conexión.' }; return c })
+    } catch (e: any) {
+      setMensajes(prev => { const c = [...prev]; c[c.length - 1] = { role: 'assistant', content: '⚠️ ' + (e?.message || 'No se pudo contactar con el asistente. Revisa la conexión.') }; return c })
     } finally {
       setEnviando(false)
     }
