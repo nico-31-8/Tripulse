@@ -203,12 +203,24 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const guardarYCerrar = async () => {
     setGuardando(true)
     // Guardar series de fuerza
+    // Lookup de ejercicios para recuperar el kg planificado de cada escalón de un drop set.
+    const ejById: Record<number, any> = {}
+    Object.values(ejerciciosPorTarea).flat().forEach((e: any) => { ejById[e.id] = e })
     for (const [ejId, series] of Object.entries(seriesFuerza)) {
+      const rawDrop = ejById[Number(ejId)]?.escalones_drop
+      const escalonesDrop = rawDrop ? String(rawDrop).split(',').map((s: string) => s.trim()) : null
       for (const serie of series) {
+        // En un drop set el atleta solo registra reps+RIR: el peso de cada escalón es el
+        // planificado. Volcarlo como peso_real (antes se guardaba null y se perdía para el análisis).
+        let pesoReal: number | null = serie.peso_real ? Number(serie.peso_real) : null
+        if (pesoReal == null && escalonesDrop) {
+          const kg = Number(escalonesDrop[(serie.ejercicio_numero || 1) - 1])
+          if (kg > 0) pesoReal = kg
+        }
         await supabase.from('series_realizadas').insert({
           id_ejercicio: Number(ejId),
           numero_serie: serie.numero_serie,
-          peso_real: serie.peso_real ? Number(serie.peso_real) : null,
+          peso_real: pesoReal,
           repeticiones_reales: serie.repeticiones_reales ? Number(serie.repeticiones_reales) : null,
           rir_real: serie.rir_real ? Number(serie.rir_real) : null,
           completada: serie.completada || false,

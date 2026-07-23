@@ -147,6 +147,17 @@ export default function VolumenPage() {
     bloques.filter(b => b.disciplina === 'Fuerza').forEach(b => {
       minFuerza[b.id_sesion] = (minFuerza[b.id_sesion] || 0) + b.minutos
     })
+    // UA (RPE×min) por disciplina de BLOQUE, para repartir la carga de un brick entre sus
+    // deportes reales. Una sesión normal queda toda bajo su única disciplina (= comportamiento
+    // de antes); un brick (disciplina='Brick') se reparte y deja de "perderse" en las barras.
+    const uaDiscPorSes: Record<number, Record<string, number>> = {}
+    bloques.forEach(b => {
+      const ses = sesiones.find(s => s.id === b.id_sesion)
+      if (!ses) return
+      const rpe = (ses.rpe_reportado || ses.rpe_estimado || 5)
+      if (!uaDiscPorSes[b.id_sesion]) uaDiscPorSes[b.id_sesion] = {}
+      uaDiscPorSes[b.id_sesion][b.disciplina] = (uaDiscPorSes[b.id_sesion][b.disciplina] || 0) + rpe * b.minutos
+    })
 
     // Volumen por sesión
     const volSesion = sesiones.map(s => {
@@ -184,6 +195,7 @@ export default function VolumenPage() {
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
         ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)),
+        uaDisc: uaDiscPorSes[s.id] || null,
         rpe: s.rpe_estimado,
         duracion: s.duracion_minutos,
       }
@@ -240,14 +252,27 @@ export default function VolumenPage() {
     volSesionRaw.map(s => ({ ...s, fecha: s.fecha.slice(5), ua: Math.round(s.ua * factorFn(s)) })),
     [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])
 
+  // Acumula la UA ponderada de una sesión en un bucket por disciplina. Con desglose por bloque
+  // (uaDisc) reparte proporcionalmente (un brick va a sus deportes reales); sin él, toda bajo su
+  // disciplina (= comportamiento anterior). Antes un brick caía en el bucket 'Brick' y no se pintaba.
+  const acumularCargaDisc = (bucket: any, s: any) => {
+    const uaPond = s.ua * factorFn(s)
+    if (s.uaDisc) {
+      const vals = Object.entries(s.uaDisc) as [string, number][]
+      const totalRaw = vals.reduce((a, [, u]) => a + u, 0) || 1
+      vals.forEach(([d, u]) => { if (bucket[d] !== undefined) bucket[d] += (u / totalRaw) * uaPond })
+    } else {
+      bucket[s.disciplina] = (bucket[s.disciplina] || 0) + uaPond
+    }
+    bucket.total += uaPond
+  }
+
   const cargaSemanas = useMemo(() => {
     const map: Record<string, any> = {}
     volSesionRaw.forEach(s => {
       const k = getSemana(s.fecha).slice(5)
       if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      const uaPond = s.ua * factorFn(s)
-      map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
-      map[k].total += uaPond
+      acumularCargaDisc(map[k], s)
     })
     return Object.values(map)
   }, [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])
@@ -257,9 +282,7 @@ export default function VolumenPage() {
     volSesionRaw.forEach(s => {
       const k = s.fecha.slice(0, 7)
       if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
-      const uaPond = s.ua * factorFn(s)
-      map[k][s.disciplina] = (map[k][s.disciplina] || 0) + uaPond
-      map[k].total += uaPond
+      acumularCargaDisc(map[k], s)
     })
     return Object.values(map)
   }, [volSesionRaw, usarSicat, sicat, pondZona, zonasRes])

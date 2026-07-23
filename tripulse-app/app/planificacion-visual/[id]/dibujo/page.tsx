@@ -540,11 +540,39 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setGenerando(false)
   }
 
-  const borrarMacro = (macId: string) => {
+  const borrarMacro = async (macId: string) => {
+    const mac = macros.find(m => m.id === macId)
+    // Si ya existe en BD (dbId), borrarlo en cascada. Es DESTRUCTIVO (se lleva mesos, semanas
+    // y SESIONES), así que se confirma. Antes solo se quitaba del canvas y reaparecía al recargar.
+    if (mac?.dbId) {
+      if (!confirm('¿Borrar este macrociclo y TODO su contenido (mesociclos, semanas y sesiones)? No se puede deshacer.')) return
+      const { data: mesosDb } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', mac.dbId)
+      if (mesosDb?.length) {
+        const { data: microsDb } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesosDb.map(m => m.id))
+        if (microsDb?.length) {
+          await supabase.from('sesion').delete().in('id_microciclo', microsDb.map(m => m.id))
+          await supabase.from('microciclo').delete().in('id_mesociclo', mesosDb.map(m => m.id))
+        }
+        await supabase.from('mesociclo').delete().eq('id_macrociclo', mac.dbId)
+      }
+      await supabase.from('macrociclo').delete().eq('id', mac.dbId)
+    }
     setMacros(p => p.filter(m => m.id !== macId))
     setMesos(p => p.filter(m => m.macroId !== macId))
   }
-  const borrarMeso = (mesoId: string) => setMesos(p => p.filter(m => m.id !== mesoId))
+  const borrarMeso = async (mesoId: string) => {
+    const me = mesos.find(m => m.id === mesoId)
+    if (me?.dbId) {
+      if (!confirm('¿Borrar este mesociclo y sus semanas y sesiones? No se puede deshacer.')) return
+      const { data: microsDb } = await supabase.from('microciclo').select('id').eq('id_mesociclo', me.dbId)
+      if (microsDb?.length) {
+        await supabase.from('sesion').delete().in('id_microciclo', microsDb.map(m => m.id))
+        await supabase.from('microciclo').delete().eq('id_mesociclo', me.dbId)
+      }
+      await supabase.from('mesociclo').delete().eq('id', me.dbId)
+    }
+    setMesos(p => p.filter(m => m.id !== mesoId))
+  }
 
   const abrirEditarMacro = (mac: MacroD, e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault()
