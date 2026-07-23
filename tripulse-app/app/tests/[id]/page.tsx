@@ -85,10 +85,12 @@ function GraficaEvolucion({ datos, dataKey, color, unidad, label }: { datos: any
 }
 
 function GraficaFuerza({ datos }: { datos: any[] }) {
-  if (!datos.length) return null
-  // Agrupar por ejercicio
+  // Agrupar por ejercicio. Los hooks van SIEMPRE antes de cualquier return
+  // condicional (regla de hooks de React): si no, al pasar de "sin datos" a
+  // "con datos" React lanza "rendered more hooks than during the previous render".
   const ejercicios = [...new Set(datos.map(t => t.ejercicio))]
   const [ejercicioSel, setEjercicioSel] = useState(ejercicios[0] || '')
+  if (!datos.length) return null
   const datosFiltrados = datos.filter(t => t.ejercicio === ejercicioSel).slice().reverse()
 
   if (datosFiltrados.length < 2) return (
