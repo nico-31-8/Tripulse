@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import ComunidadGrupos from './ComunidadGrupos'
 import ComunidadRetos from './ComunidadRetos'
+import { PRUEBAS } from '@/lib/pruebas'
 
 const DEPORTES = [
   { id: 'triatlon', label: 'Triatlón', emoji: '🔺' },
@@ -33,12 +34,26 @@ interface Persona {
   rol: string
   ciudad: string | null
   deportes: string[] | null
+  bio: string | null
   avatar_url: string | null
 }
 
-function Ficha({ p, esYo }: { p: Persona; esYo: boolean }) {
+interface Palmar {
+  id: string
+  id_perfil: string
+  nombre: string
+  fecha: string | null
+  tipo_prueba: string | null
+  tiempo: string | null
+  posicion: string | null
+  destacada: boolean
+  orden: number
+}
+
+function Ficha({ p, esYo, conteo, palmares }: { p: Persona; esYo: boolean; conteo?: number; palmares?: Palmar[] }) {
   const badge = rolBadge(p.rol)
   const inicial = (p.nombre || '?').trim().charAt(0).toUpperCase()
+  const esEntrenador = p.rol === 'entrenador' || p.rol === 'admin'
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex gap-3">
       <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-lg font-bold text-gray-300 flex-shrink-0 overflow-hidden">
@@ -50,12 +65,31 @@ function Ficha({ p, esYo }: { p: Persona; esYo: boolean }) {
           <span className={'text-[10px] px-1.5 py-0.5 rounded-full border ' + badge.cls}>{badge.txt}</span>
         </div>
         {p.ciudad && <p className="text-gray-400 text-xs mt-0.5">📍 {p.ciudad}</p>}
+        {esEntrenador && conteo != null && conteo > 0 && (
+          <p className="text-orange-300 text-xs mt-1 font-medium">🏋️ Entrena a {conteo} deportista{conteo === 1 ? '' : 's'}</p>
+        )}
+        {p.bio && <p className="text-gray-300 text-sm mt-2 leading-snug whitespace-pre-line">{p.bio}</p>}
         {p.deportes && p.deportes.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {p.deportes.map(d => {
               const m = depMeta(d)
               return <span key={d} className="text-[11px] bg-gray-800 text-gray-300 rounded-full px-2 py-0.5">{m ? m.emoji + ' ' + m.label : d}</span>
             })}
+          </div>
+        )}
+        {palmares && palmares.length > 0 && (
+          <div className="mt-2.5 border-t border-gray-800 pt-2">
+            <p className="text-gray-500 text-[10px] uppercase tracking-wide mb-1.5">🏅 Palmarés</p>
+            <div className="flex flex-col gap-1">
+              {palmares.slice(0, 4).map(pl => (
+                <div key={pl.id} className="text-xs leading-snug">
+                  <span className="text-white">{pl.destacada && '⭐ '}{pl.nombre}</span>
+                  {(pl.tiempo || pl.posicion) && <span className="text-orange-300"> · {[pl.tiempo, pl.posicion].filter(Boolean).join(' · ')}</span>}
+                  {pl.fecha && <span className="text-gray-600"> · {pl.fecha.slice(0, 4)}</span>}
+                </div>
+              ))}
+              {palmares.length > 4 && <p className="text-gray-600 text-[11px]">+{palmares.length - 4} más</p>}
+            </div>
           </div>
         )}
       </div>
@@ -95,6 +129,12 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   const [editando, setEditando] = useState(false)
   const [miCiudad, setMiCiudad] = useState('')
   const [misDeportes, setMisDeportes] = useState<string[]>([])
+  const [miBio, setMiBio] = useState('')
+  const [miRol, setMiRol] = useState('')
+  const [misPalmares, setMisPalmares] = useState<Palmar[]>([])
+  const [conteos, setConteos] = useState<Record<string, number>>({})
+  const [palmaresPorPerfil, setPalmaresPorPerfil] = useState<Record<string, Palmar[]>>({})
+  const [nuevaCarrera, setNuevaCarrera] = useState({ nombre: '', fecha: '', tipo_prueba: '', tiempo: '', posicion: '', destacada: false })
   const [guardando, setGuardando] = useState(false)
 
   // Gestión de club
@@ -114,7 +154,24 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
     setYoId(user?.id ?? null)
 
     const { data: g } = await supabase.from('perfil_publico').select('*').order('nombre')
-    setGente(g || [])
+    setGente((g as Persona[]) || [])
+    // Prueba social: nº de deportistas por entrenador + palmarés de los atletas.
+    const listaG = ((g as Persona[]) || [])
+    const idsEntrenador = listaG.filter(x => x.rol === 'entrenador' || x.rol === 'admin').map(x => x.id)
+    const idsAtleta = listaG.filter(x => x.rol === 'deportista').map(x => x.id)
+    if (idsEntrenador.length) {
+      const pares = await Promise.all(idsEntrenador.map(async id => {
+        const { data } = await supabase.rpc('num_deportistas', { _id: id })
+        return [id, (data as number) || 0] as [string, number]
+      }))
+      setConteos(Object.fromEntries(pares))
+    } else setConteos({})
+    if (idsAtleta.length) {
+      const { data: pl } = await supabase.from('palmares').select('*').in('id_perfil', idsAtleta).order('destacada', { ascending: false }).order('fecha', { ascending: false })
+      const porPerfil: Record<string, Palmar[]> = {}
+      ;((pl as Palmar[]) || []).forEach(x => { (porPerfil[x.id_perfil] ||= []).push(x) })
+      setPalmaresPorPerfil(porPerfil)
+    } else setPalmaresPorPerfil({})
 
     const { data: r } = await supabase.from('club_roster').select('*')
     setRoster(r || [])
@@ -136,9 +193,13 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
     setInvPend(ip || [])
 
     if (user) {
-      const { data: mio } = await supabase.from('perfiles').select('ciudad, deportes').eq('id', user.id).single()
+      const { data: mio } = await supabase.from('perfiles').select('ciudad, deportes, bio, rol').eq('id', user.id).single()
       setMiCiudad(mio?.ciudad || '')
       setMisDeportes(mio?.deportes || [])
+      setMiBio(mio?.bio || '')
+      setMiRol(mio?.rol || '')
+      const { data: mp } = await supabase.from('palmares').select('*').eq('id_perfil', user.id).order('destacada', { ascending: false }).order('fecha', { ascending: false })
+      setMisPalmares((mp as Palmar[]) || [])
     }
     setCargando(false)
   }, [])
@@ -148,11 +209,31 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   const guardarPerfil = async () => {
     setGuardando(true)
     const { error } = await supabase.rpc('actualizar_perfil_publico', {
-      _ciudad: miCiudad || null, _deportes: misDeportes.length ? misDeportes : null, _bio: null, _avatar_url: null,
+      _ciudad: miCiudad || null, _deportes: misDeportes.length ? misDeportes : null, _bio: miBio.trim() || null, _avatar_url: null,
     })
     setGuardando(false)
     if (error) { alert('No se ha podido guardar el perfil.'); return }
     setEditando(false); await cargar()
+  }
+
+  const anadirCarrera = async () => {
+    if (!nuevaCarrera.nombre.trim() || !yoId) return
+    const { error } = await supabase.from('palmares').insert({
+      id_perfil: yoId,
+      nombre: nuevaCarrera.nombre.trim(),
+      fecha: nuevaCarrera.fecha || null,
+      tipo_prueba: nuevaCarrera.tipo_prueba || null,
+      tiempo: nuevaCarrera.tiempo.trim() || null,
+      posicion: nuevaCarrera.posicion.trim() || null,
+      destacada: nuevaCarrera.destacada,
+    })
+    if (error) { alert('No se ha podido añadir la carrera: ' + error.message); return }
+    setNuevaCarrera({ nombre: '', fecha: '', tipo_prueba: '', tiempo: '', posicion: '', destacada: false })
+    await cargar()
+  }
+  const borrarCarrera = async (id: string) => {
+    await supabase.from('palmares').delete().eq('id', id)
+    await cargar()
   }
 
   const crearClub = async () => {
@@ -277,6 +358,51 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                     ))}
                   </div>
                 </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-gray-400 text-xs">{miRol === 'entrenador' || miRol === 'admin' ? 'Descripción (tu presentación como entrenador)' : 'Sobre ti'}</span>
+                  <textarea value={miBio} onChange={e => setMiBio(e.target.value)} rows={3}
+                    placeholder={miRol === 'entrenador' || miRol === 'admin' ? 'Quién eres, tu método, tu experiencia… para que te encuentren deportistas.' : 'Una frase sobre ti y tus objetivos.'}
+                    className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm" />
+                </label>
+
+                <div>
+                  <span className="text-gray-400 text-xs">🏅 Palmarés — tus carreras y resultados</span>
+                  {misPalmares.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      {misPalmares.map(pl => (
+                        <div key={pl.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                          <p className="text-sm text-white truncate">{pl.destacada && '⭐ '}{pl.nombre}
+                            {(pl.tiempo || pl.posicion) && <span className="text-orange-300"> · {[pl.tiempo, pl.posicion].filter(Boolean).join(' · ')}</span>}
+                            {pl.fecha && <span className="text-gray-500"> · {pl.fecha.slice(0, 4)}</span>}
+                          </p>
+                          <button onClick={() => borrarCarrera(pl.id)} className="text-gray-500 hover:text-red-400 text-sm flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 bg-gray-800/40 border border-gray-700 rounded-lg p-3 flex flex-col gap-2">
+                    <input value={nuevaCarrera.nombre} onChange={e => setNuevaCarrera({ ...nuevaCarrera, nombre: e.target.value })} placeholder="Nombre de la carrera (ej. Ironman 70.3 Barcelona)" className={inputCls} />
+                    <div className="flex gap-2 flex-wrap">
+                      <select value={nuevaCarrera.tipo_prueba} onChange={e => setNuevaCarrera({ ...nuevaCarrera, tipo_prueba: e.target.value })} className={inputCls + ' flex-1 min-w-0'}>
+                        <option value="">Tipo de prueba…</option>
+                        {PRUEBAS.map(pr => <option key={pr.id} value={pr.nombre}>{pr.nombre}</option>)}
+                      </select>
+                      <input type="date" value={nuevaCarrera.fecha} onChange={e => setNuevaCarrera({ ...nuevaCarrera, fecha: e.target.value })} className={inputCls} />
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <input value={nuevaCarrera.tiempo} onChange={e => setNuevaCarrera({ ...nuevaCarrera, tiempo: e.target.value })} placeholder="Tiempo (ej. 4h52)" className={inputCls + ' flex-1 min-w-0'} />
+                      <input value={nuevaCarrera.posicion} onChange={e => setNuevaCarrera({ ...nuevaCarrera, posicion: e.target.value })} placeholder="Posición (ej. 3º cat.)" className={inputCls + ' flex-1 min-w-0'} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <label className="flex items-center gap-2 text-gray-400 text-xs cursor-pointer">
+                        <input type="checkbox" checked={nuevaCarrera.destacada} onChange={e => setNuevaCarrera({ ...nuevaCarrera, destacada: e.target.checked })} />
+                        ⭐ Destacada
+                      </label>
+                      <button onClick={anadirCarrera} disabled={!nuevaCarrera.nombre.trim()} className="bg-orange-500 hover:bg-orange-600 text-white text-sm px-3 py-1.5 rounded-lg transition disabled:opacity-50">+ Añadir carrera</button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <button onClick={guardarPerfil} disabled={guardando} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50">{guardando ? 'Guardando…' : 'Guardar'}</button>
                   <button onClick={() => setEditando(false)} className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm transition">Cancelar</button>
@@ -293,7 +419,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
               </p>
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
-                {genteFiltrada.map(p => <Ficha key={p.id} p={p} esYo={p.id === yoId} />)}
+                {genteFiltrada.map(p => <Ficha key={p.id} p={p} esYo={p.id === yoId} conteo={conteos[p.id]} palmares={palmaresPorPerfil[p.id]} />)}
               </div>
             )}
           </>
@@ -452,7 +578,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                     {miembros.slice().sort((a, b) => (ORDEN_ROL[a.rol_club] ?? 9) - (ORDEN_ROL[b.rol_club] ?? 9) || (a.nombre || '').localeCompare(b.nombre || '')).map(r => (
                       <div key={r.id_perfil} className="flex flex-col gap-1.5">
                         <Ficha esYo={r.id_perfil === yoId}
-                          p={{ id: r.id_perfil, nombre: r.nombre, rol: r.rol_club, ciudad: r.ciudad, deportes: null, avatar_url: r.avatar_url }} />
+                          p={{ id: r.id_perfil, nombre: r.nombre, rol: r.rol_club, ciudad: r.ciudad, deportes: null, bio: null, avatar_url: r.avatar_url }} />
                         {/* Controles del admin: cambiar rol y quitar. Solo si soy admin de este club. */}
                         {clubesAdmin.has(idClub) && (
                           <div className="flex items-center gap-2 px-1">
