@@ -7,6 +7,7 @@ import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const [nuevaTarea, setNuevaTarea] = useState('')
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [cargando, setCargando] = useState(true)
+  const [tienePlan, setTienePlan] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -40,6 +42,12 @@ export default function Dashboard() {
       setPerfil(p)
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).order('nombre')
       setDeportistas(deps || [])
+      // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
+      const depIds = (deps || []).map((d: any) => d.id)
+      if (depIds.length) {
+        const { data: macros } = await supabase.from('macrociclo').select('id').in('id_deportista', depIds).limit(1)
+        setTienePlan(!!macros?.length)
+      }
       setCargando(false)
       // Si venimos de un módulo con un atleta activo, abrimos su panel directamente.
       // (En un login fresco el activo está vacío → se muestra el selector.)
@@ -184,16 +192,9 @@ export default function Dashboard() {
 
       <div className={'relative mx-auto px-6 py-8 ' + (activo ? 'max-w-7xl' : 'max-w-3xl')}>
         <InvitacionesClub />
+        <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />
         {deportistas.length === 0 ? (
-          <>
-            <h2 className="text-2xl font-bold tracking-tight mb-4">Hola, {perfil?.nombre} 👋</h2>
-            <div className="rounded-2xl border border-orange-500/40 bg-orange-500/[0.06] p-7 text-center">
-              <div className="text-4xl mb-2">🚀</div>
-              <p className="font-bold text-lg mb-1">Empieza añadiendo tu primer deportista</p>
-              <p className="text-gray-400 text-sm mb-5 max-w-md mx-auto">Crea su perfil, envíale la invitación y planifica su temporada.</p>
-              <button onClick={() => router.push('/deportistas')} className="bg-orange-500 hover:bg-orange-400 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition">Ir a Deportistas →</button>
-            </div>
-          </>
+          <h2 className="text-2xl font-bold tracking-tight mb-4">Hola, {perfil?.nombre} 👋</h2>
         ) : !activo ? (
           /* ===== ENTRADA: elegir deportista ===== */
           <div className="min-h-[74vh] flex flex-col items-center justify-center text-center">
