@@ -8,4 +8,5 @@ Sentry.init({
   tracesSampleRate: 1.0,
   // No enviar datos personales (IP, cookies…) por defecto.
   sendDefaultPii: false,
+  ignoreErrors: ['Lock was stolen by another request'],
 })
