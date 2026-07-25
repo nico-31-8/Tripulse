@@ -48,7 +48,7 @@ function etiquetaDia(fechaStr: string): string {
 }
 
 // ---- Carga / TSB (frescura) ----
-function calcularCargas(sesiones: any[]) {
+export function calcularCargas(sesiones: any[]) {
   if (!sesiones.length) return [] as { carga: number; tsb: number }[]
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
@@ -66,7 +66,7 @@ function calcularCargas(sesiones: any[]) {
   })
   return out
 }
-function estadoTSB(tsb: number) {
+export function estadoTSB(tsb: number) {
   if (tsb < -30) return { label: 'Sobrecarga', color: '#ef4444' }
   if (tsb < -10) return { label: 'Carga productiva', color: '#f97316' }
   if (tsb < 5) return { label: 'En transición', color: '#eab308' }
