@@ -2,6 +2,9 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+// El score guardado es de MALESTAR (alto = peor). La lógica de semáforo/frases sigue
+// usando esa escala cruda; solo se invierte lo que se PINTA (ver lib/wellness-score).
+import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 
 function getLunesAnterior(): string {
   const hoy = new Date()
@@ -162,11 +165,11 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
                 </p>
               </div>
               <div className="bg-gray-900/50 rounded-lg p-2 text-center">
-                <p className="text-xs text-gray-500 mb-0.5">Wellness</p>
-                <p className={'text-lg font-bold ' + (r.wellnessMedio === null ? 'text-gray-500' : r.wellnessMedio < 25 ? 'text-green-400' : r.wellnessMedio < 50 ? 'text-yellow-400' : 'text-red-400')}>
-                  {r.wellnessMedio !== null ? Math.round(r.wellnessMedio) : '—'}
+                <p className="text-xs text-gray-500 mb-0.5">Bienestar</p>
+                <p className="text-lg font-bold" style={{ color: r.wellnessMedio === null ? '#6b7280' : colorBienestar(bienestar(Math.round(r.wellnessMedio))!) }}>
+                  {r.wellnessMedio !== null ? bienestar(Math.round(r.wellnessMedio)) : '—'}
                 </p>
-                <p className="text-xs text-gray-600">{r.wellnessMedio !== null ? (r.wellnessMedio < 25 ? 'Optimo' : r.wellnessMedio < 50 ? 'Aceptable' : 'Deteriorado') : 'Sin datos'}</p>
+                <p className="text-xs text-gray-600">{r.wellnessMedio !== null ? estadoBienestar(bienestar(Math.round(r.wellnessMedio))!) : 'Sin datos'}</p>
               </div>
             </div>
             <p className={'text-xs font-medium ' + estilos.texto}>{r.frase}</p>
@@ -247,11 +250,11 @@ export function ResumenDeportista({ depId }: { depId: number }) {
           <p className="text-xs text-gray-600">entrenado</p>
         </div>
         <div className="bg-gray-900/50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500 mb-1">Wellness</p>
-          <p className={'text-2xl font-bold ' + (datos.wellnessMedio === null ? 'text-gray-500' : datos.wellnessMedio < 25 ? 'text-green-400' : datos.wellnessMedio < 50 ? 'text-yellow-400' : 'text-red-400')}>
-            {datos.wellnessMedio !== null ? Math.round(datos.wellnessMedio) : '—'}
+          <p className="text-xs text-gray-500 mb-1">Bienestar</p>
+          <p className="text-2xl font-bold" style={{ color: datos.wellnessMedio === null ? '#6b7280' : colorBienestar(bienestar(Math.round(datos.wellnessMedio))!) }}>
+            {datos.wellnessMedio !== null ? bienestar(Math.round(datos.wellnessMedio)) : '—'}
           </p>
-          <p className="text-xs text-gray-600">{datos.wellnessMedio !== null ? (datos.wellnessMedio < 25 ? 'Optimo' : datos.wellnessMedio < 50 ? 'Aceptable' : 'Vigilar') : 'Sin datos'}</p>
+          <p className="text-xs text-gray-600">{datos.wellnessMedio !== null ? estadoBienestar(bienestar(Math.round(datos.wellnessMedio))!) : 'Sin datos'}</p>
         </div>
       </div>
       {sesionesSemActual > 0 && (

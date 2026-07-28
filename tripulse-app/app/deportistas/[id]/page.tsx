@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
 
@@ -15,12 +16,10 @@ function calcularEdad(fecha: string): number {
   return edad
 }
 
-function colorScore(s: number) {
-  if (s <= 25) return 'text-green-400'
-  if (s <= 50) return 'text-yellow-400'
-  if (s <= 75) return 'text-orange-400'
-  return 'text-red-400'
-}
+// Identidad de color estable por nombre (igual que en el resto de la app).
+const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
+const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
+const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 function estadoTSB(tsb: number) {
   if (tsb < -30) return { label: 'Sobrecarga', color: 'text-red-400' }
@@ -149,7 +148,8 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
-  const [pestana, setPestana] = useState<'perfil'|'resumen'|'sesiones'|'disponibilidad'|'cargadisc'|'adherencia'|'anamnesis'>('perfil')
+  const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'>('estado')
+  const [avatarOpen, setAvatarOpen] = useState(false)
   const [anamnesis, setAnamnesis] = useState<any>(null)
   const [tests, setTests] = useState<any>({})
   const [zonas, setZonas] = useState<any[]>([])
@@ -157,6 +157,8 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [carga, setCarga] = useState<any>(null)
   const [ecoScores, setEcoScores] = useState<any[]>([])
   const [ultimasSesiones, setUltimasSesiones] = useState<any[]>([])
+  const [peso, setPeso] = useState<number | null>(null)
+  const [adherencia, setAdherencia] = useState<{ pct: number; hechas: number; total: number; marcas: boolean[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState(false)
   const [editNombre, setEditNombre] = useState('')
@@ -179,12 +181,25 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     setAnamnesis(an || null)
 
     const [t1, t2, t3, tf] = await Promise.all([
-      supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
+      supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
+      supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(5),
     ])
-    setTests({ carrera: t1.data?.[0], natacion: t2.data?.[0], ciclismo: t3.data?.[0], fuerza: tf.data || [] })
+    // Se cogen los dos registros más recientes CON valor (las filas de sprint dejan
+    // vam/css/ftp a null), para poder mostrar la variación respecto al test anterior.
+    const conValor = (rows: any[] | null | undefined, key: string) => (rows || []).filter(r => r[key] != null)
+    const tc = conValor(t1.data, 'vam'), tn = conValor(t2.data, 'css'), tb = conValor(t3.data, 'ftp')
+    setTests({
+      carrera: tc[0], carreraPrev: tc[1],
+      natacion: tn[0], natacionPrev: tn[1],
+      ciclismo: tb[0], ciclismoPrev: tb[1],
+      fuerza: tf.data || [],
+    })
+
+    // Último peso registrado → permite expresar el FTP en W/kg.
+    const { data: pesos } = await supabase.from('registro_peso').select('peso_kg, fecha').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
+    setPeso(pesos?.[0]?.peso_kg ?? null)
 
     const { data: z } = await supabase.from('zonas_entrenamiento').select('*').eq('id_deportista', id).order('disciplina').order('numero_zona')
     setZonas(z || [])
@@ -221,6 +236,27 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               ctl = c * (2/43) + ctl * (1 - 2/43)
             })
             setCarga({ atl: Math.round(atl), ctl: Math.round(ctl), tsb: Math.round(ctl - atl) })
+          }
+
+          // Adherencia 30 días: de lo planificado hasta HOY, ¿cuánto completó?
+          // Solo hasta hoy: una sesión futura aún no es una sesión perdida.
+          const d30 = new Date(); d30.setDate(d30.getDate() - 30)
+          const hoyIso = new Date().toISOString().split('T')[0]
+          const { data: ses30 } = await supabase.from('sesion')
+            .select('estado, fecha_sesion')
+            .in('id_microciclo', microIds)
+            .gte('fecha_sesion', d30.toISOString().split('T')[0])
+            .lte('fecha_sesion', hoyIso)
+            .or('eliminada.is.null,eliminada.eq.false')
+          if (ses30?.length) {
+            const orden = [...ses30].sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))
+            const hechas = orden.filter(s => s.estado === 'Realizada').length
+            setAdherencia({
+              pct: Math.round((hechas / orden.length) * 100),
+              hechas,
+              total: orden.length,
+              marcas: orden.slice(-16).map(s => s.estado === 'Realizada'),
+            })
           }
 
           // Últimas sesiones realizadas
@@ -281,6 +317,15 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   const edad = deportista.fecha_nacimiento ? calcularEdad(deportista.fecha_nacimiento) : null
   const fcUmbral = deportista.fc_maxima ? Math.round(deportista.fc_maxima * 0.85) : null
+  const [hc1, hc2] = grad(deportista.nombre)
+  const diasTecnica = deportista.tec_fecha_actualizacion
+    ? Math.floor((Date.now() - new Date(deportista.tec_fecha_actualizacion).getTime()) / 86400000) : null
+  // Mismas banderas que ya marcaban la alerta dentro de la anamnesis: se suben a la portada.
+  const hayAlertaSalud = !!anamnesis && [
+    anamnesis.salud_cardiaca, anamnesis.salud_familia_infarto, anamnesis.salud_tension_alta,
+    anamnesis.salud_diabetes, anamnesis.salud_asma, anamnesis.salud_medicacion,
+    anamnesis.salud_alergia, anamnesis.salud_razon_medica,
+  ].some(v => v === true)
 
   // Estadísticas rápidas de sesiones
   const totalSesiones = ultimasSesiones.length
@@ -288,111 +333,124 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/deportistas')} className="text-gray-400 hover:text-white text-sm transition">← Deportistas</button>
-      </nav>
+      <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        <h1 className="text-[17px] font-bold tracking-tight truncate">Ficha <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· dossier del deportista</span></h1>
+        <button onClick={() => router.push('/deportistas')} className="text-gray-400 hover:text-white text-[13px] transition flex-shrink-0">← Deportistas</button>
+      </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-          <div className="flex justify-between items-start flex-wrap gap-4">
-            <div>
-              <h2 className="text-3xl font-bold mb-1">{deportista.nombre}</h2>
-              <div className="flex flex-wrap gap-3 text-sm text-gray-400">
-                {edad && <span>🎂 {edad} años</span>}
-                {deportista.sexo && <span>👤 {deportista.sexo}</span>}
-                {deportista.fc_maxima && <span>❤️ FC máx: {deportista.fc_maxima} ppm</span>}
-                {fcUmbral && <span>🎯 FC umbral est: {fcUmbral} ppm</span>}
-                {deportista.hrv_basal && <span>📊 HRV basal: {deportista.hrv_basal} ms</span>}
+      <div className="max-w-[1520px] mx-auto px-4 sm:px-6 py-6">
+        {/* ===== PORTADA ===== */}
+        <div className="tp-card mb-5">
+          <div className="relative p-6">
+            <div aria-hidden className="pointer-events-none absolute -top-24 right-0 w-[420px] h-[320px]"
+              style={{ background: 'radial-gradient(circle, ' + hc1 + '28, transparent 68%)' }} />
+            <div className="relative flex items-start gap-5 flex-wrap">
+              {/* La foto abre/cierra todos los datos personales. */}
+              <button onClick={() => setAvatarOpen(o => !o)} title="Ver todos los datos personales"
+                className="relative w-[92px] h-[92px] rounded-[28px] grid place-items-center text-[38px] font-extrabold text-white flex-shrink-0 transition hover:-translate-y-0.5"
+                style={{ background: 'linear-gradient(145deg,' + hc1 + ',' + hc2 + ')', boxShadow: '0 18px 40px -14px ' + hc1 + '99' }}>
+                {inicial(deportista.nombre)}
+                <span className={'absolute -right-1 -bottom-1 w-[26px] h-[26px] rounded-full grid place-items-center text-[11px] bg-[#11161d] border border-white/20 text-gray-300 transition-transform duration-300 ' + (avatarOpen ? 'rotate-180' : '')}>▾</span>
+              </button>
+
+              <div className="flex-1 min-w-[230px]">
+                <h2 className="text-[32px] font-extrabold tracking-tight leading-none">{deportista.nombre}</h2>
+                <p className="text-[13px] text-gray-400 mt-2">
+                  {[edad ? edad + ' años' : null, deportista.sexo, deportista.fecha_nacimiento ? 'nacido el ' + deportista.fecha_nacimiento : null, deportista.experiencia_previa].filter(Boolean).join(' · ')}
+                </p>
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  {ultimoWellness && (() => {
+                    const b = bienestar(ultimoWellness.score_wellness) ?? 0
+                    return <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: colorBienestar(b) + '1f', color: colorBienestar(b) }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: colorBienestar(b) }} />{estadoBienestar(b)}
+                    </span>
+                  })()}
+                  {carga && <span className="text-[11.5px] text-gray-300 px-2.5 py-1 rounded-full bg-white/5">{estadoTSB(carga.tsb).label} · TSB {carga.tsb > 0 ? '+' : ''}{carga.tsb}</span>}
+                  {hayAlertaSalud && <span className="text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ef444422', color: '#fca5a5' }}>⚠️ Antecedentes médicos</span>}
+                  {!anamnesis && <span className="text-[11.5px] px-2.5 py-1 rounded-full bg-white/5 text-gray-400">Anamnesis pendiente</span>}
+                </div>
               </div>
-              {deportista.experiencia_previa && <p className="text-gray-500 text-sm mt-2">Historial: {deportista.experiencia_previa}</p>}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={() => router.push('/planificacion-visual/' + id)}
-                className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
-                📅 Planificación
-              </button>
-              <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')}
-                className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition">
-                🗓 Calendario
-              </button>
+
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => router.push('/planificacion-visual/' + id)} className="bg-orange-500 hover:bg-orange-400 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Planificación</button>
+                <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Calendario</button>
+                <button onClick={abrirEdicion} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Editar datos</button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Pestañas */}
-        <div className="flex gap-1 border-b border-gray-800 mb-6">
-          <button onClick={() => setPestana('perfil')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'perfil' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            👤 Perfil y tests
-          </button>
-          <button onClick={() => setPestana('resumen')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'resumen' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            📊 Resumen analítico
-          </button>
-          <button onClick={() => setPestana('sesiones')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'sesiones' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            🏅 Últimas sesiones
-          </button>
-          <button onClick={() => setPestana('cargadisc')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'cargadisc' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            📊 Carga por disciplina
-          </button>
-          <button onClick={() => setPestana('adherencia')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'adherencia' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            📋 Adherencia
-          </button>
-          <button onClick={() => setPestana('disponibilidad')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
-              (pestana === 'disponibilidad' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            🗓 Disponibilidad
-          </button>
-          <button onClick={() => setPestana('anamnesis')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 flex items-center gap-1.5 ' +
-              (pestana === 'anamnesis' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            📋 Anamnesis
-            {anamnesis?.estado === 'enviada' && pestana !== 'anamnesis' && <span className="w-2 h-2 bg-green-400 rounded-full"></span>}
-            {!anamnesis && <span className="text-xs bg-gray-700 text-gray-400 px-1.5 rounded">Pendiente</span>}
-          </button>
-        </div>
-
-        {/* PESTAÑA PERFIL */}
-        {pestana === 'perfil' && (
-          <div className="flex flex-col gap-6">
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-orange-400">Datos personales</h3>
-                <button onClick={abrirEdicion} className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-3 py-1.5 rounded-lg transition">✏️ Editar</button>
+          {/* Ficha técnica: constantes */}
+          <div className="grid border-t border-white/[0.075]" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(122px,1fr))' }}>
+            {[
+              { k: 'FC máxima', v: deportista.fc_maxima ? deportista.fc_maxima : '—', u: deportista.fc_maxima ? 'ppm' : '' },
+              { k: 'FC umbral est.', v: fcUmbral || '—', u: fcUmbral ? 'ppm' : '' },
+              { k: 'HRV basal', v: deportista.hrv_basal || '—', u: deportista.hrv_basal ? 'ms' : '' },
+              { k: 'Sistema de zonas', v: (deportista.sistema_zonas || 1) === 2 ? 'Zonas 2' : 'Clásico', u: '', chico: true },
+              { k: 'Valoración técnica', v: diasTecnica != null ? 'Hace ' + diasTecnica + ' d' : 'Sin registrar', u: '', chico: true },
+            ].map(s => (
+              <div key={s.k} className="px-6 py-3.5 border-r border-white/[0.075] last:border-r-0">
+                <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>
+                <p className={'font-bold mt-1.5 tabular-nums tracking-tight ' + (s.chico ? 'text-[15px]' : 'text-[19px]')}>{s.v}{s.u && <span className="text-[10.5px] text-gray-500 font-normal ml-0.5">{s.u}</span>}</p>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            ))}
+          </div>
+
+          {/* Datos personales — se despliegan al pulsar la foto */}
+          <div className={'tp-collapse ' + (avatarOpen ? 'open' : '')} style={{ maxHeight: avatarOpen ? 420 : 0, marginTop: 0 }}>
+            <div className="px-6 py-5 border-t border-white/[0.075]">
+              <div className="flex justify-between items-baseline mb-3 flex-wrap gap-2">
+                <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500">Datos personales</p>
+                <button onClick={abrirEdicion} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-3 py-1.5 rounded-lg text-[11.5px] font-semibold transition">✏️ Editar</button>
+              </div>
+              <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
                 {[
                   { label: 'Nombre', val: deportista.nombre },
                   { label: 'Edad', val: edad ? edad + ' años' : '—' },
                   { label: 'Sexo', val: deportista.sexo || '—' },
+                  { label: 'F. nacimiento', val: deportista.fecha_nacimiento || '—' },
                   { label: 'FC máxima', val: deportista.fc_maxima ? deportista.fc_maxima + ' ppm' : '—' },
                   { label: 'FC umbral est.', val: fcUmbral ? fcUmbral + ' ppm' : '—' },
                   { label: 'HRV basal', val: deportista.hrv_basal ? deportista.hrv_basal + ' ms' : '—' },
-                  { label: 'F. nacimiento', val: deportista.fecha_nacimiento || '—' },
                   { label: 'Experiencia', val: deportista.experiencia_previa || '—' },
                   { label: '🏊 Tec. Natación', val: deportista.tec_natacion ? deportista.tec_natacion + '/5' : '—' },
                   { label: '🚴 Tec. Ciclismo', val: deportista.tec_ciclismo ? deportista.tec_ciclismo + '/5' : '—' },
                   { label: '🏃 Tec. Carrera', val: deportista.tec_carrera ? deportista.tec_carrera + '/5' : '—' },
                 ].map(({ label, val }) => (
-                  <div key={label} className="bg-gray-800 rounded-lg p-3">
-                    <p className="text-gray-500 text-xs mb-1">{label}</p>
-                    <p className="font-medium text-sm">{val}</p>
+                  <div key={label} className="rounded-xl border border-white/[0.055] bg-white/[0.02] px-3 py-2.5">
+                    <p className="text-[10px] text-gray-500 font-semibold">{label}</p>
+                    <p className="text-[13.5px] font-semibold mt-0.5">{val}</p>
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="font-bold mb-1 text-orange-400">Sistema de zonas</h3>
+        {/* Pestañas */}
+        <div className="flex gap-1 border-b border-gray-800 mb-6 flex-wrap">
+          {([
+            ['estado', 'Estado'],
+            ['zonas', 'Zonas y tests'],
+            ['entreno', 'Entrenamiento'],
+            ['disponibilidad', 'Disponibilidad'],
+            ['anamnesis', 'Anamnesis'],
+          ] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setPestana(k)}
+              className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px flex items-center gap-1.5 ' +
+                (pestana === k ? 'border-orange-500 text-orange-300' : 'border-transparent text-gray-400 hover:text-white')}>
+              {l}
+              {k === 'anamnesis' && anamnesis?.estado === 'enviada' && pestana !== 'anamnesis' && <span className="w-2 h-2 bg-green-400 rounded-full" />}
+              {k === 'anamnesis' && !anamnesis && <span className="text-[10px] bg-white/[0.07] text-gray-400 px-1.5 py-0.5 rounded">Pendiente</span>}
+              {k === 'anamnesis' && hayAlertaSalud && <span className="text-[11px]">⚠️</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* PESTAÑA ZONAS Y TESTS */}
+        {pestana === 'zonas' && (
+          <div className="flex flex-col gap-5">
+            <div className="tp-card p-5">
+              <h3 className="font-semibold mb-1 text-[15px]">Sistema de zonas</h3>
               <p className="text-gray-500 text-xs mb-4">Define qué zonas de entrenamiento se usan al planificar con este deportista.</p>
               <div className="flex flex-col sm:flex-row gap-3">
                 {[
@@ -409,47 +467,55 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   </button>
                 ))}
               </div>
+              <button onClick={() => router.push('/zonas/' + id)}
+                className="mt-4 w-full bg-white/[0.05] border border-white/[0.075] hover:border-white/20 text-gray-300 py-2.5 rounded-lg text-[12.5px] font-semibold transition">
+                Ver tabla completa de zonas con sus ritmos →
+              </button>
             </div>
 
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <h3 className="font-bold mb-4 text-orange-400">Últimos tests</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">🏃 Carrera — VAM</p>
-                  {tests.carrera ? (
-                    <div>
-                      <p className="text-2xl font-bold text-green-400">{tests.carrera.vam} <span className="text-sm font-normal text-gray-400">km/h</span></p>
-                      <p className="text-gray-500 text-xs">{tests.carrera.fecha}</p>
+                {[
+                  { k: '🏃 Carrera — VAM', t: tests.carrera, prev: tests.carreraPrev, campo: 'vam', u: 'km/h', c: '#4ade80' },
+                  { k: '🏊 Natación — CSS', t: tests.natacion, prev: tests.natacionPrev, campo: 'css', u: 'm/s', c: '#60a5fa' },
+                  { k: '🚴 Ciclismo — FTP', t: tests.ciclismo, prev: tests.ciclismoPrev, campo: 'ftp', u: 'W', c: '#fbbf24' },
+                ].map(({ k, t, prev, campo, u, c }) => {
+                  // En estas tres métricas MÁS ALTO = MEJOR, por eso subir siempre es verde.
+                  const delta = t && prev ? Math.round((t[campo] - prev[campo]) * 100) / 100 : null
+                  return (
+                    <div key={k} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                      <p className="text-[11px] text-gray-500 mb-1.5">{k}</p>
+                      {t ? (
+                        <div>
+                          <p className="text-[24px] font-bold leading-none tabular-nums" style={{ color: c }}>
+                            {t[campo]} <span className="text-[13px] font-normal text-gray-500">{u}</span>
+                          </p>
+                          {campo === 'ftp' && peso ? (
+                            <p className="text-[11px] text-gray-400 mt-1.5">{(t.ftp / peso).toFixed(2)} W/kg <span className="text-gray-600">· {peso} kg</span></p>
+                          ) : null}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="text-[11px] text-gray-500">{t.fecha}</span>
+                            {delta != null && delta !== 0 && (
+                              <span className="text-[10.5px] font-bold" style={{ color: delta > 0 ? '#4ade80' : '#f87171' }}>
+                                {delta > 0 ? '▲' : '▼'} {Math.abs(delta)} {u}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : <p className="text-gray-600 text-[13px]">Sin test</p>}
                     </div>
-                  ) : <p className="text-gray-600 text-sm">Sin test</p>}
-                </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">🏊 Natación — CSS</p>
-                  {tests.natacion ? (
-                    <div>
-                      <p className="text-2xl font-bold text-blue-400">{tests.natacion.css} <span className="text-sm font-normal text-gray-400">m/s</span></p>
-                      <p className="text-gray-500 text-xs">{tests.natacion.fecha}</p>
-                    </div>
-                  ) : <p className="text-gray-600 text-sm">Sin test</p>}
-                </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">🚴 Ciclismo — FTP</p>
-                  {tests.ciclismo ? (
-                    <div>
-                      <p className="text-2xl font-bold text-yellow-400">{tests.ciclismo.ftp} <span className="text-sm font-normal text-gray-400">W</span></p>
-                      <p className="text-gray-500 text-xs">{tests.ciclismo.fecha}</p>
-                    </div>
-                  ) : <p className="text-gray-600 text-sm">Sin test</p>}
-                </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">🏋️ Fuerza — 1RM</p>
+                  )
+                })}
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <p className="text-[11px] text-gray-500 mb-1.5">🏋️ Fuerza — 1RM</p>
                   {tests.fuerza.length > 0 ? (
                     <div className="flex flex-col gap-1">
-                      {tests.fuerza.slice(0,3).map((t: any) => (
-                        <p key={t.id} className="text-sm"><span className="text-red-400 font-bold">{t.rm_estimado}kg</span> <span className="text-gray-400 text-xs">{t.ejercicio}</span></p>
+                      {tests.fuerza.slice(0, 3).map((t: any) => (
+                        <p key={t.id} className="text-[13px]"><span className="text-red-400 font-bold tabular-nums">{t.rm_estimado} kg</span> <span className="text-gray-500 text-[11px]">{t.ejercicio}</span></p>
                       ))}
                     </div>
-                  ) : <p className="text-gray-600 text-sm">Sin test</p>}
+                  ) : <p className="text-gray-600 text-[13px]">Sin test</p>}
                 </div>
               </div>
               <button onClick={() => router.push('/tests/' + id)}
@@ -483,107 +549,187 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
           </div>
         )}
 
-        {/* PESTAÑA RESUMEN */}
-        {pestana === 'resumen' && (
-          <div className="flex flex-col gap-6">
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="font-bold mb-4 text-green-400">💚 Último Wellness</h3>
-              {ultimoWellness ? (
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-gray-400 text-sm mb-1">{ultimoWellness.fecha}</p>
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      {[
-                        { label: 'Fatiga', val: ultimoWellness.fatiga + '/7' },
-                        { label: 'Estrés', val: ultimoWellness.estres + '/7' },
-                        { label: 'Ánimo', val: ultimoWellness.animo + '/7' },
-                        { label: 'Motivación', val: ultimoWellness.motivacion + '/7' },
-                        { label: 'Sueño', val: ultimoWellness.horas_sueno + 'h' },
-                        { label: 'HRV', val: ultimoWellness.hrv ? ultimoWellness.hrv + ' ms' : '—' },
-                      ].map(({ label, val }) => (
-                        <div key={label} className="bg-gray-800 rounded p-2">
-                          <p className="text-gray-500 text-xs">{label}</p>
-                          <p className="font-medium">{val}</p>
+        {/* PESTAÑA ESTADO */}
+        {pestana === 'estado' && (
+          <div className="flex flex-col gap-5">
+            {/* --- Cómo está hoy --- */}
+            <div>
+              <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500 mb-3">Cómo está hoy</p>
+              <div className="grid gap-4 md:grid-cols-3">
+                {/* Wellness */}
+                <div className="tp-card p-[18px]">
+                  <div className="flex items-center gap-2 text-[12.5px] font-semibold text-gray-300">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />Último wellness
+                    {ultimoWellness && <span className="text-gray-500 font-normal">· {ultimoWellness.fecha}</span>}
+                  </div>
+                  {ultimoWellness ? (() => {
+                    const b = bienestar(ultimoWellness.score_wellness) ?? 0
+                    return (
+                      <>
+                        <p className="text-[36px] font-bold leading-none mt-3 tabular-nums" style={{ color: colorBienestar(b) }}>
+                          {b}<span className="text-[14px] text-gray-500 font-medium"> /100 bienestar</span>
+                        </p>
+                        <p className="text-[11.5px] mt-1.5" style={{ color: colorBienestar(b) }}>{estadoBienestar(b)}</p>
+                        <div className="grid grid-cols-3 gap-1.5 mt-3.5">
+                          {[
+                            { k: 'Fatiga', v: ultimoWellness.fatiga + '/7' },
+                            { k: 'Estrés', v: ultimoWellness.estres + '/7' },
+                            { k: 'Ánimo', v: ultimoWellness.animo + '/7' },
+                            { k: 'Motivación', v: ultimoWellness.motivacion + '/7' },
+                            { k: 'Sueño', v: ultimoWellness.horas_sueno + 'h' },
+                            { k: 'HRV', v: ultimoWellness.hrv ? ultimoWellness.hrv + ' ms' : '—' },
+                          ].map(({ k, v }) => (
+                            <div key={k} className="rounded-[10px] border border-white/[0.055] bg-white/[0.02] px-2 py-1.5">
+                              <p className="text-[9.5px] text-gray-500">{k}</p>
+                              <p className="text-[13px] font-semibold mt-0.5">{v}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-center ml-6">
-                    <p className={'text-5xl font-black ' + colorScore(ultimoWellness.score_wellness)}>{ultimoWellness.score_wellness}</p>
-                    <p className={'text-xs mt-1 ' + colorScore(ultimoWellness.score_wellness)}>Score wellness</p>
-                  </div>
+                      </>
+                    )
+                  })() : <p className="text-gray-500 text-[13px] mt-4">Sin registros de wellness todavía.</p>}
                 </div>
-              ) : <p className="text-gray-500 text-sm">Sin registros de wellness todavía.</p>}
-            </div>
 
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="font-bold mb-4 text-orange-400">📈 Estado de carga</h3>
-              {carga ? (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-gray-800 rounded-lg p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">CTL — Forma</p>
-                    <p className="text-3xl font-bold text-orange-400">{carga.ctl}</p>
+                {/* Carga */}
+                <div className="tp-card p-[18px]">
+                  <div className="flex items-center gap-2 text-[12.5px] font-semibold text-gray-300">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />Estado de carga
                   </div>
-                  <div className="bg-gray-800 rounded-lg p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">ATL — Fatiga</p>
-                    <p className="text-3xl font-bold text-red-400">{carga.atl}</p>
-                  </div>
-                  <div className="bg-gray-800 rounded-lg p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">TSB — Frescura</p>
-                    <p className={'text-3xl font-bold ' + estadoTSB(carga.tsb).color}>{carga.tsb > 0 ? '+' : ''}{carga.tsb}</p>
-                    <p className={'text-xs mt-1 ' + estadoTSB(carga.tsb).color}>{estadoTSB(carga.tsb).label}</p>
-                  </div>
-                </div>
-              ) : <p className="text-gray-500 text-sm">Sin sesiones realizadas para calcular la carga.</p>}
-              <button onClick={() => router.push('/carga')}
-                className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
-                Ver análisis completo de carga →
-              </button>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="font-bold mb-4 text-blue-400">🔬 SICAT</h3>
-              {ecoScores.length > 0 ? (
-                <div className="grid gap-2">
-                  {ecoScores.map(e => (
-                    <div key={e.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-3">
-                      <div>
-                        <p className="font-medium">{e.disciplina}</p>
-                        <p className="text-gray-500 text-xs">F1:{e.puntuacion_f1} F2:{e.puntuacion_f2} F3:{e.puntuacion_f3} F4:{e.puntuacion_f4}</p>
+                  {carga ? (
+                    <>
+                      <p className={'text-[36px] font-bold leading-none mt-3 tabular-nums ' + estadoTSB(carga.tsb).color}>
+                        {carga.tsb > 0 ? '+' : ''}{carga.tsb}<span className="text-[14px] text-gray-500 font-medium"> TSB</span>
+                      </p>
+                      <p className={'text-[11.5px] mt-1.5 ' + estadoTSB(carga.tsb).color}>{estadoTSB(carga.tsb).label}</p>
+                      <div className="grid grid-cols-2 gap-1.5 mt-3.5">
+                        <div className="rounded-[10px] border border-white/[0.055] bg-white/[0.02] px-2 py-1.5">
+                          <p className="text-[9.5px] text-gray-500">CTL · Forma</p>
+                          <p className="text-[13px] font-semibold mt-0.5 text-orange-400">{carga.ctl}</p>
+                        </div>
+                        <div className="rounded-[10px] border border-white/[0.055] bg-white/[0.02] px-2 py-1.5">
+                          <p className="text-[9.5px] text-gray-500">ATL · Fatiga</p>
+                          <p className="text-[13px] font-semibold mt-0.5 text-red-400">{carga.atl}</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-blue-400">{e.porcentaje}%</p>
-                        <p className="text-gray-500 text-xs">Total: {e.total}/16</p>
+                      <button onClick={() => router.push('/carga')} className="text-[11.5px] text-gray-500 hover:text-white transition mt-3.5">Ver análisis completo →</button>
+                    </>
+                  ) : <p className="text-gray-500 text-[13px] mt-4">Sin sesiones realizadas para calcular la carga.</p>}
+                </div>
+
+                {/* Adherencia */}
+                <div className="tp-card p-[18px]">
+                  <div className="flex items-center gap-2 text-[12.5px] font-semibold text-gray-300">
+                    <span className="w-2 h-2 rounded-full bg-purple-500" />Adherencia 30 días
+                  </div>
+                  {adherencia ? (
+                    <>
+                      <p className="text-[36px] font-bold leading-none mt-3 tabular-nums" style={{ color: adherencia.pct >= 85 ? '#c084fc' : adherencia.pct >= 65 ? '#f97316' : '#ef4444' }}>
+                        {adherencia.pct}<span className="text-[14px] text-gray-500 font-medium"> %</span>
+                      </p>
+                      <p className="text-[11.5px] text-gray-500 mt-1.5">{adherencia.hechas} de {adherencia.total} sesiones completadas</p>
+                      <div className="flex gap-[3px] flex-wrap mt-3.5">
+                        {adherencia.marcas.map((ok, i) => (
+                          <span key={i} title={ok ? 'Realizada' : 'No realizada'} className="w-[11px] h-[11px] rounded-[3px]" style={{ background: ok ? '#a855f7' : '#3f3f46' }} />
+                        ))}
+                      </div>
+                    </>
+                  ) : <p className="text-gray-500 text-[13px] mt-4">Sin sesiones planificadas en los últimos 30 días.</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* --- Valoración técnica + SICAT --- */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="tp-card p-[18px]">
+                <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500 mb-3">Valoración técnica</p>
+                <div className="flex flex-col gap-4">
+                  {[
+                    { l: '🏊 Natación', v: deportista.tec_natacion, c: '#60a5fa' },
+                    { l: '🚴 Ciclismo', v: deportista.tec_ciclismo, c: '#fbbf24' },
+                    { l: '🏃 Carrera', v: deportista.tec_carrera, c: '#4ade80' },
+                  ].map(({ l, v, c }) => (
+                    <div key={l}>
+                      <div className="flex justify-between text-[12.5px] mb-1.5">
+                        <span>{l}</span>
+                        <b>{v ? v : '—'}<span className="text-gray-500 font-normal">{v ? '/5' : ''}</span></b>
+                      </div>
+                      <div className="h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: ((Number(v) || 0) / 5 * 100) + '%', background: c }} />
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : <p className="text-gray-500 text-sm">Sin scores ECO calculados todavía.</p>}
-              <button onClick={() => router.push('/eco')}
-                className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
-                Ver análisis ECO completo →
-              </button>
+                <p className="text-[11.5px] text-gray-500 mt-4 pt-3 border-t border-white/[0.06]">
+                  {diasTecnica != null ? 'Actualizada hace ' + diasTecnica + ' días' : 'Sin registrar todavía'} · conviene revisarla cada 4 semanas.
+                </p>
+              </div>
+
+              <div className="tp-card p-[18px]">
+                <div className="flex justify-between items-baseline mb-3 flex-wrap gap-2">
+                  <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500">Coste de entrenamiento (SICAT)</p>
+                  <button onClick={() => router.push('/eco')} className="text-[11.5px] text-gray-500 hover:text-white transition">Ver completo →</button>
+                </div>
+                {ecoScores.length > 0 ? (
+                  <>
+                    <table className="w-full text-[12.5px]">
+                      <thead>
+                        <tr className="text-gray-500 text-[9.5px] uppercase tracking-wider">
+                          <th className="text-left font-bold pb-2">Disciplina</th>
+                          <th className="text-center font-bold pb-2">F1</th>
+                          <th className="text-center font-bold pb-2">F2</th>
+                          <th className="text-center font-bold pb-2">F3</th>
+                          <th className="text-center font-bold pb-2">F4</th>
+                          <th className="text-right font-bold pb-2">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ecoScores.map(e => (
+                          <tr key={e.id} className="border-t border-white/[0.05]">
+                            <td className="py-2">{e.disciplina === 'Natacion' ? '🏊 Natación' : e.disciplina === 'Ciclismo' ? '🚴 Ciclismo' : '🏃 Carrera'}</td>
+                            <td className="py-2 text-center tabular-nums">{e.puntuacion_f1}</td>
+                            <td className="py-2 text-center tabular-nums">{e.puntuacion_f2}</td>
+                            <td className="py-2 text-center tabular-nums">{e.puntuacion_f3}</td>
+                            <td className="py-2 text-center tabular-nums">{e.puntuacion_f4}</td>
+                            <td className="py-2 text-right">
+                              <b className="text-blue-400">{e.porcentaje}%</b>
+                              <span className="text-gray-600 text-[11px]"> {e.total}/16</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="text-[11px] text-gray-500 mt-3">F1 técnica · F2 dolor · F3 densidad · F4 energético</p>
+                  </>
+                ) : <p className="text-gray-500 text-[13px]">Sin scores SICAT calculados todavía.</p>}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { icon: '🎯', label: 'Índices de sesión', href: '/indices' },
-                { icon: '📊', label: 'Volumen', href: '/volumen' },
-                { icon: '💚', label: 'Wellness detallado', href: '/wellness-entrenador' },
-                { icon: '🏋️', label: 'Tests completos', href: '/tests/' + id },
-              ].map(({ icon, label, href }) => (
-                <button key={label} onClick={() => router.push(href)}
-                  className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left flex items-center gap-3">
-                  <span className="text-2xl">{icon}</span>
-                  <span className="text-sm font-medium">{label}</span>
-                </button>
-              ))}
+            {/* --- Accesos --- */}
+            <div>
+              <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500 mb-3">Ir a</p>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))' }}>
+                {[
+                  { icon: '🎯', label: 'Índices de sesión', href: '/indices', c: '#eab308' },
+                  { icon: '📊', label: 'Volumen', href: '/volumen', c: '#a855f7' },
+                  { icon: '💚', label: 'Wellness detallado', href: '/wellness-entrenador', c: '#22c55e' },
+                  { icon: '🏋️', label: 'Tests completos', href: '/tests/' + id, c: '#ef4444' },
+                  { icon: '🔬', label: 'SICAT completo', href: '/eco', c: '#06b6d4' },
+                  { icon: '📈', label: 'Análisis de carga', href: '/carga', c: '#3b82f6' },
+                ].map(({ icon, label, href, c }) => (
+                  <button key={label} onClick={() => router.push(href)}
+                    className="tp-tile flex items-center gap-3 p-3 rounded-2xl border border-white/[0.075] bg-white/[0.02] text-left"
+                    style={{ ['--c' as any]: c }}>
+                    <span className="tp-chip w-[34px] h-[34px] text-base flex-shrink-0" style={{ ['--c' as any]: c }}>{icon}</span>
+                    <span className="text-[12.5px] font-semibold">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
         {/* PESTAÑA SESIONES */}
-        {pestana === 'sesiones' && (
+        {pestana === 'entreno' && (
           <div className="flex flex-col gap-4">
 
             {/* Resumen rápido */}
@@ -648,7 +794,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
           </div>
         )}
         {/* PESTAÑA CARGA POR DISCIPLINA */}
-        {pestana === 'cargadisc' && (
+        {pestana === 'entreno' && (
           <div className="flex flex-col gap-4">
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <h3 className="font-bold text-orange-400 mb-1">📊 Carga por disciplina</h3>
@@ -659,7 +805,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         )}
 
         {/* PESTAÑA ADHERENCIA */}
-        {pestana === 'adherencia' && (
+        {pestana === 'entreno' && (
           <div className="flex flex-col gap-4">
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <h3 className="font-bold text-orange-400 mb-1">📋 Adherencia de sesiones</h3>

@@ -1,30 +1,38 @@
-﻿'use client'
+'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
+const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
+const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
+const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
+
 const COLOR_DISC: Record<string, string> = {
-  'Natacion': 'bg-blue-900 text-blue-300',
-  'Natación': 'bg-blue-900 text-blue-300',
-  'Ciclismo': 'bg-yellow-900 text-yellow-300',
-  'Carrera': 'bg-green-900 text-green-300',
-  'Fuerza': 'bg-red-900 text-red-300',
-  'Brick': 'bg-purple-900 text-purple-300',
+  'Natacion': '#60a5fa', 'Natación': '#60a5fa', 'Ciclismo': '#fbbf24',
+  'Carrera': '#4ade80', 'Fuerza': '#f87171', 'Brick': '#a855f7',
 }
+const discColor = (d: string) => COLOR_DISC[d] || '#94a3b8'
 
 export default function ComunicacionPage() {
   const router = useRouter()
   useRequireEntrenador()
-  const [tab, setTab] = useState<'feedback'|'chats'>('feedback')
-  const [comentarios, setComentarios] = useState<any[]>([])
-  const [deportistas, setDeportistas] = useState<any[]>([])
-  const [mensajesNoLeidos, setMensajesNoLeidos] = useState<Record<number, number>>({})
-  const [loading, setLoading] = useState(true)
-  const [filtro, setFiltro] = useState<'sin_leer'|'todos'>('sin_leer')
   const [userId, setUserId] = useState<string | null>(null)
+  const [deportistas, setDeportistas] = useState<any[]>([])
+  const [mensajes, setMensajes] = useState<any[]>([])
+  const [feedback, setFeedback] = useState<any[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
+  const [filtro, setFiltro] = useState<'todos' | 'sin_leer' | 'feedback'>('todos')
+  const [query, setQuery] = useState('')
+  const [texto, setTexto] = useState('')
+  const [reply, setReply] = useState<{ texto: string; disciplina?: string; fecha?: string } | null>(null)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { cargar() }, [])
+  useEffect(() => { bottomRef.current?.scrollIntoView() }, [activeId, mensajes.length])
 
   const cargar = async () => {
     setLoading(true)
@@ -32,182 +40,262 @@ export default function ComunicacionPage() {
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
 
-    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
-    if (!deps?.length) { setLoading(false); return }
-    setDeportistas(deps)
+    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre')
+    const deportistas = deps || []
+    setDeportistas(deportistas)
 
-    // Contar mensajes no leídos por deportista
-    const { data: noLeidos } = await supabase.from('mensajes')
-      .select('id_deportista')
-      .eq('id_entrenador', user.id)
-      .eq('autor', 'deportista')
-      .eq('leido', false)
-    const conteo: Record<number, number> = {}
-    noLeidos?.forEach((m: any) => { conteo[m.id_deportista] = (conteo[m.id_deportista] || 0) + 1 })
-    setMensajesNoLeidos(conteo)
+    // Todos los mensajes del entrenador (para lista + hilos).
+    const { data: msgs } = await supabase.from('mensajes').select('*').eq('id_entrenador', user.id).order('created_at', { ascending: true })
+    setMensajes(msgs || [])
 
-    // Feedback post-sesion
-    const depIds = deps.map((d: any) => d.id)
-    const { data: macros } = await supabase.from('macrociclo').select('id, id_deportista').in('id_deportista', depIds)
-    if (!macros?.length) { setLoading(false); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id, id_macrociclo').in('id_macrociclo', macros.map((m: any) => m.id))
-    if (!mesos?.length) { setLoading(false); return }
-    const { data: micros } = await supabase.from('microciclo').select('id, id_mesociclo').in('id_mesociclo', mesos.map((m: any) => m.id))
-    if (!micros?.length) { setLoading(false); return }
-    const { data: sesiones } = await supabase.from('sesion').select('id, fecha_sesion, disciplina, id_microciclo').in('id_microciclo', micros.map((m: any) => m.id)).order('fecha_sesion', { ascending: false })
-    if (!sesiones?.length) { setLoading(false); return }
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, notas_post, comentario_leido, rpe_reportado').in('id_sesion', sesiones.map((s: any) => s.id)).not('notas_post', 'is', null).neq('notas_post', '')
-    if (!tareas?.length) { setLoading(false); return }
+    // Feedback post-sesión (cadena macro → meso → micro → sesión → tarea).
+    if (deportistas.length) {
+      const depIds = deportistas.map((d: any) => d.id)
+      const { data: macros } = await supabase.from('macrociclo').select('id, id_deportista').in('id_deportista', depIds)
+      if (macros?.length) {
+        const { data: mesos } = await supabase.from('mesociclo').select('id, id_macrociclo').in('id_macrociclo', macros.map((m: any) => m.id))
+        const { data: micros } = mesos?.length ? await supabase.from('microciclo').select('id, id_mesociclo').in('id_mesociclo', mesos.map((m: any) => m.id)) : { data: [] }
+        const { data: sesiones } = micros?.length ? await supabase.from('sesion').select('id, fecha_sesion, disciplina, id_microciclo').in('id_microciclo', micros.map((m: any) => m.id)).order('fecha_sesion', { ascending: false }) : { data: [] }
+        const { data: tareas } = sesiones?.length ? await supabase.from('tarea').select('id, id_sesion, notas_post, comentario_leido, rpe_reportado').in('id_sesion', sesiones.map((s: any) => s.id)).not('notas_post', 'is', null).neq('notas_post', '') : { data: [] }
 
-    const microToMeso: Record<number, number> = {}
-    micros.forEach((mi: any) => { microToMeso[mi.id] = mi.id_mesociclo })
-    const mesoToMacro: Record<number, number> = {}
-    mesos.forEach((me: any) => { mesoToMacro[me.id] = me.id_macrociclo })
-    const macroToDep: Record<number, number> = {}
-    macros.forEach((ma: any) => { macroToDep[ma.id] = ma.id_deportista })
+        const microToMeso: Record<number, number> = {}; (micros || []).forEach((mi: any) => { microToMeso[mi.id] = mi.id_mesociclo })
+        const mesoToMacro: Record<number, number> = {}; (mesos || []).forEach((me: any) => { mesoToMacro[me.id] = me.id_macrociclo })
+        const macroToDep: Record<number, number> = {}; macros.forEach((ma: any) => { macroToDep[ma.id] = ma.id_deportista })
 
-    const resultado = tareas.map((t: any) => {
-      const sesion = sesiones.find((s: any) => s.id === t.id_sesion)
-      if (!sesion) return null
-      const mesoId = microToMeso[sesion.id_microciclo]
-      const macroId = mesoToMacro[mesoId]
-      const depId = macroToDep[macroId]
-      const dep = deps.find((d: any) => String(d.id) === String(depId))
-      return { tareaId: t.id, sesionId: sesion.id, fecha: sesion.fecha_sesion, disciplina: sesion.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depNombre: dep?.nombre || 'Deportista', depId: depId }
-    }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
-
-    setComentarios(resultado)
+        const fb = (tareas || []).map((t: any) => {
+          const s = (sesiones || []).find((x: any) => x.id === t.id_sesion)
+          if (!s) return null
+          const depId = macroToDep[mesoToMacro[microToMeso[s.id_microciclo]]]
+          return { tareaId: t.id, sesionId: s.id, fecha: s.fecha_sesion, disciplina: s.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId }
+        }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
+        setFeedback(fb as any[])
+      }
+    }
     setLoading(false)
   }
 
-  const marcarLeido = async (tareaId: number) => {
-    await supabase.from('tarea').update({ comentario_leido: true }).eq('id', tareaId)
-    setComentarios(prev => prev.map((c: any) => c.tareaId === tareaId ? { ...c, leido: true } : c))
+  const abrir = async (depId: number) => {
+    setActiveId(depId); setMobileOpen(true); setReply(null)
+    // Marcar como leídos los mensajes del deportista.
+    await supabase.from('mensajes').update({ leido: true }).eq('id_deportista', depId).eq('autor', 'deportista').eq('leido', false)
+    setMensajes(prev => prev.map(m => (m.id_deportista === depId && m.autor === 'deportista') ? { ...m, leido: true } : m))
   }
 
-  const marcarNoLeido = async (tareaId: number) => {
-    await supabase.from('tarea').update({ comentario_leido: false }).eq('id', tareaId)
-    setComentarios(prev => prev.map((c: any) => c.tareaId === tareaId ? { ...c, leido: false } : c))
+  const enviar = async () => {
+    const t = texto.trim()
+    if (!t || !activeId || !userId) return
+    const insertar: any = { id_entrenador: userId, id_deportista: activeId, contenido: t, autor: 'entrenador', leido: false }
+    if (reply) { insertar.contexto = reply.texto; insertar.contexto_disciplina = reply.disciplina || null; insertar.contexto_fecha = reply.fecha || null }
+    const { data } = await supabase.from('mensajes').insert(insertar).select().single()
+    if (data) setMensajes(prev => [...prev, data])
+    setTexto(''); setReply(null)
+    if (taRef.current) taRef.current.style.height = 'auto'
   }
 
-  const sinLeerFeedback = comentarios.filter((c: any) => !c.leido).length
-  const sinLeerChats = Object.values(mensajesNoLeidos).reduce((a, b) => a + b, 0)
-  const comentariosFiltrados = filtro === 'sin_leer' ? comentarios.filter((c: any) => !c.leido) : comentarios
+  const responderFeedback = (f: any) => {
+    setReply({ texto: f.notas, disciplina: f.disciplina, fecha: f.fecha })
+    if (!f.leido) { supabase.from('tarea').update({ comentario_leido: true }).eq('id', f.tareaId); setFeedback(prev => prev.map(x => x.tareaId === f.tareaId ? { ...x, leido: true } : x)) }
+    setTimeout(() => taRef.current?.focus(), 50)
+  }
 
-  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  const formatHora = (ts: string) => new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  const formatFecha = (ts: string) => new Date(ts).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+  const previewTime = (ts?: string) => {
+    if (!ts) return ''
+    const hoy = new Date().toISOString().split('T')[0]
+    return ts.split('T')[0] === hoy ? formatHora(ts) : formatFecha(ts)
+  }
+
+  // ---- derivados ----
+  const convos = deportistas.map(d => {
+    const msgs = mensajes.filter(m => m.id_deportista === d.id)
+    const last = msgs[msgs.length - 1]
+    const unread = msgs.filter(m => m.autor === 'deportista' && !m.leido).length
+    const fbs = feedback.filter(f => f.depId === d.id)
+    return { ...d, last, unread, fbPend: fbs.filter(f => !f.leido).length, tieneFb: fbs.length > 0, lastTime: last?.created_at || '' }
+  }).sort((a, b) => (b.lastTime || '').localeCompare(a.lastTime || ''))
+
+  const q = query.trim().toLowerCase()
+  const convosFiltrados = convos.filter(c => {
+    if (q && !(c.nombre || '').toLowerCase().includes(q)) return false
+    if (filtro === 'sin_leer' && !c.unread) return false
+    if (filtro === 'feedback' && !c.tieneFb) return false
+    return true
+  })
+  const totalUnread = convos.reduce((a, c) => a + c.unread, 0)
+
+  const activo = deportistas.find(d => d.id === activeId)
+  const threadMsgs = activeId ? mensajes.filter(m => m.id_deportista === activeId) : []
+  const threadFbs = activeId ? feedback.filter(f => f.depId === activeId) : []
+
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
+
+  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
+    const [c1, c2] = grad(nombre)
+    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
+  }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
-      </nav>
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-2xl font-bold mb-1">Comunicacion</h2>
-            <p className="text-gray-400 text-sm">Feedback y mensajes de tus deportistas</p>
-          </div>
-          {(sinLeerFeedback + sinLeerChats) > 0 && (
-            <span className="bg-orange-500 text-white text-sm font-bold px-3 py-1 rounded-full">{sinLeerFeedback + sinLeerChats} sin leer</span>
-          )}
-        </div>
+    <main className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">
+      <header className="flex-none pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+        <h1 className="text-[17px] font-bold tracking-tight truncate">Comunicación <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· feedback y mensajes de tus deportistas</span></h1>
+        {totalUnread > 0 && <span className="text-[12px] font-semibold px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: '#f9731618', color: '#fdba74', border: '1px solid #f9731633' }}>{totalUnread} sin leer</span>}
+      </header>
 
-        {/* TABS */}
-        <div className="flex gap-1 border-b border-gray-800 mb-6">
-          <button onClick={() => setTab('feedback')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' + (tab === 'feedback' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            Feedback {sinLeerFeedback > 0 && <span className="ml-1 bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">{sinLeerFeedback}</span>}
-          </button>
-          <button onClick={() => setTab('chats')}
-            className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' + (tab === 'chats' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
-            Chats {sinLeerChats > 0 && <span className="ml-1 bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">{sinLeerChats}</span>}
-          </button>
-        </div>
+      <div className="flex-1 min-h-0 p-4">
+        <div className="h-full lg:grid lg:grid-cols-[340px_1fr] gap-4">
 
-        {/* TAB FEEDBACK */}
-        {tab === 'feedback' && (
-          <div>
-            <div className="flex gap-1 mb-4">
-              <button onClick={() => setFiltro('sin_leer')} className={'px-4 py-1.5 text-xs rounded-lg transition ' + (filtro === 'sin_leer' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-                Sin leer {sinLeerFeedback > 0 && `(${sinLeerFeedback})`}
-              </button>
-              <button onClick={() => setFiltro('todos')} className={'px-4 py-1.5 text-xs rounded-lg transition ' + (filtro === 'todos' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-                Todos ({comentarios.length})
-              </button>
-            </div>
-            {comentariosFiltrados.length === 0 ? (
-              <div className="text-center py-16 text-gray-600">
-                <div className="text-5xl mb-4">💬</div>
-                <p>{filtro === 'sin_leer' ? 'No hay comentarios sin leer.' : 'No hay comentarios todavia.'}</p>
+          {/* ===== Lista ===== */}
+          <aside className={'tp-card flex-col min-h-0 h-full ' + (mobileOpen ? 'hidden lg:flex' : 'flex')}>
+            <div className="flex-none p-4 pb-3">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[15px] font-semibold">Mensajes</span>
+                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#f9731620', color: '#fdba74' }}>{deportistas.length}</span>
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {comentariosFiltrados.map((c: any) => (
-                  <div key={c.tareaId} className={'rounded-xl border p-5 transition ' + (c.leido ? 'bg-gray-900 border-gray-800' : 'bg-gray-900 border-orange-500/50')}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {!c.leido && <span className="w-2 h-2 rounded-full bg-orange-500 inline-block flex-shrink-0" />}
-                        <span className="font-bold text-white">{c.depNombre}</span>
-                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (COLOR_DISC[c.disciplina] || 'bg-gray-700 text-gray-300')}>{c.disciplina}</span>
-                        <span className="text-gray-500 text-xs">{c.fecha}</span>
-                        {c.rpe && <span className="text-gray-500 text-xs">RPE: {c.rpe}/10</span>}
-                      </div>
-                      <button onClick={() => router.push('/sesion/' + c.sesionId)} className="text-gray-500 hover:text-orange-400 text-xs transition flex-shrink-0">Ver sesion →</button>
+              <div className="flex items-center gap-2.5 bg-white/[0.045] border border-white/[0.075] rounded-xl px-3 py-2.5">
+                <svg className="w-4 h-4 text-gray-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar deportista…" className="flex-1 bg-transparent outline-none text-[13px] placeholder:text-gray-500 min-w-0" />
+              </div>
+            </div>
+            <div className="flex-none px-4 pb-2.5 flex gap-1.5">
+              {([['todos', 'Todos'], ['sin_leer', 'Sin leer'], ['feedback', 'Feedback']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setFiltro(k)}
+                  className={'text-[11.5px] font-semibold px-2.5 py-1.5 rounded-full border transition ' + (filtro === k ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>{l}</button>
+              ))}
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+              {convosFiltrados.length === 0 ? (
+                <p className="text-center text-gray-500 text-[13px] py-10">Sin conversaciones que coincidan.</p>
+              ) : convosFiltrados.map(c => (
+                <button key={c.id} onClick={() => abrir(c.id)}
+                  className={'w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition relative ' + (c.id === activeId ? 'bg-white/[0.06]' : 'hover:bg-white/[0.035]')}>
+                  {c.id === activeId && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r bg-orange-500" />}
+                  <Avatar nombre={c.nombre} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className={'text-[13.5px] truncate ' + (c.unread ? 'text-white font-semibold' : 'text-gray-200 font-medium')}>{c.nombre}</span>
+                      <span className="text-[10.5px] text-gray-500 flex-shrink-0">{previewTime(c.lastTime)}</span>
                     </div>
-                    <p className="text-gray-300 text-sm italic mb-3">"{c.notas}"</p>
-                    <div className="flex justify-between items-center">
-                      <button onClick={() => {
-                        const p = new URLSearchParams({ cita: c.notas, disciplina: c.disciplina, fecha: c.fecha })
-                        router.push('/chat/' + c.depId + '?' + p.toString())
-                      }}
-                        className="text-orange-400 hover:text-orange-300 text-xs transition font-medium">
-                        💬 Responder en chat →
-                      </button>
-                      {c.leido ? (
-                        <button onClick={() => marcarNoLeido(c.tareaId)} className="text-gray-600 hover:text-gray-400 text-xs transition">Leido · Marcar como no leido</button>
-                      ) : (
-                        <button onClick={() => marcarLeido(c.tareaId)} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 rounded-lg transition font-medium">Marcar como leido</button>
-                      )}
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <span className={'text-[12px] truncate flex-1 ' + (c.unread ? 'text-gray-200' : 'text-gray-500')}>{c.last ? (c.last.autor === 'entrenador' ? 'Tú: ' : '') + c.last.contenido : 'Sin mensajes aún'}</span>
+                      {c.tieneFb && <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#8b5cf620', color: '#a78bfa' }}>feedback</span>}
+                      {c.unread > 0 && <span className="text-[10px] font-bold text-white bg-orange-500 rounded-full min-w-[18px] h-[18px] grid place-items-center px-1 flex-shrink-0">{c.unread}</span>}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                </button>
+              ))}
+            </div>
+          </aside>
 
-        {/* TAB CHATS */}
-        {tab === 'chats' && (
-          <div className="flex flex-col gap-2">
-            {deportistas.length === 0 ? (
-              <div className="text-center py-16 text-gray-600">
-                <div className="text-5xl mb-4">👥</div>
-                <p>No tienes deportistas asignados todavia.</p>
+          {/* ===== Hilo ===== */}
+          <section className={'tp-card flex-col min-h-0 h-full ' + (mobileOpen ? 'flex' : 'hidden lg:flex')}>
+            {!activo ? (
+              <div className="flex-1 grid place-items-center text-center text-gray-500 p-6">
+                <div>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-2xl grid place-items-center" style={{ background: '#f9731615', color: '#f97316' }}>
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12Z" /></svg>
+                  </div>
+                  <p className="text-[13px]">Elige una conversación para empezar.</p>
+                </div>
               </div>
             ) : (
-              deportistas.map((dep: any) => {
-                const noLeidos = mensajesNoLeidos[dep.id] || 0
-                return (
-                  <button key={dep.id} onClick={() => router.push('/chat/' + dep.id)}
-                    className="bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-orange-500/50 rounded-xl p-4 flex items-center gap-4 transition text-left w-full">
-                    <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center font-bold flex-shrink-0">
-                      {dep.nombre?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white">{dep.nombre}</p>
-                      <p className="text-gray-500 text-xs">Toca para abrir el chat</p>
-                    </div>
-                    {noLeidos > 0 && (
-                      <span className="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full flex-shrink-0">{noLeidos}</span>
-                    )}
+              <>
+                <div className="flex-none flex items-center gap-3 p-3.5 border-b border-gray-800">
+                  <button onClick={() => setMobileOpen(false)} className="lg:hidden text-gray-400 hover:text-white text-lg px-1">←</button>
+                  <Avatar nombre={activo.nombre} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[15px] font-semibold leading-none truncate">{activo.nombre}</p>
+                    <p className="text-[11.5px] text-gray-500 mt-1">Chat directo</p>
+                  </div>
+                  <button onClick={() => router.push('/deportistas/' + activo.id)} title="Ver ficha" className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition">
+                    <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" /></svg>
                   </button>
-                )
-              })
+                </div>
+
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-2">
+                  {threadFbs.length > 0 && (
+                    <div className="flex flex-col gap-2 mb-1">
+                      {threadFbs.slice(0, 3).map(f => (
+                        <div key={f.tareaId} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + discColor(f.disciplina) }}>
+                          <div className="flex items-center gap-2 text-[11.5px] font-semibold text-gray-300">
+                            <span className="w-5 h-5 rounded-md grid place-items-center flex-shrink-0" style={{ background: discColor(f.disciplina) + '2e', color: discColor(f.disciplina) }}>
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5h16v11H9l-4 3.5V16.5H4Z" /></svg>
+                            </span>
+                            Feedback · {f.disciplina} · {f.fecha}
+                            {f.rpe && <span className="ml-auto text-[10.5px] text-gray-500 font-normal">RPE {f.rpe}/10</span>}
+                          </div>
+                          <p className="text-[13px] text-gray-100 italic mt-2 leading-snug">"{f.notas}"</p>
+                          <div className="flex items-center gap-3 mt-2">
+                            <button onClick={() => responderFeedback(f)} className="text-[11.5px] font-semibold text-orange-300 hover:text-orange-200 transition">↩ Responder</button>
+                            <button onClick={() => router.push('/sesion/' + f.sesionId)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Ver sesión →</button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="border-t border-gray-800/70 my-1" />
+                    </div>
+                  )}
+
+                  {threadMsgs.length === 0 && threadFbs.length === 0 && (
+                    <div className="flex-1 grid place-items-center text-gray-600 text-[13px]">Sin mensajes todavía. ¡Empieza la conversación!</div>
+                  )}
+
+                  {threadMsgs.map((m, i) => {
+                    const mio = m.autor === 'entrenador'
+                    const prev = threadMsgs[i - 1]
+                    const mismaFecha = prev && formatFecha(prev.created_at) === formatFecha(m.created_at)
+                    return (
+                      <div key={m.id}>
+                        {!mismaFecha && <div className="text-center my-2"><span className="text-[10.5px] text-gray-500 bg-white/5 px-3 py-1 rounded-full">{formatFecha(m.created_at)}</span></div>}
+                        <div className={'flex ' + (mio ? 'justify-end' : 'justify-start')}>
+                          <div className="max-w-[76%]">
+                            {m.contexto && (
+                              <div className={'px-3 py-1.5 rounded-t-xl text-[11px] mb-px border-l-2 ' + (mio ? 'bg-orange-700/40 border-orange-300 text-orange-100' : 'bg-gray-700/60 border-gray-500 text-gray-300')}>
+                                <span className="opacity-70">↩ Feedback{m.contexto_disciplina ? ' · ' + m.contexto_disciplina : ''}</span>
+                                <p className="italic opacity-90 line-clamp-2">"{m.contexto}"</p>
+                              </div>
+                            )}
+                            <div className={'px-3.5 py-2 text-[13.5px] leading-snug ' + (mio ? 'bg-orange-500 text-white' : 'bg-[#11161d] border border-white/[0.06] text-gray-100') + (m.contexto ? ' rounded-b-2xl' : ' ' + (mio ? 'rounded-2xl rounded-br-sm' : 'rounded-2xl rounded-bl-sm'))}>
+                              <p>{m.contenido}</p>
+                              <p className={'text-[10px] mt-1 flex items-center gap-1 ' + (mio ? 'justify-end text-orange-200' : 'text-gray-500')}>
+                                {formatHora(m.created_at)}{mio && <span>{m.leido ? '✓✓' : '✓'}</span>}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={bottomRef} />
+                </div>
+
+                {reply && (
+                  <div className="flex-none flex items-start gap-3 px-4 py-2.5 border-t border-orange-500/40" style={{ background: 'rgba(249,115,22,.06)' }}>
+                    <span className="w-0.5 self-stretch rounded bg-orange-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-orange-300">↩ Respondiendo a feedback{reply.disciplina ? ' · ' + reply.disciplina : ''}{reply.fecha ? ' · ' + reply.fecha : ''}</p>
+                      <p className="text-[11.5px] text-gray-400 italic truncate">"{reply.texto}"</p>
+                    </div>
+                    <button onClick={() => setReply(null)} className="text-gray-500 hover:text-white text-lg leading-none flex-shrink-0">×</button>
+                  </div>
+                )}
+
+                <div className="flex-none flex items-end gap-2.5 p-3.5 border-t border-gray-800">
+                  <textarea ref={taRef} value={texto} rows={1}
+                    onChange={e => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(120, e.target.scrollHeight) + 'px' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
+                    placeholder={reply ? 'Escribe tu respuesta…' : 'Escribe un mensaje…'}
+                    className="flex-1 bg-white/[0.05] border border-white/[0.075] rounded-2xl text-[13.5px] px-4 py-2.5 outline-none focus:border-orange-500/50 resize-none placeholder:text-gray-500" />
+                  <button onClick={enviar} disabled={!texto.trim()}
+                    className="w-11 h-11 rounded-[14px] bg-orange-500 hover:bg-orange-400 disabled:opacity-40 grid place-items-center flex-shrink-0 transition">
+                    <svg className="w-[19px] h-[19px] text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l16-8-6 16-3-6-7-2Z" /></svg>
+                  </button>
+                </div>
+              </>
             )}
-          </div>
-        )}
+          </section>
+        </div>
       </div>
     </main>
   )
 }
-

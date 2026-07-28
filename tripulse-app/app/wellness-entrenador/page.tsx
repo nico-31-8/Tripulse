@@ -1,49 +1,34 @@
-﻿'use client'
+'use client'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
 import { analizarWellness } from '@/lib/wellness-analisis'
+import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
+const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
+const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
+const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
+
 const VARS_SUBJETIVAS = [
-  { key: 'fatiga',         label: 'Fatiga',         color: '#f87171' },
-  { key: 'estres',         label: 'Estrés',         color: '#fb923c' },
-  { key: 'animo',          label: 'Ánimo',          color: '#4ade80' },
-  { key: 'motivacion',     label: 'Motivación',     color: '#a78bfa' },
-  { key: 'calidad_sueno',  label: 'Calidad sueño',  color: '#34d399' },
-  { key: 'horas_sueno',    label: 'Horas sueño',    color: '#38bdf8' },
+  { key: 'fatiga', label: 'Fatiga', color: '#f87171' },
+  { key: 'estres', label: 'Estrés', color: '#fb923c' },
+  { key: 'animo', label: 'Ánimo', color: '#4ade80' },
+  { key: 'motivacion', label: 'Motivación', color: '#a78bfa' },
+  { key: 'calidad_sueno', label: 'Calidad sueño', color: '#34d399' },
+  { key: 'horas_sueno', label: 'Horas sueño', color: '#38bdf8' },
   { key: 'dolor_muscular', label: 'Dolor muscular', color: '#fbbf24' },
 ]
 
-const RANGOS = [
-  { label: '7 días', dias: 7 },
-  { label: '14 días', dias: 14 },
-  { label: '30 días', dias: 30 },
-  { label: 'Todo', dias: 365 },
-]
+const RANGOS = [{ label: '7 días', dias: 7 }, { label: '14 días', dias: 14 }, { label: '30 días', dias: 30 }, { label: 'Todo', dias: 365 }]
 
-function colorScore(s: number) {
-  if (s <= 25) return 'text-green-400'
-  if (s <= 50) return 'text-yellow-400'
-  if (s <= 75) return 'text-orange-400'
-  return 'text-red-400'
-}
-function bgScore(s: number) {
-  if (s <= 25) return 'border-green-500'
-  if (s <= 50) return 'border-yellow-500'
-  if (s <= 75) return 'border-orange-500'
-  return 'border-red-500'
-}
-function estadoScore(s: number) {
-  if (s <= 25) return 'Óptimo'
-  if (s <= 50) return 'Aceptable'
-  if (s <= 75) return 'Deteriorado'
-  return 'Crítico'
-}
+// Orden de triaje: lo más preocupante primero.
+const SEVERIDAD: Record<string, number> = { alerta: 0, fatiga: 1, vigilar: 2, optimo: 3 }
 
-const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }
+const tooltipStyle = { backgroundColor: '#0b0e15', border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, color: '#f3f5f8', fontSize: 12, boxShadow: '0 14px 34px -12px #000' }
+const ejeStyle = { stroke: '#7f8a99', tick: { fontSize: 10, fill: '#7f8a99' } }
 
 export default function WellnessEntrenador() {
   const router = useRouter()
@@ -57,6 +42,10 @@ export default function WellnessEntrenador() {
   const [fechaHasta, setFechaHasta] = useState('')
   const [usarFechasCustom, setUsarFechasCustom] = useState(false)
   const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
+  const [query, setQuery] = useState('')
+  const [filtro, setFiltro] = useState<'todos' | 'atencion' | 'sin_hoy'>('todos')
+
+  const hoyStr = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
     const cargar = async () => {
@@ -67,7 +56,12 @@ export default function WellnessEntrenador() {
         const conWellness = await Promise.all(deps.map(async d => {
           const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(14)
           const recientes = w || []
-          return { ...d, ultimoWellness: recientes[0] || null, readiness: analizarWellness(recientes).readiness }
+          return {
+            ...d,
+            ultimoWellness: recientes[0] || null,
+            readiness: analizarWellness(recientes).readiness,
+            spark: recientes.slice(0, 10).reverse().map((r: any) => bienestar(r.score_wellness) ?? 0),
+          }
         }))
         setDeportistas(conWellness)
         const act = getAtletaActivo()
@@ -93,251 +87,330 @@ export default function WellnessEntrenador() {
   }
 
   const verDetalle = async (dep: any) => {
-    setSeleccionado(dep)
-    setAtletaActivo(dep.id)
+    setSeleccionado(dep); setAtletaActivo(dep.id)
     await cargarRegistros(dep.id, rango, fechaDesde, fechaHasta, usarFechasCustom)
   }
-
   const cambiarRango = async (dias: number) => {
     setRango(dias); setUsarFechasCustom(false)
     if (seleccionado) await cargarRegistros(seleccionado.id, dias, '', '', false)
   }
-
   const aplicarFechas = async () => {
     setUsarFechasCustom(true)
     if (seleccionado) await cargarRegistros(seleccionado.id, rango, fechaDesde, fechaHasta, true)
   }
+  const toggleVar = (key: string) => setVarsActivas(prev => prev.includes(key) ? prev.filter(v => v !== key) : [...prev, key])
 
-  const toggleVar = (key: string) => {
-    setVarsActivas(prev => prev.includes(key) ? prev.filter(v => v !== key) : [...prev, key])
+  // Las gráficas pintan BIENESTAR (invertido), no el malestar guardado.
+  const datos = registros.map(r => ({ ...r, fecha: r.fecha.slice(5), bienestar: bienestar(r.score_wellness) }))
+
+  const q = query.trim().toLowerCase()
+  const lista = deportistas
+    .filter(d => {
+      if (q && !(d.nombre || '').toLowerCase().includes(q)) return false
+      if (filtro === 'atencion' && !(d.readiness && (d.readiness.nivel === 'alerta' || d.readiness.nivel === 'fatiga'))) return false
+      if (filtro === 'sin_hoy' && d.ultimoWellness?.fecha === hoyStr) return false
+      return true
+    })
+    .sort((a, b) => {
+      const sa = a.readiness ? SEVERIDAD[a.readiness.nivel] : 4
+      const sb = b.readiness ? SEVERIDAD[b.readiness.nivel] : 4
+      if (sa !== sb) return sa - sb
+      return (bienestar(a.ultimoWellness?.score_wellness) ?? 999) - (bienestar(b.ultimoWellness?.score_wellness) ?? 999)
+    })
+
+  const nAtencion = deportistas.filter(d => d.readiness && (d.readiness.nivel === 'alerta' || d.readiness.nivel === 'fatiga')).length
+  const analisis = registros.length ? analizarWellness(registros) : null
+
+  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
+    const [c1, c2] = grad(nombre)
+    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
   }
 
-  const datos = registros.map(r => ({ ...r, fecha: r.fecha.slice(5) }))
-  const alertas = deportistas.filter(d => d.ultimoWellness && d.ultimoWellness.score_wellness > 75)
+  const Spark = ({ data, color, w = 62, h = 22 }: { data: number[]; color: string; w?: number; h?: number }) => {
+    if (!data || data.length < 2) return null
+    const min = Math.min(...data), max = Math.max(...data), rng = (max - min) || 1
+    const pts = data.map((v, i) => (i / (data.length - 1)) * w + ',' + (h - ((v - min) / rng) * h).toFixed(1))
+    return (
+      <svg width={w} height={h} viewBox={'0 0 ' + w + ' ' + h} preserveAspectRatio="none" className="flex-shrink-0">
+        <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
 
-  // Selector de rango compartido
-  const SelectorRango = () => (
-    <div className="flex gap-2 flex-wrap items-center mb-4">
-      <p className="text-gray-500 text-xs uppercase tracking-wide mr-1">Período</p>
-      {RANGOS.map(r => (
-        <button key={r.dias} onClick={() => cambiarRango(r.dias)}
-          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' +
-            (!usarFechasCustom && rango === r.dias ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-          {r.label}
-        </button>
-      ))}
-      <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-        className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
-      <span className="text-gray-500 text-xs">—</span>
-      <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-        className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-orange-500" />
-      <button onClick={aplicarFechas}
-        className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
-        Aplicar
-      </button>
-    </div>
-  )
-
-  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
-      </nav>
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <h2 className="text-2xl font-bold mb-2">Wellness — Vista entrenador</h2>
-        <p className="text-gray-400 mb-6">Estado de tus deportistas</p>
-
-        {alertas.length > 0 && (
-          <div className="bg-red-900 border border-red-500 rounded-xl p-4 mb-6">
-            <p className="font-bold text-red-300 mb-2">⚠️ Estado crítico</p>
-            <div className="flex flex-wrap gap-2">
-              {alertas.map(d => (
-                <button key={d.id} onClick={() => verDetalle(d)} className="bg-red-800 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm transition">
-                  {d.nombre} — {d.ultimoWellness.score_wellness}
-                </button>
-              ))}
-            </div>
-          </div>
+      <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        <h1 className="text-[17px] font-bold tracking-tight truncate">Wellness <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· estado diario de tu equipo</span></h1>
+        {nAtencion > 0 && !seleccionado && (
+          <span className="text-[12px] font-semibold px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: '#ef444418', color: '#fca5a5', border: '1px solid #ef444433' }}>
+            {nAtencion} {nAtencion === 1 ? 'necesita atención' : 'necesitan atención'}
+          </span>
         )}
+      </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {deportistas.map(d => (
-            <button key={d.id} onClick={() => verDetalle(d)}
-              className={'bg-gray-900 rounded-xl p-5 border-2 text-left transition hover:opacity-90 ' + (d.ultimoWellness ? bgScore(d.ultimoWellness.score_wellness) : 'border-gray-700')}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-lg">{d.nombre}</h3>
-                    {d.readiness && (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: d.readiness.color + '22', color: d.readiness.color }}>{d.readiness.label}</span>
-                    )}
-                  </div>
-                  {d.ultimoWellness ? (
-                    <div>
-                      <p className="text-gray-400 text-sm">Último: {d.ultimoWellness.fecha}</p>
-                      <p className="text-gray-300 text-sm">Sueño: {d.ultimoWellness.horas_sueno}h · Fatiga: {d.ultimoWellness.fatiga}/7</p>
-                      {d.ultimoWellness.hrv && <p className="text-blue-400 text-sm">HRV: {d.ultimoWellness.hrv} ms</p>}
-                    </div>
-                  ) : <p className="text-gray-500 text-sm">Sin registros todavía</p>}
-                </div>
-                {d.ultimoWellness && (
-                  <div className="text-right">
-                    <p className={'text-3xl font-bold ' + colorScore(d.ultimoWellness.score_wellness)}>{d.ultimoWellness.score_wellness}</p>
-                    <p className={'text-xs ' + colorScore(d.ultimoWellness.score_wellness)}>{estadoScore(d.ultimoWellness.score_wellness)}</p>
-                  </div>
-                )}
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-5">
+        {!seleccionado ? (
+          /* ================= EQUIPO (sin deportista elegido) ================= */
+          <>
+            <div className="flex flex-wrap items-center gap-3 mb-5">
+              <div className="flex items-center gap-2.5 bg-white/[0.045] border border-white/[0.075] rounded-xl px-3 py-2.5 w-full sm:w-72">
+                <svg className="w-4 h-4 text-gray-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar deportista…" className="flex-1 bg-transparent outline-none text-[13px] placeholder:text-gray-500 min-w-0" />
               </div>
-            </button>
-          ))}
-          {deportistas.length === 0 && (
-            <div className="col-span-2 text-center py-12 text-gray-500">
-              <div className="text-5xl mb-4">💚</div>
-              <p>No tienes deportistas todavía.</p>
-            </div>
-          )}
-        </div>
-
-        {seleccionado && (
-          <div className="flex flex-col gap-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold">Evolución — {seleccionado.nombre}</h3>
-              <button onClick={() => setSeleccionado(null)} className="text-gray-400 hover:text-white text-sm">Cerrar ×</button>
+              <div className="flex gap-1.5 flex-wrap">
+                {([['todos', 'Todos'], ['atencion', 'Atención'], ['sin_hoy', 'Sin registrar hoy']] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setFiltro(k)}
+                    className={'text-[11.5px] font-semibold px-3 py-1.5 rounded-full border transition ' + (filtro === k ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>{l}</button>
+                ))}
+              </div>
+              <span className="text-[11.5px] text-gray-500 ml-auto">Ordenado por prioridad · peor primero</span>
             </div>
 
-            <SelectorRango />
+            {lista.length === 0 ? (
+              <div className="tp-card p-12 text-center text-gray-500 text-[13px]">Nadie coincide con el filtro.</div>
+            ) : (
+              <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))' }}>
+                {lista.map(d => {
+                  const b = bienestar(d.ultimoWellness?.score_wellness)
+                  const col = b != null ? colorBienestar(b) : '#6b7280'
+                  const sinHoy = d.ultimoWellness?.fecha !== hoyStr
+                  return (
+                    <button key={d.id} onClick={() => verDetalle(d)} className="tp-card tp-tile p-4 flex flex-col gap-3" style={{ ['--c' as any]: d.readiness?.color || '#6b7280' }}>
+                      <div className="flex items-center gap-3">
+                        <Avatar nombre={d.nombre} />
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="text-[14px] font-semibold truncate">{d.nombre}</p>
+                          {d.readiness
+                            ? <span className="inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-full mt-1" style={{ background: d.readiness.color + '22', color: d.readiness.color }}>{d.readiness.label}</span>
+                            : <span className="text-[11px] text-gray-500">Sin datos suficientes</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-end justify-between gap-2">
+                        <div className="text-left">
+                          {b != null ? (
+                            <>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-[26px] font-bold leading-none" style={{ color: col }}>{b}</span>
+                                <span className="text-[10.5px] text-gray-500">bienestar</span>
+                              </div>
+                              <p className="text-[11px] mt-1" style={{ color: sinHoy ? '#9ca3af' : '#22c55e' }}>{sinHoy ? (d.ultimoWellness ? 'sin registrar hoy · últ. ' + d.ultimoWellness.fecha : 'sin registros') : '✓ registrado hoy'}</p>
+                            </>
+                          ) : <span className="text-[12px] text-gray-500">Sin registros</span>}
+                        </div>
+                        <Spark data={d.spark} color={col} />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          /* ================= DETALLE (pantalla completa) ================= */
+          <>
+            {/* Cabecera del deportista */}
+            <div className="tp-card p-4 mb-4 flex flex-wrap items-center gap-4">
+              <button onClick={() => { setSeleccionado(null); setAtletaActivo(null) }}
+                className="w-9 h-9 rounded-xl grid place-items-center text-gray-400 hover:text-white hover:bg-white/5 transition flex-shrink-0" title="Volver al equipo">←</button>
+              <Avatar nombre={seleccionado.nombre} size={48} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-[21px] font-bold tracking-tight truncate">{seleccionado.nombre}</h2>
+                  {analisis?.readiness && <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: analisis.readiness.color + '22', color: analisis.readiness.color }}>{analisis.readiness.label}</span>}
+                </div>
+                <p className="text-[11.5px] text-gray-500 mt-1">{registros.length} {registros.length === 1 ? 'registro' : 'registros'} en el período</p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap ml-auto">
+                {RANGOS.map(r => (
+                  <button key={r.dias} onClick={() => cambiarRango(r.dias)}
+                    className={'px-3 py-1.5 rounded-lg text-[11.5px] font-semibold transition border ' + (!usarFechasCustom && rango === r.dias ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'bg-white/[0.04] text-gray-400 border-white/[0.06] hover:text-white')}>{r.label}</button>
+                ))}
+                <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-[11.5px] px-2.5 py-1.5 rounded-lg outline-none focus:border-orange-500/50" />
+                <span className="text-gray-600 text-xs">—</span>
+                <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-[11.5px] px-2.5 py-1.5 rounded-lg outline-none focus:border-orange-500/50" />
+                <button onClick={aplicarFechas} className="bg-orange-500 hover:bg-orange-400 text-white text-[11.5px] font-semibold px-3 py-1.5 rounded-lg transition">Aplicar</button>
+                <button onClick={() => router.push('/wellness/' + seleccionado.id)} className="text-[12.5px] text-gray-400 hover:text-white transition ml-1">Ficha completa →</button>
+              </div>
+            </div>
 
             {registros.length === 0 ? (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center text-gray-400">
-                No hay registros en este período.
-              </div>
+              <div className="tp-card p-12 text-center text-gray-500 text-[13px]">No hay registros en este período.</div>
             ) : (
-              <>
-                {/* ANÁLISIS — readiness + conclusiones (mismo motor que ve el atleta) */}
-                {(() => {
-                  const a = analizarWellness(registros)
-                  if (!a.readiness) return null
-                  return (
-                    <div className="bg-gray-900 rounded-xl border overflow-hidden" style={{ borderColor: a.readiness.color + '55' }}>
-                      <div className="p-4 flex items-center gap-3" style={{ borderLeft: '5px solid ' + a.readiness.color }}>
-                        <span className="text-xl font-black leading-none" style={{ color: a.readiness.color }}>{a.readiness.label}</span>
-                        <p className="text-gray-300 text-sm flex-1">{a.readiness.recomendacion}</p>
+              /* Izquierda: resumen + registros · Derecha: gráficas + (reservado) */
+              <div className="grid gap-4 items-start" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+                <div className="grid gap-4 items-start lg:grid-cols-[minmax(340px,30%)_1fr]">
+
+                  {/* ---- IZQUIERDA ---- */}
+                  <div className="flex flex-col gap-4">
+                    {/* Resumen */}
+                    {analisis?.readiness && (
+                      <div className="tp-card overflow-hidden" style={{ borderColor: analisis.readiness.color + '44' }}>
+                        <div className="p-4" style={{ borderLeft: '3px solid ' + analisis.readiness.color, background: analisis.readiness.color + '0d' }}>
+                          <p className="text-[20px] font-bold leading-none" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</p>
+                          <p className="text-gray-300 text-[13px] mt-2 leading-snug">{analisis.readiness.recomendacion}</p>
+                        </div>
+                        <div className="px-4 py-3 flex flex-col gap-1.5 border-t border-gray-800/70">
+                          {analisis.conclusiones.map((c, i) => {
+                            const col = c.tipo === 'rojo' ? '#ef4444' : c.tipo === 'ambar' ? '#f97316' : c.tipo === 'positivo' ? '#22c55e' : '#6b7280'
+                            return (
+                              <div key={i} className="flex items-start gap-2.5 text-[12.5px]">
+                                <span className="w-1.5 h-1.5 rounded-full mt-[6px] flex-shrink-0" style={{ background: col }} />
+                                <span className="text-gray-300 leading-snug">{c.texto}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {analisis.metricas.length > 0 && (
+                          <div className="px-4 pb-4 pt-1 border-t border-gray-800/70">
+                            <div className="flex items-center justify-between my-3">
+                              <p className="text-[12px] font-semibold text-gray-300">Últimos 7 días vs su línea base</p>
+                              {!analisis.baselineFiable && <span className="text-[10.5px] text-gray-500">base provisional</span>}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {analisis.metricas.map(m => (
+                                <div key={m.key} className={'rounded-xl p-2.5 border ' + (m.fuera ? 'border-orange-500/40 bg-orange-500/[0.06]' : 'border-white/[0.06] bg-white/[0.02]')}>
+                                  <p className="text-gray-400 text-[11px] mb-1">{m.label}</p>
+                                  <div className="flex items-baseline gap-1.5">
+                                    <span className={'font-bold text-[15px] ' + (m.fuera ? 'text-orange-300' : 'text-white')}>{m.reciente}<span className="text-gray-500 text-[10px] font-normal ml-0.5">{m.unidad}</span></span>
+                                    <span style={{ fontSize: 9, color: m.fuera ? '#fb923c' : '#6b7280' }}>{m.flecha === 'up' ? '▲' : m.flecha === 'down' ? '▼' : '▬'}</span>
+                                  </div>
+                                  {m.base != null && <p className="text-gray-600 text-[10.5px] mt-0.5">base {m.base}{m.unidad}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="px-4 pb-4 flex flex-col gap-1.5">
-                        {a.conclusiones.map((c, i) => {
-                          const ic = c.tipo === 'rojo' ? '🔴' : c.tipo === 'ambar' ? '🟠' : c.tipo === 'positivo' ? '🟢' : 'ℹ️'
+                    )}
+
+                    {/* Registros antiguos */}
+                    <div className="tp-card p-4">
+                      <div className="flex items-baseline justify-between mb-2">
+                        <p className="text-[13px] font-semibold">Registros anteriores</p>
+                        <span className="text-[11px] text-gray-500">{registros.length} en el período</span>
+                      </div>
+                      <div className="flex flex-col max-h-[420px] overflow-y-auto -mx-1 px-1">
+                        {registros.slice().reverse().map(r => {
+                          const b = bienestar(r.score_wellness)
+                          const col = b != null ? colorBienestar(b) : '#6b7280'
                           return (
-                            <div key={i} className="flex items-start gap-2 text-sm">
-                              <span style={{ fontSize: 11 }} className="mt-0.5">{ic}</span>
-                              <span className="text-gray-300">{c.texto}</span>
+                            <div key={r.id} className="flex justify-between items-center gap-3 py-2.5 border-b border-gray-800/60 last:border-0">
+                              <div className="min-w-0">
+                                <p className="text-[12.5px] font-medium text-gray-200">{r.fecha}</p>
+                                <p className="text-gray-500 text-[11px] truncate">Sueño {r.horas_sueno}h · Fatiga {r.fatiga}/7 · Estrés {r.estres}/7{r.hrv ? ' · HRV ' + r.hrv : ''}</p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="font-bold text-[15px] leading-none" style={{ color: col }}>{b}</p>
+                                <p className="text-[10px] mt-0.5" style={{ color: col }}>{b != null ? estadoBienestar(b) : ''}</p>
+                              </div>
                             </div>
                           )
                         })}
                       </div>
                     </div>
-                  )
-                })()}
-
-                {/* GRÁFICA 1 — Score wellness */}
-                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-bold text-orange-400">Score Wellness</h4>
-                    <span className="text-xs text-gray-500">Escala 0–100</span>
                   </div>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={datos}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                      <YAxis domain={[0, 100]} stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <ReferenceLine y={25} stroke="#4ade80" strokeDasharray="4 4" label={{ value: 'Óptimo', fill: '#4ade80', fontSize: 10 }} />
-                      <ReferenceLine y={50} stroke="#facc15" strokeDasharray="4 4" label={{ value: 'Aceptable', fill: '#facc15', fontSize: 10 }} />
-                      <ReferenceLine y={75} stroke="#f97316" strokeDasharray="4 4" label={{ value: 'Deteriorado', fill: '#f97316', fontSize: 10 }} />
-                      <Line type="monotone" dataKey="score_wellness" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 4 }} name="Score wellness" connectNulls />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
 
-                {/* GRÁFICA 2 — HRV */}
-                {registros.some(r => r.hrv) && (
-                  <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-bold text-blue-400">HRV</h4>
-                      <span className="text-xs text-gray-500">Milisegundos (ms)</span>
-                    </div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <LineChart data={datos.filter(r => r.hrv)}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                        <YAxis stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                        <Tooltip contentStyle={tooltipStyle} />
-                        <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 4 }} name="HRV (ms)" connectNulls />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* GRÁFICA 3 — Variables subjetivas */}
-                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-bold text-gray-200">Variables subjetivas</h4>
-                    <span className="text-xs text-gray-500">Escala 1–7</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {VARS_SUBJETIVAS.map(v => (
-                      <button key={v.key} onClick={() => toggleVar(v.key)}
-                        className={'px-3 py-1 rounded-lg text-xs font-medium transition border ' +
-                          (varsActivas.includes(v.key) ? 'text-gray-900 border-transparent' : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500')}
-                        style={varsActivas.includes(v.key) ? { background: v.color, borderColor: v.color } : {}}>
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
-                  {varsActivas.length === 0 ? (
-                    <p className="text-gray-500 text-sm text-center py-8">Selecciona al menos una variable</p>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={datos}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                        <YAxis domain={[1, 7]} stroke="#9ca3af" tick={{ fontSize: 11 }} ticks={[1,2,3,4,5,6,7]} />
-                        <Tooltip contentStyle={tooltipStyle} />
-                        <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
-                        {VARS_SUBJETIVAS.filter(v => varsActivas.includes(v.key)).map(v => (
-                          <Line key={v.key} type="monotone" dataKey={v.key} stroke={v.color} strokeWidth={2}
-                            dot={{ fill: v.color, r: 3 }} name={v.label} connectNulls />
-                        ))}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-
-                {/* Últimos registros */}
-                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                  <h4 className="font-medium text-gray-300 mb-3 text-sm">Últimos registros</h4>
-                  <div className="grid gap-2">
-                    {registros.slice(-5).reverse().map(r => (
-                      <div key={r.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium">{r.fecha}</p>
-                          <p className="text-gray-400 text-xs">Sueño: {r.horas_sueno}h · Fatiga: {r.fatiga}/7 · Estrés: {r.estres}/7 · Ánimo: {r.animo}/7 · Motivación: {r.motivacion}/7</p>
-                          {r.hrv && <p className="text-blue-400 text-xs">HRV: {r.hrv} ms</p>}
-                        </div>
-                        <div className="text-right ml-4">
-                          <p className={'font-bold ' + colorScore(r.score_wellness)}>{r.score_wellness}</p>
-                          <p className={'text-xs ' + colorScore(r.score_wellness)}>{estadoScore(r.score_wellness)}</p>
-                        </div>
+                  {/* ---- DERECHA ---- */}
+                  <div className="flex flex-col gap-4 min-w-0">
+                    {/* Bienestar */}
+                    <div className="tp-card p-4">
+                      <div className="flex justify-between items-baseline mb-3">
+                        <p className="text-[13px] font-semibold">Bienestar</p>
+                        <span className="text-[11px] text-gray-500">0–100 · más alto es mejor</span>
                       </div>
-                    ))}
+                      <ResponsiveContainer width="100%" height={230}>
+                        <AreaChart data={datos}>
+                          <defs>
+                            <linearGradient id="gradBien" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                              <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" vertical={false} />
+                          <XAxis dataKey="fecha" {...ejeStyle} axisLine={false} tickLine={false} />
+                          <YAxis domain={[0, 100]} {...ejeStyle} axisLine={false} tickLine={false} width={30} />
+                          <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + '/100', 'Bienestar']} />
+                          <ReferenceLine y={75} stroke="#22c55e" strokeOpacity={0.45} strokeDasharray="4 4" label={{ value: 'Óptimo', fill: '#22c55e', fontSize: 9, position: 'insideTopLeft' }} />
+                          <ReferenceLine y={50} stroke="#eab308" strokeOpacity={0.35} strokeDasharray="4 4" />
+                          <ReferenceLine y={25} stroke="#ef4444" strokeOpacity={0.35} strokeDasharray="4 4" label={{ value: 'Crítico', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
+                          <Area type="monotone" dataKey="bienestar" stroke="#22c55e" strokeWidth={2.4} fill="url(#gradBien)" dot={{ fill: '#22c55e', r: 3 }} name="Bienestar" connectNulls />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* HRV / FC reposo */}
+                    {registros.some(r => r.hrv || r.fc_reposo) && (
+                      <div className="tp-card p-4">
+                        <div className="flex justify-between items-baseline mb-3">
+                          <p className="text-[13px] font-semibold">Datos objetivos</p>
+                          <span className="text-[11px] text-gray-500">HRV (ms) · FC reposo (ppm)</span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart data={datos}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" vertical={false} />
+                            <XAxis dataKey="fecha" {...ejeStyle} axisLine={false} tickLine={false} />
+                            <YAxis {...ejeStyle} axisLine={false} tickLine={false} width={30} />
+                            <Tooltip contentStyle={tooltipStyle} />
+                            <Legend wrapperStyle={{ fontSize: 11, color: '#7f8a99' }} />
+                            {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.2} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
+                            {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.2} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    {/* Variables subjetivas */}
+                    <div className="tp-card p-4">
+                      <div className="flex justify-between items-baseline mb-3">
+                        <p className="text-[13px] font-semibold">Variables subjetivas</p>
+                        <span className="text-[11px] text-gray-500">escala 1–7</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {VARS_SUBJETIVAS.map(v => {
+                          const on = varsActivas.includes(v.key)
+                          return (
+                            <button key={v.key} onClick={() => toggleVar(v.key)}
+                              className="px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition border"
+                              style={on ? { background: v.color + '26', color: v.color, borderColor: v.color + '55' } : { background: 'rgba(255,255,255,.04)', color: '#7f8a99', borderColor: 'rgba(255,255,255,.06)' }}>
+                              {v.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {varsActivas.length === 0 ? (
+                        <p className="text-gray-500 text-[13px] text-center py-8">Selecciona al menos una variable.</p>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={220}>
+                          <LineChart data={datos}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" vertical={false} />
+                            <XAxis dataKey="fecha" {...ejeStyle} axisLine={false} tickLine={false} />
+                            <YAxis domain={[1, 7]} ticks={[1, 3, 5, 7]} {...ejeStyle} axisLine={false} tickLine={false} width={30} />
+                            <Tooltip contentStyle={tooltipStyle} />
+                            <Legend wrapperStyle={{ fontSize: 11, color: '#7f8a99' }} />
+                            {VARS_SUBJETIVAS.filter(v => varsActivas.includes(v.key)).map(v => (
+                              <Line key={v.key} type="monotone" dataKey={v.key} stroke={v.color} strokeWidth={2} dot={{ fill: v.color, r: 2.5 }} name={v.label} connectNulls />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+
+                    {/* Hueco reservado — pendiente de definir */}
+                    <div className="rounded-2xl border border-dashed border-white/[0.09] p-8 text-center">
+                      <p className="text-[12.5px] text-gray-600">Espacio reservado</p>
+                      <p className="text-[11px] text-gray-700 mt-1">Aquí va lo que decidas para esta zona</p>
+                    </div>
                   </div>
                 </div>
-              </>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </main>
   )
 }
-

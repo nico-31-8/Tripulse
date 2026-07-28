@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { analizarWellness, type MetricaAnalisis } from '@/lib/wellness-analisis'
+import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 
 // Color de la flecha de tendencia según si el cambio es favorable para esa métrica.
 function flechaColor(m: MetricaAnalisis): string {
@@ -18,20 +19,6 @@ function scoreWellness(datos: any): number {
   const motivacionInv = 8 - datos.motivacion
   const suma = datos.calidad_sueno + datos.fatiga + datos.estres + datos.dolor_muscular + animoInv + motivacionInv
   return Math.round(((suma - 6) / 36) * 100)
-}
-
-function colorScore(score: number) {
-  if (score <= 25) return 'text-green-400'
-  if (score <= 50) return 'text-yellow-400'
-  if (score <= 75) return 'text-orange-400'
-  return 'text-red-400'
-}
-
-function estadoScore(score: number) {
-  if (score <= 25) return 'Optimo'
-  if (score <= 50) return 'Aceptable'
-  if (score <= 75) return 'Deteriorado'
-  return 'Critico'
 }
 
 const EMOJI_CONFIG: Record<string, { label: string; opciones: { emoji: string; texto: string }[] }> = {
@@ -273,9 +260,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             </div>
 
             <div className="bg-gray-800 rounded-xl p-4 text-center">
-              <p className="text-gray-400 text-sm mb-1">Score wellness estimado</p>
-              <p className={`text-3xl font-bold ${colorScore(preview)}`}>{preview}</p>
-              <p className={`text-sm ${colorScore(preview)}`}>{estadoScore(preview)}</p>
+              <p className="text-gray-400 text-sm mb-1">Bienestar estimado</p>
+              <p className="text-3xl font-bold" style={{ color: colorBienestar(100 - preview) }}>{100 - preview}<span className="text-gray-500 text-base font-normal">/100</span></p>
+              <p className="text-sm" style={{ color: colorBienestar(100 - preview) }}>{estadoBienestar(100 - preview)}</p>
             </div>
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
               {loading ? 'Guardando...' : 'Guardar registro'}
@@ -287,17 +274,17 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
         {registros.length > 1 && (
           <div className="flex flex-col gap-4 mb-6">
             <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-              <p className="text-sm font-medium text-orange-400 mb-3">Score Wellness</p>
+              <p className="text-sm font-medium text-green-400 mb-3">Bienestar <span className="text-gray-500 font-normal text-xs">· más alto es mejor</span></p>
               <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), score: r.score_wellness }))}>
+                <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), score: bienestar(r.score_wellness) }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
                   <YAxis domain={[0, 100]} stroke="#9ca3af" tick={{ fontSize: 10 }} />
                   <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
-                  <ReferenceLine y={25} stroke="#4ade80" strokeDasharray="4 4" />
+                  <ReferenceLine y={75} stroke="#4ade80" strokeDasharray="4 4" />
                   <ReferenceLine y={50} stroke="#facc15" strokeDasharray="4 4" />
-                  <ReferenceLine y={75} stroke="#f97316" strokeDasharray="4 4" />
-                  <Line type="monotone" dataKey="score" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 3 }} name="Score" connectNulls />
+                  <ReferenceLine y={25} stroke="#ef4444" strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="score" stroke="#22c55e" strokeWidth={2.5} dot={{ fill: '#22c55e', r: 3 }} name="Bienestar" connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -381,8 +368,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-2xl font-bold ${colorScore(r.score_wellness)}`}>{r.score_wellness}</p>
-                    <p className={`text-xs ${colorScore(r.score_wellness)}`}>{estadoScore(r.score_wellness)}</p>
+                    <p className="text-2xl font-bold" style={{ color: colorBienestar(bienestar(r.score_wellness) ?? 0) }}>{bienestar(r.score_wellness)}</p>
+                    <p className="text-xs" style={{ color: colorBienestar(bienestar(r.score_wellness) ?? 0) }}>{estadoBienestar(bienestar(r.score_wellness) ?? 0)}</p>
                   </div>
                 </div>
               </div>

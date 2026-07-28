@@ -5,14 +5,17 @@ import { supabase } from '@/lib/supabase'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
+import { bienestar } from '@/lib/wellness-score'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
+import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
 const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
+const cssVar = (color: string) => ({ ['--c']: color } as React.CSSProperties)
 
 export default function Dashboard() {
   useRequireEntrenador()
@@ -32,6 +35,7 @@ export default function Dashboard() {
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [tienePlan, setTienePlan] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -70,8 +74,9 @@ export default function Dashboard() {
     setReadiness(analizarWellness(wells || []).readiness)
     const w0 = (wells || [])[0]
     const hoyISO = new Date().toISOString().split('T')[0]
-    setWellHoy({ hoy: w0?.fecha === hoyISO, score: w0?.score_wellness ?? null })
-    setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => w.score_wellness ?? 0))
+    // Se guarda el MALESTAR (alto = peor) pero se muestra invertido como bienestar.
+    setWellHoy({ hoy: w0?.fecha === hoyISO, score: bienestar(w0?.score_wellness) })
+    setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
     const hoyStr = new Date().toISOString().split('T')[0]
     const { data: comp } = await supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id).gte('fecha', hoyStr).order('fecha').limit(1)
     setProximaComp(comp?.[0] || null)
@@ -127,19 +132,13 @@ export default function Dashboard() {
   const nSemana = (metricas?.semana || []).reduce((a: number, d: any) => a + d.sesiones.length, 0)
   const hoyStr = new Date().toISOString().split('T')[0]
 
-  const bhead = (ic: string, label: string, color: string) => (
-    <div className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0" style={{ background: color + '20', color }}>{ic}</span>
-      <span className="text-[12.5px] font-semibold text-gray-200">{label}</span>
-    </div>
-  )
-  const BentoBtn = ({ href, className = '', children }: { href: string; className?: string; children: React.ReactNode }) => (
-    <button onClick={() => router.push(href)}
-      className={'group relative text-left rounded-2xl border border-gray-800 bg-gray-900/50 p-3 flex flex-col justify-between overflow-hidden transition-all duration-200 hover:border-gray-600 hover:-translate-y-0.5 focus-visible:outline-none ' + className}>
-      {children}
-      <span className="absolute top-3 right-3 text-gray-600 text-xs opacity-0 group-hover:opacity-100 transition">↗</span>
-    </button>
-  )
+  // Avisos "Necesita tu atención" = wellness sin registrar + mensajes sin leer + sugerencias del atleta.
+  const notifs: { color: string; texto: string; sub?: string; add?: string }[] = activo ? [
+    ...(readiness && !wellHoy.hoy ? [{ color: '#eab308', texto: 'Wellness sin registrar hoy', sub: 'Recuérdale que lo rellene' }] : []),
+    ...((metricas?.general?.comunicacion || 0) > 0 ? [{ color: '#ec4899', texto: metricas!.general.comunicacion + ' mensajes sin leer', sub: 'de ' + (activo.nombre?.split(' ')[0] || 'tu deportista') }] : []),
+    ...sugerencias.map(s => ({ color: '#3b82f6', texto: s, add: s })),
+  ] : []
+
   const Spark = ({ data, color, w = 72, h = 24 }: { data: number[]; color: string; w?: number; h?: number }) => {
     if (!data || data.length < 2) return null
     const min = Math.min(...data), max = Math.max(...data), rng = (max - min) || 1
@@ -153,7 +152,7 @@ export default function Dashboard() {
   }
   const AreaTSB = ({ data, color }: { data: number[]; color: string }) => {
     if (!data || data.length < 2) return null
-    const w = 700, h = 120, pad = 12
+    const w = 800, h = 150, pad = 14
     const min = Math.min(...data, 0), max = Math.max(...data, 0), rng = (max - min) || 1
     const X = (i: number) => (i / (data.length - 1)) * w
     const Y = (v: number) => h - pad - ((v - min) / rng) * (h - 2 * pad)
@@ -161,19 +160,27 @@ export default function Dashboard() {
     const area = 'M0,' + Y(data[0]).toFixed(1) + ' ' + data.map((v, i) => 'L' + X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ') + ' L' + w + ',' + h + ' L0,' + h + ' Z'
     const zeroY = Y(0).toFixed(1)
     return (
-      <svg viewBox={'0 0 ' + w + ' ' + h} width="100%" height="120" preserveAspectRatio="none">
+      <svg viewBox={'0 0 ' + w + ' ' + h} width="100%" height="150" preserveAspectRatio="none">
         <defs>
           <linearGradient id="tsbfill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.28" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
+        <line x1="0" y1={pad} x2={w} y2={pad} stroke="#ffffff" strokeOpacity="0.05" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         <line x1="0" y1={zeroY} x2={w} y2={zeroY} stroke="#4b5563" strokeWidth="1" strokeDasharray="5 5" vectorEffect="non-scaling-stroke" />
+        <line x1="0" y1={h - pad} x2={w} y2={h - pad} stroke="#ffffff" strokeOpacity="0.05" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         <path d={area} fill="url(#tsbfill)" />
-        <polyline points={line} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <polyline points={line} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
     )
   }
+  const bhead = (ic: string, label: string, color: string) => (
+    <div className="flex items-center gap-2.5">
+      <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(color)}>{ic}</span>
+      <span className="text-[13px] font-semibold text-gray-200">{label}</span>
+    </div>
+  )
   const wsMax = Math.max(1, ...wellSpark)
 
   if (cargando) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
@@ -190,7 +197,7 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <div className={'relative mx-auto px-6 py-8 ' + (activo ? 'max-w-7xl' : 'max-w-3xl')}>
+      <div className={'relative mx-auto px-6 py-8 ' + (activo ? 'max-w-[1560px]' : 'max-w-3xl')}>
         <InvitacionesClub />
         <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />
         {deportistas.length === 0 ? (
@@ -218,11 +225,18 @@ export default function Dashboard() {
                 )
               })}
             </div>
+
+            {/* Vista de equipo: cómo fue la semana pasada de cada deportista. */}
+            {userId && (
+              <div className="w-full mt-14 text-left fade-up" style={{ animationDelay: '260ms' }}>
+                <ResumenEntrenador entrenadorId={userId} />
+              </div>
+            )}
           </div>
         ) : (
           <>
             {/* ===== Cabecera: nombre + selector de deportista ===== */}
-            <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="flex items-center justify-between gap-4 mb-7">
               <div className="relative">
                 <button onClick={() => setSwitcherOpen(o => !o)}
                   className="group flex items-center gap-3.5 rounded-2xl -m-1.5 p-1.5 transition hover:bg-white/[0.04]">
@@ -277,177 +291,138 @@ export default function Dashboard() {
               </div>
 
               <button onClick={() => router.push('/deportistas/' + activo.id)}
-                className="text-sm text-gray-400 hover:text-white font-medium transition flex-shrink-0">Ficha →</button>
+                className="text-sm text-gray-400 hover:text-white font-medium transition flex-shrink-0">Ver ficha →</button>
             </div>
 
-            {/* ===== Dos columnas: módulos (principal) + tareas (panel derecho) ===== */}
-            <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
-              {/* Zona principal: módulos */}
-              <div>
-                <div className="flex items-baseline gap-2 mb-2.5">
-                  <h3 className="text-sm font-semibold text-gray-200">Sus datos</h3>
-                  <span className="text-gray-600 text-xs">ya filtrados por {activo.nombre}</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7" style={{ gridAutoRows: '96px' }}>
-
-                  {/* Planificación — protagonista */}
-                  <BentoBtn href={'/planificacion-visual/' + activo.id} className="col-span-2 row-span-2">
-                    {bhead('📅', 'Planificación', '#f97316')}
-                    <div>
-                      {diasComp != null ? (
-                        <>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-[38px] font-bold leading-none tracking-tight">{diasComp}</span>
-                            <span className="text-sm text-gray-400">{diasComp === 1 ? 'día para' : 'días para'}</span>
-                          </div>
-                          {proximaComp && <p className="text-[13px] text-orange-300/90 font-medium truncate mt-1">🏁 {proximaComp.nombre}</p>}
-                        </>
-                      ) : metricas?.proxima ? (
-                        <div>
-                          <p className="text-[10px] text-gray-500">Próxima sesión</p>
-                          <p className="text-base font-bold flex items-center gap-2 mt-0.5">
-                            <span className="w-2 h-2 rounded-full" style={{ background: metricas.proxima.color }} />
-                            {metricas.proxima.disciplina} · {metricas.proxima.dow}
-                          </p>
-                        </div>
-                      ) : <span className="text-sm text-gray-500">Sin sesiones próximas</span>}
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-baseline mb-1.5">
-                        <p className="text-[10px] text-gray-500">Esta semana</p>
-                        <p className="text-[10px] text-gray-400 font-medium">{nSemana} {nSemana === 1 ? 'sesión' : 'sesiones'}</p>
-                      </div>
-                      <div className="flex gap-1.5">
-                        {(metricas?.semana || Array.from({ length: 7 }, (_, i) => ({ dow: ['L','M','X','J','V','S','D'][i], sesiones: [], fecha: '' }))).map((d: any, i: number) => {
-                          const esHoy = d.fecha === hoyStr
-                          return (
-                            <div key={i} className={'flex-1 h-[52px] rounded-lg flex flex-col items-center justify-between py-1.5 border ' + (esHoy ? 'bg-white/[0.06] border-orange-500/40' : 'bg-white/[0.03] border-white/5')}>
-                              <div className="flex flex-wrap gap-1 justify-center items-center flex-1 px-1 content-center">
-                                {d.sesiones.slice(0, 4).map((s: any, j: number) => (
-                                  <span key={j} className="w-[7px] h-[7px] rounded-full" style={{ background: s.color }} />
-                                ))}
-                              </div>
-                              <span className={'text-[9px] leading-none ' + (esHoy ? 'text-orange-400 font-semibold' : 'text-gray-500')}>{d.dow}</span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </BentoBtn>
-
-                  {/* Wellness */}
-                  <BentoBtn href={'/wellness/' + activo.id}>
-                    {bhead('💚', 'Wellness', '#22c55e')}
-                    {readiness ? (
-                      <div className="flex items-end justify-between gap-2">
-                        <div>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-[24px] font-bold leading-none" style={{ color: rc }}>{wellHoy.score ?? '—'}</span>
-                            <span className="text-[11px] font-semibold" style={{ color: rc }}>{readiness.label}</span>
-                          </div>
-                          <p className="text-[10px] mt-1" style={{ color: wellHoy.hoy ? '#22c55e' : '#9ca3af' }}>{wellHoy.hoy ? '✓ registrado hoy' : 'sin registrar hoy'}</p>
-                        </div>
-                        {wellSpark.length > 1 && (
-                          <div className="flex items-end gap-[3px] h-7">
-                            {wellSpark.map((v, i) => (
-                              <span key={i} className="w-[5px] rounded-full" style={{ height: Math.max(12, (v / wsMax) * 100) + '%', background: rc, opacity: 0.35 + 0.65 * (i + 1) / wellSpark.length }} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : <span className="text-xs text-gray-500">Sin wellness</span>}
-                  </BentoBtn>
-
-                  {/* Carga — frescura */}
-                  <BentoBtn href="/carga">
-                    {bhead('📈', 'Carga', '#3b82f6')}
-                    {metricas?.carga ? (
-                      <div className="flex items-end justify-between gap-2">
-                        <div>
-                          <span className="text-[24px] font-bold leading-none" style={{ color: metricas.carga.color }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</span>
-                          <p className="text-[11px] font-medium leading-tight mt-1" style={{ color: metricas.carga.color }}>{metricas.carga.label}</p>
-                          <p className="text-[9px] text-gray-500">frescura (TSB)</p>
-                        </div>
-                        <Spark data={metricas.carga.spark} color={metricas.carga.color} />
-                      </div>
-                    ) : <span className="text-xs text-gray-500">Sin datos</span>}
-                  </BentoBtn>
-
-                  {/* Volumen — por disciplina */}
-                  <BentoBtn href="/volumen" className="col-span-2">
-                    {bhead('📊', 'Volumen', '#a855f7')}
-                    {metricas?.volumen ? (
-                      <div>
-                        <div className="flex items-baseline gap-1.5 mb-1.5">
-                          <span className="text-xl font-bold leading-none">{metricas.volumen.modo === 'tiempo' ? fmtMin(metricas.volumen.total) : metricas.volumen.nSesiones}</span>
-                          <span className="text-[11px] text-gray-500">{metricas.volumen.modo === 'tiempo' ? 'planificado esta semana' : (metricas.volumen.nSesiones === 1 ? 'sesión esta semana' : 'sesiones esta semana')}</span>
-                        </div>
-                        {metricas.volumen.modo === 'tiempo' && (
-                          <div className="flex h-1.5 rounded-full overflow-hidden bg-white/5 mb-1.5">
-                            {metricas.volumen.porDisc.map(d => (
-                              <div key={d.key} style={{ width: (d.min / metricas!.volumen!.total * 100) + '%', background: d.color }} />
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                          {metricas.volumen.porDisc.map(d => (
-                            <span key={d.key} className="inline-flex items-center gap-1 text-[10px] text-gray-400">
-                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: d.color }} />{d.label} <b className="text-gray-200 font-semibold">{metricas.volumen!.modo === 'tiempo' ? fmtMin(d.min) : d.n}</b>
-                            </span>
+            {/* ===== Barra de sesiones (semana en curso) — es la entrada a Planificación ===== */}
+            <button onClick={() => router.push('/planificacion-visual/' + activo.id)}
+              className="tp-card tp-tile w-full flex flex-col sm:flex-row mb-4 text-left group" style={cssVar('#f97316')}>
+              <div className="sm:w-56 p-5 border-b sm:border-b-0 sm:border-r border-white/[0.06] flex flex-col justify-center" style={{ background: 'linear-gradient(180deg, #f9731610, transparent)' }}>
+                <p className="text-[11px] font-medium text-gray-500 flex items-center gap-2 mb-2">
+                  📅 Planificación
+                  <span className="ml-auto text-orange-400 opacity-0 group-hover:opacity-100 transition">↗</span>
+                </p>
+                {diasComp != null ? (
+                  <>
+                    <div className="flex items-baseline gap-2"><span className="text-[40px] font-bold leading-none tracking-tight" style={{ color: '#fb923c' }}>{diasComp}</span><span className="text-sm text-gray-400">{diasComp === 1 ? 'día para' : 'días para'}</span></div>
+                    {proximaComp && <p className="text-[13px] text-orange-300/90 font-semibold mt-1.5 truncate">🏁 {proximaComp.nombre}</p>}
+                  </>
+                ) : (
+                  <p className="text-base font-bold text-gray-300">Sin competición próxima</p>
+                )}
+                <p className="text-[11px] text-gray-500 mt-1">{nSemana} {nSemana === 1 ? 'sesión' : 'sesiones'} esta semana</p>
+                <p className="text-[11px] text-orange-300/80 font-medium mt-2">Calendario · Periodización · Bloques →</p>
+              </div>
+              <div className="flex-1 grid grid-cols-7">
+                {(metricas?.semana || Array.from({ length: 7 }, (_, i) => ({ dow: ['L','M','X','J','V','S','D'][i], sesiones: [], fecha: '' }))).map((d: any, i: number) => {
+                  const esHoy = d.fecha === hoyStr
+                  return (
+                    <div key={i} className={'p-3 flex flex-col gap-2 border-r border-white/[0.03] last:border-r-0 ' + (esHoy ? 'bg-white/[0.04]' : '')}>
+                      <span className={'text-[10px] font-semibold text-center ' + (esHoy ? 'text-orange-400' : 'text-gray-500')}>{d.dow}{esHoy ? ' · HOY' : ''}</span>
+                      <div className="flex flex-col gap-1 items-center min-h-[42px] justify-center">
+                        {d.sesiones.length === 0
+                          ? <span className="text-gray-700 text-[10px]">—</span>
+                          : d.sesiones.slice(0, 4).map((s: any, j: number) => (
+                            <span key={j} className="w-full max-w-[46px] h-2 rounded-full" style={{ background: s.color }} />
                           ))}
-                        </div>
                       </div>
-                    ) : <span className="text-xs text-gray-500">Sin sesiones esta semana</span>}
-                  </BentoBtn>
+                    </div>
+                  )
+                })}
+              </div>
+            </button>
 
-                  {/* Índices */}
-                  <BentoBtn href="/indices">
-                    {bhead('🎯', 'Índices', '#eab308')}
-                    {metricas?.indices ? (
-                      <div>
-                        <p className="text-[13px] font-semibold leading-tight" style={{ color: metricas.indices.perColor }}>{metricas.indices.perTexto}</p>
-                        <p className="text-[10px] leading-tight mt-1" style={{ color: metricas.indices.planColor }}>{metricas.indices.planTexto}</p>
+            {/* ===== KPIs ===== */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+              {/* Wellness */}
+              {/* Módulo de wellness del entrenador. Al abrirlo lee el atleta activo y
+                  entra directo a su detalle, así no se pierde el contexto. */}
+              <button onClick={() => router.push('/wellness-entrenador')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#22c55e')}>
+                {bhead('💚', 'Wellness', '#22c55e')}
+                {readiness ? (
+                  <div className="flex items-end justify-between gap-2">
+                    <div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[26px] font-bold leading-none" style={{ color: rc }}>{wellHoy.score ?? '—'}</span>
+                        <span className="text-[10px] text-gray-500">bienestar</span>
                       </div>
-                    ) : (
-                      <div>
-                        <p className="text-[10px] text-gray-500">Percepción vs plan</p>
-                        <p className="text-sm font-semibold text-gray-400">Sin datos aún</p>
+                      <p className="text-[11px] font-semibold mt-1" style={{ color: rc }}>{readiness.label}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: wellHoy.hoy ? '#22c55e' : '#9ca3af' }}>{wellHoy.hoy ? '✓ registrado hoy' : 'sin registrar hoy'}</p>
+                    </div>
+                    {wellSpark.length > 1 && (
+                      <div className="flex items-end gap-[3px] h-8">
+                        {wellSpark.map((v, i) => (
+                          <span key={i} className="w-[5px] rounded-full" style={{ height: Math.max(12, (v / wsMax) * 100) + '%', background: rc, opacity: 0.35 + 0.65 * (i + 1) / wellSpark.length }} />
+                        ))}
                       </div>
                     )}
-                  </BentoBtn>
+                  </div>
+                ) : <span className="text-xs text-gray-500">Sin wellness</span>}
+              </button>
 
-                  {/* SICAT — solo navegación */}
-                  <BentoBtn href="/eco">
-                    {bhead('🔬', 'SICAT', '#06b6d4')}
+              {/* Carga */}
+              <button onClick={() => router.push('/carga')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#3b82f6')}>
+                {bhead('📈', 'Carga · frescura', '#3b82f6')}
+                {metricas?.carga ? (
+                  <div className="flex items-end justify-between gap-2">
                     <div>
-                      <p className="text-[10px] text-gray-500">Coste de entrenamiento</p>
-                      <p className="text-sm font-semibold text-gray-300">Individualizado por zona</p>
+                      <span className="text-[26px] font-bold leading-none" style={{ color: metricas.carga.color }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</span>
+                      <p className="text-[11px] font-medium mt-1" style={{ color: metricas.carga.color }}>{metricas.carga.label}</p>
+                      <p className="text-[9px] text-gray-500">frescura (TSB)</p>
                     </div>
-                  </BentoBtn>
+                    <Spark data={metricas.carga.spark} color={metricas.carga.color} />
+                  </div>
+                ) : <span className="text-xs text-gray-500">Sin datos</span>}
+              </button>
 
-                  {/* Ficha */}
-                  <BentoBtn href={'/deportistas/' + activo.id}>
-                    {bhead('📋', 'Ficha', '#94a3b8')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Valoración técnica</p>
-                      <p className="text-sm font-semibold text-gray-200">{diasFicha != null ? 'Hace ' + diasFicha + ' días' : 'Sin registrar'}</p>
+              {/* Volumen */}
+              <button onClick={() => router.push('/volumen')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#a855f7')}>
+                {bhead('📊', 'Volumen semana', '#a855f7')}
+                {metricas?.volumen ? (
+                  <div>
+                    <div className="flex items-baseline gap-1.5 mb-1.5">
+                      <span className="text-xl font-bold leading-none">{metricas.volumen.modo === 'tiempo' ? fmtMin(metricas.volumen.total) : metricas.volumen.nSesiones}</span>
+                      <span className="text-[10px] text-gray-500">{metricas.volumen.modo === 'tiempo' ? 'planificado' : (metricas.volumen.nSesiones === 1 ? 'sesión' : 'sesiones')}</span>
                     </div>
-                  </BentoBtn>
-
-                  {/* Tests */}
-                  <BentoBtn href="/tests">
-                    {bhead('🏋️', 'Tests', '#ef4444')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Último test</p>
-                      <p className="text-sm font-semibold text-gray-200">{diasTest != null ? 'Hace ' + diasTest + ' días' : 'Sin registrar'}</p>
+                    {metricas.volumen.modo === 'tiempo' && (
+                      <div className="flex h-1.5 rounded-full overflow-hidden bg-white/5 mb-1.5">
+                        {metricas.volumen.porDisc.map(d => (
+                          <div key={d.key} style={{ width: (d.min / metricas!.volumen!.total * 100) + '%', background: d.color }} />
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-x-2.5 gap-y-0.5">
+                      {metricas.volumen.porDisc.map(d => (
+                        <span key={d.key} className="inline-flex items-center gap-1 text-[10px] text-gray-400">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: d.color }} />{d.label} <b className="text-gray-200 font-semibold">{metricas.volumen!.modo === 'tiempo' ? fmtMin(d.min) : d.n}</b>
+                        </span>
+                      ))}
                     </div>
-                  </BentoBtn>
+                  </div>
+                ) : <span className="text-xs text-gray-500">Sin sesiones esta semana</span>}
+              </button>
 
-                </div>
+              {/* Índices */}
+              <button onClick={() => router.push('/indices')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#eab308')}>
+                {bhead('🎯', 'Índices', '#eab308')}
+                {metricas?.indices ? (
+                  <div>
+                    <p className="text-[15px] font-bold leading-tight" style={{ color: metricas.indices.perColor }}>{metricas.indices.perTexto}</p>
+                    <p className="text-[10px] leading-tight mt-1" style={{ color: metricas.indices.planColor }}>{metricas.indices.planTexto}</p>
+                  </div>
+                ) : (
+                  <div><p className="text-[10px] text-gray-500">Percepción vs plan</p><p className="text-sm font-semibold text-gray-400">Sin datos aún</p></div>
+                )}
+              </button>
+            </div>
 
-                {/* Banda de tendencia: carga y frescura */}
-                <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4 mb-7">
-                  <div className="flex justify-between items-baseline mb-2">
+            {/* ===== Dos columnas ===== */}
+            <div className="grid lg:grid-cols-[1fr_360px] gap-5 items-start">
+              {/* Columna izquierda */}
+              <div className="flex flex-col gap-5">
+                {/* Gráfica de forma */}
+                <div className="tp-card p-5">
+                  <div className="flex justify-between items-baseline mb-3">
                     <p className="font-semibold text-sm">Carga y frescura</p>
                     <span className="text-xs text-gray-500">
                       {metricas?.carga ? <>hoy <b style={{ color: metricas.carga.color }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</b> · {metricas.carga.label}</> : 'últimas semanas'}
@@ -467,126 +442,143 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <h3 className="text-sm font-semibold text-gray-200 mb-2.5">General</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" style={{ gridAutoRows: '92px' }}>
-                  <BentoBtn href="/deportistas">
-                    {bhead('👥', 'Deportistas', '#f97316')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">En tu equipo</p>
-                      <p className="text-sm font-semibold text-gray-200">{deportistas.length} {deportistas.length === 1 ? 'deportista' : 'deportistas'}</p>
+                {/* Módulos */}
+                <div>
+                  <h3 className="text-[13px] font-semibold text-gray-200 mb-3">Más de {activo.nombre?.split(' ')[0]}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <button onClick={() => router.push('/eco')} className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#06b6d4')}>
+                      {bhead('🔬', 'SICAT', '#06b6d4')}
+                      <div><p className="text-[10px] text-gray-500">Coste de entrenamiento</p><p className="text-sm font-semibold text-gray-200 mt-0.5">Individualizado por zona</p></div>
+                      <svg className="tp-wm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h6M10 3v5.6L5.3 17A2 2 0 0 0 7 20h10a2 2 0 0 0 1.7-3L14 8.6V3"/><path d="M8 14.5h8"/></svg>
+                    </button>
+                    <button onClick={() => router.push('/deportistas/' + activo.id)} className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#94a3b8')}>
+                      {bhead('📋', 'Ficha', '#94a3b8')}
+                      <div>
+                        <p className="text-[10px] text-gray-500">Valoración técnica</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <p className="text-sm font-semibold text-gray-200">{diasFicha != null ? 'Hace ' + diasFicha + ' días' : 'Sin registrar'}</p>
+                          {(diasFicha == null || diasFicha >= 28) && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eab30822', color: '#eab308' }}>Renovar pronto</span>}
+                        </div>
+                      </div>
+                      <svg className="tp-wm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2.4"/><path d="M9 11h6M9 15h4"/></svg>
+                    </button>
+                    <button onClick={() => router.push('/tests')} className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#ef4444')}>
+                      {bhead('🏋️', 'Tests', '#ef4444')}
+                      <div>
+                        <p className="text-[10px] text-gray-500">Último test</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <p className="text-sm font-semibold text-gray-200">{diasTest != null ? 'Hace ' + diasTest + ' días' : 'Sin registrar'}</p>
+                          {(diasTest == null || diasTest >= 42) && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eab30822', color: '#eab308' }}>Conviene repetir</span>}
+                        </div>
+                      </div>
+                      <svg className="tp-wm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="13" r="7"/><path d="M12 13V9M10 3h4M18 6l1.5-1.5"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Herramientas (desplegable) */}
+                <div className="tp-card">
+                  <button onClick={() => setToolsOpen(o => !o)} className="w-full flex items-center gap-3 p-4 text-left">
+                    <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar('#f97316')}>🔧</span>
+                    <div className="flex-1"><p className="text-sm font-semibold">Herramientas</p><p className="text-[11px] text-gray-500">Deportistas, comunicación, biblioteca, comunidad y más</p></div>
+                    <span className={'tp-chev text-gray-500 ' + (toolsOpen ? 'open' : '')}>▾</span>
+                  </button>
+                  <div className={'tp-collapse px-4 ' + (toolsOpen ? 'open pb-4' : '')}>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[
+                        { ic: '👥', l: 'Deportistas', s: deportistas.length + ' en tu equipo', c: '#f97316', h: '/deportistas' },
+                        { ic: '💬', l: 'Comunicación', s: (metricas?.general?.comunicacion || 0) > 0 ? metricas!.general.comunicacion + ' sin leer' : 'Al día', c: '#ec4899', h: '/comunicacion' },
+                        { ic: '💪', l: 'Bibl. Fuerza', s: (metricas?.general?.ejercicios ?? '—') + ' ejercicios', c: '#ef4444', h: '/fuerza' },
+                        { ic: '🗑', l: 'Papelera', s: (metricas?.general?.papelera || 0) > 0 ? metricas!.general.papelera + ' en papelera' : 'Vacía', c: '#6b7280', h: '/papelera' },
+                        { ic: '🤖', l: 'Asistente IA', s: 'Copiloto', c: '#f97316', h: '/asistente' },
+                        { ic: '🤝', l: 'Comunidad', s: 'Conecta', c: '#22c55e', h: '/comunidad' },
+                      ].map(t => (
+                        <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
+                          <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>
+                          <div className="min-w-0 text-left"><p className="text-[12.5px] font-semibold text-gray-200 truncate">{t.l}</p><p className="text-[10.5px] text-gray-500 truncate">{t.s}</p></div>
+                        </button>
+                      ))}
                     </div>
-                  </BentoBtn>
-                  <BentoBtn href="/comunicacion">
-                    {bhead('💬', 'Comunicación', '#ec4899')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Mensajes de {activo.nombre?.split(' ')[0]}</p>
-                      {metricas?.general?.comunicacion ? (
-                        <p className="text-sm font-semibold text-pink-400">{metricas.general.comunicacion} sin leer</p>
-                      ) : <p className="text-sm font-semibold text-gray-300">Al día</p>}
-                    </div>
-                  </BentoBtn>
-                  <BentoBtn href="/fuerza">
-                    {bhead('💪', 'Bibl. Fuerza', '#ef4444')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Ejercicios</p>
-                      <p className="text-sm font-semibold text-gray-200">{metricas?.general ? metricas.general.ejercicios : '—'} en biblioteca</p>
-                    </div>
-                  </BentoBtn>
-                  <BentoBtn href="/papelera">
-                    {bhead('🗑', 'Papelera', '#6b7280')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Sesiones eliminadas</p>
-                      {metricas?.general?.papelera ? (
-                        <p className="text-sm font-semibold text-gray-300">{metricas.general.papelera} en papelera</p>
-                      ) : <p className="text-sm font-semibold text-gray-500">Vacía</p>}
-                    </div>
-                  </BentoBtn>
-                  {/* Asistente de IA: usa el deportista activo para responder con sus datos. */}
-                  <BentoBtn href="/asistente">
-                    {bhead('🤖', 'Asistente IA', '#f97316')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Copiloto sobre {activo.nombre?.split(' ')[0]}</p>
-                      <p className="text-sm font-semibold text-gray-300">Pregúntale lo que quieras</p>
-                    </div>
-                  </BentoBtn>
-                  {/* Comunidad no depende del atleta activo: es tu acceso personal. */}
-                  <BentoBtn href="/comunidad">
-                    {bhead('🤝', 'Comunidad', '#22c55e')}
-                    <div>
-                      <p className="text-[10px] text-gray-500">Gente, grupos y retos</p>
-                      <p className="text-sm font-semibold text-gray-300">Descubre y conecta</p>
-                    </div>
-                  </BentoBtn>
+                  </div>
                 </div>
               </div>
 
-              {/* Columna derecha: tareas + próximas sesiones */}
-              <div className="flex flex-col gap-4">
-              <aside className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <p className="font-semibold text-sm">Tareas</p>
-                  {tareas.length > 0 && (
-                    <span className="text-xs text-gray-500">{hechas}/{tareas.length}</span>
-                  )}
-                </div>
-
-                <div className="flex flex-col divide-y divide-gray-800/70">
-                  {sugerencias.map((s, i) => (
-                    <div key={'sug' + i} className="flex items-start gap-2.5 py-2.5 text-sm">
-                      <span className="w-[18px] h-[18px] mt-0.5 rounded-md border border-dashed border-blue-500/60 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-gray-300 leading-snug">{s}</p>
-                        <button onClick={() => addTarea(s)} className="text-blue-400 hover:text-blue-300 text-xs font-medium mt-0.5 transition">＋ añadir</button>
-                      </div>
-                    </div>
-                  ))}
-                  {tareas.map(t => (
-                    <div key={t.id} className="group flex items-start gap-2.5 py-2.5 text-sm">
-                      <button onClick={() => toggleTarea(t)}
-                        className={'w-[18px] h-[18px] mt-0.5 rounded-md flex items-center justify-center flex-shrink-0 border transition ' + (t.hecho ? 'bg-green-500 border-green-500 text-green-950' : 'border-gray-600 hover:border-gray-400')}
-                        style={{ fontSize: 11, fontWeight: 900 }}>{t.hecho ? '✓' : ''}</button>
-                      <span className={'flex-1 leading-snug ' + (t.hecho ? 'text-gray-600 line-through' : 'text-gray-200')}>{t.texto}</span>
-                      <button onClick={() => borrarTarea(t.id)} className="text-gray-700 opacity-0 group-hover:opacity-100 hover:text-red-400 transition text-xs flex-shrink-0 mt-0.5">✕</button>
-                    </div>
-                  ))}
-                </div>
-
-                {sugerencias.length === 0 && tareas.length === 0 && (
-                  <p className="text-gray-600 text-sm py-3 leading-snug">Todo al día. Añade lo que tengas que hacer con {activo.nombre}.</p>
-                )}
-
-                <div className="mt-3.5 pt-3.5 border-t border-gray-800/70">
-                  <input value={nuevaTarea} onChange={e => setNuevaTarea(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addTarea() }}
-                    placeholder="Añadir una tarea…"
-                    className="w-full bg-gray-800/70 text-white text-sm px-3.5 py-2 rounded-xl outline-none placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-orange-500/60 transition" />
-                  <button onClick={() => addTarea()} disabled={!nuevaTarea.trim()}
-                    className="w-full mt-2 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:hover:bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl transition">Añadir tarea</button>
-                </div>
-              </aside>
-
-              {/* Próximas sesiones */}
-              <aside className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <p className="font-semibold text-sm">Próximas sesiones</p>
-                  <button onClick={() => router.push('/planificacion-visual/' + activo.id)} className="text-xs text-gray-500 hover:text-white transition">Ver plan →</button>
-                </div>
-                {metricas?.agenda && metricas.agenda.length > 0 ? (
-                  <div className="flex flex-col">
-                    {metricas.agenda.map((s, i) => (
-                      <button key={i} onClick={() => router.push('/planificacion-visual/' + activo.id)}
-                        className="group flex items-center gap-3 py-2.5 border-b border-gray-800/60 last:border-0 text-left transition">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-gray-200 truncate group-hover:text-white transition">{s.disciplina}{s.zona ? ' · ' + s.zona : ''}</p>
-                          <p className="text-[11px] text-gray-500">{s.etiqueta}{s.min ? ' · ~' + fmtMin(s.min) : ''}</p>
+              {/* Columna derecha */}
+              <div className="flex flex-col gap-5">
+                {/* Necesita tu atención */}
+                <aside className="tp-card p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="font-semibold text-sm">Necesita tu atención</p>
+                    {notifs.length > 0 && <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#f9731622', color: '#fdba74' }}>{notifs.length}</span>}
+                  </div>
+                  {notifs.length === 0 ? (
+                    <p className="text-gray-600 text-sm py-2 leading-snug">Todo al día con {activo.nombre?.split(' ')[0]}. 👌</p>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-gray-800/70">
+                      {notifs.map((n, i) => (
+                        <div key={i} className="flex items-start gap-3 py-2.5">
+                          <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: n.color }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] text-gray-200 leading-snug">{n.texto}</p>
+                            {n.sub && <p className="text-[11px] text-gray-500">{n.sub}</p>}
+                            {n.add && <button onClick={() => addTarea(n.add)} className="text-blue-400 hover:text-blue-300 text-[11px] font-medium mt-0.5 transition">＋ añadir a tareas</button>}
+                          </div>
                         </div>
-                      </button>
+                      ))}
+                    </div>
+                  )}
+                </aside>
+
+                {/* Tareas */}
+                <aside className="tp-card p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="font-semibold text-sm">Tareas</p>
+                    {tareas.length > 0 && <span className="text-xs text-gray-500">{hechas}/{tareas.length}</span>}
+                  </div>
+                  <div className="flex flex-col divide-y divide-gray-800/70">
+                    {tareas.map(t => (
+                      <div key={t.id} className="group flex items-start gap-2.5 py-2.5 text-sm">
+                        <button onClick={() => toggleTarea(t)}
+                          className={'w-[18px] h-[18px] mt-0.5 rounded-md flex items-center justify-center flex-shrink-0 border transition ' + (t.hecho ? 'bg-green-500 border-green-500 text-green-950' : 'border-gray-600 hover:border-gray-400')}
+                          style={{ fontSize: 11, fontWeight: 900 }}>{t.hecho ? '✓' : ''}</button>
+                        <span className={'flex-1 leading-snug ' + (t.hecho ? 'text-gray-600 line-through' : 'text-gray-200')}>{t.texto}</span>
+                        <button onClick={() => borrarTarea(t.id)} className="text-gray-700 opacity-0 group-hover:opacity-100 hover:text-red-400 transition text-xs flex-shrink-0 mt-0.5">✕</button>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-gray-600 text-sm py-3 leading-snug">Sin sesiones programadas próximamente.</p>
-                )}
-              </aside>
+                  {tareas.length === 0 && <p className="text-gray-600 text-sm py-3 leading-snug">Todo al día. Añade lo que tengas que hacer con {activo.nombre}.</p>}
+                  <div className="mt-3.5 pt-3.5 border-t border-gray-800/70">
+                    <input value={nuevaTarea} onChange={e => setNuevaTarea(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addTarea() }}
+                      placeholder="Añadir una tarea…"
+                      className="w-full bg-gray-800/70 text-white text-sm px-3.5 py-2 rounded-xl outline-none placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-orange-500/60 transition" />
+                    <button onClick={() => addTarea()} disabled={!nuevaTarea.trim()}
+                      className="w-full mt-2 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:hover:bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl transition">Añadir tarea</button>
+                  </div>
+                </aside>
+
+                {/* Próximas sesiones */}
+                <aside className="tp-card p-4">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="font-semibold text-sm">Próximas sesiones</p>
+                    <button onClick={() => router.push('/planificacion-visual/' + activo.id)} className="text-xs text-gray-500 hover:text-white transition">Ver plan →</button>
+                  </div>
+                  {metricas?.agenda && metricas.agenda.length > 0 ? (
+                    <div className="flex flex-col">
+                      {metricas.agenda.map((s, i) => (
+                        <button key={i} onClick={() => router.push('/planificacion-visual/' + activo.id)}
+                          className="group flex items-center gap-3 py-2.5 border-b border-gray-800/60 last:border-0 text-left transition">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-gray-200 truncate group-hover:text-white transition">{s.disciplina}{s.zona ? ' · ' + s.zona : ''}</p>
+                            <p className="text-[11px] text-gray-500">{s.etiqueta}{s.min ? ' · ~' + fmtMin(s.min) : ''}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-600 text-sm py-3 leading-snug">Sin sesiones programadas próximamente.</p>
+                  )}
+                </aside>
               </div>
             </div>
           </>

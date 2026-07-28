@@ -10,7 +10,9 @@ import { PRUEBAS, CATEGORIAS_PRUEBA, pruebaPorId, resumenSegmentos } from '@/lib
 import { plantillasDe, bloquesDe, aplicarBloques, volumenPrincipal, NIVELES, type PlantillaSesion, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { ZONAS_FUERZA, cargaZona } from '@/lib/zonas'
+import { ZONAS_FUERZA, ZONAS_RESISTENCIA, cargaZona } from '@/lib/zonas'
+
+const DISC_RESISTENCIA = ['Natacion', 'Ciclismo', 'Carrera']
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 
@@ -140,6 +142,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [macroSel, setMacroSel] = useState<any>(null)
   const [mesoSel, setMesoSel] = useState<any>(null)
   const [microSel, setMicroSel] = useState<any>(null)
+  // Sesión suelta: se crea sin microciclo cuando el día no tiene planificación montada.
+  const [sesionLibre, setSesionLibre] = useState(false)
+  // Zonas 2 activa el modo simple/compleja también en resistencia.
+  const zonas2 = (deportista?.sistema_zonas || 1) === 2
   const [compSel, setCompSel] = useState<any>(null)
   const [bloqueoSel, setBloqueoSel] = useState<any>(null)
   const [loading, setLoading] = useState(false)
@@ -151,10 +157,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [mesoTipo, setMesoTipo] = useState('')
   const [mesoDuracion, setMesoDuracion] = useState('')
   const [mesoIntensidad, setMesoIntensidad] = useState('')
+  const [mesoTid, setMesoTid] = useState('')
   const [microObj, setMicroObj] = useState('')
   const [microTipo, setMicroTipo] = useState('')
   const [sesionDisc, setSesionDisc] = useState('')
   const [sesionModoFuerza, setSesionModoFuerza] = useState('simple')
+  // Mismo concepto que en fuerza pero para resistencia. Solo aplica con Zonas 2.
+  const [sesionModoRes, setSesionModoRes] = useState('simple')
+  const [sesionZonaRes, setSesionZonaRes] = useState('')
   const [brick, setBrick] = useState<BrickValor>(BRICK_VACIO)
   const [sesionZonaFuerza, setSesionZonaFuerza] = useState('')
   const [sesionDuracion, setSesionDuracion] = useState('')
@@ -347,6 +357,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       notas_entrenador: sesionCopiada.notas_entrenador,
       zona_fuerza: sesionCopiada.zona_fuerza ?? null,
       modo_fuerza: sesionCopiada.modo_fuerza ?? null,
+      zona_resistencia: sesionCopiada.zona_resistencia ?? null,
+      modo_resistencia: sesionCopiada.modo_resistencia ?? null,
       usar_cronometro: sesionCopiada.usar_cronometro ?? null,
       estado: 'Planificada'
     }).select().single()
@@ -389,6 +401,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         duracion_minutos: s.duracion_minutos,
         rpe_estimado: s.rpe_estimado,
         notas_entrenador: s.notas_entrenador,
+        // Al pegar la semana se conserva el tipo de sesión (antes se perdía).
+        modo_fuerza: s.modo_fuerza ?? null,
+        zona_fuerza: s.zona_fuerza ?? null,
+        modo_resistencia: s.modo_resistencia ?? null,
+        zona_resistencia: s.zona_resistencia ?? null,
         estado: 'Planificada'
       }).select().single()
       if (sesNueva2) await copiarTareasASesion(s.id, sesNueva2.id)
@@ -450,6 +467,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setSesionEditando(ses); setSesionDisc(ses.disciplina || ''); setSesionDuracion(ses.duracion_minutos || '')
     setSesionRpe(ses.rpe_estimado || ''); setSesionNotas(ses.notas_entrenador || '')
     setSesionModoFuerza(ses.modo_fuerza || 'simple'); setSesionZonaFuerza(ses.zona_fuerza || '')
+    setSesionModoRes(ses.modo_resistencia || 'simple'); setSesionZonaRes(ses.zona_resistencia || '')
     // Un brick se edita con sus bloques delante: hay que reconstruirlo de la BD.
     setBrick(ses.disciplina === 'Brick' ? await cargarBrick(supabase, ses.id) : BRICK_VACIO)
     setModalTipo('editarSesion')
@@ -460,6 +478,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     e.preventDefault(); setLoading(true)
     const esF = sesionDisc === 'Fuerza'
     const esB = sesionDisc === 'Brick'
+    // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
+    const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
     if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
     await supabase.from('sesion').update({
       disciplina: sesionDisc,
@@ -468,6 +488,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       notas_entrenador: sesionNotas,
       modo_fuerza: esF ? sesionModoFuerza : null,
       zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null,
+      modo_resistencia: esRes ? sesionModoRes : null,
+      zona_resistencia: (esRes && sesionModoRes === 'simple') ? (sesionZonaRes || null) : null,
     }).eq('id', sesionEditando.id)
     if (esB) {
       const err = await guardarBrick(supabase, sesionEditando.id, brick)
@@ -484,11 +506,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       objetivo: mesoObj,
       tipo: mesoTipo,
       fecha_inicio: fechaSel,
+      tid_objetivo: mesoTid || null,
       duracion_semanas: Number(mesoDuracion),
       intensidad_relativa: mesoIntensidad ? Number(mesoIntensidad) : null
     })
     if (error) { alert('Error: ' + error.message); setLoading(false); return }
-    setMesoObj(''); setMesoTipo(''); setMesoDuracion(''); setMesoIntensidad('')
+    setMesoObj(''); setMesoTipo(''); setMesoDuracion(''); setMesoIntensidad(''); setMesoTid('')
     setModalTipo(null)
     await cargarDatos()
     setLoading(false)
@@ -498,15 +521,25 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     e.preventDefault(); setLoading(true)
     const esF = sesionDisc === 'Fuerza'
     const esB = sesionDisc === 'Brick'
+    // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
+    const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
     if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
+    // Si es libre no hay microciclo al que colgarla: se guarda suelta contra el deportista.
+    // Aun así se comprueba si alguna semana cubre esa fecha; si la hay, se engancha
+    // (igual que hace el deportista desde "Mis sesiones") para que cuente en el plan.
+    const microDeLaFecha = sesionLibre ? getMicroDelDia(fechaSel) : microSel
     const { data: nueva } = await supabase.from('sesion').insert({
-      id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: fechaSel,
+      id_microciclo: microDeLaFecha ? microDeLaFecha.id : null,
+      ...(microDeLaFecha ? {} : { id_deportista: Number(id), origen: 'entrenador' }),
+      disciplina: sesionDisc, fecha_sesion: fechaSel,
       duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
       rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
       notas_entrenador: sesionNotas, estado: 'Planificada',
       modo_fuerza: esF ? sesionModoFuerza : null,
       zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null,
+      modo_resistencia: esRes ? sesionModoRes : null,
+      zona_resistencia: (esRes && sesionModoRes === 'simple') ? (sesionZonaRes || null) : null,
     }).select().single()
     if (esB) {
       if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setLoading(false); return }
@@ -515,6 +548,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     }
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas('')
     setSesionModoFuerza('simple'); setSesionZonaFuerza(''); setBrick(BRICK_VACIO)
+    setSesionModoRes('simple'); setSesionZonaRes('')
+    setSesionLibre(false)
     setModalTipo(null); await cargarDatos(); setLoading(false)
   }
 
@@ -1079,9 +1114,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <p className="text-gray-400 text-sm">{fechaSel}</p>
                 {modalTipo === 'meso' && <p className="text-orange-400 text-xs mt-0.5">Macro: {macroSel?.objetivo}</p>}
                 {modalTipo === 'micro' && <p className="text-orange-400 text-xs mt-0.5">Meso: {mesoSel?.objetivo}</p>}
-                {modalTipo === 'sesion' && <p className="text-orange-400 text-xs mt-0.5">Semana: {microSel?.objetivo}</p>}
+                {modalTipo === 'sesion' && !sesionLibre && <p className="text-orange-400 text-xs mt-0.5">Semana: {microSel?.objetivo}</p>}
+                {modalTipo === 'sesion' && sesionLibre && (
+                  <p className="text-xs mt-0.5" style={{ color: '#a78bfa' }}>
+                    {getMicroDelDia(fechaSel) ? 'Se guardará en la semana de esa fecha' : 'Sesión suelta · sin planificación'}
+                  </p>
+                )}
               </div>
-              <button onClick={() => setModalTipo(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+              <button onClick={() => { setModalTipo(null); setSesionLibre(false) }} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
 
             {modalTipo === 'pegarSemana' && (
@@ -1223,6 +1263,29 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 </select>
                 <input type="number" placeholder="Duración en semanas" value={mesoDuracion} onChange={e => setMesoDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <input type="number" min="1" max="10" placeholder="Intensidad relativa (1-10)" value={mesoIntensidad} onChange={e => setMesoIntensidad(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+
+                {/* Distribución de intensidad objetivo del bloque. Volumen la usa para
+                    comparar lo que se entrenó de verdad contra lo que se planificó. */}
+                <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
+                  <p className="text-gray-400 text-xs">Distribución de intensidad objetivo <span className="text-gray-600">· opcional</span></p>
+                  <div className="flex gap-2 flex-wrap">
+                    {([
+                      { v: 'piramidal', t: 'Piramidal', d: '75–80 · 10–20 · 5–10' },
+                      { v: 'polarizado', t: 'Polarizada', d: '75–80 · <10 · 15–20' },
+                      { v: 'umbral', t: 'De umbral', d: '40–55 · 35–50 · 5–15' },
+                    ] as const).map(o => (
+                      <button type="button" key={o.v} onClick={() => setMesoTid(mesoTid === o.v ? '' : o.v)}
+                        className={'flex-1 min-w-[110px] rounded-lg px-3 py-2 text-xs border transition text-left ' + (mesoTid === o.v ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500')}>
+                        <span className="font-bold block">{o.t}</span>
+                        <span className="text-[10px] text-gray-500">{o.d}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-gray-600 text-[10.5px] leading-snug">
+                    % de tiempo en suave · media · alta. Suele ser piramidal en preparación general y polarizada en la específica y el taper.
+                  </p>
+                </div>
+
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear mesociclo'}</button>
               </form>
             )}
@@ -1238,6 +1301,18 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Crear semana'}</button>
               </form>
             )}
+
+            {/* Salida rápida: si no quieres montar la estructura, apunta la sesión y listo. */}
+            {(modalTipo === 'macro' || modalTipo === 'meso' || modalTipo === 'micro') && (
+              <div className="mt-5 pt-4 border-t border-gray-800">
+                <p className="text-gray-500 text-xs mb-2.5">¿Solo quieres apuntar un entrenamiento en este día?</p>
+                <button onClick={() => { setSesionLibre(true); setModalTipo('sesion') }}
+                  className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/35 text-purple-300 py-2.5 rounded-lg text-sm font-semibold transition">
+                  + Añadir sesión libre
+                </button>
+              </div>
+            )}
+
             {modalTipo === 'editarSesion' && (
               <form onSubmit={guardarEdicionSesion} className="flex flex-col gap-3">
                 <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
@@ -1259,6 +1334,26 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       <select value={sesionZonaFuerza} onChange={e => setSesionZonaFuerza(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
                         <option value="">Zona de fuerza de la sesión…</option>
                         {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+                {/* Mismo concepto en resistencia. Solo con Zonas 2: con Z1–Z7 no aplica. */}
+                {zonas2 && DISC_RESISTENCIA.includes(sesionDisc) && (
+                  <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
+                    <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                    <div className="flex gap-2">
+                      {[{ v: 'simple', t: 'Simple', d: 'una zona' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
+                        <button type="button" key={o.v} onClick={() => setSesionModoRes(o.v)}
+                          className={'flex-1 rounded-lg px-3 py-2 text-xs border transition text-left ' + (sesionModoRes === o.v ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500')}>
+                          <span className="font-bold block">{o.t}</span><span className="text-[10px] text-gray-500">{o.d}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {sesionModoRes === 'simple' && (
+                      <select value={sesionZonaRes} onChange={e => setSesionZonaRes(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
+                        <option value="">Zona de la sesión…</option>
+                        {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
                       </select>
                     )}
                   </div>
@@ -1291,6 +1386,26 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       <select value={sesionZonaFuerza} onChange={e => setSesionZonaFuerza(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
                         <option value="">Zona de fuerza de la sesión…</option>
                         {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+                {/* Mismo concepto en resistencia. Solo con Zonas 2: con Z1–Z7 no aplica. */}
+                {zonas2 && DISC_RESISTENCIA.includes(sesionDisc) && (
+                  <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
+                    <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                    <div className="flex gap-2">
+                      {[{ v: 'simple', t: 'Simple', d: 'una zona' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
+                        <button type="button" key={o.v} onClick={() => setSesionModoRes(o.v)}
+                          className={'flex-1 rounded-lg px-3 py-2 text-xs border transition text-left ' + (sesionModoRes === o.v ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500')}>
+                          <span className="font-bold block">{o.t}</span><span className="text-[10px] text-gray-500">{o.d}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {sesionModoRes === 'simple' && (
+                      <select value={sesionZonaRes} onChange={e => setSesionZonaRes(e.target.value)} className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm">
+                        <option value="">Zona de la sesión…</option>
+                        {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
                       </select>
                     )}
                   </div>

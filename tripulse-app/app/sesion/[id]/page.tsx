@@ -13,7 +13,7 @@ const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴',
 import DatosReales from './DatosReales'
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
-import { ZONAS_FUERZA, zonaResistencia, prescripcion } from '@/lib/zonas'
+import { ZONAS_FUERZA, ZONAS_RESISTENCIA, zonaResistencia, prescripcion } from '@/lib/zonas'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
@@ -29,6 +29,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [recargaTareas, setRecargaTareas] = useState(0)
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
+  const [sistemaZonas, setSistemaZonas] = useState(1)
   const [esDeportista, setEsDeportista] = useState(false)
   // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
   // (aplicarlas reescribe las tareas). Fuerza y Brick no tienen: la fuerza va por
@@ -299,12 +300,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // sesión libre por id_deportista → los ritmos sugeridos salen también en libres.
       if (depIdLocal) {
         setDeportistaId(depIdLocal)
-        const [t1, t2, t3, an] = await Promise.all([
+        const [t1, t2, t3, an, dep] = await Promise.all([
           supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
           supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
           supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
           supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
+          // El modo simple/compleja de resistencia solo se ofrece con Zonas 2.
+          supabase.from('deportista').select('sistema_zonas').eq('id', depIdLocal).maybeSingle(),
         ])
+        setSistemaZonas(dep.data?.sistema_zonas || 1)
         setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
         setPesoDeportista(an.data?.peso || null)
       }
@@ -874,6 +878,28 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           </div>
         )}
 
+        {/* Mismo control para resistencia. Solo con Zonas 2. */}
+        {sistemaZonas === 2 && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion.disciplina) && !esDeportista && (
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
+            <span className="text-gray-400 text-sm">Sesión de resistencia:</span>
+            <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
+              {['simple', 'compleja'].map(m => (
+                <button key={m} onClick={() => actualizarFuerza({ modo_resistencia: m, ...(m === 'compleja' ? { zona_resistencia: null } : {}) })}
+                  className={'text-xs px-3 py-1.5 rounded-md transition capitalize ' + ((sesion.modo_resistencia || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
+              ))}
+            </div>
+            {(sesion.modo_resistencia || 'simple') === 'simple' ? (
+              <select value={sesion.zona_resistencia || ''} onChange={e => actualizarFuerza({ zona_resistencia: e.target.value || null })}
+                className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">Zona de la sesión…</option>
+                {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+              </select>
+            ) : (
+              <span className="text-gray-500 text-xs">Cada tarea elige su zona</span>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-xl font-bold">Tareas</h3>
           <div className="flex gap-2">
@@ -897,7 +923,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
-            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} onTareasCambian={cargarDatos} />
+            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} modoResistencia={sesion.modo_resistencia || 'simple'} zonaResistencia={sesion.zona_resistencia || ''} onTareasCambian={cargarDatos} />
           </div>
         ) : (
           <div>
