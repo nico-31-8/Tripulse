@@ -143,13 +143,12 @@ export default function IndicesPage() {
 
         {/* Qué mide este módulo. No es carga ni volumen: es si el esfuerzo que reporta
             el atleta cuadra con su pulsómetro, y si lo planificado cuadra con lo que
-            costó. Sin esta frase el nombre no dice nada. */}
-        {!seleccionado && (
-          <p className="text-gray-400 text-sm mb-6 max-w-2xl">
-            ¿El esfuerzo que dice el atleta cuadra con lo que dice su pulsómetro? ¿Y lo que planificaste
-            con lo que de verdad costó? El semáforo cruza las dos preguntas.
-          </p>
-        )}
+            costó. Va siempre visible: con un atleta activo la pantalla de selección se
+            salta, y ahí es justo donde hace falta entender qué se está mirando. */}
+        <p className="text-gray-400 text-sm mb-6 max-w-2xl">
+          ¿El esfuerzo que dice el atleta cuadra con lo que dice su pulsómetro? ¿Y lo que planificaste
+          con lo que de verdad costó? El semáforo cruza las dos preguntas.
+        </p>
 
         {!seleccionado && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">

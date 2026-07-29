@@ -544,14 +544,21 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
             media pantalla y no decía ni el nombre del deportista. */}
         <div className="tp-card p-[14px_18px] flex items-center gap-4 flex-wrap">
-          <span className="w-[42px] h-[42px] rounded-xl flex-none grid place-items-center font-extrabold text-[14px] text-gray-950"
-            style={{ background: 'linear-gradient(150deg,#fbbf24,#f97316)' }}>
-            {iniciales(nombreDeportista)}
-          </span>
+          {/* El nombre llega en una consulta posterior a la sesión. Mientras tanto se
+              enseña la fecha como título en vez de un «Sesión» y unas iniciales falsas
+              que parpadearían al cargar. */}
+          {nombreDeportista && (
+            <span className="w-[42px] h-[42px] rounded-xl flex-none grid place-items-center font-extrabold text-[14px] text-gray-950"
+              style={{ background: 'linear-gradient(150deg,#fbbf24,#f97316)' }}>
+              {iniciales(nombreDeportista)}
+            </span>
+          )}
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[16.5px] font-bold tracking-tight">{nombreDeportista || 'Sesión'}</span>
+            <span className="text-[16.5px] font-bold tracking-tight">
+              {nombreDeportista || fechaLarga(sesion.fecha_sesion)}
+            </span>
             <span className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
-              {fechaLarga(sesion.fecha_sesion)}
+              {nombreDeportista ? fechaLarga(sesion.fecha_sesion) : ''}
               {ciclo?.meso && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -580,9 +587,17 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
+                  {/* En una sesión hecha manda lo que duró de verdad: enseñar aquí la
+                      estimación mientras abajo pone «18 min realizados» se contradice. */}
                   <span className="text-[14.5px] font-semibold tabular-nums">
-                    {sesion.duracion_minutos ? sesion.duracion_minutos : durEstimada.estimable ? '~' + durEstimada.minutos : '—'}
-                    {(sesion.duracion_minutos || durEstimada.estimable) && <span className="text-[11px] font-normal text-gray-500"> min {sesion.duracion_minutos ? '(manual)' : '(est.)'}</span>}
+                    {sesion.duracion_real ? sesion.duracion_real
+                      : sesion.duracion_minutos ? sesion.duracion_minutos
+                      : durEstimada.estimable ? '~' + durEstimada.minutos : '—'}
+                    {(sesion.duracion_real || sesion.duracion_minutos || durEstimada.estimable) && (
+                      <span className="text-[11px] font-normal text-gray-500">
+                        {' min '}{sesion.duracion_real ? '(real)' : sesion.duracion_minutos ? '(manual)' : '(est.)'}
+                      </span>
+                    )}
                   </span>
                   <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
                     className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>

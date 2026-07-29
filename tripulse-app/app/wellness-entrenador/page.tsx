@@ -399,11 +399,6 @@ export default function WellnessEntrenador() {
                       )}
                     </div>
 
-                    {/* Hueco reservado — pendiente de definir */}
-                    <div className="rounded-2xl border border-dashed border-white/[0.09] p-8 text-center">
-                      <p className="text-[12.5px] text-gray-600">Espacio reservado</p>
-                      <p className="text-[11px] text-gray-700 mt-1">Aquí va lo que decidas para esta zona</p>
-                    </div>
                   </div>
                 </div>
               </div>

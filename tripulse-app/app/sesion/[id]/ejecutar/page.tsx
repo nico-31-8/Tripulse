@@ -177,6 +177,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     }
     const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
     setTareas(tar || [])
+    // Se entra directo a entrenar, pero si no hay nada que registrar eso sería una
+    // pantalla vacía: en ese caso se abre por el plan, que sí explica que está vacío.
+    if (!tar || !tar.length) setFase('preview')
     // Cargar ejercicios de todas las tareas
     if (tar && tar.length > 0) {
       const tareaIds = tar.map((t: any) => t.id)
@@ -441,7 +444,18 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   // MODO EJECUCIÓN
   if (fase === 'ejecutar') {
     const tarea = tareas[tareaActual]
-    if (!tarea) return null
+    // Red de seguridad: sin tarea que pintar esto devolvía null y dejaba la pantalla
+    // en blanco. Pasa si la sesión no tiene tareas o si el índice se va de rango.
+    if (!tarea) return (
+      <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="text-5xl">📋</div>
+        <p className="text-gray-400">Esta sesión no tiene tareas que registrar.</p>
+        <div className="flex gap-3">
+          <button onClick={() => setFase('preview')} className="bg-gray-800 hover:bg-gray-700 px-4 py-2.5 rounded-xl text-sm transition">Ver el plan</button>
+          <button onClick={irAPost} className="bg-orange-500 hover:bg-orange-600 px-4 py-2.5 rounded-xl text-sm font-medium transition">Marcarla como hecha</button>
+        </div>
+      </main>
+    )
     const tipo = getTipoMedicion(tarea)
     const r = resultados[tarea?.id] || {}
     const esUltima = tareaActual === tareas.length - 1
