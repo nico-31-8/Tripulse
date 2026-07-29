@@ -11,6 +11,25 @@ import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+function fechaLarga(f: string | null | undefined): string {
+  if (!f) return ''
+  const d = new Date(f + 'T12:00:00')
+  if (isNaN(d.getTime())) return f
+  const dia = DIAS[d.getDay()]
+  return dia.charAt(0).toUpperCase() + dia.slice(1) + ' ' + d.getDate() + ' ' + MESES[d.getMonth()]
+}
+
+// Iniciales para el avatar. Sin nombre cargado, un guion antes que una letra falsa.
+function iniciales(nombre: string | null | undefined): string {
+  if (!nombre) return '—'
+  const partes = nombre.trim().split(/\s+/).filter(Boolean)
+  if (!partes.length) return '—'
+  return (partes[0][0] + (partes[1]?.[0] || '')).toUpperCase()
+}
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
@@ -27,6 +46,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [recargaTareas, setRecargaTareas] = useState(0)
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
+  // De quién es la sesión y en qué punto del plan cae: la misma sesión significa una
+  // cosa en semana de choque y otra en descarga.
+  const [nombreDeportista, setNombreDeportista] = useState<string | null>(null)
+  const [ciclo, setCiclo] = useState<{ meso: number | null; semana: number | null; tipo: string | null } | null>(null)
+  // Nutrición y notas arrancan plegadas: en el editor estorban delante de las tareas.
+  const [abreNutricion, setAbreNutricion] = useState(false)
+  const [abreNotas, setAbreNotas] = useState(false)
   const [sistemaZonas, setSistemaZonas] = useState(1)
   const [esDeportista, setEsDeportista] = useState(false)
   // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
@@ -68,7 +94,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }
   const [vistaTabla, setVistaTabla] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
-  const [mostrarPostSesion, setMostrarPostSesion] = useState(false)
   const [zona, setZona] = useState('')
   const [disciplina, setDisciplina] = useState('')
   const [series, setSeries] = useState('')
@@ -205,7 +230,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setTareas(tar || [])
     if (ses) {
       let depIdLocal: number | null = ses.id_deportista ?? null
-      const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
+      const { data: micro } = await supabase.from('microciclo').select('id_mesociclo, tipo').eq('id', ses.id_microciclo).single()
       if (micro) {
         const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
         if (meso) {
@@ -215,11 +240,22 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
             // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
             // Se recorre toda la cadena meso→micro del deportista (una vez).
-            const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', meso.id_macrociclo)
+            const { data: mesos } = await supabase.from('mesociclo').select('id, fecha_inicio').eq('id_macrociclo', meso.id_macrociclo).order('fecha_inicio')
             const mesoIds = (mesos || []).map(m => m.id)
             if (mesoIds.length) {
-              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio').in('id_mesociclo', mesoIds)
+              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio, id_mesociclo').in('id_mesociclo', mesoIds).order('fecha_inicio')
               const microIds = (micros || []).map(m => m.id)
+
+              // En qué punto del plan cae esta sesión. Ni mesociclo ni microciclo tienen
+              // columna de número: sale de su posición por fecha dentro de su padre.
+              const nMeso = mesoIds.indexOf(micro.id_mesociclo) + 1
+              const delMeso = (micros || []).filter(m => m.id_mesociclo === micro.id_mesociclo)
+              const nSemana = delMeso.findIndex(m => m.id === ses.id_microciclo) + 1
+              setCiclo({
+                meso: nMeso > 0 ? nMeso : null,
+                semana: nSemana > 0 ? nSemana : null,
+                tipo: micro.tipo || null,
+              })
 
               // Días hasta la próxima competición (semana marcada como 'Competición')
               const fSes = new Date(ses.fecha_sesion)
@@ -252,10 +288,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
           supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
           supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
-          // El modo simple/compleja de resistencia solo se ofrece con Zonas 2.
-          supabase.from('deportista').select('sistema_zonas').eq('id', depIdLocal).maybeSingle(),
+          // El modo simple/compleja de resistencia solo se ofrece con Zonas 2. El nombre
+          // es para la cabecera: la ficha recorría toda la cadena para saber de quién era
+          // la sesión y se quedaba solo con el id, así que no decía de quién era.
+          supabase.from('deportista').select('sistema_zonas, nombre').eq('id', depIdLocal).maybeSingle(),
         ])
         setSistemaZonas(dep.data?.sistema_zonas || 1)
+        setNombreDeportista(dep.data?.nombre || null)
         setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
         setPesoDeportista(an.data?.peso || null)
       }
@@ -497,101 +536,152 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <div className="flex items-center gap-3"><button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button></div>
+      <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-end items-center border-b border-gray-800">
+        <button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button>
       </nav>
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <span className={'text-xs px-2 py-1 rounded-full font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
-            <span className={'text-xs px-2 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
-            {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">⏱ Cronometro</span>}
-          </div>
-          <h2 className="text-2xl font-bold">{sesion.fecha_sesion}</h2>
-          <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
-            <span className="text-gray-400">Duración:</span>
-            {editandoDuracion ? (
-              <span className="flex items-center gap-1.5">
-                <input type="number" autoFocus value={duracionManualInput} onChange={e => setDuracionManualInput(e.target.value)}
-                  placeholder="min" className="bg-gray-800 text-white w-20 px-2 py-1 rounded outline-none focus:ring-1 focus:ring-orange-500" />
-                <span className="text-gray-500 text-xs">min</span>
-                <button onClick={guardarDuracionManual} className="text-orange-400 hover:text-orange-300 text-xs px-1.5 py-1 rounded bg-gray-800">Guardar</button>
-                <button onClick={() => setEditandoDuracion(false)} className="text-gray-500 hover:text-white text-xs px-1">Cancelar</button>
-              </span>
-            ) : (
-              <>
-                {sesion.duracion_minutos ? (
-                  <span className="text-white font-medium">{sesion.duracion_minutos} min <span className="text-gray-500 text-xs font-normal">(manual)</span></span>
-                ) : durEstimada.estimable ? (
-                  <span className="text-white font-medium">~{durEstimada.minutos} min <span className="text-gray-500 text-xs font-normal">(estimada)</span></span>
-                ) : (
-                  <span className="text-gray-500">—</span>
-                )}
-                <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
-                  className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>
-                {sesion.duracion_minutos && (
-                  <button onClick={volverAEstimado} className="text-gray-500 hover:text-blue-400 text-xs" title="Volver a estimado">↺ estimar</button>
-                )}
-              </>
-            )}
-            <span className="text-gray-600">·</span>
-            <span className="text-gray-400">RPE est: {sesion.rpe_estimado || '—'}</span>
-          </div>
-          {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
-            <p className="text-yellow-500/80 text-xs mt-1">⚠️ Hay tareas de ciclismo por distancia — la duración no se puede estimar (usa tiempo/potencia o ponla a mano).</p>
-          )}
-          {!sesion.duracion_minutos && durEstimada.faltanTests && (
-            <p className="text-yellow-500/80 text-xs mt-1">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
-          )}
-          {sesion.notas_entrenador && <p className="text-gray-300 text-sm mt-2 italic bg-gray-800 rounded-lg px-3 py-2">"{sesion.notas_entrenador}"</p>}
+      <div className="max-w-5xl mx-auto px-6 py-6 flex flex-col gap-3.5">
 
-          <button onClick={abrirNutricion} className="mt-3 text-xs bg-gray-800 hover:bg-gray-700 text-orange-400 px-3 py-1.5 rounded-lg transition">
-            🍽 {nutricionGuardada(sesion) ? 'Editar nutrición' : 'Sugerir nutrición'}
-          </button>
+        {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
+            media pantalla y no decía ni el nombre del deportista. */}
+        <div className="tp-card p-[14px_18px] flex items-center gap-4 flex-wrap">
+          <span className="w-[42px] h-[42px] rounded-xl flex-none grid place-items-center font-extrabold text-[14px] text-gray-950"
+            style={{ background: 'linear-gradient(150deg,#fbbf24,#f97316)' }}>
+            {iniciales(nombreDeportista)}
+          </span>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-[16.5px] font-bold tracking-tight">{nombreDeportista || 'Sesión'}</span>
+            <span className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+              {fechaLarga(sesion.fecha_sesion)}
+              {ciclo?.meso && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  Meso {ciclo.meso}{ciclo.semana ? ' · Semana ' + ciclo.semana : ''}
+                  {ciclo.tipo ? ' (' + ciclo.tipo + ')' : ''}
+                </>
+              )}
+            </span>
+          </div>
 
-          {nutricionGuardada(sesion) && (
-            <div className="mt-3 bg-gray-800 rounded-lg px-3 py-2 flex flex-col gap-1">
-              <div className="flex items-center gap-3 flex-wrap text-xs text-gray-300">
-                {sesion.nutricion_carbo_gh != null && <span>🥤 {sesion.nutricion_carbo_gh} g/h carbohidrato</span>}
-                {sesion.nutricion_agua_mlh != null && <span>💧 {sesion.nutricion_agua_mlh} ml/h</span>}
-                {sesion.nutricion_sodio_mgh != null && <span>🧂 {sesion.nutricion_sodio_mgh} mg/h sodio</span>}
-                {sesion.nutricion_cafeina_mg != null && <span>☕ {sesion.nutricion_cafeina_mg} mg{sesion.nutricion_cafeina_timing ? ' — ' + sesion.nutricion_cafeina_timing : ''}</span>}
-                {sesion.nutricion_ayuno && <span className="text-yellow-400">🌙 En ayunas</span>}
-              </div>
-              {sesion.nutricion_notas && <p className="text-gray-400 text-xs italic">{sesion.nutricion_notas}</p>}
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
+            <span className={'text-xs px-2.5 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
+            {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}
+
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">Duración</span>
+              {editandoDuracion ? (
+                <span className="flex items-center gap-1.5">
+                  <input type="number" autoFocus value={duracionManualInput} onChange={e => setDuracionManualInput(e.target.value)}
+                    placeholder="min" className="bg-gray-800 text-white w-16 px-2 py-0.5 rounded outline-none focus:ring-1 focus:ring-orange-500 text-sm" />
+                  <button onClick={guardarDuracionManual} className="text-orange-400 hover:text-orange-300 text-xs px-1.5 py-0.5 rounded bg-gray-800">Guardar</button>
+                  <button onClick={() => setEditandoDuracion(false)} className="text-gray-500 hover:text-white text-xs px-1">Cancelar</button>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[14.5px] font-semibold tabular-nums">
+                    {sesion.duracion_minutos ? sesion.duracion_minutos : durEstimada.estimable ? '~' + durEstimada.minutos : '—'}
+                    {(sesion.duracion_minutos || durEstimada.estimable) && <span className="text-[11px] font-normal text-gray-500"> min {sesion.duracion_minutos ? '(manual)' : '(est.)'}</span>}
+                  </span>
+                  <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
+                    className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>
+                  {sesion.duracion_minutos && (
+                    <button onClick={volverAEstimado} className="text-gray-500 hover:text-blue-400 text-xs" title="Volver a estimado">↺</button>
+                  )}
+                </span>
+              )}
             </div>
-          )}
+
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">RPE est.</span>
+              <span className="text-[14.5px] font-semibold tabular-nums">{sesion.rpe_estimado || '—'}</span>
+            </div>
+
+            {/* La configuración de la sesión sube aquí: era una caja propia de 60px que
+                solo llevaba un conmutador y un desplegable. */}
+            {sesion.disciplina === 'Fuerza' && (
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
+                  {['simple', 'compleja'].map(m => (
+                    <button key={m} onClick={() => actualizarFuerza({ modo_fuerza: m, ...(m === 'compleja' ? { zona_fuerza: null } : {}) })}
+                      className={'text-[11.5px] px-2.5 py-1 rounded-md transition capitalize ' + ((sesion.modo_fuerza || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
+                  ))}
+                </div>
+                {(sesion.modo_fuerza || 'simple') === 'simple' ? (
+                  <select value={sesion.zona_fuerza || ''} onChange={e => actualizarFuerza({ zona_fuerza: e.target.value || null })}
+                    className="bg-gray-800 text-white text-xs px-2.5 py-1.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 border border-gray-700">
+                    <option value="">Zona de fuerza…</option>
+                    {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                  </select>
+                ) : (
+                  <span className="text-gray-500 text-[11.5px]">Cada tarea elige su cualidad</span>
+                )}
+              </div>
+            )}
+            {/* Mismo control para resistencia. Solo con Zonas 2. */}
+            {sistemaZonas === 2 && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion.disciplina) && (
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
+                  {['simple', 'compleja'].map(m => (
+                    <button key={m} onClick={() => actualizarFuerza({ modo_resistencia: m, ...(m === 'compleja' ? { zona_resistencia: null } : {}) })}
+                      className={'text-[11.5px] px-2.5 py-1 rounded-md transition capitalize ' + ((sesion.modo_resistencia || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
+                  ))}
+                </div>
+                {(sesion.modo_resistencia || 'simple') === 'simple' ? (
+                  <select value={sesion.zona_resistencia || ''} onChange={e => actualizarFuerza({ zona_resistencia: e.target.value || null })}
+                    className="bg-gray-800 text-white text-xs px-2.5 py-1.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 border border-gray-700">
+                    <option value="">Zona de la sesión…</option>
+                    {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                  </select>
+                ) : (
+                  <span className="text-gray-500 text-[11.5px]">Cada tarea elige su zona</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Por qué no hay estimación. Sin esto, un «—» parece un fallo de la app. */}
+        {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
+          <p className="text-yellow-500/80 text-xs">⚠️ Hay tareas de ciclismo por distancia — la duración no se puede estimar (usa tiempo/potencia o ponla a mano).</p>
+        )}
+        {!sesion.duracion_minutos && durEstimada.faltanTests && (
+          <p className="text-yellow-500/80 text-xs">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
+        )}
+
         {sesion.estado === 'Realizada' && (
-          <div className="mb-6">
-            <div className="bg-green-900 border border-green-500 rounded-xl p-4 mb-4 text-center">
-              <p className="text-green-300 font-bold">✓ Sesion completada</p>
-              {sesion.duracion_real && <p className="text-green-400 text-sm">{sesion.duracion_real} min realizados</p>}
+          <div className="flex flex-col gap-3.5">
+            <div className="rounded-2xl border border-green-500/40 bg-green-500/[0.08] px-[18px] py-3 flex items-center gap-3.5 flex-wrap">
+              <b className="text-green-400 text-sm">✓ Sesión completada</b>
+              {sesion.duracion_real && <span className="text-[12.5px] text-gray-400">{sesion.duracion_real} min realizados</span>}
             </div>
 
-            {recup && (
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">🍽</span>
-                  <h3 className="text-white font-bold text-sm">{recup.titulo}</h3>
-                </div>
-                <p className="text-gray-300 text-sm mb-2">{recup.mensaje}</p>
-                {(recup.carboG != null || recup.proteinaG != null) && (
-                  <div className="flex gap-3 flex-wrap text-xs mb-2">
-                    {recup.carboG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🥤 ~{recup.carboG} g carbohidrato</span>}
-                    {recup.proteinaG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🍗 ~{recup.proteinaG} g proteína</span>}
+            {/* Recuperación y planificado-vs-real, en paralelo: son las dos preguntas
+                que se hace el entrenador al abrir una sesión ya hecha. */}
+            <div className={recup ? 'grid lg:grid-cols-2 gap-3.5 items-start' : ''}>
+              {recup && (
+                <div className="tp-card p-[16px_18px]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🍽</span>
+                    <h3 className="text-white font-bold text-sm">{recup.titulo}</h3>
                   </div>
-                )}
-                {recup.ejemplos && <p className="text-gray-400 text-xs mb-1">{recup.ejemplos}</p>}
-                {recup.hidratacion && <p className="text-gray-400 text-xs mb-1">💧 {recup.hidratacion}</p>}
-                {recup.extra.map((e, i) => (
-                  <p key={i} className="text-yellow-400/90 text-xs mt-1.5">⚠️ {e}</p>
-                ))}
-              </div>
-            )}
-
-            <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
+                  <p className="text-gray-300 text-sm mb-2">{recup.mensaje}</p>
+                  {(recup.carboG != null || recup.proteinaG != null) && (
+                    <div className="flex gap-2 flex-wrap text-xs mb-2">
+                      {recup.carboG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🥤 ~{recup.carboG} g carbohidrato</span>}
+                      {recup.proteinaG != null && <span className="bg-gray-800 rounded-lg px-2.5 py-1 text-gray-200">🍗 ~{recup.proteinaG} g proteína</span>}
+                    </div>
+                  )}
+                  {recup.ejemplos && <p className="text-gray-400 text-xs mb-1">{recup.ejemplos}</p>}
+                  {recup.hidratacion && <p className="text-gray-400 text-xs mb-1">💧 {recup.hidratacion}</p>}
+                  {recup.extra.map((e, i) => (
+                    <p key={i} className="text-yellow-400/90 text-xs mt-1.5">⚠️ {e}</p>
+                  ))}
+                </div>
+              )}
+              <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
+            </div>
           </div>
         )}
 
@@ -665,52 +755,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         <SessionLoadChart tareas={tareas} />
 
-        {sesion.disciplina === 'Fuerza' && (
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
-            <span className="text-gray-400 text-sm">Sesión de fuerza:</span>
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
-              {['simple', 'compleja'].map(m => (
-                <button key={m} onClick={() => actualizarFuerza({ modo_fuerza: m, ...(m === 'compleja' ? { zona_fuerza: null } : {}) })}
-                  className={'text-xs px-3 py-1.5 rounded-md transition capitalize ' + ((sesion.modo_fuerza || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
-              ))}
-            </div>
-            {(sesion.modo_fuerza || 'simple') === 'simple' ? (
-              <select value={sesion.zona_fuerza || ''} onChange={e => actualizarFuerza({ zona_fuerza: e.target.value || null })}
-                className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                <option value="">Zona de fuerza…</option>
-                {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
-              </select>
-            ) : (
-              <span className="text-gray-500 text-xs">Cada tarea elige su cualidad</span>
-            )}
-          </div>
-        )}
-
-        {/* Mismo control para resistencia. Solo con Zonas 2. */}
-        {sistemaZonas === 2 && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion.disciplina) && (
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
-            <span className="text-gray-400 text-sm">Sesión de resistencia:</span>
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
-              {['simple', 'compleja'].map(m => (
-                <button key={m} onClick={() => actualizarFuerza({ modo_resistencia: m, ...(m === 'compleja' ? { zona_resistencia: null } : {}) })}
-                  className={'text-xs px-3 py-1.5 rounded-md transition capitalize ' + ((sesion.modo_resistencia || 'simple') === m ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{m}</button>
-              ))}
-            </div>
-            {(sesion.modo_resistencia || 'simple') === 'simple' ? (
-              <select value={sesion.zona_resistencia || ''} onChange={e => actualizarFuerza({ zona_resistencia: e.target.value || null })}
-                className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                <option value="">Zona de la sesión…</option>
-                {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
-              </select>
-            ) : (
-              <span className="text-gray-500 text-xs">Cada tarea elige su zona</span>
-            )}
-          </div>
-        )}
-
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-xl font-bold">Tareas</h3>
-          <div className="flex gap-2">
+          <h3 className="text-xl font-bold">
+            Tareas <span className="text-gray-500 font-normal text-base">· {tareas.length}</span>
+          </h3>
+          <div className="flex gap-2 items-center">
             {/* Guardar como plantilla: reutiliza esta misma pantalla como editor en
                 vez de montar un módulo aparte (decidido con el usuario). */}
             {mostrarPlantillas && tareas.length > 0 && (
@@ -719,8 +768,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 {guardandoPlantilla ? 'Guardando…' : '💾 Guardar como plantilla'}
               </button>
             )}
-            <button onClick={() => setVistaTabla(false)} className={'px-3 py-2 rounded-lg text-sm transition ' + (!vistaTabla ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>📋 Formulario</button>
-            <button onClick={() => setVistaTabla(true)} className={'px-3 py-2 rounded-lg text-sm transition ' + (vistaTabla ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>📊 Tabla</button>
+            {/* La Tabla es LA vista; el Formulario deja de competir con ella y queda
+                como una salida opcional para quien la prefiera. */}
+            <button onClick={() => setVistaTabla(!vistaTabla)}
+              className="px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-gray-800 transition"
+              title={vistaTabla ? 'Ver como fichas' : 'Volver a la tabla'}>
+              {vistaTabla ? '⋯ Vista de fichas' : '⋯ Volver a la tabla'}
+            </button>
           </div>
         </div>
 
@@ -928,6 +982,54 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           />
         )}
         </div>{/* /fila gráfica+tareas | plantillas */}
+
+        {/* Nutrición y notas: plegadas, con el resumen visible en una línea. Estaban
+            delante de las tareas y las tareas son a lo que se viene aquí. */}
+        <button onClick={() => setAbreNutricion(v => !v)}
+          className="tp-card w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition text-left">
+          <span className="flex items-center gap-3 flex-wrap min-w-0">
+            <strong className="text-[13px] font-semibold">🍽 Nutrición</strong>
+            <span className="text-[12.5px] text-gray-500 truncate">
+              {nutricionGuardada(sesion) ? [
+                sesion.nutricion_carbo_gh != null ? sesion.nutricion_carbo_gh + ' g/h' : null,
+                sesion.nutricion_agua_mlh != null ? sesion.nutricion_agua_mlh + ' ml/h' : null,
+                sesion.nutricion_sodio_mgh != null ? sesion.nutricion_sodio_mgh + ' mg/h sodio' : null,
+                sesion.nutricion_cafeina_mg != null ? sesion.nutricion_cafeina_mg + ' mg cafeína' : null,
+                sesion.nutricion_ayuno ? 'en ayunas' : null,
+              ].filter(Boolean).join(' · ') : 'Sin definir'}
+            </span>
+          </span>
+          <span className={'text-gray-500 text-xs tp-chev' + (abreNutricion ? ' open' : '')}>▼</span>
+        </button>
+
+        {abreNutricion && (
+          <div className="tp-card p-[16px_18px] flex flex-col gap-3">
+            {nutricionGuardada(sesion) && sesion.nutricion_notas && (
+              <p className="text-gray-400 text-xs italic">{sesion.nutricion_notas}</p>
+            )}
+            <button onClick={abrirNutricion} className="self-start text-xs bg-gray-800 hover:bg-gray-700 text-orange-400 px-3 py-1.5 rounded-lg transition">
+              🍽 {nutricionGuardada(sesion) ? 'Editar nutrición' : 'Sugerir nutrición'}
+            </button>
+          </div>
+        )}
+
+        {sesion.notas_entrenador && (
+          <>
+            <button onClick={() => setAbreNotas(v => !v)}
+              className="tp-card w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition text-left">
+              <span className="flex items-center gap-3 min-w-0">
+                <strong className="text-[13px] font-semibold">📝 Notas{nombreDeportista ? ' para ' + nombreDeportista.split(' ')[0] : ''}</strong>
+                <span className="text-[12.5px] text-gray-500 truncate">«{sesion.notas_entrenador}»</span>
+              </span>
+              <span className={'text-gray-500 text-xs tp-chev' + (abreNotas ? ' open' : '')}>▼</span>
+            </button>
+            {abreNotas && (
+              <div className="tp-card p-[16px_18px]">
+                <p className="text-gray-300 text-sm italic leading-relaxed">{sesion.notas_entrenador}</p>
+              </div>
+            )}
+          </>
+        )}
       </div>
       {tareaEditando && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
