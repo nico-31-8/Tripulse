@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona } from '@/lib/zonas'
-import { calcularDuracionEstimada } from '@/lib/duracion'
+import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
@@ -74,7 +74,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const esBrick = sesion?.disciplina === 'Brick'
   // Feedback por bloque de un brick (el dolor y las notas siguen siendo del día).
   const [postBloques, setPostBloques] = useState<Record<number, { rpe: number; sensacion: number }>>({})
-  const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('preview')
+  // Se entra directo a entrenar: el plan ya lo ha visto en el briefing de la ficha,
+  // que es ahora la única puerta (antes se pintaba dos veces, con dos botones de
+  // empezar seguidos). La vista previa se conserva, pero solo de vuelta: el botón
+  // «← Plan» de aquí dentro, para consultarla a media sesión.
+  const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('ejecutar')
   const [tareaActual, setTareaActual] = useState(0)
   const [resultados, setResultados] = useState<Record<number, any>>({})
   const [loading, setLoading] = useState(true)
@@ -93,12 +97,35 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [dolor, setDolor] = useState(1)
   const [notasPost, setNotasPost] = useState('')
   const [fcMedia, setFcMedia] = useState('')
+  // La HRV del día la preguntaba la ficha pero no el modo entreno, así que quien
+  // siempre entrena por aquí y no rellena el wellness dejaba el corrector del SICAT
+  // clavado en neutro (ver calcularCorrectorHRV en lib/sicat).
+  const [hrvDia, setHrvDia] = useState('')
+  // Reloj de la sesión: el modo entreno no tenía ninguno y por eso nunca escribía
+  // duracion_real (la recomendación de recuperación se calculaba con la planificada).
+  // Se guarda en sesion.hora_inicio para que sobreviva a recargar la página.
+  const [inicioMs, setInicioMs] = useState<number | null>(null)
+  const [duracionRealInput, setDuracionRealInput] = useState('')
+  const [medida, setMedida] = useState<DuracionMedida | null>(null)
 
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
+    // El reloj arranca al ENTRAR, porque ahora se entra directo a entrenar (antes lo
+    // arrancaba el botón de la vista previa). Si ya venía arrancado y se recargó la
+    // página, se retoma aquel instante en vez de empezar de cero.
+    if (ses && ses.estado !== 'Realizada') {
+      const previo = ses.hora_inicio ? new Date(ses.hora_inicio).getTime() : NaN
+      if (!isNaN(previo)) {
+        setInicioMs(previo)
+      } else {
+        const ahora = Date.now()
+        setInicioMs(ahora)
+        await supabase.from('sesion').update({ hora_inicio: new Date(ahora).toISOString() }).eq('id', id)
+      }
+    }
     // Deportista de la sesión: directo si es libre, o por la cadena macro si es planificada.
     let depIdLocal: number | null = ses?.id_deportista ?? null
     if (ses?.id_microciclo) {
@@ -257,11 +284,21 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         if (tarea.p_duracion?.[0] && s0.tiempo) await supabase.from('p_duracion').update({ tiempo_real: mmssASeg(s0.tiempo) }).eq('id_tarea', tarea.id)
       }
     }
-    // Marcar sesión como realizada y guardar post-sesión
-    await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', id)
+    // Marcar sesión como realizada y guardar post-sesión.
+    // duracion_real solo se escribe si hay un número: si el atleta dejó la casilla
+    // vacía se conserva lo que hubiera, en vez de machacarlo con un null.
+    const durReal = Number(duracionRealInput)
+    await supabase.from('sesion').update({
+      estado: 'Realizada',
+      ...(durReal > 0 ? { duracion_real: Math.round(durReal) } : {}),
+    }).eq('id', id)
     if (tareas.length > 0) {
-      // El dolor y las notas son del DÍA: van igual en todos los bloques.
-      const delDia = { dolor_muscular: dolor, notas_post: notasPost }
+      // El dolor, las notas y la HRV son del DÍA: van igual en todos los bloques.
+      const delDia = {
+        dolor_muscular: dolor,
+        notas_post: notasPost,
+        hrv_del_dia: hrvDia ? Number(hrvDia) : null,
+      }
       if (esBrick) {
         // Cada bloque guarda SU esfuerzo, que es lo que deja al SICAT distinguir
         // si el coste vino de la bici o de la carrera.
@@ -284,10 +321,32 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     setGuardando(false)
   }
 
+  // Arranca el reloj de la sesión. Si se vuelve al plan y se entra otra vez, se
+  // respeta el primer instante: el atleta lleva entrenando desde entonces.
+  const arrancarEntreno = async () => {
+    setFase('ejecutar')
+    if (inicioMs) return
+    const ahora = Date.now()
+    setInicioMs(ahora)
+    if (!sesion?.hora_inicio) {
+      await supabase.from('sesion').update({ hora_inicio: new Date(ahora).toISOString() }).eq('id', id)
+    }
+  }
+
+  // Al entrar en el cuestionario se congela lo que marcó el reloj y se propone
+  // como duración, salvo que sea desproporcionado (ver medirDuracion).
+  const irAPost = () => {
+    const minutosPlan = sesion?.duracion_minutos || calcularDuracionEstimada(tareas, tests || {}).minutos || 0
+    const m = medirDuracion(inicioMs, Date.now(), minutosPlan)
+    setMedida(m)
+    setDuracionRealInput(m.minutos != null ? String(m.minutos) : '')
+    setFase('post')
+  }
+
   const completarSinDatos = async () => {
     setGuardando(true)
     await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', id)
-    setFase('post')
+    irAPost()   // sin reloj arrancado la casilla sale vacía y la rellena él
     setGuardando(false)
   }
 
@@ -366,7 +425,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="flex flex-col gap-3">
-          <button onClick={() => setFase('ejecutar')}
+          <button onClick={arrancarEntreno}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
             ▶ Iniciar entreno con registro
           </button>
@@ -392,7 +451,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
           <button onClick={() => setFase('preview')} className="text-gray-400 text-sm">← Plan</button>
           <span className="text-orange-500 font-bold text-sm">{tareaActual + 1} / {tareas.length}</span>
-          <button onClick={() => setFase('post')} className="text-gray-400 text-sm">Finalizar</button>
+          <button onClick={irAPost} className="text-gray-400 text-sm">Finalizar</button>
         </nav>
 
         {/* Barra de progreso */}
@@ -547,7 +606,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 Siguiente →
               </button>
             ) : (
-              <button onClick={() => setFase('post')}
+              <button onClick={irAPost}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold transition">
                 ✓ Finalizar entreno
               </button>
@@ -803,6 +862,50 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               min="40" max="220"
             />
           </div>
+          {/* Duración real: el reloj propone, el atleta manda. Si se dejó la sesión
+              abierta no se propone nada y se le pide a mano (ver medirDuracion). */}
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">¿Cuánto duró?</label>
+              <span className="text-green-400 font-bold text-xl">{duracionRealInput || '—'} <span className="text-gray-500 text-sm font-normal">min</span></span>
+            </div>
+            {medida?.fiable ? (
+              <p className="text-gray-500 text-xs mb-3">Medido desde que pulsaste Empezar. Cámbialo si no cuadra.</p>
+            ) : medida && medida.medidos > 0 ? (
+              <p className="text-yellow-500/90 text-xs mb-3">
+                ⚠️ Han pasado {Math.floor(medida.medidos / 60)} h {medida.medidos % 60} min desde que empezaste —
+                parece que la sesión se quedó abierta. Escribe a ojo cuánto duró.
+              </p>
+            ) : (
+              <p className="text-gray-500 text-xs mb-3">Ponlo a ojo si no lo sabes exacto.</p>
+            )}
+            <input
+              type="number"
+              placeholder="Ej: 52"
+              value={duracionRealInput}
+              onChange={e => setDuracionRealInput(e.target.value)}
+              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
+              min="1" max="720"
+            />
+          </div>
+
+          {/* HRV del día: respaldo del wellness para el corrector del SICAT. */}
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">HRV del día (ms)</label>
+              <span className="text-blue-400 font-bold text-xl">{hrvDia || '—'}</span>
+            </div>
+            <p className="text-gray-500 text-xs mb-3">Opcional. Si ya la registraste en el wellness de hoy, puedes saltártelo.</p>
+            <input
+              type="number"
+              placeholder="Ej: 62"
+              value={hrvDia}
+              onChange={e => setHrvDia(e.target.value)}
+              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+              min="1" max="300"
+            />
+          </div>
+
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
             <label className="font-medium block mb-2">Notas (opcional)</label>
             <textarea value={notasPost} onChange={e => setNotasPost(e.target.value)} rows={3}

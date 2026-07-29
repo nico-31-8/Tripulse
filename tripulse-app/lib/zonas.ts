@@ -271,3 +271,42 @@ export function cargaZona(sigla: string | null | undefined): CargaZona {
   if (zf) { const rpe = (zf.rpeMin + zf.rpeMax) / 2; return { nivel: nivelDeRpe(rpe), rpe, color: zf.color, nombre: zf.nombre } }
   return fallback
 }
+
+// ------------------------------------------------------------
+// Ritmo objetivo de una tarea
+// ------------------------------------------------------------
+// El mismo entreno es un entreno distinto para cada atleta: la zona se traduce a
+// ritmo/vatios con SUS tests. Vive aquí y no en una pantalla porque lo necesitan
+// tanto el editor del entrenador como el briefing del deportista.
+//
+// Cubre los dos sistemas: siglas de Zonas 2 (vía el catálogo) y el clásico Z1–Z7
+// (con estos porcentajes, que antes estaban sueltos en app/sesion/[id]/page.tsx).
+const VAM_CLASICO: Record<string, number> = { Z1: 0.525, Z2: 0.65, Z3: 0.75, Z4: 0.85, Z5: 0.95, Z6: 1.075, Z7: 1.2 }
+const FTP_CLASICO: Record<string, number> = { Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.98, Z5: 1.13, Z6: 1.30, Z7: 1.50 }
+const CSS_CLASICO: Record<string, number> = { Z1: 0.65, Z2: 0.75, Z3: 0.85, Z4: 0.95, Z5: 1.03, Z6: 1.12, Z7: 1.20 }
+
+const mmss = (segundos: number) =>
+  Math.floor(segundos / 60) + ':' + String(Math.round(segundos % 60)).padStart(2, '0')
+
+export function ritmoObjetivo(
+  zona: string | null | undefined,
+  disciplina: string | null | undefined,
+  tests: { vam?: number | null; ftp?: number | null; css?: number | null } | null | undefined,
+): string {
+  if (!zona || !disciplina || !tests) return ''
+  // Zonas 2: el catálogo ya sabe traducir la zona a ritmo real.
+  const zr = zonaResistencia(zona)
+  if (zr) { const p = prescripcion(zr, disciplina, tests); return p && p !== '—' ? p : '' }
+
+  const z = zona.toUpperCase()
+  if (disciplina === 'Carrera' && tests.vam && VAM_CLASICO[z]) {
+    return mmss(3600 / (tests.vam * VAM_CLASICO[z])) + ' /km'
+  }
+  if (disciplina === 'Ciclismo' && tests.ftp && FTP_CLASICO[z]) {
+    return Math.round(tests.ftp * FTP_CLASICO[z]) + ' W'
+  }
+  if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css && CSS_CLASICO[z]) {
+    return mmss(100 / (tests.css * CSS_CLASICO[z])) + ' /100m'
+  }
+  return ''
+}

@@ -41,7 +41,7 @@ export async function getMicrosDeportista(depId: number): Promise<number[]> {
 // sus sesiones) con la valoración técnica que el entrenador da en el PERFIL del
 // deportista (dep.tec_natacion/ciclismo/carrera) — no por sesión: el entrenador no
 // está presente en cada sesión, así que es una valoración general de esa disciplina.
-function calcularF1(filas: any[], valoracionGlobal: number | null): number | null {
+export function calcularF1(filas: any[], valoracionGlobal: number | null): number | null {
   const validas = filas.filter(f => f.sensacion_tecnica)
   const sensacionMedia = validas.length
     ? validas.reduce((acc, f) => acc + f.sensacion_tecnica, 0) / validas.length
@@ -56,7 +56,7 @@ function calcularF1(filas: any[], valoracionGlobal: number | null): number | nul
   return Math.min(4, Math.max(1, Math.round(5 - media)))
 }
 
-function calcularF2(filas: any[]): number | null {
+export function calcularF2(filas: any[]): number | null {
   const validas = filas.filter(f => f.dolor_muscular)
   if (!validas.length) return null
   const scores = validas.map(f => {
@@ -69,15 +69,20 @@ function calcularF2(filas: any[]): number | null {
   return Math.min(4, Math.max(1, Math.round(media * 0.8)))
 }
 
-function calcularF3(filas: any[]): number {
+export function calcularF3(filas: any[]): number {
   const duras = filas.filter(f => f.rpe_reportado > 7)
   if (!duras.length) return 1
-  const degradadas = duras.filter(f => f.sensacion_tecnica < 3)
-  const degradacion = degradadas.length / duras.length
+  // Solo puntúan las duras con sensación técnica REPORTADA. El campo es nullable en
+  // Supabase y en JS `null < 3` es true (null → 0), así que antes una sesión dura sin
+  // ese dato se contaba como técnica degradada y disparaba F3 al máximo en silencio.
+  const conDato = duras.filter(f => f.sensacion_tecnica != null)
+  if (!conDato.length) return 1
+  const degradadas = conDato.filter(f => f.sensacion_tecnica < 3)
+  const degradacion = degradadas.length / conDato.length
   return Math.min(4, Math.max(1, 1 + Math.round(degradacion * 3)))
 }
 
-function calcularF4(filas: any[], fcUmbral: number): number | null {
+export function calcularF4(filas: any[], fcUmbral: number): number | null {
   const validas = filas.filter(f => f.fc_media && f.rpe_reportado && fcUmbral > 0)
   if (!validas.length) return null
   const fcRel = validas.reduce((acc, f) => acc + f.fc_media / fcUmbral, 0) / validas.length
@@ -87,7 +92,7 @@ function calcularF4(filas: any[], fcUmbral: number): number | null {
 
 // Corrector HRV — usa la HRV diaria real del atleta (tabla wellness, misma fecha de la
 // sesión), con la entrada manual de tarea.hrv_del_dia como respaldo si no hay wellness.
-function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
+export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
   const validas = filas.filter(f => (f.hrv_dia || f.hrv_del_dia) && hrvBasal > 0)
   if (!validas.length) return 1
   const hrvMedia = validas.reduce((acc, f) => acc + (f.hrv_dia || f.hrv_del_dia), 0) / validas.length

@@ -11,9 +11,10 @@ import { cargaZona } from '@/lib/zonas'
 
 const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import DatosReales from './DatosReales'
+import BriefingSesion from './BriefingSesion'
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
-import { ZONAS_FUERZA, ZONAS_RESISTENCIA, zonaResistencia, prescripcion } from '@/lib/zonas'
+import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
@@ -144,43 +145,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [nutrCafeinaTiming, setNutrCafeinaTiming] = useState('')
   const [nutrAyuno, setNutrAyuno] = useState(false)
   const [nutrNotas, setNutrNotas] = useState('')
-  // Cálculo de ritmo/potencia sugerido por zona
-  const VAM_ZONAS: Record<string, number> = { Z1: 0.525, Z2: 0.65, Z3: 0.75, Z4: 0.85, Z5: 0.95, Z6: 1.075, Z7: 1.2 }
-  const FTP_ZONAS: Record<string, number> = { Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.98, Z5: 1.13, Z6: 1.30, Z7: 1.50 }
-  const CSS_ZONAS: Record<string, number> = { Z1: 0.65, Z2: 0.75, Z3: 0.85, Z4: 0.95, Z5: 1.03, Z6: 1.12, Z7: 1.20 }
-
-  const calcularRitmo = (zonaKey: string, disc: string, tests: any): string => {
-    if (!zonaKey || !disc || !tests) return ''
-    // Zonas 2 (resistencia): el catálogo calcula ritmo/vatios/CSS reales de la zona.
-    const zr = zonaResistencia(zonaKey)
-    if (zr) { const p = prescripcion(zr, disc, tests); return p && p !== '—' ? p : '' }
-    // Sistema clásico Z1–Z7.
-    const z = zonaKey.toUpperCase()
-    if (disc === 'Carrera' && tests.vam) {
-      const pct = VAM_ZONAS[z]
-      if (!pct) return ''
-      const velocidad = tests.vam * pct // km/h
-      const ritmoSeg = 3600 / velocidad // seg/km
-      const min = Math.floor(ritmoSeg / 60)
-      const seg = Math.round(ritmoSeg % 60)
-      return min + ':' + String(seg).padStart(2, '0') + ' min/km'
-    }
-    if (disc === 'Ciclismo' && tests.ftp) {
-      const pct = FTP_ZONAS[z]
-      if (!pct) return ''
-      return Math.round(tests.ftp * pct) + ' W'
-    }
-    if ((disc === 'Natacion' || disc === 'Natación') && tests.css) {
-      const pct = CSS_ZONAS[z]
-      if (!pct) return ''
-      const velocidad = tests.css * pct // m/s
-      const ritmoSeg = 100 / velocidad // seg/100m
-      const min = Math.floor(ritmoSeg / 60)
-      const seg = Math.round(ritmoSeg % 60)
-      return min + ':' + String(seg).padStart(2, '0') + ' min/100m'
-    }
-    return ''
-  }
+  // Ritmo/potencia sugerido por zona. Las tablas y los dos sistemas viven en
+  // lib/zonas (ritmoObjetivo): el briefing del deportista necesita lo mismo y no
+  // tiene sentido mantener dos copias que puedan divergir.
+  const calcularRitmo = (zonaKey: string, disc: string, tests: any): string =>
+    ritmoObjetivo(zonaKey, disc, tests)
 
   const mmssASegundos = (str: string): number => {
     const partes = str.split(':')
@@ -254,7 +223,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
     const { data: tar } = await ordenarTareasQuery(
-      supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones)').eq('id_sesion', id))
+      // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él, una
+      // sesión de fuerza en el briefing del deportista diría «4 series» de nada.
+      supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre)').eq('id_sesion', id))
     setTareas(tar || [])
     if (ses) {
       let depIdLocal: number | null = ses.id_deportista ?? null
@@ -595,6 +566,22 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         diasHastaComp,
       })
     : null
+
+  // El deportista tiene su propia pantalla: qué le toca y cómo salir a hacerlo, sin
+  // los controles del entrenador (que hoy veía apagados o a medias). Misma URL.
+  if (esDeportista) {
+    return (
+      <BriefingSesion
+        id={String(id)}
+        sesion={sesion}
+        tareas={tareas}
+        tests={testsData}
+        durEstimada={durEstimada}
+        recup={recup}
+        onCambio={cargarDatos}
+      />
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

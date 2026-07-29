@@ -74,6 +74,10 @@ export default function VolumenPage() {
   const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza'])
   const [subVista, setSubVista] = useState<'barras'|'evolucion'>('barras')
   const [agrupEvol, setAgrupEvol] = useState<'semanas'|'meses'>('semanas')
+  // El desglose por deporte arranca plegado: la gráfica combinada es la que se lee primero
+  // y las de cada deporte alargaban mucho la página.
+  const [discsAbierto, setDiscsAbierto] = useState(false)
+  const [musculoAbierto, setMusculoAbierto] = useState(false)
 
   useEffect(() => {
     const cargar = async () => {
@@ -704,33 +708,75 @@ export default function VolumenPage() {
                       </ResponsiveContainer>
                     </div>
 
-                    {DISCS.filter(d => discsActivas.includes(d.key) && datosVol.some(r => r[d.key] > 0)).map(d => (
-                      <div key={d.key} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                        <p className="text-sm font-medium mb-3" style={{ color: d.color }}>{d.label} — {d.unidad} por {vista === 'dias' ? 'día' : 'semana'}</p>
-                        <ResponsiveContainer width="100%" height={180}>
-                          <BarChart data={datosVol}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis dataKey={xKeyVol} stroke="#9ca3af" tick={{ fontSize: 10 }} />
-                            <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} unit={d.unidad} />
-                            <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' ' + d.unidad, d.label]} />
-                            <Bar dataKey={d.key} fill={d.color} radius={[4,4,0,0]} onClick={clicPeriodo} cursor="pointer" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ))}
+                    {(() => {
+                      // Desglose por deporte: una gráfica por disciplina, plegable en bloque.
+                      // No usa .tp-collapse (max-height) porque ResponsiveContainer mide 0px
+                      // dentro de un contenedor colapsado; se monta y desmonta.
+                      const discsConDatos = DISCS.filter(d => discsActivas.includes(d.key) && datosVol.some(r => r[d.key] > 0))
+                      if (!discsConDatos.length) return null
+                      return (
+                        <div className="flex flex-col gap-4">
+                          <button onClick={() => setDiscsAbierto(v => !v)}
+                            className="w-full flex items-center justify-between gap-3 bg-gray-900 hover:bg-gray-800/80 rounded-xl px-5 py-3.5 border border-gray-800 transition text-left">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <p className="text-sm font-medium text-gray-300">Desglose por deporte</p>
+                              <div className="flex items-center gap-1.5">
+                                {discsConDatos.map(d => (
+                                  <i key={d.key} className="w-2 h-2 rounded-full" style={{ background: d.color }} title={d.label} />
+                                ))}
+                              </div>
+                              <span className="text-[11px] text-gray-500">
+                                {discsConDatos.length} {discsConDatos.length === 1 ? 'gráfica' : 'gráficas'}
+                              </span>
+                            </div>
+                            <span className={'text-gray-500 text-xs tp-chev' + (discsAbierto ? ' open' : '')}>▼</span>
+                          </button>
+
+                          {discsAbierto && discsConDatos.map(d => (
+                            <div key={d.key} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                              <p className="text-sm font-medium mb-3" style={{ color: d.color }}>{d.label} — {d.unidad} por {vista === 'dias' ? 'día' : 'semana'}</p>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <BarChart data={datosVol}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                  <XAxis dataKey={xKeyVol} stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                                  <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} unit={d.unidad} />
+                                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' ' + d.unidad, d.label]} />
+                                  <Bar dataKey={d.key} fill={d.color} radius={[4,4,0,0]} onClick={clicPeriodo} cursor="pointer" />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
 
                     {datosMusculo.length > 0 && (
-                      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                        <p className="text-sm font-medium text-red-400 mb-3">💪 Volumen muscular — series por grupo</p>
-                        <ResponsiveContainer width="100%" height={Math.max(200, datosMusculo.length * 40)}>
-                          <BarChart data={datosMusculo} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" series" />
-                            <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={140} />
-                            <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' series', 'Volumen']} />
-                            <Bar dataKey="series" fill="#f87171" radius={[0,4,4,0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
+                      <div className="flex flex-col gap-4">
+                        <button onClick={() => setMusculoAbierto(v => !v)}
+                          className="w-full flex items-center justify-between gap-3 bg-gray-900 hover:bg-gray-800/80 rounded-xl px-5 py-3.5 border border-gray-800 transition text-left">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <p className="text-sm font-medium text-red-400">💪 Volumen muscular</p>
+                            <span className="text-[11px] text-gray-500">
+                              {datosMusculo.length} {datosMusculo.length === 1 ? 'grupo' : 'grupos'} · {datosMusculo.reduce((a, m) => a + (m.series || 0), 0)} series
+                            </span>
+                          </div>
+                          <span className={'text-gray-500 text-xs tp-chev' + (musculoAbierto ? ' open' : '')}>▼</span>
+                        </button>
+
+                        {musculoAbierto && (
+                          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                            <p className="text-sm font-medium text-red-400 mb-3">Series por grupo</p>
+                            <ResponsiveContainer width="100%" height={Math.max(200, datosMusculo.length * 40)}>
+                              <BarChart data={datosMusculo} layout="vertical">
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" series" />
+                                <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={140} />
+                                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' series', 'Volumen']} />
+                                <Bar dataKey="series" fill="#f87171" radius={[0,4,4,0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

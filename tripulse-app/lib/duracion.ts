@@ -60,6 +60,35 @@ export interface ResultadoDuracion {
   faltanTests: boolean      // hay tareas por distancia sin el test necesario
 }
 
+// ------------------------------------------------------------
+// Duración real medida en el modo entreno
+// ------------------------------------------------------------
+// El modo entreno no tiene cronómetro: mide desde que el atleta pulsa Empezar.
+// Ese número es bueno si entrenó con el móvil delante, y basura si se dejó la
+// sesión abierta y volvió al día siguiente. Por eso NO se guarda a ciegas: si el
+// reloj marca algo desproporcionado se devuelve `minutos: null` para que la casilla
+// salga vacía y la escriba él (el salvaconducto), pero se conserva `medidos` para
+// poder enseñarle qué se midió y por qué no nos fiamos.
+export interface DuracionMedida {
+  minutos: number | null   // lo que se propone; null = que lo ponga a mano
+  medidos: number          // lo que marcó el reloj, fiable o no
+  fiable: boolean
+}
+
+export function medirDuracion(
+  inicioMs: number | null | undefined,
+  finMs: number,
+  minutosPlan: number,
+): DuracionMedida {
+  if (!inicioMs || !finMs || finMs <= inicioMs) return { minutos: null, medidos: 0, fiable: false }
+  const medidos = Math.round((finMs - inicioMs) / 60000)
+  // Margen generoso sobre lo planificado (uno puede entretenerse), con tope duro de
+  // 12 h: por encima de eso no hay sesión que valga, es una pestaña olvidada.
+  const techo = Math.min(720, minutosPlan > 0 ? minutosPlan * 2 + 60 : 240)
+  const fiable = medidos > 0 && medidos <= techo
+  return { minutos: fiable ? medidos : null, medidos, fiable }
+}
+
 // Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
 function numZona(zona?: string | null): number {
   return cargaZona(zona).nivel
