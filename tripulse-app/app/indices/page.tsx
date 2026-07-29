@@ -127,26 +127,37 @@ export default function IndicesPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+      <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-between items-center border-b border-gray-800 gap-4">
+        <div className="flex items-baseline gap-3 min-w-0">
+          <h2 className="text-[17px] font-bold tracking-tight leading-none">Índices</h2>
+          {seleccionado && (
+            <span className="text-[12.5px] text-gray-500 truncate">
+              {seleccionado.nombre}
+              <button onClick={() => setSeleccionado(null)} className="ml-2 text-orange-400 hover:text-orange-300 transition">cambiar</button>
+            </span>
+          )}
+        </div>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition flex-none">← Dashboard</button>
       </nav>
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <h2 className="text-2xl font-bold mb-1">Análisis de Índices</h2>
-        <p className="text-gray-400 mb-6 text-sm">Índice de percepción · Índice de planificación · Semáforo de doble dimensión</p>
+      <div className="max-w-[1400px] mx-auto px-6 py-6">
 
-        {seleccionado ? (
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-            <p className="text-sm text-gray-400">Deportista · <span className="text-white font-semibold">{seleccionado.nombre}</span></p>
-            <button onClick={() => setSeleccionado(null)} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">Cambiar deportista</button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+        {/* Qué mide este módulo. No es carga ni volumen: es si el esfuerzo que reporta
+            el atleta cuadra con su pulsómetro, y si lo planificado cuadra con lo que
+            costó. Sin esta frase el nombre no dice nada. */}
+        {!seleccionado && (
+          <p className="text-gray-400 text-sm mb-6 max-w-2xl">
+            ¿El esfuerzo que dice el atleta cuadra con lo que dice su pulsómetro? ¿Y lo que planificaste
+            con lo que de verdad costó? El semáforo cruza las dos preguntas.
+          </p>
+        )}
+
+        {!seleccionado && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
             {deportistas.map(d => (
               <button key={d.id} onClick={() => verIndices(d)}
-                className={'rounded-xl p-5 border-2 text-left transition ' +
-                  (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
-                <h3 className="font-bold text-lg">{d.nombre}</h3>
-                <p className="text-sm opacity-70">FC máx: {d.fc_maxima || '—'} ppm · FC umbral est: {d.fc_maxima ? Math.round(d.fc_maxima * 0.85) : '—'} ppm</p>
+                className="tp-card tp-tile p-5" style={{ ['--c' as any]: '#f97316' }}>
+                <h3 className="font-bold text-[15px] tracking-tight">{d.nombre}</h3>
+                <p className="text-[12px] text-gray-500 mt-1">FC máx {d.fc_maxima || '—'} · umbral est. {d.fc_maxima ? Math.round(d.fc_maxima * 0.85) : '—'} ppm</p>
               </button>
             ))}
           </div>
@@ -168,7 +179,7 @@ export default function IndicesPage() {
             </div>
 
             {sesionesRango.length > 0 && (
-              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div className="tp-card p-5">
                 <p className="text-sm font-medium text-gray-300 mb-4">Media del período</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Media percepción */}
@@ -210,7 +221,7 @@ export default function IndicesPage() {
         {!loadingSes && sesiones.length > 0 && (
           <div className="grid gap-4">
             {sesiones.map(s => (
-              <div key={s.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <div key={s.id} className="tp-card p-5">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
