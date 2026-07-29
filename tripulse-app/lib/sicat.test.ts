@@ -154,3 +154,32 @@ describe('factorSicat — ponderación de la carga', () => {
     expect(factorSicat('Natacion', null)).toBe(1)
   })
 })
+
+// ------------------------------------------------------------
+// FC umbral — criterio único en toda la app
+// ------------------------------------------------------------
+// El resto de la app (/indices, tareas-tabla, panel-metricas, calendario, bloques)
+// estima la FC umbral como el 85% de la máxima. calcularSICAT usaba la máxima a
+// secas aunque la variable ya se llamaba fcUmbral, así que F4 salía sistemáticamente
+// más bajo solo en el SICAT. Este test fija el criterio.
+describe('F4 y la FC umbral', () => {
+  const FC_MAX = 190
+  const UMBRAL = FC_MAX * 0.85    // 161,5 ppm
+
+  it('la misma sesión cuesta más medida contra el umbral que contra la máxima', () => {
+    // 140 ppm es el 74% de la máxima pero el 87% del umbral: no es el mismo esfuerzo.
+    const filas = [{ fc_media: 140, rpe_reportado: 5 }]
+    expect(calcularF4(filas, UMBRAL)).toBe(3)
+    expect(calcularF4(filas, FC_MAX)).toBe(2)
+  })
+
+  it('dividir por la máxima infravalora el coste de forma sistemática', () => {
+    const filas = [{ fc_media: 145, rpe_reportado: 4 }]
+    expect(calcularF4(filas, UMBRAL)!).toBeGreaterThan(calcularF4(filas, FC_MAX)!)
+  })
+
+  it('sigue acotado a 1-4 con el umbral nuevo', () => {
+    expect(calcularF4([{ fc_media: 200, rpe_reportado: 10 }], UMBRAL)).toBe(4)
+    expect(calcularF4([{ fc_media: 60, rpe_reportado: 1 }], UMBRAL)).toBe(1)
+  })
+})

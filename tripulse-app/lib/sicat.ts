@@ -103,7 +103,11 @@ export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
 // Calcula el perfil SICAT (F1-F4 + % relativo) de un deportista para las 3 disciplinas
 // de resistencia. Fuerza queda fuera del modelo (no tiene tabla de referencia ECO).
 export async function calcularSICAT(dep: any): Promise<SicatResultado> {
-  const fcUmbral = dep.fc_maxima || 0
+  // FC umbral estimada como el 85% de la máxima, igual que el resto de la app
+  // (/indices, tareas-tabla, panel-metricas, calendario y bloques). Antes aquí se
+  // usaba la FC máxima a secas aunque la variable ya se llamaba fcUmbral, así que F4
+  // infravaloraba el coste cardiovascular ~15% solo en el SICAT.
+  const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
   const hrvBasal = dep.hrv_basal || 0
   const resultados = {} as SicatResultado
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estimarDuraciones, minutosEfectivos, duracionSesionTexto } from './duracion-carga'
+import { estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos } from './duracion-carga'
 import type { ResultadoDuracion } from './duracion'
 
 const est = (minutos: number, estimable = true): ResultadoDuracion =>
@@ -140,5 +140,59 @@ describe('estimarDuraciones — carga en lote', () => {
       }), [10], { vam: null, css: null, ftp: null }))[10]
     expect(conTest.estimable).toBe(true)
     expect(sinTest.faltanTests).toBe(true)
+  })
+})
+
+// ------------------------------------------------------------
+// minutosCarga — la duración que usan los motores de carga y volumen
+// ------------------------------------------------------------
+// Blinda la prioridad: lo que PASÓ manda sobre lo planificado, y lo planificado
+// sobre lo que estimamos nosotros. Antes cada módulo leía duracion_minutos a pelo:
+// una sesión sin duración manual valía 0 UA y no sumaba a CTL/ATL/TSB.
+describe('minutosCarga', () => {
+  const estim = (minutos: number): ResultadoDuracion =>
+    ({ segundos: minutos * 60, minutos, estimable: true, avisoCiclismo: false, faltanTests: false })
+
+  it('lo que duró de verdad manda sobre todo lo demás', () => {
+    expect(minutosCarga({ duracion_real: 52, duracion_minutos: 45 }, estim(90))).toBe(52)
+  })
+  it('sin duración real, manda la manual', () => {
+    expect(minutosCarga({ duracion_real: null, duracion_minutos: 45 }, estim(90))).toBe(45)
+  })
+  it('sin real ni manual, se usa la estimación en vez de tirar la sesión', () => {
+    expect(minutosCarga({ duracion_real: null, duracion_minutos: null }, estim(92))).toBe(92)
+  })
+
+  // El agujero que motivó el helper.
+  it('una sesión solo estimada YA NO vale cero', () => {
+    const s = { duracion_real: null, duracion_minutos: null }
+    expect(minutosCarga(s, estim(92))).toBeGreaterThan(0)
+  })
+  it('sin ninguna de las tres devuelve 0, no null: es un multiplicando', () => {
+    expect(minutosCarga({ duracion_real: null, duracion_minutos: null })).toBe(0)
+    expect(minutosCarga(null)).toBe(0)
+  })
+  it('los módulos que no cargan tareas pueden no pasar estimación', () => {
+    expect(minutosCarga({ duracion_real: null, duracion_minutos: 60 })).toBe(60)
+  })
+  it('una estimación no estimable no cuenta', () => {
+    const noEst: ResultadoDuracion = { segundos: 0, minutos: 0, estimable: false, avisoCiclismo: false, faltanTests: true }
+    expect(minutosCarga({ duracion_real: null, duracion_minutos: null }, noEst)).toBe(0)
+  })
+  it('ceros y negativos no se cuelan como valor válido', () => {
+    expect(minutosCarga({ duracion_real: 0, duracion_minutos: 40 })).toBe(40)
+    expect(minutosCarga({ duracion_real: -5, duracion_minutos: 40 })).toBe(40)
+  })
+})
+
+describe('origenMinutos — de dónde salió el número', () => {
+  const estim = (m: number): ResultadoDuracion => ({ segundos: m*60, minutos: m, estimable: true, avisoCiclismo: false, faltanTests: false })
+  it('distingue las tres procedencias', () => {
+    expect(origenMinutos({ duracion_real: 52, duracion_minutos: 45 })).toBe('real')
+    expect(origenMinutos({ duracion_real: null, duracion_minutos: 45 })).toBe('manual')
+    expect(origenMinutos({ duracion_real: null, duracion_minutos: null }, estim(90))).toBe('estimada')
+  })
+  it('null cuando no hay nada que enseñar', () => {
+    expect(origenMinutos({ duracion_real: null, duracion_minutos: null })).toBeNull()
   })
 })

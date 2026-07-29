@@ -8,6 +8,7 @@ import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
+import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const RANGOS = [
@@ -22,7 +23,7 @@ function calcularCargas(sesiones: any[], factorFn: (s: any) => number = () => 1)
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
     const fecha = s.fecha_sesion
-    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s)
+    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.minutos ?? s.duracion_minutos ?? 0) * factorFn(s)
     mapa[fecha] = (mapa[fecha] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()
@@ -150,7 +151,7 @@ export default function CargaPage() {
     if (microsDelDep.length > 0) {
       const { data: ses } = await supabase
         .from('sesion')
-        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
         .gte('fecha_sesion', desdeStr)
@@ -160,11 +161,21 @@ export default function CargaPage() {
     // Sesiones "libres" del atleta (sin microciclo) también cuentan en la carga.
     const { data: libres } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
       .eq('id_deportista', dep.id).is('id_microciclo', null)
       .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
     const todasSesiones = await attachZonaPico([...baseSes, ...(libres || [])])
-    setSesionesRaw(todasSesiones)
+    // Minutos de cada sesión por el criterio único (real > manual > estimada). Antes se
+    // leía `duracion_minutos` a pelo y una sesión sin duración manual valía 0 UA: no
+    // sumaba a CTL/ATL/TSB aunque tuviera el entreno entero planificado.
+    const [t1, t2, t3] = await Promise.all([
+      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+    ])
+    const tests = { vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null }
+    const estimaciones = await estimarDuraciones(supabase, todasSesiones.map(s => s.id), tests)
+    setSesionesRaw(todasSesiones.map(s => ({ ...s, minutos: minutosCarga(s, estimaciones[s.id]) })))
     setLoadingDatos(false)
   }
 
@@ -200,13 +211,13 @@ export default function CargaPage() {
 
     const { data: sesiones } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
       .in('id_microciclo', microsDelDep.length ? microsDelDep : [-1])
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')
     const { data: libresD } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
       .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', desdeStr)
 
     const sesDia = [...(sesiones || []), ...(libresD || [])]
@@ -247,12 +258,12 @@ export default function CargaPage() {
       const realizadas = sesDia.filter(s => s.estado === 'Realizada')
 
       const uaPlanificada = planificadas.reduce((acc, s) =>
-        acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s), 0)
+        acc + (s.rpe_estimado || 5) * (s.minutos ?? s.duracion_minutos ?? 0) * factorFn(s), 0)
 
       // Por el deporte del BLOQUE, no por sesion.disciplina: un brick reparte su UA
       // entre la bici y la carrera según el peso de cada bloque.
       const uaPorDisc = (disc: string) => realizadas.reduce((acc, s) => {
-        const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0) * factorFn(s)
+        const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (s.minutos ?? s.duracion_minutos ?? 0) * factorFn(s)
         const parte = (s._reparto || []).filter((r: any) => r.disciplina === disc)
           .reduce((a: number, r: any) => a + r.peso, 0)
         return acc + ua * parte

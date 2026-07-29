@@ -10,6 +10,7 @@
 
 import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
 import { cargarBloques } from './atribucion'
+import { minutosCarga } from './duracion-carga'
 
 // ---- Disciplinas (colores alineados con app/volumen/page.tsx) ----
 // 'Brick' está aquí solo para PINTAR (es la etiqueta de la sesión, morada en toda
@@ -52,7 +53,7 @@ export function calcularCargas(sesiones: any[]) {
   if (!sesiones.length) return [] as { carga: number; tsb: number }[]
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
-    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)
+    const carga = (s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s)
     mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + carga
   })
   const fechas = Object.keys(mapa).sort()

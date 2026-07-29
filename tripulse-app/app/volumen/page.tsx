@@ -10,6 +10,7 @@ import { cargaZona } from '@/lib/zonas'
 import { expandirEnBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
+import { minutosCarga } from '@/lib/duracion-carga'
 
 /** Minutos → "1h20" / "45′". */
 function fmtMinutos(min: number): string {
@@ -241,7 +242,7 @@ export default function VolumenPage() {
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
-        ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * (s.duracion_minutos || 0)),
+        ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s)),
         uaDisc: uaDiscPorSes[s.id] || null,
         rpe: s.rpe_estimado,
         duracion: s.duracion_minutos,

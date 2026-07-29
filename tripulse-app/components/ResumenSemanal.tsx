@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 // El score guardado es de MALESTAR (alto = peor). La lógica de semáforo/frases sigue
 // usando esa escala cruda; solo se invierte lo que se PINTA (ver lib/wellness-score).
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
+import { minutosCarga } from '@/lib/duracion-carga'
 
 function getLunesAnterior(): string {
   const hoy = new Date()
@@ -107,8 +108,13 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
       const planificadas = sesiones.length
       const realizadas = sesiones.filter(s => s.estado === 'Realizada').length
       const cumplimiento = planificadas > 0 ? realizadas / planificadas : 0
+      // La carga REAL sale del RPE que reportó el atleta y de los minutos que de
+      // verdad duró; la PLANIFICADA, del RPE estimado y los minutos previstos. Antes
+      // las dos usaban `rpe_estimado * duracion_minutos`, o sea la misma fórmula: la
+      // desviación no podía salir positiva ni aunque el atleta se pasara en todas, y
+      // la frase «carga elevada» de generarFrase era inalcanzable.
       const cargaReal = sesiones.filter(s => s.estado === 'Realizada')
-        .reduce((acc, s) => acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
+        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s), 0)
       const cargaPlan = sesiones.reduce((acc, s) => acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
       const desviacion = cargaPlan > 0 ? (cargaReal - cargaPlan) / cargaPlan : null
 
