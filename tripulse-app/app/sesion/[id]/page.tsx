@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use, useRef } from 'react'
+import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
@@ -9,7 +9,6 @@ import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-pr
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { cargaZona } from '@/lib/zonas'
 
-const EMOJI_POST: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
 import SessionLoadChart from '@/components/SessionLoadChart'
@@ -23,8 +22,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const router = useRouter()
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
-  // 'Brick' es la etiqueta de la sesión; el deporte real lo pone cada bloque (tarea).
-  const esBrick = sesion?.disciplina === 'Brick'
   // Fuerza a TareasTabla a releer de la BD tras aplicar una plantilla (carga sus
   // tareas al montar, así que cambiarle la key es lo que la refresca).
   const [recargaTareas, setRecargaTareas] = useState(0)
@@ -35,7 +32,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
   // (aplicarlas reescribe las tareas). Fuerza y Brick no tienen: la fuerza va por
   // cualidades y un brick se monta con su constructor.
-  const mostrarPlantillas = !esDeportista && sesion?.estado !== 'Realizada'
+  const mostrarPlantillas = sesion?.estado !== 'Realizada'
     && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion?.disciplina)
   const [guardandoPlantilla, setGuardandoPlantilla] = useState(false)
   const [refrescarPropias, setRefrescarPropias] = useState(0)
@@ -94,20 +91,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
   const [editMedValor, setEditMedValor] = useState('')
   const [editComentario, setEditComentario] = useState('')
-  const [cronometroActivo, setCronometroActivo] = useState(false)
-  const [segundos, setSegundos] = useState(0)
-  const [sesionIniciada, setSesionIniciada] = useState(false)
-  const intervalRef = useRef<any>(null)
-  const [rpeReal, setRpeReal] = useState(5)
-  const [fcMedia, setFcMedia] = useState('')
-  const [sensacionTecnica, setSensacionTecnica] = useState(3)
-  const [dolorMuscular, setDolorMuscular] = useState(1)
-  const [notasPost, setNotasPost] = useState('')
-  const [hrvDia, setHrvDia] = useState('')
-  // Feedback POR BLOQUE de un brick: el esfuerzo y la técnica cambian entre la bici y
-  // la carrera, y el SICAT necesita saber de cuál viene el coste. El dolor, la HRV y
-  // las notas siguen siendo del día: no se pueden atribuir a un deporte concreto.
-  const [postBloques, setPostBloques] = useState<Record<number, { rpe: number; fc: string; sensacion: number }>>({})
+  // El cronómetro y el cuestionario post-sesión viven ahora en BriefingSesion: eran
+  // del deportista y el entrenador nunca llegaba a ellos.
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   const [grupoMuscularSel, setGrupoMuscularSel] = useState('')
   const [tipoSerie, setTipoSerie] = useState('Normal')
@@ -205,15 +190,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     })
   }, [])
 
-  useEffect(() => {
-    if (cronometroActivo) {
-      intervalRef.current = setInterval(() => setSegundos(s => s + 1), 1000)
-    } else {
-      clearInterval(intervalRef.current)
-    }
-    return () => clearInterval(intervalRef.current)
-  }, [cronometroActivo])
-
   const cargarDatos = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
@@ -286,70 +262,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }
   }
 
-  const formatTiempo = (seg: number) => {
-    const h = Math.floor(seg/3600)
-    const m = Math.floor((seg%3600)/60)
-    const s = seg%60
-    if (h > 0) return h+':'+m.toString().padStart(2,'0')+':'+s.toString().padStart(2,'0')
-    return m.toString().padStart(2,'0')+':'+s.toString().padStart(2,'0')
-  }
-
-  const iniciarSesion = async () => {
-    setSesionIniciada(true)
-    if (sesion.usar_cronometro) setCronometroActivo(true)
-    await supabase.from('sesion').update({ hora_inicio: new Date().toISOString() }).eq('id', id)
-  }
-
-  const finalizarSesion = () => {
-    setCronometroActivo(false)
-    if (esBrick) {
-      setPostBloques(Object.fromEntries(tareas.map(t => [t.id, {
-        rpe: t.rpe_reportado || 5,
-        fc: t.fc_media ? String(t.fc_media) : '',
-        sensacion: t.sensacion_tecnica || 3,
-      }])))
-    }
-    setMostrarPostSesion(true)
-  }
-
-  const guardarPostSesion = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    const duracionReal = sesion.usar_cronometro ? Math.round(segundos/60) : null
-    await supabase.from('sesion').update({ estado: 'Realizada', duracion_real: duracionReal }).eq('id', id)
-
-    // Lo que es del DÍA va igual en todos los bloques; el SICAT lo lee así.
-    const delDia = {
-      dolor_muscular: dolorMuscular,
-      notas_post: notasPost,
-      hrv_del_dia: hrvDia ? Number(hrvDia) : null,
-    }
-
-    if (esBrick) {
-      // Cada bloque guarda SU esfuerzo: es lo que permite al SICAT saber si el coste
-      // vino de la bici o de la carrera (ver lib/sicat).
-      await Promise.all(tareas.map(t => {
-        const b = postBloques[t.id]
-        return supabase.from('tarea').update({
-          ...delDia,
-          rpe_reportado: b?.rpe ?? rpeReal,
-          fc_media: b?.fc ? Number(b.fc) : null,
-          sensacion_tecnica: b?.sensacion ?? sensacionTecnica,
-        }).eq('id', t.id)
-      }))
-    } else {
-      await supabase.from('tarea').update({
-        ...delDia,
-        rpe_reportado: rpeReal,
-        fc_media: fcMedia ? Number(fcMedia) : null,
-        sensacion_tecnica: sensacionTecnica,
-      }).eq('id_sesion', id)
-    }
-    await cargarDatos()
-    setMostrarPostSesion(false)
-    setLoading(false)
-    if (esDeportista) router.push('/dashboard-deportista')
-  }
 
   const borrarTarea = async (tareaId: number) => {
     if (!confirm('¿Borrar esta tarea?')) return
@@ -615,11 +527,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 ) : (
                   <span className="text-gray-500">—</span>
                 )}
-                {!esDeportista && (
-                  <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
-                    className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>
-                )}
-                {!esDeportista && sesion.duracion_minutos && (
+                <button onClick={() => { setDuracionManualInput(sesion.duracion_minutos || ''); setEditandoDuracion(true) }}
+                  className="text-gray-500 hover:text-orange-400 text-xs" title="Ajustar a mano">✏️</button>
+                {sesion.duracion_minutos && (
                   <button onClick={volverAEstimado} className="text-gray-500 hover:text-blue-400 text-xs" title="Volver a estimado">↺ estimar</button>
                 )}
               </>
@@ -635,11 +545,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           )}
           {sesion.notas_entrenador && <p className="text-gray-300 text-sm mt-2 italic bg-gray-800 rounded-lg px-3 py-2">"{sesion.notas_entrenador}"</p>}
 
-          {!esDeportista && (
-            <button onClick={abrirNutricion} className="mt-3 text-xs bg-gray-800 hover:bg-gray-700 text-orange-400 px-3 py-1.5 rounded-lg transition">
-              🍽 {nutricionGuardada(sesion) ? 'Editar nutrición' : 'Sugerir nutrición'}
-            </button>
-          )}
+          <button onClick={abrirNutricion} className="mt-3 text-xs bg-gray-800 hover:bg-gray-700 text-orange-400 px-3 py-1.5 rounded-lg transition">
+            🍽 {nutricionGuardada(sesion) ? 'Editar nutrición' : 'Sugerir nutrición'}
+          </button>
 
           {nutricionGuardada(sesion) && (
             <div className="mt-3 bg-gray-800 rounded-lg px-3 py-2 flex flex-col gap-1">
@@ -654,28 +562,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             </div>
           )}
         </div>
-
-        {sesion.estado !== 'Realizada' && esDeportista && (
-          <div className="mb-6 flex flex-col gap-3">
-            <button onClick={() => router.push('/sesion/' + id + '/ejecutar')}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">
-              ▶ Modo entreno
-            </button>
-            {!sesionIniciada ? (
-              <button onClick={iniciarSesion} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-medium text-sm transition">Ver sesión completa</button>
-            ) : (
-              <div className="bg-gray-900 rounded-xl p-6 border border-green-500">
-                {sesion.usar_cronometro && (
-                  <div className="text-center mb-4">
-                    <p className="text-gray-400 text-sm mb-1">Tiempo transcurrido</p>
-                    <p className="text-5xl font-bold text-green-400 font-mono">{formatTiempo(segundos)}</p>
-                  </div>
-                )}
-                <button onClick={finalizarSesion} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition">✓ Finalizar sesion</button>
-              </div>
-            )}
-          </div>
-        )}
 
         {sesion.estado === 'Realizada' && (
           <div className="mb-6">
@@ -706,71 +592,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             )}
 
             <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
-          </div>
-        )}
-
-        {mostrarPostSesion && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className={'bg-gray-900 rounded-xl p-6 w-full border border-orange-500 max-h-screen overflow-y-auto ' + (esBrick ? 'max-w-lg' : 'max-w-md')}>
-              <h3 className="text-xl font-bold mb-4">Post-sesion — Como fue?</h3>
-              {sesion.usar_cronometro && <p className="text-green-400 text-sm mb-4">Duracion: {formatTiempo(segundos)} ({Math.round(segundos/60)} min)</p>}
-              <form onSubmit={guardarPostSesion} className="flex flex-col gap-4">
-                {/* En un brick, el esfuerzo y la técnica se preguntan POR BLOQUE: correr
-                    después de la bici no se parece en nada a la bici, y si se mezclan en
-                    un solo número el SICAT no puede saber qué deporte le cuesta. */}
-                {esBrick ? (
-                  <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
-                    <p className="text-purple-300 text-sm font-semibold">🔀 Cómo fue cada parte del brick</p>
-                    {tareas.map((t, i) => {
-                      const b = postBloques[t.id] || { rpe: 5, fc: '', sensacion: 3 }
-                      const set = (campo: 'rpe' | 'fc' | 'sensacion', v: any) =>
-                        setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
-                      return (
-                        <div key={t.id} className="bg-gray-800 rounded-lg p-3 flex flex-col gap-2.5">
-                          <p className="text-white text-xs font-bold">
-                            {EMOJI_POST[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
-                            {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5">{t.zona_entrenamiento}</span>}
-                          </p>
-                          <div>
-                            <div className="flex justify-between mb-1"><label className="text-gray-400 text-xs">RPE real</label><span className="text-orange-400 font-bold text-xs">{b.rpe}/10</span></div>
-                            <input type="range" min={1} max={10} value={b.rpe} onChange={e => set('rpe', Number(e.target.value))} className="w-full accent-orange-500" />
-                          </div>
-                          <div>
-                            <div className="flex justify-between mb-1"><label className="text-gray-400 text-xs">Sensacion tecnica</label><span className="text-orange-400 font-bold text-xs">{b.sensacion}/5</span></div>
-                            <input type="range" min={1} max={5} value={b.sensacion} onChange={e => set('sensacion', Number(e.target.value))} className="w-full accent-orange-500" />
-                          </div>
-                          <input type="number" placeholder="FC media (ppm) — opcional" value={b.fc} onChange={e => set('fc', e.target.value)}
-                            className="bg-gray-900 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <>
-                    <div className="bg-gray-800 rounded-xl p-4">
-                      <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">RPE real</label><span className="text-orange-400 font-bold">{rpeReal}/10</span></div>
-                      <input type="range" min={1} max={10} value={rpeReal} onChange={e => setRpeReal(Number(e.target.value))} className="w-full accent-orange-500" />
-                      <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy facil</span><span>Maximo</span></div>
-                    </div>
-                    <div className="bg-gray-800 rounded-xl p-4">
-                      <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Sensacion tecnica</label><span className="text-orange-400 font-bold">{sensacionTecnica}/5</span></div>
-                      <input type="range" min={1} max={5} value={sensacionTecnica} onChange={e => setSensacionTecnica(Number(e.target.value))} className="w-full accent-orange-500" />
-                      <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy mala</span><span>Excelente</span></div>
-                    </div>
-                  </>
-                )}
-                {/* Del DÍA: no se pueden repartir entre deportes. */}
-                <div className="bg-gray-800 rounded-xl p-4">
-                  <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Dolor muscular</label><span className="text-orange-400 font-bold">{dolorMuscular}/5</span></div>
-                  <input type="range" min={1} max={5} value={dolorMuscular} onChange={e => setDolorMuscular(Number(e.target.value))} className="w-full accent-orange-500" />
-                  <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Sin dolor</span><span>Mucho</span></div>
-                </div>
-                {!esBrick && <input type="number" placeholder="FC media (ppm) — opcional" value={fcMedia} onChange={e => setFcMedia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
-                <input type="number" placeholder="HRV del dia (ms) — opcional" value={hrvDia} onChange={e => setHrvDia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                <textarea placeholder="Notas (opcional)" value={notasPost} onChange={e => setNotasPost(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={3} />
-                <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar y finalizar'}</button>
-              </form>
-            </div>
           </div>
         )}
 
@@ -844,7 +665,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         <SessionLoadChart tareas={tareas} />
 
-        {sesion.disciplina === 'Fuerza' && !esDeportista && (
+        {sesion.disciplina === 'Fuerza' && (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
             <span className="text-gray-400 text-sm">Sesión de fuerza:</span>
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
@@ -866,7 +687,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         )}
 
         {/* Mismo control para resistencia. Solo con Zonas 2. */}
-        {sistemaZonas === 2 && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion.disciplina) && !esDeportista && (
+        {sistemaZonas === 2 && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion.disciplina) && (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 flex flex-wrap items-center gap-3">
             <span className="text-gray-400 text-sm">Sesión de resistencia:</span>
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
@@ -906,23 +727,23 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* Resumen del brick: las transiciones NO son tareas (no deben contar como
             carga de ninguna disciplina), así que no pueden salir en la tabla de abajo.
             Aquí es donde se ven, que para eso son un paso entrenable. */}
-        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable={!esDeportista} depId={deportistaId} />}
+        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId} />}
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
-            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={esDeportista} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} modoResistencia={sesion.modo_resistencia || 'simple'} zonaResistencia={sesion.zona_resistencia || ''} onTareasCambian={cargarDatos} />
+            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={false} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} modoResistencia={sesion.modo_resistencia || 'simple'} zonaResistencia={sesion.zona_resistencia || ''} onTareasCambian={cargarDatos} />
           </div>
         ) : (
           <div>
             {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
-            {sesion.estado !== 'Realizada' && !esDeportista && (
+            {sesion.estado !== 'Realizada' && (
               <div className="mb-4">
                 <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
                   {mostrarForm ? 'Cancelar' : '+ Nueva tarea'}
                 </button>
               </div>
             )}
-            {mostrarForm && !esDeportista && sesion.disciplina === 'Fuerza' && (
+            {mostrarForm && sesion.disciplina === 'Fuerza' && (
               <form onSubmit={crearTareaFuerza} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
                 <h4 className="font-bold">Nuevo ejercicio de fuerza</h4>
                 <div>
@@ -986,7 +807,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               </form>
             )}
 
-            {mostrarForm && !esDeportista && sesion.disciplina !== 'Fuerza' && (
+            {mostrarForm && sesion.disciplina !== 'Fuerza' && (
               <form onSubmit={crearTarea} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
                 <h4 className="font-bold">Nueva tarea</h4>
                 <input type="text" placeholder="Zona (ej: Z2, Z4)" value={zona} onChange={e => setZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
@@ -1060,7 +881,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               <div className="grid gap-3">
                 {tareas.map((t, i) => (
                   <div key={t.id}
-                    draggable={!esDeportista}
+                    draggable
                     onDragStart={() => setDragIdx(i)}
                     onDragOver={e => { e.preventDefault(); if (sobreIdx !== i) setSobreIdx(i) }}
                     onDragEnd={() => { setDragIdx(null); setSobreIdx(null) }}
@@ -1069,9 +890,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                       (dragIdx === i ? 'border-orange-500/60 opacity-40 ' : 'border-gray-800 ') +
                       (sobreIdx === i && dragIdx !== null && dragIdx !== i ? 'ring-2 ring-orange-500/70 ' : '')}>
                     <div className="flex items-start gap-3">
-                      {!esDeportista && (
-                        <span className="text-gray-500 hover:text-orange-400 cursor-grab active:cursor-grabbing select-none flex-shrink-0 text-2xl leading-none -mt-0.5" title="Arrastra para reordenar">⠿</span>
-                      )}
+                      <span className="text-gray-500 hover:text-orange-400 cursor-grab active:cursor-grabbing select-none flex-shrink-0 text-2xl leading-none -mt-0.5" title="Arrastra para reordenar">⠿</span>
                       <span className="bg-orange-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">{i+1}</span>
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
@@ -1079,12 +898,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                             {t.zona_entrenamiento && <span className="text-orange-400 font-bold text-sm">{t.zona_entrenamiento}</span>}
                             {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>}
                           </div>
-                          {!esDeportista && (
-                            <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>
-                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
-                            </div>
-                          )}
+                          <div className="flex gap-1">
+                            <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>
+                            <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
+                          </div>
                         </div>
                         <p className="text-gray-300 text-sm">{t.series ? t.series+' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
                         {mostrarMedicion(t) && <p className="text-blue-400 text-sm font-medium">{mostrarMedicion(t)}</p>}
