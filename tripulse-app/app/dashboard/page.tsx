@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
-import { bienestar } from '@/lib/wellness-score'
+import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
@@ -122,7 +122,13 @@ export default function Dashboard() {
 
   const pendientes = tareas.filter(t => !t.hecho).length
   const hechas = tareas.length - pendientes
-  const rc = readiness?.color || '#6b7280'
+  // El número de la tarjeta es BIENESTAR (0-100, alto = mejor) y su color y su
+  // etiqueta tienen que salir de esa misma escala. Antes se le pegaba el veredicto de
+  // `analizarWellness`, que mide otra cosa —disposición respecto a su propia línea
+  // base— y quedaba «18 bienestar · Óptimo», que es lo contrario de la verdad: el
+  // panel del deportista, con el mismo 18, decía «Crítico».
+  const rc = wellHoy.score != null ? colorBienestar(wellHoy.score) : '#6b7280'
+  const etiquetaBienestar = wellHoy.score != null ? estadoBienestar(wellHoy.score) : null
   const [hc1, hc2] = activo ? grad(activo.nombre) : ['#f97316', '#ea580c']
   const semComp = proximaComp ? Math.max(0, Math.round((new Date(proximaComp.fecha).getTime() - Date.now()) / 604800000)) : 0
 
@@ -346,7 +352,10 @@ export default function Dashboard() {
                         <span className="text-[26px] font-bold leading-none" style={{ color: rc }}>{wellHoy.score ?? '—'}</span>
                         <span className="text-[10px] text-gray-500">bienestar</span>
                       </div>
-                      <p className="text-[11px] font-semibold mt-1" style={{ color: rc }}>{readiness.label}</p>
+                      <p className="text-[11px] font-semibold mt-1" style={{ color: rc }}>{etiquetaBienestar}</p>
+                      {/* La disposición es otra lectura (reciente vs su línea base) y
+                          va etiquetada, no pegada al número de bienestar. */}
+                      <p className="text-[10px] mt-0.5" style={{ color: readiness.color }}>disposición · {readiness.label}</p>
                       <p className="text-[10px] mt-0.5" style={{ color: wellHoy.hoy ? '#22c55e' : '#9ca3af' }}>{wellHoy.hoy ? '✓ registrado hoy' : 'sin registrar hoy'}</p>
                     </div>
                     {wellSpark.length > 1 && (

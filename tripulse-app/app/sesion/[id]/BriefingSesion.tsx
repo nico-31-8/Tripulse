@@ -299,6 +299,15 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
           </div>
         )}
 
+        {/* Sesión sin detallar: sin esto el atleta ve un título y dos botones, y no
+            sabe qué tiene que hacer ni por qué la pantalla está vacía. */}
+        {tareas.length === 0 && !realizada && (
+          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center flex flex-col gap-1.5">
+            <p className="text-[13.5px] text-gray-400">Tu entrenador todavía no ha detallado esta sesión.</p>
+            <p className="text-[12px] text-gray-600">Puedes hacerla igual y registrarla al terminar.</p>
+          </div>
+        )}
+
         {/* Nutrición para la sesión */}
         {!realizada && hayNutricion && (
           <div className="border border-white/[0.045] rounded-xl bg-[#131820] px-3.5 py-2.5 flex gap-3.5 flex-wrap text-[12.5px] text-gray-300">
