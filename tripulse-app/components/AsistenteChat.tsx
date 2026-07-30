@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { ContextoModulo } from '@/lib/contexto-modulo'
+import TextoAsistente from './TextoAsistente'
 
 export interface Msg { role: 'user' | 'assistant'; content: string }
 
@@ -82,7 +83,7 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
   return (
     <>
       <div ref={scrollRef} className={'flex-1 overflow-y-auto ' + pad}>
-        <div className={ancho + ' flex flex-col gap-3.5'}>
+        <div className={ancho + ' flex flex-col gap-5'}>
           {mensajes.length === 0 ? (
             <div className={compacto ? '' : 'mt-6'}>
               <p className="text-gray-400 text-[13px] mb-3.5 leading-relaxed">
@@ -101,13 +102,32 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
               {!contexto && <p className="text-amber-400/70 text-xs mt-4">No he podido cargar el contexto del deportista; responderé de forma general.</p>}
             </div>
           ) : (
+            /* El entrenador pregunta en burbuja; el asistente responde a todo el
+               ancho, como una nota. En un panel de 400px una burbuja al 88% deja
+               la respuesta —que es el contenido— más estrecha que la pregunta. */
             mensajes.map((m, i) => (
-              <div key={i} className={'flex ' + (m.role === 'user' ? 'justify-end' : 'justify-start')}>
-                <div className={'rounded-2xl px-3.5 py-2.5 max-w-[88%] text-[13.5px] whitespace-pre-wrap leading-relaxed ' +
-                  (m.role === 'user' ? 'bg-orange-500 text-white' : 'bg-gray-900 border border-gray-800 text-gray-200')}>
-                  {m.content || (enviando ? <span className="text-gray-500">pensando…</span> : '')}
+              m.role === 'user' ? (
+                <div key={i} className="flex justify-end">
+                  <div className="rounded-2xl rounded-br-md px-3.5 py-2 max-w-[85%] text-[13.5px] leading-relaxed bg-orange-500 text-white">
+                    {m.content}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div key={i} className="flex flex-col gap-1.5">
+                  <span className="text-[10.5px] uppercase tracking-[.09em] text-gray-600 font-semibold">Asistente</span>
+                  <div className="text-[14px] leading-[1.65] text-gray-300">
+                    {m.content
+                      ? <TextoAsistente texto={m.content} />
+                      : enviando && <span className="text-gray-600 text-[13px]">pensando…</span>}
+                  </div>
+                  {m.content && !enviando && (
+                    <button onClick={() => navigator.clipboard?.writeText(m.content)}
+                      className="self-start text-[10.5px] text-gray-600 hover:text-gray-300 transition mt-0.5">
+                      copiar
+                    </button>
+                  )}
+                </div>
+              )
             ))
           )}
         </div>
