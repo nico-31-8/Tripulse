@@ -23,16 +23,16 @@
      notas_entrenador. Al final del fichero tienes el borrado.
    ============================================================ */
 
-/* ------------------------------------------------------------
+/* ============================================================
    0. HRV basal: sin ella el corrector del SICAT se queda neutro.
       Solo se rellena si está vacía; si ya tienes un valor, no se toca.
-   ------------------------------------------------------------ */
+   ============================================================ */
 update deportista
    set hrv_basal = 65
  where id = 14
    and hrv_basal is null;
 
-/* ------------------------------------------------------------
+/* ============================================================
    1. WELLNESS — 24 días
       Escalas 1-7. En sueño, fatiga, estrés y dolor MÁS ES PEOR; en ánimo y
       motivación más es mejor (por eso van invertidos en el score).
@@ -42,7 +42,7 @@ update deportista
 
       El patrón deja lunes y jueves como días duros (los que siguen a las
       sesiones grandes) y el resto en buen estado.
-   ------------------------------------------------------------ */
+   ============================================================ */
 insert into wellness (
   id_deportista, fecha, calidad_sueno, horas_sueno, fatiga, estres,
   dolor_muscular, animo, motivacion, hrv, fc_reposo, malestar_general, score_wellness
@@ -69,11 +69,11 @@ from (
 ) v
 on conflict do nothing;
 
-/* ------------------------------------------------------------
+/* ============================================================
    2. SESIONES CON TAREAS
       Cada fila de la lista es una sesión. Se crea la sesión, luego sus
       tareas con el feedback post-sesión, y la medición de cada tarea.
-   ------------------------------------------------------------ */
+   ============================================================ */
 do $$
 declare
   v_dep constant int := 14;
@@ -173,9 +173,9 @@ begin
   end loop;
 end $$;
 
-/* ------------------------------------------------------------
+/* ============================================================
    3. VERIFICACIÓN
-   ------------------------------------------------------------ */
+   ============================================================ */
 select 'wellness' as tabla, count(*) as filas
   from wellness where id_deportista = 14 and fecha >= '2026-07-07'
 union all
@@ -186,9 +186,9 @@ select 'tareas de esas sesiones', count(*)
   from tarea t join sesion se on se.id = t.id_sesion
  where se.notas_entrenador like '[demo]%';
 
-/* ------------------------------------------------------------
+/* ============================================================
    4. DESHACER (ejecutar solo si quieres quitarlo todo)
-   ------------------------------------------------------------
+   ============================================================
 
 delete from p_distancia where id_tarea in (
   select t.id from tarea t join sesion s on s.id = t.id_sesion
@@ -206,4 +206,4 @@ delete from sesion where notas_entrenador like '[demo]%';
 delete from wellness where id_deportista = 14
    and fecha between '2026-07-07' and '2026-07-30';
 
-   ------------------------------------------------------------ */
+   ============================================================ */
