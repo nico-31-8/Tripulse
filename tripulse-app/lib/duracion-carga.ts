@@ -55,6 +55,43 @@ export function minutosEfectivos(
   return null
 }
 
+// ------------------------------------------------------------
+// Minutos de una sesión PARA CALCULAR CARGA
+// ------------------------------------------------------------
+// Única fuente de verdad de "cuánto duró esto" en los motores de carga y volumen.
+// Existe porque cada módulo leía `sesion.duracion_minutos` a pelo, y eso tiene dos
+// agujeros silenciosos:
+//   · una sesión sin duración manual valía 0 UA → no sumaba a CTL/ATL/TSB/ACWR
+//     aunque tuviera 3,6 km de natación planificados;
+//   · `duracion_real` (lo que el atleta cronometró) no lo miraba nadie.
+//
+// Prioridad: lo que PASÓ > lo que se planificó a mano > lo que estimamos.
+// La estimación es opcional: los módulos que no cargan tareas simplemente no la
+// pasan y se quedan con las dos primeras.
+export function minutosCarga(
+  sesion: { duracion_real?: number | null; duracion_minutos?: number | null } | null | undefined,
+  est?: ResultadoDuracion,
+): number {
+  if (!sesion) return 0
+  if (sesion.duracion_real && sesion.duracion_real > 0) return sesion.duracion_real
+  if (sesion.duracion_minutos && sesion.duracion_minutos > 0) return sesion.duracion_minutos
+  if (est?.estimable && est.minutos > 0) return est.minutos
+  return 0
+}
+
+// De dónde salieron esos minutos, para poder decírselo al entrenador en vez de
+// enseñar un número sin procedencia.
+export function origenMinutos(
+  sesion: { duracion_real?: number | null; duracion_minutos?: number | null } | null | undefined,
+  est?: ResultadoDuracion,
+): 'real' | 'manual' | 'estimada' | null {
+  if (!sesion) return null
+  if (sesion.duracion_real && sesion.duracion_real > 0) return 'real'
+  if (sesion.duracion_minutos && sesion.duracion_minutos > 0) return 'manual'
+  if (est?.estimable && est.minutos > 0) return 'estimada'
+  return null
+}
+
 // Texto para mostrar: '50 min' (manual), '~45 min' (estimada) o '—'.
 export function duracionSesionTexto(
   duracionManual: number | null | undefined,

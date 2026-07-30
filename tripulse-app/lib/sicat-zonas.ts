@@ -30,7 +30,7 @@ export interface SicatZonasResultado {
 const W = { doms: 0.40, hrv: 0.35, rpe: 0.25 }
 
 // Coste 0–100 de una sesión con las señales disponibles (pesos redistribuidos si falta alguna).
-function costeSesion(d0: number | null, d24: number | null, d48: number | null, hrvNext: number | null, hrvBasal: number, rpe: number | null): number | null {
+export function costeSesion(d0: number | null, d24: number | null, d48: number | null, hrvNext: number | null, hrvBasal: number, rpe: number | null): number | null {
   const señales: { v: number; w: number }[] = []
 
   // DOMS (1–7) ponderado en el tiempo → normalizado 0–1

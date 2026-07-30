@@ -11,6 +11,13 @@ import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
+// Identidad de color estable por nombre (mismo criterio que el resto de la app).
+const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
+const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
+const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
+const ICONO_SOLO = (d: string) => d === 'Natacion' ? '🏊' : d === 'Ciclismo' ? '🚴' : '🏃'
+const COLOR_DISC: Record<string, string> = { Natacion: '#60a5fa', Ciclismo: '#fbbf24', Carrera: '#4ade80' }
+
 const iconoDisc = (d: string) => d === 'Natacion' ? '🏊 Nat' : d === 'Ciclismo' ? '🚴 Cic' : '🏃 Car'
 const nombreDisc = (d: string) => d === 'Natacion' ? 'natación' : d === 'Ciclismo' ? 'ciclismo' : 'carrera'
 function colMult(m: number) { return m < 0.8 ? '#22c55e' : m < 1.2 ? '#eab308' : m < 1.8 ? '#f97316' : '#ef4444' }
@@ -290,6 +297,7 @@ export default function EcoPage() {
   const [mostrarExplicacion, setMostrarExplicacion] = useState(false)
   const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
   const [pondZona, setPondZona] = useState(false)
+  const [refOpen, setRefOpen] = useState(false)
 
   useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
   const togglePond = () => setPondZona(v => {
@@ -330,44 +338,58 @@ export default function EcoPage() {
     Poblacional: d === 'Natacion' ? 75 : d === 'Ciclismo' ? 50 : 100,
   })) : []
 
-  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
+    const [c1, c2] = grad(nombre)
+    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
+  }
+
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       {mostrarExplicacion && <ModalExplicacion onClose={() => setMostrarExplicacion(false)} />}
 
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
-      </nav>
+      <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        <h1 className="text-[17px] font-bold tracking-tight truncate">SICAT <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· coste de entrenamiento individualizado</span></h1>
+        <button onClick={() => setMostrarExplicacion(true)}
+          className="flex items-center gap-2 text-[12.5px] font-semibold text-gray-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] px-3 py-1.5 rounded-lg transition flex-shrink-0">
+          💡 ¿Cómo funciona?
+        </button>
+      </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-2xl font-bold">SICAT</h2>
-          <button
-            onClick={() => setMostrarExplicacion(true)}
-            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-orange-500 text-gray-300 hover:text-white text-sm px-4 py-2 rounded-lg transition"
-          >
-            <span>💡</span>
-            <span>¿Cómo funciona?</span>
-          </button>
-        </div>
-        <p className="text-gray-400 mb-6 text-sm">Coste energético individualizado por disciplina · Mínimo 5-6 sesiones por disciplina</p>
-
-        {seleccionado ? (
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-            <p className="text-sm text-gray-400">Deportista · <span className="text-white font-semibold">{seleccionado.nombre}</span></p>
-            <button onClick={() => setSeleccionado(null)} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">Cambiar deportista</button>
-          </div>
+      <div className="max-w-[1700px] mx-auto px-4 sm:px-8 py-7">
+        {!seleccionado ? (
+          <>
+            <p className="text-gray-500 text-[13px] mb-4">Elige un deportista. El cálculo necesita un mínimo de 5-6 sesiones realizadas por disciplina.</p>
+            <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))' }}>
+              {deportistas.map(d => (
+                <button key={d.id} onClick={() => calcularECO(d)} className="tp-card tp-tile p-4 flex items-center gap-3" style={{ ['--c' as any]: '#06b6d4' }}>
+                  <Avatar nombre={d.nombre} />
+                  <div className="min-w-0 text-left">
+                    <p className="text-[14px] font-semibold truncate">{d.nombre}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">FC máx {d.fc_maxima || '—'} ppm · HRV {d.hrv_basal || '—'} ms</p>
+                  </div>
+                </button>
+              ))}
+              {deportistas.length === 0 && <div className="tp-card p-12 text-center text-gray-500 text-[13px]">No tienes deportistas todavía.</div>}
+            </div>
+          </>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-            {deportistas.map(d => (
-              <button key={d.id} onClick={() => calcularECO(d)}
-                className={'rounded-xl p-5 border-2 text-left transition ' +
-                  (seleccionado?.id === d.id ? 'bg-orange-500 border-orange-400' : 'bg-gray-900 border-gray-700 hover:border-orange-500')}>
-                <h3 className="font-bold text-lg">{d.nombre}</h3>
-                <p className="text-sm opacity-70">FC máx: {d.fc_maxima || '—'} ppm · HRV basal: {d.hrv_basal || '—'} ms</p>
+          <div className="mb-6 flex flex-wrap items-center gap-4">
+            <button onClick={() => { setSeleccionado(null); setScores(null); setZonasRes(null) }}
+              className="w-9 h-9 rounded-xl grid place-items-center text-gray-400 hover:text-white hover:bg-white/5 transition flex-shrink-0" title="Cambiar deportista">←</button>
+            <Avatar nombre={seleccionado.nombre} size={48} />
+            <div className="min-w-0">
+              <h2 className="text-[21px] font-bold tracking-tight truncate">{seleccionado.nombre}</h2>
+              <p className="text-[11.5px] text-gray-500 mt-1">FC máx {seleccionado.fc_maxima || '—'} ppm · HRV basal {seleccionado.hrv_basal || '—'} ms</p>
+            </div>
+            <div className="ml-auto flex items-center gap-2 flex-wrap">
+              <button onClick={togglePond}
+                className={'text-[12px] font-semibold px-3 py-2 rounded-xl transition border ' + (pondZona ? 'bg-orange-500/15 text-orange-300 border-orange-500/35' : 'bg-white/[0.04] text-gray-400 border-white/[0.07] hover:text-white')}>
+                {pondZona ? '✓ Ponderación por zona activa' : 'Activar ponderación por zona'}
               </button>
-            ))}
+            </div>
           </div>
         )}
 
@@ -375,56 +397,53 @@ export default function EcoPage() {
 
         {scores && seleccionado && !loadingScores && (
           <div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
               {DISCIPLINAS.map(disc => {
                 const s = scores[disc]
-                const icono = disc === 'Natacion' ? '🏊' : disc === 'Ciclismo' ? '🚴' : '🏃'
+                const col = COLOR_DISC[disc] || '#94a3b8'
                 return (
-                  <div key={disc} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <span className="text-2xl">{icono}</span>
-                        <h3 className="font-bold text-lg mt-1">{disc}</h3>
-                        <p className="text-gray-500 text-xs">{s.sesiones} sesiones analizadas</p>
-                      </div>
-                      {s.porcentaje !== undefined ? (
-                        <div className="text-right">
-                          <p className={'text-3xl font-bold ' + colorPorcentaje(s.porcentaje)}>{s.porcentaje}%</p>
-                          <p className="text-gray-500 text-xs">del máx individual</p>
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm">Sin datos</p>
-                      )}
+                  <div key={disc} className="tp-card p-6" style={{ ['--c' as any]: col }}>
+                    <div className="flex items-center gap-2 mb-5">
+                      <span className="text-[15px]">{ICONO_SOLO(disc)}</span>
+                      <h3 className="font-semibold text-[15px] truncate">{disc === 'Natacion' ? 'Natación' : disc}</h3>
+                      <span className="text-gray-600 text-[11px] ml-auto flex-shrink-0">{s.sesiones} sesiones</span>
                     </div>
 
                     {s.total !== null ? (
                       <>
-                        <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
-                          <div className={'h-2 rounded-full ' + bgPorcentaje(s.porcentaje || 0)}
+                        <div className="flex items-baseline gap-2.5">
+                          <span className={'text-[44px] font-bold leading-none tracking-tight ' + colorPorcentaje(s.porcentaje || 0)}>
+                            {s.porcentaje}<span className="text-[19px]">%</span>
+                          </span>
+                          <span className="text-gray-600 text-[11px]">del máx.</span>
+                        </div>
+                        <div className="w-full bg-white/[0.06] rounded-full h-1 mt-4 overflow-hidden">
+                          <div className={'h-1 rounded-full transition-all duration-500 ' + bgPorcentaje(s.porcentaje || 0)}
                             style={{ width: (s.porcentaje || 0) + '%' }} />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+
+                        <div className="mt-7 flex justify-between gap-2">
                           {[
-                            { label: 'F1 Técnica', val: s.f1, max: 4 },
-                            { label: 'F2 Dolor', val: s.f2, max: 4 },
-                            { label: 'F3 Densidad', val: s.f3, max: 4 },
-                            { label: 'F4 Energético', val: s.f4, max: 4 },
-                          ].map(({ label, val, max }) => (
-                            <div key={label} className="bg-gray-800 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">{label}</p>
-                              <p className="font-bold text-white">{val !== null ? val + '/' + max : '—'}</p>
+                            { label: 'Técnica', val: s.f1 },
+                            { label: 'Dolor', val: s.f2 },
+                            { label: 'Densidad', val: s.f3 },
+                            { label: 'Energía', val: s.f4 },
+                          ].map(({ label, val }) => (
+                            <div key={label} className="text-center flex-1 min-w-0">
+                              <p className="text-[17px] font-semibold text-gray-200 leading-none">{val !== null ? val : '—'}</p>
+                              <p className="text-gray-600 text-[10px] mt-1.5 truncate" title={label}>{label}</p>
                             </div>
                           ))}
                         </div>
-                        <div className="mt-3 bg-gray-800 rounded-lg p-2">
-                          <p className="text-gray-500 text-xs">Total corregido HRV</p>
-                          <p className="font-bold text-orange-400">{s.total}/16 <span className="text-gray-500 text-xs font-normal">(corrector: ×{s.corrector?.toFixed(2)})</span></p>
-                        </div>
+
+                        <p className="text-gray-600 text-[10.5px] mt-6">
+                          Total {s.total}/16 · corrector HRV ×{s.corrector?.toFixed(2)}
+                        </p>
                       </>
                     ) : (
-                      <div className="bg-gray-800 rounded-lg p-4 text-center">
-                        <p className="text-gray-500 text-sm">Faltan datos para calcular</p>
-                        <p className="text-gray-600 text-xs mt-1">Necesita sesiones realizadas con RPE, FC y sensación técnica</p>
+                      <div className="rounded-xl border border-dashed border-white/[0.09] p-5 text-center">
+                        <p className="text-gray-500 text-[12.5px]">Faltan datos para calcular</p>
+                        <p className="text-gray-600 text-[11px] mt-1.5 leading-snug">Necesita sesiones realizadas con RPE, FC y sensación técnica</p>
                       </div>
                     )}
                   </div>
@@ -432,66 +451,15 @@ export default function EcoPage() {
               })}
             </div>
 
-            {radarData.some(d => d.Individual > 0) && (
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-                <h3 className="font-bold mb-1">Perfil ECO — Individual vs Poblacional</h3>
-                <p className="text-gray-500 text-xs mb-4">Comparación con los valores de referencia de la tabla ECO original</p>
-                <ResponsiveContainer width="100%" height={280}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="#374151" />
-                    <PolarAngleAxis dataKey="disciplina" stroke="#9ca3af" tick={{ fontSize: 12 }} />
-                    <Radar name="Tu perfil" dataKey="Individual" stroke="#f97316" fill="#f97316" fillOpacity={0.3} />
-                    <Radar name="Referencia poblacional" dataKey="Poblacional" stroke="#6b7280" fill="#6b7280" fillOpacity={0.1} strokeDasharray="4 4" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-              <h3 className="font-bold mb-3">Tabla ECO de referencia poblacional</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-400 text-xs border-b border-gray-700">
-                      <th className="text-left py-2 px-3">Factor</th>
-                      <th className="text-center py-2 px-3">🏊 Natación</th>
-                      <th className="text-center py-2 px-3">🚴 Ciclismo</th>
-                      <th className="text-center py-2 px-3">🏃 Carrera</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {TABLA_ECO_ORIGINAL.map(r => (
-                      <tr key={r.factor} className="border-b border-gray-800">
-                        <td className="py-2 px-3 text-gray-300">{r.factor}</td>
-                        <td className="py-2 px-3 text-center">{'★'.repeat(r.natacion)}{'☆'.repeat(4-r.natacion)}</td>
-                        <td className="py-2 px-3 text-center">{'★'.repeat(r.ciclismo)}{'☆'.repeat(4-r.ciclismo)}</td>
-                        <td className="py-2 px-3 text-center">{'★'.repeat(r.carrera)}{'☆'.repeat(4-r.carrera)}</td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-gray-600">
-                      <td className="py-2 px-3 font-bold text-white">TOTAL</td>
-                      <td className="py-2 px-3 text-center font-bold text-orange-400">9/16 · 75%</td>
-                      <td className="py-2 px-3 text-center font-bold text-orange-400">6/16 · 50%</td>
-                      <td className="py-2 px-3 text-center font-bold text-orange-400">12/16 · 100%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
             {/* ===== MATRIZ DE COSTE POR ZONA Y DISCIPLINA ===== */}
             {zonasRes && (
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mt-6">
+              <div className="tp-card p-6">
                 <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
                   <div>
-                    <h3 className="font-bold">Coste por zona y disciplina</h3>
-                    <p className="text-gray-500 text-xs">Cuánto le cuesta cada tipo de entreno (DOMS 48h + caída HRV + RPE). <b className="text-gray-400">1.0× = su coste medio</b> · {zonasRes.nSesiones} sesiones</p>
+                    <h3 className="font-semibold text-[16px]">Coste por zona y disciplina</h3>
+                    <p className="text-gray-600 text-[11.5px] mt-1"><b className="text-gray-400 font-medium">1.0× = su coste medio</b> · {zonasRes.nSesiones} sesiones analizadas</p>
                   </div>
-                  <button onClick={togglePond}
-                    className={'text-sm px-3 py-1.5 rounded-lg transition ' + (pondZona ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700')}>
-                    {pondZona ? '✓ Ponderación por zona activada' : 'Activar ponderación por zona'}
-                  </button>
                 </div>
 
                 {zonasRes.celdas.length === 0 ? (
@@ -502,24 +470,26 @@ export default function EcoPage() {
                   const cs = conclusionesZonas(zonasRes.celdas)
                   return (
                     <div className={pondZona ? '' : 'opacity-70'}>
-                      <div className="grid gap-1.5 mt-4" style={{ gridTemplateColumns: '120px repeat(3, 1fr)' }}>
+                      <div className="grid gap-2 mt-5" style={{ gridTemplateColumns: '130px repeat(3, 1fr)' }}>
                         <div />
-                        {DISCIPLINAS.map(d => <div key={d} className="text-center text-xs font-bold text-gray-300 pb-1">{iconoDisc(d)}</div>)}
+                        {DISCIPLINAS.map(d => <div key={d} className="text-center text-[11.5px] font-semibold text-gray-400 pb-1.5">{iconoDisc(d)}</div>)}
                         {zonasOrden.map(z => (
                           <Fragment key={z}>
                             <div className="flex flex-col justify-center">
-                              <span className="text-sm font-bold text-white">{z}</span>
-                              <span className="text-gray-600" style={{ fontSize: 9 }}>{cargaZona(z).nombre}</span>
+                              <span className="text-[13.5px] font-semibold text-gray-100">{z}</span>
+                              <span className="text-gray-600 text-[10px]">{cargaZona(z).nombre}</span>
                             </div>
                             {DISCIPLINAS.map(d => {
                               const c = cell(d, z)
-                              if (!c) return <div key={d + z} className="rounded-lg border border-dashed border-gray-700 min-h-12 flex items-center justify-center text-gray-600 text-xs">—</div>
+                              if (!c) return <div key={d + z} className="rounded-xl border border-dashed border-white/[0.07] min-h-[58px] flex items-center justify-center text-gray-700 text-xs">—</div>
                               const col = colMult(c.multiplicador)
-                              const border = c.confianza === 'alta' ? ('1.5px solid ' + col) : c.confianza === 'media' ? ('1px solid ' + col + '99') : ('1px dashed ' + col + '99')
+                              // La confianza ya se lee en el borde (sólido grueso / fino / punteado),
+                              // así que en la celda solo va el multiplicador y el nº de sesiones.
+                              const border = c.confianza === 'alta' ? ('1.5px solid ' + col + 'cc') : c.confianza === 'media' ? ('1px solid ' + col + '88') : ('1px dashed ' + col + '77')
                               return (
-                                <div key={d + z} className="rounded-lg min-h-12 flex flex-col items-center justify-center" style={{ backgroundColor: col + '1f', border, opacity: c.confianza === 'baja' ? 0.7 : 1 }}>
-                                  <span className="font-bold" style={{ color: col, fontSize: 15 }}>{c.multiplicador.toFixed(1)}×</span>
-                                  <span className="text-gray-400" style={{ fontSize: 9 }}>n={c.n} · {c.confianza}</span>
+                                <div key={d + z} title={'n=' + c.n + ' · confianza ' + c.confianza} className="rounded-xl min-h-[56px] flex flex-col items-center justify-center gap-1" style={{ backgroundColor: col + '14', border, opacity: c.confianza === 'baja' ? 0.75 : 1 }}>
+                                  <span className="font-semibold leading-none" style={{ color: col, fontSize: 18 }}>{c.multiplicador.toFixed(1)}×</span>
+                                  <span className="text-gray-600 text-[9.5px]">n={c.n}</span>
                                 </div>
                               )
                             })}
@@ -527,34 +497,96 @@ export default function EcoPage() {
                         ))}
                       </div>
 
-                      <div className="flex gap-3 flex-wrap text-xs text-gray-400 mt-3">
+                      <div className="flex gap-4 flex-wrap text-[11px] text-gray-500 mt-4">
                         {([['#22c55e', 'bajo <0.8×'], ['#eab308', 'medio'], ['#f97316', 'alto'], ['#ef4444', 'muy alto >1.8×']] as [string, string][]).map(([c, l]) => (
-                          <span key={l} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: c }} />{l}</span>
+                          <span key={l} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: c }} />{l}</span>
                         ))}
-                        <span className="text-gray-600">punteado = pocos datos (n&lt;3), respaldo al SICAT de disciplina</span>
+                        <span className="text-gray-600">punteado = pocos datos (n&lt;3)</span>
                       </div>
 
                       {cs.length > 0 && (
-                        <div className="mt-4 border-t border-gray-800 pt-4 flex flex-col gap-2">
+                        <div className="mt-5 pt-5 border-t border-white/[0.06] flex flex-col gap-2.5">
                           {cs.map((c, i) => (
-                            <div key={i} className="flex items-start gap-2 text-sm">
-                              <span style={{ fontSize: 10 }} className="mt-0.5">{c.ic}</span>
-                              <span className="text-gray-300">{c.texto}</span>
+                            <div key={i} className="flex items-start gap-2.5 text-[12.5px]">
+                              <span style={{ fontSize: 10 }} className="mt-1">{c.ic}</span>
+                              <span className="text-gray-300 leading-relaxed">{c.texto}</span>
                             </div>
                           ))}
                         </div>
                       )}
 
-                      <p className="text-gray-600 text-xs mt-4">
+                      <p className="text-gray-600 text-[11px] mt-5 leading-relaxed">
                         {pondZona
                           ? '✓ Con la ponderación activada, la carga (UA) de cada sesión se pesa por el coste de su zona donde hay datos (n≥3), y cae al SICAT de disciplina en el resto.'
-                          : 'Ahora mismo es informativo. Actívala para que estos multiplicadores pesen la carga por zona.'}
+                          : 'Ahora mismo es informativo. Actívala arriba para que estos multiplicadores pesen la carga por zona.'}
                       </p>
                     </div>
                   )
                 })()}
               </div>
             )}
+
+            {/* ===== Referencia y perfil — secundario, cerrado por defecto ===== */}
+            <div className="tp-card mt-4">
+              <button onClick={() => setRefOpen(o => !o)} className="w-full flex items-center gap-3 p-4 text-left">
+                <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={{ ['--c' as any]: '#6b7280' }}>📚</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold">Referencia y perfil</p>
+                  <p className="text-[11px] text-gray-500">Radar individual vs. poblacional y tabla ECO original</p>
+                </div>
+                <span className={'tp-chev text-gray-500 ' + (refOpen ? 'open' : '')}>▾</span>
+              </button>
+              <div className={'tp-collapse px-4 ' + (refOpen ? 'open pb-4' : '')} style={{ maxHeight: refOpen ? 920 : 0 }}>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {radarData.some(d => d.Individual > 0) && (
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                      <h3 className="font-semibold text-[13px]">Perfil ECO — individual vs. poblacional</h3>
+                      <p className="text-gray-500 text-[11px] mt-0.5 mb-2">Comparación con los valores de referencia de la tabla ECO original</p>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <RadarChart data={radarData}>
+                          <PolarGrid stroke="rgba(255,255,255,.09)" />
+                          <PolarAngleAxis dataKey="disciplina" stroke="#7f8a99" tick={{ fontSize: 11, fill: '#7f8a99' }} />
+                          <Radar name="Tu perfil" dataKey="Individual" stroke="#f97316" fill="#f97316" fillOpacity={0.3} />
+                          <Radar name="Referencia poblacional" dataKey="Poblacional" stroke="#6b7280" fill="#6b7280" fillOpacity={0.1} strokeDasharray="4 4" />
+                          <Tooltip contentStyle={{ backgroundColor: '#0b0e15', border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, color: '#f3f5f8', fontSize: 12 }} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                    <h3 className="font-semibold text-[13px] mb-3">Tabla ECO de referencia poblacional</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[12.5px]">
+                        <thead>
+                          <tr className="text-gray-500 text-[11px] border-b border-white/[0.08]">
+                            <th className="text-left py-2 px-2 font-semibold">Factor</th>
+                            <th className="text-center py-2 px-2 font-semibold">🏊</th>
+                            <th className="text-center py-2 px-2 font-semibold">🚴</th>
+                            <th className="text-center py-2 px-2 font-semibold">🏃</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {TABLA_ECO_ORIGINAL.map(r => (
+                            <tr key={r.factor} className="border-b border-white/[0.05]">
+                              <td className="py-2 px-2 text-gray-300">{r.factor}</td>
+                              <td className="py-2 px-2 text-center text-orange-300/80">{'★'.repeat(r.natacion)}<span className="text-gray-700">{'★'.repeat(4 - r.natacion)}</span></td>
+                              <td className="py-2 px-2 text-center text-orange-300/80">{'★'.repeat(r.ciclismo)}<span className="text-gray-700">{'★'.repeat(4 - r.ciclismo)}</span></td>
+                              <td className="py-2 px-2 text-center text-orange-300/80">{'★'.repeat(r.carrera)}<span className="text-gray-700">{'★'.repeat(4 - r.carrera)}</span></td>
+                            </tr>
+                          ))}
+                          <tr className="border-t border-white/[0.12]">
+                            <td className="py-2 px-2 font-bold text-white">TOTAL</td>
+                            <td className="py-2 px-2 text-center font-bold text-orange-400">9/16 · 75%</td>
+                            <td className="py-2 px-2 text-center font-bold text-orange-400">6/16 · 50%</td>
+                            <td className="py-2 px-2 text-center font-bold text-orange-400">12/16 · 100%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

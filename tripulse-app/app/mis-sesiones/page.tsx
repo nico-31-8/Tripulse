@@ -272,7 +272,7 @@ export default function MisSesiones() {
                     {sesionesDia.length > 0 && (
                       <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-2">
                         {sesionesDia.map(s => (
-                          <button key={s.id} onClick={() => router.push('/sesion/' + s.id + '/ejecutar')} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                          <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
                               <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
@@ -355,7 +355,7 @@ export default function MisSesiones() {
                     </div>
                     <div className="px-4 py-3 flex flex-col gap-2">
                       {sesionesDia.map(s => (
-                        <button key={s.id} onClick={() => router.push('/sesion/' + s.id + '/ejecutar')} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                        <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                           <div className="flex items-center gap-3">
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
                             <div>
@@ -485,7 +485,7 @@ export default function MisSesiones() {
                   )}
 
                   <button
-                    onClick={() => router.push('/sesion/' + s.id + '/ejecutar')}
+                    onClick={() => router.push('/sesion/' + s.id)}
                     className={'w-full py-2.5 rounded-xl font-medium text-sm transition ' +
                       (s.estado === 'Realizada'
                         ? 'bg-gray-700 text-gray-400 cursor-default'

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  zonaResistencia, prescripcion, pctVamZona, velNatacionZona,
+  zonaResistencia, prescripcion, pctVamZona, velNatacionZona, ritmoObjetivo,
   tablaIntensidades, cargaZona, ZONAS_RESISTENCIA,
 } from './zonas'
 
@@ -98,5 +98,59 @@ describe('tablaIntensidades', () => {
   it('con CSS, la natación de una zona con desfase muestra ritmo /100m', () => {
     const t = tablaIntensidades({ css: 1.4 }, null)
     expect(t.find(r => r.sigla === 'AEM')!.natacion).toMatch(/\/100m/)
+  })
+})
+
+// ------------------------------------------------------------
+// ritmoObjetivo — la traducción zona → ritmo con LOS tests del atleta
+// ------------------------------------------------------------
+// Es lo que convierte una plantilla en el entreno de una persona concreta. Lo usan
+// el editor del entrenador y el briefing del deportista, así que aquí se blinda que
+// las dos pantallas digan lo mismo.
+describe('ritmoObjetivo', () => {
+  const tests = { vam: 16, css: 1.4, ftp: 250 }
+
+  it('traduce una zona del catálogo Zonas 2', () => {
+    expect(ritmoObjetivo('AEM', 'Carrera', tests)).toBeTruthy()
+  })
+
+  it('el mismo entreno da ritmos distintos según los tests del atleta', () => {
+    const rapido = ritmoObjetivo('Z2', 'Carrera', { vam: 18 })
+    const lento = ritmoObjetivo('Z2', 'Carrera', { vam: 12 })
+    expect(rapido).not.toBe(lento)
+    expect(rapido).toBeTruthy()
+  })
+
+  it('ciclismo clásico devuelve vatios sobre el FTP', () => {
+    expect(ritmoObjetivo('Z4', 'Ciclismo', { ftp: 250 })).toBe('245 W')   // 98% de 250
+  })
+
+  it('natación clásica devuelve ritmo por 100 m', () => {
+    expect(ritmoObjetivo('Z2', 'Natacion', { css: 1.4 })).toContain('/100m')
+  })
+
+  it('acepta «Natación» con tilde, que es como llega de algunas pantallas', () => {
+    expect(ritmoObjetivo('Z2', 'Natación', { css: 1.4 }))
+      .toBe(ritmoObjetivo('Z2', 'Natacion', { css: 1.4 }))
+  })
+
+  it('sin el test de esa disciplina no inventa un ritmo', () => {
+    expect(ritmoObjetivo('Z4', 'Ciclismo', { ftp: null })).toBe('')
+    expect(ritmoObjetivo('Z4', 'Carrera', { vam: null })).toBe('')
+  })
+
+  it('sin zona, sin disciplina o sin tests devuelve vacío', () => {
+    expect(ritmoObjetivo(null, 'Carrera', tests)).toBe('')
+    expect(ritmoObjetivo('Z2', null, tests)).toBe('')
+    expect(ritmoObjetivo('Z2', 'Carrera', null)).toBe('')
+  })
+
+  it('una zona desconocida no revienta', () => {
+    expect(ritmoObjetivo('XXX', 'Carrera', tests)).toBe('')
+  })
+
+  it('más zona = más rápido en carrera (el ritmo baja)', () => {
+    const seg = (r: string) => { const [m, s] = r.split(' ')[0].split(':').map(Number); return m * 60 + s }
+    expect(seg(ritmoObjetivo('Z5', 'Carrera', tests))).toBeLessThan(seg(ritmoObjetivo('Z2', 'Carrera', tests)))
   })
 })

@@ -8,6 +8,7 @@ import { analizarWellness } from '@/lib/wellness-analisis'
 import { cargaZona } from '@/lib/zonas'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import OnboardingDeportista from '@/components/OnboardingDeportista'
+import { ResumenDeportista } from '@/components/ResumenSemanal'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
@@ -171,6 +172,9 @@ export default function DashboardDeportista() {
         {/* Primeros pasos: checklist guiado (vincular entrenador + anamnesis). Se oculta solo
             cuando ambos están hechos. Sustituye a los avisos sueltos de antes. */}
         <OnboardingDeportista deportista={deportista} anamnesisPendiente={anamnesisPendiente} />
+
+        {/* Cómo fue tu semana pasada (cumplimiento, carga y bienestar). */}
+        {deportista && <div className="mb-4"><ResumenDeportista depId={deportista.id} /></div>}
 
         {/* ===== BLOQUE SUPERIOR: recordatorio wellness ⇄ disposición ===== */}
         {!wellnessHoy ? (

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
+import { minutosCarga } from '@/lib/duracion-carga'
 
 // Solo deportes: un brick no es una disciplina, se reparte entre las suyas.
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
@@ -97,7 +98,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
       if (!rpeProm) return null
       const fcRelativa = fcMediaProm && fcUmbral > 0 ? fcMediaProm / fcUmbral : null
       const cargaObjetiva = fcRelativa ? fcRelativa * 10 : rpeProm
-      const uac = Math.round(((cargaObjetiva + rpeProm) / 2) * (s.duracion_minutos || 0))
+      const uac = Math.round(((cargaObjetiva + rpeProm) / 2) * minutosCarga(s))
       return { id: s.id, fecha: s.fecha_sesion, uac: uac > 0 ? uac : 0 }
     }).filter(Boolean) as { id: number, fecha: string, uac: number }[]
 

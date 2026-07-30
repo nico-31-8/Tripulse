@@ -59,3 +59,36 @@ html, body {
 @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .fade-up { animation: fadeUp .55s cubic-bezier(.22,1,.36,1) both; }
 @media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
+
+/* ===== Sistema de diseño del rediseño (tarjetas con material, firma, hover) =====
+   Aditivo: solo aplica a elementos con estas clases (no afecta a páginas antiguas). */
+.tp-card {
+  position: relative; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.075); border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.012)), #0e1218;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+.tp-tile { transition: transform .24s cubic-bezier(.22,1,.36,1), border-color .24s, box-shadow .24s; text-align: left; }
+.tp-tile:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in oklab, var(--c, #f97316) 50%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07),
+    0 0 0 1px color-mix(in oklab, var(--c, #f97316) 24%, transparent),
+    0 16px 38px -18px color-mix(in oklab, var(--c, #f97316) 58%, transparent);
+}
+.tp-chip { display: grid; place-items: center; border-radius: 13px;
+  background: color-mix(in oklab, var(--c, #f97316) 15%, transparent); color: var(--c, #f97316); }
+.tp-host > * { position: relative; z-index: 1; }
+.tp-wm { position: absolute; right: -12px; bottom: -14px; width: 92px; height: 92px;
+  color: var(--c, #f97316); opacity: .08; z-index: 0; pointer-events: none;
+  transition: opacity .28s, transform .28s; }
+.tp-tile:hover .tp-wm { opacity: .15; transform: translate(-3px,-3px) rotate(-5deg); }
+.tp-pill { --pc: #64748b; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 999px; line-height: 1;
+  color: color-mix(in oklab, var(--pc) 72%, #fff); background: color-mix(in oklab, var(--pc) 20%, transparent); }
+.tp-collapse { max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .38s cubic-bezier(.22,1,.36,1), opacity .3s, margin-top .3s; margin-top: 0; }
+.tp-collapse.open { max-height: 460px; opacity: 1; margin-top: 16px; }
+.tp-chev { transition: transform .32s; }
+.tp-chev.open { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .tp-tile, .tp-wm, .tp-collapse, .tp-chev { transition: none; } }

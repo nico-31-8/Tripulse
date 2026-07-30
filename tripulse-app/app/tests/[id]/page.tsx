@@ -323,24 +323,110 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const filasInt = hayIntensidades ? tablaIntensidades(intVals, deportista.fc_maxima) : []
   const objetivos = calcularObjetivos(objPrueba, intVals, Number(velBici) || 32)
 
+  // ---- Estado actual: último valor de cada test + variación respecto al anterior ----
+  // Las listas vienen ordenadas por fecha descendente, así que [0] es el más reciente.
+  // En todas estas métricas MÁS ALTO = MEJOR, por eso la flecha arriba siempre es verde.
+  const ultimoDe = (arr: any[], key: string) => {
+    const vals = (arr || []).filter(t => t[key] != null)
+    if (!vals.length) return null
+    const delta = vals[1] != null ? Math.round((vals[0][key] - vals[1][key]) * 100) / 100 : null
+    return { valor: vals[0][key], fecha: vals[0].fecha, delta }
+  }
+  const RECORDS: any[] = [
+    { k: 'VAM', u: 'km/h', c: '#4ade80', d: ultimoDe(tests1, 'vam'), sub: (v: number) => formatVAM(v) },
+    { k: 'MSS', u: 'km/h', c: '#86efac', d: ultimoDe(tests1, 'mss') },
+    { k: 'CSS', u: 'm/s', c: '#60a5fa', d: ultimoDe(tests2, 'css'), sub: (v: number) => formatCSS(v) },
+    { k: 'V25', u: 'm/s', c: '#93c5fd', d: ultimoDe(tests2, 'v25') },
+    { k: 'V50', u: 'm/s', c: '#93c5fd', d: ultimoDe(tests2, 'v50') },
+    { k: 'FTP', u: 'W', c: '#facc15', d: ultimoDe(tests3, 'ftp') },
+    { k: 'MPP', u: 'W', c: '#fbbf24', d: ultimoDe(tests3, 'mpp') },
+  ].filter(r => r.d)
+  // 1RM: el registro más reciente de cada ejercicio.
+  const rmPorEjercicio: any[] = Object.values((testsFuerza || []).reduce((acc: any, t: any) => {
+    if (!acc[t.ejercicio]) acc[t.ejercicio] = t
+    return acc
+  }, {}))
+  // Días desde el último test de cualquier tipo.
+  const fechasTest = [tests1[0]?.fecha, tests2[0]?.fecha, tests3[0]?.fecha, testsFuerza[0]?.fecha, testsLibres[0]?.fecha].filter(Boolean).sort()
+  const ultimaFecha = fechasTest[fechasTest.length - 1]
+  const diasUltimo = ultimaFecha ? Math.floor((Date.now() - new Date(ultimaFecha).getTime()) / 86400000) : null
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-sm transition">← Perfil deportista</button>
-      </nav>
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8 flex justify-between items-start gap-4 flex-wrap">
-          <div>
-            <h2 className="text-2xl font-bold mb-1">Tests — {deportista.nombre}</h2>
-            <p className="text-gray-400 text-sm">Resultados de tests de rendimiento</p>
+      <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        <h1 className="text-[17px] font-bold tracking-tight truncate">Tests <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· rendimiento y récords</span></h1>
+        <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-[13px] transition flex-shrink-0">← Perfil deportista</button>
+      </header>
+
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-5">
+
+        {/* ===== FILA SUPERIOR: cabecera (1/3) + estado actual (2/3) ===== */}
+        <div className="grid gap-4 lg:grid-cols-3 mb-4 items-stretch">
+          <div className="tp-card p-5 flex flex-col justify-between gap-4">
+            <div>
+              <h2 className="text-[22px] font-bold tracking-tight leading-tight">Tests — {deportista.nombre}</h2>
+              <p className="text-gray-500 text-[13px] mt-1">Resultados de tests de rendimiento</p>
+              {diasUltimo != null && (
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-[12px] text-gray-400">Último test hace <b className="text-gray-200">{diasUltimo} días</b></span>
+                  {diasUltimo >= 42 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eab30822', color: '#eab308' }}>Conviene repetir</span>}
+                </div>
+              )}
+            </div>
+            {hayIntensidades && (
+              <button onClick={() => setMostrarIntensidades(true)}
+                className="bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition w-full">
+                🎯 Ver intensidades
+              </button>
+            )}
           </div>
-          {hayIntensidades && (
-            <button onClick={() => setMostrarIntensidades(true)}
-              className="bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300 px-4 py-2 rounded-xl text-sm font-semibold transition flex-shrink-0">
-              🎯 Ver intensidades
-            </button>
-          )}
+
+          <div className="lg:col-span-2 tp-card p-4">
+            <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
+              <p className="text-[13px] font-semibold">Estado actual</p>
+              <span className="text-[11px] text-gray-500">último valor de cada test · variación vs. el anterior</span>
+            </div>
+            {RECORDS.length === 0 && rmPorEjercicio.length === 0 ? (
+              <p className="text-gray-500 text-[13px] py-8 text-center">Aún no hay tests registrados para este deportista.</p>
+            ) : (
+              <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(122px,1fr))' }}>
+                {RECORDS.map(r => (
+                  <div key={r.k} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
+                    <p className="text-[10.5px] text-gray-400 font-semibold tracking-wide">{r.k}</p>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-[21px] font-bold leading-none" style={{ color: r.c }}>{r.d.valor}</span>
+                      <span className="text-[10px] text-gray-500">{r.u}</span>
+                    </div>
+                    {r.sub && <p className="text-[10px] text-gray-500 mt-1">{r.sub(r.d.valor)}</p>}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {r.d.delta != null && r.d.delta !== 0 && (
+                        <span className="text-[10px] font-bold" style={{ color: r.d.delta > 0 ? '#4ade80' : '#f87171' }}>
+                          {r.d.delta > 0 ? '▲' : '▼'} {Math.abs(r.d.delta)}
+                        </span>
+                      )}
+                      <span className="text-[9.5px] text-gray-600">{r.d.fecha}</span>
+                    </div>
+                  </div>
+                ))}
+                {rmPorEjercicio.slice(0, 4).map((t: any) => (
+                  <div key={t.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
+                    <p className="text-[10.5px] text-gray-400 font-semibold truncate" title={t.ejercicio}>{t.ejercicio}</p>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-[21px] font-bold leading-none text-orange-400">{t.rm_estimado}</span>
+                      <span className="text-[10px] text-gray-500">kg</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-1">1RM</p>
+                    <span className="text-[9.5px] text-gray-600">{t.fecha}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* ===== FILA PRINCIPAL: tests de la app (3/4) + otros tests (1/4) ===== */}
+        <div className="grid gap-4 lg:grid-cols-4 items-start">
+        <div className="lg:col-span-3 min-w-0">
 
         <div className="flex gap-2 mb-6 flex-wrap">
           {['carrera','natacion','ciclismo','fuerza'].map(t => (
@@ -557,44 +643,45 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           ))}</div>
         )}
 
-        {/* OTROS TESTS */}
-        <div className="mt-12 border-t border-gray-800 pt-8">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Otros tests</h3>
-            <button onClick={() => setMostrarFormLibre(!mostrarFormLibre)} className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition">{mostrarFormLibre ? 'Cancelar' : '+ Añadir test'}</button>
+        </div>{/* /columna izquierda (3/4) */}
+
+        {/* ===== OTROS TESTS — los que no son del catálogo (1/4) ===== */}
+        <div className="tp-card p-4">
+          <div className="flex justify-between items-center gap-2 mb-1">
+            <h3 className="text-[15px] font-bold">Otros tests</h3>
+            <button onClick={() => setMostrarFormLibre(!mostrarFormLibre)} className="bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition flex-shrink-0">{mostrarFormLibre ? 'Cancelar' : '+ Añadir'}</button>
           </div>
+          <p className="text-[11px] text-gray-500 mb-3">Ajenos al catálogo de la app</p>
           {mostrarFormLibre && (
-            <form onSubmit={guardarTestLibre} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-              <h4 className="font-bold">Nuevo test libre</h4>
-              <input type="text" placeholder="Nombre del test (ej: Test 5km, Cooper, Ruffier)" value={nombreLibre} onChange={e => setNombreLibre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fechaLibre} onChange={e => setFechaLibre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <input type="text" placeholder="Resultado (ej: 21:30, 120)" value={resultadoLibre} onChange={e => setResultadoLibre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-                <input type="text" placeholder="Unidad (ej: min:seg, kg, m)" value={unidadLibre} onChange={e => setUnidadLibre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              <textarea placeholder="Notas (opcional)" value={notasLibre} onChange={e => setNotasLibre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
-              <button type="submit" disabled={loading} className="bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+            <form onSubmit={guardarTestLibre} className="rounded-xl p-3 mb-3 border border-white/[0.07] bg-white/[0.02] flex flex-col gap-2.5">
+              <input type="text" placeholder="Nombre (ej: Cooper, Ruffier)" value={nombreLibre} onChange={e => setNombreLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50" required />
+              <input type="date" value={fechaLibre} onChange={e => setFechaLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50 w-full" required />
+              <input type="text" placeholder="Resultado (ej: 21:30)" value={resultadoLibre} onChange={e => setResultadoLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50" required />
+              <input type="text" placeholder="Unidad (min:seg, kg…)" value={unidadLibre} onChange={e => setUnidadLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50" />
+              <textarea placeholder="Notas (opcional)" value={notasLibre} onChange={e => setNotasLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50" rows={2} />
+              <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-400 text-white text-[12.5px] font-semibold py-2 rounded-lg transition disabled:opacity-50">{loading ? 'Guardando…' : 'Guardar test'}</button>
             </form>
           )}
           {testsLibres.length === 0 ?
-            <div className="text-center py-8 text-gray-500"><p>No hay otros tests registrados todavia.</p></div> :
-            <div className="grid gap-3">{testsLibres.map(t => (
-              <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-bold">{t.nombre}</h4>
-                    <p className="text-gray-400 text-sm">{t.fecha}</p>
-                    {t.notas && <p className="text-gray-400 text-sm mt-1">{t.notas}</p>}
+            <p className="text-center py-8 text-gray-500 text-[12.5px]">Ningún test externo todavía.</p> :
+            <div className="flex flex-col">{testsLibres.map(t => (
+              <div key={t.id} className="py-2.5 border-b border-gray-800/60 last:border-0">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="min-w-0">
+                    <h4 className="text-[12.5px] font-semibold text-gray-100 truncate">{t.nombre}</h4>
+                    <p className="text-gray-500 text-[10.5px] mt-0.5">{t.fecha}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-orange-400 font-bold text-lg">{t.resultado}</p>
-                    <p className="text-gray-400 text-sm">{t.unidad}</p>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-orange-400 font-bold text-[15px] leading-none">{t.resultado}</p>
+                    <p className="text-gray-500 text-[10px] mt-0.5">{t.unidad}</p>
                   </div>
                 </div>
+                {t.notas && <p className="text-gray-500 text-[10.5px] mt-1 leading-snug">{t.notas}</p>}
               </div>
             ))}</div>
           }
-        </div>
+        </div>{/* /otros tests (1/4) */}
+        </div>{/* /fila principal */}
       </div>
 
       {/* MODAL PROTOCOLO COMBINADO */}

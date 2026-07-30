@@ -148,13 +148,15 @@ interface FilaFuerza {
   guardado?: boolean
 }
 
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', onTareasCambian }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
   esDeportista?: boolean
   modoFuerza?: string
   zonaFuerza?: string
+  modoResistencia?: string
+  zonaResistencia?: string
   // Esta tabla escribe las tareas en la BD por su cuenta. Sin avisar al padre, su
   // lista de tareas se quedaba congelada desde que cargó la página: la gráfica de
   // carga y "Guardar como plantilla" se perdían todo lo añadido aquí.
@@ -267,7 +269,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     // En un brick, 'Brick' NO es un deporte: cada bloque tiene el suyo, así que se
     // deja vacío para que se elija (si no, el volumen del bloque no iría a ningún
     // deporte real — ver lib/atribucion).
-    zona: '', disciplina: disciplinaSesion === 'Brick' ? '' : (disciplinaSesion || ''),
+    // Si la sesión es de resistencia "simple", la tarea nace ya con la zona de la
+    // sesión puesta (se puede cambiar a mano).
+    zona: modoResistencia === 'simple' ? (zonaResSesion || '') : '',
+    disciplina: disciplinaSesion === 'Brick' ? '' : (disciplinaSesion || ''),
     series: '', descanso: '', tipoMedicion: '', valorMedicion: '',
     intensidadPersonalizada: '', comentario: '',
   })
