@@ -7,6 +7,7 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
@@ -102,6 +103,21 @@ export default function WellnessEntrenador() {
 
   // Las gráficas pintan BIENESTAR (invertido), no el malestar guardado.
   const datos = registros.map(r => ({ ...r, fecha: r.fecha.slice(5), bienestar: bienestar(r.score_wellness) }))
+
+  // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). Con un atleta
+  // abierto, sus números; sin él, quién del equipo necesita atención.
+  const bAct = seleccionado ? bienestar(seleccionado.ultimoWellness?.score_wellness) : null
+  useDeclararModulo('Wellness', seleccionado
+    ? [
+        `Wellness de ${seleccionado.nombre}, ${registros.length} registros en el rango elegido.`,
+        bAct != null ? `Último bienestar ${bAct}/100 → ${estadoBienestar(bAct)} (recuerda: más alto es mejor).` : 'Sin registro reciente.',
+        seleccionado.readiness ? `Disposición: ${seleccionado.readiness.label} — ${seleccionado.readiness.recomendacion}.` : '',
+      ].filter(Boolean).join(' ')
+    : deportistas.length
+      ? `Vista de equipo en Wellness: ${deportistas.length} deportistas. Necesitan atención: ` +
+        (deportistas.filter((d: any) => d.readiness && (d.readiness.nivel === 'alerta' || d.readiness.nivel === 'fatiga'))
+          .map((d: any) => `${d.nombre} (${d.readiness.label})`).join(', ') || 'ninguno') + '.'
+      : '')
 
   const q = query.trim().toLowerCase()
   const lista = deportistas

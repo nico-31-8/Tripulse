@@ -8,6 +8,7 @@ import { DISCIPLINAS_SICAT, calcularSICAT } from '@/lib/sicat'
 import { calcularSicatZonas, type SicatZonasResultado, type CeldaZona } from '@/lib/sicat-zonas'
 import { cargaZona } from '@/lib/zonas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
@@ -337,6 +338,23 @@ export default function EcoPage() {
     Individual: scores[d]?.porcentaje || 0,
     Poblacional: d === 'Natacion' ? 75 : d === 'Ciclismo' ? 50 : 100,
   })) : []
+
+  // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). El coste por
+  // disciplina es justo lo que necesita para no proponer volumen donde más cuesta.
+  useDeclararModulo('SICAT', seleccionado && scores
+    ? [
+        `Coste de entrenamiento (SICAT) de ${seleccionado.nombre}, 100% = la disciplina que más le cuesta:`,
+        DISCIPLINAS.map(d => {
+          const s = scores[d]
+          if (!s || s.porcentaje == null) return `${d} sin datos suficientes`
+          return `${d} ${s.porcentaje}% (F1 ${s.f1 ?? '—'}, F2 ${s.f2 ?? '—'}, F3 ${s.f3 ?? '—'}, F4 ${s.f4 ?? '—'}; ${s.sesiones} sesiones)`
+        }).join('; ') + '.',
+        zonasRes?.celdas?.length
+          ? `Coste por zona medido en ${zonasRes.nSesiones} sesiones; celdas fiables (n≥3): ` +
+            (zonasRes.celdas.filter(c => c.n >= 3).map(c => `${c.disciplina} ${c.zona} ×${c.multiplicador}`).join(', ') || 'ninguna') + '.'
+          : '',
+      ].filter(Boolean).join(' ')
+    : '')
 
   const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
     const [c1, c2] = grad(nombre)

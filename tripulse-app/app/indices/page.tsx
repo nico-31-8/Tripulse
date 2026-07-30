@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 function calcularIndices(tarea: any, fcUmbral: number, rpeEstimado: number) {
   if (!tarea.fc_media || !tarea.rpe_reportado || !fcUmbral) return null
@@ -122,6 +123,17 @@ export default function IndicesPage() {
   const semaforoMediaPer = semaforo(mediaPercepcion, 'percepcion')
   const semaforoMediaPlan = semaforo(mediaPlanificacion, 'planificacion')
   const lecturaMedia = semaforoMediaPer && semaforoMediaPlan ? lecturaDoble(semaforoMediaPer, semaforoMediaPlan) : null
+
+  // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo).
+  useDeclararModulo('Índices', seleccionado && sesionesRango.length
+    ? [
+        `Índices de ${seleccionado.nombre} en los últimos ${rango === 365 ? 'todos los' : rango} días,`,
+        `sobre ${sesionesRango.length} sesiones con RPE y FC:`,
+        mediaPercepcion ? `percepción media ${mediaPercepcion.toFixed(2)} → ${semaforoMediaPer.texto}.` : 'percepción sin datos.',
+        mediaPlanificacion ? `planificación media ${mediaPlanificacion.toFixed(2)} → ${semaforoMediaPlan.texto}.` : 'planificación sin datos.',
+        lecturaMedia ? `Lectura cruzada: ${lecturaMedia.texto} — ${lecturaMedia.accion}.` : '',
+      ].filter(Boolean).join(' ')
+    : '')
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 

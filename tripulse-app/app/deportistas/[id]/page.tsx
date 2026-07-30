@@ -7,6 +7,7 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
 import { minutosCarga } from '@/lib/duracion-carga'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 function calcularEdad(fecha: string): number {
   const hoy = new Date()
