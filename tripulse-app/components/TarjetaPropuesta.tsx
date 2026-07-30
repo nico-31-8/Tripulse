@@ -18,6 +18,9 @@ const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carr
 
 /** Donde se deja la propuesta para que la recoja el calendario. */
 export const LLAVE_PROPUESTA = 'tripulse_propuesta_ia'
+/** Aviso para el calendario cuando YA estamos en él: navegar a la misma ruta no
+    lo vuelve a montar, así que su efecto de arranque no se dispararía. */
+export const EVENTO_PROPUESTA = 'tripulse:propuesta'
 
 interface Props {
   propuesta: PropuestaSesion
@@ -25,9 +28,11 @@ interface Props {
   /** Pide un cambio: rellena el cuadro de texto con el arranque de la corrección. */
   onCambiar: (texto: string) => void
   onDescartar: () => void
+  /** El panel flotante se cierra al aplicar: si no, tapa el calendario al llegar. */
+  onAplicar?: () => void
 }
 
-export default function TarjetaPropuesta({ propuesta, depId, onCambiar, onDescartar }: Props) {
+export default function TarjetaPropuesta({ propuesta, depId, onCambiar, onDescartar, onAplicar }: Props) {
   const router = useRouter()
   const avisos = avisosPropuesta(propuesta)
   const min = minutosPropuesta(propuesta)
@@ -38,7 +43,14 @@ export default function TarjetaPropuesta({ propuesta, depId, onCambiar, onDescar
     try {
       localStorage.setItem(LLAVE_PROPUESTA, JSON.stringify(propuesta))
     } catch { /* sin localStorage no se puede pasar; el botón no promete más */ }
-    if (depId) router.push('/planificacion-visual/' + depId + '/calendario')
+    onAplicar?.()
+    const destino = '/planificacion-visual/' + depId + '/calendario'
+    if (depId && !window.location.pathname.startsWith(destino)) {
+      router.push(destino)
+    } else {
+      // Ya estamos en el calendario: navegar no lo remonta, hay que avisarle.
+      window.dispatchEvent(new Event(EVENTO_PROPUESTA))
+    }
   }
 
   return (

@@ -37,11 +37,13 @@ interface Props {
   sugerencias: string[]
   /** Para que la tarjeta de propuesta sepa a qué calendario llevar. */
   depId?: number | null
+  /** Se llama al aplicar una propuesta: el panel flotante lo usa para cerrarse. */
+  onAplicar?: () => void
   /** En el panel flotante hay menos sitio: burbujas y márgenes más apretados. */
   compacto?: boolean
 }
 
-export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, compacto, depId }: Props) {
+export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, compacto, depId, onAplicar }: Props) {
   const [mensajes, setMensajes] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -147,6 +149,7 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
                       propuesta={m.propuesta}
                       depId={depId ?? null}
                       onCambiar={t => setInput(t)}
+                      onAplicar={onAplicar}
                       onDescartar={() => setMensajes(prev => {
                         const c = [...prev]; c[i] = { ...c[i], propuesta: null }; return c
                       })}

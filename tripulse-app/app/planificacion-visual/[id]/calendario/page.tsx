@@ -17,7 +17,7 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
-import { LLAVE_PROPUESTA } from '@/components/TarjetaPropuesta'
+import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -310,15 +310,22 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // MISMO flujo que una plantilla del catálogo. La IA no ha escrito nada: el clic
   // en el día lo da el entrenador.
   useEffect(() => {
-    try {
-      const crudo = localStorage.getItem(LLAVE_PROPUESTA)
-      if (!crudo) return
-      localStorage.removeItem(LLAVE_PROPUESTA)
-      const p = JSON.parse(crudo)
-      if (!p?.bloques?.length) return
-      setPlantillaEnMano({ nombre: p.nombre || 'Propuesta del asistente', disciplina: p.disciplina, bloques: aBloquesPlantilla(p) })
-      toast('Propuesta lista — pulsa el día donde crearla')
-    } catch { /* propuesta ilegible: se ignora */ }
+    const recoger = () => {
+      try {
+        const crudo = localStorage.getItem(LLAVE_PROPUESTA)
+        if (!crudo) return
+        localStorage.removeItem(LLAVE_PROPUESTA)
+        const p = JSON.parse(crudo)
+        if (!p?.bloques?.length) return
+        setPlantillaEnMano({ nombre: p.nombre || 'Propuesta del asistente', disciplina: p.disciplina, bloques: aBloquesPlantilla(p) })
+        toast('Propuesta lista — pulsa el día donde crearla')
+      } catch { /* propuesta ilegible: se ignora */ }
+    }
+    recoger()   // al llegar navegando desde el asistente
+    // Y si el entrenador ya estaba aquí: navegar a la misma ruta no remonta la
+    // página, así que la tarjeta avisa por evento.
+    window.addEventListener(EVENTO_PROPUESTA, recoger)
+    return () => window.removeEventListener(EVENTO_PROPUESTA, recoger)
   }, [])
 
   // COPIAR SESIÓN
