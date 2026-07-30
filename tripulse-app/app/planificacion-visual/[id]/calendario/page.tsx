@@ -16,6 +16,8 @@ const DISC_RESISTENCIA = ['Natacion', 'Ciclismo', 'Carrera']
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
+import { LLAVE_PROPUESTA } from '@/components/TarjetaPropuesta'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -303,6 +305,21 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     : '')
 
   const toast = (msg: string) => { setMostrarToast(msg); setTimeout(() => setMostrarToast(''), 2500) }
+
+  // Propuesta del asistente: llega por localStorage desde la tarjeta y entra por el
+  // MISMO flujo que una plantilla del catálogo. La IA no ha escrito nada: el clic
+  // en el día lo da el entrenador.
+  useEffect(() => {
+    try {
+      const crudo = localStorage.getItem(LLAVE_PROPUESTA)
+      if (!crudo) return
+      localStorage.removeItem(LLAVE_PROPUESTA)
+      const p = JSON.parse(crudo)
+      if (!p?.bloques?.length) return
+      setPlantillaEnMano({ nombre: p.nombre || 'Propuesta del asistente', disciplina: p.disciplina, bloques: aBloquesPlantilla(p) })
+      toast('Propuesta lista — pulsa el día donde crearla')
+    } catch { /* propuesta ilegible: se ignora */ }
+  }, [])
 
   // COPIAR SESIÓN
   const copiarTareasASesion = async (idOrigen: number, idDestino: number) => {

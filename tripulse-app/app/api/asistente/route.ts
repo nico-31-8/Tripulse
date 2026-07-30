@@ -5,6 +5,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ASISTENTE } from '@/lib/asistente'
+import { ESQUEMA_PROPUESTA } from '@/lib/propuesta-sesion'
+
+/* Separador entre la respuesta en texto y la propuesta en JSON. Va al final del
+   stream, así el cliente puede ir pintando el texto y quedarse con la propuesta
+   cuando llega. Se usa una marca que la prosa no va a escribir jamás. */
+export const MARCA_PROPUESTA = '\n<<<PROPUESTA>>>\n'
 
 export const runtime = 'nodejs'
 
@@ -72,16 +78,48 @@ export async function POST(req: Request) {
           // Razona mejor sobre números (TSB, ACWR, índices) antes de opinar. No se
           // muestra: abajo solo se reenvían los `text_delta`, nunca los de thinking.
           thinking: { type: 'adaptive' },
+          // Herramienta, no structured output: así el modelo escribe su respuesta
+          // normal Y ADEMÁS propone la sesión, en vez de tener que elegir entre las
+          // dos cosas. Si la pregunta no pide una sesión, simplemente no la llama.
+          tools: [{
+            name: 'proponer_sesion',
+            description:
+              'Propone UNA sesión concreta para el deportista. Úsala solo cuando el entrenador pida ' +
+              'qué entrenar (hoy, mañana, esta semana) o cuando propongas una sesión en tu respuesta. ' +
+              'Los bloques deben ser aplicables tal cual: zona del catálogo, y minutos (o metros en ' +
+              'natación). Justifica en `porque` con los datos concretos del atleta, no con generalidades.',
+            input_schema: ESQUEMA_PROPUESTA as any,
+          }],
           system,
           messages: messages.map((m: any) => ({
             role: m?.role === 'assistant' ? 'assistant' : 'user',
             content: String(m?.content ?? ''),
           })),
         })
+        // El JSON de la herramienta llega troceado en `input_json_delta`: se acumula
+        // y se manda entero al final, detrás de la marca.
+        let jsonPropuesta = ''
+        let enHerramienta = false
         for await (const event of ms) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            controller.enqueue(encoder.encode(event.delta.text))
+          if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+            enHerramienta = true
+          } else if (event.type === 'content_block_delta') {
+            if (event.delta.type === 'text_delta') {
+              controller.enqueue(encoder.encode(event.delta.text))
+            } else if (event.delta.type === 'input_json_delta' && enHerramienta) {
+              jsonPropuesta += event.delta.partial_json
+            }
+          } else if (event.type === 'content_block_stop') {
+            enHerramienta = false
           }
+        }
+        if (jsonPropuesta.trim()) {
+          // Se valida aquí que al menos sea JSON: si el modelo lo dejó a medias,
+          // mejor no mandar basura al cliente y que la respuesta valga igual.
+          try {
+            JSON.parse(jsonPropuesta)
+            controller.enqueue(encoder.encode(MARCA_PROPUESTA + jsonPropuesta))
+          } catch { /* propuesta incompleta: se ignora, el texto ya ha llegado */ }
         }
       } catch (e: any) {
         const msg = /credit|balance|insufficient/i.test(e?.message || '')

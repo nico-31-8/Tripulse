@@ -130,7 +130,7 @@ export default function AsistenteFlotante() {
                 </div>
               </div>
             ) : (
-              <AsistenteChat nombre={dep.nombre} contexto={contexto} modulo={modulo} sugerencias={sugerencias} compacto />
+              <AsistenteChat nombre={dep.nombre} contexto={contexto} modulo={modulo} sugerencias={sugerencias} depId={dep.id} compacto />
             )}
           </aside>
         </>

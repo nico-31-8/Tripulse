@@ -6,8 +6,26 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { ContextoModulo } from '@/lib/contexto-modulo'
 import TextoAsistente from './TextoAsistente'
+import TarjetaPropuesta from './TarjetaPropuesta'
+import type { PropuestaSesion } from '@/lib/propuesta-sesion'
 
-export interface Msg { role: 'user' | 'assistant'; content: string }
+export interface Msg { role: 'user' | 'assistant'; content: string; propuesta?: PropuestaSesion | null }
+
+/* Debe coincidir con MARCA_PROPUESTA de app/api/asistente/route.ts. */
+const MARCA = '\n<<<PROPUESTA>>>\n'
+
+/** Separa la respuesta en texto de la sesión propuesta, si la hay. */
+function partir(acc: string): { texto: string; propuesta: PropuestaSesion | null } {
+  const i = acc.indexOf(MARCA)
+  if (i === -1) return { texto: acc, propuesta: null }
+  const texto = acc.slice(0, i)
+  try {
+    return { texto, propuesta: JSON.parse(acc.slice(i + MARCA.length)) as PropuestaSesion }
+  } catch {
+    // Puede llegar troceada mientras dura el stream: hasta que cierre, solo texto.
+    return { texto, propuesta: null }
+  }
+}
 
 interface Props {
   nombre: string
@@ -17,11 +35,13 @@ interface Props {
   modulo?: ContextoModulo | null
   /** Preguntas de arranque. Las del módulo activo van primero. */
   sugerencias: string[]
+  /** Para que la tarjeta de propuesta sepa a qué calendario llevar. */
+  depId?: number | null
   /** En el panel flotante hay menos sitio: burbujas y márgenes más apretados. */
   compacto?: boolean
 }
 
-export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, compacto }: Props) {
+export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, compacto, depId }: Props) {
   const [mensajes, setMensajes] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -64,7 +84,8 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
         const { done, value } = await reader.read()
         if (done) break
         acc += dec.decode(value, { stream: true })
-        setMensajes(prev => { const c = [...prev]; c[c.length - 1] = { role: 'assistant', content: acc }; return c })
+        const { texto, propuesta } = partir(acc)
+        setMensajes(prev => { const c = [...prev]; c[c.length - 1] = { role: 'assistant', content: texto, propuesta }; return c })
       }
     } catch (e: any) {
       setMensajes(prev => {
@@ -120,6 +141,17 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
                       ? <TextoAsistente texto={m.content} />
                       : enviando && <span className="text-gray-600 text-[13px]">pensando…</span>}
                   </div>
+                  {/* Una sesión propuesta no es un mensaje más: se puede aplicar. */}
+                  {m.propuesta && (
+                    <TarjetaPropuesta
+                      propuesta={m.propuesta}
+                      depId={depId ?? null}
+                      onCambiar={t => setInput(t)}
+                      onDescartar={() => setMensajes(prev => {
+                        const c = [...prev]; c[i] = { ...c[i], propuesta: null }; return c
+                      })}
+                    />
+                  )}
                   {m.content && !enviando && (
                     <button onClick={() => navigator.clipboard?.writeText(m.content)}
                       className="self-start text-[10.5px] text-gray-600 hover:text-gray-300 transition mt-0.5">

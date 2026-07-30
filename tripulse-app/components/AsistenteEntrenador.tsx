@@ -69,6 +69,7 @@ export default function AsistenteEntrenador() {
         contexto={contexto}
         modulo={modulo}
         sugerencias={SUGERENCIAS}
+        depId={dep?.id ?? null}
       />
     </main>
   )
