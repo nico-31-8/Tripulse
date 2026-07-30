@@ -9,7 +9,7 @@
 // Lo que lo hace útil de verdad es `useContextoModulo`: cada pantalla declara qué
 // se está viendo (ver lib/contexto-modulo), y eso viaja con la pregunta. Así el
 // asistente ayuda con lo que el entrenador tiene delante, no en abstracto.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getAtletaActivo } from '@/lib/atletaActivo'
@@ -57,23 +57,35 @@ export default function AsistenteFlotante() {
   }, [])
 
   /* El contexto se arma al ABRIR, no al montar: son varias consultas y no tiene
-     sentido pagarlas en cada pantalla por si acaso. */
+     sentido pagarlas en cada pantalla por si acaso.
+     `dep` NO puede ir en las dependencias: al hacer setDep se dispararía la limpieza
+     de este mismo efecto, la ejecución en vuelo quedaría con vivo=false y el
+     `setCargandoCtx(false)` final no llegaría nunca (spinner eterno). Se usa una ref
+     para no repetir la carga. */
+  const yaCargado = useRef(false)
   useEffect(() => {
-    if (!abierto || dep) return
+    if (!abierto || yaCargado.current) return
+    yaCargado.current = true
     let vivo = true
     const cargar = async () => {
       setCargandoCtx(true)
-      const id = getAtletaActivo()
-      if (!id) { if (vivo) setCargandoCtx(false); return }
-      const { data: d } = await supabase.from('deportista').select('*').eq('id', id).single()
-      if (!d || !vivo) { if (vivo) setCargandoCtx(false); return }
-      setDep(d)
-      try { const c = await construirContextoTexto(supabase, d); if (vivo) setContexto(c) } catch { /* sin contexto */ }
-      if (vivo) setCargandoCtx(false)
+      try {
+        const id = getAtletaActivo()
+        if (!id) return
+        const { data: d } = await supabase.from('deportista').select('*').eq('id', id).single()
+        if (!d || !vivo) return
+        setDep(d)
+        const c = await construirContextoTexto(supabase, d)
+        if (vivo) setContexto(c)
+      } catch {
+        /* Sin contexto se puede seguir: el chat responde de forma general. */
+      } finally {
+        if (vivo) setCargandoCtx(false)
+      }
     }
     cargar()
     return () => { vivo = false }
-  }, [abierto, dep])
+  }, [abierto])
 
   if (!esEntrenador) return null
   if (RUTAS_SIN_BOTON.some(r => pathname === r)) return null
