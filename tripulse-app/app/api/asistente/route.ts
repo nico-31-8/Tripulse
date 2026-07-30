@@ -54,7 +54,12 @@ export async function POST(req: Request) {
       try {
         const ms = anthropic.messages.stream({
           model: 'claude-opus-4-8',
-          max_tokens: 2048,
+          // El pensamiento consume de max_tokens, así que hay que subirlo o la
+          // respuesta se queda a medias justo en las preguntas más complejas.
+          max_tokens: 6000,
+          // Razona mejor sobre números (TSB, ACWR, índices) antes de opinar. No se
+          // muestra: abajo solo se reenvían los `text_delta`, nunca los de thinking.
+          thinking: { type: 'adaptive' },
           system,
           messages: messages.map((m: any) => ({
             role: m?.role === 'assistant' ? 'assistant' : 'user',
