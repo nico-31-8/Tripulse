@@ -10,6 +10,7 @@ import { cargaZona } from '@/lib/zonas'
 import { expandirEnBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { minutosCarga } from '@/lib/duracion-carga'
 
 /** Minutos → "1h20" / "45′". */
@@ -79,6 +80,7 @@ export default function VolumenPage() {
   // y las de cada deporte alargaban mucho la página.
   const [discsAbierto, setDiscsAbierto] = useState(false)
   const [musculoAbierto, setMusculoAbierto] = useState(false)
+
 
   useEffect(() => {
     const cargar = async () => {
@@ -359,6 +361,8 @@ export default function VolumenPage() {
 
   // ---- Resumen del período: lo primero que se ve, sin tocar controles ----
   // Los minutos salen de los bloques (que ya reparten un brick entre sus deportes).
+  // Lo que el asistente ve de esta pantalla. Va después de `resumen` porque lo usa.
+  // Ver lib/contexto-modulo: se declara al entrar y se limpia al salir.
   const resumen = useMemo(() => {
     if (!bloquesRaw.length) return null
     const porDisc: Record<string, number> = {}
@@ -391,6 +395,16 @@ export default function VolumenPage() {
           : 'Mucho volumen a intensidad baja.',
     }
   }, [bloquesRaw, volSesionRaw])
+
+  useDeclararModulo('Volumen', seleccionado && resumen
+    ? [
+        `Volumen de ${seleccionado.nombre} en los últimos ${rango} días:`,
+        `${fmtMinutos(resumen.minutos)} totales en ${volSesionRaw.length} sesiones (${resumen.ua} UA).`,
+        `Media semanal ${fmtMinutos(resumen.mediaSemanal)}, ${resumen.sesPorSemana} sesiones/semana.`,
+        `Disciplina dominante ${resumen.domLabel} (${resumen.domPct}% del volumen).`,
+        `En pantalla: métrica ${metrica === 'tiempo' ? 'tiempo' : 'carga (UA)'}, agrupado por ${vista === 'dias' ? 'días' : 'semanas'}${usarSicat ? ', ponderado por SICAT' : ''}.`,
+      ].join(' ')
+    : '')
 
   // ---- Detalle del período que se pincha en la gráfica ----
   // Las etiquetas del eje X son 'MM-DD' (fecha o lunes de la semana), así que se

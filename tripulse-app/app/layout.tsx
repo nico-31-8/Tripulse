@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Sidebar from '../components/Sidebar'
+import AsistenteFlotante from '../components/AsistenteFlotante'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -28,6 +29,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-950`}>
         <Sidebar />
         {children}
+        {/* El asistente vive en todos los módulos. Él decide si aparece: solo para
+            el entrenador y fuera de las pantallas públicas. */}
+        <AsistenteFlotante />
       </body>
     </html>
   )

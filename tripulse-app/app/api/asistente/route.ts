@@ -39,6 +39,10 @@ export async function POST(req: Request) {
 
   const messages = Array.isArray(body?.messages) ? body.messages : []
   const contexto: string = typeof body?.contexto === 'string' ? body.contexto : ''
+  // Qué pantalla tiene delante el entrenador. Va como bloque aparte para que el
+  // modelo lo trate como el "aquí y ahora" y no lo mezcle con el histórico.
+  const modulo: string = typeof body?.modulo === 'string' ? body.modulo : ''
+  const contextoModulo: string = typeof body?.contextoModulo === 'string' ? body.contextoModulo : ''
   if (!messages.length) return new Response('Sin mensajes.', { status: 400 })
 
   const anthropic = new Anthropic()
@@ -47,6 +51,14 @@ export async function POST(req: Request) {
     { type: 'text', text: METODOLOGIA_ASISTENTE, cache_control: { type: 'ephemeral' } },
   ]
   if (contexto) system.push({ type: 'text', text: 'DATOS DEL DEPORTISTA (contexto actual):\n' + contexto })
+  if (contextoModulo) {
+    system.push({
+      type: 'text',
+      text: `PANTALLA QUE TIENE DELANTE AHORA MISMO${modulo ? ` (módulo ${modulo})` : ''}:\n` + contextoModulo +
+        '\n\nSi la pregunta es ambigua, interprétala sobre esto: es lo que está mirando. ' +
+        'No se lo repitas de vuelta —ya lo ve—; úsalo para interpretarlo y decirle qué hacer.',
+    })
+  }
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({

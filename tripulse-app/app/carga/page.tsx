@@ -10,6 +10,7 @@ import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasRes
 import { cargarBloques } from '@/lib/atribucion'
 import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -189,6 +190,19 @@ export default function CargaPage() {
   const acwr = calcularACWR(datos)
   const monotonia = calcularMonotonia(datos)
   const strain = calcularStrain(datos)
+
+  // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). Se le dan los
+  // números Y su lectura según los umbrales de la app, para que no invente otra.
+  useDeclararModulo('Carga', seleccionado && ultimo
+    ? [
+        `Carga de ${seleccionado.nombre}, últimas ${Math.round(rango / 7)} semanas${usarSicat ? ' (ponderada por SICAT)' : ''}:`,
+        `CTL ${ultimo.ctl}, ATL ${ultimo.atl}, TSB ${ultimo.tsb > 0 ? '+' : ''}${ultimo.tsb} → ${estadoTSB(ultimo.tsb).label}.`,
+        acwr ? `ACWR ${acwr} → ${estadoACWR(acwr).label}.` : 'ACWR sin datos suficientes.',
+        monotonia ? `Monotonía ${monotonia} → ${estadoMonotonia(monotonia).label}.` : 'Monotonía sin datos suficientes.',
+        strain ? `Strain ${strain}.` : '',
+        `Pestaña abierta: ${pestana === 'global' ? 'carga global' : pestana === 'disciplina' ? 'por disciplina' : 'visión diaria'}.`,
+      ].filter(Boolean).join(' ')
+    : '')
 
   const cargarDiaria = async (dep: any) => {
     const desde = new Date()
