@@ -15,6 +15,7 @@ import { ZONAS_FUERZA, ZONAS_RESISTENCIA, cargaZona } from '@/lib/zonas'
 const DISC_RESISTENCIA = ['Natacion', 'Ciclismo', 'Carrera']
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -273,6 +274,33 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const esSemanaCopiada = (f: string) => !!semanaCopiada && getLunesDeSemana(f) === semanaCopiada
 
   const proximaCompeticion = competiciones.filter(c => new Date(c.fecha) >= new Date()).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0]
+
+  // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). Solo LEE
+  // estado que ya existe: no cambia nada de cómo funciona la planificación.
+  useDeclararModulo('Calendario', deportista
+    ? (() => {
+        const desde = new Date(mesesAMostrar[0].año, mesesAMostrar[0].mes, 1)
+        const ult = mesesAMostrar[mesesAMostrar.length - 1]
+        const hasta = new Date(ult.año, ult.mes + 1, 0)
+        const enVista = sesiones.filter(s => {
+          const f = new Date(s.fecha_sesion)
+          return f >= desde && f <= hasta && s.estado !== 'Cancelada'
+        })
+        const porDisc: Record<string, number> = {}
+        enVista.forEach(s => { porDisc[s.disciplina] = (porDisc[s.disciplina] || 0) + 1 })
+        const hechas = enVista.filter(s => s.estado === 'Realizada').length
+        return [
+          `Calendario de ${deportista.nombre}, viendo ${rango} ${rango === 1 ? 'mes' : 'meses'} desde ${desde.toISOString().slice(0, 7)}.`,
+          `${enVista.length} sesiones en ese rango (${hechas} realizadas):`,
+          Object.entries(porDisc).map(([d, n]) => `${d} ${n}`).join(', ') + '.',
+          micros.length ? `Hay ${micros.length} semanas planificadas y ${mesos.length} mesociclos.` : 'Este atleta no tiene estructura de plan (macro/meso/micro) todavía.',
+          semanasBloqueadas.length ? `${semanasBloqueadas.length} semanas bloqueadas.` : '',
+          proximaCompeticion
+            ? `Próxima competición: ${proximaCompeticion.nombre} el ${proximaCompeticion.fecha}.`
+            : 'Sin competiciones futuras registradas.',
+        ].filter(Boolean).join(' ')
+      })()
+    : '')
 
   const toast = (msg: string) => { setMostrarToast(msg); setTimeout(() => setMostrarToast(''), 2500) }
 
