@@ -78,17 +78,25 @@ describe('avisosPropuesta — la red de seguridad', () => {
 })
 
 describe('aBloquesPlantilla — encaja con el flujo que ya existe', () => {
-  it('traduce al formato de aplicarBloques sin perder nada', () => {
+  // BloqueP usa `segundos` y `descansoSeg`. Traducirlo mal no rompe nada visible:
+  // la sesión se crea igual, pero con los bloques SIN duración.
+  it('los minutos se traducen a segundos, que es lo que espera BloqueP', () => {
     const p = prop({ bloques: [{ zona: 'AEM', minutos: 8, series: 4, descansoSeg: 60 }] })
     expect(aBloquesPlantilla(p)).toEqual([
-      { zona: 'AEM', minutos: 8, metros: null, series: 4, descanso_segundos: 60 },
+      { zona: 'AEM', series: 4, metros: undefined, segundos: 480, descansoSeg: 60, nota: undefined },
     ])
   })
-  it('los campos ausentes viajan como null, no undefined', () => {
-    const b = aBloquesPlantilla(prop({ bloques: [{ zona: 'AEL', minutos: 30 }] }))[0]
-    expect(b.metros).toBeNull()
-    expect(b.series).toBeNull()
-    expect(b.descanso_segundos).toBeNull()
+  it('los metros pasan tal cual y no generan segundos', () => {
+    const b = aBloquesPlantilla(prop({ bloques: [{ zona: 'AEM', metros: 400, series: 4 }] }))[0]
+    expect(b.metros).toBe(400)
+    expect(b.segundos).toBeUndefined()
+  })
+  it('usa los nombres exactos de BloqueP, no los de la base de datos', () => {
+    const b = aBloquesPlantilla(prop({ bloques: [{ zona: 'AEL', minutos: 30, descansoSeg: 90 }] }))[0]
+    expect(b).toHaveProperty('segundos')
+    expect(b).toHaveProperty('descansoSeg')
+    expect(b).not.toHaveProperty('minutos')
+    expect(b).not.toHaveProperty('descanso_segundos')
   })
 })
 

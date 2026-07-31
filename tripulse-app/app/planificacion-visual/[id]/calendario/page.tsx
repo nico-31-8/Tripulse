@@ -376,11 +376,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // los deriva la app de las tareas, así que no se fijan aquí.
   const pegarPlantilla = async (f: string) => {
     if (!plantillaEnMano) return
+    // Sin microciclo se crea como sesión LIBRE, igual que hace el modal manual.
+    // Antes se rechazaba el pegado y no se podía usar una plantilla en un día sin
+    // semana asignada, aunque a mano sí se pudiera crear ahí.
     const micro = getMicroDelDia(f)
-    if (!micro) { toast('Ese día no tiene semana asignada'); return }
     setLoading(true)
     const { data: nueva } = await supabase.from('sesion').insert({
-      id_microciclo: micro.id,
+      id_microciclo: micro ? micro.id : null,
+      ...(micro ? {} : { id_deportista: Number(id), origen: 'entrenador' }),
       disciplina: plantillaEnMano.disciplina,
       fecha_sesion: f,
       estado: 'Planificada',

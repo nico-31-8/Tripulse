@@ -110,13 +110,20 @@ export function avisosPropuesta(p: PropuestaSesion): string[] {
   return avisos
 }
 
-/** Pasa la propuesta al formato que ya consume `aplicarBloques()` del calendario. */
+/**
+ * Pasa la propuesta al formato `BloqueP` que ya consume `aplicarBloques()`.
+ *
+ * Ojo con los nombres: `BloqueP` usa `segundos` (no minutos) y `descansoSeg`
+ * (no descanso_segundos). Traducir mal aquí no rompe nada visible — la sesión se
+ * crea igual, pero con los bloques sin duración.
+ */
 export function aBloquesPlantilla(p: PropuestaSesion) {
   return p.bloques.map(b => ({
     zona: b.zona,
-    minutos: b.minutos ?? null,
-    metros: b.metros ?? null,
-    series: b.series ?? null,
-    descanso_segundos: b.descansoSeg ?? null,
+    series: b.series ?? undefined,
+    metros: b.metros ?? undefined,
+    segundos: b.minutos ? Math.round(b.minutos * 60) : undefined,
+    descansoSeg: b.descansoSeg ?? undefined,
+    nota: b.nota ?? undefined,
   }))
 }
