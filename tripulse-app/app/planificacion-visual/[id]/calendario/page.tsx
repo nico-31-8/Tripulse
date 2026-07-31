@@ -314,7 +314,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       try {
         const crudo = localStorage.getItem(LLAVE_PROPUESTA)
         if (!crudo) return
-        localStorage.removeItem(LLAVE_PROPUESTA)
+        // NO se borra aquí. En desarrollo React monta, desmuenta y vuelve a montar
+        // (StrictMode): si se consumiera en el primer montaje, el estado se tiraría
+        // con el desmontaje y en el segundo ya no habría nada que recoger. Se borra
+        // cuando la propuesta se usa de verdad, o cuando el entrenador la suelta.
         const p = JSON.parse(crudo)
         if (!p?.bloques?.length) return
         setPlantillaEnMano({ nombre: p.nombre || 'Propuesta del asistente', disciplina: p.disciplina, bloques: aBloquesPlantilla(p) })
@@ -392,6 +395,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       const err = await aplicarBloques(supabase, nueva.id, plantillaEnMano.disciplina, plantillaEnMano.bloques)
       if (err) { toast('Sesión creada, pero error al aplicar la plantilla'); }
     }
+    // Consumida: ya no debe re-armarse si se vuelve a entrar al calendario.
+    try { localStorage.removeItem(LLAVE_PROPUESTA) } catch { /* da igual */ }
     // La plantilla NO se suelta: así se puede pegar en varios días seguidos.
     await cargarDatos()
     toast('«' + plantillaEnMano.nombre + '» aplicada al ' + f.slice(8) + '/' + f.slice(5, 7))
@@ -662,7 +667,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       {plantillaEnMano && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-xl flex items-center gap-3 border bg-orange-900 border-orange-500 text-orange-100">
           <span>📋 «{plantillaEnMano.nombre}» — pulsa un día para crear la sesión</span>
-          <button onClick={() => setPlantillaEnMano(null)} className="text-orange-300 hover:text-white ml-2">✕ Soltar</button>
+          <button
+            onClick={() => {
+              setPlantillaEnMano(null)
+              // Si venía del asistente, soltarla también la descarta: si no, volvería
+              // a aparecer al entrar de nuevo al calendario.
+              try { localStorage.removeItem(LLAVE_PROPUESTA) } catch { /* da igual */ }
+            }}
+            className="text-orange-300 hover:text-white ml-2">✕ Soltar</button>
         </div>
       )}
 
