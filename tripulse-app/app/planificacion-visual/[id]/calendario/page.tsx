@@ -504,6 +504,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
 
   const abrirModalNuevaSesion = (f: string) => {
+    // Igual que abrirModal: si hay algo en la mano, el clic pega en vez de abrir el
+    // modal. Faltaba aquí, y esta es la vía que usa la vista de varios meses, así
+    // que desde ahí la plantilla se ignoraba en silencio.
+    if (plantillaEnMano) { pegarPlantilla(f); return }
     if (sesionCopiada) { pegarSesion(f); return }
     if (semanaCopiada) {
       const lunes = getLunesDeSemana(f)
