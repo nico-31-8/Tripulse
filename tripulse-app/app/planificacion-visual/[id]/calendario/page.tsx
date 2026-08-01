@@ -187,7 +187,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // Plantilla "en la mano": elegida en el panel, se aplica al pulsar un día (mismo
   // patrón que copiar/pegar sesión). Guarda ya sus bloques resueltos + un texto para
   // el banner, así el pegado no depende de si es del sistema o propia.
-  const [plantillaEnMano, setPlantillaEnMano] = useState<{ nombre: string; disciplina: string; bloques: any[] } | null>(null)
+  // `propuesta` solo viene cuando la plantilla la sugirió el asistente: se guarda
+  // con la sesión para poder medir cuántas se aceptan sin tocar.
+  const [plantillaEnMano, setPlantillaEnMano] = useState<{ nombre: string; disciplina: string; bloques: any[]; propuesta?: any } | null>(null)
   const [panelPlantillas, setPanelPlantillas] = useState(false)
   const [plantDisc, setPlantDisc] = useState<'Natacion' | 'Ciclismo' | 'Carrera'>('Natacion')
   const [plantNivel, setPlantNivel] = useState<NivelPlantilla>('intermedio')
@@ -320,7 +322,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         // cuando la propuesta se usa de verdad, o cuando el entrenador la suelta.
         const p = JSON.parse(crudo)
         if (!p?.bloques?.length) return
-        setPlantillaEnMano({ nombre: p.nombre || 'Propuesta del asistente', disciplina: p.disciplina, bloques: aBloquesPlantilla(p) })
+        setPlantillaEnMano({
+          nombre: p.nombre || 'Propuesta del asistente',
+          disciplina: p.disciplina,
+          bloques: aBloquesPlantilla(p),
+          propuesta: p,
+        })
         toast('Propuesta lista — pulsa el día donde crearla')
       } catch { /* propuesta ilegible: se ignora */ }
     }
@@ -394,6 +401,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (nueva) {
       const err = await aplicarBloques(supabase, nueva.id, plantillaEnMano.disciplina, plantillaEnMano.bloques)
       if (err) { toast('Sesión creada, pero error al aplicar la plantilla'); }
+      // Si venía del asistente, se deja constancia de QUÉ se propuso, para poder
+      // medir después cuántas se aceptan sin retocar. Va en un update aparte y con
+      // el error ignorado a propósito: si supabase/propuesta-ia.sql todavía no se
+      // ha ejecutado, la sesión debe crearse igual — se pierde la marca, no el
+      // trabajo del entrenador.
+      if (plantillaEnMano.propuesta) {
+        await supabase.from('sesion').update({ propuesta_ia: plantillaEnMano.propuesta }).eq('id', nueva.id)
+      }
     }
     // Consumida: ya no debe re-armarse si se vuelve a entrar al calendario.
     try { localStorage.removeItem(LLAVE_PROPUESTA) } catch { /* da igual */ }
