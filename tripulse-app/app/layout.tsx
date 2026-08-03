@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Sidebar from '../components/Sidebar'
 import AsistenteFlotante from '../components/AsistenteFlotante'
+import NavDeportista from '../components/NavDeportista'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -32,6 +33,8 @@ export default function RootLayout({
         {/* El asistente vive en todos los módulos. Él decide si aparece: solo para
             el entrenador y fuera de las pantallas públicas. */}
         <AsistenteFlotante />
+        {/* Barra inferior del deportista en móvil. Decide sola si aparece. */}
+        <NavDeportista />
       </body>
     </html>
   )

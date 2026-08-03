@@ -302,8 +302,12 @@ export default function DashboardDeportista() {
           ＋ Añadir una sesión que vas a hacer
         </button>
 
-        {/* ===== MÓDULOS COMPACTOS ===== */}
-        <div className="grid grid-cols-4 gap-2">
+        {/* ===== MÓDULOS COMPACTOS =====
+            En móvil los lleva la barra inferior (components/NavDeportista): tenerlos
+            aquí además sería la misma navegación dos veces, y obligaba a bajar hasta
+            el final para cambiar de pantalla. En escritorio no hay barra, así que se
+            quedan. */}
+        <div className="hidden sm:grid grid-cols-4 gap-2">
           {modulos.map(m => (
             <button key={m.titulo} onClick={() => router.push(m.href)}
               className="flex flex-col items-center gap-1 bg-gray-900 border border-gray-800 rounded-xl py-3 hover:border-gray-600 transition">

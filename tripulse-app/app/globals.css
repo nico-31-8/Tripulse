@@ -92,3 +92,11 @@ html, body {
 .tp-chev { transition: transform .32s; }
 .tp-chev.open { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .tp-tile, .tp-wm, .tp-collapse, .tp-chev { transition: none; } }
+
+/* Hueco para la barra inferior del deportista (components/NavDeportista).
+   La barra es fixed: sin esto, el último elemento de cada pantalla queda debajo
+   y no se puede pulsar. La clase la pone y la quita el propio componente, así no
+   hay que tocar las ocho páginas una a una. */
+@media (max-width: 639px) {
+  body.con-nav-deportista { padding-bottom: 66px; }
+}
