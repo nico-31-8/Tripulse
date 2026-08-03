@@ -97,7 +97,12 @@ export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
   if (!validas.length) return 1
   const hrvMedia = validas.reduce((acc, f) => acc + (f.hrv_dia || f.hrv_del_dia), 0) / validas.length
   const ratio = hrvMedia / hrvBasal
-  return 1 + (1 - ratio) * 0.3
+  // Acotado, como F1-F4. Sin tope, una HRV muy por encima de la basal —una basal
+  // mal medida, un valor suelto raro del reloj— podía hundir el corrector por
+  // debajo de 0,5 y abaratar una disciplina entera de forma artificial.
+  // El rango cubre la variación diaria real: por debajo de la basal encarece hasta
+  // un 30%, por encima abarata hasta un 15%. Fuera de ahí es ruido, no fisiología.
+  return Math.min(1.3, Math.max(0.85, 1 + (1 - ratio) * 0.3))
 }
 
 // Calcula el perfil SICAT (F1-F4 + % relativo) de un deportista para las 3 disciplinas

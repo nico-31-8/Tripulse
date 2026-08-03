@@ -183,3 +183,39 @@ describe('F4 y la FC umbral', () => {
     expect(calcularF4([{ fc_media: 60, rpe_reportado: 1 }], UMBRAL)).toBe(1)
   })
 })
+
+// ------------------------------------------------------------
+// El corrector HRV está acotado, como F1-F4
+// ------------------------------------------------------------
+// Sin tope, una HRV muy por encima de la basal (una basal mal medida, un valor
+// suelto raro del reloj) hundía el corrector y abarataba una disciplina entera.
+describe('corrector HRV — acotado', () => {
+  it('no baja de 0,85 por muy alta que venga la HRV', () => {
+    expect(calcularCorrectorHRV([{ hrv_dia: 200 }], 60)).toBe(0.85)
+    expect(calcularCorrectorHRV([{ hrv_dia: 1000 }], 60)).toBe(0.85)
+  })
+  // El tope superior es defensivo: solo se tocaría con HRV 0, que el filtro ya
+  // descarta. El que de verdad protege es el inferior. Se comprueba el invariante,
+  // no un valor concreto.
+  it('no sube de 1,30 por muy hundida que venga', () => {
+    expect(calcularCorrectorHRV([{ hrv_dia: 1 }], 60)).toBeLessThanOrEqual(1.3)
+    expect(calcularCorrectorHRV([{ hrv_dia: 1 }], 60)).toBeGreaterThan(1.25)
+  })
+  it('dentro del rango normal sigue respondiendo igual que antes', () => {
+    // 48 sobre 60 es un 20% por debajo → 1 + 0,2×0,3 = 1,06
+    expect(calcularCorrectorHRV([{ hrv_dia: 48 }], 60)).toBeCloseTo(1.06, 5)
+    // 66 sobre 60 es un 10% por encima → 1 − 0,1×0,3 = 0,97
+    expect(calcularCorrectorHRV([{ hrv_dia: 66 }], 60)).toBeCloseTo(0.97, 5)
+  })
+  it('el neutro sigue siendo exactamente 1', () => {
+    expect(calcularCorrectorHRV([{ hrv_dia: 60 }], 60)).toBe(1)
+  })
+  it('nunca puede invertir el signo del coste', () => {
+    // Con el tope, el corrector jamás vuelve barata una sesión cara.
+    for (const hrv of [1, 20, 60, 90, 150, 400]) {
+      const c = calcularCorrectorHRV([{ hrv_dia: hrv }], 60)
+      expect(c).toBeGreaterThanOrEqual(0.85)
+      expect(c).toBeLessThanOrEqual(1.3)
+    }
+  })
+})

@@ -259,32 +259,59 @@ export default function MisTests() {
                 <p>No tienes tests de fuerza todavía.</p>
               </div>
             ) : (
-              <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-400 text-xs border-b border-gray-700 bg-gray-800">
-                      <th className="text-left py-3 px-4">Ejercicio</th>
-                      <th className="text-left py-3 px-4">Grupo</th>
-                      <th className="text-center py-3 px-4">Peso</th>
-                      <th className="text-center py-3 px-4">Reps</th>
-                      <th className="text-center py-3 px-4">1RM est.</th>
-                      <th className="text-left py-3 px-4">Fecha</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tests.fuerza.map((t: any) => (
-                      <tr key={t.id} className="border-b border-gray-800 hover:bg-gray-800">
-                        <td className="py-3 px-4 font-medium">{t.ejercicio}</td>
-                        <td className="py-3 px-4 text-gray-400 text-xs">{t.grupo_muscular}</td>
-                        <td className="py-3 px-4 text-center">{t.peso_kg} kg</td>
-                        <td className="py-3 px-4 text-center">{t.repeticiones}</td>
-                        <td className="py-3 px-4 text-center font-bold text-red-400">{t.rm_estimado} kg</td>
-                        <td className="py-3 px-4 text-gray-400 text-xs">{t.fecha}</td>
+              <>
+                {/* MÓVIL — una ficha por test.
+                    La tabla son seis columnas dentro de un contenedor con
+                    overflow-hidden: en un móvil no da scroll, RECORTA, y lo que
+                    quedaba fuera era justo el 1RM estimado, que es el dato por el
+                    que se entra aquí. En ficha va lo primero. */}
+                <div className="flex flex-col gap-2 sm:hidden">
+                  {tests.fuerza.map((t: any) => (
+                    <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 px-3.5 py-3 flex flex-col gap-1.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-semibold text-[15px] tracking-tight min-w-0">{t.ejercicio}</span>
+                        <span className="text-right flex-shrink-0">
+                          <span className="font-bold text-[17px] text-red-400 tabular-nums">{t.rm_estimado} kg</span>
+                          <span className="block text-[9.5px] uppercase tracking-wider text-gray-500">1RM est.</span>
+                        </span>
+                      </div>
+                      <div className="flex gap-2 flex-wrap text-[11.5px] text-gray-400">
+                        <span className="bg-gray-800 rounded px-2 py-0.5 tabular-nums">{t.peso_kg} kg × {t.repeticiones}</span>
+                        {t.grupo_muscular && <span className="bg-gray-800 rounded px-2 py-0.5">{t.grupo_muscular}</span>}
+                        <span className="bg-gray-800 rounded px-2 py-0.5 tabular-nums">{t.fecha}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ESCRITORIO — aquí las seis columnas caben de sobra. */}
+                <div className="hidden sm:block bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs border-b border-gray-700 bg-gray-800">
+                        <th className="text-left py-3 px-4">Ejercicio</th>
+                        <th className="text-left py-3 px-4">Grupo</th>
+                        <th className="text-center py-3 px-4">Peso</th>
+                        <th className="text-center py-3 px-4">Reps</th>
+                        <th className="text-center py-3 px-4">1RM est.</th>
+                        <th className="text-left py-3 px-4">Fecha</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {tests.fuerza.map((t: any) => (
+                        <tr key={t.id} className="border-b border-gray-800 hover:bg-gray-800">
+                          <td className="py-3 px-4 font-medium">{t.ejercicio}</td>
+                          <td className="py-3 px-4 text-gray-400 text-xs">{t.grupo_muscular}</td>
+                          <td className="py-3 px-4 text-center">{t.peso_kg} kg</td>
+                          <td className="py-3 px-4 text-center">{t.repeticiones}</td>
+                          <td className="py-3 px-4 text-center font-bold text-red-400">{t.rm_estimado} kg</td>
+                          <td className="py-3 px-4 text-gray-400 text-xs">{t.fecha}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
