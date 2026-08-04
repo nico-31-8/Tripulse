@@ -134,7 +134,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
     if (testTablas[i] === 'test3_ciclismo') tests.ftp = row.ftp ?? null
   })
 
-  const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado'
+  const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado'
 
   // ---- Carga (frescura): sesiones realizadas 70 días ----
   const cargaChain = microIds.length
@@ -269,7 +269,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
       disciplina: s.disciplina || '—',
       color: DISC_META[s.disciplina]?.color || '#94a3b8',
       zona: t0?.zona_entrenamiento || null,
-      min: minutosEfectivos(s.duracion_minutos, estimAg[s.id]),
+      min: minutosEfectivos(s, estimAg[s.id]),
     }
   })
 

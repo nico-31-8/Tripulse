@@ -81,7 +81,7 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     // Una sola consulta sin filtrar por disciplina: el deporte lo pone el bloque.
     const { data: ses } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos, duracion_real')
       .in('id_microciclo', microIds)
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)

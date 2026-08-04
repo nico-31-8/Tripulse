@@ -9,35 +9,54 @@ const est = (minutos: number, estimable = true): ResultadoDuracion =>
 // calendario). Lo que hay que blindar es la PRECEDENCIA: lo que el atleta midió de
 // verdad manda siempre sobre lo que estimamos nosotros.
 
-describe('minutosEfectivos — manual manda sobre estimación', () => {
+describe('minutosEfectivos — lo cronometrado manda, luego lo manual, luego la estimación', () => {
+  it('lo que el atleta cronometró gana a todo lo demás', () => {
+    expect(minutosEfectivos({ duracion_real: 38, duracion_minutos: 50 }, est(45))).toBe(38)
+  })
   it('con duración manual usa esa aunque haya estimación', () => {
-    expect(minutosEfectivos(50, est(45))).toBe(50)
+    expect(minutosEfectivos({ duracion_minutos: 50 }, est(45))).toBe(50)
   })
   it('sin manual cae a la estimación', () => {
-    expect(minutosEfectivos(null, est(45))).toBe(45)
+    expect(minutosEfectivos({}, est(45))).toBe(45)
   })
-  it('sin manual y sin estimación devuelve null (no cero: cero es una sesión de 0 min)', () => {
+  it('sin nada de nada devuelve null (no cero: cero es una sesión de 0 min)', () => {
+    expect(minutosEfectivos({}, undefined)).toBeNull()
     expect(minutosEfectivos(null, undefined)).toBeNull()
     expect(minutosEfectivos(undefined, undefined)).toBeNull()
   })
   it('una estimación no estimable no se usa', () => {
-    expect(minutosEfectivos(null, est(45, false))).toBeNull()
+    expect(minutosEfectivos({}, est(45, false))).toBeNull()
   })
   it('una estimación de 0 minutos no se usa', () => {
-    expect(minutosEfectivos(null, est(0))).toBeNull()
+    expect(minutosEfectivos({}, est(0))).toBeNull()
+  })
+  it('mismo veredicto que minutosCarga, que es de quien no se puede discrepar', () => {
+    const casos = [
+      { duracion_real: 38, duracion_minutos: 50 },
+      { duracion_real: null, duracion_minutos: 50 },
+      { duracion_real: 0, duracion_minutos: 50 },
+      {},
+    ]
+    for (const s of casos) {
+      expect(minutosEfectivos(s, est(45))).toBe(minutosCarga(s, est(45)))
+    }
   })
 })
 
 describe('duracionSesionTexto — la tilde distingue medido de estimado', () => {
-  it('manual va sin tilde', () => {
-    expect(duracionSesionTexto(50, est(45))).toBe('50 min')
+  it('lo cronometrado va sin tilde y pisa a lo planificado', () => {
+    expect(duracionSesionTexto({ duracion_real: 38, duracion_minutos: 50 }, est(45))).toBe('38 min')
   })
-  it('estimado va con tilde, para que el entrenador sepa que es un cálculo nuestro', () => {
-    expect(duracionSesionTexto(null, est(45))).toBe('~45 min')
+  it('manual va sin tilde', () => {
+    expect(duracionSesionTexto({ duracion_minutos: 50 }, est(45))).toBe('50 min')
+  })
+  it('estimado va con tilde, para que se sepa que es un cálculo nuestro', () => {
+    expect(duracionSesionTexto({}, est(45))).toBe('~45 min')
   })
   it('sin nada, raya', () => {
+    expect(duracionSesionTexto({}, undefined)).toBe('—')
     expect(duracionSesionTexto(null, undefined)).toBe('—')
-    expect(duracionSesionTexto(null, est(45, false))).toBe('—')
+    expect(duracionSesionTexto({}, est(45, false))).toBe('—')
   })
 })
 

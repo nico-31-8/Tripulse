@@ -56,8 +56,14 @@ export default function MisSesiones() {
   // Modal calendario
   const [diaModal, setDiaModal] = useState<{ fechaStr: string, sesiones: any[] } | null>(null)
   const [dep, setDep] = useState<any>(null)
-  // Modal añadir sesión (deportista)
-  const [modalAnadir, setModalAnadir] = useState(false)
+  // Modal añadir sesión (deportista).
+  // Con ?anadir=1 se abre solo. Lo usa el botón del panel, que dice "Añadir una
+  // sesión que vas a hacer": si lo dice, tiene que añadirla, no dejarte aquí
+  // mirando el mismo botón otra vez.
+  const [modalAnadir, setModalAnadir] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return new URLSearchParams(window.location.search).get('anadir') === '1'
+  })
   const [fDisc, setFDisc] = useState('Natacion')
   const [fFecha, setFFecha] = useState(() => ymd(new Date()))
   const [fDur, setFDur] = useState('')
@@ -275,7 +281,7 @@ export default function MisSesiones() {
                           <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
-                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
+                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
@@ -360,7 +366,7 @@ export default function MisSesiones() {
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
-                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
+                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic">"{s.notas_entrenador}"</p>}
                             </div>
                           </div>
@@ -469,7 +475,7 @@ export default function MisSesiones() {
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
                       <p className="text-gray-500 text-xs">Duración</p>
-                      <p className="font-bold text-sm">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)}</p>
+                      <p className="font-bold text-sm">{duracionSesionTexto(s, s.dur_estimada)}</p>
                     </div>
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
                       <p className="text-gray-500 text-xs">RPE estimado</p>

@@ -19,7 +19,7 @@
 //
 // Fuente: deporte/Resources/Triatlón/B1-04-Microciclo-Semanal.md
 import { calcularDuracionEstimada, type TestsDeportista, type TareaDuracion } from './duracion'
-import { minutosEfectivos } from './duracion-carga'
+import { minutosEfectivos, minutosCarga } from './duracion-carga'
 import { factorConcatenacion } from './bricks'
 
 // El coste extra del bloque que va JUSTO DESPUÉS de una transición depende del
@@ -38,6 +38,10 @@ export interface SesionAtribuible {
   fecha_sesion: string
   disciplina?: string | null
   duracion_minutos?: number | null
+  // Lo que el atleta cronometró. Faltaba en este tipo, así que la atribución de
+  // carga por bloque se calculaba siempre con lo PLANIFICADO aunque la sesión se
+  // hubiera cerrado con el cronómetro.
+  duracion_real?: number | null
   rpe_estimado?: number | null
   rpe_reportado?: number | null
   transiciones?: Transicion[] | null
@@ -119,7 +123,7 @@ export function expandirEnBloques(
 
     // Sin tareas: la sesión es su propio bloque (lo que la app hace hoy).
     if (!tar.length) {
-      const minutos = s.duracion_minutos || 0
+      const minutos = minutosCarga(s)
       if (minutos <= 0 && !s.disciplina) continue
       out.push({
         id_sesion: s.id, fecha: s.fecha_sesion, disciplina: s.disciplina || 'Otra',
@@ -129,11 +133,11 @@ export function expandirEnBloques(
       continue
     }
 
-    // Minutos de la sesión: el manual manda; si no, la estimación del conjunto
-    // (con todas las tareas a la vez, como lib/duracion-carga).
+    // Minutos de la sesión: lo cronometrado manda, luego lo manual, luego la
+    // estimación del conjunto (con todas las tareas a la vez, como lib/duracion-carga).
     const minutosSesion = opts.estimar === false
-      ? (s.duracion_minutos || 0)
-      : (minutosEfectivos(s.duracion_minutos, calcularDuracionEstimada(tar, tests)) || 0)
+      ? minutosCarga(s)
+      : (minutosEfectivos(s, calcularDuracionEstimada(tar, tests)) || 0)
 
     const deportes = new Set(tar.map(t => t.disciplina || s.disciplina || 'Otra'))
     const esBrick = deportes.size > 1

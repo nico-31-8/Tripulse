@@ -120,7 +120,7 @@ export default function MisAnalisis() {
             ) : (
               <div className="flex flex-col gap-3">
                 {sesiones.map(s => {
-                  const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (minutosEfectivos(s.duracion_minutos, s.dur_estimada) || 0)
+                  const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (minutosEfectivos(s, s.dur_estimada) || 0)
                   return (
                     <button key={s.id} onClick={() => verAnalisis(s)}
                       className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left w-full">
@@ -133,7 +133,7 @@ export default function MisAnalisis() {
                               <span className="text-gray-400 text-xs">{s.fecha_sesion}</span>
                             </div>
                             <p className="text-gray-300 text-sm">
-                              {duracionSesionTexto(s.duracion_minutos, s.dur_estimada)} ·
+                              {duracionSesionTexto(s, s.dur_estimada)} ·
                               RPE plan {s.rpe_estimado || '—'} →
                               <span className={' font-bold ' + rpeColor(s.rpe_reportado, s.rpe_estimado)}>
                                 {s.rpe_reportado || '—'}

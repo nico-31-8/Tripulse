@@ -44,13 +44,23 @@ export async function estimarDuraciones(
   return out
 }
 
-// Minutos efectivos de una sesión: manual si existe, si no la estimación.
-// Devuelve null si no hay ni manual ni estimación.
+// Sesión, para lo mínimo que necesitan los helpers de abajo.
+type SesionDur = { duracion_real?: number | null; duracion_minutos?: number | null }
+
+// Minutos efectivos de una sesión: lo cronometrado si existe, si no lo manual, si
+// no la estimación. Devuelve null cuando no hay ninguna de las tres.
+//
+// Toma la SESIÓN entera y no solo `duracion_minutos` a propósito: antes recibía el
+// número suelto, así que `duracion_real` no lo miraba nadie y una sesión cerrada
+// con el cronómetro seguía contando por lo PLANIFICADO. Misma prioridad que
+// minutosCarga (del que solo se diferencia en devolver null en vez de 0), para que
+// no haya dos respuestas distintas a "cuánto duró esto".
 export function minutosEfectivos(
-  duracionManual: number | null | undefined,
+  sesion: SesionDur | null | undefined,
   est: ResultadoDuracion | undefined,
 ): number | null {
-  if (duracionManual) return duracionManual
+  if (sesion?.duracion_real && sesion.duracion_real > 0) return sesion.duracion_real
+  if (sesion?.duracion_minutos && sesion.duracion_minutos > 0) return sesion.duracion_minutos
   if (est?.estimable && est.minutos > 0) return est.minutos
   return null
 }
@@ -92,12 +102,15 @@ export function origenMinutos(
   return null
 }
 
-// Texto para mostrar: '50 min' (manual), '~45 min' (estimada) o '—'.
+// Texto para mostrar: '50 min' (medido o manual), '~45 min' (estimada) o '—'.
+// La tilde sigue significando "esto es una estimación nuestra"; lo cronometrado y
+// lo que puso el entrenador a mano son igual de reales y van sin ella.
 export function duracionSesionTexto(
-  duracionManual: number | null | undefined,
+  sesion: SesionDur | null | undefined,
   est: ResultadoDuracion | undefined,
 ): string {
-  if (duracionManual) return duracionManual + ' min'
-  if (est?.estimable && est.minutos > 0) return '~' + est.minutos + ' min'
-  return '—'
+  const min = minutosEfectivos(sesion, est)
+  if (min === null) return '—'
+  const estimada = !sesion?.duracion_real && !sesion?.duracion_minutos
+  return (estimada ? '~' : '') + min + ' min'
 }

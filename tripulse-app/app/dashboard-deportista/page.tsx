@@ -84,7 +84,9 @@ export default function DashboardDeportista() {
       const { data: micros } = mesoIds.length ? await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds) : { data: [] }
       const microIds = (micros || []).map((m: any) => m.id)
 
-      const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, notas_entrenador'
+      // duracion_real va en el SELECT o el arreglo no sirve de nada: sin pedirla,
+      // duracionSesionTexto no la ve y sigue enseñando lo planificado.
+      const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, duracion_real, notas_entrenador'
       let sesiones: any[] = []
       if (microIds.length) {
         const { data } = await supabase.from('sesion').select(selSes)
@@ -354,8 +356,10 @@ export default function DashboardDeportista() {
           </div>}
         </div>
 
-        {/* ===== AÑADIR SESIÓN NO PROGRAMADA (entrada — flujo completo próximamente) ===== */}
-        <button onClick={() => router.push('/mis-sesiones')}
+        {/* ===== AÑADIR SESIÓN NO PROGRAMADA =====
+            El modal de alta vive en /mis-sesiones; ?anadir=1 lo abre al llegar. Sin
+            eso, este botón te llevaba a una lista con el mismo botón otra vez. */}
+        <button onClick={() => router.push('/mis-sesiones?anadir=1')}
           className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded-xl py-3 text-sm transition mb-5">
           ＋ Añadir una sesión que vas a hacer
         </button>

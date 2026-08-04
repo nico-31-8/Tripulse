@@ -68,7 +68,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
 
     let query = supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, duracion_minutos')
+      .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real')
       .in('id_microciclo', micros.map((m: any) => m.id))
       .eq('estado', 'Realizada')
       .order('fecha_sesion')

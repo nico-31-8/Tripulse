@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
+import { minutosEfectivos } from '@/lib/duracion-carga'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
 
@@ -158,7 +159,9 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
     router.push('/dashboard-deportista')
   }
 
-  const minutos = sesion.duracion_minutos || (durEstimada.estimable ? durEstimada.minutos : null)
+  // Si la sesión ya está cerrada, lo que vale es lo que cronometró, no lo que se
+  // planificó: si no, al reabrirla se veía la duración del plan como si fuera la suya.
+  const minutos = minutosEfectivos(sesion, durEstimada)
   const hayNutricion = sesion.nutricion_carbo_gh != null || sesion.nutricion_agua_mlh != null
     || sesion.nutricion_sodio_mgh != null || sesion.nutricion_cafeina_mg != null || sesion.nutricion_ayuno
   const realizada = sesion.estado === 'Realizada'

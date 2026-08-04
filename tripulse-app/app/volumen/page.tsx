@@ -131,7 +131,7 @@ export default function VolumenPage() {
 
     const { data: sesChain } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
       .in('id_microciclo', microIds.length ? microIds : [-1])
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)
@@ -139,7 +139,7 @@ export default function VolumenPage() {
     // Sesiones "libres" del atleta (sin microciclo) también cuentan en el volumen.
     const { data: sesLibres } = await supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, estado')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
       .eq('id_deportista', dep.id).is('id_microciclo', null)
       .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
     const sesiones = [...(sesChain || []), ...(sesLibres || [])]
