@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
 
 function TablaZonas2({ disciplina, tests, fcMax }: { disciplina: string; tests: { vam?: number | null; ftp?: number | null; css?: number | null }; fcMax: number }) {
@@ -208,7 +209,7 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
     setTestCiclismo(t3?.[0] || null)
   }
 
-  if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!deportista) return <Cargando />
 
   const fcMax = deportista.fc_maxima || 0
   const sistema = deportista.sistema_zonas || 1

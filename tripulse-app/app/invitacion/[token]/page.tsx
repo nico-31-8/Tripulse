@@ -56,23 +56,14 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
       return
     }
 
-    // 2. Crear perfil
-    const { error: errPerfil } = await supabase.from('perfiles').insert({
-      id: data.user.id,
-      rol: 'deportista',
-      nombre: invitacion.nombre_deportista,
-      email,
-      acepto_terminos: true,
-      fecha_consentimiento: new Date().toISOString(),
-      version_consentimiento: 'v1-2026-07',
-    })
-    if (errPerfil) { setError('Error al crear el perfil: ' + errPerfil.message); setGuardando(false); return }
-
-    // 3. Vincular el usuario al deportista y marcar la invitación como usada
-    //    (función segura gated por token, corre como definer)
+    // 2. Perfil + vínculo + quemar el token, todo dentro de aceptar_invitacion().
+    //    El perfil ya NO se crea desde aquí: `perfiles` no tiene política de
+    //    INSERT a propósito (ver supabase/acceso-invitaciones.sql), así que un
+    //    insert directo desde el cliente fallaría por RLS. La función es la
+    //    puerta buena: corre como definer y está protegida por el token.
     const { error: errVinc } = await supabase.rpc('aceptar_invitacion', { p_token: token })
     if (errVinc) {
-      setError('Error al vincular: ' + errVinc.message)
+      setError('Error al completar el alta: ' + errVinc.message)
       setGuardando(false)
       return
     }

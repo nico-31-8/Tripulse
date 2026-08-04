@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
@@ -231,7 +232,7 @@ export default function DashboardDeportista() {
     </div>
   )
 
-  if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!perfil) return <Cargando />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

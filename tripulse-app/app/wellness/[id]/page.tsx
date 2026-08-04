@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { analizarWellness, type MetricaAnalisis } from '@/lib/wellness-analisis'
@@ -150,7 +151,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     setGuardandoPeso(false)
   }
 
-  if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!deportista) return <Cargando />
 
   const analisis = analizarWellness(registros)
 

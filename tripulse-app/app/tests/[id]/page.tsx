@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tablaIntensidades } from '@/lib/zonas'
 import { calcularObjetivos, idsConPacing } from '@/lib/pacing'
@@ -313,7 +314,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
-  if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!deportista) return <Cargando />
 
   const rmPreview = calcularRM()
 

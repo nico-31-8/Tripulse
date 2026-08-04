@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 export default function PaginaMacrociclo({ params }: { params: Promise<{ id: string }> }) {
@@ -47,7 +48,7 @@ export default function PaginaMacrociclo({ params }: { params: Promise<{ id: str
     setLoading(false)
   }
 
-  if (!macrociclo) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!macrociclo) return <Cargando />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

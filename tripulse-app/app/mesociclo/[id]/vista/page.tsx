@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 
@@ -153,7 +154,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     setOcupado(false)
   }
 
-  if (!meso) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!meso) return <Cargando />
 
   const col = C_MESO[meso.tipo] || '#f97316'
   const fechaFin = addWeeks(meso.fecha_inicio, meso.duracion_semanas)

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 // Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
@@ -62,7 +63,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
     return 'bg-purple-900 text-purple-300'
   }
 
-  if (!microciclo) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!microciclo) return <Cargando />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

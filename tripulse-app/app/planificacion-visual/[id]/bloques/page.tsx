@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
@@ -284,7 +285,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     })
   }
 
-  if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!deportista) return <Cargando />
 
   const fcUmbral = deportista.fc_maxima ? Math.round(deportista.fc_maxima * 0.85) : 150
   const hoy = fechaLocal(new Date())

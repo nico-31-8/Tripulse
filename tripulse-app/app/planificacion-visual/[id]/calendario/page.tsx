@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
@@ -664,7 +665,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const hoy = new Date().toISOString().split('T')[0]
   const modoActivo = sesionCopiada ? 'pegar-sesion' : semanaCopiada ? 'pegar-semana' : null
 
-  if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!deportista) return <Cargando />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

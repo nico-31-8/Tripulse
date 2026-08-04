@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
@@ -190,7 +191,7 @@ export default function PerfilPage() {
     router.push('/')
   }
 
-  if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!perfil) return <Cargando />
 
   const esDeportista = perfil.rol === 'deportista'
 

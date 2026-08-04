@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
@@ -499,7 +500,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setMostrarNutricion(false)
   }
 
-  if (!sesion) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
+  if (!sesion) return <Cargando />
 
   const durEstimada = calcularDuracionEstimada(tareas, testsData || {})
 
