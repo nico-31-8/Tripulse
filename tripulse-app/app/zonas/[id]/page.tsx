@@ -191,6 +191,9 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
   const router = useRouter()
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [tab, setTab] = useState('carrera')
   const [testCarrera, setTestCarrera] = useState<any>(null)
   const [testNatacion, setTestNatacion] = useState<any>(null)
@@ -201,6 +204,7 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    if (!dep) { setNoExiste(true); return }
     const { data: t1 } = await supabase.from('test1_carrera').select('*').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     setTestCarrera(t1?.[0] || null)
     const { data: t2 } = await supabase.from('test2_natacion').select('*').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
@@ -209,7 +213,7 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
     setTestCiclismo(t3?.[0] || null)
   }
 
-  if (!deportista) return <Cargando />
+  if (!deportista) return <Cargando noExiste={noExiste} />
 
   const fcMax = deportista.fc_maxima || 0
   const sistema = deportista.sistema_zonas || 1

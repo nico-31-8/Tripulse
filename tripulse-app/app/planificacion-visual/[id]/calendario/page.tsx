@@ -128,6 +128,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [macros, setMacros] = useState<any[]>([])
   const [mesos, setMesos] = useState<any[]>([])
   const [micros, setMicros] = useState<any[]>([])
@@ -213,6 +216,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    if (!dep) { setNoExiste(true); return }
     // Tests más recientes para estimar ritmos por zona
     const { data: tCarr } = await supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     const { data: tNat } = await supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
@@ -671,7 +675,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const hoy = new Date().toISOString().split('T')[0]
   const modoActivo = sesionCopiada ? 'pegar-sesion' : semanaCopiada ? 'pegar-semana' : null
 
-  if (!deportista) return <Cargando />
+  if (!deportista) return <Cargando noExiste={noExiste} />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

@@ -3,7 +3,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
+import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
+
+/* Mismo interruptor que /carga y /volumen: una sola clave para toda la app, o el
+   entrenador activaría la ponderación en un módulo y la vería apagada en otro. */
+const LLAVE_POND = 'sicat_pond_zona'
 
 const DISCIPLINAS = [
   { key: 'Natacion', label: '🏊 Natación', color: '#60a5fa' },
@@ -14,11 +19,11 @@ const DISCIPLINAS = [
 
 // Recibe BLOQUES, no sesiones: un brick aporta a la bici y a la carrera por
 // separado, cada una con sus minutos reales (ver lib/atribucion).
-function calcularCargasDisc(bloques: Bloque[], factor: number) {
+function calcularCargasDisc(bloques: Bloque[], factor: (b: Bloque) => number) {
   if (!bloques.length) return []
   const mapa: Record<string, number> = {}
   bloques.forEach(b => {
-    mapa[b.fecha] = (mapa[b.fecha] || 0) + b.ua * factor
+    mapa[b.fecha] = (mapa[b.fecha] || 0) + b.ua * factor(b)
   })
   const fechas = Object.keys(mapa).sort()
   let atl = 0, ctl = 0
@@ -56,11 +61,28 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
   const [bloques, setBloques] = useState<Bloque[]>([])
   const [loading, setLoading] = useState(true)
   const [discActiva, setDiscActiva] = useState('Carrera')
+  const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
+  const [pondZona, setPondZona] = useState(false)
 
   useEffect(() => {
     if (!depId) return
     cargar()
   }, [depId, diasRango])
+
+  // El interruptor lo pone el entrenador en /eco y vale para toda la app.
+  useEffect(() => {
+    try { setPondZona(localStorage.getItem(LLAVE_POND) === '1') } catch { /* modo privado */ }
+  }, [])
+
+  // La matriz zona×disciplina solo se calcula si la ponderación está encendida:
+  // es una consulta cara y con el interruptor apagado no se usaría para nada.
+  useEffect(() => {
+    if (!pondZona || !depId) { setZonasRes(null); return }
+    let vivo = true
+    supabase.from('deportista').select('*').eq('id', depId).maybeSingle()
+      .then(({ data }) => { if (data && vivo) calcularSicatZonas(data).then(r => { if (vivo) setZonasRes(r) }) })
+    return () => { vivo = false }
+  }, [pondZona, depId])
 
   const cargar = async () => {
     setLoading(true)
@@ -97,12 +119,24 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
   const datosPorDisc = useMemo(() => {
     const resultado: Record<string, any[]> = {}
     for (const disc of DISCIPLINAS) {
-      const factor = sicat ? factorSicat(disc.key, sicat) : 1
+      // Este módulo era el único que se quedaba a nivel de disciplina mientras
+      // /carga y /volumen ya ponderaban por zona: el mismo entrenador veía dos
+      // cifras distintas de la misma carga según por dónde entrara.
+      // Aquí además se pondera MEJOR: cada bloque trae su propia zona, así que no
+      // hace falta reducir la sesión a una zona pico como hacen los otros dos.
+      const factor = (b: Bloque) => {
+        if (!sicat) return 1
+        if (pondZona && b.zona) {
+          const f = factorSicatZona(disc.key, b.zona, zonasRes)
+          if (f != null) return f
+        }
+        return factorSicat(disc.key, sicat)
+      }
       const suyos = bloques.filter(b => b.disciplina === disc.key)
       resultado[disc.key] = calcularCargasDisc(suyos, factor).slice(-diasRango)
     }
     return resultado
-  }, [bloques, sicat, diasRango])
+  }, [bloques, sicat, diasRango, pondZona, zonasRes])
 
   if (loading) return <div className="text-center py-8 text-gray-500 text-sm">Calculando carga por disciplina...</div>
 

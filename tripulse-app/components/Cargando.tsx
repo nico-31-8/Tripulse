@@ -20,25 +20,34 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function Cargando({ volverA }: { volverA?: string }) {
+// `noExiste`: la página YA SABE que la consulta terminó sin resultado. Entonces no
+// hay nada que esperar y se dice directamente, sin la cuenta atrás ni el "puede
+// que". La espera de 7 s es solo para las páginas que aún no distinguen los dos
+// casos.
+export default function Cargando({ volverA, noExiste = false }: { volverA?: string; noExiste?: boolean }) {
   const router = useRouter()
   const [tarda, setTarda] = useState(false)
 
   useEffect(() => {
+    if (noExiste) return
     const t = setTimeout(() => setTarda(true), 7000)
     return () => clearTimeout(t)
-  }, [])
+  }, [noExiste])
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white px-6">
-      {!tarda ? (
+      {!tarda && !noExiste ? (
         <p className="text-gray-400">Cargando...</p>
       ) : (
         <div className="text-center max-w-sm">
-          <p className="text-4xl mb-3">🤔</p>
-          <p className="font-bold mb-1">Esto está tardando más de lo normal</p>
+          <p className="text-4xl mb-3">{noExiste ? '🚪' : '🤔'}</p>
+          <p className="font-bold mb-1">
+            {noExiste ? 'Esto no existe, o no es tuyo' : 'Esto está tardando más de lo normal'}
+          </p>
           <p className="text-gray-500 text-sm mb-5">
-            Puede que no exista, o que no sea tuyo. Si acabas de abrir un enlace antiguo, es lo más probable.
+            {noExiste
+              ? 'Puede que lo hayan borrado, o que el enlace sea de otra cuenta.'
+              : 'Puede que no exista, o que no sea tuyo. Si acabas de abrir un enlace antiguo, es lo más probable.'}
           </p>
           <div className="flex gap-2 justify-center">
             <button onClick={() => router.back()}

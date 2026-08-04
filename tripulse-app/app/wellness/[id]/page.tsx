@@ -63,6 +63,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const router = useRouter()
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [esDeportista, setEsDeportista] = useState(false)
   const [registros, setRegistros] = useState<any[]>([])
   // Con ?registrar=1 el formulario se abre solo. Lo usa el aviso del panel del
@@ -102,6 +105,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     }
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    if (!dep) { setNoExiste(true); return }
     const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30)
     setRegistros(reg || [])
     const { data: pesos } = await supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60)
@@ -151,7 +155,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     setGuardandoPeso(false)
   }
 
-  if (!deportista) return <Cargando />
+  if (!deportista) return <Cargando noExiste={noExiste} />
 
   const analisis = analizarWellness(registros)
 

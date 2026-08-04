@@ -8,6 +8,9 @@ export default function PaginaMacrociclo({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   useRequireEntrenador()
   const [macrociclo, setMacrociclo] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [mesociclos, setMesociclos] = useState<any[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [objetivo, setObjetivo] = useState('')
@@ -23,6 +26,7 @@ export default function PaginaMacrociclo({ params }: { params: Promise<{ id: str
   const cargarDatos = async () => {
     const { data: mac } = await supabase.from('macrociclo').select('*').eq('id', id).single()
     setMacrociclo(mac)
+    if (!mac) { setNoExiste(true); return }
     const { data: meso } = await supabase.from('mesociclo').select('*').eq('id_macrociclo', id).order('fecha_inicio', { ascending: true })
     setMesociclos(meso || [])
   }
@@ -48,7 +52,7 @@ export default function PaginaMacrociclo({ params }: { params: Promise<{ id: str
     setLoading(false)
   }
 
-  if (!macrociclo) return <Cargando />
+  if (!macrociclo) return <Cargando noExiste={noExiste} />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

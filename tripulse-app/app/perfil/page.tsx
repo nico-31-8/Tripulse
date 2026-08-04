@@ -109,6 +109,11 @@ export default function PerfilPage() {
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const [copiado, setCopiado] = useState(false)
+  // Editar el nombre. No había forma de cambiarlo: el que pusiste al registrarte
+  // era para siempre, erratas incluidas.
+  const [editandoNombre, setEditandoNombre] = useState(false)
+  const [nombreInput, setNombreInput] = useState('')
+  const [guardandoNombre, setGuardandoNombre] = useState(false)
 
   useEffect(() => { cargar() }, [])
 
@@ -126,6 +131,25 @@ export default function PerfilPage() {
         setEntrenador(ent)
       }
     }
+  }
+
+  const guardarNombre = async () => {
+    const n = nombreInput.trim()
+    if (!n) { setMensaje('El nombre no puede quedar vacío'); return }
+    setGuardandoNombre(true); setMensaje('')
+    const { error } = await supabase.from('perfiles').update({ nombre: n }).eq('id', perfil.id)
+    if (error) { setMensaje('Error: ' + error.message); setGuardandoNombre(false); return }
+
+    // El nombre vive en DOS sitios: `perfiles.nombre` y, si es deportista, también
+    // `deportista.nombre` — que es el que ve el entrenador en sus listas. Cambiar
+    // solo uno los dejaría diciendo cosas distintas de la misma persona.
+    if (perfil.rol === 'deportista') {
+      await supabase.from('deportista').update({ nombre: n }).eq('id_usuario', perfil.id)
+    }
+    setPerfil({ ...perfil, nombre: n })
+    setEditandoNombre(false)
+    setGuardandoNombre(false)
+    setMensaje('Nombre guardado correctamente')
   }
 
   const guardarCodigo = async (e: React.FormEvent) => {
@@ -159,16 +183,28 @@ export default function PerfilPage() {
   // El deportista exporta TODO lo suyo (incluida salud). El entrenador exporta su
   // perfil y su estructura de trabajo, NO los datos de salud de sus atletas (que
   // son datos personales de ellos y los exporta cada uno).
+  //
+  // Ojo con `deportista` en la exportación del ENTRENADOR: esa tabla lleva
+  // fc_maxima, hrv_basal y las valoraciones técnicas, que son datos fisiológicos
+  // de sus atletas. Exportarla entera contradecía el párrafo de arriba. Se limita
+  // a lo que sí es suyo: a quién entrena. Por eso la lista es de columnas y no de
+  // tablas — así el matiz vive en el código y no solo en un comentario.
   const exportarDatos = async () => {
     setExportando(true)
-    const tablas = perfil.rol === 'deportista'
+    const tablas: [string, string][] = perfil.rol === 'deportista'
       ? ['perfiles','deportista','wellness','test1_carrera','test2_natacion','test3_ciclismo',
          'test_fuerza','tests_libres','anamnesis','disponibilidad','competicion','registro_peso',
-         'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes']
-      : ['perfiles','deportista','macrociclo','mesociclo','microciclo','sesion','tarea','mensajes']
+         'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes'].map(t => [t, '*'] as [string, string])
+      : [['perfiles','*'],
+         ['deportista','id, nombre, created_at'],
+         ['macrociclo','*'], ['mesociclo','*'], ['microciclo','*'],
+         ['sesion','*'], ['tarea','*'], ['mensajes','*']]
     const out: any = { _exportado: new Date().toISOString(), _usuario: perfil.email, _rol: perfil.rol }
-    for (const t of tablas) {
-      const { data } = await supabase.from(t).select('*')
+    if (perfil.rol !== 'deportista') {
+      out._nota = 'De tus deportistas solo se incluye el nombre. Sus datos de salud, wellness y tests son suyos y los exporta cada uno desde su propia cuenta.'
+    }
+    for (const [t, cols] of tablas) {
+      const { data } = await supabase.from(t).select(cols)
       if (data && data.length) out[t] = data
     }
     const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })
@@ -204,10 +240,37 @@ export default function PerfilPage() {
 
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
           <h2 className="text-2xl font-bold mb-1">Mi perfil</h2>
-          <p className="text-gray-400 text-sm">{perfil.nombre} · {perfil.email}</p>
+
+          {editandoNombre ? (
+            <div className="flex items-center gap-2 mt-2 mb-1 flex-wrap">
+              <input value={nombreInput} onChange={e => setNombreInput(e.target.value)} autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') guardarNombre(); if (e.key === 'Escape') setEditandoNombre(false) }}
+                className="bg-gray-800 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 flex-1 min-w-[160px]" />
+              <button onClick={guardarNombre} disabled={guardandoNombre}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-sm px-4 py-2 rounded-lg transition disabled:opacity-50">
+                {guardandoNombre ? 'Guardando…' : 'Guardar'}
+              </button>
+              <button onClick={() => setEditandoNombre(false)} className="text-gray-500 hover:text-white text-sm px-2">Cancelar</button>
+            </div>
+          ) : (
+            <p className="text-gray-400 text-sm flex items-center gap-2 flex-wrap">
+              <span>{perfil.nombre} · {perfil.email}</span>
+              <button onClick={() => { setNombreInput(perfil.nombre || ''); setEditandoNombre(true); setMensaje('') }}
+                className="text-orange-400 hover:text-orange-300 text-xs underline transition">cambiar nombre</button>
+            </p>
+          )}
+
+          {/* El email NO se edita aquí a propósito: cambiarlo es una operación de
+              cuenta (Supabase manda confirmación a la dirección nueva) y hacerlo a
+              medias dejaría `perfiles.email` diciendo una cosa y el login otra. */}
+          <p className="text-gray-600 text-[11px] mt-1.5">
+            ¿Necesitas cambiar el email? Escríbenos: es una operación de cuenta y hay que confirmarla desde la dirección nueva.
+          </p>
+
           <span className={'mt-2 inline-block text-xs px-3 py-1 rounded-full font-medium ' + (esDeportista ? 'bg-blue-900 text-blue-300' : 'bg-orange-900 text-orange-300')}>
             {esDeportista ? 'Deportista' : 'Entrenador'}
           </span>
+          {mensaje.includes('Nombre') && <p className="text-green-400 text-sm mt-2">{mensaje}</p>}
         </div>
 
         {esDeportista ? (

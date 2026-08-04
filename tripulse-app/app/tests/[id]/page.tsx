@@ -150,6 +150,9 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
+  // Distingue "todavía no ha llegado" de "ha llegado vacío". Sin esto, una fila
+  // que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [tests1, setTests1] = useState<any[]>([])
   const [tests2, setTests2] = useState<any[]>([])
   const [tests3, setTests3] = useState<any[]>([])
@@ -202,6 +205,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
+    if (!dep) { setNoExiste(true); return }
     const { data: t1 } = await supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
     setTests1(t1 || [])
     const { data: t2 } = await supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
@@ -314,7 +318,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
-  if (!deportista) return <Cargando />
+  if (!deportista) return <Cargando noExiste={noExiste} />
 
   const rmPreview = calcularRM()
 

@@ -94,6 +94,9 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
+  // Distingue "todavía no ha llegado" de "ha llegado vacío". Sin esto, un
+  // deportista que RLS deniega dejaba la pantalla cargando para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [macros, setMacros] = useState<any[]>([])
   const [nivel, setNivel] = useState<'macro'|'meso'|'micro'|'sesiones'>('macro')
   const [macroSel, setMacroSel] = useState<any>(null)
@@ -136,7 +139,8 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const [tipoPeriodizacion, setTipoPeriodizacion] = useState('')
 
   useEffect(() => {
-    supabase.from('deportista').select('*').eq('id', id).single().then(({ data }) => setDeportista(data))
+    supabase.from('deportista').select('*').eq('id', id).single()
+      .then(({ data }) => { if (data) setDeportista(data); else setNoExiste(true) })
     supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio').then(({ data }) => setMacros(data || []))
   }, [id])
 
@@ -285,7 +289,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     })
   }
 
-  if (!deportista) return <Cargando />
+  if (!deportista) return <Cargando noExiste={noExiste} />
 
   const fcUmbral = deportista.fc_maxima ? Math.round(deportista.fc_maxima * 0.85) : 150
   const hoy = fechaLocal(new Date())

@@ -14,6 +14,9 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
   const { id } = use(params)
   useRequireEntrenador()
   const [mesociclo, setMesociclo] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [microciclos, setMicrociclos] = useState<any[]>([])
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [valoraciones, setValoraciones] = useState<any[]>([])
@@ -34,6 +37,7 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
   const cargarDatos = async () => {
     const { data: meso } = await supabase.from('mesociclo').select('*').eq('id', id).single()
     setMesociclo(meso)
+    if (!meso) { setNoExiste(true); return }
     const { data: micro } = await supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true })
     setMicrociclos(micro || [])
     if (meso) {
@@ -102,7 +106,7 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
     setDraft(prev => ({ ...prev, [key]: { ...( prev[key] || { valoracion: 3, notas: '' }), [campo]: valor } }))
   }
 
-  if (!mesociclo) return <Cargando />
+  if (!mesociclo) return <Cargando noExiste={noExiste} />
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

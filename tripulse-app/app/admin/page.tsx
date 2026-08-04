@@ -34,6 +34,20 @@ const hace = (v: string | null) => {
   return 'hace ' + Math.floor(dias / 30) + ' mes' + (dias >= 60 ? 'es' : '')
 }
 
+/* El mensaje que se le manda a la persona, listo para pegar en WhatsApp o en un
+   correo. Lleva la dirección: un código suelto no sirve de nada si no sabes dónde
+   se mete, y ese "¿y esto dónde lo pongo?" acaba siendo un mensaje de vuelta. */
+function mensajeInvitacion(codigo: string, rol: 'entrenador' | 'deportista') {
+  const url = typeof window !== 'undefined' ? window.location.origin : 'https://tripulse.app'
+  return `Te he dado de alta en TRIPULSE${rol === 'entrenador' ? ' como entrenador' : ''}.
+
+Entra en ${url}/registro y crea tu cuenta con este código:
+
+${codigo}
+
+El correo y la contraseña los eliges tú.`
+}
+
 function Chip({ children, tono = 'gris' }: { children: React.ReactNode; tono?: 'gris' | 'naranja' | 'verde' | 'rojo' | 'azul' }) {
   const tonos = {
     gris: 'bg-gray-800 text-gray-400 border-gray-700',
@@ -359,15 +373,25 @@ export default function AdminPage() {
               </div>
 
               {codigoNuevo && (
-                <div className="mt-4 bg-green-500/10 border border-green-500/40 rounded-xl p-4 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-green-400 text-xs mb-1">Código creado — pásaselo a quien va a entrar</p>
-                    <p className="text-2xl font-extrabold tracking-[0.2em] text-white font-mono">{codigoNuevo}</p>
+                <div className="mt-4 bg-green-500/10 border border-green-500/40 rounded-xl p-4">
+                  <p className="text-green-400 text-xs mb-1">Código creado — pásaselo a quien va a entrar</p>
+                  <p className="text-2xl font-extrabold tracking-[0.2em] text-white font-mono mb-3">{codigoNuevo}</p>
+                  {/* TRIPULSE no manda emails: los códigos se pasan a mano. Copiar el
+                      código suelto obliga a escribir el mensaje cada vez y a acordarse
+                      de decir dónde se usa. Esto lo deja listo para pegar. */}
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => copiar(codigoNuevo)}
+                      className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm transition">
+                      {copiado ? '✓ Copiado' : 'Copiar código'}
+                    </button>
+                    <button onClick={() => copiar(mensajeInvitacion(codigoNuevo, fRol))}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                      Copiar mensaje entero
+                    </button>
                   </div>
-                  <button onClick={() => copiar(codigoNuevo)}
-                    className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm transition flex-shrink-0">
-                    {copiado ? '✓' : 'Copiar'}
-                  </button>
+                  <pre className="mt-3 text-[11px] text-gray-500 bg-gray-950/60 rounded-lg p-3 whitespace-pre-wrap leading-relaxed">
+{mensajeInvitacion(codigoNuevo, fRol)}
+                  </pre>
                 </div>
               )}
             </section>

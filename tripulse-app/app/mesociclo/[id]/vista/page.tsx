@@ -33,6 +33,9 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   const { id } = use(params)
   useRequireEntrenador()
   const [meso, setMeso] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   const [micros, setMicros] = useState<any[]>([])
   const [sesiones, setSesiones] = useState<any[]>([])
   const [tareas, setTareas] = useState<any[]>([])
@@ -53,7 +56,9 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
 
   const cargar = async () => {
     const { data: m } = await supabase.from('mesociclo').select('*').eq('id', id).single()
-    if (!m) return
+    // Aquí ya había un `return` seco: la consulta terminaba sin resultado y la
+    // pantalla se quedaba cargando eternamente sin que nadie lo dijera.
+    if (!m) { setNoExiste(true); return }
     setMeso(m)
     const { data: mi } = await supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true })
     setMicros(mi || [])
@@ -154,7 +159,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     setOcupado(false)
   }
 
-  if (!meso) return <Cargando />
+  if (!meso) return <Cargando noExiste={noExiste} />
 
   const col = C_MESO[meso.tipo] || '#f97316'
   const fechaFin = addWeeks(meso.fecha_inicio, meso.duracion_semanas)

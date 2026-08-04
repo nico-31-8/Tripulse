@@ -43,6 +43,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const router = useRouter()
   const { id } = use(params)
   const [sesion, setSesion] = useState<any>(null)
+  // Distingue "todavia no ha llegado" de "ha llegado vacio". Sin esto, una
+  // fila que RLS deniega dejaba la pantalla en "Cargando..." para siempre.
+  const [noExiste, setNoExiste] = useState(false)
   // Fuerza a TareasTabla a releer de la BD tras aplicar una plantilla (carga sus
   // tareas al montar, así que cambiarle la key es lo que la refresca).
   const [recargaTareas, setRecargaTareas] = useState(0)
@@ -225,6 +228,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
+    if (!ses) { setNoExiste(true); return }
     const { data: tar } = await ordenarTareasQuery(
       // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él, una
       // sesión de fuerza en el briefing del deportista diría «4 series» de nada.
@@ -500,7 +504,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setMostrarNutricion(false)
   }
 
-  if (!sesion) return <Cargando />
+  if (!sesion) return <Cargando noExiste={noExiste} />
 
   const durEstimada = calcularDuracionEstimada(tareas, testsData || {})
 
