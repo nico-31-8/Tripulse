@@ -63,7 +63,13 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [deportista, setDeportista] = useState<any>(null)
   const [esDeportista, setEsDeportista] = useState(false)
   const [registros, setRegistros] = useState<any[]>([])
-  const [mostrarForm, setMostrarForm] = useState(false)
+  // Con ?registrar=1 el formulario se abre solo. Lo usa el aviso del panel del
+  // deportista: si el botón dice "Registrar", tiene que registrar, no dejarte en
+  // la puerta buscando dónde se hace.
+  const [mostrarForm, setMostrarForm] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return new URLSearchParams(window.location.search).get('registrar') === '1'
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])

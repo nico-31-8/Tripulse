@@ -178,7 +178,9 @@ export default function DashboardDeportista() {
 
         {/* ===== BLOQUE SUPERIOR: recordatorio wellness ⇄ disposición ===== */}
         {!wellnessHoy ? (
-          <button onClick={() => router.push(wellnessHref)}
+          /* Este botón dice "Registrar", así que abre el formulario directamente.
+             El de abajo (cuando ya está registrado) solo va a consultar. */
+          <button onClick={() => router.push(wellnessHref + '?registrar=1')}
             className="w-full flex items-center gap-3 bg-green-500/10 border-[1.5px] border-green-500 rounded-2xl p-3.5 mb-4 text-left hover:bg-green-500/15 transition">
             <div className="w-11 h-11 rounded-full bg-green-500/15 flex items-center justify-center text-2xl flex-shrink-0">💚</div>
             <div className="flex-1 min-w-0">
