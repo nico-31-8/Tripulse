@@ -37,6 +37,9 @@ export default function Dashboard() {
   const [cargando, setCargando] = useState(true)
   const [tienePlan, setTienePlan] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  // Acceso al panel de plataforma. Solo aparece para nuestras cuentas; esconderlo
+  // es cosmética, el candado está en cada función SQL de /admin.
+  const [esPlataforma, setEsPlataforma] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -45,6 +48,7 @@ export default function Dashboard() {
       setUserId(user.id)
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)
+      supabase.rpc('soy_plataforma').then(({ data }) => setEsPlataforma(!!data))
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).order('nombre')
       setDeportistas(deps || [])
       // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
@@ -199,6 +203,12 @@ export default function Dashboard() {
 
       <nav className="relative bg-gray-900/70 backdrop-blur-sm pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
+          {esPlataforma && (
+            <button onClick={() => router.push('/admin')}
+              className="flex items-center gap-1.5 text-sm text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 px-3 py-1.5 rounded-lg transition">
+              <span className="text-base leading-none">🛠</span>Plataforma
+            </button>
+          )}
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-500 hover:text-white text-sm transition">Cerrar sesión</button>
         </div>

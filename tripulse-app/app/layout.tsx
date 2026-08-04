@@ -4,6 +4,7 @@ import './globals.css'
 import Sidebar from '../components/Sidebar'
 import AsistenteFlotante from '../components/AsistenteFlotante'
 import NavDeportista from '../components/NavDeportista'
+import CazaErrores from '../components/CazaErrores'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -35,6 +36,8 @@ export default function RootLayout({
         <AsistenteFlotante />
         {/* Barra inferior del deportista en móvil. Decide sola si aparece. */}
         <NavDeportista />
+        {/* Manda los errores no capturados a evento_app, para verlos en /admin. */}
+        <CazaErrores />
       </body>
     </html>
   )

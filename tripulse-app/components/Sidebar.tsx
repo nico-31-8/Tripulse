@@ -38,6 +38,9 @@ export default function Sidebar() {
   const [autenticado, setAutenticado] = useState(false)
   const [rol, setRol] = useState<string | null>(null)
   const [depId, setDepId] = useState<number | null>(null)
+  // El enlace al panel solo lo ven las cuentas de plataforma. Esconderlo es
+  // cosmética: el candado de verdad está en cada función SQL de /admin.
+  const [esPlataforma, setEsPlataforma] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -53,6 +56,9 @@ export default function Sidebar() {
       if (p?.rol === 'deportista') {
         const dep = await deportistaActual()
         setDepId(dep?.id ?? null)
+      } else {
+        const { data } = await supabase.rpc('soy_plataforma')
+        setEsPlataforma(!!data)
       }
     }
     comprobar()
@@ -87,7 +93,11 @@ export default function Sidebar() {
   if (!autenticado || RUTAS_PUBLICAS.includes(pathname)) return null
 
   const esDeportista = rol === 'deportista'
-  const modulos = esDeportista ? modulosDeportistaFn(depId) : modulosEntrenador
+  const modulos = esDeportista
+    ? modulosDeportistaFn(depId)
+    : esPlataforma
+      ? [...modulosEntrenador, { icon: '🛠', titulo: 'Plataforma', href: '/admin' }]
+      : modulosEntrenador
   const dashboardHref = esDeportista ? '/dashboard-deportista' : '/dashboard'
 
   return (
