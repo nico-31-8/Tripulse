@@ -562,7 +562,11 @@ export default function Dashboard() {
                           className={'w-[18px] h-[18px] mt-0.5 rounded-md flex items-center justify-center flex-shrink-0 border transition ' + (t.hecho ? 'bg-green-500 border-green-500 text-green-950' : 'border-gray-600 hover:border-gray-400')}
                           style={{ fontSize: 11, fontWeight: 900 }}>{t.hecho ? '✓' : ''}</button>
                         <span className={'flex-1 leading-snug ' + (t.hecho ? 'text-gray-600 line-through' : 'text-gray-200')}>{t.texto}</span>
-                        <button onClick={() => borrarTarea(t.id)} className="text-gray-700 opacity-0 group-hover:opacity-100 hover:text-red-400 transition text-xs flex-shrink-0 mt-0.5">✕</button>
+                        {/* En móvil SE VE. Con `opacity-0` a secas era invisible pero
+                            seguía respondiendo al dedo: podías borrar una tarea sin
+                            haber visto nunca el botón. Un botón que no se ve no puede
+                            ser pulsable. */}
+                        <button onClick={() => borrarTarea(t.id)} className="text-gray-700 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-red-400 transition text-xs flex-shrink-0 mt-0.5">✕</button>
                       </div>
                     ))}
                   </div>

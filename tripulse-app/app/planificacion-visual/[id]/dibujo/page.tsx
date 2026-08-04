@@ -1276,7 +1276,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               {s.ua !== null && (
                                 <button
                                   onClick={e => { e.stopPropagation(); setSems(p => p.map(x => x.i === s.i ? { ...x, ua: null } : x)); setPopupBarra(null) }}
-                                  className="text-gray-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition rounded-full w-3.5 h-3.5 flex items-center justify-center bg-gray-800 hover:bg-red-900/30 flex-shrink-0"
+                                  /* Visible en móvil: invisible + clicable es la peor
+                                     combinación posible para un botón de borrar. */
+                                  className="text-gray-700 hover:text-red-400 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition rounded-full w-3.5 h-3.5 flex items-center justify-center bg-gray-800 hover:bg-red-900/30 flex-shrink-0"
                                   style={{ fontSize: 9 }} title="Borrar UA">
                                   x
                                 </button>

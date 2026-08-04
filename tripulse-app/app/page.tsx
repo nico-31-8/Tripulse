@@ -85,7 +85,7 @@ export default function Landing() {
         <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scroll > 40 ? 'bg-[#0a0a0d]/80 backdrop-blur-xl border-b border-white/5' : 'bg-transparent'}`}>
           <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <Image src={LOGO} alt="TRIPULSE" width={36} height={36} className="rounded-lg ring-1 ring-white/10" />
+              <Image src={LOGO} alt="TRIPULSE" width={36} height={36} priority className="rounded-lg ring-1 ring-white/10" />
               <span className="font-bold text-lg tracking-tight">TRIPULSE</span>
             </div>
             <div className="flex gap-2 items-center">
@@ -108,7 +108,10 @@ export default function Landing() {
             <div className="flex justify-center mb-8 fade-up">
               <div className="floaty rounded-[30px] p-[2px] bg-gradient-to-br from-orange-400/70 via-white/20 to-orange-600/50 shadow-2xl shadow-orange-500/40">
                 <div className="rounded-[28px] p-3.5 bg-gradient-to-br from-gray-700/70 to-gray-900/80 border border-white/15 backdrop-blur">
-                  <Image src={LOGO} alt="TRIPULSE" width={116} height={116} className="rounded-[18px] block ring-1 ring-white/15" />
+                  {/* `priority`: es la imagen más grande de la portada y está sobre el
+                      corte, así que Next la marcaba como LCP y avisaba de que se
+                      cargaba en diferido. Es lo primero que ve quien llega. */}
+                  <Image src={LOGO} alt="TRIPULSE" width={116} height={116} priority className="rounded-[18px] block ring-1 ring-white/15" />
                 </div>
               </div>
             </div>

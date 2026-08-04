@@ -1003,9 +1003,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                             {sesDia.map(s => (
                               <div key={s.id}
                                 onClick={e => { e.stopPropagation(); router.push('/sesion/' + s.id)}}
-                                className={'rounded px-1 py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
+                                className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
                                 <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}</span>
-                                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                {/* `opacity-0 group-hover:...` es un patrón de RATÓN: en una pantalla
+                                    táctil no hay hover, así que estos tres botones se quedaban
+                                    invisibles PERO seguían respondiendo al dedo. Tocabas la sesión y
+                                    según dónde cayera el dedo la copiabas, la editabas o la borrabas.
+                                    En móvil no existen: tocar una sesión la abre, y desde dentro se
+                                    hace todo lo demás. */}
+                                <div className="hidden sm:flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
                                   <button onClick={e => { e.stopPropagation(); copiarSesion(s, e) }} className="text-white hover:text-blue-300 text-xs" title="Copiar">📋</button>
                                   <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
                                   <button onClick={e => borrarSesion(s.id, e)} className="text-white hover:text-red-300 text-xs">🗑</button>

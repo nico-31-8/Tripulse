@@ -11,9 +11,14 @@ const geistSans = Geist({
   subsets: ['latin'],
 })
 
+// `preload: false`: la mono solo se usa en sitios puntuales (códigos de invitación,
+// el código del entrenador). Precargándola, el navegador la descargaba en todas las
+// páginas y avisaba de que la había pedido sin llegar a usarla. Ahora se carga
+// cuando de verdad hace falta.
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+  preload: false,
 })
 
 export const metadata: Metadata = {
