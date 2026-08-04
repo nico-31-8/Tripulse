@@ -336,7 +336,7 @@ export default function AdminPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">Usos</label>
+                    <label className="text-gray-400 text-xs mb-1 block">Cuántas personas pueden usarlo</label>
                     <input type="number" min={1} value={fUsos} onChange={e => setFUsos(e.target.value)}
                       className="bg-gray-800 text-white px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                   </div>
@@ -346,6 +346,11 @@ export default function AdminPage() {
                       className="bg-gray-800 text-white px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                   </div>
                 </div>
+                <p className="text-gray-600 text-[11px] -mt-1">
+                  {Number(fUsos) <= 1
+                    ? 'Código personal: en cuanto alguien lo canjee, deja de funcionar.'
+                    : `Lo podrán canjear ${fUsos} personas distintas. Un código compartido se puede reenviar, así que baja los días de validez.`}
+                </p>
 
                 <button onClick={crearInvitacion} disabled={creando}
                   className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-semibold transition disabled:opacity-50">

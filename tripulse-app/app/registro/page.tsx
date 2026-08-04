@@ -37,14 +37,22 @@ export default function Registro() {
     setMensaje('')
     setAviso('')
 
+    // Un alta son DOS pasos (crear la cuenta y crear el perfil) y entre medias se
+    // puede quedar colgada: con la confirmación por email activada, signUp no da
+    // sesión hasta que el usuario confirma. Antes eso dejaba a la persona
+    // atrapada — al volver, el registro fallaba porque su email ya existía, y al
+    // entrar por /login se encontraba sin perfil, que es lo que sostiene la app
+    // entera. Ahora esta misma pantalla sirve para empezar Y para terminar.
     const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error) { setMensaje('Error: ' + error.message); setLoading(false); return }
 
-    if (!data.session) {
-      // Con la confirmación por email activada, signUp devuelve usuario pero SIN
-      // sesión, y la función de abajo necesita auth.uid(). Se avisa en vez de
-      // dejar a medias un alta que parecería hecha.
-      setAviso('Cuenta creada. Confirma tu email y vuelve a entrar con el mismo código para terminar.')
+    if (error) {
+      // Puede que la cuenta ya exista de un intento anterior. Se prueba a entrar
+      // con lo que acaban de escribir; si tampoco, manda el error original, que
+      // dice más (contraseña débil, email inválido...).
+      const { data: dLogin, error: eLogin } = await supabase.auth.signInWithPassword({ email, password })
+      if (eLogin || !dLogin.session) { setMensaje('Error: ' + error.message); setLoading(false); return }
+    } else if (!data.session) {
+      setAviso('Cuenta creada. Confirma tu email y vuelve a ESTA pantalla con los mismos datos para terminar el alta.')
       setLoading(false)
       return
     }
