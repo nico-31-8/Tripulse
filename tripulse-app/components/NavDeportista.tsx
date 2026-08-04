@@ -61,24 +61,28 @@ export default function NavDeportista() {
 
   if (!visible) return null
 
+  // Wellness y Chat necesitan el id del deportista. Mientras no ha cargado, su
+  // destino es null y el botón se ve apagado: antes caían a /dashboard-deportista,
+  // lo que daba DOS entradas con el mismo href (clave duplicada en React) y dejaba
+  // dos pestañas encendidas a la vez.
   const principales = [
-    { icono: '🏠', texto: 'Hoy', href: '/dashboard-deportista' },
-    { icono: '📅', texto: 'Sesiones', href: '/mis-sesiones' },
-    { icono: '💚', texto: 'Wellness', href: depId ? '/wellness/' + depId : '/dashboard-deportista' },
-    { icono: '📊', texto: 'Análisis', href: '/mis-analisis' },
+    { icono: '🏠', texto: 'Hoy', href: '/dashboard-deportista' as string | null },
+    { icono: '📅', texto: 'Sesiones', href: '/mis-sesiones' as string | null },
+    { icono: '💚', texto: 'Wellness', href: depId ? '/wellness/' + depId : null },
+    { icono: '📊', texto: 'Análisis', href: '/mis-analisis' as string | null },
   ]
   const secundarias = [
-    { icono: '🏋️', texto: 'Mis tests', href: '/mis-tests' },
-    { icono: '💬', texto: 'Chat', href: depId ? '/chat/' + depId : '/dashboard-deportista' },
-    { icono: '🤝', texto: 'Comunidad', href: '/comunidad' },
-    { icono: '🗓', texto: 'Disponibilidad', href: '/disponibilidad' },
-    { icono: '👤', texto: 'Mi perfil', href: '/perfil' },
+    { icono: '🏋️', texto: 'Mis tests', href: '/mis-tests' as string | null },
+    { icono: '💬', texto: 'Chat', href: depId ? '/chat/' + depId : null },
+    { icono: '🤝', texto: 'Comunidad', href: '/comunidad' as string | null },
+    { icono: '🗓', texto: 'Disponibilidad', href: '/disponibilidad' as string | null },
+    { icono: '👤', texto: 'Mi perfil', href: '/perfil' as string | null },
   ]
 
-  const activa = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const activa = (href: string | null) => !!href && (pathname === href || pathname.startsWith(href + '/'))
   const enSecundarias = secundarias.some(s => activa(s.href))
 
-  const ir = (href: string) => { setMasAbierto(false); router.push(href) }
+  const ir = (href: string | null) => { if (!href) return; setMasAbierto(false); router.push(href) }
 
   return (
     <>
@@ -87,8 +91,10 @@ export default function NavDeportista() {
           <div onClick={() => setMasAbierto(false)} className="fixed inset-0 bg-black/50 z-40 sm:hidden" />
           <div className="fixed bottom-[62px] left-0 right-0 z-50 sm:hidden bg-gray-900 border-t border-gray-800 px-3 py-2.5 flex flex-col gap-1 rounded-t-2xl">
             {secundarias.map(s => (
-              <button key={s.href} onClick={() => ir(s.href)}
-                className={'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] text-left transition ' +
+              /* La clave va por el texto, que es único siempre; el href puede ser
+                 null mientras carga el id del deportista. */
+              <button key={s.texto} onClick={() => ir(s.href)} disabled={!s.href}
+                className={'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] text-left transition disabled:opacity-40 ' +
                   (activa(s.href) ? 'bg-orange-500/15 text-orange-400' : 'text-gray-300 hover:bg-gray-800')}>
                 <span className="text-lg leading-none">{s.icono}</span>{s.texto}
               </button>
@@ -99,8 +105,8 @@ export default function NavDeportista() {
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 sm:hidden bg-gray-900 border-t border-gray-800 grid grid-cols-5">
         {principales.map(p => (
-          <button key={p.href} onClick={() => ir(p.href)}
-            className={'flex flex-col items-center justify-center gap-[3px] min-h-[62px] px-1 pb-1 text-[9.5px] transition ' +
+          <button key={p.texto} onClick={() => ir(p.href)} disabled={!p.href}
+            className={'flex flex-col items-center justify-center gap-[3px] min-h-[62px] px-1 pb-1 text-[9.5px] transition disabled:opacity-40 ' +
               (activa(p.href) ? 'text-orange-400' : 'text-gray-500 hover:text-gray-300')}>
             <span className="text-[18px] leading-none">{p.icono}</span>{p.texto}
           </button>
