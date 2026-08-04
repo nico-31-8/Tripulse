@@ -183,6 +183,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [mostrarGrafica, setMostrarGrafica] = useState(false)
   const [mostrarPlan, setMostrarPlan] = useState(false)
 
+  // Hoja de acciones del móvil. En una pantalla estrecha había 19 botones antes
+  // de ver un solo día: lo ocasional (competiciones, plantillas, bloquear, ver
+  // plan/carga y la leyenda) se va detrás de un botón, y arriba se queda solo lo
+  // que se usa cada vez — el mes y los días.
+  const [hojaAcciones, setHojaAcciones] = useState(false)
+
   // Copiar/pegar
   const [sesionCopiada, setSesionCopiada] = useState<any>(null)
   // Plantilla "en la mano": elegida en el panel, se aplica al pulsar un día (mismo
@@ -698,6 +704,60 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {/* ===== HOJA DE ACCIONES (solo móvil) =====
+          Nada desaparece: lo que se hace una vez por mesociclo deja de ocupar
+          pantalla de forma permanente. */}
+      {hojaAcciones && (
+        <div className="sm:hidden fixed inset-0 z-[60]" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setHojaAcciones(false)} />
+          <div className="absolute left-0 right-0 bottom-0 bg-gray-900 border-t border-gray-700 rounded-t-[19px] px-3 pt-2 pb-5 max-h-[85vh] overflow-y-auto">
+            <div className="w-10 h-1 rounded-full bg-gray-700 mx-auto my-1.5 mb-3" />
+
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold px-1 mb-1.5">Planificar</p>
+            {([
+              ['🏆', 'Añadir competición', () => { setFechaSel(hoy); setModalTipo('competicion') }],
+              ['📋', 'Pegar una plantilla', () => setPanelPlantillas(true)],
+              ['🚫', 'Bloquear una semana', () => { setFechaSel(hoy); setModalTipo('bloquear') }],
+            ] as [string, string, () => void][]).map(([ic, txt, fn]) => (
+              <button key={txt} onClick={() => { setHojaAcciones(false); fn() }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
+                <span className="text-base w-5 text-center flex-none">{ic}</span>{txt}
+                <span className="ml-auto text-gray-600">›</span>
+              </button>
+            ))}
+
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold px-1 mb-1.5 mt-4">Ver</p>
+            {macros.some((m: any) => m.tipo_periodizacion) && (
+              <button onClick={() => { setHojaAcciones(false); setMostrarPlan(v => !v) }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
+                <span className="text-base w-5 text-center flex-none">📋</span>{mostrarPlan ? 'Ocultar el plan' : 'El plan completo'}
+                <span className="ml-auto text-gray-600">›</span>
+              </button>
+            )}
+            <button onClick={() => { setHojaAcciones(false); setMostrarGrafica(v => !v) }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
+              <span className="text-base w-5 text-center flex-none">📊</span>{mostrarGrafica ? 'Ocultar la carga' : 'La carga'}
+              <span className="ml-auto text-gray-600">›</span>
+            </button>
+            <button onClick={() => { setHojaAcciones(false); setMostrarCatalogo(true) }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
+              <span className="text-base w-5 text-center flex-none">ℹ️</span>Tipos de prueba
+              <span className="ml-auto text-gray-600">›</span>
+            </button>
+
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold px-1 mb-2 mt-4">Qué significan los colores</p>
+            <div className="grid grid-cols-2 gap-y-2 gap-x-3 px-1 pb-1">
+              {[['#f97316','Acumulación'],['#eab308','Transmutación'],['#ef4444','Realización'],['#22c55e','Recuperación'],
+                ['#3b82f6','Natación'],['#eab308','Ciclismo'],['#22c55e','Carrera'],['#ef4444','Fuerza']].map(([c,l]) => (
+                <div key={l} className="flex items-center gap-2 text-[12px] text-gray-400">
+                  <i className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: c }} />{l}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Banner modo copiar */}
       {modoActivo && (
         <div className={'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-xl flex items-center gap-3 border ' +
@@ -717,7 +777,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex justify-end gap-2 mb-2">
+        {/* En móvil estos dos viven en la hoja de acciones (⋯). */}
+        <div className="hidden sm:flex justify-end gap-2 mb-2">
           {macros.some((m: any) => m.tipo_periodizacion) && (
             <button
               onClick={() => setMostrarPlan(v => !v)}
@@ -853,26 +914,79 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           )
         })()}
 
-        {/* Banner próxima competición */}
+        {/* Banner próxima competición. En móvil es una franja de una línea: la
+            tarjeta gorda se comía media pantalla antes de llegar al calendario. */}
         {proximaCompeticion && (
-          <div className="mb-6 bg-yellow-900/30 border border-yellow-600/50 rounded-xl px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🏆</span>
-              <div>
-                <p className="font-bold text-yellow-300">{proximaCompeticion.nombre}</p>
-                <p className="text-yellow-500 text-xs">{proximaCompeticion.tipo} · {proximaCompeticion.fecha}</p>
+          <>
+            <div className="sm:hidden -mx-4 mb-2 px-4 py-2 bg-yellow-500/10 border-y border-yellow-600/30 flex items-center gap-2 text-[12.5px] text-yellow-300">
+              <span>🏆</span>
+              <span className="font-bold truncate">{proximaCompeticion.nombre}</span>
+              <span className={'ml-auto font-bold flex-shrink-0 tabular-nums ' + colorSemanas(semanasHasta(proximaCompeticion.fecha))}>
+                {semanasHasta(proximaCompeticion.fecha) > 0 ? 'en ' + semanasHasta(proximaCompeticion.fecha) + ' sem' : 'esta semana'}
+              </span>
+            </div>
+            <div className="hidden sm:flex mb-6 bg-yellow-900/30 border border-yellow-600/50 rounded-xl px-5 py-4 items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🏆</span>
+                <div>
+                  <p className="font-bold text-yellow-300">{proximaCompeticion.nombre}</p>
+                  <p className="text-yellow-500 text-xs">{proximaCompeticion.tipo} · {proximaCompeticion.fecha}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className={`text-2xl font-bold ${colorSemanas(semanasHasta(proximaCompeticion.fecha))}`}>
+                  {Math.max(0, semanasHasta(proximaCompeticion.fecha))}
+                </p>
+                <p className="text-yellow-600 text-xs">semanas</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className={`text-2xl font-bold ${colorSemanas(semanasHasta(proximaCompeticion.fecha))}`}>
-                {Math.max(0, semanasHasta(proximaCompeticion.fecha))}
-              </p>
-              <p className="text-yellow-600 text-xs">semanas</p>
-            </div>
-          </div>
+          </>
         )}
 
-        <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
+        {/* ===== BARRA DEL MÓVIL =====
+            El mes es lo más grande porque es el ancla: antes no aparecía por
+            ninguna parte. Va pegada arriba, así que se puede cambiar de mes sin
+            volver al principio de la página. */}
+        <div className="sm:hidden sticky top-0 z-30 -mx-4 px-3 py-2 bg-gray-950/95 backdrop-blur border-b border-gray-800 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <button onClick={() => setMesInicio(p => { const m = p.mes === 0 ? 11 : p.mes-1; const a = p.mes === 0 ? p.año-1 : p.año; return {mes:m,año:a} })}
+              className="w-9 h-9 flex-none rounded-[10px] bg-gray-900 border border-gray-800 text-gray-400 flex items-center justify-center">‹</button>
+            <div className="flex-1 min-w-0 text-center">
+              <p className="font-bold text-[17px] leading-tight tracking-tight">{MESES[mesesAMostrar[0]?.mes ?? 0]}</p>
+              <p className="text-[10.5px] text-gray-600 uppercase tracking-widest tabular-nums">{mesesAMostrar[0]?.año}</p>
+            </div>
+            <button onClick={() => setMesInicio(p => { const m = (p.mes+1)%12; const a = p.mes===11 ? p.año+1 : p.año; return {mes:m,año:a} })}
+              className="w-9 h-9 flex-none rounded-[10px] bg-gray-900 border border-gray-800 text-gray-400 flex items-center justify-center">›</button>
+            <button onClick={() => setMesInicio({año: new Date().getFullYear(), mes: new Date().getMonth()})}
+              className="w-9 h-9 flex-none rounded-[10px] bg-gray-900 border border-gray-800 text-gray-400 text-[12px] font-bold flex items-center justify-center">Hoy</button>
+            <button onClick={() => setHojaAcciones(true)} aria-label="Más acciones"
+              className="w-9 h-9 flex-none rounded-[10px] bg-orange-500/15 border border-orange-500/40 text-orange-400 text-[15px] font-bold flex items-center justify-center">⋯</button>
+          </div>
+          <div className="flex bg-gray-900 border border-gray-800 rounded-[10px] p-[3px] gap-0.5">
+            {([
+              ['Mes', vistaDetalle === 'mes' && vista === 'calendario', () => { setVista('calendario'); setVistaDetalle('mes') }],
+              ['Meso', vista === 'calendario' && vistaDetalle !== 'mes' && capaCalendario === 'mesos', () => { setVista('calendario'); setVistaDetalle('multi'); setCapaCalendario('mesos') }],
+              ['Semanas', vista === 'calendario' && vistaDetalle !== 'mes' && capaCalendario === 'semanas', () => { setVista('calendario'); setVistaDetalle('multi'); setCapaCalendario('semanas') }],
+              ['Lista', vista === 'semanas', () => setVista('semanas')],
+            ] as [string, boolean, () => void][]).map(([txt, on, fn]) => (
+              <button key={txt} onClick={fn}
+                className={'flex-1 text-[11.5px] font-semibold py-1.5 rounded-lg transition ' +
+                  (on ? 'bg-orange-500 text-white' : 'text-gray-400')}>{txt}</button>
+            ))}
+          </div>
+          {/* El rango solo tiene sentido cuando se ven varios meses a la vez. */}
+          {vista === 'calendario' && vistaDetalle !== 'mes' && (
+            <div className="flex gap-1.5 mt-2">
+              {[3,6,12].map(r => (
+                <button key={r} onClick={() => setRango(r)}
+                  className={'flex-1 py-1.5 rounded-lg text-[11.5px] font-semibold transition ' +
+                    (rango===r ? 'bg-orange-500 text-white' : 'bg-gray-900 border border-gray-800 text-gray-400')}>{r} meses</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden sm:flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
             <h2 className="text-2xl font-bold">Calendario — {deportista.nombre}</h2>
             <p className="text-gray-400 text-sm">Pulsa un día para planificar</p>
@@ -930,8 +1044,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        {/* Leyenda */}
-        <div className="flex gap-4 flex-wrap mb-5 text-xs">
+        {/* Leyenda. En móvil vive en la hoja de acciones: son tres filas de pura
+            referencia que se consultan una vez y estorban siempre. */}
+        <div className="hidden sm:flex gap-4 flex-wrap mb-5 text-xs">
           {capaCalendario === 'mesos' ? (
             <>{[['bg-orange-500','Acumulación'],['bg-yellow-500','Transmutación'],['bg-red-500','Realización'],['bg-green-500','Recuperación']].map(([c,l]) => (
               <div key={l} className="flex items-center gap-1.5"><div className={'w-3 h-3 rounded-sm '+c}/><span className="text-gray-400">{l}</span></div>
@@ -953,7 +1068,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           const compsDelMes = competiciones.filter(c => { const f = new Date(c.fecha); return f.getFullYear() === año && f.getMonth() === mes })
           return (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-800 bg-gray-800 flex justify-between items-center">
+              {/* En móvil esta cabecera sobra: la barra de arriba ya dice el mes, y
+                  aquí las competiciones se apelotonaban en tres líneas ilegibles. */}
+              <div className="hidden sm:flex px-5 py-4 border-b border-gray-800 bg-gray-800 justify-between items-center">
                 <p className="font-bold text-lg">{MESES[mes]} {año}</p>
                 <div className="flex items-center gap-3">
                   {compsDelMes.map(c => (
@@ -996,10 +1113,23 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                           <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : comp ? 'text-yellow-400' : bloqueo ? 'text-red-400' : 'text-gray-400')}>{dia.getDate()}</span>
                           {comp ? <span className="text-sm">🏆</span> : bloqueo ? <span className="text-sm">🚫</span> : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
                         </div>
-                        {bloqueo && <p className="text-red-400 text-xs truncate">{bloqueo.motivo || 'Bloqueada'}</p>}
-                        {comp && <p className="text-yellow-400 text-xs font-medium truncate mb-1">{comp.nombre}</p>}
+                        {/* El nombre no cabe en 50px: «Triatlón Media…» no dice nada
+                            que el 🏆 de arriba no diga mejor. Se ve al abrir el día. */}
+                        {bloqueo && <p className="hidden sm:block text-red-400 text-xs truncate">{bloqueo.motivo || 'Bloqueada'}</p>}
+                        {comp && <p className="hidden sm:block text-yellow-400 text-xs font-medium truncate mb-1">{comp.nombre}</p>}
+                        {/* MÓVIL: un punto por sesión. A 390px cada columna mide ~50px,
+                            así que «Triatlón Media…» no es información, es ruido. El
+                            color dice la disciplina de un vistazo y el día queda
+                            cuadrado, que es lo que hace falta para poder pulsarlo. */}
+                        {!bloqueo && sesDia.length > 0 && (
+                          <div className="sm:hidden flex flex-wrap gap-[3px] justify-center mt-0.5">
+                            {sesDia.slice(0, 6).map(s => (
+                              <i key={s.id} className={'w-1.5 h-1.5 rounded-full ' + (COLOR_DISC_FULL[s.disciplina]?.split(' ')[0] || 'bg-gray-500')} />
+                            ))}
+                          </div>
+                        )}
                         {!bloqueo && (
-                          <div className="flex flex-col gap-0.5">
+                          <div className="hidden sm:flex flex-col gap-0.5">
                             {sesDia.map(s => (
                               <div key={s.id}
                                 onClick={e => { e.stopPropagation(); router.push('/sesion/' + s.id)}}
