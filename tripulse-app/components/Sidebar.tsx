@@ -6,6 +6,13 @@ import { usuarioActual, perfilActual, deportistaActual } from '@/lib/sesion'
 
 const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
 
+/* El modo entreno se usa a pantalla completa, con el móvil en la mano entre
+   series. El botón del menú es `fixed left-0 top-0 z-50`, o sea que se comía esa
+   esquina — y justo ahí está el «← Plan» de la sesión: un toque en el botón de
+   volver pulsaba el logo. Se comprobó con elementFromPoint. NavDeportista ya se
+   excluía de aquí; el menú también debe. */
+const esModoEntreno = (p: string) => /^\/sesion\/[^/]+\/ejecutar/.test(p)
+
 const modulosEntrenador = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
   { icon: '📅', titulo: 'Planificacion', href: '/planificacion-visual' },
@@ -90,7 +97,7 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickFuera)
   }, [abierto])
 
-  if (!autenticado || RUTAS_PUBLICAS.includes(pathname)) return null
+  if (!autenticado || RUTAS_PUBLICAS.includes(pathname) || esModoEntreno(pathname)) return null
 
   const esDeportista = rol === 'deportista'
   const modulos = esDeportista
