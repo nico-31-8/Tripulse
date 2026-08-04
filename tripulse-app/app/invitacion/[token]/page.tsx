@@ -41,17 +41,25 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
     setGuardando(true)
     setError('')
 
-    // 1. Crear cuenta en Supabase Auth
+    // 1. Cuenta en Supabase Auth. Un alta son DOS pasos y entre medias se puede
+    //    quedar colgada: con la confirmación por email activada, signUp no da
+    //    sesión hasta que el usuario confirma, y sin sesión aceptar_invitacion no
+    //    tiene auth.uid() con el que vincular.
+    //    Mismo retomar que en /registro: si la cuenta ya existe de un intento
+    //    anterior, se entra con lo que acaban de escribir y se completa. Sin esto,
+    //    el aviso de abajo mandaba a una puerta que no existía — al volver, signUp
+    //    fallaba por email duplicado y no había forma de terminar.
     const { data, error: errAuth } = await supabase.auth.signUp({ email, password })
+
     if (errAuth || !data.user) {
-      setError('Error al crear la cuenta: ' + errAuth?.message)
-      setGuardando(false)
-      return
-    }
-    if (!data.session) {
-      // Sin sesión (confirmación de email ON): NO seguir. aceptar_invitacion con auth.uid()
-      // null quemaría el token y dejaría al deportista huérfano (id_usuario a null).
-      setError('Cuenta creada. Confirma tu email y vuelve a abrir este enlace para completar la vinculación.')
+      const { data: dLogin, error: eLogin } = await supabase.auth.signInWithPassword({ email, password })
+      if (eLogin || !dLogin.session) {
+        setError('Error al crear la cuenta: ' + (errAuth?.message || 'no se ha podido'))
+        setGuardando(false)
+        return
+      }
+    } else if (!data.session) {
+      setError('Cuenta creada. Confirma tu email y vuelve a abrir ESTE enlace con los mismos datos para terminar.')
       setGuardando(false)
       return
     }

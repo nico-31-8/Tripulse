@@ -84,7 +84,7 @@ export default function Registro() {
               onChange={e => setCodigo(e.target.value.toUpperCase())}
               className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 font-mono tracking-widest w-full"
               maxLength={12} required />
-            <p className="text-gray-500 text-xs mt-1.5">TRIPULSE es por invitación. Si no tienes código, pídeselo a quien te haya hablado de la app.</p>
+            <p className="text-gray-500 text-xs mt-1.5">Vale tanto un código de invitación como el código de tu entrenador. Si no tienes ninguno, pídeselo a quien te haya hablado de la app.</p>
           </div>
 
           <input type="text" placeholder="Tu nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
