@@ -14,6 +14,7 @@ export default function DisponibilidadPage() {
   const [guardando, setGuardando] = useState(false)
   const [draft, setDraft] = useState<Record<string, { inicio: string, fin: string }[]>>({})
   const [guardado, setGuardado] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => { cargar() }, [])
 
@@ -45,13 +46,24 @@ export default function DisponibilidadPage() {
   }
 
   const updateFranja = (dia: string, idx: number, campo: 'inicio' | 'fin', valor: string) => {
-    setDraft(prev => ({ ...prev, [dia]: prev[dia].map((f, i) => i === idx ? { ...f, [campo]: valor } : f) }))
+    setDraft(prev => ({ ...prev, [dia]: prev[dia].map((f, i) => {
+      if (i !== idx) return f
+      const nueva = { ...f, [campo]: valor }
+      // Si el inicio se mueve por detrás del fin, el fin le sigue. Sin esto el
+      // <select> del fin se quedaba con un valor que ya no estaba entre sus
+      // opciones (se veía vacío) y al guardar la franja se descartaba EN SILENCIO.
+      if (campo === 'inicio' && nueva.fin <= nueva.inicio) {
+        nueva.fin = HORAS.find(h => h > nueva.inicio) || nueva.inicio
+      }
+      return nueva
+    }) }))
   }
 
   const guardar = async () => {
     if (!deportistaId) return
     setGuardando(true)
-    await supabase.from('disponibilidad').delete().eq('id_deportista', deportistaId)
+    setError('')
+
     const filas: any[] = []
     DIAS.forEach(dia => {
       (draft[dia] || []).forEach(f => {
@@ -60,7 +72,30 @@ export default function DisponibilidadPage() {
         }
       })
     })
-    if (filas.length) await supabase.from('disponibilidad').insert(filas)
+
+    // Se inserta ANTES de borrar, y se borra por id. Antes era al revés: si el
+    // insert fallaba después del delete, el atleta se quedaba sin ninguna franja
+    // y la pantalla le decía "✓ Guardado". Así el peor caso es que queden franjas
+    // repetidas —visible y arreglable— en vez de perderlas todas en silencio.
+    const { data: viejas, error: errLeer } = await supabase
+      .from('disponibilidad').select('id').eq('id_deportista', deportistaId)
+    if (errLeer) { setError('No se ha podido guardar. Inténtalo otra vez.'); setGuardando(false); return }
+
+    if (filas.length) {
+      const { error: errInsert } = await supabase.from('disponibilidad').insert(filas)
+      if (errInsert) { setError('No se ha podido guardar. Tu disponibilidad anterior sigue intacta.'); setGuardando(false); return }
+    }
+
+    const idsViejos = (viejas || []).map((v: any) => v.id)
+    if (idsViejos.length) {
+      const { error: errBorrar } = await supabase.from('disponibilidad').delete().in('id', idsViejos)
+      if (errBorrar) {
+        setError('Guardado, pero pueden haber quedado franjas repetidas. Recarga la página y revísalo.')
+        setGuardando(false)
+        return
+      }
+    }
+
     setGuardado(true)
     setTimeout(() => setGuardado(false), 2000)
     setGuardando(false)
@@ -82,13 +117,26 @@ export default function DisponibilidadPage() {
           <p className="text-gray-400 text-sm">Marca los momentos de la semana en los que puedes entrenar. Tu entrenador lo verá al planificar.</p>
         </div>
 
-        {totalFranjas > 0 && (
-          <div className="bg-orange-900/20 border border-orange-700/50 rounded-xl px-5 py-3 mb-6 flex justify-between items-center">
-            <p className="text-orange-300 text-sm">{totalFranjas} franja{totalFranjas > 1 ? 's' : ''} marcada{totalFranjas > 1 ? 's' : ''}</p>
-            <button onClick={guardar} disabled={guardando}
-              className="bg-orange-500 hover:bg-orange-400 text-white text-sm font-semibold px-5 py-2 rounded-lg transition disabled:opacity-50">
-              {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar'}
-            </button>
+        {/* La barra de guardar sale SIEMPRE, también con cero franjas. Antes solo
+            aparecía con totalFranjas > 0, así que el atleta que borraba todas para
+            decir "esta semana no puedo" se quedaba sin botón: se iba creyendo que
+            lo había cambiado y el entrenador seguía viendo la disponibilidad vieja. */}
+        <div className={'rounded-xl px-5 py-3 mb-6 flex justify-between items-center gap-4 border ' +
+          (totalFranjas > 0 ? 'bg-orange-900/20 border-orange-700/50' : 'bg-gray-900 border-gray-800')}>
+          <p className={'text-sm ' + (totalFranjas > 0 ? 'text-orange-300' : 'text-gray-400')}>
+            {totalFranjas > 0
+              ? `${totalFranjas} franja${totalFranjas > 1 ? 's' : ''} marcada${totalFranjas > 1 ? 's' : ''}`
+              : 'Sin franjas — guarda para dejar la semana vacía'}
+          </p>
+          <button onClick={guardar} disabled={guardando}
+            className="bg-orange-500 hover:bg-orange-400 text-white text-sm font-semibold px-5 py-2 rounded-lg transition disabled:opacity-50 flex-shrink-0">
+            {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-red-900/25 border border-red-700/50 rounded-xl px-5 py-3 mb-6">
+            <p className="text-red-300 text-sm">{error}</p>
           </div>
         )}
 
@@ -119,9 +167,11 @@ export default function DisponibilidadPage() {
                   <div className="px-5 py-3 flex flex-col gap-3">
                     {franjas.map((f, idx) => (
                       <div key={idx} className="flex items-center gap-3">
+                        {/* La última hora no puede ser inicio: no le quedaría ningún
+                            fin posible detrás y la franja sería inválida. */}
                         <select value={f.inicio} onChange={e => updateFranja(dia, idx, 'inicio', e.target.value)}
                           className="bg-gray-800 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 flex-1">
-                          {HORAS.map(h => <option key={h} value={h}>{h}</option>)}
+                          {HORAS.slice(0, -1).map(h => <option key={h} value={h}>{h}</option>)}
                         </select>
                         <span className="text-gray-500 text-sm flex-shrink-0">→</span>
                         <select value={f.fin} onChange={e => updateFranja(dia, idx, 'fin', e.target.value)}
@@ -142,15 +192,13 @@ export default function DisponibilidadPage() {
           })}
         </div>
 
-        {totalFranjas > 0 && (
-          <button onClick={guardar} disabled={guardando}
-            className="mt-6 w-full bg-orange-500 hover:bg-orange-400 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50">
-            {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar disponibilidad'}
-          </button>
-        )}
+        <button onClick={guardar} disabled={guardando}
+          className="mt-6 w-full bg-orange-500 hover:bg-orange-400 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50">
+          {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar disponibilidad'}
+        </button>
 
         {totalFranjas === 0 && (
-          <div className="mt-6 text-center text-gray-600 text-sm">
+          <div className="mt-4 text-center text-gray-600 text-sm">
             <p>Pulsa "Añadir franja" en cualquier día para empezar</p>
           </div>
         )}

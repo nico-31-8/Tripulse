@@ -236,6 +236,21 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     // Lookup de ejercicios para recuperar el kg planificado de cada escalón de un drop set.
     const ejById: Record<number, any> = {}
     Object.values(ejerciciosPorTarea).flat().forEach((e: any) => { ejById[e.id] = e })
+
+    const ejIdsTocados = Object.keys(seriesFuerza).map(Number)
+    if (ejIdsTocados.length) {
+      // Se BORRA lo anterior de esos ejercicios antes de insertar. Esta tabla solo
+      // se insertaba, nunca se limpiaba: volver a entrar en la sesión y guardar otra
+      // vez apilaba un segundo juego de series encima del primero. DatosReales las
+      // enseñaba duplicadas y la referencia del modo mejora ("la última vez que
+      // hiciste este ejercicio") quedaba corrupta. Solo se tocan los ejercicios que
+      // el atleta ha rellenado ahora; lo que no ha tocado se queda como estaba.
+      await supabase.from('series_realizadas').delete().in('id_ejercicio', ejIdsTocados)
+    }
+
+    // Un solo insert en vez de uno por serie: una sesión de fuerza de 4 ejercicios
+    // × 4 series eran 16 viajes de red seguidos.
+    const filasSeries: any[] = []
     for (const [ejId, series] of Object.entries(seriesFuerza)) {
       const rawDrop = ejById[Number(ejId)]?.escalones_drop
       const escalonesDrop = rawDrop ? String(rawDrop).split(',').map((s: string) => s.trim()) : null
@@ -247,7 +262,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           const kg = Number(escalonesDrop[(serie.ejercicio_numero || 1) - 1])
           if (kg > 0) pesoReal = kg
         }
-        await supabase.from('series_realizadas').insert({
+        filasSeries.push({
           id_ejercicio: Number(ejId),
           numero_serie: serie.numero_serie,
           peso_real: pesoReal,
@@ -258,6 +273,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         })
       }
     }
+    if (filasSeries.length) await supabase.from('series_realizadas').insert(filasSeries)
 
     // Guardar resultados de cada tarea con detalle por series
     for (const tarea of tareas) {
