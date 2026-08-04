@@ -187,7 +187,10 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
 }
 
 // RESUMEN DEPORTISTA
-export function ResumenDeportista({ depId }: { depId: number }) {
+// `plegado`/`alternar` son opcionales: si no se pasan, la tarjeta se comporta como
+// siempre (fija, abierta). El panel del deportista sí los pasa, y entonces su propia
+// cabecera hace de conmutador — el semáforo se queda visible aunque esté plegada.
+export function ResumenDeportista({ depId, plegado, alternar }: { depId: number; plegado?: boolean; alternar?: () => void }) {
   const [datos, setDatos] = useState<any>(null)
   const [sesionesSemActual, setSesionesSemActual] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -200,23 +203,42 @@ export function ResumenDeportista({ depId }: { depId: number }) {
 
   const cargar = async () => {
     const microIds = await getMicroIds(depId)
-    if (!microIds.length) { setLoading(false); return }
+    const sel = 'id, estado, duracion_minutos, duracion_real'
+    const vivas = (q: any) => q.or('eliminada.is.null,eliminada.eq.false')
 
-    const { data: sesAnt } = await supabase.from('sesion').select('*')
-      .in('id_microciclo', microIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)
+    let sesAnt: any[] = []
+    let sesAct: any[] = []
+    if (microIds.length) {
+      const [a, b] = await Promise.all([
+        vivas(supabase.from('sesion').select(sel).in('id_microciclo', microIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
+        vivas(supabase.from('sesion').select('id').in('id_microciclo', microIds).gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
+      ])
+      sesAnt = a.data || []
+      sesAct = b.data || []
+    }
 
-    const { data: sesAct } = await supabase.from('sesion').select('id')
-      .in('id_microciclo', microIds).gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)
+    // Sesiones libres (sin microciclo): las que el deportista se añade por su cuenta.
+    // El panel donde vive esta tarjeta ya las cuenta, así que aquí también, o las dos
+    // dan cifras distintas de la misma semana a cinco centímetros una de otra.
+    const [libAnt, libAct] = await Promise.all([
+      vivas(supabase.from('sesion').select(sel).eq('id_deportista', depId).is('id_microciclo', null).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
+      vivas(supabase.from('sesion').select('id').eq('id_deportista', depId).is('id_microciclo', null).gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
+    ])
+    sesAnt = [...sesAnt, ...(libAnt.data || [])]
+    sesAct = [...sesAct, ...(libAct.data || [])]
 
-    setSesionesSemActual(sesAct?.length || 0)
+    setSesionesSemActual(sesAct.length)
 
-    if (!sesAnt?.length) { setLoading(false); return }
+    if (!sesAnt.length) { setLoading(false); return }
 
     const planificadas = sesAnt.length
     const realizadas = sesAnt.filter(s => s.estado === 'Realizada').length
     const cumplimiento = planificadas > 0 ? realizadas / planificadas : 0
+    // minutosCarga y no `duracion_minutos` a secas: si la sesión se cerró con el
+    // cronómetro, lo que hizo de verdad está en `duracion_real`. Sin esto la tarjeta
+    // enseña el tiempo PLANIFICADO diciendo "entrenado".
     const minutosTotal = sesAnt.filter(s => s.estado === 'Realizada')
-      .reduce((acc, s) => acc + (s.duracion_minutos || 0), 0)
+      .reduce((acc, s) => acc + minutosCarga(s), 0)
 
     const { data: wellness } = await supabase.from('wellness').select('score_wellness')
       .eq('id_deportista', depId).gte('fecha', lunesAnt).lte('fecha', domingoAnt)
@@ -235,15 +257,25 @@ export function ResumenDeportista({ depId }: { depId: number }) {
   const horas = Math.floor(datos.minutosTotal / 60)
   const mins = datos.minutosTotal % 60
 
-  return (
-    <div className={'rounded-xl border p-5 mb-6 ' + estilos.bg}>
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <p className="font-bold text-white text-lg">Tu semana pasada</p>
-          <p className="text-gray-500 text-xs mt-0.5">{lunesAnt} al {domingoAnt}</p>
-        </div>
-        <div className={'w-3 h-3 rounded-full ' + estilos.dot} />
+  const cabecera = (
+    <div className="flex justify-between items-center w-full">
+      <div className="text-left">
+        <p className="font-bold text-white text-lg">Tu semana pasada</p>
+        <p className="text-gray-500 text-xs mt-0.5">{lunesAnt} al {domingoAnt}</p>
       </div>
+      <div className="flex items-center gap-3">
+        <div className={'w-3 h-3 rounded-full ' + estilos.dot} />
+        {alternar && <span className={'text-gray-500 text-xs tp-chev' + (plegado ? '' : ' open')}>▼</span>}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={'rounded-xl border p-5 ' + (plegado ? 'mb-4 ' : 'mb-6 ') + estilos.bg}>
+      {alternar
+        ? <button onClick={alternar} className={'w-full' + (plegado ? '' : ' mb-4')}>{cabecera}</button>
+        : <div className="mb-4">{cabecera}</div>}
+      {plegado ? null : <>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-gray-900/50 rounded-xl p-3 text-center">
           <p className="text-xs text-gray-500 mb-1">Sesiones</p>
@@ -266,9 +298,10 @@ export function ResumenDeportista({ depId }: { depId: number }) {
       {sesionesSemActual > 0 && (
         <div className="bg-gray-900/50 rounded-xl px-4 py-3 flex justify-between items-center">
           <p className="text-gray-400 text-sm">Esta semana tienes</p>
-          <p className="text-orange-400 font-bold">{sesionesSemActual} sesiones planificadas</p>
+          <p className="text-orange-400 font-bold">{sesionesSemActual} {sesionesSemActual === 1 ? 'sesión planificada' : 'sesiones planificadas'}</p>
         </div>
       )}
+      </>}
     </div>
   )
 }

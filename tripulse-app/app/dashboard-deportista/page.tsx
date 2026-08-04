@@ -15,6 +15,22 @@ const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3
 const fmt = (d: Date) => d.toISOString().split('T')[0]
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 const lunesDe = (d: Date) => { const off = (d.getDay() + 6) % 7; return addDays(d, -off) }
+const CLAVE_PANEL = 'tp-panel-'
+
+/* Cabecera de un bloque plegable. El título entero es el botón: en móvil se pulsa
+   con el pulgar sin tener que apuntar a un icono de 12 px. `resumen` es lo que se
+   sigue viendo con el bloque cerrado, para que plegarlo no sea perder el dato. */
+function Cabecera({ titulo, resumen, abierto, onClick }: { titulo: string; resumen?: string; abierto: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="w-full flex items-center justify-between gap-3 text-left mb-2">
+      <span className="flex items-baseline gap-2 min-w-0">
+        <span className="text-gray-500 text-xs font-semibold uppercase tracking-wide flex-shrink-0">{titulo}</span>
+        {!abierto && resumen && <span className="text-gray-600 text-[11px] truncate">{resumen}</span>}
+      </span>
+      <span className={'text-gray-600 text-xs flex-shrink-0 tp-chev' + (abierto ? ' open' : '')}>▼</span>
+    </button>
+  )
+}
 
 export default function DashboardDeportista() {
   const router = useRouter()
@@ -29,6 +45,12 @@ export default function DashboardDeportista() {
   const [cumplimiento, setCumplimiento] = useState<{ pct: number; realizadas: number; planificadas: number } | null>(null)
   const [semanaPlan, setSemanaPlan] = useState(0)
   const [proximaComp, setProximaComp] = useState<any>(null)
+  // Qué bloques ha plegado el deportista. Solo los informativos: el wellness y la
+  // sesión de hoy son la razón de abrir la app y no se pliegan (además, si escondiera
+  // el wellness y dejara de rellenarlo, el entrenador se queda sin su única entrada
+  // subjetiva). Vive en el navegador porque es una preferencia, no un dato: al cambiar
+  // de móvil vuelve a verlo todo abierto, que es el estado sano por defecto.
+  const [plegados, setPlegados] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const cargar = async () => {
@@ -40,6 +62,14 @@ export default function DashboardDeportista() {
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDeportista(dep)
       if (!dep) return
+
+      // Se lee aquí y no en el useState inicial porque la página también se renderiza
+      // en el servidor, donde no hay localStorage. No hay parpadeo: los bloques
+      // plegables no aparecen hasta que estos mismos datos han cargado.
+      try {
+        const guardado = localStorage.getItem(CLAVE_PANEL + dep.id)
+        if (guardado) setPlegados(JSON.parse(guardado))
+      } catch { /* preferencia ilegible: se ignora y se ve todo abierto */ }
 
       const hoy = fmt(new Date())
       const monday = lunesDe(new Date())
@@ -127,6 +157,15 @@ export default function DashboardDeportista() {
 
   const cerrarSesion = async () => { await supabase.auth.signOut(); router.push('/') }
 
+  const abierto = (clave: string) => !plegados[clave]
+  const alternar = (clave: string) => setPlegados(prev => {
+    const siguiente = { ...prev, [clave]: !prev[clave] }
+    if (deportista) {
+      try { localStorage.setItem(CLAVE_PANEL + deportista.id, JSON.stringify(siguiente)) } catch { /* sin sitio o modo privado: se pliega igual, solo no se recuerda */ }
+    }
+    return siguiente
+  })
+
   const wellnessHref = deportista ? '/wellness/' + deportista.id : '#'
   const hoyStr = fmt(new Date())
   const wellnessHoy = ultimoWellness?.fecha === hoyStr
@@ -148,6 +187,46 @@ export default function DashboardDeportista() {
     { icon: '🗓', titulo: 'Disponib.', href: '/disponibilidad' },
     { icon: '👤', titulo: 'Perfil', href: '/perfil' },
   ]
+
+  /* El wellness cambia de sitio según su estado, y es a propósito:
+     - PENDIENTE → arriba del todo, porque es una tarea (y es el dato que el
+       entrenador necesita para ajustar la carga de hoy).
+     - YA REGISTRADO → debajo de la sesión, porque entonces solo es un estado y no
+       tiene por qué empujar hacia abajo lo que el deportista ha venido a hacer. */
+  const bloqueWellness = !wellnessHoy ? (
+    /* Este botón dice "Registrar", así que abre el formulario directamente.
+       El de abajo (cuando ya está registrado) solo va a consultar. */
+    <button onClick={() => router.push(wellnessHref + '?registrar=1')}
+      className="w-full flex items-center gap-3 bg-green-500/10 border-[1.5px] border-green-500 rounded-2xl p-3.5 mb-4 text-left hover:bg-green-500/15 transition">
+      <div className="w-11 h-11 rounded-full bg-green-500/15 flex items-center justify-center text-2xl flex-shrink-0">💚</div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-green-400">Aún no has registrado tu wellness</p>
+        <p className="text-gray-400 text-sm mt-0.5">Rellénalo para ver tu disposición de hoy y que tu entrenador ajuste la carga.</p>
+      </div>
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+        <span className="text-[10px] text-amber-400 bg-amber-400/15 px-1.5 py-0.5 rounded">⏰ pendiente</span>
+        <span className="bg-green-500 text-green-950 text-xs font-extrabold px-2.5 py-1.5 rounded-lg">Registrar →</span>
+      </div>
+    </button>
+  ) : analisis?.readiness ? (
+    <button onClick={() => router.push(wellnessHref)}
+      className="w-full flex items-center gap-3 rounded-2xl p-3.5 mb-4 text-left transition"
+      style={{ backgroundColor: analisis.readiness.color + '14', border: '1px solid ' + analisis.readiness.color + '55' }}>
+      <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: analisis.readiness.color + '22' }}>
+        {analisis.readiness.nivel === 'optimo' ? '🟢' : analisis.readiness.nivel === 'vigilar' ? '🟡' : analisis.readiness.nivel === 'fatiga' ? '🟠' : '🔴'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-extrabold" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</p>
+        <p className="text-gray-400 text-sm mt-0.5">{analisis.readiness.recomendacion}</p>
+      </div>
+      <span className="text-[10px] flex-shrink-0" style={{ color: analisis.readiness.color, backgroundColor: analisis.readiness.color + '18', padding: '4px 7px', borderRadius: 8 }}>Wellness ✓</span>
+    </button>
+  ) : (
+    <div className="w-full flex items-center gap-3 bg-green-500/10 border border-green-500/40 rounded-2xl p-3.5 mb-4">
+      <span className="text-2xl">💚</span>
+      <p className="text-green-300 text-sm flex-1">Wellness de hoy registrado. Sigue registrándolo unos días para ver tu disposición.</p>
+    </div>
+  )
 
   if (!perfil) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -173,44 +252,8 @@ export default function DashboardDeportista() {
             cuando ambos están hechos. Sustituye a los avisos sueltos de antes. */}
         <OnboardingDeportista deportista={deportista} anamnesisPendiente={anamnesisPendiente} />
 
-        {/* Cómo fue tu semana pasada (cumplimiento, carga y bienestar). */}
-        {deportista && <div className="mb-4"><ResumenDeportista depId={deportista.id} /></div>}
-
-        {/* ===== BLOQUE SUPERIOR: recordatorio wellness ⇄ disposición ===== */}
-        {!wellnessHoy ? (
-          /* Este botón dice "Registrar", así que abre el formulario directamente.
-             El de abajo (cuando ya está registrado) solo va a consultar. */
-          <button onClick={() => router.push(wellnessHref + '?registrar=1')}
-            className="w-full flex items-center gap-3 bg-green-500/10 border-[1.5px] border-green-500 rounded-2xl p-3.5 mb-4 text-left hover:bg-green-500/15 transition">
-            <div className="w-11 h-11 rounded-full bg-green-500/15 flex items-center justify-center text-2xl flex-shrink-0">💚</div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-green-400">Aún no has registrado tu wellness</p>
-              <p className="text-gray-400 text-sm mt-0.5">Rellénalo para ver tu disposición de hoy y que tu entrenador ajuste la carga.</p>
-            </div>
-            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-              <span className="text-[10px] text-amber-400 bg-amber-400/15 px-1.5 py-0.5 rounded">⏰ pendiente</span>
-              <span className="bg-green-500 text-green-950 text-xs font-extrabold px-2.5 py-1.5 rounded-lg">Registrar →</span>
-            </div>
-          </button>
-        ) : analisis?.readiness ? (
-          <button onClick={() => router.push(wellnessHref)}
-            className="w-full flex items-center gap-3 rounded-2xl p-3.5 mb-4 text-left transition"
-            style={{ backgroundColor: analisis.readiness.color + '14', border: '1px solid ' + analisis.readiness.color + '55' }}>
-            <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: analisis.readiness.color + '22' }}>
-              {analisis.readiness.nivel === 'optimo' ? '🟢' : analisis.readiness.nivel === 'vigilar' ? '🟡' : analisis.readiness.nivel === 'fatiga' ? '🟠' : '🔴'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-extrabold" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</p>
-              <p className="text-gray-400 text-sm mt-0.5">{analisis.readiness.recomendacion}</p>
-            </div>
-            <span className="text-[10px] flex-shrink-0" style={{ color: analisis.readiness.color, backgroundColor: analisis.readiness.color + '18', padding: '4px 7px', borderRadius: 8 }}>Wellness ✓</span>
-          </button>
-        ) : (
-          <div className="w-full flex items-center gap-3 bg-green-500/10 border border-green-500/40 rounded-2xl p-3.5 mb-4">
-            <span className="text-2xl">💚</span>
-            <p className="text-green-300 text-sm flex-1">Wellness de hoy registrado. Sigue registrándolo unos días para ver tu disposición.</p>
-          </div>
-        )}
+        {/* ===== WELLNESS (solo si está PENDIENTE: es una tarea) ===== */}
+        {!wellnessHoy && bloqueWellness}
 
         {/* ===== HERO: sesión de hoy ===== */}
         {sesionesHoy.length > 0 ? (
@@ -256,11 +299,15 @@ export default function DashboardDeportista() {
           </div>
         )}
 
+        {/* ===== WELLNESS (ya registrado: aquí abajo solo informa) ===== */}
+        {wellnessHoy && bloqueWellness}
+
         {/* ===== SEMANA DE UN VISTAZO ===== */}
         {semana.length > 0 && (
           <div className="mb-4">
-            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">Esta semana</p>
-            <div className="grid grid-cols-7 gap-1.5">
+            <Cabecera titulo="Esta semana" abierto={abierto('semana')} onClick={() => alternar('semana')}
+              resumen={semanaPlan > 0 ? semanaPlan + (semanaPlan === 1 ? ' sesión' : ' sesiones') : undefined} />
+            {abierto('semana') && <div className="grid grid-cols-7 gap-1.5">
               {semana.map(d => (
                 <button key={d.f} onClick={() => router.push('/mis-sesiones')}
                   className={'flex flex-col items-center gap-1.5 rounded-xl py-2 border transition ' + (d.esHoy ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 bg-gray-900')}>
@@ -274,28 +321,37 @@ export default function DashboardDeportista() {
                   </div>
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
         )}
 
-        {/* ===== MINI-TARJETAS ===== */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {proximaComp && (
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-3.5">
-              <p className="text-gray-500 text-[10px] mb-1">🏁 Próxima carrera</p>
-              <p className="text-white font-bold text-sm leading-tight">{proximaComp.nombre}</p>
-              <p className="text-orange-400 text-xs font-bold mt-1">{semanasHastaComp === 0 ? 'esta semana' : 'en ' + semanasHastaComp + ' sem'}</p>
+        {/* Cómo fue tu semana pasada (cumplimiento, carga y bienestar). Va DESPUÉS de
+            hoy: es un retrospectivo, y estaba empujando la sesión del día por debajo
+            del corte de la pantalla en un móvil. */}
+        {deportista && <ResumenDeportista depId={deportista.id} plegado={!abierto('pasada')} alternar={() => alternar('pasada')} />}
+
+        {/* ===== PRÓXIMA CARRERA + CUMPLIMIENTO ===== */}
+        <div className="mb-4">
+          <Cabecera titulo="Tu progreso" abierto={abierto('progreso')} onClick={() => alternar('progreso')}
+            resumen={cumplimiento ? cumplimiento.pct + '% cumplimiento' : undefined} />
+          {abierto('progreso') && <div className="grid grid-cols-2 gap-3">
+            {proximaComp && (
+              <div className="bg-gray-900 rounded-2xl border border-gray-800 p-3.5">
+                <p className="text-gray-500 text-[10px] mb-1">🏁 Próxima carrera</p>
+                <p className="text-white font-bold text-sm leading-tight">{proximaComp.nombre}</p>
+                <p className="text-orange-400 text-xs font-bold mt-1">{semanasHastaComp === 0 ? 'esta semana' : 'en ' + semanasHastaComp + ' sem'}</p>
+              </div>
+            )}
+            <div className={'bg-gray-900 rounded-2xl border border-gray-800 p-3.5 ' + (!proximaComp ? 'col-span-2' : '')}>
+              <p className="text-gray-500 text-[10px] mb-1">Cumplimiento (4 sem)</p>
+              {cumplimiento ? (
+                <>
+                  <p className="text-green-400 font-extrabold text-xl leading-none">{cumplimiento.pct}%</p>
+                  <p className="text-gray-500 text-xs mt-1">{cumplimiento.realizadas}/{cumplimiento.planificadas} hechas · {semanaPlan} planif. esta semana</p>
+                </>
+              ) : <p className="text-gray-600 text-sm">Sin sesiones aún</p>}
             </div>
-          )}
-          <div className={'bg-gray-900 rounded-2xl border border-gray-800 p-3.5 ' + (!proximaComp ? 'col-span-2' : '')}>
-            <p className="text-gray-500 text-[10px] mb-1">Cumplimiento (4 sem)</p>
-            {cumplimiento ? (
-              <>
-                <p className="text-green-400 font-extrabold text-xl leading-none">{cumplimiento.pct}%</p>
-                <p className="text-gray-500 text-xs mt-1">{cumplimiento.realizadas}/{cumplimiento.planificadas} hechas · {semanaPlan} planif. esta semana</p>
-              </>
-            ) : <p className="text-gray-600 text-sm">Sin sesiones aún</p>}
-          </div>
+          </div>}
         </div>
 
         {/* ===== AÑADIR SESIÓN NO PROGRAMADA (entrada — flujo completo próximamente) ===== */}
