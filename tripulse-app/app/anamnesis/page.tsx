@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 
 const SECCIONES = [
   'Datos personales',
@@ -107,7 +108,7 @@ export default function PaginaAnamnesis() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).single()
       if (!dep) { router.push('/dashboard-deportista'); return }

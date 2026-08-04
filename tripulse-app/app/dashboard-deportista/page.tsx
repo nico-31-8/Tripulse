@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
@@ -54,7 +55,7 @@ export default function DashboardDeportista() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)

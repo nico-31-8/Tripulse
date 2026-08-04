@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 export default function PlanificacionVisualIndex() {
@@ -11,7 +12,7 @@ export default function PlanificacionVisualIndex() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(data || [])

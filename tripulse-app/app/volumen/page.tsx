@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
@@ -84,7 +85,7 @@ export default function VolumenPage() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])

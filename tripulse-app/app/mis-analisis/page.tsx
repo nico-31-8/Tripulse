@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 
@@ -38,7 +39,7 @@ export default function MisAnalisis() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }

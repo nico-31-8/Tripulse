@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const COLOR_DISC: Record<string, string> = {
@@ -21,7 +22,7 @@ export default function PapeleraPage() {
 
   const cargar = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
 
     const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)

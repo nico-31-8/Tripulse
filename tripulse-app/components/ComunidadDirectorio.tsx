@@ -9,6 +9,7 @@
 // Incluye un editor del propio perfil público (ciudad + deportes).
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import ComunidadGrupos from './ComunidadGrupos'
 import ComunidadRetos from './ComunidadRetos'
 import { PRUEBAS } from '@/lib/pruebas'
@@ -150,7 +151,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   const [invPend, setInvPend] = useState<{ id: string; id_club: string; email: string; rol_club: string }[]>([])
 
   const cargar = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     setYoId(user?.id ?? null)
 
     const { data: g } = await supabase.from('perfil_publico').select('*').order('nombre')

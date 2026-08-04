@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { TablaZonas2 } from '@/components/TablaZonas2'
 
 export default function MisTests() {
@@ -13,7 +14,7 @@ export default function MisTests() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }

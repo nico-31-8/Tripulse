@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { perfilActual, deportistaActual } from '@/lib/sesion'
 
 /* Donde la barra estorba: públicas, y el modo entreno, que se usa a pantalla
    completa y con el móvil en la mano entre series. */
@@ -30,14 +31,12 @@ export default function NavDeportista() {
   useEffect(() => {
     let vivo = true
     const comprobar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { if (vivo) setEsDeportista(false); return }
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      const p = await perfilActual()
       if (!vivo) return
       const lo_es = p?.rol === 'deportista'
       setEsDeportista(lo_es)
       if (lo_es) {
-        const { data: d } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
+        const d = await deportistaActual()
         if (vivo) setDepId(d?.id ?? null)
       }
     }

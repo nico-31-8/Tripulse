@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import ComunidadDirectorio from '@/components/ComunidadDirectorio'
 
 type EstadoSocial = 'pendiente' | 'activo' | 'inactivo'
@@ -19,7 +20,7 @@ export default function ComunidadPage() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.replace('/login'); return }
       const { data: p } = await supabase.from('perfiles').select('social').eq('id', user.id).single()
       setSocial((p?.social as EstadoSocial) || 'pendiente')

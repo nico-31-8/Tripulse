@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-metricas'
@@ -39,7 +40,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       setUserId(user.id)
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()

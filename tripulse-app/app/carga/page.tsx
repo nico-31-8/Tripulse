@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
@@ -119,7 +120,7 @@ export default function CargaPage() {
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       setDeportistas(deps || [])

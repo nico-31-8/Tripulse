@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { perfilActual } from '@/lib/sesion'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 import { construirContextoTexto } from '@/lib/asistente'
 import { useContextoModulo } from '@/lib/contexto-modulo'
@@ -46,9 +47,7 @@ export default function AsistenteFlotante() {
   useEffect(() => {
     let vivo = true
     const comprobar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { if (vivo) setEsEntrenador(false); return }
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      const p = await perfilActual()
       if (vivo) setEsEntrenador(p?.rol === 'entrenador')
     }
     comprobar()

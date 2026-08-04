@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual, perfilActual, deportistaActual } from '@/lib/sesion'
 
 const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
 
@@ -44,13 +45,13 @@ export default function Sidebar() {
 
   useEffect(() => {
     const comprobar = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await usuarioActual()
       if (!user) { setAutenticado(false); return }
       setAutenticado(true)
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      const p = await perfilActual()
       setRol(p?.rol || null)
       if (p?.rol === 'deportista') {
-        const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
+        const dep = await deportistaActual()
         setDepId(dep?.id ?? null)
       }
     }

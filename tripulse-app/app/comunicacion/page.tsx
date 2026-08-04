@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -36,7 +37,7 @@ export default function ComunicacionPage() {
 
   const cargar = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
 

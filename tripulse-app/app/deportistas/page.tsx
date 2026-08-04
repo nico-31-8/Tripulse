@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
 function calcularEdad(fechaNacimiento: string): number {
@@ -50,7 +51,7 @@ export default function Deportistas() {
   useEffect(() => { cargarDeportistas() }, [])
 
   const cargarDeportistas = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     const { data, error } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
     if (error) setError('Error al cargar: ' + error.message)
@@ -61,7 +62,7 @@ export default function Deportistas() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     const fcMaxima = fechaNacimiento ? calcularFCMaxima(fechaNacimiento) : null
     const { error } = await supabase.from('deportista').insert({
       id_entrenador: user?.id,
@@ -84,7 +85,7 @@ export default function Deportistas() {
   const generarEnlaceInvitacion = async (dep: any) => {
     setGenerandoEnlace(dep.id)
     const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     await supabase.from('invitacion_deportista').insert({
       token,
       id_entrenador: user?.id,

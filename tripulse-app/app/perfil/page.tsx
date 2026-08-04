@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
   const router = useRouter()
@@ -111,7 +112,7 @@ export default function PerfilPage() {
   useEffect(() => { cargar() }, [])
 
   const cargar = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
     setPerfil(p)

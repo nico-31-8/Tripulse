@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { analizarWellness, type MetricaAnalisis } from '@/lib/wellness-analisis'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
@@ -93,7 +94,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (user) {
       const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       setEsDeportista(p?.rol === 'deportista')

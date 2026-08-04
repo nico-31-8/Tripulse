@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
@@ -216,7 +217,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }, [])
 
   const cargarDatos = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await usuarioActual()
     if (user) {
       const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       setEsDeportista(p?.rol === 'deportista')
