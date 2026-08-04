@@ -153,6 +153,61 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
 
   const analisis = analizarWellness(registros)
 
+  /* El análisis mide unos 700px. Con el formulario abierto va DEBAJO: se llega aquí
+     desde el aviso del panel ("Registrar →"), y tenerlo delante significaba pulsar
+     un botón que dice "Registrar" y aterrizar en una tabla de medias, con el
+     cuestionario fuera de la pantalla. Cuando vienes a consultar, manda él. */
+  const panelAnalisis = analisis.readiness && (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 mb-8 overflow-hidden">
+      {/* Veredicto de disposición */}
+      <div className="p-5 flex items-center gap-4 border-b border-gray-800" style={{ borderLeft: '5px solid ' + analisis.readiness.color }}>
+        <div className="flex flex-col items-center justify-center rounded-xl px-4 py-3 flex-shrink-0" style={{ backgroundColor: analisis.readiness.color + '22' }}>
+          <span className="text-2xl font-black leading-none" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</span>
+          <span className="text-gray-500 mt-1" style={{ fontSize: 10 }}>disposición</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-bold text-sm mb-0.5">🔎 Análisis del deportista <span className="text-gray-600 font-normal">· {analisis.nRegistros} registros</span></p>
+          <p className="text-gray-300 text-sm">{analisis.readiness.recomendacion}</p>
+        </div>
+      </div>
+
+      {/* Conclusiones en lenguaje natural */}
+      <div className="p-5 flex flex-col gap-2 border-b border-gray-800">
+        {analisis.conclusiones.map((c, i) => {
+          const ic = c.tipo === 'rojo' ? '🔴' : c.tipo === 'ambar' ? '🟠' : c.tipo === 'positivo' ? '🟢' : 'ℹ️'
+          return (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <span style={{ fontSize: 11 }} className="mt-0.5 flex-shrink-0">{ic}</span>
+              <span className="text-gray-300">{c.texto}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Métricas: reciente vs línea base */}
+      {analisis.metricas.length > 0 && (
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-gray-400 text-xs font-medium">Últimos 7 días vs tu línea base</p>
+            {!analisis.baselineFiable && <span className="text-gray-600 text-xs">base provisional</span>}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {analisis.metricas.map(m => (
+              <div key={m.key} className={'rounded-lg p-2.5 border ' + (m.fuera ? 'border-orange-500/50 bg-orange-500/5' : 'border-gray-800 bg-gray-800/40')}>
+                <p className="text-gray-400 text-xs mb-0.5">{m.label}</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className={'font-bold ' + (m.fuera ? 'text-orange-300' : 'text-white')}>{m.reciente}<span className="text-gray-500 text-xs font-normal">{m.unidad}</span></span>
+                  <span style={{ fontSize: 10, color: flechaColor(m) }}>{m.flecha === 'up' ? '▲' : m.flecha === 'down' ? '▼' : '▬'}</span>
+                </div>
+                {m.base != null && <p className="text-gray-600" style={{ fontSize: 11 }}>base {m.base}{m.unidad}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
@@ -168,60 +223,11 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
           <p className="text-gray-400 text-sm">Registro diario de estado del atleta</p>
         </div>
 
-        {/* ===== ANÁLISIS DEL DEPORTISTA (conclusiones) ===== */}
-        {analisis.readiness && (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 mb-8 overflow-hidden">
-            {/* Veredicto de disposición */}
-            <div className="p-5 flex items-center gap-4 border-b border-gray-800" style={{ borderLeft: '5px solid ' + analisis.readiness.color }}>
-              <div className="flex flex-col items-center justify-center rounded-xl px-4 py-3 flex-shrink-0" style={{ backgroundColor: analisis.readiness.color + '22' }}>
-                <span className="text-2xl font-black leading-none" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</span>
-                <span className="text-gray-500 mt-1" style={{ fontSize: 10 }}>disposición</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold text-sm mb-0.5">🔎 Análisis del deportista <span className="text-gray-600 font-normal">· {analisis.nRegistros} registros</span></p>
-                <p className="text-gray-300 text-sm">{analisis.readiness.recomendacion}</p>
-              </div>
-            </div>
-
-            {/* Conclusiones en lenguaje natural */}
-            <div className="p-5 flex flex-col gap-2 border-b border-gray-800">
-              {analisis.conclusiones.map((c, i) => {
-                const ic = c.tipo === 'rojo' ? '🔴' : c.tipo === 'ambar' ? '🟠' : c.tipo === 'positivo' ? '🟢' : 'ℹ️'
-                return (
-                  <div key={i} className="flex items-start gap-2 text-sm">
-                    <span style={{ fontSize: 11 }} className="mt-0.5 flex-shrink-0">{ic}</span>
-                    <span className="text-gray-300">{c.texto}</span>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Métricas: reciente vs línea base */}
-            {analisis.metricas.length > 0 && (
-              <div className="p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-gray-400 text-xs font-medium">Últimos 7 días vs tu línea base</p>
-                  {!analisis.baselineFiable && <span className="text-gray-600 text-xs">base provisional</span>}
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {analisis.metricas.map(m => (
-                    <div key={m.key} className={'rounded-lg p-2.5 border ' + (m.fuera ? 'border-orange-500/50 bg-orange-500/5' : 'border-gray-800 bg-gray-800/40')}>
-                      <p className="text-gray-400 text-xs mb-0.5">{m.label}</p>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className={'font-bold ' + (m.fuera ? 'text-orange-300' : 'text-white')}>{m.reciente}<span className="text-gray-500 text-xs font-normal">{m.unidad}</span></span>
-                        <span style={{ fontSize: 10, color: flechaColor(m) }}>{m.flecha === 'up' ? '▲' : m.flecha === 'down' ? '▼' : '▬'}</span>
-                      </div>
-                      {m.base != null && <p className="text-gray-600" style={{ fontSize: 11 }}>base {m.base}{m.unidad}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Consultando: el análisis manda y va primero. */}
+        {!mostrarForm && panelAnalisis}
 
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold">Registros recientes</h3>
+          <h3 className="text-xl font-bold">{mostrarForm ? 'Registro de hoy' : 'Registros recientes'}</h3>
           <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
             {mostrarForm ? 'Cancelar' : '+ Nuevo registro'}
           </button>
@@ -230,7 +236,6 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
 
         {mostrarForm && (
           <form onSubmit={guardar} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold text-lg">Registro de hoy</h4>
             <div>
               <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
               <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required />
@@ -275,6 +280,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             </button>
           </form>
         )}
+
+        {/* Registrando: el análisis se queda detrás del cuestionario, no delante. */}
+        {mostrarForm && panelAnalisis}
 
         {/* GRÁFICAS */}
         {registros.length > 1 && (
