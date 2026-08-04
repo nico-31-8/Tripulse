@@ -545,7 +545,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
             media pantalla y no decía ni el nombre del deportista. */}
-        <div className="tp-card p-[14px_18px] flex items-center gap-4 flex-wrap">
+        {/* `.tp-card` lleva overflow:hidden, así que lo que no cabe NO se ve y no
+            deja rastro: ni scroll ni puntos suspensivos. En un móvil esta franja se
+            cortaba 102px, o sea que el nombre del deportista y la fecha
+            desaparecían sin más. Se apila. */}
+        <div className="tp-card p-[14px_18px] flex items-center gap-3 sm:gap-4 flex-wrap">
           {/* El nombre llega en una consulta posterior a la sesión. Mientras tanto se
               enseña la fecha como título en vez de un «Sesión» y unas iniciales falsas
               que parpadearían al cargar. */}
@@ -571,9 +575,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             </span>
           </div>
 
-          <div className="flex-1" />
+          {/* El separador solo tiene sentido cuando todo cabe en una línea. */}
+          <div className="hidden sm:block flex-1" />
 
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2.5 sm:gap-4 flex-wrap min-w-0 w-full sm:w-auto">
             <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
             <span className={'text-xs px-2.5 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}
