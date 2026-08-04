@@ -144,10 +144,13 @@ export default function IndicesPage() {
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="text-[17px] font-bold tracking-tight leading-none">Índices</h2>
           {seleccionado && (
-            <span className="text-[12.5px] text-gray-500 truncate">
-              {seleccionado.nombre}
-              <button onClick={() => setSeleccionado(null)} className="ml-2 text-orange-400 hover:text-orange-300 transition">cambiar</button>
-            </span>
+            /* Mismo arreglo que en /carga: el botón fuera del truncate, o en móvil
+               el nombre del deportista se lo lleva por delante. */
+            <>
+              <span className="text-[12.5px] text-gray-500 truncate min-w-0">{seleccionado.nombre}</span>
+              <button onClick={() => setSeleccionado(null)}
+                className="text-[12.5px] text-orange-400 hover:text-orange-300 transition flex-none">cambiar</button>
+            </>
           )}
         </div>
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition flex-none">← Dashboard</button>

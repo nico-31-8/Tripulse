@@ -309,10 +309,15 @@ export default function CargaPage() {
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="text-[17px] font-bold tracking-tight leading-none">Carga de entrenamiento</h2>
           {seleccionado && (
-            <span className="text-[12.5px] text-gray-500 truncate">
-              {seleccionado.nombre}
-              <button onClick={() => setSeleccionado(null)} className="ml-2 text-orange-400 hover:text-orange-300 transition">cambiar</button>
-            </span>
+            /* El botón va FUERA del truncate. Estando dentro, en móvil el nombre
+               se comía el ancho y "cambiar" quedaba recortado fuera de la
+               pantalla: no había forma de cambiar de deportista desde el teléfono.
+               Ahora se acorta el nombre, que es lo prescindible. */
+            <>
+              <span className="text-[12.5px] text-gray-500 truncate min-w-0">{seleccionado.nombre}</span>
+              <button onClick={() => setSeleccionado(null)}
+                className="text-[12.5px] text-orange-400 hover:text-orange-300 transition flex-none">cambiar</button>
+            </>
           )}
         </div>
         <div className="flex items-center gap-3 flex-none">
