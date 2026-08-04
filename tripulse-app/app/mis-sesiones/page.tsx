@@ -388,9 +388,9 @@ export default function MisSesiones() {
         {vista === 'calendario' && (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))} className="text-gray-400 hover:text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition">←</button>
+              <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))} className="text-gray-400 hover:text-white px-4 py-1 min-w-[44px] rounded-lg hover:bg-gray-800 transition">←</button>
               <h3 className="font-bold text-lg">{MESES[mesActual.getMonth()]} {mesActual.getFullYear()}</h3>
-              <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))} className="text-gray-400 hover:text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition">→</button>
+              <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))} className="text-gray-400 hover:text-white px-4 py-1 min-w-[44px] rounded-lg hover:bg-gray-800 transition">→</button>
             </div>
             <div className="grid grid-cols-7 mb-2">
               {DIAS_SEMANA.map(d => <div key={d} className="text-center text-gray-500 text-xs py-2">{d}</div>)}

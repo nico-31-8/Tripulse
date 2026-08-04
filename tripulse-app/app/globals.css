@@ -100,3 +100,27 @@ html, body {
 @media (max-width: 639px) {
   body.con-nav-deportista { padding-bottom: 66px; }
 }
+
+/* ===== Áreas táctiles del deportista en móvil =====
+   La yema del dedo tapa unos 7-9 mm: por debajo de 44 px se pulsa a ciegas, y
+   este usuario lo hace con las manos mojadas al salir del agua. Apple y Google
+   coinciden en ese mínimo.
+
+   Se aplica con `min-height`, así solo CRECE lo que se queda corto y no toca lo
+   que ya estaba bien. Y va acotado a `body.con-nav-deportista` —la clase que pone
+   NavDeportista— porque eso significa exactamente: rol deportista Y móvil. El
+   entrenador y el escritorio no se ven afectados en absoluto.
+
+   Escotilla: .tp-tactil-libre para el caso puntual donde 44 px rompa un diseño. */
+@media (max-width: 639px) {
+  body.con-nav-deportista button:not(.tp-tactil-libre),
+  body.con-nav-deportista select:not(.tp-tactil-libre),
+  body.con-nav-deportista [role="button"]:not(.tp-tactil-libre) {
+    min-height: 44px;
+  }
+  /* Los campos también: fallar un input obliga a repetir todo el gesto. */
+  body.con-nav-deportista input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  body.con-nav-deportista textarea {
+    min-height: 44px;
+  }
+}
