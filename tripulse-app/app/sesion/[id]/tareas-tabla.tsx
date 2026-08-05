@@ -606,7 +606,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 <th className="text-left py-2 px-1 w-24">Tipo</th>
                 <th className="text-left py-2 px-1">Músculo / Ejercicio</th>
                 <th className="text-left py-2 px-1 w-16">Series</th>
-                <th className="text-left py-2 px-1 w-20">Reps / tiempo</th>
+                <th className="text-left py-2 px-1 w-36">Reps / tiempo</th>
                 <th className="text-left py-2 px-1 w-16">Kg</th>
                 <th className="text-left py-2 px-1 w-14">RIR</th>
                 <th className="text-left py-2 px-1 w-20">Descanso</th>
@@ -678,21 +678,31 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                   <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                  {/* La unidad ES el conmutador: un <select> por fila sería seis
-                      desplegables de ruido en una sesión de seis ejercicios, para
-                      algo que se cambia de vez en cuando. En tiempo el campo pasa a
-                      texto porque acepta «45» y «1:30». */}
+                  {/* El conmutador va AL LADO, no debajo: apilado le añadía altura a
+                      la celda y su campo quedaba más arriba que los de las demás
+                      columnas, que se centran. Al lado, la celda vuelve a ser de una
+                      línea y todo se alinea solo.
+                      El botón enseña la unidad ACTUAL y al pulsarlo cambia. Un
+                      <select> por fila serían seis desplegables de ruido en una
+                      sesión de seis ejercicios, para algo que se toca de vez en
+                      cuando. En tiempo el campo pasa a texto: acepta «45» y «1:30». */}
                   <td className="py-1 px-1">
-                    <input type={f.medida === 'tiempo' ? 'text' : 'number'} value={f.repsFuerza}
-                      onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls}
-                      placeholder={f.medida === 'tiempo' ? '45 ó 1:30' : '10'}
-                      title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie'} />
-                    <button type="button"
-                      onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
-                      className="mt-0.5 text-[10px] text-gray-500 hover:text-orange-400 transition underline decoration-dotted underline-offset-2"
-                      title="Cambiar entre repeticiones y tiempo">
-                      {f.medida === 'tiempo' ? 'tiempo ⇄' : 'reps ⇄'}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <input type={f.medida === 'tiempo' ? 'text' : 'number'} value={f.repsFuerza}
+                        onChange={e => updateF(i, 'repsFuerza', e.target.value)}
+                        className={inputCls + ' flex-1 min-w-0'}
+                        placeholder={f.medida === 'tiempo' ? '45 ó 1:30' : '10'}
+                        title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie'} />
+                      <button type="button"
+                        onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
+                        title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
+                        className={'flex-none px-2 py-1 rounded text-[11px] font-semibold border transition ' +
+                          (f.medida === 'tiempo'
+                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30'
+                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600')}>
+                        {f.medida === 'tiempo' ? 'seg' : 'reps'}
+                      </button>
+                    </div>
                   </td>
                   <td className="py-1 px-1"><input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)} className={inputCls} placeholder="kg" /></td>
                   <td className="py-1 px-1"><input type="number" min="0" max="4" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)} className={inputCls} placeholder="0-4" /></td>
