@@ -34,6 +34,12 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
 
   const inputCls = "bg-gray-700 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-1 focus:ring-orange-500 w-full text-center"
 
+  // Si el entrenador prescribió TIEMPO, la tarea trae `p_duracion` y no
+  // `p_repeticiones`. Entonces al atleta se le piden segundos, no repeticiones:
+  // preguntarle "¿cuántas reps?" en una plancha de 1:30 no tiene respuesta.
+  const segPlan: number | null = tarea?.p_duracion?.[0]?.tiempo_planeado ?? null
+  const porTiempo = segPlan != null && segPlan > 0
+
   return (
     <div className="flex flex-col gap-4">
       {ejercicios.map(ej => {
@@ -46,8 +52,16 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
         // Modo mejora: qué hizo la última vez en este ejercicio (serie principal).
         const prev = historial?.[ej.nombre]
         const seriesPrev = prev ? prev.series.filter((s: any) => (s.ejercicio_numero ?? 1) === 1) : []
+        // En un ejercicio por tiempo, «45×? reps» no dice nada: se enseñan los
+        // segundos, que es lo que hay que superar.
         const resumenPrev = seriesPrev
-          .map((s: any) => s.peso_real ? `${Number(s.peso_real)}×${Number(s.repeticiones_reales) || '?'}` : `${Number(s.repeticiones_reales) || '?'} reps`)
+          .map((s: any) => {
+            if (porTiempo) {
+              const seg = Number(s.tiempo_real) || 0
+              return seg ? (s.peso_real ? `${Number(s.peso_real)}kg·${seg}s` : `${seg}s`) : '?'
+            }
+            return s.peso_real ? `${Number(s.peso_real)}×${Number(s.repeticiones_reales) || '?'}` : `${Number(s.repeticiones_reales) || '?'} reps`
+          })
           .join(' · ')
         const rirsPrev = seriesPrev.map((s: any) => s.rir_real).filter((v: any) => v != null)
         const rirPrev = rirsPrev.length
@@ -55,9 +69,15 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
           : ''
         // Fantasma por serie (lo que hizo esa misma serie la vez pasada) y "¿ha superado el volumen?".
         const prevSerie = (n: number) => seriesPrev.find((s: any) => s.numero_serie === n)
-        const volPrev = seriesPrev.reduce((a: number, s: any) => a + (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0), 0)
+        // "¿He superado lo de la última vez?" En reps el volumen es kg×reps; en
+        // tiempo son los segundos aguantados (con o sin peso encima). Mezclarlos
+        // daría 0 siempre en los de tiempo y el aviso no saltaría nunca.
+        const carga = (s: any) => porTiempo
+          ? (Number(s.tiempo_real) || 0)
+          : (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0)
+        const volPrev = seriesPrev.reduce((a: number, s: any) => a + carga(s), 0)
         const volHoy = Array.from({ length: numSeries }, (_, i) => getSerieFuerza(ej.id, i + 1, 1))
-          .reduce((a: number, s: any) => a + (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0), 0)
+          .reduce((a: number, s: any) => a + carga(s), 0)
         const superado = !!prev && volPrev > 0 && volHoy >= volPrev
 
         return (
@@ -125,9 +145,17 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                         <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie).peso_real)) : (ej.intensidad || 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
-                        <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie).repeticiones_reales)) : (ej.repeticiones || 'Reps')}
-                          onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
-                          className={inputCls} />
+                        {porTiempo ? (
+                          <input type="number" value={s1.tiempo_real || ''}
+                            placeholder={prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie).tiempo_real)) + ' s' : segPlan + ' s'}
+                            onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'tiempo_real', e.target.value)}
+                            title="Segundos que aguantaste esta serie"
+                            className={inputCls} />
+                        ) : (
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie).repeticiones_reales)) : (ej.repeticiones || 'Reps')}
+                            onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
+                            className={inputCls} />
+                        )}
                         <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR"
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'rir_real', e.target.value)}
                           className={inputCls} />
@@ -199,7 +227,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
               {/* Cabecera columnas para normal */}
               {!esDropSet && !tieneEj2 && (
                 <div className="grid grid-cols-4 gap-2 text-xs text-gray-600 text-center px-1">
-                  <div></div><div>Kg</div><div>Reps</div><div>RIR</div>
+                  <div></div><div>Kg</div><div>{porTiempo ? 'Seg' : 'Reps'}</div><div>RIR</div>
                 </div>
               )}
             </div>

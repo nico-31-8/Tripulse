@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
-import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
 function refZona2(z: ZonaResistencia, disciplina: string, tests: any, fcMax: number) {
@@ -31,10 +31,14 @@ function segAMmss(seg: number): string {
   return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
 }
 
-function mmssASeg(str: string): number {
-  const p = str.split(':')
-  if (p.length === 2) return (parseInt(p[0]) || 0) * 60 + (parseInt(p[1]) || 0)
-  return parseInt(str) || 0
+// mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
+// Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
+// la otra se queda contando distinto.
+
+// Texto corto de una duración: «45 s» o «2:30 min». segAMmss devuelve solo los
+// minutos cuando no hay segundos sueltos («2»), que sin unidad no se entiende.
+function duracionTexto(seg: number): string {
+  return seg < 60 ? seg + ' s' : segAMmss(seg) + ' min'
 }
 
 function mostrarValorGuardado(t: any): string {
@@ -133,6 +137,11 @@ interface FilaFuerza {
   ejercicioSelId: string
   tipoSerie: string
   series: string
+  // Qué se le pide al atleta en cada serie: repeticiones o tiempo. Antes esto
+  // dependía del tipo de serie (solo «Isométrico» iba en segundos), pero hay
+  // muchos ejercicios de tiempo que no son isométricos: paseos del granjero,
+  // remo, saltos a la comba, un bloque de core. Ahora se elige por fila.
+  medida: 'reps' | 'tiempo'
   repsFuerza: string
   kgFuerza: string
   rir: string
@@ -281,6 +290,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     orden: filasF.length + tareasGuardadas.length + 1,
     grupoMuscularSel: '', ejercicioSelId: '',
     tipoSerie: 'Normal',
+    medida: 'reps',
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
     grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
     zonaFuerzaTarea: '',
@@ -300,7 +310,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
         id_sesion: sesionId, zona_entrenamiento: f.zona || null,
         disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
-        descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
+        descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
         comentario: f.comentario || null,
         // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
         // se ordenaban distinto (ver lib/tareas-orden).
@@ -330,13 +340,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(true)
     try {
     const ejBib = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
-    const esIso = f.tipoSerie === 'Isométrico'
+    // `medida` manda: antes esto lo decidía el tipo de serie, así que un paseo del
+    // granjero de 40 s había que declararlo «Isométrico» para que se guardara como
+    // tiempo, mintiendo sobre el tipo de serie para arreglar la unidad.
+    const esTiempo = f.medida === 'tiempo'
+    // Acepta «45» y «1:30»: mmssASegundos ya distingue por los dos puntos.
+    const segundos = esTiempo ? mmssASegundos(f.repsFuerza) : 0
     const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
     const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
       id_sesion: sesionId, disciplina: 'Fuerza',
       zona_entrenamiento: zonaF,
       series: f.series ? Number(f.series) : null,
-      descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
+      descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
       comentario: f.comentario || null,
     }).select().single()
     if (errTarea) { alert('Error al guardar ejercicio: ' + errTarea.message); setLoading(false); return }
@@ -349,19 +364,24 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
         series: f.series ? Number(f.series) : null,
-        repeticiones: (!esIso && f.repsFuerza) ? Number(f.repsFuerza) : null,
+        repeticiones: (!esTiempo && f.repsFuerza) ? Number(f.repsFuerza) : null,
         intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
-        descanso_segundos: f.descanso ? mmssASeg(f.descanso) : null,
-        notas_ejecucion: [esIso && f.repsFuerza ? f.repsFuerza + 's isométrico' : '', f.rir ? 'RIR: ' + f.rir : '', f.comentario || ''].filter(Boolean).join(' · ') + notasEj2,
+        descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+        notas_ejecucion: [
+          esTiempo && segundos > 0 ? duracionTexto(segundos) + (f.tipoSerie === 'Isométrico' ? ' isométrico' : ' por serie') : '',
+          f.rir ? 'RIR: ' + f.rir : '', f.comentario || '',
+        ].filter(Boolean).join(' · ') + notasEj2,
         tipo_serie: f.tipoSerie || 'Normal',
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
       })
-      if (f.repsFuerza) {
-        if (esIso) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: Number(f.repsFuerza) })
-        else await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
+      // Una tarea tiene UNA medición: o segundos o repeticiones, nunca las dos.
+      if (esTiempo) {
+        if (segundos > 0) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: segundos })
+      } else if (f.repsFuerza) {
+        await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
       }
     }
     await cargarDatos()
@@ -586,7 +606,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 <th className="text-left py-2 px-1 w-24">Tipo</th>
                 <th className="text-left py-2 px-1">Músculo / Ejercicio</th>
                 <th className="text-left py-2 px-1 w-16">Series</th>
-                <th className="text-left py-2 px-1 w-16">Reps</th>
+                <th className="text-left py-2 px-1 w-20">Reps / tiempo</th>
                 <th className="text-left py-2 px-1 w-16">Kg</th>
                 <th className="text-left py-2 px-1 w-14">RIR</th>
                 <th className="text-left py-2 px-1 w-20">Descanso</th>
@@ -600,7 +620,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 <tr className="border-b border-gray-800">
                   <td className="py-1 px-1 text-orange-400 font-bold">{f.orden}</td>
                   <td className="py-1 px-1">
-                    <select value={f.tipoSerie} onChange={e => updateF(i, 'tipoSerie', e.target.value)} className={inputCls}>
+                    {/* Un isométrico es tiempo por definición, así que al elegirlo se
+                        propone tiempo. Sigue siendo una propuesta: el conmutador de
+                        la columna manda, por si alguien cuenta un isométrico en reps. */}
+                    <select value={f.tipoSerie}
+                      onChange={e => {
+                        updateF(i, 'tipoSerie', e.target.value)
+                        if (e.target.value === 'Isométrico' && f.medida !== 'tiempo') updateF(i, 'medida', 'tiempo')
+                      }} className={inputCls}>
                       <option value="Normal">Normal</option>
                       <option value="Superserie">Superserie</option>
                       <option value="Drop set">Drop set</option>
@@ -651,7 +678,22 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                   <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                  <td className="py-1 px-1"><input type="number" value={f.repsFuerza} onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls} placeholder={f.tipoSerie === 'Isométrico' ? 'seg' : '10'} title={f.tipoSerie === 'Isométrico' ? 'Segundos por serie' : 'Repeticiones'} /></td>
+                  {/* La unidad ES el conmutador: un <select> por fila sería seis
+                      desplegables de ruido en una sesión de seis ejercicios, para
+                      algo que se cambia de vez en cuando. En tiempo el campo pasa a
+                      texto porque acepta «45» y «1:30». */}
+                  <td className="py-1 px-1">
+                    <input type={f.medida === 'tiempo' ? 'text' : 'number'} value={f.repsFuerza}
+                      onChange={e => updateF(i, 'repsFuerza', e.target.value)} className={inputCls}
+                      placeholder={f.medida === 'tiempo' ? '45 ó 1:30' : '10'}
+                      title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie'} />
+                    <button type="button"
+                      onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
+                      className="mt-0.5 text-[10px] text-gray-500 hover:text-orange-400 transition underline decoration-dotted underline-offset-2"
+                      title="Cambiar entre repeticiones y tiempo">
+                      {f.medida === 'tiempo' ? 'tiempo ⇄' : 'reps ⇄'}
+                    </button>
+                  </td>
                   <td className="py-1 px-1"><input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)} className={inputCls} placeholder="kg" /></td>
                   <td className="py-1 px-1"><input type="number" min="0" max="4" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)} className={inputCls} placeholder="0-4" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>

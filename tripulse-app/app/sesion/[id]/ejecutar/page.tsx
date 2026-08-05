@@ -267,6 +267,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           numero_serie: serie.numero_serie,
           peso_real: pesoReal,
           repeticiones_reales: serie.repeticiones_reales ? Number(serie.repeticiones_reales) : null,
+          // Los segundos van en SU columna, no metidos en repeticiones_reales:
+          // un campo que significa dos cosas es lo que hace que luego una media
+          // mezcle reps con segundos sin que nadie se entere.
+          tiempo_real: serie.tiempo_real ? Number(serie.tiempo_real) : null,
           rir_real: serie.rir_real ? Number(serie.rir_real) : null,
           completada: serie.completada || false,
           ejercicio_numero: serie.ejercicio_numero || 1,
