@@ -441,13 +441,17 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // medida vieja había que apuntar para acertar y costaba leer de un vistazo, con
   // media pantalla vacía a los lados. El resto de tablas (resistencia) se queda
   // con la medida compacta, que ahí sí cabe.
-  const inputCls = esFuerza
-    ? "bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 w-full outline-none focus:ring-1 focus:ring-orange-500"
-    : "bg-gray-800 text-white text-xs rounded px-2 py-1 w-full outline-none focus:ring-1 focus:ring-orange-500"
+  // OJO con el `w-full`: cualquier campo que lleve su propio ancho (w-[92px],
+  // basis-[42%]...) NO puede heredarlo, porque las dos reglas se pisan, gana
+  // w-full y el campo se sale de su celda. Con `flex-none` encima ni siquiera
+  // puede encoger: se mete literalmente sobre el campo de al lado.
+  // Por eso el ancho vive aparte de la base.
+  const campoBase = esFuerza
+    ? "bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500"
+    : "bg-gray-800 text-white text-xs rounded px-2 py-1 outline-none focus:ring-1 focus:ring-orange-500"
+  const inputCls = campoBase + ' w-full'
 
-  // Los campos DENTRO del bloque de prescripción llevan ancho fijo, así que no
-  // pueden heredar el `w-full` de inputCls: las dos clases se pisan y gana el
-  // w-full, con lo que el primer campo se comía el bloque entero.
+  // Los campos DENTRO del bloque de prescripción llevan ancho fijo propio.
   const inputBloque = "bg-gray-950/60 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 flex-none"
 
   // Kilo sugerido cuando se prescribe en % del 1RM. Devuelve null si falta algo:
@@ -707,7 +711,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         onChange={e => {
                           updateF(i, 'tipoSerie', e.target.value)
                           if (e.target.value === 'Isométrico' && f.medida !== 'tiempo') updateF(i, 'medida', 'tiempo')
-                        }} className={inputCls + ' flex-1 min-w-[110px]'}>
+                        }} className={campoBase + ' flex-1 min-w-[110px]'}>
                         <option value="Normal">Normal</option>
                         <option value="Superserie">Superserie</option>
                         <option value="Drop set">Drop set</option>
@@ -715,7 +719,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <option value="Isométrico">Isométrico</option>
                       </select>
                       {modoFuerza === 'compleja' && (
-                        <select value={f.zonaFuerzaTarea} onChange={e => updateF(i, 'zonaFuerzaTarea', e.target.value)} className={inputCls + ' flex-none w-[92px]'} title="Cualidad de fuerza">
+                        <select value={f.zonaFuerzaTarea} onChange={e => updateF(i, 'zonaFuerzaTarea', e.target.value)} className={campoBase + ' flex-none w-[92px]'} title="Cualidad de fuerza">
                           <option value="">Cual…</option>
                           {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
                         </select>
@@ -728,12 +732,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           para saber qué es. El grupo es un filtro para encontrarlo y
                           puede recortarse sin perder nada. */}
                       <div className="flex gap-1.5">
-                        <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={inputCls + ' basis-[42%] min-w-[120px]'}>
+                        <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={campoBase + ' basis-[42%] min-w-[120px]'}>
                           <option value="">Grupo muscular</option>
                           {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
                         </select>
                         {f.grupoMuscularSel && (
-                          <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={inputCls + ' basis-[58%] min-w-[190px]'}>
+                          <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={campoBase + ' basis-[58%] min-w-[190px]'}>
                             <option value="">Ejercicio</option>
                             {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                           </select>
