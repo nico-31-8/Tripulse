@@ -40,6 +40,20 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
   const segPlan: number | null = tarea?.p_duracion?.[0]?.tiempo_planeado ?? null
   const porTiempo = segPlan != null && segPlan > 0
 
+  // En qué escala se le pide cerrar la serie. Los históricos vienen sin tipo:
+  // eran RIR, que era lo único que había.
+  //  · rir / rpe → el atleta lo anota
+  //  · vel       → no se anota nada: la pérdida de velocidad la marca el encoder
+  //                y lo que hace es CORTAR la serie, no puntuarla al final
+  //  · pct1rm    → tampoco: el % es carga, y lo que levantó ya va en Kg
+  const CTRL: Record<string, { et: string; max: number; ayuda: string }> = {
+    rir: { et: 'RIR', max: 5, ayuda: 'Repeticiones que te quedaban en reserva' },
+    rpe: { et: 'RPE', max: 10, ayuda: 'Esfuerzo percibido de 1 a 10' },
+  }
+  const ctrlTipo: string = ejercicios[0]?.control_tipo || 'rir'
+  const ctrl = CTRL[ctrlTipo] || null
+  const seAnotaControl = !!ctrl
+
   return (
     <div className="flex flex-col gap-4">
       {ejercicios.map(ej => {
@@ -63,7 +77,12 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
             return s.peso_real ? `${Number(s.peso_real)}×${Number(s.repeticiones_reales) || '?'}` : `${Number(s.repeticiones_reales) || '?'} reps`
           })
           .join(' · ')
-        const rirsPrev = seriesPrev.map((s: any) => s.rir_real).filter((v: any) => v != null)
+        // La etiqueta sale del tipo con el que se ANOTÓ, no del que se prescribe
+        // hoy: si la última vez fue en RPE y hoy pides RIR, poner «RIR 8» sobre un
+        // número que era un RPE sería mentir sobre el histórico.
+        const ctrlPrev = seriesPrev[0]?.control_tipo || 'rir'
+        const etPrev = CTRL[ctrlPrev]?.et || (ctrlPrev === 'vel' ? '%vel' : '%1RM')
+        const rirsPrev = seriesPrev.map((s: any) => s.control_real ?? s.rir_real).filter((v: any) => v != null)
         const rirPrev = rirsPrev.length
           ? (rirsPrev.every((r: any) => r === rirsPrev[0]) ? String(rirsPrev[0]) : `${Math.min(...rirsPrev)}-${Math.max(...rirsPrev)}`)
           : ''
@@ -118,7 +137,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                   <span className="text-orange-400 font-semibold">📊 Última vez</span>
                   <span className="text-gray-500">{prev.dias === 0 ? 'hoy' : prev.dias === 1 ? 'ayer' : `hace ${prev.dias} d`}</span>
                   <span className="text-gray-100 font-medium">{resumenPrev}</span>
-                  {rirPrev && <span className="text-gray-500">· RIR {rirPrev}</span>}
+                  {rirPrev && <span className="text-gray-500">· {etPrev} {rirPrev}</span>}
                   <span className="ml-auto text-orange-300/70">↗ supéralo</span>
                 </div>
               )}
@@ -156,9 +175,20 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
-                        <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR"
-                          onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'rir_real', e.target.value)}
-                          className={inputCls} />
+                        {seAnotaControl ? (
+                          <input type="number" min="0" max={ctrl!.max} value={s1.control_real || ''} placeholder={ctrl!.et}
+                            title={ctrl!.ayuda}
+                            onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)}
+                            className={inputCls} />
+                        ) : (
+                          /* Con VBT o %1RM no hay nada que anotar al terminar la serie.
+                             Se enseña lo prescrito para que sepa contra qué iba. */
+                          <div className="text-center text-[11px] text-gray-500 leading-tight py-1">
+                            {ej.control_valor
+                              ? <>{ej.control_valor}{ctrlTipo === 'vel' ? '% vel' : '% 1RM'}</>
+                              : '—'}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -227,7 +257,8 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
               {/* Cabecera columnas para normal */}
               {!esDropSet && !tieneEj2 && (
                 <div className="grid grid-cols-4 gap-2 text-xs text-gray-600 text-center px-1">
-                  <div></div><div>Kg</div><div>{porTiempo ? 'Seg' : 'Reps'}</div><div>RIR</div>
+                  <div></div><div>Kg</div><div>{porTiempo ? 'Seg' : 'Reps'}</div>
+                  <div>{ctrl ? ctrl.et : (ctrlTipo === 'vel' ? '%vel' : '%1RM')}</div>
                 </div>
               )}
             </div>

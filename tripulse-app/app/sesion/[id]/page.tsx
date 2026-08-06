@@ -545,7 +545,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-end items-center border-b border-gray-800">
         <button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button>
       </nav>
-      <div className="max-w-5xl mx-auto px-6 py-6 flex flex-col gap-3.5">
+      {/* Las sesiones de fuerza usan más ancho: su tabla lleva nueve columnas y a
+          1024px salía todo a 12px y apretado, con media pantalla vacía a los lados.
+          El resto de disciplinas se queda como estaba: su tabla es más estrecha y
+          estirarla solo separaría las cosas sin ganar nada. */}
+      <div className={'mx-auto px-6 py-6 flex flex-col gap-3.5 ' +
+        (sesion.disciplina === 'Fuerza' ? 'max-w-[1560px]' : 'max-w-5xl')}>
 
         {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
             media pantalla y no decía ni el nombre del deportista. */}

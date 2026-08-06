@@ -4,6 +4,10 @@ import { supabase } from '@/lib/supabase'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
+// Con qué se controló la serie. Las series antiguas no lo traen: eran RIR, que
+// era lo único que había.
+const ETIQUETA_CTRL: Record<string, string> = { rir: 'RIR', rpe: 'RPE', vel: '%vel', pct1rm: '%1RM' }
+
 function segAMmss(seg: number): string {
   if (!seg) return '—'
   const min = Math.floor(seg / 60)
@@ -216,8 +220,10 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                               <tr className="text-gray-500 border-b border-gray-700">
                                 <th className="text-left py-1 px-2">Serie</th>
                                 <th className="text-center py-1 px-2">Kg</th>
-                                <th className="text-center py-1 px-2">Reps</th>
-                                <th className="text-center py-1 px-2">RIR</th>
+                                {/* La cabecera sale de lo que se anotó, no de un rótulo
+                                    fijo: un RPE bajo el título «RIR» es un dato mal leído. */}
+                                <th className="text-center py-1 px-2">{srEj.some((sr: any) => sr.tiempo_real != null) ? 'Seg' : 'Reps'}</th>
+                                <th className="text-center py-1 px-2">{ETIQUETA_CTRL[srEj.find((sr: any) => sr.control_tipo)?.control_tipo || 'rir']}</th>
                                 <th className="text-center py-1 px-2">Estado</th>
                               </tr>
                             </thead>
@@ -226,8 +232,8 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                                 <tr key={sr.id} className={'border-b border-gray-800 ' + (sr.completada ? 'bg-green-900/20' : '')}>
                                   <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                   <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
-                                  <td className="py-1.5 px-2 text-center text-blue-400">{sr.repeticiones_reales || '—'}</td>
-                                  <td className="py-1.5 px-2 text-center text-gray-400">{sr.rir_real ?? '—'}</td>
+                                  <td className="py-1.5 px-2 text-center text-blue-400">{sr.tiempo_real != null ? sr.tiempo_real : (sr.repeticiones_reales || '—')}</td>
+                                  <td className="py-1.5 px-2 text-center text-gray-400">{sr.control_real ?? sr.rir_real ?? '—'}</td>
                                   <td className="py-1.5 px-2 text-center">{sr.completada ? '✓' : '—'}</td>
                                 </tr>
                               ))}
@@ -244,8 +250,8 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                                   <tr key={sr.id} className="border-b border-gray-800">
                                     <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                     <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
-                                    <td className="py-1.5 px-2 text-center text-blue-400">{sr.repeticiones_reales || '—'}</td>
-                                    <td className="py-1.5 px-2 text-center text-gray-400">{sr.rir_real ?? '—'}</td>
+                                    <td className="py-1.5 px-2 text-center text-blue-400">{sr.tiempo_real != null ? sr.tiempo_real : (sr.repeticiones_reales || '—')}</td>
+                                    <td className="py-1.5 px-2 text-center text-gray-400">{sr.control_real ?? sr.rir_real ?? '—'}</td>
                                   </tr>
                                 ))}
                               </tbody>

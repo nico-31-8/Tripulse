@@ -41,6 +41,26 @@ function duracionTexto(seg: number): string {
   return seg < 60 ? seg + ' s' : segAMmss(seg) + ' min'
 }
 
+// ------------------------------------------------------------
+// Cómo se controla el esfuerzo de una serie de fuerza
+// ------------------------------------------------------------
+// Los tres primeros miden lo cerca del fallo que se queda la serie, de más
+// subjetivo a más objetivo. El cuarto es otra cosa: cuánto pesa la barra
+// respecto a su máximo. Se ofrecen juntos porque es donde el entrenador espera
+// encontrarlos, pero no significan lo mismo.
+export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'pct1rm'
+
+export const CONTROLES: { id: ControlTipo; corto: string; ph: string; ayuda: string }[] = [
+  { id: 'rir',    corto: 'RIR', ph: '0-2',  ayuda: 'Repeticiones en reserva: cuántas podría hacer aún' },
+  { id: 'rpe',    corto: 'RPE', ph: '7-8',  ayuda: 'Esfuerzo percibido de 1 a 10' },
+  { id: 'vel',    corto: '%vel', ph: '20',  ayuda: 'Pérdida de velocidad (VBT): corta la serie al perder ese % — necesita encoder' },
+  { id: 'pct1rm', corto: '%1RM', ph: '75',  ayuda: 'Porcentaje de su 1RM en ese ejercicio' },
+]
+
+export const controlDe = (t: ControlTipo) => CONTROLES.find(c => c.id === t) || CONTROLES[0]
+const siguienteControl = (t: ControlTipo): ControlTipo =>
+  CONTROLES[(CONTROLES.findIndex(c => c.id === t) + 1) % CONTROLES.length].id
+
 function mostrarValorGuardado(t: any): string {
   if (t.p_duracion?.[0]?.tiempo_planeado) return segAMmss(t.p_duracion[0].tiempo_planeado) + ' min'
   if (t.p_distancia?.[0]?.metros_planeados) {
@@ -142,6 +162,10 @@ interface FilaFuerza {
   // muchos ejercicios de tiempo que no son isométricos: paseos del granjero,
   // remo, saltos a la comba, un bloque de core. Ahora se elige por fila.
   medida: 'reps' | 'tiempo'
+  // Con qué se controla el esfuerzo de la serie. El RIR es solo una de las
+  // formas: según el contexto se usa RPE, el % de pérdida de velocidad (VBT) o
+  // el % del 1RM. Antes solo cabía RIR, y encima como texto dentro de las notas.
+  controlTipo: ControlTipo
   repsFuerza: string
   kgFuerza: string
   rir: string
@@ -187,6 +211,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
   const [editMedValor, setEditMedValor] = useState('')
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
+  // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
+  const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
   // Arrastrar filas para reordenarlas (mismo criterio que la vista Formulario).
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [sobreIdx, setSobreIdx] = useState<number | null>(null)
@@ -211,6 +237,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: [] })
     const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
     setEjerciciosBiblioteca(ejBib || [])
+    // 1RM por ejercicio, para poder enseñar el kilo cuando se prescribe en %.
+    // Se queda solo con el más reciente de cada uno: la lista viene ordenada por
+    // fecha descendente, así que el primero que aparece es el bueno.
+    const { data: tf } = await supabase.from('test_fuerza')
+      .select('ejercicio, rm_estimado, fecha').eq('id_deportista', deportistaId)
+      .not('rm_estimado', 'is', null).order('fecha', { ascending: false })
+    const porEjercicio: Record<string, { rm: number; fecha: string }> = {}
+    for (const t of tf || []) {
+      const clave = String(t.ejercicio || '').trim().toLowerCase()
+      if (clave && !porEjercicio[clave]) porEjercicio[clave] = { rm: Number(t.rm_estimado), fecha: t.fecha }
+    }
+    setRmPorEjercicio(porEjercicio)
     const { data: tar, error: errTar } = await ordenarTareasQuery(
       supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId))
     if (tar && tar.length > 0) {
@@ -291,6 +329,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     grupoMuscularSel: '', ejercicioSelId: '',
     tipoSerie: 'Normal',
     medida: 'reps',
+    controlTipo: 'rir',
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
     grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
     zonaFuerzaTarea: '',
@@ -367,9 +406,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         repeticiones: (!esTiempo && f.repsFuerza) ? Number(f.repsFuerza) : null,
         intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
         descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+        // El control ya NO va concatenado en las notas: tiene sus columnas. Antes
+        // se escribía «RIR: 2» aquí dentro y no había forma de compararlo con lo
+        // que el atleta registraba, que sí era un número.
+        control_tipo: f.rir ? f.controlTipo : null,
+        control_valor: f.rir || null,
         notas_ejecucion: [
           esTiempo && segundos > 0 ? duracionTexto(segundos) + (f.tipoSerie === 'Isométrico' ? ' isométrico' : ' por serie') : '',
-          f.rir ? 'RIR: ' + f.rir : '', f.comentario || '',
+          f.comentario || '',
         ].filter(Boolean).join(' · ') + notasEj2,
         tipo_serie: f.tipoSerie || 'Normal',
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
@@ -393,7 +437,34 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(false)
   }
 
-  const inputCls = "bg-gray-800 text-white text-xs rounded px-2 py-1 w-full outline-none focus:ring-1 focus:ring-orange-500"
+  // Los campos de la tabla de fuerza suben de 12px/24px de alto a 14px/36px: a la
+  // medida vieja había que apuntar para acertar y costaba leer de un vistazo, con
+  // media pantalla vacía a los lados. El resto de tablas (resistencia) se queda
+  // con la medida compacta, que ahí sí cabe.
+  const inputCls = esFuerza
+    ? "bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 w-full outline-none focus:ring-1 focus:ring-orange-500"
+    : "bg-gray-800 text-white text-xs rounded px-2 py-1 w-full outline-none focus:ring-1 focus:ring-orange-500"
+
+  // Los campos DENTRO del bloque de prescripción llevan ancho fijo, así que no
+  // pueden heredar el `w-full` de inputCls: las dos clases se pisan y gana el
+  // w-full, con lo que el primer campo se comía el bloque entero.
+  const inputBloque = "bg-gray-950/60 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 flex-none"
+
+  // Kilo sugerido cuando se prescribe en % del 1RM. Devuelve null si falta algo:
+  // sin test de ese ejercicio no se enseña nada, que es lo acordado.
+  // El «≈» no es adorno: rm_estimado sale de Epley sobre una serie submáxima, así
+  // que esto es un porcentaje de una estimación. Redondear a 2,5 kg porque eso es
+  // lo que se puede montar en una barra.
+  const kgDesde1RM = (f: FilaFuerza): string | null => {
+    if (f.controlTipo !== 'pct1rm') return null
+    const pct = parseFloat(String(f.rir).replace(',', '.'))
+    if (!pct || pct <= 0) return null
+    const ej = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
+    if (!ej) return null
+    const dato = rmPorEjercicio[String(ej.nombre).trim().toLowerCase()]
+    if (!dato?.rm) return null
+    return '≈ ' + (Math.round(dato.rm * pct / 100 / 2.5) * 2.5) + ' kg'
+  }
 
   return (
     <div>
@@ -601,58 +672,73 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         <div className="overflow-x-auto mb-4">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-gray-400 text-xs border-b border-gray-700">
-                <th className="text-left py-2 px-1 w-8">#</th>
-                <th className="text-left py-2 px-1 w-24">Tipo</th>
-                <th className="text-left py-2 px-1">Músculo / Ejercicio</th>
-                <th className="text-left py-2 px-1 w-16">Series</th>
-                <th className="text-left py-2 px-1 w-36">Reps / tiempo</th>
-                <th className="text-left py-2 px-1 w-16">Kg</th>
-                <th className="text-left py-2 px-1 w-14">RIR</th>
-                <th className="text-left py-2 px-1 w-20">Descanso</th>
-                <th className="text-left py-2 px-1">Notas</th>
-                <th className="py-2 px-1 w-16"></th>
+              {/* Las cuatro casillas de la prescripción van bajo UNA cabecera: se leen
+                  como lo escribiría un entrenador — 4 × 8 @ 75% · RIR 2 — y los
+                  separadores × y @ son lo que convierte cuatro huecos sueltos en una
+                  frase. */}
+              <tr className="text-gray-400 text-[11px] uppercase tracking-wide border-b border-gray-700">
+                <th className="text-left py-2 px-1.5 w-9">#</th>
+                <th className="text-left py-2 px-1.5 w-[236px]">Tipo · cualidad</th>
+                <th className="text-left py-2 px-1.5 min-w-[380px]">Músculo / Ejercicio</th>
+                <th className="text-left py-2 px-1.5 min-w-[430px]">Prescripción</th>
+                <th className="text-left py-2 px-1.5 w-[104px]">Descanso</th>
+                <th className="text-left py-2 px-1.5 min-w-[180px]">Notas</th>
+                <th className="py-2 px-1.5 w-[82px]"></th>
               </tr>
             </thead>
             <tbody>
               {filasF.map((f, i) => (
                 <React.Fragment key={i}>
                 <tr className="border-b border-gray-800">
-                  <td className="py-1 px-1 text-orange-400 font-bold">{f.orden}</td>
-                  <td className="py-1 px-1">
-                    {/* Un isométrico es tiempo por definición, así que al elegirlo se
-                        propone tiempo. Sigue siendo una propuesta: el conmutador de
-                        la columna manda, por si alguien cuenta un isométrico en reps. */}
-                    <select value={f.tipoSerie}
-                      onChange={e => {
-                        updateF(i, 'tipoSerie', e.target.value)
-                        if (e.target.value === 'Isométrico' && f.medida !== 'tiempo') updateF(i, 'medida', 'tiempo')
-                      }} className={inputCls}>
-                      <option value="Normal">Normal</option>
-                      <option value="Superserie">Superserie</option>
-                      <option value="Drop set">Drop set</option>
-                      <option value="Complex">Complex</option>
-                      <option value="Isométrico">Isométrico</option>
-                    </select>
-                    {modoFuerza === 'compleja' && (
-                      <select value={f.zonaFuerzaTarea} onChange={e => updateF(i, 'zonaFuerzaTarea', e.target.value)} className={inputCls + ' mt-1'} title="Cualidad de fuerza">
-                        <option value="">Cualidad…</option>
-                        {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
+                  <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
+                  {/* Tipo y cualidad EN HORIZONTAL. Apilados hacían que la fila tuviera
+                      dos pisos y descolocaban la alineación de todo lo demás.
+                      Los mínimos van con número, no con min-w-0: poner 0 es justo lo
+                      que le da permiso a un flex item para encogerse por debajo de su
+                      contenido, y era lo que cortaba «Isométrico» por mucho que se
+                      ensanchara la columna. Medido: «Isométrico» pide 102px y
+                      «RFMIX1» 84. */}
+                  <td className="py-1.5 px-1.5">
+                    <div className="flex gap-1.5">
+                      {/* Un isométrico es tiempo por definición, así que al elegirlo se
+                          propone tiempo. Sigue siendo una propuesta: el conmutador
+                          manda, por si alguien cuenta un isométrico en reps. */}
+                      <select value={f.tipoSerie}
+                        onChange={e => {
+                          updateF(i, 'tipoSerie', e.target.value)
+                          if (e.target.value === 'Isométrico' && f.medida !== 'tiempo') updateF(i, 'medida', 'tiempo')
+                        }} className={inputCls + ' flex-1 min-w-[110px]'}>
+                        <option value="Normal">Normal</option>
+                        <option value="Superserie">Superserie</option>
+                        <option value="Drop set">Drop set</option>
+                        <option value="Complex">Complex</option>
+                        <option value="Isométrico">Isométrico</option>
                       </select>
-                    )}
-                  </td>
-                  <td className="py-1 px-1">
-                    <div className="flex flex-col gap-1">
-                      <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={inputCls}>
-                        <option value="">Grupo muscular</option>
-                        {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
-                      </select>
-                      {f.grupoMuscularSel && (
-                        <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={inputCls}>
-                          <option value="">Ejercicio</option>
-                          {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                      {modoFuerza === 'compleja' && (
+                        <select value={f.zonaFuerzaTarea} onChange={e => updateF(i, 'zonaFuerzaTarea', e.target.value)} className={inputCls + ' flex-none w-[92px]'} title="Cualidad de fuerza">
+                          <option value="">Cual…</option>
+                          {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
                         </select>
                       )}
+                    </div>
+                  </td>
+                  <td className="py-1.5 px-1.5">
+                    <div className="flex flex-col gap-1.5">
+                      {/* El ejercicio manda sobre el grupo muscular: es lo que se lee
+                          para saber qué es. El grupo es un filtro para encontrarlo y
+                          puede recortarse sin perder nada. */}
+                      <div className="flex gap-1.5">
+                        <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={inputCls + ' basis-[42%] min-w-[120px]'}>
+                          <option value="">Grupo muscular</option>
+                          {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
+                        </select>
+                        {f.grupoMuscularSel && (
+                          <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={inputCls + ' basis-[58%] min-w-[190px]'}>
+                            <option value="">Ejercicio</option>
+                            {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                          </select>
+                        )}
+                      </div>
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
                           <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>
@@ -677,36 +763,59 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       )}
                     </div>
                   </td>
-                  <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                  {/* El conmutador va AL LADO, no debajo: apilado le añadía altura a
-                      la celda y su campo quedaba más arriba que los de las demás
-                      columnas, que se centran. Al lado, la celda vuelve a ser de una
-                      línea y todo se alinea solo.
-                      El botón enseña la unidad ACTUAL y al pulsarlo cambia. Un
-                      <select> por fila serían seis desplegables de ruido en una
-                      sesión de seis ejercicios, para algo que se toca de vez en
-                      cuando. En tiempo el campo pasa a texto: acepta «45» y «1:30». */}
-                  <td className="py-1 px-1">
-                    <div className="flex items-center gap-1">
+                  {/* LA PRESCRIPCIÓN, EN UN BLOQUE.
+                      Las cuatro casillas eran cuatro columnas sueltas y había que
+                      leerlas una a una para saber qué habías mandado. Juntas y con los
+                      separadores × y @ se leen como lo escribe un entrenador:
+                          4 × 8 @ 75% · RIR 2
+                      Los dos conmutadores viven DENTRO, pegados a lo que modifican.
+                      El botón enseña la unidad/escala ACTUAL y al pulsarlo pasa a la
+                      siguiente: un <select> por fila serían seis desplegables de ruido
+                      en una sesión de seis ejercicios. */}
+                  <td className="py-1.5 px-1.5">
+                    <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
+                      <input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)}
+                        className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
+                      <span className="text-gray-500 flex-none select-none">×</span>
+                      {/* En tiempo el campo pasa a texto: acepta «45» y «1:30». */}
                       <input type={f.medida === 'tiempo' ? 'text' : 'number'} value={f.repsFuerza}
                         onChange={e => updateF(i, 'repsFuerza', e.target.value)}
-                        className={inputCls + ' flex-1 min-w-0'}
-                        placeholder={f.medida === 'tiempo' ? '45 ó 1:30' : '10'}
+                        className={inputBloque + ' w-[74px]'}
+                        placeholder={f.medida === 'tiempo' ? '1:30' : '10'}
                         title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie'} />
                       <button type="button"
                         onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
                         title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
-                        className={'flex-none px-2 py-1 rounded text-[11px] font-semibold border transition ' +
+                        className={'flex-none px-2 py-1.5 rounded-md text-[11.5px] font-bold border transition ' +
                           (f.medida === 'tiempo'
                             ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30'
                             : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600')}>
                         {f.medida === 'tiempo' ? 'seg' : 'reps'}
                       </button>
+                      <span className="text-gray-500 flex-none select-none">@</span>
+                      {/* Con %1RM el kilo sale solo del test del atleta y se enseña de
+                          fantasma. Si no tiene ese test, no aparece nada. */}
+                      <input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)}
+                        className={inputBloque + ' w-[96px]'}
+                        placeholder={f.controlTipo === 'pct1rm' ? (kgDesde1RM(f) ?? 'kg') : 'kg'}
+                        title={f.controlTipo === 'pct1rm' && kgDesde1RM(f) ? 'Calculado con su 1RM más reciente de este ejercicio' : 'Peso'} />
+                      <span className="text-gray-500 flex-none select-none">·</span>
+                      <input type="text" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)}
+                        className={inputBloque + ' w-[62px]'}
+                        placeholder={controlDe(f.controlTipo).ph}
+                        title={controlDe(f.controlTipo).ayuda} />
+                      <button type="button"
+                        onClick={() => updateF(i, 'controlTipo', siguienteControl(f.controlTipo))}
+                        title={controlDe(f.controlTipo).ayuda + ' — pulsa para cambiar de escala'}
+                        className={'flex-none px-2 py-1.5 rounded-md text-[11.5px] font-bold border transition ' +
+                          (f.controlTipo === 'rir'
+                            ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                            : 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30')}>
+                        {controlDe(f.controlTipo).corto}
+                      </button>
                     </div>
                   </td>
-                  <td className="py-1 px-1"><input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)} className={inputCls} placeholder="kg" /></td>
-                  <td className="py-1 px-1"><input type="number" min="0" max="4" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)} className={inputCls} placeholder="0-4" /></td>
-                  <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
+                  <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                   <td className="py-1 px-1">
                     <div className="flex gap-1">
@@ -715,24 +824,35 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                 </tr>
+                {/* El ejercicio encadenado sigue el MISMO reparto de columnas que la
+                    fila de arriba: son 7, no las 10 de antes. Su prescripción va en el
+                    mismo bloque para que se lea igual. */}
                 {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && f.ejercicioSelId2 && (
                   <tr className="border-b border-orange-900 bg-orange-950/20">
-                    <td className="py-1 px-1"></td>
-                    <td className="py-1 px-1">
-                      <span className="text-orange-400 text-xs font-medium">↳ EJ2</span>
+                    <td className="py-1.5 px-1.5"></td>
+                    <td className="py-1.5 px-1.5">
+                      <span className="text-orange-400 text-xs font-medium">↳ Encadenado</span>
                     </td>
-                    <td className="py-1 px-1">
-                      <p className="text-orange-300 text-xs px-2 py-1 truncate">
+                    <td className="py-1.5 px-1.5">
+                      <p className="text-orange-300 text-sm px-2 py-1.5 truncate">
                         {ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2))?.nombre || '—'}
                       </p>
                     </td>
-                    <td className="py-1 px-1"><input type="number" value={f.series2} onChange={e => updateF(i, 'series2', e.target.value)} className={inputCls} placeholder="4" /></td>
-                    <td className="py-1 px-1"><input type="number" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)} className={inputCls} placeholder="10" /></td>
-                    <td className="py-1 px-1"><input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)} className={inputCls} placeholder="kg" /></td>
-                    <td className="py-1 px-1"><input type="number" min="0" max="4" value={(f as any).rir2 || ''} onChange={e => updateF(i, 'rir2', e.target.value)} className={inputCls} placeholder="0-4" /></td>
-                    <td className="py-1 px-1"></td>
-                    <td className="py-1 px-1"></td>
-                    <td className="py-1 px-1"></td>
+                    <td className="py-1.5 px-1.5">
+                      <div className="flex items-center gap-1.5 bg-gray-800/40 border border-orange-900/60 rounded-xl px-2.5 py-1.5">
+                        <input type="number" value={f.series2} onChange={e => updateF(i, 'series2', e.target.value)}
+                          className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
+                        <span className="text-gray-500 flex-none select-none">×</span>
+                        <input type="number" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)}
+                          className={inputBloque + ' w-[74px]'} placeholder="10" title="Repeticiones" />
+                        <span className="text-gray-500 flex-none select-none">@</span>
+                        <input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)}
+                          className={inputBloque + ' w-[96px]'} placeholder="kg" title="Peso" />
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-1.5"></td>
+                    <td className="py-1.5 px-1.5"></td>
+                    <td className="py-1.5 px-1.5"></td>
                   </tr>
                 )}
                 </React.Fragment>

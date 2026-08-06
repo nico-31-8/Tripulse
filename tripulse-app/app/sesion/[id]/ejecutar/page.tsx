@@ -271,7 +271,12 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           // un campo que significa dos cosas es lo que hace que luego una media
           // mezcle reps con segundos sin que nadie se entere.
           tiempo_real: serie.tiempo_real ? Number(serie.tiempo_real) : null,
-          rir_real: serie.rir_real ? Number(serie.rir_real) : null,
+          // `control_real` + `control_tipo` sustituyen a `rir_real`, que solo sabía
+          // hablar de RIR. El tipo se guarda TAMBIÉN aquí, no solo en el ejercicio:
+          // si mañana el entrenador cambia la prescripción de RIR a RPE, estos
+          // registros seguirían diciendo la verdad sobre en qué escala se anotaron.
+          control_real: serie.control_real ? Number(serie.control_real) : null,
+          control_tipo: serie.control_real ? (ejById[Number(ejId)]?.control_tipo || 'rir') : null,
           completada: serie.completada || false,
           ejercicio_numero: serie.ejercicio_numero || 1,
         })
