@@ -126,6 +126,20 @@ export default function AdminPage() {
   }, [router, cargarTodo])
 
   const crearInvitacion = async () => {
+    // Dejar el cupo en blanco creaba un entrenador SIN LÍMITE: su código público
+    // admitía altas para siempre. La ausencia de decisión no puede dar el permiso
+    // máximo. Para quitar el tope hay que ir a su ficha y decirlo a propósito.
+    if (fRol === 'entrenador') {
+      const n = Number(fCupo)
+      if (fCupo.trim() === '') {
+        setError('Pon cuántos deportistas puede tener. Si quieres que no tenga tope, créalo con un número y luego quítaselo desde su ficha, en «cambiar cupo».')
+        return
+      }
+      if (!Number.isInteger(n) || n < 0) {
+        setError('El cupo tiene que ser un número entero de 0 en adelante.')
+        return
+      }
+    }
     setCreando(true); setError(''); setCodigoNuevo('')
     const { data, error: err } = await supabase.rpc('crear_invitacion', {
       _rol: fRol,
@@ -151,11 +165,28 @@ export default function AdminPage() {
   }
 
   const cambiarCupo = async (id: string, nombre: string, actual: number | null) => {
-    const v = prompt('Cupo de deportistas para ' + nombre + '.\nDéjalo vacío para "sin límite".', actual == null ? '' : String(actual))
-    if (v === null) return
+    // Antes, dejarlo vacío significaba "sin límite". Un resbalón en el teclado le
+    // quitaba el tope a un entrenador y nada lo decía. Ahora vacío es no tocar
+    // nada, y para quitar el tope hay que escribirlo con todas las letras.
+    const v = prompt(
+      'Cupo de deportistas para ' + nombre + '.\n\n' +
+      'Un número, o escribe SIN LIMITE para quitarle el tope.\n' +
+      'Vacío = dejarlo como está.',
+      actual == null ? 'SIN LIMITE' : String(actual))
+    if (v === null || v.trim() === '') return
+
+    const limpio = v.trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    const sinLimite = limpio === 'sin limite'
+    const n = Number(v)
+    if (!sinLimite && (!Number.isInteger(n) || n < 0)) {
+      setError('Escribe un número entero de 0 en adelante, o SIN LIMITE.')
+      return
+    }
+    if (sinLimite && !confirm(nombre + ' podrá dar de alta deportistas sin ningún tope, y su código público quedará abierto.\n\n¿Seguro?')) return
+
     const { error: err } = await supabase.rpc('admin_fijar_cupo', {
       _id_entrenador: id,
-      _cupo: v.trim() === '' ? null : Number(v),
+      _cupo: sinLimite ? null : n,
     })
     if (err) { setError(err.message); return }
     await cargarTodo()
@@ -245,6 +276,9 @@ export default function AdminPage() {
               <div className="flex flex-col gap-2">
                 {entrenadoresCuentas.map(c => {
                   const lleno = c.cupo_deportistas != null && c.n_deportistas >= c.cupo_deportistas
+                  // Sin tope no es un dato neutro, es una puerta abierta: se ve en rojo
+                  // y con la palabra escrita. El «∞» de antes se leía como un detalle.
+                  const sinTope = c.cupo_deportistas == null
                   return (
                     <div key={c.id} className="bg-gray-900 border border-gray-800 rounded-xl p-3.5">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -253,8 +287,10 @@ export default function AdminPage() {
                           <p className="text-gray-500 text-xs truncate">{c.email}</p>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Chip tono={lleno ? 'rojo' : 'naranja'}>
-                            {c.n_deportistas} / {c.cupo_deportistas == null ? '∞' : c.cupo_deportistas} deportistas
+                          <Chip tono={lleno || sinTope ? 'rojo' : 'naranja'}>
+                            {sinTope
+                              ? c.n_deportistas + ' deportistas · SIN TOPE'
+                              : c.n_deportistas + ' / ' + c.cupo_deportistas + ' deportistas'}
                           </Chip>
                           <button onClick={() => cambiarCupo(c.id, c.nombre || c.email, c.cupo_deportistas)}
                             className="text-gray-500 hover:text-orange-400 text-xs underline transition">cambiar cupo</button>
@@ -341,7 +377,9 @@ export default function AdminPage() {
                       <option value="">Sin entrenador (se vincula él luego)</option>
                       {entrenadores.map(e2 => (
                         <option key={e2.id} value={e2.id}>
-                          {e2.nombre} — {e2.n_deportistas}/{e2.cupo_deportistas == null ? '∞' : e2.cupo_deportistas}
+                          {e2.nombre} — {e2.cupo_deportistas == null
+                            ? e2.n_deportistas + ' · sin tope'
+                            : e2.n_deportistas + '/' + e2.cupo_deportistas}
                         </option>
                       ))}
                     </select>
