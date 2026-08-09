@@ -51,6 +51,10 @@ function objetivoTarea(t: any): string {
 // En fuerza lo que el atleta necesita leer es QUÉ ejercicio, no la zona: el nombre
 // vive en la tabla `ejercicios`. Con superserie/complex se encadena un segundo.
 function ejercicioTarea(t: any): { nombre: string; tipo: string | null } | null {
+  // En técnica pasa exactamente lo mismo: lo que hay que leer es QUÉ ejercicio. La
+  // zona guardada es AER, que es verdad para la carga pero no dice nada de lo que
+  // toca hacer. Sin `tipo`, que la etiqueta «Técnica» ya la lleva el chip de zona.
+  if (t.tecnica?.nombre) return { nombre: t.tecnica.nombre, tipo: null }
   const e = t.ejercicios?.[0]
   if (!e?.nombre) return null
   const nombre = e.ejercicio_encadenado_nombre ? e.nombre + ' + ' + e.ejercicio_encadenado_nombre : e.nombre
@@ -269,7 +273,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                     {t.zona_entrenamiento && (
                       <span className="text-[11px] font-bold px-2 py-[3px] rounded-md flex-shrink-0"
                         style={{ color: zc, background: `color-mix(in oklab, ${zc} 17%, transparent)` }}>
-                        {t.zona_entrenamiento}
+                        {t.tecnica ? 'Técnica' : t.zona_entrenamiento}
                       </span>
                     )}
                     <div className="flex-1 min-w-0 flex flex-col gap-0.5">

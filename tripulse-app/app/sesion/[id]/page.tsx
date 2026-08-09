@@ -35,6 +35,7 @@ function iniciales(nombre: string | null | undefined): string {
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
+import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
@@ -120,6 +121,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [editDescanso, setEditDescanso] = useState('')
   const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
   const [editMedValor, setEditMedValor] = useState('')
+  // Editar la técnica también desde AQUÍ. Estaba solo en la vista de tabla, y tener
+  // la misma tarea editable de dos sitios con distintos campos es como se acaba
+  // teniendo dos comportamientos para lo mismo.
+  const [editTecnicaId, setEditTecnicaId] = useState('')
+  const [drillsTecnica, setDrillsTecnica] = useState<any[]>([])
   const [editComentario, setEditComentario] = useState('')
   // El cronómetro y el cuestionario post-sesión viven ahora en BriefingSesion: eran
   // del deportista y el entrenador nunca llegaba a ellos.
@@ -233,7 +239,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él, una
       // sesión de fuerza en el briefing del deportista diría «4 series» de nada.
       supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre)').eq('id_sesion', id))
-    setTareas(tar || [])
+    setTareas(await conTecnica(tar))
     if (ses) {
       let depIdLocal: number | null = ses.id_deportista ?? null
       const { data: micro } = await supabase.from('microciclo').select('id_mesociclo, tipo').eq('id', ses.id_microciclo).single()
@@ -327,6 +333,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     const med = detectarMedicion(t)
     setEditMedTipo(med.tipo)
     setEditMedValor(med.valor)
+    setEditTecnicaId(t.tecnica_id ? String(t.tecnica_id) : '')
+    // El catálogo se pide al abrir el modal, no al cargar la página: son 18 filas de
+    // cuatro columnas y no hacen falta hasta que alguien va a editar algo.
+    if (sesion?.disciplina !== 'Fuerza' && !drillsTecnica.length) catalogoTecnica().then(setDrillsTecnica)
   }
 
   const guardarEditarTarea = async (e: React.FormEvent) => {
@@ -337,6 +347,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       series: editSeries ? Number(editSeries) : null,
       descanso_segundos: editDescanso ? Number(editDescanso) : null,
       comentario: editComentario || null,
+      tecnica_id: sesion?.disciplina === 'Fuerza' ? null : (editTecnicaId ? Number(editTecnicaId) : null),
     }).eq('id', tareaEditando.id)
     await guardarMedicion(supabase, tareaEditando, editMedTipo, editMedValor)
     // La medición cambia filas anidadas; recargar es más simple y fiable que
@@ -545,12 +556,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-end items-center border-b border-gray-800">
         <button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button>
       </nav>
-      {/* Las sesiones de fuerza usan más ancho: su tabla lleva nueve columnas y a
-          1024px salía todo a 12px y apretado, con media pantalla vacía a los lados.
-          El resto de disciplinas se queda como estaba: su tabla es más estrecha y
-          estirarla solo separaría las cosas sin ganar nada. */}
-      <div className={'mx-auto px-6 py-6 flex flex-col gap-3.5 ' +
-        (sesion.disciplina === 'Fuerza' ? 'max-w-[1560px]' : 'max-w-5xl')}>
+      {/* La ficha de sesión usa 1560px. A 1024 la tabla de tareas salía toda a 12px y
+          apretada con media pantalla vacía a los lados. Antes esto era solo para
+          fuerza porque la de resistencia era más estrecha; ahora las dos llevan la
+          prescripción agrupada y piden lo mismo (medido: 1392px la de resistencia). */}
+      <div className="mx-auto px-6 py-6 flex flex-col gap-3.5 max-w-[1560px]">
 
         {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
             media pantalla y no decía ni el nombre del deportista. */}
@@ -776,11 +786,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* Columna izquierda: gráfica + tareas. El panel de plantillas es la columna
             derecha y arranca A LA ALTURA DE LA GRÁFICA — si el grid empezara más abajo,
             al aparecer la gráfica el panel se hundiría con la sección y dejaría medio
-            lateral vacío. La fila se ensancha 21rem hacia la derecha (el contenedor es
-            max-w-5xl centrado) para no encoger la zona de tareas. Por debajo de 1700px
-            no cabe ese desbordamiento y el panel se apila debajo. */}
+            lateral vacío.
+            La fila NO se desborda hacia la derecha. Lo hacía (21rem) para no encoger la
+            zona de tareas, y con el contenedor a max-w-5xl colaba; con 1560 ya no: a
+            1700px de pantalla el panel se iba 235px FUERA y la página entera cogía
+            scroll lateral, así que abrías un panel que no podías ver. Ahora el panel
+            vive dentro y con él abierto la tabla dispone de 1142px: se queda 250 corta
+            y scrollea dentro de su tarjeta, que para eso lleva overflow-x-auto. */}
         <div className={mostrarPlantillas
-          ? 'flex flex-col gap-4 min-[1700px]:grid min-[1700px]:grid-cols-[1fr_20rem] min-[1700px]:items-start min-[1700px]:w-[calc(100%+21rem)]'
+          ? 'flex flex-col gap-4 min-[1700px]:grid min-[1700px]:grid-cols-[1fr_20rem] min-[1700px]:items-start'
           : ''}>
         <div className="min-w-0">
 
@@ -1074,6 +1088,31 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 <span className="text-gray-400 text-xs">Zona / intensidad</span>
                 <input type="text" placeholder="Zona (ej: Z2, AEM)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               </label>
+              {/* Cambiar o quitar el ejercicio de técnica, igual que en la vista de
+                  tabla. Sin esto, equivocarse de drill obligaba a borrar la tarea. */}
+              {sesion?.disciplina !== 'Fuerza' && (() => {
+                const drills = filtrarDrills(drillsTecnica, tareaEditando.disciplina)
+                // El que ya tiene puesto va SIEMPRE en la lista, aunque el filtro por
+                // disciplina no lo alcance: si no, el desplegable saldría vacío y al
+                // guardar borraría el ejercicio sin que nadie lo pidiera.
+                const puesto = editTecnicaId ? drillsTecnica.find(e => String(e.id) === String(editTecnicaId)) : null
+                const lista = puesto && !drills.some(d => String(d.id) === String(puesto.id))
+                  ? [puesto, ...drills] : drills
+                return (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Ejercicio de técnica</span>
+                    <select value={editTecnicaId}
+                      onChange={e => {
+                        setEditTecnicaId(e.target.value)
+                        if (e.target.value && !editZona) setEditZona('AER')
+                      }}
+                      className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                      <option value="">Sin técnica — tarea de intensidad normal</option>
+                      {lista.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                    </select>
+                  </label>
+                )
+              })()}
               {/* Medición: el usuario pedía poder cambiar el tiempo/distancia, no solo
                   la zona. La unidad se puede cambiar (m↔km, seg↔min↔mm:ss). */}
               <div className="grid grid-cols-2 gap-3">

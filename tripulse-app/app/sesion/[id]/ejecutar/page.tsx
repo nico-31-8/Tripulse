@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona } from '@/lib/zonas'
+import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
@@ -176,7 +177,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       setPesoDeportista(an.data?.peso || null)
     }
     const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
-    setTareas(tar || [])
+    // Si el entrenador manda un drill, el deportista tiene que ver cuál es y cómo se
+    // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
+    const tarConTecnica = await conTecnica(tar)
+    setTareas(tarConTecnica)
     // Se entra directo a entrenar, pero si no hay nada que registrar eso sería una
     // pantalla vacía: en ese caso se abre por el plan, que sí explica que está vacío.
     if (!tar || !tar.length) setFase('preview')
@@ -503,8 +507,25 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           <div className={'rounded-xl p-5 border mb-6 ' + claseZona(tarea?.zona_entrenamiento)}>
             <div className="flex justify-between items-center mb-3">
               <span className="font-bold text-orange-400">Tarea {tareaActual + 1}</span>
-              {tarea?.zona_entrenamiento && <span className="text-sm bg-black/40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
+              {/* Se guardó AER para que la carga saliera bien, pero lo que le mandaron
+                  fue técnica: eso es lo que tiene que leer. */}
+              {tarea?.tecnica
+                ? <span className="text-sm bg-black/40 px-3 py-1 rounded-full">Técnica</span>
+                : tarea?.zona_entrenamiento && <span className="text-sm bg-black/40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
             </div>
+            {tarea?.tecnica && (
+              <div className="mb-3 bg-black/30 rounded-lg px-4 py-3">
+                <p className="font-bold text-white">{tarea.tecnica.nombre}</p>
+                {tarea.tecnica.descripcion && <p className="text-xs text-gray-400 mt-0.5">{tarea.tecnica.descripcion}</p>}
+                {tarea.tecnica.ejecucion && (
+                  <p className="text-sm text-gray-300 mt-2 whitespace-pre-line">{tarea.tecnica.ejecucion}</p>
+                )}
+                {tarea.tecnica.url_video && (
+                  <a href={tarea.tecnica.url_video} target="_blank" rel="noopener noreferrer"
+                    className="inline-block mt-2 text-orange-400 hover:text-orange-300 text-sm underline">Ver vídeo</a>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3 text-center">
               {tarea?.series && (
                 <div className="bg-black/30 rounded-lg p-2">

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
+import { filtrarDrills } from '@/lib/tecnica'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
 function refZona2(z: ZonaResistencia, disciplina: string, tests: any, fcMax: number) {
@@ -138,6 +139,13 @@ function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number)
   return { fc, rpe, porcentaje, ritmo }
 }
 
+// La técnica NO es una zona, pero se elige como si lo fuera: está en el mismo
+// desplegable porque es donde va la mano. Por debajo la tarea guarda AER, así que
+// carga, SICAT, calendario y mesociclo no se enteran de nada y no cambia una línea
+// de todo eso. Ver supabase/tecnica-en-resistencia.sql.
+export const VALOR_TECNICA = '__tecnica'
+export const ZONA_DE_TECNICA = 'AER'
+
 interface FilaResistencia {
   orden: number
   zona: string
@@ -148,6 +156,11 @@ interface FilaResistencia {
   valorMedicion: string
   intensidadPersonalizada: string
   comentario: string
+  // Solo del formulario. Lo que queda guardado es tecnica_id: si tiene valor, la
+  // tarea es trabajo técnico. Un booleano aparte en la BD sería una segunda verdad
+  // sobre lo mismo, y ahí es donde se pudren los datos.
+  esTecnica: boolean
+  tecnicaId: string
   guardado?: boolean
 }
 
@@ -210,6 +223,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [editComentario, setEditComentario] = useState('')
   const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
   const [editMedValor, setEditMedValor] = useState('')
+  const [editTecnicaId, setEditTecnicaId] = useState('')
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
   const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
@@ -284,6 +298,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const med = detectarMedicion(t)
     setEditMedTipo(med.tipo)
     setEditMedValor(med.valor)
+    setEditTecnicaId(t.tecnica_id ? String(t.tecnica_id) : '')
   }
 
   const guardarEditarTarea = async (e: React.FormEvent) => {
@@ -294,6 +309,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       series: editSeries ? Number(editSeries) : null,
       descanso_segundos: editDescanso ? Number(editDescanso) : null,
       comentario: editComentario || null,
+      // Solo en resistencia. En una sesión de fuerza esto siempre va vacío, y
+      // escribirlo a null es lo correcto: una tarea de fuerza no es trabajo técnico.
+      tecnica_id: esFuerza ? null : (editTecnicaId ? Number(editTecnicaId) : null),
     }).eq('id', tareaEditando.id)
     if (!esFuerza) await guardarMedicion(supabase, tareaEditando, editMedTipo, editMedValor)
     setTareaEditando(null)
@@ -322,6 +340,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     disciplina: disciplinaSesion === 'Brick' ? '' : (disciplinaSesion || ''),
     series: '', descanso: '', tipoMedicion: '', valorMedicion: '',
     intensidadPersonalizada: '', comentario: '',
+    esTecnica: false, tecnicaId: '',
   })
 
   const nuevaFilaF = (): FilaFuerza => ({
@@ -335,12 +354,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     zonaFuerzaTarea: '',
   })
 
-  const updateR = (i: number, key: string, val: any) => {
-    const n = [...filasR]; (n[i] as any)[key] = val; setFilasR(n)
-  }
-  const updateF = (i: number, key: string, val: any) => {
-    const n = [...filasF]; (n[i] as any)[key] = val; setFilasF(n)
-  }
+  // Cambian varias casillas de una fila a la vez. Antes esto se hacía llamando dos
+  // veces seguidas al de una sola clave, y solo funcionaba porque mutaba el objeto
+  // en su sitio: la segunda llamada copiaba el array otra vez desde el mismo render
+  // y habría borrado el primer cambio si no fuera por la mutación. Funcionaba por
+  // accidente. Con la forma funcional no hay que confiar en eso.
+  const parcheR = (i: number, cambios: Partial<FilaResistencia>) =>
+    setFilasR(prev => prev.map((f, idx) => idx === i ? { ...f, ...cambios } : f))
+  const parcheF = (i: number, cambios: Partial<FilaFuerza>) =>
+    setFilasF(prev => prev.map((f, idx) => idx === i ? { ...f, ...cambios } : f))
+
+  const updateR = (i: number, key: string, val: any) => parcheR(i, { [key]: val } as any)
+  const updateF = (i: number, key: string, val: any) => parcheF(i, { [key]: val } as any)
 
   const guardarFilaR = async (i: number) => {
     const f = filasR[i]
@@ -351,6 +376,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
         descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
         comentario: f.comentario || null,
+        // La zona que se guarda es AER, no «técnica»: eso es lo que hace que el
+        // trabajo técnico cuente como el volumen suave que realmente es.
+        tecnica_id: f.tecnicaId ? Number(f.tecnicaId) : null,
         // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
         // se ordenaban distinto (ver lib/tareas-orden).
         orden: tareasGuardadas.length + i + 1,
@@ -437,22 +465,37 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(false)
   }
 
-  // Los campos de la tabla de fuerza suben de 12px/24px de alto a 14px/36px: a la
-  // medida vieja había que apuntar para acertar y costaba leer de un vistazo, con
-  // media pantalla vacía a los lados. El resto de tablas (resistencia) se queda
-  // con la medida compacta, que ahí sí cabe.
+  // Los campos suben de 12px/24px de alto a 14px/36px: a la medida vieja había que
+  // apuntar para acertar y costaba leer de un vistazo, con media pantalla vacía a
+  // los lados. Las dos tablas —fuerza y resistencia— usan ya la misma medida.
   // OJO con el `w-full`: cualquier campo que lleve su propio ancho (w-[92px],
   // basis-[42%]...) NO puede heredarlo, porque las dos reglas se pisan, gana
   // w-full y el campo se sale de su celda. Con `flex-none` encima ni siquiera
   // puede encoger: se mete literalmente sobre el campo de al lado.
-  // Por eso el ancho vive aparte de la base.
-  const campoBase = esFuerza
-    ? "bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500"
-    : "bg-gray-800 text-white text-xs rounded px-2 py-1 outline-none focus:ring-1 focus:ring-orange-500"
+  // Por eso el ancho vive aparte de la base. Misma regla para `flex-none`.
+  const campoBase = "bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500"
   const inputCls = campoBase + ' w-full'
 
-  // Los campos DENTRO del bloque de prescripción llevan ancho fijo propio.
-  const inputBloque = "bg-gray-950/60 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 flex-none"
+  // Los campos DENTRO del bloque de prescripción. La base NO lleva flex: casi todos
+  // van a ancho fijo (inputBloque), pero el último se estira, y si `flex-none`
+  // viviera en la base las dos reglas volverían a pelearse.
+  const campoBloque = "bg-gray-950/60 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500"
+  const inputBloque = campoBloque + ' flex-none'
+
+  // Los conmutadores del bloque: gris cuando están en su valor por defecto, naranja
+  // cuando el entrenador ha elegido algo. Mismo lenguaje que el reps/seg de fuerza.
+  const botonBloque = (activo: boolean) =>
+    'flex-none px-2 py-1.5 rounded-md text-[11.5px] font-bold border transition outline-none ' +
+    (activo
+      ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30'
+      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600')
+
+  const chipCls = 'text-[11px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 whitespace-nowrap'
+
+  const nombreDeBiblioteca = (id: any) =>
+    ejerciciosBiblioteca.find((e: any) => e.id === Number(id))?.nombre || '—'
+
+  const drillsDe = (disciplina: string) => filtrarDrills(ejerciciosBiblioteca, disciplina)
 
   // Kilo sugerido cuando se prescribe en % del 1RM. Devuelve null si falta algo:
   // sin test de ese ejercicio no se enseña nada, que es lo acordado.
@@ -556,7 +599,17 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       </>
                     ) : (
                       <>
-                        <td className="py-2 px-2 text-white">{t.zona_entrenamiento || '—'}</td>
+                        {/* Guardada pone AER, pero lo que el entrenador mandó fue
+                            técnica: se enseña lo que quiso decir, no lo que hizo falta
+                            escribir para que la carga saliera bien. */}
+                        <td className="py-2 px-2 text-white">
+                          {t.tecnica_id ? (
+                            <div className="flex flex-col">
+                              <span className="text-orange-300">Técnica</span>
+                              <span className="text-gray-400 text-xs">{nombreDeBiblioteca(t.tecnica_id)}</span>
+                            </div>
+                          ) : (t.zona_entrenamiento || '—')}
+                        </td>
                         <td className="py-2 px-2 text-gray-300">{t.disciplina || '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.series || '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
@@ -593,18 +646,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         <div className="overflow-x-auto mb-4">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-gray-400 text-xs border-b border-gray-700">
-                <th className="text-left py-2 px-1 w-8">#</th>
-                <th className="text-left py-2 px-1 w-28">Zona</th>
-                <th className="text-left py-2 px-1 w-28">Disciplina</th>
-                <th className="text-left py-2 px-1 w-16">Series</th>
-                <th className="text-left py-2 px-1 w-20">Descanso</th>
-                <th className="text-left py-2 px-1 w-24">Medición</th>
-                <th className="text-left py-2 px-1 w-20">Valor</th>
-                <th className="text-left py-2 px-1">Ref. zona</th>
-                <th className="text-left py-2 px-1 w-28">Intens. propia</th>
-                <th className="text-left py-2 px-1 w-28">Comentario</th>
-                <th className="py-2 px-1 w-16"></th>
+              {/* Mismo reparto que la tabla de fuerza: las casillas que forman la
+                  prescripción van bajo UNA cabecera, porque juntas se leen como lo
+                  escribe un entrenador — 4 × 1000 m @ 4:12–4:41 /km — y sueltas hay
+                  que ir columna por columna para saber qué has mandado. */}
+              <tr className="text-gray-400 text-[11px] uppercase tracking-wide border-b border-gray-700">
+                <th className="text-left py-2 px-1.5 w-9">#</th>
+                <th className="text-left py-2 px-1.5 w-[300px]">Zona · disciplina</th>
+                <th className="text-left py-2 px-1.5 min-w-[430px]">Prescripción</th>
+                <th className="text-left py-2 px-1.5 w-[104px]">Descanso</th>
+                <th className="text-left py-2 px-1.5 min-w-[210px]">Ref. de la zona</th>
+                <th className="text-left py-2 px-1.5 min-w-[180px]">Notas</th>
+                <th className="py-2 px-1.5 w-[78px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -612,54 +665,122 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 const ref = getRef(f.zona, f.disciplina)
                 return (
                   <tr key={i} className="border-b border-gray-800">
-                    <td className="py-1 px-1 text-orange-400 font-bold">{f.orden}</td>
-                    <td className="py-1 px-1">
-                      <select value={f.zona} onChange={e => updateR(i, 'zona', e.target.value)} className={inputCls}>
-                        <option value="">—</option>
-                        {sistema === 2
-                          ? FACTORES_RESISTENCIA.map(factor => (
-                              <optgroup key={factor} label={factor}>
-                                {ZONAS_RESISTENCIA.filter(z => z.factor === factor).map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
-                              </optgroup>
-                            ))
-                          : ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
-                      </select>
+                    <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
+                    {/* Zona y disciplina en horizontal, no apiladas: apiladas hacen la
+                        fila de dos pisos y descolocan la alineación de todo lo demás. */}
+                    <td className="py-1.5 px-1.5">
+                      <div className="flex gap-1.5">
+                        {/* «Técnica» vive aquí porque es donde va la mano, pero no es
+                            una zona: al elegirla la fila guarda AER. Lo que se ve se
+                            calcula del estado, no se guarda por duplicado. */}
+                        <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
+                          onChange={e => parcheR(i, e.target.value === VALOR_TECNICA
+                            ? { esTecnica: true, zona: ZONA_DE_TECNICA }
+                            : { esTecnica: false, tecnicaId: '', zona: e.target.value })}
+                          className={campoBase + ' flex-1 min-w-[150px]'}>
+                          <option value="">Zona</option>
+                          <optgroup label="Sin intensidad">
+                            <option value={VALOR_TECNICA}>Técnica</option>
+                          </optgroup>
+                          {sistema === 2
+                            ? FACTORES_RESISTENCIA.map(factor => (
+                                <optgroup key={factor} label={factor}>
+                                  {ZONAS_RESISTENCIA.filter(z => z.factor === factor).map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                                </optgroup>
+                              ))
+                            : ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
+                        </select>
+                        <select value={f.disciplina} onChange={e => updateR(i, 'disciplina', e.target.value)} className={campoBase + ' flex-none w-[124px]'}>
+                          <option value="">Deporte</option>
+                          <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
+                        </select>
+                      </div>
                     </td>
-                    <td className="py-1 px-1">
-                      <select value={f.disciplina} onChange={e => updateR(i, 'disciplina', e.target.value)} className={inputCls}>
-                        <option value="">—</option>
-                        <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
-                      </select>
+                    {/* LA PRESCRIPCIÓN, EN UN BLOQUE — igual que en fuerza.
+                        La unidad va DENTRO, pegada al número que modifica. Aquí es un
+                        desplegable y no un botón que cicla como el reps/seg de fuerza:
+                        son seis unidades en dos familias, y pulsar cinco veces para
+                        llegar a «reps» es peor que abrir una lista. */}
+                    <td className="py-1.5 px-1.5">
+                      <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
+                        <input type="number" value={f.series} onChange={e => updateR(i, 'series', e.target.value)}
+                          className={inputBloque + ' w-[56px]'} placeholder="4" title="Series" />
+                        <span className="text-gray-500 flex-none select-none">×</span>
+                        <input type="text" value={f.valorMedicion} onChange={e => updateR(i, 'valorMedicion', e.target.value)}
+                          className={inputBloque + ' w-[76px]'} placeholder="1000" title="Cuánto en cada serie" />
+                        <select value={f.tipoMedicion} onChange={e => updateR(i, 'tipoMedicion', e.target.value)}
+                          className={botonBloque(!!f.tipoMedicion)} title="Unidad de la serie">
+                          <option value="">und.</option>
+                          <optgroup label="Distancia">
+                            <option value="m">m</option>
+                            <option value="km">km</option>
+                          </optgroup>
+                          <optgroup label="Tiempo">
+                            <option value="seg">seg</option>
+                            <option value="min">min</option>
+                            <option value="mmss">mm:ss</option>
+                          </optgroup>
+                          <option value="reps">reps</option>
+                        </select>
+                        <span className="text-gray-500 flex-none select-none">@</span>
+                        {/* El ritmo/vatios de la zona sale de fantasma, igual que el
+                            «≈ 82,5 kg» del %1RM en fuerza. getRef solo devuelve `ritmo`
+                            si el atleta tiene hecho el test que toca (VAM, FTP o CSS):
+                            sin test no se propone nada, que es lo acordado. Escribir
+                            encima manda. */}
+                        <input type="text" value={f.intensidadPersonalizada} onChange={e => updateR(i, 'intensidadPersonalizada', e.target.value)}
+                          className={campoBloque + ' flex-1 min-w-[130px]'}
+                          placeholder={ref?.ritmo || 'Intensidad'}
+                          title={ref?.ritmo ? 'Intensidad propia — en gris, lo que sale de sus tests' : 'Intensidad propia'} />
+                      </div>
+                      {/* El ejercicio de técnica va en una segunda línea y solo aparece
+                          cuando toca, así que no le quita ancho a nada el resto del
+                          tiempo. Mismo sitio que el «encadenar» de fuerza. */}
+                      {f.esTecnica && (() => {
+                        const drills = drillsDe(f.disciplina)
+                        return (
+                          <div className="flex items-center gap-1.5 mt-1.5 pl-1">
+                            <span className="text-orange-400 text-xs flex-none">↳ Técnica</span>
+                            {drills.length > 0 ? (
+                              <select value={f.tecnicaId} onChange={e => updateR(i, 'tecnicaId', e.target.value)}
+                                className={campoBase + ' flex-1 min-w-[180px]'}>
+                                <option value="">Elige el ejercicio…</option>
+                                {drills.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                              </select>
+                            ) : (
+                              // Mejor decir por qué está vacío que enseñar una lista sin nada
+                              // y dejar que parezca que la app está rota.
+                              <span className="text-gray-500 text-xs">
+                                No hay ejercicios de técnica{f.disciplina ? ' de ' + f.disciplina : ''} en la biblioteca todavía.
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </td>
-                    <td className="py-1 px-1"><input type="number" value={f.series} onChange={e => updateR(i, 'series', e.target.value)} className={inputCls} placeholder="4" /></td>
-                    <td className="py-1 px-1"><input type="text" value={f.descanso} onChange={e => updateR(i, 'descanso', e.target.value)} className={inputCls} placeholder="1:30" /></td>
-                    <td className="py-1 px-1">
-                      <select value={f.tipoMedicion} onChange={e => updateR(i, 'tipoMedicion', e.target.value)} className={inputCls}>
-                        <option value="">—</option>
-                        <optgroup label="Distancia">
-                          <option value="m">m</option>
-                          <option value="km">km</option>
-                        </optgroup>
-                        <optgroup label="Tiempo">
-                          <option value="seg">seg</option>
-                          <option value="min">min</option>
-                          <option value="mmss">mm:ss</option>
-                        </optgroup>
-                        <option value="reps">reps</option>
-                      </select>
+                    <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateR(i, 'descanso', e.target.value)} className={inputCls} placeholder="1:30" /></td>
+                    {/* La referencia en chips y no en cuatro líneas de colores: así deja
+                        de ser el elemento más alto de la fila y de marcar la altura de
+                        todos los demás. */}
+                    <td className="py-1.5 px-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {ref?.porcentaje && <span className={chipCls + ' text-orange-300'}>{ref.porcentaje}</span>}
+                        {ref?.ritmo && <span className={chipCls + ' text-blue-400'}>{ref.ritmo}</span>}
+                        {ref?.fc && <span className={chipCls + ' text-gray-400'}>{ref.fc}</span>}
+                        {ref?.rpe && <span className={chipCls + ' text-gray-500'}>{ref.rpe}</span>}
+                        {!ref && <span className="text-gray-600 text-xs">—</span>}
+                      </div>
                     </td>
-                    <td className="py-1 px-1"><input type="text" value={f.valorMedicion} onChange={e => updateR(i, 'valorMedicion', e.target.value)} className={inputCls} placeholder="200" /></td>
-                    <td className="py-1 px-1 text-xs">
-                      {ref?.porcentaje && <p className="text-orange-400">{ref.porcentaje}</p>}
-                      {ref?.ritmo && <p className="text-blue-400">{ref.ritmo}</p>}
-                      {ref?.fc && <p className="text-gray-400">{ref.fc}</p>}
-                      {ref?.rpe && <p className="text-gray-500">{ref.rpe}</p>}
-                    </td>
-                    <td className="py-1 px-1"><input type="text" value={f.intensidadPersonalizada} onChange={e => updateR(i, 'intensidadPersonalizada', e.target.value)} className={inputCls} placeholder="Intens..." /></td>
-                    <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateR(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
-                    <td className="py-1 px-1">
+                    <td className="py-1.5 px-1.5"><input type="text" value={f.comentario} onChange={e => updateR(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
+                    <td className="py-1.5 px-1.5">
                       <div className="flex gap-1">
-                        <button onClick={() => guardarFilaR(i)} disabled={loading} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition">✓</button>
+                        {/* Con «Técnica» elegida hay que decir CUÁL, si no lo guardado
+                            sería un AER suelto y el trabajo técnico se perdería sin
+                            avisar. Mismo criterio que fuerza, que tampoco guarda sin
+                            ejercicio. */}
+                        <button onClick={() => guardarFilaR(i)} disabled={loading || (f.esTecnica && !f.tecnicaId)}
+                          title={f.esTecnica && !f.tecnicaId ? 'Elige el ejercicio de técnica' : 'Guardar'}
+                          className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
                         <button onClick={() => setFilasR(prev => prev.filter((_, idx) => idx !== i))} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition">×</button>
                       </div>
                     </td>
@@ -708,10 +829,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           propone tiempo. Sigue siendo una propuesta: el conmutador
                           manda, por si alguien cuenta un isométrico en reps. */}
                       <select value={f.tipoSerie}
-                        onChange={e => {
-                          updateF(i, 'tipoSerie', e.target.value)
-                          if (e.target.value === 'Isométrico' && f.medida !== 'tiempo') updateF(i, 'medida', 'tiempo')
-                        }} className={campoBase + ' flex-1 min-w-[110px]'}>
+                        onChange={e => parcheF(i, e.target.value === 'Isométrico' && f.medida !== 'tiempo'
+                          ? { tipoSerie: e.target.value, medida: 'tiempo' }
+                          : { tipoSerie: e.target.value })}
+                        className={campoBase + ' flex-1 min-w-[110px]'}>
                         <option value="Normal">Normal</option>
                         <option value="Superserie">Superserie</option>
                         <option value="Drop set">Drop set</option>
@@ -790,10 +911,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       <button type="button"
                         onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
                         title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
-                        className={'flex-none px-2 py-1.5 rounded-md text-[11.5px] font-bold border transition ' +
-                          (f.medida === 'tiempo'
-                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30'
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600')}>
+                        className={botonBloque(f.medida === 'tiempo')}>
                         {f.medida === 'tiempo' ? 'seg' : 'reps'}
                       </button>
                       <span className="text-gray-500 flex-none select-none">@</span>
@@ -811,10 +929,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       <button type="button"
                         onClick={() => updateF(i, 'controlTipo', siguienteControl(f.controlTipo))}
                         title={controlDe(f.controlTipo).ayuda + ' — pulsa para cambiar de escala'}
-                        className={'flex-none px-2 py-1.5 rounded-md text-[11.5px] font-bold border transition ' +
-                          (f.controlTipo === 'rir'
-                            ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                            : 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30')}>
+                        className={botonBloque(f.controlTipo !== 'rir')}>
                         {controlDe(f.controlTipo).corto}
                       </button>
                     </div>
@@ -885,6 +1000,42 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 <span className="text-gray-400 text-xs">Zona / intensidad</span>
                 <input type="text" placeholder="Zona (ej: Z2, AEM)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               </label>
+              {/* Cambiar o quitar el ejercicio de técnica. Sin esto, equivocarse de
+                  drill obligaba a borrar la tarea entera y volver a escribirla. */}
+              {!esFuerza && (() => {
+                const drills = drillsDe(tareaEditando.disciplina)
+                // El drill que tiene puesto va en la lista SIEMPRE, aunque el filtro por
+                // disciplina no lo alcance (si a la tarea le cambiaron el deporte, por
+                // ejemplo). Si no, el desplegable saldría en blanco y al guardar se
+                // borraría el ejercicio sin que nadie lo hubiera pedido.
+                const puesto = editTecnicaId
+                  ? ejerciciosBiblioteca.find((e: any) => String(e.id) === String(editTecnicaId))
+                  : null
+                const lista = puesto && !drills.some((d: any) => String(d.id) === String(puesto.id))
+                  ? [puesto, ...drills] : drills
+                return (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-gray-400 text-xs">Ejercicio de técnica</span>
+                    <select value={editTecnicaId}
+                      onChange={e => {
+                        setEditTecnicaId(e.target.value)
+                        // Al convertirla en técnica, si no tenía zona se le pone AER, que
+                        // es lo que hace que cuente como el volumen suave que es. Si ya
+                        // tenía una escrita, no se le toca: será por algo.
+                        if (e.target.value && !editZona) setEditZona(ZONA_DE_TECNICA)
+                      }}
+                      className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                      <option value="">Sin técnica — tarea de intensidad normal</option>
+                      {lista.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                    </select>
+                    {lista.length === 0 && (
+                      <span className="text-gray-500 text-xs">
+                        No hay ejercicios de técnica{tareaEditando.disciplina ? ' de ' + tareaEditando.disciplina : ''} en la biblioteca todavía.
+                      </span>
+                    )}
+                  </label>
+                )
+              })()}
               {/* La medición (tiempo/distancia/reps) solo en resistencia: la fuerza se
                   mide por ejercicios, no por estas tablas. */}
               {!esFuerza && (
