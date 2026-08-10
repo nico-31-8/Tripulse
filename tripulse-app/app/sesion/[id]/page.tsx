@@ -36,6 +36,7 @@ import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
+import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
@@ -124,6 +125,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   // Editar la técnica también desde AQUÍ. Estaba solo en la vista de tabla, y tener
   // la misma tarea editable de dos sitios con distintos campos es como se acaba
   // teniendo dos comportamientos para lo mismo.
+  const [nombreGrupo, setNombreGrupo] = useState<string | null>(null)
   const [editTecnicaId, setEditTecnicaId] = useState('')
   const [drillsTecnica, setDrillsTecnica] = useState<any[]>([])
   const [editComentario, setEditComentario] = useState('')
@@ -235,6 +237,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
     if (!ses) { setNoExiste(true); return }
+    // Sin id_emision no se pregunta nada: esto no cuesta ni una consulta en las
+    // sesiones individuales, que son la mayoría.
+    nombreDelGrupo(supabase, ses.id_emision).then(setNombreGrupo)
     const { data: tar } = await ordenarTareasQuery(
       // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él, una
       // sesión de fuerza en el briefing del deportista diría «4 series» de nada.
@@ -598,6 +603,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           <div className="hidden sm:block flex-1" />
 
           <div className="flex items-center gap-2.5 sm:gap-4 flex-wrap min-w-0 w-full sm:w-auto">
+            {/* De dónde salió. Sin esto, al deportista le aparece un entrenamiento que
+                no ha hablado con nadie y no tiene forma de saber por qué. */}
+            {nombreGrupo && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30"
+                title="Este entrenamiento se mandó al grupo entero">
+                Grupo · {nombreGrupo}
+              </span>
+            )}
             <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
             <span className={'text-xs px-2.5 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}

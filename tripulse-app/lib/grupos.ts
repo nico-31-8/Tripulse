@@ -21,6 +21,8 @@ export interface MiembroGrupo {
   nombre: string
   desde: string
   hasta: string | null
+  // Viaja con el miembro porque es lo que decide el sistema de zonas del grupo.
+  sistema_zonas?: number | null
 }
 
 export const ERROR_FALTA_ESQUEMA =
@@ -65,13 +67,14 @@ export async function contarMiembros(sb: any, ids: string[]): Promise<Record<str
 
 export async function miembrosDe(sb: any, idGrupo: string): Promise<MiembroGrupo[]> {
   const { data } = await sb.from('grupo_entreno_miembro')
-    .select('id_deportista, desde, hasta, deportista(nombre)')
+    .select('id_deportista, desde, hasta, deportista(nombre, sistema_zonas)')
     .eq('id_grupo', idGrupo).is('hasta', null)
   return (data || []).map((m: any) => ({
     id_deportista: m.id_deportista,
     nombre: m.deportista?.nombre || '(sin nombre)',
     desde: m.desde,
     hasta: m.hasta,
+    sistema_zonas: m.deportista?.sistema_zonas ?? null,
   }))
 }
 
@@ -131,6 +134,74 @@ export async function meterEnGrupo(sb: any, idGrupo: string, idsDeportistas: num
     if (error) return error.message
   }
   return null
+}
+
+// La ficha de planificación del grupo: para el calendario y el dibujo, un grupo es
+// un deportista más, y así todo eso funciona sin tocarse. Se crea la primera vez que
+// hace falta, no al crear el grupo: un grupo al que nunca planificas no necesita
+// ninguna.
+//
+// La crea una función de base de datos y no la app a propósito. La ficha DEBE ir con
+// id_entrenador nulo —es lo que la mantiene fuera de las listas de atletas y del
+// cupo— y eso no puede depender de que quien la inserte se acuerde.
+export async function fichaDeGrupo(sb: any, idGrupo: string): Promise<{ id: number | null; error: string | null }> {
+  const { data, error } = await sb.rpc('ficha_de_grupo', { _id_grupo: idGrupo })
+  if (error) return { id: null, error: faltaEsquema(error) ? ERROR_FALTA_PLAN : error.message }
+  return { id: data as number, error: null }
+}
+
+export const ERROR_FALTA_PLAN =
+  'Falta el paso 2: ejecuta supabase/grupos-2-plan.sql en el SQL Editor de Supabase.'
+
+// Borra el grupo entero.
+//
+// Se lleva por delante sus miembros y su ficha de planificación — o sea el
+// calendario y la periodización DEL GRUPO (van en cascada desde grupo_entreno).
+//
+// Lo que NO se toca son las sesiones ya volcadas a la gente: `sesion.id_emision`
+// es `on delete set null`, así que se quedan en su calendario y solo pierden la
+// etiqueta de dónde vinieron. Es lo correcto: una vez mandado, el entrenamiento es
+// suyo, y borrar un grupo no puede vaciarle la semana a nadie.
+export async function borrarGrupo(sb: any, idGrupo: string): Promise<string | null> {
+  const { error } = await sb.from('grupo_entreno').delete().eq('id', idGrupo)
+  return error ? error.message : null
+}
+
+// Renombra el grupo Y su ficha de planificación. Las dos, porque la cabecera del
+// calendario lee el nombre de la ficha: si solo se cambiara una, el grupo se
+// llamaría de una forma en la lista y de otra en su propio calendario.
+export async function renombrarGrupo(
+  sb: any, idGrupo: string, nombre: string, idFicha?: number | null,
+): Promise<string | null> {
+  const limpio = (nombre || '').trim()
+  if (!limpio) return 'El grupo necesita un nombre.'
+  const { error } = await sb.from('grupo_entreno').update({ nombre: limpio }).eq('id', idGrupo)
+  if (error) return error.message
+  if (idFicha) await sb.from('deportista').update({ nombre: limpio }).eq('id', idFicha)
+  return null
+}
+
+// El sistema de zonas que usan la mayoría. Empate → gana el 2, que es donde viven
+// las siglas y todo lo nuevo de la app.
+//
+// Esto importa más de lo que parece: el sistema decide QUÉ ZONAS EXISTEN (Z1–Z7 o
+// las siglas AER/AEL/AEM…). Si el grupo planifica en uno y sus miembros trabajan en
+// otro, lo que se vuelca llega escrito en un idioma que sus referencias no
+// reconocen. No falla nada; las zonas simplemente no significan lo mismo.
+export function sistemaZonasMayoritario(valores: (number | null | undefined)[]): number {
+  if (!valores?.length) return 2
+  const cuenta: Record<number, number> = {}
+  for (const v of valores) { const s = v === 2 ? 2 : 1; cuenta[s] = (cuenta[s] || 0) + 1 }
+  if ((cuenta[2] || 0) >= (cuenta[1] || 0)) return 2
+  return 1
+}
+
+export async function sincronizarZonasDelGrupo(
+  sb: any, idFicha: number, valoresDeLosMiembros: (number | null | undefined)[],
+): Promise<{ sistema: number; error: string | null }> {
+  const sistema = sistemaZonasMayoritario(valoresDeLosMiembros)
+  const { error } = await sb.from('deportista').update({ sistema_zonas: sistema }).eq('id', idFicha)
+  return { sistema, error: error ? error.message : null }
 }
 
 // Qué tests le faltan a cada uno. En un grupo esto importa: la zona se prescribe

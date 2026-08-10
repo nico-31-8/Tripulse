@@ -216,13 +216,17 @@ returns boolean language sql stable set search_path = public as $$
   );
 $$;
 
+/* NO puede tocar `deportista`. Si va ahi a traducir auth.uid() a un id, la politica
+   de deportista vuelve a llamar a es_mi_grupo() y se cierra el ciclo: revienta con
+   "stack depth limit exceeded", y solo con sesion de verdad, asi que una consulta
+   anonima parece decir que todo va bien. Por eso el id_usuario se guarda sellado en
+   la propia tabla de miembros. */
 create or replace function public.soy_miembro_del_grupo(_id_grupo uuid)
 returns boolean language sql stable set search_path = public as $$
   select exists (
     select 1 from grupo_entreno_miembro gm
-      join deportista d on d.id = gm.id_deportista
      where gm.id_grupo = _id_grupo
-       and d.id_usuario = auth.uid()
+       and gm.id_usuario = auth.uid()
        and gm.hasta is null
   );
 $$;

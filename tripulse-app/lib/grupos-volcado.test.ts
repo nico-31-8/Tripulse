@@ -1,0 +1,149 @@
+import { describe, it, expect } from 'vitest'
+import { limpiar, volcar, resumenVolcado } from './grupos-volcado'
+
+describe('limpiar', () => {
+  /* El fallo que esto evita: al copiar con {...resto}, cada fila arrastra el
+     id_deportista de la FICHA DEL GRUPO. La copia acabaría siendo del grupo y no de
+     la persona, y como la RLS mira justo esa columna, el atleta no vería su propia
+     sesión. Nada falla a la vista. */
+  it('quita el id_deportista, que es el que arruina la copia', () => {
+    expect(limpiar({ id_deportista: 99, disciplina: 'Carrera' })).toEqual({ disciplina: 'Carrera' })
+  })
+
+  /* En modo entreno el ritmo guardado LE GANA al calculado: copiarlo le mostraría a
+     todos el ritmo de otro. */
+  it('quita el ritmo_objetivo', () => {
+    expect(limpiar({ metros_planeados: 1000, ritmo_objetivo: '4:12' })).toEqual({ metros_planeados: 1000 })
+  })
+
+  it('quita lo que pasó y deja lo que se planeó', () => {
+    const r = limpiar({
+      id: 7, created_at: 'x', id_sesion: 3, id_microciclo: 4, id_emision: 'e',
+      estado: 'Realizada', rpe_reportado: 9, duracion_real: 61, eliminada: true,
+      sensacion_tecnica: 4, disciplina: 'Natacion', zona_entrenamiento: 'AEM', series: 4,
+    })
+    expect(r).toEqual({ disciplina: 'Natacion', zona_entrenamiento: 'AEM', series: 4 })
+  })
+
+  it('con null o vacío no revienta', () => {
+    expect(limpiar(null)).toEqual({})
+    expect(limpiar({})).toEqual({})
+  })
+})
+
+function sbFalso(opciones: { fallaSesionN?: number } = {}) {
+  const ops: any[] = []
+  let n = 100, nSes = 0
+  const datos: Record<string, any[]> = {
+    sesion: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera', id_deportista: 99, estado: 'Planificada' }],
+    tarea: [{ id: 11, id_sesion: 1, orden: 1, zona_entrenamiento: 'AEM', id_deportista: 99 }],
+    p_distancia: [{ id: 21, id_tarea: 11, metros_planeados: 1000, ritmo_objetivo: '4:12', id_deportista: 99 }],
+    p_duracion: [], p_repeticiones: [], ejercicios: [],
+  }
+  const api = (tabla: string) => ({
+    insert(v: any) {
+      ops.push({ op: 'insert', tabla, v })
+      if (Array.isArray(v)) return Promise.resolve({ error: null })
+      return {
+        select: () => ({
+          single: () => {
+            if (tabla === 'grupo_entreno_emision') return Promise.resolve({ data: { id: 'e1' }, error: null })
+            if (tabla === 'sesion') {
+              nSes++
+              if (nSes === opciones.fallaSesionN) return Promise.resolve({ data: null, error: { message: 'RLS' } })
+            }
+            return Promise.resolve({ data: { id: ++n }, error: null })
+          },
+        }),
+      }
+    },
+    delete() { return { eq: (_c: string, val: any) => { ops.push({ op: 'delete', tabla, val }); return Promise.resolve({ error: null }) } } },
+    select() {
+      const q: any = {}
+      q.eq = () => q; q.in = () => q; q.gte = () => q; q.lte = () => q; q.or = () => q; q.order = () => q
+      q.then = (r: any) => Promise.resolve({ data: datos[tabla] || [], error: null }).then(r)
+      return q
+    },
+  })
+  return { ops, from: (t: string) => api(t) }
+}
+
+const BASE = {
+  idGrupo: 'g1', nombre: 'Semana 1',
+  sesiones: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera' }],
+  microsDe: async () => [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }],
+  microDelDia: (ms: any[]) => ms[0] || null,
+}
+const MIEMBROS = [{ id_deportista: 1, nombre: 'Ana' }, { id_deportista: 2, nombre: 'Luis' }]
+
+describe('volcar', () => {
+  it('copia la sesión a cada miembro con SU id_deportista, no el del grupo', async () => {
+    const sb = sbFalso()
+    const r = await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    expect(r.error).toBeNull()
+    const ses = sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')
+    expect(ses.map(s => s.v.id_deportista)).toEqual([1, 2])
+    expect(ses.every(s => s.v.id_deportista !== 99)).toBe(true)
+  })
+
+  it('las tareas y sus hijas también van al dueño correcto', async () => {
+    const sb = sbFalso()
+    await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]] })
+    const tar = sb.ops.find(o => o.op === 'insert' && o.tabla === 'tarea')
+    expect(tar.v.id_deportista).toBe(1)
+    const pd = sb.ops.find(o => o.op === 'insert' && o.tabla === 'p_distancia')
+    expect(pd.v[0].id_deportista).toBe(1)
+    expect(pd.v[0].metros_planeados).toBe(1000)
+  })
+
+  it('no arrastra el ritmo del grupo', async () => {
+    const sb = sbFalso()
+    await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]] })
+    const pd = sb.ops.find(o => o.op === 'insert' && o.tabla === 'p_distancia')
+    expect(pd.v[0].ritmo_objetivo).toBeUndefined()
+  })
+
+  it('todas las copias comparten la misma emisión', async () => {
+    const sb = sbFalso()
+    await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    const ses = sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')
+    expect(ses.every(s => s.v.id_emision === 'e1')).toBe(true)
+  })
+
+  it('quien no tiene semana la recibe igual, como sesión libre', async () => {
+    const sb = sbFalso()
+    const r = await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]], microDelDia: () => null })
+    const ses = sb.ops.find(o => o.op === 'insert' && o.tabla === 'sesion')
+    expect(ses.v.id_microciclo).toBeNull()
+    expect(ses.v.origen).toBe('entrenador')
+    expect(r.resultados[0].enSuPlan).toBe(0)
+    expect(r.resultados[0].creadas).toBe(1)
+  })
+
+  it('si falla uno, los demás la reciben', async () => {
+    const sb = sbFalso({ fallaSesionN: 1 })
+    const r = await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    expect(r.resultados[0].creadas).toBe(0)
+    expect(r.resultados[0].fallos).toBe(1)
+    expect(r.resultados[1].creadas).toBe(1)
+  })
+
+  it('sin sesiones ni miembros no abre emisión', async () => {
+    const sb = sbFalso()
+    expect((await volcar(sb, { ...BASE, sesiones: [], miembros: MIEMBROS })).error).toMatch(/nada que volcar/i)
+    expect((await volcar(sb, { ...BASE, miembros: [] })).error).toMatch(/nadie/i)
+    expect(sb.ops).toHaveLength(0)
+  })
+})
+
+describe('resumenVolcado', () => {
+  it('cuenta sesiones, personas y las que van sin semana', () => {
+    const t = resumenVolcado([
+      { id_deportista: 1, nombre: 'Ana', creadas: 3, fallos: 0, enSuPlan: 3 },
+      { id_deportista: 2, nombre: 'Luis', creadas: 3, fallos: 0, enSuPlan: 0 },
+      { id_deportista: 3, nombre: 'Eva', creadas: 0, fallos: 3, enSuPlan: 0 },
+    ])
+    expect(t).toContain('6 sesiones creadas en 2 de 3')
+    expect(t).toContain('3 sin semana planificada')
+  })
+})

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  crearGrupo, meterEnGrupo, sacarDelGrupo, contarMiembros,
+  crearGrupo, meterEnGrupo, sacarDelGrupo, contarMiembros, borrarGrupo,
+  renombrarGrupo, sistemaZonasMayoritario,
   faltaEsquema, testsQueFaltan, ERROR_FALTA_ESQUEMA,
 } from './grupos'
 
@@ -133,6 +134,62 @@ describe('testsQueFaltan', () => {
   /* Un 0 no es un test hecho: es un test sin valor, y con 0 no sale ningún ritmo. */
   it('un cero cuenta como que falta', () => {
     expect(testsQueFaltan({ vam: 0, ftp: 240, css: 1.3 })).toEqual(['VAM'])
+  })
+})
+
+describe('sistemaZonasMayoritario', () => {
+  it('gana el que usan más miembros', () => {
+    expect(sistemaZonasMayoritario([1, 1, 2])).toBe(1)
+    expect(sistemaZonasMayoritario([2, 2, 1])).toBe(2)
+  })
+
+  /* En empate gana el 2: es donde viven las siglas y todo lo nuevo. */
+  it('en empate gana el 2', () => {
+    expect(sistemaZonasMayoritario([1, 2])).toBe(2)
+  })
+
+  /* Un null es el sistema 1: así lo lee la app en todas partes
+     (sistema_zonas || 1). Contarlo como otra cosa aquí crearía dos verdades. */
+  it('null cuenta como sistema 1, igual que en el resto de la app', () => {
+    expect(sistemaZonasMayoritario([null, null, 2])).toBe(1)
+    expect(sistemaZonasMayoritario([undefined, 1])).toBe(1)
+  })
+
+  it('sin miembros todavía, el 2', () => {
+    expect(sistemaZonasMayoritario([])).toBe(2)
+    expect(sistemaZonasMayoritario(null as any)).toBe(2)
+  })
+})
+
+describe('renombrarGrupo', () => {
+  it('no acepta un nombre vacío', async () => {
+    const sb = sbFalso()
+    expect(await renombrarGrupo(sb, 'g1', '   ')).toMatch(/nombre/i)
+    expect(sb.ops).toHaveLength(0)
+  })
+
+  /* La cabecera del calendario lee el nombre de la FICHA: cambiar solo el grupo lo
+     dejaría llamándose de dos formas distintas según dónde mires. */
+  it('renombra el grupo y también su ficha', async () => {
+    const sb = sbFalso()
+    expect(await renombrarGrupo(sb, 'g1', '  Escuela  ', 55)).toBeNull()
+    const upds = sb.ops.filter(o => o.op === 'update')
+    expect(upds.map(u => u.tabla)).toEqual(['grupo_entreno', 'deportista'])
+    expect(upds.every(u => u.valores.nombre === 'Escuela')).toBe(true)
+  })
+
+  it('sin ficha creada todavía, solo renombra el grupo', async () => {
+    const sb = sbFalso()
+    await renombrarGrupo(sb, 'g1', 'Escuela', null)
+    expect(sb.ops.filter(o => o.op === 'update')).toHaveLength(1)
+  })
+})
+
+describe('borrarGrupo', () => {
+  it('borra por id', async () => {
+    const sb = sbFalso()
+    expect(await borrarGrupo(sb, 'g1')).toBeNull()
+    expect(sb.ops).toEqual([{ op: 'delete', tabla: 'grupo_entreno', c: 'id', v: 'g1' }])
   })
 })
 
