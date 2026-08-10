@@ -15,6 +15,7 @@ import {
   sesionesDelGrupo, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio,
   type SesionDelGrupo, type ResultadoVolcado, type VolcadoPrevio,
 } from '@/lib/grupos-volcado'
+import { cargarCumplimiento, porcentaje, type Cumplimiento } from '@/lib/grupos-cumplimiento'
 import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, NIVELES, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 
@@ -57,6 +58,14 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   const [parteVolcado, setParteVolcado] = useState<ResultadoVolcado[] | null>(null)
   const [previo, setPrevio] = useState<VolcadoPrevio | null>(null)
   const [reemplazar, setReemplazar] = useState(true)
+  // Cumplimiento. Por defecto los últimos 14 días: lo que quieres saber es qué ha
+  // pasado con lo que mandaste hace poco, no el histórico entero.
+  const [cump, setCump] = useState<Cumplimiento | null>(null)
+  const [cDesde, setCDesde] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 13)
+    return d.toISOString().slice(0, 10)
+  })
+  const [cHasta, setCHasta] = useState(hoyISO())
   const [renombrando, setRenombrando] = useState(false)
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [aviso, setAviso] = useState('')
@@ -145,7 +154,16 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
         mapa[k] = { vam: vam[k], css: css[k], ftp: ftp[k] }
       }
       setTests(mapa)
-    } else setTests({})
+      setCump(await cargarCumplimiento(supabase, id,
+        ms.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })), cDesde, cHasta))
+    } else { setTests({}); setCump(null) }
+  }
+
+  const recargarCumplimiento = async (d: string, h: string) => {
+    setCDesde(d); setCHasta(h)
+    if (!miembros.length) return
+    setCump(await cargarCumplimiento(supabase, id,
+      miembros.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })), d, h))
   }
 
   const anadir = async (idDep: number) => {
@@ -375,6 +393,78 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
             })}
           </div>
         </section>
+
+        {/* CUMPLIMIENTO. Lo que le faltaba al panel: mandas ocho entrenamientos y
+            hasta ahora no había dónde ver qué ha pasado con ellos. */}
+        {cump && cump.columnas.length > 0 && (
+          <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <div className="flex justify-between items-start gap-3 flex-wrap mb-4">
+              <div>
+                <p className="font-medium">Quién lo está haciendo</p>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {cump.hechas} de {cump.mandadas} entrenamientos hechos
+                  {porcentaje(cump) !== null && <> · <span className="text-white">{porcentaje(cump)}%</span></>}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={cDesde} onChange={e => recargarCumplimiento(e.target.value, cHasta)}
+                  className="bg-gray-800 text-white px-2 py-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-orange-500" />
+                <span className="text-gray-600 text-xs">a</span>
+                <input type="date" value={cHasta} onChange={e => recargarCumplimiento(cDesde, e.target.value)}
+                  className="bg-gray-800 text-white px-2 py-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-[11px] border-b border-gray-800">
+                    <th className="text-left font-medium py-2 pr-3 sticky left-0 bg-gray-900">Deportista</th>
+                    {cump.columnas.map(c => (
+                      <th key={c.clave} className="font-medium py-2 px-1.5 whitespace-nowrap tabular-nums" title={c.disciplina}>
+                        {c.fecha.slice(8)}/{c.fecha.slice(5, 7)}
+                        <span className="block text-[9px] text-gray-600 uppercase">{c.disciplina.slice(0, 3)}</span>
+                      </th>
+                    ))}
+                    <th className="font-medium py-2 pl-3 text-right whitespace-nowrap">Hechas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cump.filas.map(f => {
+                    const pct = porcentaje(f)
+                    return (
+                      <tr key={f.id_deportista} className="border-b border-gray-800/60">
+                        <td className="py-2 pr-3 whitespace-nowrap sticky left-0 bg-gray-900">{f.nombre}</td>
+                        {cump.columnas.map(c => {
+                          const e = f.porColumna[c.clave]
+                          return (
+                            <td key={c.clave} className="py-2 px-1.5 text-center">
+                              {e === 'Realizada' ? <span className="text-green-500" title="Hecha">✓</span>
+                                : e === 'Cancelada' ? <span className="text-red-400" title="Cancelada">✕</span>
+                                : e === 'Planificada' ? <span className="text-gray-600" title="Sin hacer">·</span>
+                                // Sin sesión: no se la mandaron (entró al grupo después).
+                                : <span className="text-gray-800" title="No se le mandó">—</span>}
+                            </td>
+                          )
+                        })}
+                        <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">
+                          <span className={pct === null ? 'text-gray-600' : pct >= 80 ? 'text-green-500' : pct >= 50 ? 'text-amber-400' : 'text-red-400'}>
+                            {f.hechas}/{f.mandadas}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-gray-600 text-[11px] mt-3">
+              <span className="text-green-500">✓</span> hecha · <span className="text-gray-500">·</span> sin hacer ·
+              <span className="text-red-400"> ✕</span> cancelada · <span className="text-gray-700">—</span> no se le mandó
+            </p>
+          </section>
+        )}
 
         {/* Volcar: lo que has planificado en el calendario del grupo baja a la gente.
             Hasta que se hace esto, el plan del grupo no está en el calendario de nadie. */}
