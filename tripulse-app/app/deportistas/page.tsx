@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { cargarGrupos, contarMiembros, crearGrupo, type Grupo } from '@/lib/grupos'
 
 function calcularEdad(fechaNacimiento: string): number {
   const hoy = new Date()
@@ -47,8 +48,14 @@ export default function Deportistas() {
   const [error, setError] = useState('')
   const [enlaceInvitacion, setEnlaceInvitacion] = useState<string | null>(null)
   const [generandoEnlace, setGenerandoEnlace] = useState<number | null>(null)
+  // Grupos de entrenamiento: el mismo entreno para varios a la vez.
+  const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [nMiembros, setNMiembros] = useState<Record<string, number>>({})
+  const [formGrupo, setFormGrupo] = useState(false)
+  const [nombreGrupo, setNombreGrupo] = useState('')
+  const [elegidos, setElegidos] = useState<number[]>([])
 
-  useEffect(() => { cargarDeportistas() }, [])
+  useEffect(() => { cargarDeportistas(); cargarLosGrupos() }, [])
 
   const cargarDeportistas = async () => {
     const user = await usuarioActual()
@@ -57,6 +64,31 @@ export default function Deportistas() {
     if (error) setError('Error al cargar: ' + error.message)
     setDeportistas(data || [])
   }
+
+  const cargarLosGrupos = async () => {
+    const { grupos: gs, error: e } = await cargarGrupos(supabase)
+    // Si falta la migración no se grita: los deportistas siguen funcionando y los
+    // grupos simplemente no aparecen todavía.
+    if (e) { setGrupos([]); return }
+    setGrupos(gs)
+    setNMiembros(await contarMiembros(supabase, gs.map(g => g.id)))
+  }
+
+  const guardarGrupo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true); setError('')
+    const user = await usuarioActual()
+    const { error: err } = await crearGrupo(supabase, user!.id, nombreGrupo, elegidos)
+    if (err) setError(err)
+    else {
+      setNombreGrupo(''); setElegidos([]); setFormGrupo(false)
+      await cargarLosGrupos()
+    }
+    setLoading(false)
+  }
+
+  const alternar = (id: number) =>
+    setElegidos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   const crearDeportista = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -106,9 +138,19 @@ export default function Deportistas() {
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Deportistas</h2>
-          <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
-            {mostrarForm ? 'Cancelar' : '+ Nuevo deportista'}
-          </button>
+          <div className="flex gap-2">
+            {/* Un grupo se crea desde donde ya estás creando gente: es la misma
+                pregunta ("¿a quién voy a entrenar?") con otra respuesta. */}
+            <button onClick={() => { setFormGrupo(!formGrupo); setMostrarForm(false) }}
+              disabled={deportistas.length === 0}
+              title={deportistas.length === 0 ? 'Primero crea algún deportista' : 'Un grupo entrena lo mismo a la vez'}
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
+              {formGrupo ? 'Cancelar' : '+ Nuevo grupo'}
+            </button>
+            <button onClick={() => { setMostrarForm(!mostrarForm); setFormGrupo(false) }} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
+              {mostrarForm ? 'Cancelar' : '+ Nuevo deportista'}
+            </button>
+          </div>
         </div>
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
         {mostrarForm && (
@@ -142,6 +184,63 @@ export default function Deportistas() {
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar deportista'}</button>
           </form>
         )}
+        {formGrupo && (
+          <form onSubmit={guardarGrupo} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <div>
+              <h3 className="font-bold text-lg">Nuevo grupo</h3>
+              <p className="text-gray-500 text-sm mt-1">
+                Los entrenamientos que crees en el grupo caen en el calendario de cada miembro.
+                Cada uno los ejecuta y los reporta por su cuenta, y con sus propios ritmos.
+              </p>
+            </div>
+            <input type="text" placeholder="Nombre del grupo (ej: Escuela de triatlón)" value={nombreGrupo}
+              onChange={e => setNombreGrupo(e.target.value)}
+              className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            <div>
+              <label className="text-gray-400 text-sm mb-2 block">
+                Quién entra {elegidos.length > 0 && <span className="text-orange-400">· {elegidos.length} elegido{elegidos.length > 1 ? 's' : ''}</span>}
+              </label>
+              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+                {deportistas.map(d => (
+                  <label key={d.id}
+                    className={'flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ' +
+                      (elegidos.includes(d.id)
+                        ? 'bg-orange-500/10 border-orange-500/50'
+                        : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
+                    <input type="checkbox" checked={elegidos.includes(d.id)} onChange={() => alternar(d.id)}
+                      className="accent-orange-500 w-4 h-4" />
+                    <span className="text-white text-sm">{d.nombre}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button type="submit" disabled={loading || !elegidos.length}
+              className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-40">
+              {loading ? 'Guardando...' : 'Crear grupo'}
+            </button>
+          </form>
+        )}
+
+        {grupos.length > 0 && (
+          <section className="mb-8">
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-2">Grupos ({grupos.length})</h3>
+            <div className="grid gap-3">
+              {grupos.map(g => (
+                <button key={g.id} onClick={() => router.push('/grupo/' + g.id)}
+                  className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-orange-500 transition text-left flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-lg">{g.nombre}</h4>
+                    <p className="text-gray-400 text-sm">
+                      {nMiembros[g.id] || 0} deportista{(nMiembros[g.id] || 0) === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <span className="text-gray-600 text-xl">›</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {deportistas.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-5xl mb-4">👥</div>
