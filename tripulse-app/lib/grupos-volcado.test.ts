@@ -1,5 +1,85 @@
 import { describe, it, expect } from 'vitest'
-import { limpiar, volcar, resumenVolcado } from './grupos-volcado'
+import { limpiar, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio } from './grupos-volcado'
+
+/* Cliente para las dos funciones de "ya volcado". Devuelve lo que se le diga por
+   tabla, y apunta las operaciones. */
+function sbPrevio(porTabla: Record<string, any[]>) {
+  const ops: any[] = []
+  return {
+    ops,
+    from(tabla: string) {
+      return {
+        select() {
+          const q: any = {}
+          q.eq = () => q; q.in = () => q; q.gte = () => q; q.lte = () => q; q.or = () => q
+          q.then = (r: any) => Promise.resolve({ data: porTabla[tabla] || [], error: null }).then(r)
+          return q
+        },
+        update(valores: any) {
+          const q: any = {}
+          q.in = (_c: string, ids: any[]) => { ops.push({ op: 'update', tabla, valores, ids }); return Promise.resolve({ error: null }) }
+          return q
+        },
+      }
+    },
+  }
+}
+
+describe('volcadoPrevio', () => {
+  it('separa lo que sigue planificado de lo que ya se entrenó', async () => {
+    const sb = sbPrevio({
+      grupo_entreno_emision: [{ id: 'e1' }],
+      sesion: [
+        { id: 1, estado: 'Planificada', id_deportista: 10 },
+        { id: 2, estado: 'Planificada', id_deportista: 11 },
+        { id: 3, estado: 'Realizada', id_deportista: 10 },
+      ],
+    })
+    const r = await volcadoPrevio(sb, 'g1', [10, 11], '2026-03-01', '2026-03-07')
+    expect(r.planificadas).toEqual([1, 2])
+    expect(r.realizadas).toBe(1)
+    expect(r.personas).toBe(2)
+  })
+
+  it('si el grupo no ha volcado nunca, no hay nada', async () => {
+    const sb = sbPrevio({ grupo_entreno_emision: [] })
+    expect(await volcadoPrevio(sb, 'g1', [10], '2026-03-01', '2026-03-07'))
+      .toEqual({ planificadas: [], realizadas: 0, personas: 0 })
+  })
+
+  it('sin miembros no consulta nada', async () => {
+    const sb = sbPrevio({})
+    const r = await volcadoPrevio(sb, 'g1', [], '2026-03-01', '2026-03-07')
+    expect(r.planificadas).toEqual([])
+  })
+
+  /* Una cancelada tampoco se reemplaza: solo lo que sigue planificado. */
+  it('una cancelada no cuenta como reemplazable', async () => {
+    const sb = sbPrevio({
+      grupo_entreno_emision: [{ id: 'e1' }],
+      sesion: [{ id: 5, estado: 'Cancelada', id_deportista: 10 }],
+    })
+    const r = await volcadoPrevio(sb, 'g1', [10], '2026-03-01', '2026-03-07')
+    expect(r.planificadas).toEqual([])
+    expect(r.realizadas).toBe(1)
+  })
+})
+
+describe('apartarVolcadoPrevio', () => {
+  /* Aparta, no borra: `eliminada` es el borrado suave y la papelera las recupera.
+     Reemplazar no puede significar perder trabajo. */
+  it('las marca como eliminadas en vez de borrarlas', async () => {
+    const sb = sbPrevio({})
+    expect(await apartarVolcadoPrevio(sb, [1, 2])).toBeNull()
+    expect(sb.ops).toEqual([{ op: 'update', tabla: 'sesion', valores: { eliminada: true }, ids: [1, 2] }])
+  })
+
+  it('con la lista vacía no toca nada', async () => {
+    const sb = sbPrevio({})
+    expect(await apartarVolcadoPrevio(sb, [])).toBeNull()
+    expect(sb.ops).toHaveLength(0)
+  })
+})
 
 describe('limpiar', () => {
   /* El fallo que esto evita: al copiar con {...resto}, cada fila arrastra el

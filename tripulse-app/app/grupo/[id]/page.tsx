@@ -11,7 +11,10 @@ import {
   type MiembroGrupo,
 } from '@/lib/grupos'
 import { emitirSesion, resumenEmision, microsDeDeportista, microDelDia, type ResultadoMiembro } from '@/lib/grupos-emision'
-import { sesionesDelGrupo, volcar, resumenVolcado, type SesionDelGrupo, type ResultadoVolcado } from '@/lib/grupos-volcado'
+import {
+  sesionesDelGrupo, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio,
+  type SesionDelGrupo, type ResultadoVolcado, type VolcadoPrevio,
+} from '@/lib/grupos-volcado'
 import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, NIVELES, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 
@@ -52,6 +55,8 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   })
   const [aVolcar, setAVolcar] = useState<SesionDelGrupo[] | null>(null)
   const [parteVolcado, setParteVolcado] = useState<ResultadoVolcado[] | null>(null)
+  const [previo, setPrevio] = useState<VolcadoPrevio | null>(null)
+  const [reemplazar, setReemplazar] = useState(true)
   const [renombrando, setRenombrando] = useState(false)
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [aviso, setAviso] = useState('')
@@ -181,12 +186,19 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     if (e || !ficha) { setError(e || 'No se pudo leer el plan del grupo.'); setOcupado(false); return }
     setIdFicha(ficha)
     setAVolcar(await sesionesDelGrupo(supabase, ficha, desde, hasta))
+    // Y de paso, qué hay ya volcado ahí: repetir el mismo rango es lo normal en
+    // cuanto corriges algo, y sin avisar dejaría a todos con las sesiones dobles.
+    setPrevio(await volcadoPrevio(supabase, id, miembros.map(m => m.id_deportista), desde, hasta))
     setOcupado(false)
   }
 
   const hacerVolcado = async () => {
     if (!aVolcar?.length) return
     setOcupado(true); setError('')
+    if (reemplazar && previo?.planificadas.length) {
+      const e = await apartarVolcadoPrevio(supabase, previo.planificadas)
+      if (e) { setError('No se pudieron apartar las anteriores: ' + e); setOcupado(false); return }
+    }
     const r = await volcar(supabase, {
       idGrupo: id,
       nombre: 'Del ' + desde.slice(8) + '/' + desde.slice(5, 7) + ' al ' + hasta.slice(8) + '/' + hasta.slice(5, 7),
@@ -197,7 +209,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     })
     if (r.error) setError(r.error)
     setParteVolcado(r.resultados.length ? r.resultados : null)
-    setAVolcar(null)
+    setAVolcar(null); setPrevio(null)
     setOcupado(false)
   }
 
@@ -374,7 +386,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                 Copia lo planificado en el calendario del grupo al de cada miembro.
               </p>
             </div>
-            <button onClick={() => { setVolcando(!volcando); setAVolcar(null); setParteVolcado(null) }}
+            <button onClick={() => { setVolcando(!volcando); setAVolcar(null); setPrevio(null); setParteVolcado(null) }}
               disabled={miembros.length === 0}
               className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
               {volcando ? 'Cancelar' : 'Elegir fechas'}
@@ -386,12 +398,12 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1">
                   <span className="text-gray-400 text-xs">Desde</span>
-                  <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setAVolcar(null) }}
+                  <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setAVolcar(null); setPrevio(null) }}
                     className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-gray-400 text-xs">Hasta</span>
-                  <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setAVolcar(null) }}
+                  <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setAVolcar(null); setPrevio(null) }}
                     className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                 </label>
               </div>
@@ -420,6 +432,38 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                       ))}
                     </div>
                   </div>
+                  {/* Ya se volcó antes en estas fechas. Se avisa y se deja elegir, en
+                      vez de duplicar en silencio o decidir por el entrenador. */}
+                  {previo && (previo.planificadas.length > 0 || previo.realizadas > 0) && (
+                    <div className="bg-amber-950/40 border border-amber-800/60 rounded-lg px-4 py-3 flex flex-col gap-2.5">
+                      <p className="text-amber-300 text-sm font-medium">
+                        Estas fechas ya se volcaron
+                      </p>
+                      <p className="text-amber-200/70 text-xs">
+                        Hay {previo.planificadas.length + previo.realizadas} sesiones de este grupo en {previo.personas}
+                        {previo.personas === 1 ? ' persona' : ' personas'}
+                        {previo.realizadas > 0 && <> · <span className="text-amber-100">{previo.realizadas} ya {previo.realizadas === 1 ? 'entrenada' : 'entrenadas'}</span></>}.
+                      </p>
+                      {previo.planificadas.length > 0 && (
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input type="checkbox" checked={reemplazar} onChange={e => setReemplazar(e.target.checked)}
+                            className="accent-orange-500 w-4 h-4 mt-0.5" />
+                          <span className="text-xs text-amber-200/90">
+                            Quitar antes las {previo.planificadas.length} que siguen planificadas
+                            <span className="block text-amber-200/50 mt-0.5">
+                              Van a la papelera, no se borran. Si lo dejas sin marcar, se sumarán a las que ya hay.
+                            </span>
+                          </span>
+                        </label>
+                      )}
+                      {previo.realizadas > 0 && (
+                        <p className="text-amber-200/50 text-[11px]">
+                          Las {previo.realizadas} ya {previo.realizadas === 1 ? 'entrenada' : 'entrenadas'} no se tocan: reescribir algo que alguien ya hizo
+                          sería falsear su historial.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <button onClick={hacerVolcado} disabled={ocupado}
                     className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
                     {ocupado ? 'Volcando...' : 'Volcar a ' + miembros.length + (miembros.length === 1 ? ' deportista' : ' deportistas')}

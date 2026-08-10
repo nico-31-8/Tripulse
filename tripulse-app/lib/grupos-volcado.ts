@@ -63,6 +63,52 @@ export async function sesionesDelGrupo(
   return data || []
 }
 
+export interface VolcadoPrevio {
+  planificadas: number[]   // se pueden apartar y rehacer
+  realizadas: number       // ya entrenadas: no se tocan NUNCA
+  personas: number
+}
+
+// Qué hay ya volcado de ESTE grupo en esas fechas y para esa gente.
+//
+// Sin esto, volcar dos veces el mismo rango deja a todo el mundo con las sesiones
+// repetidas y sin ningún aviso. Pasa en cuanto corriges algo y vuelves a volcar,
+// que es justo lo que uno hace.
+export async function volcadoPrevio(
+  sb: any, idGrupo: string, idsMiembros: number[], desde: string, hasta: string,
+): Promise<VolcadoPrevio> {
+  const vacio: VolcadoPrevio = { planificadas: [], realizadas: 0, personas: 0 }
+  if (!idsMiembros.length) return vacio
+
+  const { data: emis } = await sb.from('grupo_entreno_emision').select('id').eq('id_grupo', idGrupo)
+  const idsEmi = (emis || []).map((e: any) => e.id)
+  if (!idsEmi.length) return vacio
+
+  const { data } = await sb.from('sesion')
+    .select('id, estado, id_deportista')
+    .in('id_emision', idsEmi).in('id_deportista', idsMiembros)
+    .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
+    .or('eliminada.is.null,eliminada.eq.false')
+
+  const filas = data || []
+  return {
+    planificadas: filas.filter((s: any) => s.estado === 'Planificada').map((s: any) => s.id),
+    realizadas: filas.filter((s: any) => s.estado !== 'Planificada').length,
+    personas: new Set(filas.map((s: any) => String(s.id_deportista))).size,
+  }
+}
+
+// Aparta las de antes en vez de borrarlas: `eliminada` es el borrado suave de la
+// app y la papelera las recupera. Reemplazar no puede significar perder trabajo.
+//
+// Solo llegan aquí las que siguen planificadas: reescribir una sesión que alguien
+// ya ha entrenado seria falsear su historial.
+export async function apartarVolcadoPrevio(sb: any, ids: number[]): Promise<string | null> {
+  if (!ids.length) return null
+  const { error } = await sb.from('sesion').update({ eliminada: true }).in('id', ids)
+  return error ? error.message : null
+}
+
 /**
  * Copia las sesiones del grupo al calendario de cada miembro.
  *
