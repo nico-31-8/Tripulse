@@ -229,20 +229,35 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setCompeticiones(comps || [])
     const { data: bloqs } = await supabase.from('semana_bloqueada').select('*').eq('id_deportista', Number(id))
     setSemanasBloqueadas(bloqs || [])
-    if (!mac?.length) return
-    const macIds = mac.map(m => m.id)
-    const { data: me } = await supabase.from('mesociclo').select('*').in('id_macrociclo', macIds).order('fecha_inicio')
-    setMesos(me || [])
-    if (!me?.length) return
-    const meIds = me.map(m => m.id)
-    const { data: mi } = await supabase.from('microciclo').select('*').in('id_mesociclo', meIds).order('fecha_inicio')
-    setMicros(mi || [])
-    if (!mi?.length) return
-    const miIds = mi.map(m => m.id)
-    const { data: sesChain } = await supabase.from('sesion').select('*').in('id_microciclo', miIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
-    // Sesiones "libres" añadidas por el atleta (sin microciclo)
-    const { data: sesLibres } = await supabase.from('sesion').select('*').eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
-    const ses = [...(sesChain || []), ...(sesLibres || [])]
+    // Las sesiones LIBRES (sin microciclo) se cargan SIEMPRE, antes de mirar el plan.
+    //
+    // Antes iban después de tres `return` que cortaban si faltaba macrociclo,
+    // mesociclo o microciclo. O sea que a quien no tenía plan montado NO se le
+    // cargaban nunca: ni las que se añade él desde «Mis sesiones», ni las que le
+    // manda el entrenador en una semana sin planificar, ni las que le llegan de un
+    // grupo. Su calendario salía vacío teniendo sesiones, y sin ningún error.
+    const { data: sesLibres } = await supabase.from('sesion').select('*')
+      .eq('id_deportista', Number(id)).is('id_microciclo', null)
+      .or('eliminada.is.null,eliminada.eq.false')
+
+    let sesChain: any[] = []
+    if (mac?.length) {
+      const macIds = mac.map(m => m.id)
+      const { data: me } = await supabase.from('mesociclo').select('*').in('id_macrociclo', macIds).order('fecha_inicio')
+      setMesos(me || [])
+      if (me?.length) {
+        const meIds = me.map(m => m.id)
+        const { data: mi } = await supabase.from('microciclo').select('*').in('id_mesociclo', meIds).order('fecha_inicio')
+        setMicros(mi || [])
+        if (mi?.length) {
+          const miIds = mi.map(m => m.id)
+          const { data: sc } = await supabase.from('sesion').select('*')
+            .in('id_microciclo', miIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
+          sesChain = sc || []
+        }
+      }
+    }
+    const ses = [...sesChain, ...(sesLibres || [])]
     if (ses.length) {
       const sesIds = ses.map(s => s.id)
       const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos').in('id_sesion', sesIds)
@@ -587,7 +602,16 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     }
     setSesionEditando(null); setBrick(BRICK_VACIO); setModalTipo(null); await cargarDatos(); setLoading(false)
   }
-  const guardarMacro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null }); setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  // Comprueba el error, como guardarMeso. Antes no lo hacía: si el insert se
+  // rechazaba, el modal se cerraba, la pantalla se recargaba y no aparecía nada ni
+  // ningún aviso. Un guardado que falla en silencio se lee como «esto no funciona»,
+  // que es lo contrario de lo que ha pasado.
+  const guardarMacro = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true)
+    const { error } = await supabase.from('macrociclo').insert({ id_deportista: Number(id), objetivo: macroObj, fecha_inicio: fechaSel, duracion_semanas: Number(macroDuracion), tipo_periodizacion: tipoPeriodizacion || null })
+    if (error) { alert('No se pudo crear el macrociclo: ' + error.message); setLoading(false); return }
+    setMacroObj(''); setMacroDuracion(''); setTipoPeriodizacion(''); setModalTipo(null); await cargarDatos(); setLoading(false)
+  }
   const guardarMeso = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -606,7 +630,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     await cargarDatos()
     setLoading(false)
   }
-  const guardarMicro = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 }); setMicroObj(''); setMicroTipo(''); setModalTipo(null); await cargarDatos(); setLoading(false) }
+  const guardarMicro = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true)
+    const { error } = await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: fechaSel, duracion_dias: 7 })
+    if (error) { alert('No se pudo crear la semana: ' + error.message); setLoading(false); return }
+    setMicroObj(''); setMicroTipo(''); setModalTipo(null); await cargarDatos(); setLoading(false)
+  }
   const guardarSesion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
     const esF = sesionDisc === 'Fuerza'
@@ -679,12 +708,26 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
+      {/* Un grupo se planifica con esta misma pantalla: por debajo tiene su propia
+          ficha, así que aquí es un "deportista" más. Lo que cambia es a dónde se
+          vuelve y, sobre todo, avisar de que esto todavía no es de nadie. */}
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
-          <button onClick={() => router.push('/deportistas/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>
+          {deportista?.id_grupo
+            ? <button onClick={() => router.push('/grupo/' + deportista.id_grupo)} className="text-gray-400 hover:text-white text-sm transition">← Grupo</button>
+            : <button onClick={() => router.push('/deportistas/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Perfil</button>}
         </div>
       </nav>
+
+      {deportista?.id_grupo && (
+        <div className="bg-orange-500/10 border-b border-orange-500/30 px-6 py-2.5 text-center">
+          <span className="text-orange-300 text-sm font-medium">Planificando el grupo «{deportista.nombre}»</span>
+          <span className="text-orange-200/60 text-xs ml-2">
+            · esto todavía no está en el calendario de nadie: se vuelca a los miembros desde el panel del grupo
+          </span>
+        </div>
+      )}
 
       {/* Toast */}
       {mostrarToast && (
