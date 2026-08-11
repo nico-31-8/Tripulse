@@ -5,22 +5,11 @@
 // toggle "SICAT").
 // ============================================================
 import { supabase } from './supabase'
-
-export const DISCIPLINAS_SICAT = ['Natacion', 'Ciclismo', 'Carrera'] as const
-export type DisciplinaSicat = typeof DISCIPLINAS_SICAT[number]
-
-export interface FactorSicatDisc {
-  sesiones: number
-  f1: number | null
-  f2: number | null
-  f3: number | null
-  f4: number | null
-  total: number | null
-  corrector: number
-  porcentaje: number | null
-}
-
-export type SicatResultado = Record<DisciplinaSicat, FactorSicatDisc>
+// Los tipos y la lista de disciplinas viven en sicat-tipos (sin Supabase, para poder
+// importarlos desde modulos que se testean). Se reexportan para no romper nada.
+import { DISCIPLINAS_SICAT, type DisciplinaSicat, type FactorSicatDisc, type SicatResultado, type Periodo } from './sicat-tipos'
+export { DISCIPLINAS_SICAT }
+export type { DisciplinaSicat, FactorSicatDisc, SicatResultado, Periodo }
 
 function vacio(): FactorSicatDisc {
   return { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null, corrector: 1, porcentaje: null }
@@ -107,7 +96,7 @@ export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
 
 // Calcula el perfil SICAT (F1-F4 + % relativo) de un deportista para las 3 disciplinas
 // de resistencia. Fuerza queda fuera del modelo (no tiene tabla de referencia ECO).
-export async function calcularSICAT(dep: any): Promise<SicatResultado> {
+export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatResultado> {
   // FC umbral estimada como el 85% de la máxima, igual que el resto de la app
   // (/indices, tareas-tabla, panel-metricas, calendario y bloques). Antes aquí se
   // usaba la FC máxima a secas aunque la variable ya se llamaba fcUmbral, así que F4
@@ -116,19 +105,38 @@ export async function calcularSICAT(dep: any): Promise<SicatResultado> {
   const hrvBasal = dep.hrv_basal || 0
   const resultados = {} as SicatResultado
 
+  // Las sesiones LIBRES (sin microciclo) cuentan igual que las planificadas.
+  //
+  // Antes solo se miraban las que colgaban de un microciclo, y encima se salía de
+  // vacío si el atleta no tenía plan montado. O sea que NO contaban: las que se
+  // añade él por su cuenta, las que el entrenador pega con plantilla en una semana
+  // sin planificar, y las que le llegan de un grupo. Se entrenaron y costaron lo
+  // mismo; el SICAT calculaba el coste de media vida.
+  //
+  // Y las eliminadas ahora quedan fuera. Estaban entrando: `estado = Realizada` no
+  // dice nada de si la sesión sigue viva, así que una borrada seguía pesando.
   const microsIds = await getMicrosDeportista(dep.id)
-  if (!microsIds.length) {
-    DISCIPLINAS_SICAT.forEach(d => { resultados[d] = vacio() })
-    return resultados
+
+  // Con `periodo` se acota a un tramo. Sirve para ver si el coste de cada deporte se
+  // mueve con el tiempo: sin acotar, el SICAT mete toda la historia en el mismo saco
+  // y una mejora de hace un mes queda diluida entre dos años de sesiones.
+  const consulta = () => {
+    let q = supabase
+      .from('sesion')
+      .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
+      .eq('estado', 'Realizada')
+      .or('eliminada.is.null,eliminada.eq.false')
+    if (periodo?.desde) q = q.gte('fecha_sesion', periodo.desde)
+    if (periodo?.hasta) q = q.lte('fecha_sesion', periodo.hasta)
+    return q
   }
 
-  const { data: todasSesiones } = await supabase
-    .from('sesion')
-    .select('id, disciplina, rpe_estimado, rpe_reportado, fecha_sesion')
-    .eq('estado', 'Realizada')
-    .in('id_microciclo', microsIds)
+  const [enPlan, libres] = await Promise.all([
+    microsIds.length ? consulta().in('id_microciclo', microsIds) : Promise.resolve({ data: [] }),
+    consulta().eq('id_deportista', dep.id).is('id_microciclo', null),
+  ])
 
-  const sesiones = todasSesiones || []
+  const sesiones = [...(enPlan.data || []), ...(libres.data || [])]
   if (!sesiones.length) {
     DISCIPLINAS_SICAT.forEach(d => { resultados[d] = vacio() })
     return resultados

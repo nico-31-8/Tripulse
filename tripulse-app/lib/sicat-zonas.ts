@@ -59,12 +59,18 @@ export function costeSesion(d0: number | null, d24: number | null, d48: number |
 
 export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado> {
   const hrvBasal = dep.hrv_basal || 0
+  // Mismo criterio que calcularSICAT: las libres cuentan y las eliminadas no.
   const micros = await getMicrosDeportista(dep.id)
-  if (!micros.length) return { celdas: [], costeMedioGlobal: null, nSesiones: 0 }
-
-  const { data: ses } = await supabase.from('sesion')
+  const consulta = () => supabase.from('sesion')
     .select('id, disciplina, rpe_reportado, fecha_sesion')
-    .eq('estado', 'Realizada').in('id_microciclo', micros)
+    .eq('estado', 'Realizada').or('eliminada.is.null,eliminada.eq.false')
+
+  const [enPlan, libres] = await Promise.all([
+    micros.length ? consulta().in('id_microciclo', micros) : Promise.resolve({ data: [] }),
+    consulta().eq('id_deportista', dep.id).is('id_microciclo', null),
+  ])
+  const ses = [...(enPlan.data || []), ...(libres.data || [])]
+
   // Los bricks entran aunque 'Brick' no sea una disciplina SICAT: sus BLOQUES sí lo son.
   const sesiones = (ses || []).filter((s: any) =>
     ((DISCIPLINAS_SICAT as readonly string[]).includes(s.disciplina) || s.disciplina === 'Brick') && s.fecha_sesion)

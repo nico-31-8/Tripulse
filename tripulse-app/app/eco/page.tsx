@@ -6,6 +6,11 @@ import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { DISCIPLINAS_SICAT, calcularSICAT } from '@/lib/sicat'
+import {
+  tramos, aPunto, tendencia, mediaPuntos, diferencia, fmt as fmtPuntos,
+  GRANULARIDADES, SUELO_SICAT, TOPE_SICAT,
+  type Granularidad, type PuntoTramo,
+} from '@/lib/sicat-equilibrio'
 import { calcularSicatZonas, type SicatZonasResultado, type CeldaZona } from '@/lib/sicat-zonas'
 import { cargaZona } from '@/lib/zonas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -45,6 +50,70 @@ function conclusionesZonas(celdas: CeldaZona[]): { ic: string; texto: string }[]
   return out.slice(0, 3)
 }
 
+// Gráfica del equilibrio. En SVG a mano y no con recharts porque lo que cuenta la
+// historia es la BANDA entre la línea más alta y la más baja, y eso recharts no lo
+// hace sin pelearse: necesita un área definida por dos series calculadas al vuelo.
+//
+// El eje va de 4 a 16 —el 4 es el mínimo posible, no el cero— y con el 16 arriba,
+// así que las líneas que BAJAN son mejoras. Misma dirección que los depósitos.
+function GraficaEquilibrio({ serie, sel }: { serie: PuntoTramo[]; sel: number }) {
+  const L = 38, R = 604, T = 14, B = 214, n = serie.length
+  if (n < 2) return null
+  const x = (i: number) => L + (i / (n - 1)) * (R - L)
+  const y = (v: number) => T + ((TOPE_SICAT - v) / (TOPE_SICAT - SUELO_SICAT)) * (B - T)
+  const valores = (p: PuntoTramo) => DISCIPLINAS.map(d => p.puntos[d]).filter((v): v is number => v != null)
+
+  const conDatos = serie.map((p, i) => ({ p, i })).filter(({ p }) => valores(p).length > 0)
+  const arriba = conDatos.map(({ p, i }) => [x(i), y(Math.max(...valores(p)))])
+  const abajo = conDatos.map(({ p, i }) => [x(i), y(Math.min(...valores(p)))]).reverse()
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox="0 0 620 250" className="w-full h-auto" style={{ minWidth: 420 }}>
+        {[4, 8, 12, 16].map(v => (
+          <g key={v}>
+            <line x1={L} y1={y(v)} x2={R} y2={y(v)} stroke="#1f2937" />
+            <text x={L - 8} y={y(v) + 4} fill="#4b5563" fontSize="10" textAnchor="end">{v}</text>
+          </g>
+        ))}
+        {arriba.length > 1 && (
+          <path d={`M${arriba.map(q => q.join(',')).join(' L')} L${abajo.map(q => q.join(',')).join(' L')} Z`}
+            fill="rgba(255,255,255,.07)" />
+        )}
+        {DISCIPLINAS.map(d => {
+          const pts = serie.map((p, i) => ({ x: x(i), y: p.puntos[d] != null ? y(p.puntos[d]!) : null }))
+            .filter((q): q is { x: number; y: number } => q.y != null)
+          if (!pts.length) return null
+          const col = COLOR_DISC[d] || '#94a3b8'
+          return (
+            <g key={d}>
+              <polyline points={pts.map(q => `${q.x},${q.y}`).join(' ')} fill="none"
+                stroke={col} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+              {pts.map((q, i) => <circle key={i} cx={q.x} cy={q.y} r={3.5} fill="#111827" stroke={col} strokeWidth="2" />)}
+              {serie[sel]?.puntos[d] != null && (
+                <text x={x(sel) + 9} y={y(serie[sel].puntos[d]!) + 4} fill={col} fontSize="11" fontWeight="700">
+                  {fmtPuntos(serie[sel].puntos[d]!)}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        <line x1={x(sel)} y1={T} x2={x(sel)} y2={B} stroke="rgba(249,115,22,.35)" strokeDasharray="3 3" />
+        {serie.map((p, i) => (
+          <g key={i}>
+            <text x={x(i)} y={B + 20} fill={i === sel ? '#fdba74' : '#4b5563'} fontSize="10.5"
+              fontWeight={i === sel ? 700 : 400} textAnchor="middle">{p.etiqueta}</text>
+            {p.diferencia != null && (
+              <text x={x(i)} y={B + 36} fill="#4b5563" fontSize="9.5" textAnchor="middle">{fmtPuntos(p.diferencia)}</text>
+            )}
+          </g>
+        ))}
+        <text x={L - 8} y={B + 36} fill="#4b5563" fontSize="9" textAnchor="end">dif.</text>
+      </svg>
+    </div>
+  )
+}
+
 const TABLA_ECO_ORIGINAL = [
   { factor: 'Dificultad técnica', natacion: 3, ciclismo: 1, carrera: 2 },
   { factor: 'Dolor muscular',     natacion: 1, ciclismo: 1, carrera: 4 },
@@ -52,19 +121,19 @@ const TABLA_ECO_ORIGINAL = [
   { factor: 'Coste energético',  natacion: 3, ciclismo: 2, carrera: 3 },
 ]
 
-function colorPorcentaje(p: number) {
-  if (p <= 40) return 'text-green-400'
-  if (p <= 70) return 'text-yellow-400'
-  if (p <= 90) return 'text-orange-400'
-  return 'text-red-400'
+// El TOTAL se SUMA, no se escribe. Estaba a mano («9/16 · 75%») y no cuadraba: los
+// asteriscos de natación suman 8, no 9. Ciclismo y carrera sí. Un número escrito a
+// mano al lado de otros calculados acaba diciendo otra cosa, y nadie se entera.
+const CLAVE_ECO: Record<string, 'natacion' | 'ciclismo' | 'carrera'> = {
+  Natacion: 'natacion', Ciclismo: 'ciclismo', Carrera: 'carrera',
+}
+function totalEco(disc: string): number {
+  const k = CLAVE_ECO[disc]
+  return k ? TABLA_ECO_ORIGINAL.reduce((a, r) => a + r[k], 0) : 0
 }
 
-function bgPorcentaje(p: number) {
-  if (p <= 40) return 'bg-green-500'
-  if (p <= 70) return 'bg-yellow-500'
-  if (p <= 90) return 'bg-orange-500'
-  return 'bg-red-500'
-}
+/* colorPorcentaje / bgPorcentaje se han ido con el «% del máx»: coloreaban un número
+   que ya no se enseña. Ahora el color lo pone la disciplina, que es lo que se compara. */
 
 function ModalExplicacion({ onClose }: { onClose: () => void }) {
   return (
@@ -300,6 +369,11 @@ export default function EcoPage() {
   const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
   const [pondZona, setPondZona] = useState(false)
   const [refOpen, setRefOpen] = useState(false)
+  // Equilibrio por tramos: el SICAT de siempre mete toda la historia en un saco.
+  const [gran, setGran] = useState<Granularidad>('mes')
+  const [serie, setSerie] = useState<PuntoTramo[] | null>(null)
+  const [tramoSel, setTramoSel] = useState(3)
+  const [cargandoSerie, setCargandoSerie] = useState(false)
 
   useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
   const togglePond = () => setPondZona(v => {
@@ -332,12 +406,36 @@ export default function EcoPage() {
     setScores(resultados)
     setZonasRes(zres)
     setLoadingScores(false)
+    cargarSerie(dep, gran)
   }
 
+  // Un cálculo por tramo. Van en paralelo: cuatro tramos serían cuatro esperas
+  // seguidas y la pantalla se quedaría en blanco un rato largo.
+  const cargarSerie = async (dep: any, g: Granularidad) => {
+    setCargandoSerie(true)
+    const ts = tramos(g, 4)
+    const res = await Promise.all(ts.map(t => calcularSICAT(dep, t)))
+    const s = ts.map((t, i) => aPunto(t.etiqueta || '', res[i]))
+    setSerie(s)
+    setTramoSel(s.length - 1)
+    setCargandoSerie(false)
+  }
+
+  const cambiarGran = (g: Granularidad) => {
+    setGran(g)
+    if (seleccionado) cargarSerie(seleccionado, g)
+  }
+
+  // El radar compara PUNTOS contra PUNTOS, no porcentajes.
+  //
+  // La tabla ECO ya estaba en puntos sobre 16, así que enfrentar 10,2 con 8 es
+  // directo. Antes se comparaban dos porcentajes que además eran relativos a cosas
+  // distintas: el individual al máximo del atleta y el poblacional al máximo de la
+  // tabla. Y el poblacional estaba escrito a mano (75/50/100); ahora se suma.
   const radarData = scores ? DISCIPLINAS.map(d => ({
-    disciplina: d,
-    Individual: scores[d]?.porcentaje || 0,
-    Poblacional: d === 'Natacion' ? 75 : d === 'Ciclismo' ? 50 : 100,
+    disciplina: d === 'Natacion' ? 'Natación' : d,
+    Individual: scores[d]?.total || 0,
+    Poblacional: totalEco(d),
   })) : []
 
   // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). El coste por
@@ -416,6 +514,139 @@ export default function EcoPage() {
 
         {scores && seleccionado && !loadingScores && (
           <div>
+            {/* ===== EQUILIBRIO ENTRE DEPORTES =====
+                Contesta «¿está equilibrado?» sin obligar a comparar tres tarjetas a
+                ojo, y por tramos, para ver si se mueve. Todo lo que BAJA, mejora:
+                el agua, las líneas y la banda. Ni un indicador sube al mejorar. */}
+            <div className="tp-card p-6 mb-5">
+              <div className="flex justify-between items-start gap-3 flex-wrap mb-5">
+                <div>
+                  <h3 className="font-semibold text-[15px]">Equilibrio entre deportes</h3>
+                  <p className="text-gray-500 text-[11.5px] mt-0.5">Se llenan cuanto más cuestan. Bajar es mejorar.</p>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {GRANULARIDADES.map(g => (
+                    <button key={g.id} onClick={() => cambiarGran(g.id)}
+                      className={'text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border transition ' +
+                        (gran === g.id ? 'bg-orange-500/15 text-orange-300 border-orange-500/35'
+                                       : 'bg-white/[0.03] text-gray-500 border-white/[0.07] hover:text-white')}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {cargandoSerie || !serie ? (
+                <p className="text-center text-gray-500 text-[13px] py-10">Calculando por tramos…</p>
+              ) : (() => {
+                const p = serie[Math.min(tramoSel, serie.length - 1)]
+                const prev = tramoSel > 0 ? serie[tramoSel - 1] : null
+                const media = mediaPuntos(p)
+                const dif = p.diferencia
+                const col = dif == null ? '#6b7280' : dif <= 1 ? '#4ade80' : dif <= 2.5 ? '#fbbf24' : '#f87171'
+                const conDatos = DISCIPLINAS.filter(d => p.puntos[d] != null)
+                if (!conDatos.length) return (
+                  <p className="text-center text-gray-500 text-[13px] py-10">
+                    Sin sesiones suficientes en este tramo. Prueba con un periodo más largo.
+                  </p>
+                )
+                const caro = conDatos.reduce((a, d) => (p.puntos[d]! > p.puntos[a]! ? d : a), conDatos[0])
+                const barato = conDatos.reduce((a, d) => (p.puntos[d]! < p.puntos[a]! ? d : a), conDatos[0])
+                return (
+                  <>
+                    <div className="flex gap-1.5 flex-wrap mb-5">
+                      {serie.map((t, i) => (
+                        <button key={i} onClick={() => setTramoSel(i)}
+                          className={'text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border transition ' +
+                            (i === tramoSel ? 'bg-white/[0.09] text-white border-white/20'
+                                            : 'bg-white/[0.02] text-gray-500 border-white/[0.06] hover:text-gray-300')}>
+                          {t.etiqueta}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-5 items-end justify-center flex-wrap">
+                      {DISCIPLINAS.map(d => {
+                        const pts = p.puntos[d]
+                        const col2 = COLOR_DISC[d] || '#94a3b8'
+                        const antes = prev?.puntos[d] ?? null
+                        const delta = pts != null && antes != null ? pts - antes : null
+                        return (
+                          <div key={d} className="w-[104px] text-center">
+                            <div className="relative h-[164px] rounded-[13px] overflow-hidden border border-white/[0.09] bg-white/[0.03]">
+                              {pts != null && (
+                                <div className="absolute inset-x-0 bottom-0 transition-all duration-700"
+                                  style={{ height: (pts / TOPE_SICAT * 100) + '%', background: col2 }} />
+                              )}
+                              {/* El 4 es el mínimo posible, no el cero: el vaso nunca se vacía */}
+                              <div className="absolute inset-x-0 bottom-0 border-t border-white/20"
+                                style={{ height: (SUELO_SICAT / TOPE_SICAT * 100) + '%',
+                                  background: 'repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 5px,transparent 5px 10px)' }} />
+                              {media != null && (
+                                <div className="absolute inset-x-0 border-t-2 border-dashed border-white/35"
+                                  style={{ bottom: (media / TOPE_SICAT * 100) + '%' }}>
+                                  <span className="absolute right-1 -top-[14px] text-[9px] text-gray-400">media</span>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-[12px] font-semibold mt-2">{ICONO_SOLO(d)} {d === 'Natacion' ? 'Natación' : d}</p>
+                            <p className="text-[18px] font-bold tabular-nums mt-0.5" style={{ color: col2 }}>
+                              {pts != null ? fmtPuntos(pts) : '—'}<span className="text-[11px] text-gray-600">/16</span>
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">
+                              {p.sesiones[d]} sesiones
+                              {delta != null && (delta < -0.05
+                                ? <span className="text-green-400"> · ▼ {fmtPuntos(Math.abs(delta))}</span>
+                                : delta > 0.05 ? <span className="text-red-400"> · ▲ {fmtPuntos(delta)}</span>
+                                : <span className="text-gray-600"> · =</span>)}
+                            </p>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {dif != null && (
+                      <div className="mt-6">
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-[12.5px] font-semibold">Diferencia entre el que más y el que menos</span>
+                          <span className="text-[12.5px] tabular-nums font-bold" style={{ color: col }}>
+                            {fmtPuntos(dif)} puntos
+                            {prev?.diferencia != null && <span className="text-gray-600 font-normal text-[11px]"> · antes {fmtPuntos(prev.diferencia)}</span>}
+                          </span>
+                        </div>
+                        <div className="h-[11px] rounded-full bg-white/[0.06] overflow-hidden my-2">
+                          <div className="h-full rounded-full transition-all duration-700"
+                            style={{ width: Math.min(100, dif / 12 * 100) + '%', background: col }} />
+                        </div>
+                        <p className="text-gray-500 text-[11px]">
+                          Del que más cuesta (<b style={{ color: COLOR_DISC[caro] }}>{caro === 'Natacion' ? 'Natación' : caro}</b>, {fmtPuntos(p.puntos[caro]!)})
+                          {' '}al que menos (<b style={{ color: COLOR_DISC[barato] }}>{barato === 'Natacion' ? 'Natación' : barato}</b>, {fmtPuntos(p.puntos[barato]!)})
+                          {' '}hay <b className="text-gray-300">{fmtPuntos(dif)} puntos</b>.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+
+            {/* ===== CÓMO VA CAMBIANDO =====
+                La banda entre el más caro y el más barato ES el desequilibrio: si se
+                estrecha, se están equilibrando. No hay que leer ningún número. */}
+            {serie && serie.filter(p => p.diferencia != null).length >= 2 && (
+              <div className="tp-card p-6 mb-5">
+                <h3 className="font-semibold text-[15px]">Cómo va cambiando</h3>
+                <p className="text-gray-500 text-[11.5px] mt-0.5 mb-4">
+                  Una línea por deporte. La banda gris es la diferencia entre ellos.
+                </p>
+                <GraficaEquilibrio serie={serie} sel={tramoSel} />
+                <p className="text-[12px] mt-3 px-3 py-2.5 rounded-lg border-l-2"
+                  style={{ borderColor: 'rgba(74,222,128,.5)', background: 'rgba(74,222,128,.06)', color: '#86efac' }}>
+                  {tendencia(serie).texto}
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
               {DISCIPLINAS.map(disc => {
                 const s = scores[disc]
@@ -430,15 +661,25 @@ export default function EcoPage() {
 
                     {s.total !== null ? (
                       <>
+                        {/* Los PUNTOS arriba y el % debajo, no al revés.
+                            El «% del máx» tiene dos vicios: el deporte que más cuesta
+                            marca 100 siempre, aunque mejore; y si otro empeora, el
+                            primero «baja» sin haber cambiado nada. Sobre 16 el número
+                            es suyo. El total ya se calculaba: estaba abajo en gris. */}
                         <div className="flex items-baseline gap-2.5">
-                          <span className={'text-[44px] font-bold leading-none tracking-tight ' + colorPorcentaje(s.porcentaje || 0)}>
-                            {s.porcentaje}<span className="text-[19px]">%</span>
+                          <span className="text-[44px] font-bold leading-none tracking-tight" style={{ color: col }}>
+                            {s.total !== null ? fmtPuntos(s.total) : '—'}
                           </span>
-                          <span className="text-gray-600 text-[11px]">del máx.</span>
+                          <span className="text-gray-600 text-[13px]">/ 16 puntos</span>
                         </div>
+                        {/* La barra va de 4 a 16, no de 0: con 8,9 puntos sobre 0–16
+                            se vería medio llena cuando está casi en el mínimo. */}
                         <div className="w-full bg-white/[0.06] rounded-full h-1 mt-4 overflow-hidden">
-                          <div className={'h-1 rounded-full transition-all duration-500 ' + bgPorcentaje(s.porcentaje || 0)}
-                            style={{ width: (s.porcentaje || 0) + '%' }} />
+                          <div className="h-1 rounded-full transition-all duration-500"
+                            style={{
+                              width: Math.max(0, ((s.total || SUELO_SICAT) - SUELO_SICAT) / (TOPE_SICAT - SUELO_SICAT) * 100) + '%',
+                              background: col,
+                            }} />
                         </div>
 
                         <div className="mt-7 flex justify-between gap-2">
@@ -595,9 +836,11 @@ export default function EcoPage() {
                           ))}
                           <tr className="border-t border-white/[0.12]">
                             <td className="py-2 px-2 font-bold text-white">TOTAL</td>
-                            <td className="py-2 px-2 text-center font-bold text-orange-400">9/16 · 75%</td>
-                            <td className="py-2 px-2 text-center font-bold text-orange-400">6/16 · 50%</td>
-                            <td className="py-2 px-2 text-center font-bold text-orange-400">12/16 · 100%</td>
+                            {DISCIPLINAS.map(d => (
+                              <td key={d} className="py-2 px-2 text-center font-bold text-orange-400 tabular-nums">
+                                {totalEco(d)}/16
+                              </td>
+                            ))}
                           </tr>
                         </tbody>
                       </table>
