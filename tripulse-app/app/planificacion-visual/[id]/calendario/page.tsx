@@ -8,7 +8,7 @@ import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import PlanPeriodizacion from '@/components/PlanPeriodizacion'
 import { calcularDuracionEstimada, type TestsDeportista } from '@/lib/duracion'
 import { PRUEBAS, CATEGORIAS_PRUEBA, pruebaPorId, resumenSegmentos } from '@/lib/pruebas'
-import { plantillasDe, bloquesDe, aplicarBloques, volumenPrincipal, NIVELES, type PlantillaSesion, type NivelPlantilla } from '@/lib/plantillas'
+import { plantillasDe, bloquesDe, aplicarBloques, volumenPrincipal, opcionesDe, NIVELES, type PlantillaSesion, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, cargaZona } from '@/lib/zonas'
@@ -896,7 +896,16 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           const delSistema = plantillasDe(plantDisc)
           const lista: { key: string; nombre: string; zona: string; vol: string; bloques: any[] }[] =
             plantPestana === 'tipo'
-              ? delSistema.map(p => ({ key: p.id, nombre: p.nombre, zona: p.zona, vol: volumenPrincipal(p, plantNivel), bloques: bloquesDe(p, plantNivel) }))
+              // Aquí no hay sitio para un selector anidado, así que cada variante
+              // entra como una entrada más de la lista. Los bloques se calculan en
+              // el sitio, así que la clave compuesta no tiene que resolverse luego.
+              ? delSistema.flatMap(p => opcionesDe(p).map(o => ({
+                  key: o.clave,
+                  nombre: o.esBase ? p.nombre : p.nombre + ' · ' + o.nombre,
+                  zona: p.zona,
+                  vol: volumenPrincipal(p, plantNivel, o.varianteId),
+                  bloques: bloquesDe(p, plantNivel, o.varianteId),
+                })))
               : plantPropias.map(p => ({ key: 'p' + p.id, nombre: p.nombre, zona: p.zona, vol: '', bloques: p.bloques }))
           return (
             <div className="mb-6 bg-gray-900 border border-gray-800 rounded-xl p-4">

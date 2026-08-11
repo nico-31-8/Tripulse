@@ -17,7 +17,7 @@ import {
   type SesionDelGrupo, type ResultadoVolcado, type VolcadoPrevio,
 } from '@/lib/grupos-volcado'
 import { cargarCumplimiento, porcentaje, type Cumplimiento } from '@/lib/grupos-cumplimiento'
-import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, NIVELES, type NivelPlantilla } from '@/lib/plantillas'
+import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, opcionesDe, resolverClave, NIVELES, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera']
@@ -282,14 +282,27 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
 
   // Las del sistema y las tuyas, en una sola lista: al mandar da igual de dónde salga.
   const delSistema = plantillasDe(disciplina)
+
+  // La referencia del sistema puede ser una plantilla ('cic-aei') o una de sus
+  // variantes ('cic-aei/over-unders'). Se resuelve en un solo sitio para que el
+  // desplegable y la vista previa no puedan discrepar.
+  const delSistemaPorClave = (clave: string) => {
+    const r = resolverClave(clave)
+    if (!r) return null
+    return {
+      nombre: r.variante ? r.plantilla.nombre + ' · ' + r.variante.nombre : r.plantilla.nombre,
+      bloques: bloquesDe(r.plantilla, nivel, r.variante?.id),
+    }
+  }
+
   const mandar = async () => {
     setOcupado(true); setError(''); setParte(null)
     const [tipo, ref] = elegida.split(':')
     let bloques: any[] = []
     let nombre = 'Sesión de ' + disciplina
     if (tipo === 'sis') {
-      const p = delSistema.find(x => x.id === ref)
-      if (p) { bloques = bloquesDe(p, nivel); nombre = p.nombre }
+      const s = delSistemaPorClave(ref)
+      if (s) { bloques = s.bloques; nombre = s.nombre }
     } else if (tipo === 'mia') {
       const p = propias.find(x => String(x.id) === ref)
       if (p) { bloques = p.bloques; nombre = p.nombre }
@@ -678,7 +691,11 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                     </optgroup>
                   )}
                   <optgroup label="Del sistema">
-                    {delSistema.map(p => <option key={p.id} value={'sis:' + p.id}>{p.zona} · {p.nombre}</option>)}
+                    {delSistema.flatMap(p => opcionesDe(p).map(o => (
+                      <option key={o.clave} value={'sis:' + o.clave}>
+                        {p.zona} · {o.esBase ? p.nombre : p.nombre + ' · ' + o.nombre}
+                      </option>
+                    )))}
                   </optgroup>
                 </select>
               </label>
@@ -700,9 +717,9 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
 
               {/* Lo que se va a mandar, antes de mandarlo: son ocho calendarios. */}
               {(() => {
-                const p = elegida.startsWith('sis:') ? delSistema.find(x => x.id === elegida.slice(4)) : null
+                const sis = elegida.startsWith('sis:') ? delSistemaPorClave(elegida.slice(4)) : null
                 const mia = elegida.startsWith('mia:') ? propias.find(x => String(x.id) === elegida.slice(4)) : null
-                const bloques = p ? bloquesDe(p, nivel) : mia ? mia.bloques : []
+                const bloques = sis ? sis.bloques : mia ? mia.bloques : []
                 if (!bloques.length) return null
                 return (
                   <div className="bg-gray-950/60 border border-gray-800 rounded-lg px-3.5 py-3">

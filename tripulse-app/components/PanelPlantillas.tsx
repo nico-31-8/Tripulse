@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { cargaZona } from '@/lib/zonas'
 import {
-  plantillasDe, bloquesDe, textoBloque, volumenPrincipal, aplicarBloques, NIVELES,
+  plantillasDe, bloquesDe, textoBloque, volumenPrincipal, aplicarBloques, opcionesDe, NIVELES,
   type PlantillaSesion, type NivelPlantilla, type BloqueP,
 } from '@/lib/plantillas'
 import { cargarPropias, borrarPropia, type PlantillaPropia } from '@/lib/plantillas-propias'
@@ -39,6 +39,10 @@ interface Props {
 export default function PanelPlantillas({ sesionId, disciplina, nTareas, onAplicada, refrescar = 0 }: Props) {
   const [pestana, setPestana] = useState<Pestana>('tipo')
   const [abierta, setAbierta] = useState<string | null>(null)
+  // Clave de la variante elegida dentro de la plantilla abierta. Se olvida al
+  // cerrar: si no, abrir otra plantilla heredaría la variante de la anterior y
+  // el entrenador vería una sesión que no ha pedido.
+  const [variante, setVariante] = useState<string | null>(null)
   const [nivel, setNivel] = useState<NivelPlantilla>('intermedio')
   const [aplicando, setAplicando] = useState(false)
   const [propias, setPropias] = useState<PlantillaPropia[]>([])
@@ -195,32 +199,56 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, onAplic
         {plantillas.map(p => {
           const col = cargaZona(p.zona).color
           const esta = abierta === p.id
+          const opciones = opcionesDe(p)
+          // Si no hay nada elegido, la base. `opciones[0]` es siempre la base.
+          const sel = opciones.find(o => o.clave === variante) ?? opciones[0]
           return (
             <div key={p.id} className={'rounded-lg border transition ' + (esta ? 'border-gray-600 bg-gray-800/60' : 'border-gray-800 bg-gray-800/30 hover:border-gray-700')}>
-              <button onClick={() => setAbierta(esta ? null : p.id)} className="w-full text-left px-2.5 py-2 flex items-center gap-2">
+              <button onClick={() => { setAbierta(esta ? null : p.id); setVariante(null) }} className="w-full text-left px-2.5 py-2 flex items-center gap-2">
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded leading-none flex-shrink-0" style={{ background: col, color: '#0a0b0f' }}>
                   {p.zona}
                 </span>
                 <span className="text-xs text-white flex-1 truncate">{p.nombre}</span>
+                {/* Cuántas formas distintas hay de hacer esta zona. Se ve sin abrir:
+                    si no, nadie descubre que existen. */}
+                {opciones.length > 1 && (
+                  <span className="text-gray-500 text-[9px] flex-shrink-0" title={`${opciones.length} formas de hacer esta sesión`}>
+                    ×{opciones.length}
+                  </span>
+                )}
                 {/* El entrenador tiene derecho a saber si aplica doctrina o criterio nuestro. */}
                 {p.origen === 'propuesta' && <span className="text-purple-400 text-[9px]" title="Propuesta: sin respaldo en la literatura">🔵</span>}
-                <span className="text-gray-600 text-[10px] flex-shrink-0">{volumenPrincipal(p, nivel)}</span>
+                <span className="text-gray-600 text-[10px] flex-shrink-0">{volumenPrincipal(p, nivel, esta ? sel.varianteId : undefined)}</span>
               </button>
 
               {esta && (
                 <div className="px-2.5 pb-2.5 flex flex-col gap-2">
-                  <p className="text-gray-400 text-[11px] leading-relaxed">{p.objetivo}</p>
+                  {opciones.length > 1 && (
+                    <div className="flex flex-wrap gap-1">
+                      {opciones.map(o => (
+                        <button key={o.clave} onClick={() => setVariante(o.clave)}
+                          className={'text-[10px] px-2 py-1 rounded-md border transition ' + (o.clave === sel.clave
+                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 font-semibold'
+                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600')}>
+                          {o.esBase ? 'Estándar' : o.nombre}
+                          {o.origen === 'propuesta' && <span className="ml-1 text-purple-400">🔵</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                  <ListaBloques bloques={bloquesDe(p, nivel)} />
+                  <p className="text-gray-400 text-[11px] leading-relaxed">{sel.objetivo}</p>
 
-                  {p.aviso && (
+                  <ListaBloques bloques={bloquesDe(p, nivel, sel.varianteId)} />
+
+                  {sel.aviso && (
                     <p className="text-purple-300/70 text-[10px] leading-relaxed bg-purple-900/20 rounded p-1.5">
-                      🔵 {p.aviso}
+                      🔵 {sel.aviso}
                     </p>
                   )}
-                  <p className="text-gray-600 text-[10px]">Fuente: {p.fuente}</p>
+                  <p className="text-gray-600 text-[10px]">Fuente: {sel.fuente}</p>
 
-                  <button onClick={() => pedirYAplicar(bloquesDe(p, nivel))} disabled={aplicando}
+                  <button onClick={() => pedirYAplicar(bloquesDe(p, nivel, sel.varianteId))} disabled={aplicando}
                     className="bg-orange-500 hover:bg-orange-600 text-white text-xs py-1.5 rounded-lg font-medium transition disabled:opacity-50">
                     {aplicando ? 'Aplicando…' : 'Aplicar a esta sesión'}
                   </button>

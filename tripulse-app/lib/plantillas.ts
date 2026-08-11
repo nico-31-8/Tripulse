@@ -24,41 +24,21 @@
 //   · Natación → por DISTANCIA (es lo que controla el entrenador en la piscina).
 //   · Carrera  → por distancia (series) o tiempo (continuos).
 import { ZONAS_RESISTENCIA } from './zonas'
+import { VARIANTES } from './plantillas-variantes'
+import type {
+  NivelPlantilla, OrigenPlantilla, BloqueP, PlantillaSesion, VarianteSesion,
+} from './plantillas-tipos'
 
-export type NivelPlantilla = 'principiante' | 'intermedio' | 'avanzado'
+// Los tipos viven en `plantillas-tipos.ts` para que este módulo pueda importar
+// las variantes sin ciclo. Se reexportan aquí para que nadie tenga que cambiar
+// de dónde importa.
+export type { NivelPlantilla, OrigenPlantilla, BloqueP, PlantillaSesion, VarianteSesion }
 
 export const NIVELES: { id: NivelPlantilla; label: string }[] = [
   { id: 'principiante', label: 'Principiante' },
   { id: 'intermedio', label: 'Intermedio' },
   { id: 'avanzado', label: 'Avanzado' },
 ]
-
-// De dónde sale la plantilla. Se muestra en la interfaz: el entrenador tiene
-// derecho a saber si está aplicando doctrina o criterio nuestro.
-export type OrigenPlantilla = 'documentado' | 'propuesta'
-
-export interface BloqueP {
-  zona: string
-  series?: number          // nº de repeticiones (si no, bloque continuo)
-  metros?: number          // por repetición
-  segundos?: number        // por repetición
-  descansoSeg?: number     // entre repeticiones
-  nota?: string
-}
-
-export interface PlantillaSesion {
-  id: string
-  nombre: string
-  disciplina: 'Natacion' | 'Ciclismo' | 'Carrera'
-  zona: string             // zona principal — es por lo que se filtra
-  objetivo: string
-  origen: OrigenPlantilla
-  fuente: string           // nota + tabla de la que sale
-  aviso?: string           // solo en 'propuesta': por qué no hay doctrina
-  calentamiento: BloqueP[] // igual en los tres niveles
-  principal: Record<NivelPlantilla, BloqueP[]>
-  vuelta: BloqueP[]
-}
 
 // ------------------------------------------------------------
 // 🏊 NATACIÓN — B1-00c Tabla 1B + B1-00d Parte 2
@@ -544,9 +524,97 @@ export function plantillaPorId(id: string): PlantillaSesion | undefined {
   return PLANTILLAS.find(p => p.id === id)
 }
 
+// ------------------------------------------------------------
+// Variantes: otra forma de hacer la misma zona
+// ------------------------------------------------------------
+// Con una sola estructura por zona, un plan de doce semanas repite el mismo
+// martes ocho veces. Las variantes son el eje que faltaba. Viven en
+// `plantillas-variantes.ts` para no engordar este fichero.
+
+/** Las otras formas de hacer esta plantilla. Vacío si solo tiene la base. */
+export function variantesDe(p: PlantillaSesion): VarianteSesion[] {
+  return VARIANTES[p.id] || []
+}
+
+export function varianteDe(p: PlantillaSesion, idVariante: string): VarianteSesion | undefined {
+  return variantesDe(p).find(v => v.id === idVariante)
+}
+
+/**
+ * La clave que identifica una sesión con UN solo string: `cic-aei` para la base,
+ * `cic-aei/over-unders` para una variante.
+ *
+ * Existe para que quien elige una sesión —el asistente, un plan guardado, un
+ * enlace— pueda nombrarla sin arrastrar dos campos que se pueden desparejar.
+ */
+export function claveDe(idPlantilla: string, idVariante?: string): string {
+  return idVariante ? idPlantilla + '/' + idVariante : idPlantilla
+}
+
+export function resolverClave(clave: string): { plantilla: PlantillaSesion; variante?: VarianteSesion } | undefined {
+  const [idPlantilla, idVariante] = clave.split('/')
+  const plantilla = plantillaPorId(idPlantilla)
+  if (!plantilla) return undefined
+  if (!idVariante) return { plantilla }
+  const variante = varianteDe(plantilla, idVariante)
+  // Una clave con variante inexistente NO cae a la base en silencio: quien la
+  // escribió creía estar pidiendo otra cosa, y devolverle la base sin avisar
+  // es exactamente el fallo que no queremos (nada revienta, el dato miente).
+  return variante ? { plantilla, variante } : undefined
+}
+
+/** La base y sus variantes en una lista uniforme, para pintar un selector. */
+export interface OpcionSesion {
+  clave: string
+  /** El id de la variante, o `undefined` si es la base. Es lo que pide `bloquesDe`. */
+  varianteId?: string
+  nombre: string
+  objetivo: string
+  origen: OrigenPlantilla
+  fuente: string
+  aviso?: string
+  esBase: boolean
+}
+
+export function opcionesDe(p: PlantillaSesion): OpcionSesion[] {
+  return [
+    { clave: p.id, nombre: p.nombre, objetivo: p.objetivo, origen: p.origen, fuente: p.fuente, aviso: p.aviso, esBase: true },
+    ...variantesDe(p).map(v => ({
+      clave: claveDe(p.id, v.id), varianteId: v.id, nombre: v.nombre, objetivo: v.objetivo,
+      origen: v.origen, fuente: v.fuente, aviso: v.aviso, esBase: false,
+    })),
+  ]
+}
+
 // Los bloques de una plantilla en un nivel: calentamiento + principal + vuelta.
-export function bloquesDe(p: PlantillaSesion, nivel: NivelPlantilla): BloqueP[] {
-  return [...p.calentamiento, ...p.principal[nivel], ...p.vuelta]
+// Con `varianteId`, el bloque principal es el de la variante; el calentamiento y
+// la vuelta se heredan de la plantilla salvo que la variante los cambie (una
+// sesión sin pausas internas necesita calentar más).
+export function bloquesDe(p: PlantillaSesion, nivel: NivelPlantilla, varianteId?: string): BloqueP[] {
+  const v = varianteId ? varianteDe(p, varianteId) : undefined
+  if (!v) return [...p.calentamiento, ...p.principal[nivel], ...p.vuelta]
+  return [
+    ...(v.calentamiento ?? p.calentamiento),
+    ...v.principal[nivel],
+    ...(v.vuelta ?? p.vuelta),
+  ]
+}
+
+/** Los bloques a partir de una clave. `undefined` si la clave no existe. */
+export function bloquesPorClave(clave: string, nivel: NivelPlantilla): BloqueP[] | undefined {
+  const r = resolverClave(clave)
+  return r ? bloquesDe(r.plantilla, nivel, r.variante?.id) : undefined
+}
+
+/**
+ * Todas las claves del catálogo, base y variantes. Es lo que se le da al
+ * asistente para que ELIJA en vez de inventar: un menú cerrado de sesiones que
+ * la app sabe aplicar, en vez de texto libre que hay que validar después.
+ */
+export function todasLasClaves(disciplina?: string): string[] {
+  return PLANTILLAS
+    .filter(p => !disciplina || p.disciplina === disciplina)
+    .flatMap(p => opcionesDe(p).map(o => o.clave))
 }
 
 // Resumen legible de un bloque: "8 × 100m", "3 × 15′", "45′".
@@ -602,8 +670,9 @@ export async function aplicarBloques(
 
 // Volumen total de trabajo del bloque principal (sin calentamiento ni vuelta):
 // metros para natación/carrera, minutos para ciclismo.
-export function volumenPrincipal(p: PlantillaSesion, nivel: NivelPlantilla): string {
-  const bloques = p.principal[nivel]
+export function volumenPrincipal(p: PlantillaSesion, nivel: NivelPlantilla, varianteId?: string): string {
+  const v = varianteId ? varianteDe(p, varianteId) : undefined
+  const bloques = v ? v.principal[nivel] : p.principal[nivel]
   const metros = bloques.reduce((a, b) => a + (b.metros || 0) * (b.series || 1), 0)
   if (metros > 0) return metros >= 1000 ? (metros / 1000).toFixed(1).replace('.0', '') + ' km' : metros + ' m'
   const seg = bloques.reduce((a, b) => a + (b.segundos || 0) * (b.series || 1), 0)
