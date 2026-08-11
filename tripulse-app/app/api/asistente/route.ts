@@ -71,10 +71,12 @@ export async function POST(req: Request) {
     async start(controller) {
       try {
         const ms = anthropic.messages.stream({
-          model: 'claude-opus-4-8',
+          model: 'claude-opus-5',
           // El pensamiento consume de max_tokens, así que hay que subirlo o la
           // respuesta se queda a medias justo en las preguntas más complejas.
-          max_tokens: 6000,
+          // Opus 5 piensa más que 4.8 y encima aquí caben tres cosas: el
+          // pensamiento, la respuesta y el JSON de la propuesta.
+          max_tokens: 16000,
           // Razona mejor sobre números (TSB, ACWR, índices) antes de opinar. No se
           // muestra: abajo solo se reenvían los `text_delta`, nunca los de thinking.
           thinking: { type: 'adaptive' },
