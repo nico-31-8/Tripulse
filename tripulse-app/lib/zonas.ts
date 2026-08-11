@@ -78,6 +78,72 @@ export const ZONAS_FUERZA: ZonaFuerza[] = [
 ]
 
 // ------------------------------------------------------------
+// El sistema clásico Z1–Z7
+// ------------------------------------------------------------
+// No es código muerto: es el sistema de los atletas que no están en «Zonas 2»
+// (ver tareas-tabla.tsx, donde se elige uno u otro según la sigla de la tarea).
+//
+// ESTA TABLA ES LA ÚNICA. Antes vivía copiada en tres sitios —la ficha de sesión,
+// la pantalla de ejecución y los puntos medios de lib/duracion.ts— y las copias
+// se habían separado: la columna de VAM de la ficha estaba desplazada 5–10 puntos
+// respecto a la de ejecución, así que el MISMO Z4 prescribía 3:57–4:21/km en una
+// pantalla y 4:10–4:41/km en la otra para un atleta de VAM 16. Nada reventaba; el
+// ritmo simplemente cambiaba según por dónde entrases.
+//
+// FUENTES
+//   · %FTP  → Coggan (7 niveles). Coincide con los ftpMin/ftpMax de Zonas 2.
+//   · %VAM  → Tuimil, B1-00c Tabla 3. Es la que estaba mal en la ficha.
+//   · %CSS  → escala de natación de la app.
+//
+// ⚠️ PENDIENTE, ANOTADO A PROPÓSITO: en la columna de CSS el «umbral» (Z4) cae en
+// 86–95 % del CSS, y el CSS ES el umbral, así que debería estar en el 100 %. Las
+// dos pantallas coincidían en esto, así que NO era parte de la incoherencia y no
+// se toca aquí: cambiarlo movería los ritmos de natación de todos los atletas del
+// sistema clásico. Hay que decidirlo contra el vault, como el hueco de %VAM de
+// B1-00e §2.3.
+export interface ZonaClasica {
+  num: number
+  ftpPct: [number, number]
+  vamPct: [number, number]
+  cssPct: [number, number]
+}
+
+export const ZONAS_CLASICAS: Record<number, ZonaClasica> = {
+  1: { num: 1, ftpPct: [45, 55],   vamPct: [45, 60],   cssPct: [55, 65] },
+  2: { num: 2, ftpPct: [56, 75],   vamPct: [60, 70],   cssPct: [65, 75] },
+  3: { num: 3, ftpPct: [76, 90],   vamPct: [70, 80],   cssPct: [76, 85] },
+  4: { num: 4, ftpPct: [91, 105],  vamPct: [80, 90],   cssPct: [86, 95] },
+  5: { num: 5, ftpPct: [106, 120], vamPct: [90, 100],  cssPct: [96, 105] },
+  6: { num: 6, ftpPct: [121, 150], vamPct: [100, 115], cssPct: [106, 120] },
+  7: { num: 7, ftpPct: [151, 200], vamPct: [115, 150], cssPct: [121, 140] },
+}
+
+/** El número de zona a partir de la sigla clásica: 'Z4' → 4. `null` si no lo es. */
+export function numZonaClasica(codigo: string | null | undefined): number | null {
+  const m = String(codigo ?? '').trim().toUpperCase().match(/^Z([1-7])$/)
+  return m ? Number(m[1]) : null
+}
+
+export const zonaClasica = (codigo: string | null | undefined): ZonaClasica | null => {
+  const n = numZonaClasica(codigo)
+  return n ? ZONAS_CLASICAS[n] : null
+}
+
+/**
+ * El punto medio del rango, que es lo que usa la estimación de duración.
+ *
+ * Se calcula, no se escribe a mano: escrito a mano es como se separó de la tabla
+ * la primera vez. Z1 va aparte porque su rango real empieza en 0 —«todo lo que
+ * sea más suave que esto»— y su media aritmética no significa nada.
+ */
+export function pctMedioClasica(num: number, campo: 'ftpPct' | 'vamPct' | 'cssPct'): number {
+  const z = ZONAS_CLASICAS[num]
+  if (!z) return 0
+  const [lo, hi] = z[campo]
+  return Math.round((lo + hi) / 2)
+}
+
+// ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
 // La sigla puede llegar vacía: tarea.zona_entrenamiento es nullable.

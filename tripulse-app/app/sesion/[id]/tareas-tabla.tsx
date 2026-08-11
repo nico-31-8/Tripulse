@@ -3,7 +3,7 @@ import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
-import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 import { filtrarDrills } from '@/lib/tecnica'
 
@@ -88,19 +88,13 @@ function mostrarTotal(t: any): string {
   return '—'
 }
 
-const ZONAS_REF: Record<number, { ftpPct: [number,number], vamPct: [number,number], cssPct: [number,number] }> = {
-  1: { ftpPct: [0,55],    vamPct: [0,65],   cssPct: [0,65]  },
-  2: { ftpPct: [56,75],   vamPct: [65,75],  cssPct: [65,75] },
-  3: { ftpPct: [76,90],   vamPct: [76,85],  cssPct: [76,85] },
-  4: { ftpPct: [91,105],  vamPct: [86,95],  cssPct: [86,95] },
-  5: { ftpPct: [106,120], vamPct: [96,105], cssPct: [96,105]},
-  6: { ftpPct: [121,150], vamPct: [106,120],cssPct: [106,120]},
-  7: { ftpPct: [151,200], vamPct: [121,150],cssPct: [121,150]},
-}
-
+// La tabla de %FTP/%VAM/%CSS del sistema clásico vive en lib/zonas.ts
+// (ZONAS_CLASICAS). Aquí había una copia con la columna de VAM desplazada 5–10
+// puntos respecto a la de la pantalla de ejecución: el mismo Z4 daba dos ritmos
+// distintos según por dónde entrases.
 function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number) {
   if (!zona) return null
-  const ref = ZONAS_REF[zona.num]
+  const ref = ZONAS_CLASICAS[zona.num]
   const fcUmbral = fcMax ? fcMax * 0.85 : 0
   const fcMin = fcUmbral > 0 && zona.pct[0] > 0 ? Math.round(fcUmbral * zona.pct[0] / 100) : null
   const fcMax2 = fcUmbral > 0 && zona.pct[1] > 0 ? Math.round(fcUmbral * zona.pct[1] / 100) : null

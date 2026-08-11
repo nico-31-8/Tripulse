@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import FuerzaRegistro from './FuerzaRegistro'
-import { zonaResistencia, prescripcion, cargaZona } from '@/lib/zonas'
+import { zonaResistencia, prescripcion, cargaZona, zonaClasica } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 
@@ -39,29 +39,30 @@ function claseZona(zona: string): string {
   return COLOR_ZONA[zona] || COLOR_ZONA['Z' + cargaZona(zona).nivel] || 'bg-gray-900 border-gray-700'
 }
 
-const VAM_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.60], Z2:[0.60,0.70], Z3:[0.70,0.80], Z4:[0.80,0.90], Z5:[0.90,1.00], Z6:[1.00,1.15], Z7:[1.15,1.30] }
-const FTP_ZONAS: Record<string, [number,number]> = { Z1:[0.45,0.55], Z2:[0.56,0.75], Z3:[0.76,0.90], Z4:[0.91,1.05], Z5:[1.06,1.20], Z6:[1.21,1.50], Z7:[1.51,2.00] }
-const CSS_ZONAS: Record<string, [number,number]> = { Z1:[0.55,0.65], Z2:[0.65,0.75], Z3:[0.76,0.85], Z4:[0.86,0.95], Z5:[0.96,1.05], Z6:[1.06,1.20], Z7:[1.21,1.40] }
+// Los tres rangos del sistema clásico salían de tres tablas escritas aquí. La de
+// VAM se había separado de la de la ficha de sesión y prescribía otro ritmo para
+// la misma zona. Ahora las tres vienen de ZONAS_CLASICAS (lib/zonas.ts).
 function calcularRango(zona: string, disciplina: string, tests: any): string {
   if (!zona || !disciplina || !tests) return ''
   // Zonas 2 (resistencia): el catálogo da el rango real de ritmo/vatios/CSS.
   const zr = zonaResistencia(zona)
   if (zr) { const p = prescripcion(zr, disciplina, tests); return p && p !== '—' ? p : '' }
   // Sistema clásico Z1–Z7.
-  const z = zona.toUpperCase()
-  if (disciplina === 'Carrera' && tests.vam && VAM_ZONAS[z]) {
-    const [p1, p2] = VAM_ZONAS[z]
-    const v1 = tests.vam * p1, v2 = tests.vam * p2
+  const zc = zonaClasica(zona)
+  if (!zc) return ''
+  if (disciplina === 'Carrera' && tests.vam) {
+    const [p1, p2] = zc.vamPct
+    const v1 = tests.vam * p1 / 100, v2 = tests.vam * p2 / 100
     const fmt = (v: number) => { const s = 3600/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
     return fmt(v2) + '–' + fmt(v1) + ' /km'
   }
-  if (disciplina === 'Ciclismo' && tests.ftp && FTP_ZONAS[z]) {
-    const [p1, p2] = FTP_ZONAS[z]
-    return Math.round(tests.ftp*p1) + '–' + Math.round(tests.ftp*p2) + ' W'
+  if (disciplina === 'Ciclismo' && tests.ftp) {
+    const [p1, p2] = zc.ftpPct
+    return Math.round(tests.ftp*p1/100) + '–' + Math.round(tests.ftp*p2/100) + ' W'
   }
-  if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css && CSS_ZONAS[z]) {
-    const [p1, p2] = CSS_ZONAS[z]
-    const fmt = (p: number) => { const s = 100/(tests.css * p); return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
+  if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css) {
+    const [p1, p2] = zc.cssPct
+    const fmt = (p: number) => { const s = 100/(tests.css * p / 100); return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
     return fmt(p2) + '–' + fmt(p1) + ' /100m'
   }
   return ''

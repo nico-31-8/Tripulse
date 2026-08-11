@@ -13,22 +13,26 @@
 //
 //   total_tarea = (tiempo_trabajo · series) + descanso_segundos · (series - 1)
 //
-// El % de zona es el punto medio del rango de ZONAS_REF (ver tareas-tabla.tsx).
-// Z1 tiene rango [0, x] así que usamos un valor fijo del 60%.
+// El % de zona es el punto medio del rango de ZONAS_CLASICAS (lib/zonas.ts).
 // Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
-import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia } from './zonas'
+import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS, pctMedioClasica } from './zonas'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
-// Z1 fijo al 60% porque su rango real empieza en 0.
-const PCT_ZONA: Record<number, { vam: number; css: number }> = {
-  1: { vam: 60,  css: 60  },
-  2: { vam: 70,  css: 70  },
-  3: { vam: 80,  css: 80  },
-  4: { vam: 90,  css: 90  },
-  5: { vam: 100, css: 100 },
-  6: { vam: 113, css: 113 },
-  7: { vam: 135, css: 135 },
-}
+//
+// SE CALCULA, NO SE ESCRIBE. Antes eran siete pares de números a mano y por eso
+// se quedaron atrás cuando la tabla de la que salían resultó estar mal: las
+// duraciones estimadas de carrera se calculaban con velocidades un 5 % más altas
+// de lo que dice la doctrina, así que salían sesiones más cortas de lo real.
+// Derivándolo, una corrección en la tabla llega aquí sola.
+//
+// Z1 va con el mismo criterio que las demás. Su rango en ZONAS_CLASICAS empieza
+// en 45 y no en 0 justamente para que su punto medio signifique algo.
+const PCT_ZONA: Record<number, { vam: number; css: number }> = Object.fromEntries(
+  Object.keys(ZONAS_CLASICAS).map(k => [Number(k), {
+    vam: pctMedioClasica(Number(k), 'vamPct'),
+    css: pctMedioClasica(Number(k), 'cssPct'),
+  }]),
+)
 
 // Segundos por repetición de fuerza (tempo concéntrico + excéntrico).
 const SEG_POR_REP = 3
