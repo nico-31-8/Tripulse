@@ -13,6 +13,7 @@ import {
 import { emitirSesion, resumenEmision, microsDeDeportista, microDelDia, type ResultadoMiembro } from '@/lib/grupos-emision'
 import {
   sesionesDelGrupo, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio,
+  loQueYaTiene, sesionesQueLeFaltan,
   type SesionDelGrupo, type ResultadoVolcado, type VolcadoPrevio,
 } from '@/lib/grupos-volcado'
 import { cargarCumplimiento, porcentaje, type Cumplimiento } from '@/lib/grupos-cumplimiento'
@@ -167,10 +168,58 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   }
 
   const anadir = async (idDep: number) => {
-    setOcupado(true); setError('')
+    setOcupado(true); setError(''); setAviso('')
     const e = await meterEnGrupo(supabase, id, [idDep])
     if (e) setError(e)
+    else {
+      // Entra limpio: no se le copia nada solo. Pero este es el momento en que hace
+      // falta saber que existe el botón, así que se dice aquí y no en un manual.
+      const nombre = fuera.find((d: any) => String(d.id) === String(idDep))?.nombre || 'Ya está dentro'
+      setAviso(nombre + ' está en el grupo. No recibe nada de lo ya planificado: si quieres dárselo, pulsa «Traer futuras» en su fila.')
+    }
     await cargar()
+    setOcupado(false)
+  }
+
+  // Traerle a una persona lo que el grupo ya tiene planificado de hoy en adelante.
+  //
+  // Al meter a alguien nuevo NO se le copia nada automáticamente: meter a una
+  // persona pasa a ser una acción con consecuencias grandes e invisibles, y podría
+  // llenarle el calendario sin querer. Se ofrece y decide el entrenador.
+  const traerFuturas = async (m: MiembroGrupo) => {
+    setOcupado(true); setError(''); setAviso('')
+    const { id: ficha, error: e } = idFicha ? { id: idFicha, error: null } : await fichaDeGrupo(supabase, id)
+    if (e || !ficha) { setError(e || 'No se pudo leer el plan del grupo.'); setOcupado(false); return }
+    setIdFicha(ficha)
+
+    const hoy = hoyISO()
+    // Un año por delante: el horizonte de cualquier planificación real.
+    const finDeAno = new Date(); finDeAno.setDate(finDeAno.getDate() + 365)
+    const hasta365 = finDeAno.toISOString().slice(0, 10)
+
+    const delGrupo = await sesionesDelGrupo(supabase, ficha, hoy, hasta365)
+    const tiene = await loQueYaTiene(supabase, id, m.id_deportista, hoy, hasta365)
+    const faltan = sesionesQueLeFaltan(delGrupo, tiene)
+
+    if (!faltan.length) {
+      setAviso(delGrupo.length
+        ? m.nombre + ' ya tiene todo lo que el grupo tiene planificado de hoy en adelante.'
+        : 'El grupo no tiene nada planificado de hoy en adelante.')
+      setOcupado(false); return
+    }
+    if (!confirm('¿Traerle a ' + m.nombre + ' ' + faltan.length +
+      (faltan.length === 1 ? ' sesión' : ' sesiones') + ' del grupo?\n\nSon las que el grupo tiene planificadas de hoy en adelante y que todavía no tiene.')) {
+      setOcupado(false); return
+    }
+
+    const r = await volcar(supabase, {
+      idGrupo: id, nombre: 'Alta de ' + m.nombre, sesiones: faltan,
+      miembros: [{ id_deportista: m.id_deportista, nombre: m.nombre }],
+      microsDe: (idDep) => microsDeDeportista(supabase, idDep),
+      microDelDia,
+    })
+    if (r.error) setError(r.error)
+    else setAviso(resumenVolcado(r.resultados))
     setOcupado(false)
   }
 
@@ -383,6 +432,9 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-none">
+                    <button onClick={() => traerFuturas(m)} disabled={ocupado}
+                      title="Copiarle lo que el grupo tiene planificado de hoy en adelante y él no tenga"
+                      className="text-gray-500 hover:text-orange-400 text-xs underline transition disabled:opacity-40">Traer futuras</button>
                     <button onClick={() => router.push('/deportistas/' + m.id_deportista)}
                       className="text-gray-500 hover:text-white text-xs underline transition">Ver ficha</button>
                     <button onClick={() => sacar(m)} disabled={ocupado}

@@ -63,6 +63,37 @@ export async function sesionesDelGrupo(
   return data || []
 }
 
+// Lo que ESA persona ya tiene de este grupo en un rango. Se usa para no volver a
+// darle lo que ya recibió cuando se le traen las sesiones futuras al entrar.
+export async function loQueYaTiene(
+  sb: any, idGrupo: string, idDeportista: number, desde: string, hasta: string,
+): Promise<{ fecha_sesion: string; disciplina: string }[]> {
+  const { data: emis } = await sb.from('grupo_entreno_emision').select('id').eq('id_grupo', idGrupo)
+  const idsEmi = (emis || []).map((e: any) => e.id)
+  if (!idsEmi.length) return []
+  const { data } = await sb.from('sesion')
+    .select('fecha_sesion, disciplina')
+    .in('id_emision', idsEmi).eq('id_deportista', idDeportista)
+    .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
+    .or('eliminada.is.null,eliminada.eq.false')
+  return data || []
+}
+
+// De las sesiones del grupo, las que a esa persona le faltan.
+//
+// Se comparan por día + deporte, que es lo único que se puede: la copia no guarda
+// de qué sesión del grupo salió. Si el grupo tuviera dos del mismo deporte el mismo
+// día, se le traería una sola. Es raro y prefiero quedarme corto: darle de menos se
+// arregla volcando otra vez, darle de más le duplica la semana.
+export function sesionesQueLeFaltan(
+  delGrupo: SesionDelGrupo[], yaTiene: { fecha_sesion: string; disciplina: string }[],
+): SesionDelGrupo[] {
+  const tiene = new Set((yaTiene || []).map(s =>
+    String(s.fecha_sesion).slice(0, 10) + '|' + String(s.disciplina || '')))
+  return (delGrupo || []).filter(s =>
+    !tiene.has(String(s.fecha_sesion).slice(0, 10) + '|' + String(s.disciplina || '')))
+}
+
 export interface VolcadoPrevio {
   planificadas: number[]   // se pueden apartar y rehacer
   realizadas: number       // ya entrenadas: no se tocan NUNCA

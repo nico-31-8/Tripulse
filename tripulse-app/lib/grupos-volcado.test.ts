@@ -1,5 +1,40 @@
 import { describe, it, expect } from 'vitest'
-import { limpiar, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio } from './grupos-volcado'
+import {
+  limpiar, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio, sesionesQueLeFaltan,
+} from './grupos-volcado'
+
+describe('sesionesQueLeFaltan', () => {
+  const delGrupo = [
+    { id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera' },
+    { id: 2, fecha_sesion: '2026-03-06', disciplina: 'Natacion' },
+    { id: 3, fecha_sesion: '2026-03-08', disciplina: 'Carrera' },
+  ]
+
+  it('deja fuera las que ya tiene', () => {
+    const r = sesionesQueLeFaltan(delGrupo, [{ fecha_sesion: '2026-03-06', disciplina: 'Natacion' }])
+    expect(r.map(s => s.id)).toEqual([1, 3])
+  })
+
+  it('sin nada previo, le faltan todas', () => {
+    expect(sesionesQueLeFaltan(delGrupo, [])).toHaveLength(3)
+  })
+
+  /* Mismo día pero otro deporte es otro entrenamiento: no se descarta. */
+  it('el mismo día con otro deporte sigue faltando', () => {
+    const r = sesionesQueLeFaltan(delGrupo, [{ fecha_sesion: '2026-03-04', disciplina: 'Natacion' }])
+    expect(r.map(s => s.id)).toEqual([1, 2, 3])
+  })
+
+  it('la fecha con hora se compara igual', () => {
+    const r = sesionesQueLeFaltan(delGrupo, [{ fecha_sesion: '2026-03-04T00:00:00Z', disciplina: 'Carrera' }])
+    expect(r.map(s => s.id)).toEqual([2, 3])
+  })
+
+  it('aguanta nulos', () => {
+    expect(sesionesQueLeFaltan(null as any, [])).toEqual([])
+    expect(sesionesQueLeFaltan(delGrupo, null as any)).toHaveLength(3)
+  })
+})
 
 /* Cliente para las dos funciones de "ya volcado". Devuelve lo que se le diga por
    tabla, y apunta las operaciones. */
