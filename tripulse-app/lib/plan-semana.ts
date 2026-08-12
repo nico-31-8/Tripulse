@@ -266,14 +266,34 @@ export function formaDeSemana(e: EntradaSemana): FormaSemana {
     avisos.push(`B3-01 pide ${plantillasFuerza[0].sesionesSemana} sesiones de ${plantillasFuerza[0].nombre.toLowerCase()} y en este volumen solo cabe ${fuerza.sesiones}. Es el techo del ${REPARTO_DISCIPLINA[e.distancia].Fuerza.max} % de B1-04.`)
   }
 
-  const sesionesTotales = bloques.reduce((a, b) => a + b.sesiones, 0)
-
-  // Doblar es NORMAL en triatlón: la natación no carga el tren inferior y se
-  // combina el mismo día sin coste (B1-04 Principio 3). Por eso el aviso no salta
-  // en cuanto hay más sesiones que días —eso sería ruido en casi toda semana—
-  // sino cuando más de la mitad de los días tendrían que llevar doble.
+  // MENOS SESIONES Y MÁS LARGAS cuando no caben en los días que hay.
+  //
+  // Doblar es normal en triatlón —la natación se combina el mismo día sin coste
+  // (B1-04 Principio 3)— pero hay un límite. Dividir el volumen entre el número
+  // de sesiones que salga de la duración tipo daba 13 sesiones para 16 h en siete
+  // días: seis días con doble. Un entrenador con ese volumen hace unas diez, más
+  // largas, que además es lo que pide una prueba larga.
+  //
+  // Se recorta por la disciplina que más sesiones tenga, nunca por debajo del
+  // mínimo de 2, y los minutos se reparten entre las que quedan.
+  const TOPE = Math.floor(dias * 1.5)
+  let sesionesTotales = bloques.reduce((a, b) => a + b.sesiones, 0)
+  let recortadas = 0
+  while (sesionesTotales > TOPE) {
+    const candidata = bloques
+      .filter(b => b.bloque !== 'Fuerza' && b.sesiones > MIN_SESIONES)
+      .sort((a, b) => b.sesiones - a.sesiones)[0]
+    if (!candidata) break
+    candidata.sesiones--
+    candidata.minutosPorSesion = Math.round(candidata.minutos / candidata.sesiones)
+    sesionesTotales--
+    recortadas++
+  }
+  if (recortadas) {
+    avisos.push(`${recortadas} sesión(es) menos y más largas: con ${dias} día(s) no caben más sin que casi todos lleven doble. El volumen es el mismo.`)
+  }
   if (sesionesTotales > dias * 1.5) {
-    avisos.push(`Salen ${sesionesTotales} sesiones para ${dias} día(s): más de la mitad de los días llevarían doble. Lo barato es doblar natación, que no carga el tren inferior (B1-04, interferencia baja).`)
+    avisos.push(`Aun así salen ${sesionesTotales} sesiones para ${dias} día(s): más de la mitad llevarán doble. Lo barato es doblar natación, que no carga el tren inferior (B1-04, interferencia baja).`)
   }
 
   const rango = CALIDAD_POR_NIVEL[e.nivel] || CALIDAD_POR_NIVEL.intermedio

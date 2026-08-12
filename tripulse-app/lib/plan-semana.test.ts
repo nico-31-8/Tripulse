@@ -123,9 +123,29 @@ describe('las sesiones', () => {
     })
   })
 
-  it('avisa cuando salen mas sesiones que dias, y dice cual doblar', () => {
-    const f = formaDeSemana(base({ diasSemana: 4 }))
-    expect(f.sesionesTotales).toBeGreaterThan(4)
+  /* Dividir el volumen por la duracion tipo daba 13 sesiones para 16 h en siete
+     dias: seis dias con doble. Un entrenador con ese volumen hace unas diez, mas
+     largas — y en una prueba larga eso ademas es lo especifico. */
+  it('con mucho volumen y pocos dias hace menos sesiones y mas largas', () => {
+    const f = formaDeSemana(base({ horasSemana: 16, diasSemana: 7, distancia: 'largo' }))
+    expect(f.sesionesTotales).toBeLessThanOrEqual(Math.floor(7 * 1.5))
+    expect(f.avisos.join(' ')).toMatch(/mas largas|más largas/i)
+    // El volumen NO cambia: solo se reparte en menos trozos.
+    const bici = f.bloques.find(b => b.bloque === 'Ciclismo')!
+    expect(bici.minutosPorSesion * bici.sesiones).toBeCloseTo(bici.minutos, -1)
+  })
+
+  it('el recorte nunca baja del minimo de 2 sesiones por disciplina', () => {
+    ;[[20, 3], [16, 4], [25, 5]].forEach(([h, d]) => {
+      const f = formaDeSemana(base({ horasSemana: h, diasSemana: d }))
+      f.bloques.filter(b => b.bloque !== 'Fuerza' && b.minutos > 0).forEach(b => {
+        expect(b.sesiones, `${h} h / ${d} dias · ${b.etiqueta}`).toBeGreaterThanOrEqual(2)
+      })
+    })
+  })
+
+  it('cuando ni recortando caben, lo dice y sugiere doblar natacion', () => {
+    const f = formaDeSemana(base({ horasSemana: 12, diasSemana: 3 }))
     expect(f.avisos.join(' ')).toMatch(/doblar/i)
     expect(f.avisos.join(' ')).toMatch(/nataci/i)   // la que dobla sin coste
   })
