@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
+import { estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
 
 /* Mismo interruptor que /carga y /volumen: una sola clave para toda la app, o el
    entrenador activaría la ponderación en un módulo y la vería apagada en otro. */
@@ -35,12 +36,18 @@ function calcularCargasDisc(bloques: Bloque[], factor: (b: Bloque) => number) {
   })
 }
 
+// Umbrales y etiquetas vienen de lib/panel-metricas: había cuatro copias de esta
+// función. El fondo sí es de aquí, porque cada pantalla lo tiñe a su manera.
+const BG_TSB: Record<NivelTSB, string> = {
+  sobrecarga: 'bg-red-900/40 border-red-700',
+  productiva: 'bg-orange-900/40 border-orange-700',
+  transicion: 'bg-yellow-900/40 border-yellow-700',
+  optima: 'bg-green-900/40 border-green-700',
+  desentrenando: 'bg-blue-900/40 border-blue-700',
+}
 function estadoTSB(tsb: number) {
-  if (tsb < -30) return { label: 'Sobrecarga', color: 'text-red-400', bg: 'bg-red-900/40 border-red-700' }
-  if (tsb < -10) return { label: 'Carga productiva', color: 'text-orange-400', bg: 'bg-orange-900/40 border-orange-700' }
-  if (tsb < 5)   return { label: 'Transición', color: 'text-yellow-400', bg: 'bg-yellow-900/40 border-yellow-700' }
-  if (tsb < 25)  return { label: 'Forma óptima', color: 'text-green-400', bg: 'bg-green-900/40 border-green-700' }
-  return { label: 'Desentrenamiento', color: 'text-blue-400', bg: 'bg-blue-900/40 border-blue-700' }
+  const e = estadoTSBBase(tsb)
+  return { label: e.label, color: e.texto, bg: BG_TSB[e.nivel] }
 }
 
 function semaforo(tsb: number) {

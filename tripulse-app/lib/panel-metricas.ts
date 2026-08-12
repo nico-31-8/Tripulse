@@ -67,12 +67,39 @@ export function calcularCargas(sesiones: any[]) {
   })
   return out
 }
-export function estadoTSB(tsb: number) {
-  if (tsb < -30) return { label: 'Sobrecarga', color: '#ef4444' }
-  if (tsb < -10) return { label: 'Carga productiva', color: '#f97316' }
-  if (tsb < 5) return { label: 'En transición', color: '#eab308' }
-  if (tsb < 25) return { label: 'Forma óptima', color: '#22c55e' }
-  return { label: 'Desentrenando', color: '#3b82f6' }
+// ESTA ES LA ÚNICA. Estaba copiada cuatro veces —aquí, en /carga, en la ficha del
+// deportista y en CargaPorDisciplina— y las copias ya habían empezado a separarse
+// por las etiquetas: el mismo TSB salía como «Desentrenando» en el panel y como
+// «Desentrenamiento» en la ficha. Los umbrales todavía coincidían; el problema
+// era el siguiente cambio, que se habría quedado en una copia de cuatro.
+//
+// Gana la escritura de las tres copias de pantalla («Transición»,
+// «Desentrenamiento»), que además es la que usa el prompt del asistente.
+//
+// El color va en dos formatos a propósito: `color` en hexadecimal para las
+// gráficas y `texto` como clase de Tailwind para el texto. El fondo NO viene de
+// aquí porque cada pantalla lo tiñe distinto a propósito, y eso sí es decisión
+// suya: se elige con `nivel`.
+export type NivelTSB = 'sobrecarga' | 'productiva' | 'transicion' | 'optima' | 'desentrenando'
+
+export const UMBRALES_TSB = { sobrecarga: -30, productiva: -10, transicion: 5, optima: 25 }
+
+export function estadoTSB(tsb: number): { nivel: NivelTSB; label: string; color: string; texto: string } {
+  if (tsb < UMBRALES_TSB.sobrecarga) return { nivel: 'sobrecarga', label: 'Sobrecarga', color: '#ef4444', texto: 'text-red-400' }
+  if (tsb < UMBRALES_TSB.productiva) return { nivel: 'productiva', label: 'Carga productiva', color: '#f97316', texto: 'text-orange-400' }
+  if (tsb < UMBRALES_TSB.transicion) return { nivel: 'transicion', label: 'Transición', color: '#eab308', texto: 'text-yellow-400' }
+  if (tsb < UMBRALES_TSB.optima) return { nivel: 'optima', label: 'Forma óptima', color: '#22c55e', texto: 'text-green-400' }
+  return { nivel: 'desentrenando', label: 'Desentrenamiento', color: '#3b82f6', texto: 'text-blue-400' }
+}
+
+/** La escala en texto, para el prompt del asistente. Se genera, no se escribe. */
+export function escalaTSBTexto(): string {
+  const u = UMBRALES_TSB
+  return `< ${u.sobrecarga} ${estadoTSB(u.sobrecarga - 1).label}`
+    + ` · ${u.sobrecarga} a ${u.productiva} ${estadoTSB(u.productiva - 1).label}`
+    + ` · ${u.productiva} a ${u.transicion} ${estadoTSB(u.transicion - 1).label}`
+    + ` · ${u.transicion} a ${u.optima} ${estadoTSB(u.optima - 1).label}`
+    + ` · > ${u.optima} ${estadoTSB(u.optima).label}`
 }
 
 // ---- Índices (percepción / planificación) ----

@@ -10,6 +10,7 @@ import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
 import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
+import { estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
@@ -50,12 +51,18 @@ function calcularACWR(datos: any[]) {
   return mediaCronica > 0 ? Math.round((semanaActual / mediaCronica) * 100) / 100 : null
 }
 
+// Umbrales y etiquetas de lib/panel-metricas: había cuatro copias de esto. El
+// fondo se queda aquí porque esta pantalla lo usa más saturado que las otras.
+const BG_TSB: Record<NivelTSB, string> = {
+  sobrecarga: 'bg-red-900 border-red-500',
+  productiva: 'bg-orange-900 border-orange-500',
+  transicion: 'bg-yellow-900 border-yellow-500',
+  optima: 'bg-green-900 border-green-500',
+  desentrenando: 'bg-blue-900 border-blue-500',
+}
 function estadoTSB(tsb: number) {
-  if (tsb < -30) return { label: 'Sobrecarga', color: 'text-red-400', bg: 'bg-red-900 border-red-500' }
-  if (tsb < -10) return { label: 'Carga productiva', color: 'text-orange-400', bg: 'bg-orange-900 border-orange-500' }
-  if (tsb < 5)   return { label: 'Transición', color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-500' }
-  if (tsb < 25)  return { label: 'Forma óptima', color: 'text-green-400', bg: 'bg-green-900 border-green-500' }
-  return { label: 'Desentrenamiento', color: 'text-blue-400', bg: 'bg-blue-900 border-blue-500' }
+  const e = estadoTSBBase(tsb)
+  return { label: e.label, color: e.texto, bg: BG_TSB[e.nivel] }
 }
 
 function calcularMonotonia(datos: any[]) {

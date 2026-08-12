@@ -7,6 +7,7 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
 import { minutosCarga } from '@/lib/duracion-carga'
+import { estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 function calcularEdad(fecha: string): number {
@@ -23,12 +24,10 @@ const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
 const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
+// Umbrales y etiquetas de lib/panel-metricas: había cuatro copias de esto.
 function estadoTSB(tsb: number) {
-  if (tsb < -30) return { label: 'Sobrecarga', color: 'text-red-400' }
-  if (tsb < -10) return { label: 'Carga productiva', color: 'text-orange-400' }
-  if (tsb < 5)   return { label: 'Transición', color: 'text-yellow-400' }
-  if (tsb < 25)  return { label: 'Forma óptima', color: 'text-green-400' }
-  return { label: 'Desentrenamiento', color: 'text-blue-400' }
+  const e = estadoTSBBase(tsb)
+  return { label: e.label, color: e.texto }
 }
 
 const COLOR_DISC: Record<string, string> = {
@@ -175,6 +174,25 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [guardandoEdit, setGuardandoEdit] = useState(false)
 
   useEffect(() => { cargarDatos() }, [id])
+
+  // El import de useDeclararModulo estaba puesto y la llamada no: al abrir el
+  // asistente desde la ficha no sabía de quién estabas hablando.
+  useDeclararModulo('Ficha del deportista', deportista
+    ? [
+        `Ficha de ${deportista.nombre}${deportista.fc_maxima ? ` · FCmáx ${deportista.fc_maxima} ppm` : ''}.`,
+        (() => {
+          const t = [
+            tests.carrera?.vam && `VAM ${tests.carrera.vam} km/h`,
+            tests.ciclismo?.ftp && `FTP ${tests.ciclismo.ftp} W`,
+            tests.natacion?.css && `CSS ${tests.natacion.css} m/s`,
+          ].filter(Boolean)
+          return t.length ? `Tests: ${t.join(', ')}.` : 'Sin tests cargados: no se le pueden prescribir ritmos.'
+        })(),
+        carga ? `TSB ${carga.tsb > 0 ? '+' : ''}${carga.tsb} → ${estadoTSB(carga.tsb).label}.` : '',
+        adherencia ? `Adherencia ${adherencia.pct}% (${adherencia.hechas} de ${adherencia.total}).` : '',
+        `Pestaña abierta: ${pestana}.`,
+      ].filter(Boolean).join(' ')
+    : '')
 
   const cargarDatos = async () => {
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()

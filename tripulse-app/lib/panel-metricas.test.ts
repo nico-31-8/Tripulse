@@ -35,8 +35,12 @@ describe('estadoTSB', () => {
   it('mapea el TSB a su estado', () => {
     expect(estadoTSB(-40).label).toBe('Sobrecarga')
     expect(estadoTSB(-20).label).toBe('Carga productiva')
-    expect(estadoTSB(0).label).toBe('En transición')
+    // Estas dos etiquetas cambiaron al unificar las cuatro copias de estadoTSB:
+    // aquí ponía «En transición» y «Desentrenando», y las tres copias de pantalla
+    // (y el prompt del asistente) decían «Transición» y «Desentrenamiento». Ganó
+    // la mayoría, que además es lo que el usuario veía.
+    expect(estadoTSB(0).label).toBe('Transición')
     expect(estadoTSB(10).label).toBe('Forma óptima')
-    expect(estadoTSB(30).label).toBe('Desentrenando')
+    expect(estadoTSB(30).label).toBe('Desentrenamiento')
   })
 })

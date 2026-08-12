@@ -9,7 +9,7 @@
 //     Lo llama el cliente (con su sesión Supabase → respeta RLS) y lo envía a la ruta.
 
 import { ZONAS_RESISTENCIA } from './zonas'
-import { cargarMetricasPanel, fmtMin, type MetricasPanel } from './panel-metricas'
+import { cargarMetricasPanel, fmtMin, escalaTSBTexto, type MetricasPanel } from './panel-metricas'
 import { analizarWellness } from './wellness-analisis'
 import { attachZonaPico } from './sicat-zonas'
 import { minutosCarga } from './duracion-carga'
@@ -30,7 +30,7 @@ ${ZONAS_TXT}
 - Estructura del plan: macrociclo → mesociclos → microciclos (semanas) → sesiones → tareas (bloques, cada uno con su zona).
 
 UMBRALES EXACTOS DE LA APP (úsalos SIEMPRE; son los que el entrenador está viendo en pantalla, así que si usas otros le estarás contradiciendo):
-- TSB (frescura, CTL − ATL): < −30 Sobrecarga · −30 a −10 Carga productiva · −10 a 5 Transición · 5 a 25 Forma óptima · > 25 Desentrenamiento.
+- TSB (frescura, CTL − ATL): ${escalaTSBTexto()}.
 - ACWR (aguda/crónica): < 0,8 Subcarga · 0,8–1,3 Zona óptima · 1,3–1,5 Precaución · > 1,5 Peligro.
 - Monotonía semanal: < 1,5 buena variación · 1,5–2,0 moderada · > 2,0 alta monotonía (reestructurar la semana).
 - Bienestar (0–100, MÁS ES MEJOR): ≥ 75 Óptimo · 50–75 Aceptable · 25–50 Deteriorado · < 25 Crítico. Ojo: es lo contrario del malestar; un bienestar de 18 es MALO.
