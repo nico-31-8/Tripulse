@@ -40,6 +40,7 @@ import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -57,6 +58,21 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   // cosa en semana de choque y otra en descarga.
   const [nombreDeportista, setNombreDeportista] = useState<string | null>(null)
   const [ciclo, setCiclo] = useState<{ meso: number | null; semana: number | null; tipo: string | null } | null>(null)
+
+  // El sitio donde más se pregunta «¿esto está bien?», y era donde el asistente
+  // llegaba a ciegas. El punto del ciclo va dentro a propósito: la misma sesión
+  // significa una cosa en semana de choque y otra en descarga.
+  useDeclararModulo('Sesión', sesion
+    ? [
+        `Editando «${sesion.nombre || 'sesión sin nombre'}» de ${sesion.disciplina}, ${sesion.fecha_sesion}, estado ${sesion.estado}.`,
+        nombreDeportista ? `Es de ${nombreDeportista}.` : '',
+        ciclo?.semana ? `Semana ${ciclo.semana}${ciclo.tipo ? ` (${ciclo.tipo})` : ''}${ciclo.meso ? ` del mesociclo ${ciclo.meso}` : ''}.` : '',
+        tareas.length
+          ? `${tareas.length} bloques: ${tareas.map((t: any) => t.zona_entrenamiento).filter(Boolean).join(', ')}.`
+          : 'Todavía no tiene bloques.',
+        sesion.rpe_estimado ? `RPE estimado ${sesion.rpe_estimado}.` : '',
+      ].filter(Boolean).join(' ')
+    : '')
   // Nutrición y notas arrancan plegadas: en el editor estorban delante de las tareas.
   const [abreNutricion, setAbreNutricion] = useState(false)
   const [abreNotas, setAbreNotas] = useState(false)

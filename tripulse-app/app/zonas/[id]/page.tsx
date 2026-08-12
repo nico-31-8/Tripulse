@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 function TablaZonas2({ disciplina, tests, fcMax }: { disciplina: string; tests: { vam?: number | null; ftp?: number | null; css?: number | null }; fcMax: number }) {
   return (
@@ -198,6 +199,21 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
   const [testCarrera, setTestCarrera] = useState<any>(null)
   const [testNatacion, setTestNatacion] = useState<any>(null)
   const [testCiclismo, setTestCiclismo] = useState<any>(null)
+
+  useDeclararModulo('Tests y zonas', deportista
+    ? [
+        `Tests y zonas de ${deportista.nombre}.`,
+        (() => {
+          const t = [
+            testCarrera?.vam && `VAM ${testCarrera.vam} km/h`,
+            testCiclismo?.ftp && `FTP ${testCiclismo.ftp} W`,
+            testNatacion?.css && `CSS ${testNatacion.css} m/s`,
+          ].filter(Boolean)
+          return t.length ? `Tests vigentes: ${t.join(' · ')}.` : 'Sin tests registrados: las zonas no tienen de dónde salir.'
+        })(),
+        `En pantalla, la tabla de ${tab}.`,
+      ].join(' ')
+    : '')
 
   useEffect(() => { cargarDatos() }, [id])
 
