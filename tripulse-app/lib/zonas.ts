@@ -93,14 +93,40 @@ export const ZONAS_FUERZA: ZonaFuerza[] = [
 // FUENTES
 //   · %FTP  → Coggan (7 niveles). Coincide con los ftpMin/ftpMax de Zonas 2.
 //   · %VAM  → Tuimil, B1-00c Tabla 3. Es la que estaba mal en la ficha.
-//   · %CSS  → escala de natación de la app.
+//   · %CSS  → derivada de los desfases sobre el CSS de Zonas 2 (ver abajo).
 //
-// ⚠️ PENDIENTE, ANOTADO A PROPÓSITO: en la columna de CSS el «umbral» (Z4) cae en
-// 86–95 % del CSS, y el CSS ES el umbral, así que debería estar en el 100 %. Las
-// dos pantallas coincidían en esto, así que NO era parte de la incoherencia y no
-// se toca aquí: cambiarlo movería los ritmos de natación de todos los atletas del
-// sistema clásico. Hay que decidirlo contra el vault, como el hueco de %VAM de
-// B1-00e §2.3.
+// LA COLUMNA DE CSS ESTABA CORRIDA HACIA ABAJO, y era el fallo más gordo de los
+// tres: ponía el «umbral» (Z4) en 86–95 % del CSS cuando el CSS ES el umbral, así
+// que tenía que estar en el 100 %. Con un CSS de 1:45, la Z4 salía a 1:55 y
+// B1-00d dice que son 1:43–1:47. Toda la escala iba lenta, y en Z1 llegaba a
+// mandar un 2:55/100m para un nado suave.
+//
+// CÓMO SE DERIVA, para que se pueda auditar. `lib/zonas.ts` ya prescribe natación
+// en Zonas 2 por DESFASE sobre el CSS, y el sistema clásico Z1–Z7 mapea 1:1 con
+// las siete primeras siglas (igual que hace la columna de %FTP con Coggan).
+// Pasando cada desfase a proporción de velocidad con el atleta de referencia de
+// B1-00d (CSS = 1:45 = 105 s/100m):
+//
+//   Z1 = AER  «CSS +20s o más lento» → ≥125 s → ≤ 84 %
+//   Z2 = AEL  «CSS +10 a +20s»       → 115–125 s → 84–91 %
+//   Z3 = AEM  «CSS +4 a +8s»         → 109–113 s → 93–96 %
+//   Z4 = AEI  «CSS ±3s»              → 102–108 s → 97–103 %
+//   Z5 = PAE  «CSS −4 a −8s»         → 97–101 s  → 104–108 %
+//   Z6 = CLA  «CSS −8 a −15s»        → 90–97 s   → 108–117 %
+//   Z7 = PLA  «≤25m a velocidad máxima»          → por encima
+//
+// Los pequeños huecos entre bandas (91→93, 96→97) vienen de que los propios
+// desfases los tienen; se cierran redondeando, que es lo que permite que un ritmo
+// cualquiera caiga siempre en alguna zona.
+//
+// LÍMITE CONOCIDO: un desfase en segundos NO es proporcional, así que ningún
+// porcentaje puede representarlo exacto — el % real depende del CSS de cada uno.
+// Calibrado con el atleta de referencia, la desviación es de unos ±4 puntos en
+// los extremos (un nadador de 1:20 o de 2:10). La solución de verdad sería que el
+// sistema clásico prescribiera natación por desfase como hace Zonas 2, pero eso
+// obliga a tocar las cuatro pantallas que consumen esta tabla como porcentaje.
+// Queda anotado; con la escala centrada donde toca, el error residual es pequeño
+// al lado del que había.
 export interface ZonaClasica {
   num: number
   ftpPct: [number, number]
@@ -109,13 +135,13 @@ export interface ZonaClasica {
 }
 
 export const ZONAS_CLASICAS: Record<number, ZonaClasica> = {
-  1: { num: 1, ftpPct: [45, 55],   vamPct: [45, 60],   cssPct: [55, 65] },
-  2: { num: 2, ftpPct: [56, 75],   vamPct: [60, 70],   cssPct: [65, 75] },
-  3: { num: 3, ftpPct: [76, 90],   vamPct: [70, 80],   cssPct: [76, 85] },
-  4: { num: 4, ftpPct: [91, 105],  vamPct: [80, 90],   cssPct: [86, 95] },
-  5: { num: 5, ftpPct: [106, 120], vamPct: [90, 100],  cssPct: [96, 105] },
-  6: { num: 6, ftpPct: [121, 150], vamPct: [100, 115], cssPct: [106, 120] },
-  7: { num: 7, ftpPct: [151, 200], vamPct: [115, 150], cssPct: [121, 140] },
+  1: { num: 1, ftpPct: [45, 55],   vamPct: [45, 60],   cssPct: [75, 84] },
+  2: { num: 2, ftpPct: [56, 75],   vamPct: [60, 70],   cssPct: [84, 92] },
+  3: { num: 3, ftpPct: [76, 90],   vamPct: [70, 80],   cssPct: [92, 97] },
+  4: { num: 4, ftpPct: [91, 105],  vamPct: [80, 90],   cssPct: [97, 103] },
+  5: { num: 5, ftpPct: [106, 120], vamPct: [90, 100],  cssPct: [103, 108] },
+  6: { num: 6, ftpPct: [121, 150], vamPct: [100, 115], cssPct: [108, 117] },
+  7: { num: 7, ftpPct: [151, 200], vamPct: [115, 150], cssPct: [117, 130] },
 }
 
 /** El número de zona a partir de la sigla clásica: 'Z4' → 4. `null` si no lo es. */

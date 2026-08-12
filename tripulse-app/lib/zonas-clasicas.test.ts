@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ZONAS_CLASICAS, ZONAS_RESISTENCIA, zonaClasica, numZonaClasica, pctMedioClasica,
+  ritmoObjetivo,
 } from './zonas'
 
 const NUMS = [1, 2, 3, 4, 5, 6, 7]
@@ -66,6 +67,67 @@ describe('la tabla del sistema clasico Z1-Z7', () => {
     NUMS.forEach(n => (['ftpPct', 'vamPct', 'cssPct'] as const).forEach(c => {
       expect(ZONAS_CLASICAS[n][c][0], `Z${n} ${c}`).toBeGreaterThan(0)
     }))
+  })
+})
+
+/* ============================================================
+   La escala de natacion, contra el atleta de referencia del vault
+
+   B1-00d calcula sus sesiones tipo con CSS = 1:45/100m (105 s) y da el ritmo de
+   cada zona. Eso permite comprobar la escala de la app contra la doctrina en vez
+   de contra numeros que me invente: si los porcentajes estan bien puestos, el
+   punto medio de cada zona tiene que caer dentro de su banda.
+
+   El fallo que esto evita: la columna estaba corrida hacia abajo y ponia el
+   umbral (Z4) en 86-95 % del CSS. Como el CSS ES el umbral, Z4 salia a 1:55
+   cuando B1-00d dice 1:43-1:47, y un nado suave de Z1 se prescribia a 2:55/100m.
+   ============================================================ */
+const CSS_REF_SEG = 105                    // 1:45/100m, el atleta de B1-00d
+const CSS_REF_VEL = 100 / CSS_REF_SEG      // en m/s, que es como lo guarda la app
+
+/** Segundos por 100m que le tocan a una zona con ese CSS. */
+const segDeZona = (num: number) => CSS_REF_SEG / (pctMedioClasica(num, 'cssPct') / 100)
+
+describe('los ritmos de natacion cuadran con B1-00d', () => {
+  it('el umbral es el CSS, ni mas rapido ni mas lento', () => {
+    // Z4 se llama «Umbral» y el CSS es, por definicion, el ritmo de umbral.
+    expect(pctMedioClasica(4, 'cssPct')).toBe(100)
+    expect(Math.round(segDeZona(4))).toBe(CSS_REF_SEG)
+  })
+
+  it('cada zona cae dentro de la banda que da la fuente', () => {
+    // B1-00d, «Natacion — Una sesion por zona, calculada para CSS = 1:45/100m».
+    const bandas: [number, number, number, string][] = [
+      [1, 120, 999, 'Z1 recuperacion: > 2:00/100m'],
+      [2, 113, 120, 'Z2 base: 1:53-2:00'],
+      [3, 108, 113, 'Z3 tempo: 1:48-1:53'],
+      [4, 103, 107, 'Z4 umbral: 1:43-1:47'],
+      [5, 0, 100, 'Z5 VO2max: < 1:40'],
+    ]
+    bandas.forEach(([num, lo, hi, que]) => {
+      const s = segDeZona(num)
+      expect(s, `${que} — salen ${Math.round(s)} s`).toBeGreaterThanOrEqual(lo)
+      expect(s, `${que} — salen ${Math.round(s)} s`).toBeLessThanOrEqual(hi)
+    })
+  })
+
+  it('la escala anterior NO cuadraba, para que no vuelva', () => {
+    // Los porcentajes viejos eran [55,65] [65,75] [76,85] [86,95] [96,105].
+    const viejoZ4 = Math.round((86 + 95) / 2)          // 91 %
+    expect(CSS_REF_SEG / (viejoZ4 / 100)).toBeGreaterThan(107)  // 1:55, fuera de banda
+    expect(pctMedioClasica(4, 'cssPct')).not.toBe(viejoZ4)
+  })
+
+  it('ritmoObjetivo devuelve el CSS clavado en Z4', () => {
+    expect(ritmoObjetivo('Z4', 'Natacion', { css: CSS_REF_VEL })).toBe('1:45 /100m')
+    // Y acepta la disciplina con tilde, que llega de las dos formas.
+    expect(ritmoObjetivo('Z4', 'Natación', { css: CSS_REF_VEL })).toBe('1:45 /100m')
+  })
+
+  it('los ritmos van de mas lento a mas rapido segun sube la zona', () => {
+    for (let n = 2; n <= 7; n++) {
+      expect(segDeZona(n), `Z${n} no es mas rapida que Z${n - 1}`).toBeLessThan(segDeZona(n - 1))
+    }
   })
 })
 
