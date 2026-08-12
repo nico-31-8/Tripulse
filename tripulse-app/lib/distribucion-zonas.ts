@@ -173,21 +173,31 @@ export const RITMO_COMPETICION_CARRERA: RitmoCompeticion[] = [
   { prueba: '1.500 m', vamMin: 105, vamMax: 107, zona: 'CLA' },
   { prueba: '5.000 m', pruebaId: 'run-5k', vamMin: 95, vamMax: 97, zona: 'PAE' },
   { prueba: '10.000 m', pruebaId: 'run-10k', vamMin: 90, vamMax: 92, zona: 'AEI' },
+  {
+    prueba: 'Media maratón', pruebaId: 'run-media', vamMin: 85, vamMax: 88, zona: 'AEM',
+    nota: 'INTERPOLADA. La tabla de B1-00c salta del 10.000 (90–92 %) al maratón (80–82 %) sin dar la media. Este 85–88 % es la interpolación entre las dos, no un dato de la fuente. Se puede prescribir desde que AEM llega hasta el 90 %.',
+  },
   { prueba: 'Maratón', pruebaId: 'run-maraton', vamMin: 80, vamMax: 82, zona: 'AEM' },
   { prueba: 'Ultra 100 km', pruebaId: 'run-100k', vamMin: 60, vamMax: 60, zona: 'AER' },
 ]
 
 /**
- * Media maratón NO está en esta tabla, y no es un olvido: se corre en torno al
- * 85–88 % de la VAM, que en `lib/zonas.ts` cae en el hueco entre AEM (acaba en
- * 85) y AEI (empieza en 90). B1-00e §2.3 lo tiene anotado como pendiente de
- * decidir: o los cortes son deliberados o es un descuido al transcribir. Hasta
- * que se decida, prescribir una media por zona es elegir un lado sin base.
+ * Los huecos de %VAM, CERRADOS.
+ *
+ * Había dos: 85–90 % (entre AEM y AEI) y 100–105 % (entre PAE y CLA). Un ritmo
+ * que cayera ahí no pertenecía a ninguna zona, y ahí es justo donde cae el ritmo
+ * de media maratón — o sea que la prueba de asfalto más popular que hay no se
+ * podía prescribir por zona.
+ *
+ * Se cerraron extendiendo AEM hasta 90 y PAE hasta 105 en `lib/zonas.ts`, que es
+ * lo que ya decía B1-00e: su §2.1 documenta que la Z4 de Tuimil (80–90 %) cae
+ * dentro del AEM de la app, y su tabla maestra empareja PAE con las Z5/Z6 de
+ * Tuimil. Los bordes estaban recortados, no elegidos.
+ *
+ * Se queda la constante, vacía y con el test que la vigila: si alguien vuelve a
+ * abrir un hueco, `huecosDeVam()` de lib/zonas.ts lo encuentra.
  */
-export const HUECOS_VAM = [
-  { desde: 85, hasta: 90, nota: 'Entre AEM y AEI. Aquí cae el ritmo de media maratón.' },
-  { desde: 100, hasta: 105, nota: 'Entre PAE y CLA.' },
-]
+export const HUECOS_VAM: { desde: number; hasta: number; nota: string }[] = []
 
 // ------------------------------------------------------------
 // De una prueba del catálogo a su distancia de referencia

@@ -52,12 +52,12 @@ export interface ZonaFuerza {
 export const ZONAS_RESISTENCIA: ZonaResistencia[] = [
   { sigla: 'AER',  nombre: 'Recuperación',        factor: 'Recuperación',           vamMin: null, vamMax: 65,  ftpMin: null, ftpMax: 55,  css: 'CSS +20s o más lento',        fcMin: null, fcMax: 70, rpeMin: 1,  rpeMax: 3,  indicador: 'FC',     duracion: '> 30 min',  color: '#6B7280', requiereSprint: false },
   { sigla: 'AEL',  nombre: 'Aeróbico lipolítico', factor: 'Resistencia básica',     vamMin: 65,   vamMax: 75,  ftpMin: 56,   ftpMax: 75,  css: 'CSS +10–20s',                 fcMin: 70,   fcMax: 80, rpeMin: 3,  rpeMax: 4,  indicador: 'FC',     duracion: '20–90 min', color: '#38BDF8', requiereSprint: false },
-  { sigla: 'AEM',  nombre: 'Aeróbico glucolítico',factor: 'Resistencia básica',     vamMin: 75,   vamMax: 85,  ftpMin: 76,   ftpMax: 90,  css: 'CSS +4–8s (⚓MLSS)',           fcMin: 80,   fcMax: 88, rpeMin: 4,  rpeMax: 6,  indicador: 'FC',     duracion: '10–40 min', color: '#22C55E', requiereSprint: false },
+  { sigla: 'AEM',  nombre: 'Aeróbico glucolítico',factor: 'Resistencia básica',     vamMin: 75,   vamMax: 90,  ftpMin: 76,   ftpMax: 90,  css: 'CSS +4–8s (⚓MLSS)',           fcMin: 80,   fcMax: 88, rpeMin: 4,  rpeMax: 6,  indicador: 'FC',     duracion: '10–40 min', color: '#22C55E', requiereSprint: false },
   { sigla: 'AEI',  nombre: 'Aeróbico intenso',    factor: 'Resistencia mixta',      vamMin: 90,   vamMax: 95,  ftpMin: 91,   ftpMax: 105, css: 'CSS ±3s (⚓CSS)',              fcMin: 88,   fcMax: 93, rpeMin: 6,  rpeMax: 7,  indicador: 'FC',     duracion: '5–20 min',  color: '#14B8A6', requiereSprint: false },
-  { sigla: 'PAE',  nombre: 'Potencia aeróbica',   factor: 'Resistencia de velocidad',vamMin: 95,  vamMax: 100, ftpMin: 106,  ftpMax: 120, css: 'CSS −4 a −8s (⚓vVO₂máx)',     fcMin: 93,   fcMax: 100,rpeMin: 7,  rpeMax: 8,  indicador: 'FC',     duracion: '2–8 min',   color: '#EAB308', requiereSprint: false },
+  { sigla: 'PAE',  nombre: 'Potencia aeróbica',   factor: 'Resistencia de velocidad',vamMin: 95,  vamMax: 105, ftpMin: 106,  ftpMax: 120, css: 'CSS −4 a −8s (⚓vVO₂máx)',     fcMin: 93,   fcMax: 100,rpeMin: 7,  rpeMax: 8,  indicador: 'FC',     duracion: '2–8 min',   color: '#EAB308', requiereSprint: false },
   { sigla: 'CLA',  nombre: 'Capacidad lactácida', factor: 'Resistencia de velocidad',vamMin: 105, vamMax: 120, ftpMin: 121,  ftpMax: 150, css: 'CSS −8 a −15s (series 25–50m)',fcMin: null,fcMax: null,rpeMin: 8, rpeMax: 9,  indicador: 'FC+RPE', duracion: '30s–2 min', color: '#F97316', requiereSprint: false },
   { sigla: 'PLA',  nombre: 'Potencia lactácida',  factor: 'Resistencia de velocidad',vamMin: 120, vamMax: 140, ftpMin: 150,  ftpMax: null,css: 'Series ≤25m, vel. máxima',    fcMin: null, fcMax: null,rpeMin: 9, rpeMax: 10, indicador: 'RPE',    duracion: '10–30 s',   color: '#EF4444', requiereSprint: true  },
-  { sigla: 'CALA', nombre: 'Capacidad aláctica',  factor: 'Velocidad',              vamMin: 140,  vamMax: null,ftpMin: null,  ftpMax: null,css: 'Series 10–15m, desde pared',  fcMin: null, fcMax: null,rpeMin: 9, rpeMax: 10, indicador: 'RPE',    duracion: '5–10 s',    color: '#DC2626', requiereSprint: true  },
+  { sigla: 'CALA', nombre: 'Capacidad aláctica',  factor: 'Velocidad',              vamMin: 140,  vamMax: 160, ftpMin: null,  ftpMax: null,css: 'Series 10–15m, desde pared',  fcMin: null, fcMax: null,rpeMin: 9, rpeMax: 10, indicador: 'RPE',    duracion: '5–10 s',    color: '#DC2626', requiereSprint: true  },
   { sigla: 'PALA', nombre: 'Potencia aláctica',   factor: 'Velocidad',              vamMin: 160,  vamMax: null,ftpMin: null,  ftpMax: null,css: 'Series <10m, desde salida',   fcMin: null, fcMax: null,rpeMin: 10,rpeMax: 10, indicador: 'RPE',    duracion: '< 5 s',     color: '#A855F7', requiereSprint: true  },
 ]
 
@@ -177,6 +177,50 @@ export const zonaResistencia = (sigla: string | null | undefined) =>
   sigla ? ZONAS_RESISTENCIA.find(z => z.sigla === sigla) || null : null
 export const zonaFuerza = (sigla: string) => ZONAS_FUERZA.find(z => z.sigla === sigla) || null
 export const esZona2 = (sigla: string) => !!zonaResistencia(sigla) || !!zonaFuerza(sigla)
+
+/**
+ * A qué zona pertenece un % de la VAM. La búsqueda inversa.
+ *
+ * NO EXISTÍA, y por eso los dos huecos de la escala de carrera pudieron vivir
+ * años sin que nada se quejara: todo el código iba en la otra dirección (zona →
+ * ritmo), donde un agujero no se nota. Solo se veía al querer prescribir un ritmo
+ * que caía dentro —el de media maratón, sin ir más lejos— y descubrir que no
+ * pertenecía a ninguna zona.
+ *
+ * Los huecos eran 85–90 % (entre AEM y AEI) y 100–105 % (entre PAE y CLA), y se
+ * han cerrado extendiendo AEM hasta 90 y PAE hasta 105. No es criterio propio:
+ * B1-00e §2.1 documenta que la Z4 de Tuimil (80–90 % VAM) «cae dentro del AEM de
+ * la app», y su tabla maestra empareja PAE con las Z5/Z6 de Tuimil, que llegan
+ * hasta el 115 %. Los bordes estaban recortados, no elegidos. De paso, CALA se
+ * cierra en 160 —donde empieza PALA— en vez de quedar abierta y solaparse.
+ *
+ * Devuelve null solo si el número no es un número. Por arriba y por abajo hay
+ * zona siempre: la escala cubre de 0 a infinito y un test lo fija.
+ */
+export function zonaDeVam(pct: number | null | undefined): ZonaResistencia | null {
+  if (pct == null || !Number.isFinite(pct)) return null
+  return ZONAS_RESISTENCIA.find(z =>
+    (z.vamMin == null || pct >= z.vamMin) &&
+    (z.vamMax == null || pct < z.vamMax)) || null
+}
+
+/**
+ * Huecos y solapes de la escala de carrera. Vacío = todo ritmo tiene UNA zona.
+ *
+ * Es el guardián de lo de arriba. Los dos huecos vivieron años porque nadie
+ * miraba la escala como un todo: zona a zona, cada una parecía razonable.
+ */
+export function huecosDeVam(): string[] {
+  const conRango = ZONAS_RESISTENCIA.filter(z => z.vamMin != null || z.vamMax != null)
+  const fallos: string[] = []
+  for (let i = 1; i < conRango.length; i++) {
+    const ant = conRango[i - 1], act = conRango[i]
+    if (ant.vamMax == null || act.vamMin == null) continue
+    if (act.vamMin > ant.vamMax) fallos.push(`hueco ${ant.vamMax}–${act.vamMin} % entre ${ant.sigla} y ${act.sigla}`)
+    if (act.vamMin < ant.vamMax) fallos.push(`solape ${act.vamMin}–${ant.vamMax} % entre ${ant.sigla} y ${act.sigla}`)
+  }
+  return fallos
+}
 
 // Factores de carga en orden, para agrupar en la UI
 export const FACTORES_RESISTENCIA = ['Recuperación', 'Resistencia básica', 'Resistencia mixta', 'Resistencia de velocidad', 'Velocidad']

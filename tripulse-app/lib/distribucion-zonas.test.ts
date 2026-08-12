@@ -5,7 +5,7 @@ import {
   distanciaDePrueba, ritmoDePrueba, pruebasSinDistribucion, tidDeFase,
   type Disciplina, type DistanciaTri, type FaseMacro,
 } from './distribucion-zonas'
-import { ZONAS_RESISTENCIA } from './zonas'
+import { ZONAS_RESISTENCIA, zonaDeVam, huecosDeVam } from './zonas'
 import { PRUEBAS } from './pruebas'
 
 const DISCIPLINAS: Disciplina[] = ['Carrera', 'Ciclismo', 'Natacion']
@@ -137,14 +137,73 @@ describe('a qué intensidad se compite cada distancia (carrera)', () => {
     }
   })
 
-  /* Los huecos de %VAM son un pendiente documentado (B1-00e §2.3), no una
-     invención de este módulo: se comprueban contra lib/zonas.ts. */
-  it('los huecos declarados son huecos de verdad en el catálogo de zonas', () => {
-    HUECOS_VAM.forEach(h => {
-      const dentro = ZONAS_RESISTENCIA.filter(z =>
-        z.vamMin != null && z.vamMax != null && z.vamMin < h.hasta && z.vamMax > h.desde)
-      expect(dentro.map(z => z.sigla), `el hueco ${h.desde}–${h.hasta} % ya no existe`).toEqual([])
-    })
+  it('ya no queda ningún hueco declarado', () => {
+    // Eran 85–90 % y 100–105 %. Se cerraron extendiendo AEM hasta 90 y PAE hasta
+    // 105; la constante se queda vacía y vigilada.
+    expect(HUECOS_VAM).toEqual([])
+  })
+
+  it('la media maratón, que era la que caía en el hueco, ya tiene zona', () => {
+    const media = RITMO_COMPETICION_CARRERA.find(x => x.pruebaId === 'run-media')!
+    expect(media, 'la media maratón sigue sin estar en la tabla').toBeDefined()
+    expect(media.zona).toBe('AEM')
+    expect(media.nota, 'es una interpolación y tiene que decirlo').toMatch(/INTERPOLADA/)
+  })
+})
+
+/* ============================================================
+   La escala de carrera tiene que cubrirlo todo
+
+   Los dos huecos (85–90 % y 100–105 %) vivieron años porque TODO el código iba
+   en la dirección fácil —zona → ritmo—, donde un agujero no se nota. No había
+   una sola busqueda inversa, así que nada preguntaba nunca «¿de quién es este
+   ritmo?». Estos tests son esa pregunta, hecha en bucle.
+   ============================================================ */
+describe('todo ritmo pertenece a una zona, y solo a una', () => {
+  it('no hay huecos ni solapes en toda la escala', () => {
+    expect(huecosDeVam()).toEqual([])
+  })
+
+  it('barriendo del 0 al 200 % no se cae ninguno', () => {
+    for (let pct = 0; pct <= 200; pct += 0.5) {
+      expect(zonaDeVam(pct), `${pct} % de la VAM no tiene zona`).not.toBeNull()
+    }
+  })
+
+  it('los dos huecos de antes ahora resuelven, y a quien tienen que resolver', () => {
+    // B1-00e §2.1: la Z4 de Tuimil (80–90 %) cae dentro del AEM de la app.
+    expect(zonaDeVam(85)?.sigla).toBe('AEM')
+    expect(zonaDeVam(87)?.sigla).toBe('AEM')   // ritmo de media maratón
+    expect(zonaDeVam(89.9)?.sigla).toBe('AEM')
+    // B1-00e tabla maestra: PAE se empareja con las Z5/Z6 de Tuimil.
+    expect(zonaDeVam(100)?.sigla).toBe('PAE')
+    expect(zonaDeVam(104)?.sigla).toBe('PAE')
+  })
+
+  it('las fronteras caen del lado de arriba, sin ambigüedad', () => {
+    expect(zonaDeVam(64.9)?.sigla).toBe('AER')
+    expect(zonaDeVam(65)?.sigla).toBe('AEL')
+    expect(zonaDeVam(75)?.sigla).toBe('AEM')
+    expect(zonaDeVam(90)?.sigla).toBe('AEI')
+    expect(zonaDeVam(95)?.sigla).toBe('PAE')
+    expect(zonaDeVam(105)?.sigla).toBe('CLA')
+    expect(zonaDeVam(120)?.sigla).toBe('PLA')
+    expect(zonaDeVam(140)?.sigla).toBe('CALA')
+    expect(zonaDeVam(160)?.sigla).toBe('PALA')
+  })
+
+  it('CALA ya no se solapa con PALA', () => {
+    // CALA estaba abierta por arriba y PALA empieza en 160, así que 170 % era de
+    // las dos. Ahora CALA cierra donde la otra abre.
+    expect(zonaDeVam(159)?.sigla).toBe('CALA')
+    expect(zonaDeVam(170)?.sigla).toBe('PALA')
+  })
+
+  it('lo que no es un número no inventa una zona', () => {
+    expect(zonaDeVam(null)).toBeNull()
+    expect(zonaDeVam(undefined)).toBeNull()
+    expect(zonaDeVam(NaN)).toBeNull()
+    expect(zonaDeVam(Infinity)).toBeNull()
   })
 })
 
