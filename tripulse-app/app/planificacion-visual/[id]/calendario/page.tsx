@@ -18,33 +18,15 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
+import { colorMeso, tiposEnPlan, tiposDeMeso } from '@/lib/periodizacion'
 import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
 
-const COLOR_MESO: Record<string, string> = {
-  'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
-  'Transmutación': 'bg-yellow-500', 'Transmutacion': 'bg-yellow-500',
-  'Realización': 'bg-red-500', 'Realizacion': 'bg-red-500',
-  'Recuperación': 'bg-green-500', 'Recuperacion': 'bg-green-500',
-}
-
-// Variantes translúcidas del color de meso. En Tailwind v4 la opacidad va en la
-// propia clase (bg-color/N), y debe ser un literal completo para que el compilador
-// la detecte — por eso mapas dedicados en vez de concatenar la opacidad en runtime.
-const COLOR_MESO_20: Record<string, string> = {
-  'Acumulación': 'bg-orange-500/20 hover:bg-orange-500/30', 'Acumulacion': 'bg-orange-500/20 hover:bg-orange-500/30',
-  'Transmutación': 'bg-yellow-500/20 hover:bg-yellow-500/30', 'Transmutacion': 'bg-yellow-500/20 hover:bg-yellow-500/30',
-  'Realización': 'bg-red-500/20 hover:bg-red-500/30', 'Realizacion': 'bg-red-500/20 hover:bg-red-500/30',
-  'Recuperación': 'bg-green-500/20 hover:bg-green-500/30', 'Recuperacion': 'bg-green-500/20 hover:bg-green-500/30',
-}
-const COLOR_MESO_40: Record<string, string> = {
-  'Acumulación': 'bg-orange-500/40 hover:bg-orange-500/60', 'Acumulacion': 'bg-orange-500/40 hover:bg-orange-500/60',
-  'Transmutación': 'bg-yellow-500/40 hover:bg-yellow-500/60', 'Transmutacion': 'bg-yellow-500/40 hover:bg-yellow-500/60',
-  'Realización': 'bg-red-500/40 hover:bg-red-500/60', 'Realizacion': 'bg-red-500/40 hover:bg-red-500/60',
-  'Recuperación': 'bg-green-500/40 hover:bg-green-500/60', 'Recuperacion': 'bg-green-500/40 hover:bg-green-500/60',
-}
+// Los colores y los tipos de mesociclo viven en lib/periodizacion.ts: aquí había
+// un mapa que solo conocía los cuatro tipos del modelo ATR, y con cualquier otro
+// modelo el calendario entero se pintaba de gris.
 
 const COLOR_DISC: Record<string, string> = {
   'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
@@ -793,8 +775,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             </button>
 
             <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold px-1 mb-2 mt-4">Qué significan los colores</p>
+            {/* Los tipos de mesociclo salen del PLAN, no de una lista fija. Antes
+                estaban escritos a mano con los cuatro de ATR, así que un plan
+                Tradicional u Ondulatorio veía una leyenda que no correspondía con
+                ninguno de sus bloques. */}
             <div className="grid grid-cols-2 gap-y-2 gap-x-3 px-1 pb-1">
-              {[['#f97316','Acumulación'],['#eab308','Transmutación'],['#ef4444','Realización'],['#22c55e','Recuperación'],
+              {[...tiposEnPlan(mesos).map(t => [t.hex, t.tipo] as [string, string]),
                 ['#3b82f6','Natación'],['#eab308','Ciclismo'],['#22c55e','Carrera'],['#ef4444','Fuerza']].map(([c,l]) => (
                 <div key={l} className="flex items-center gap-2 text-[12px] text-gray-400">
                   <i className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: c }} />{l}
@@ -1164,7 +1150,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                            comp ? 'ring-2 ring-yellow-500 bg-yellow-900/20 border-yellow-700 ' :
                            esCopiadaSemana ? 'ring-2 ring-purple-500 border-purple-700 bg-purple-900/20 ' :
                            esHoy ? 'ring-2 ring-orange-500 ' : '') +
-                          (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (COLOR_MESO_20[meso.tipo] || 'bg-gray-800/20 hover:bg-gray-800/30') + ' border-gray-700 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
+                          (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (colorMeso(meso.tipo)?.suave || 'bg-gray-800/20 hover:bg-gray-800/30') + ' border-gray-700 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
                         <div className="flex justify-between items-start mb-1">
                           <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : comp ? 'text-yellow-400' : bloqueo ? 'text-red-400' : 'text-gray-400')}>{dia.getDate()}</span>
                           {comp ? <span className="text-sm">🏆</span> : bloqueo ? <span className="text-sm">🚫</span> : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
@@ -1262,7 +1248,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                               (micro.tipo === 'Carga' ? 'bg-orange-400/40 hover:bg-orange-400/60 text-white ' :
                                micro.tipo?.includes('Recup') ? 'bg-green-400/40 hover:bg-green-400/60 text-white ' :
                                'bg-blue-400/40 hover:bg-blue-400/60 text-white ') :
-                              capaCalendario === 'mesos' && meso ? (COLOR_MESO_40[meso.tipo] || 'bg-gray-700/40 hover:bg-gray-700/60') + ' text-white ' :
+                              capaCalendario === 'mesos' && meso ? (colorMeso(meso.tipo)?.medio || 'bg-gray-700/40 hover:bg-gray-700/60') + ' text-white ' :
                               'text-gray-400 hover:bg-gray-800 ') : '')}>
                           <span>{bloqueo ? '🚫' : comp ? '🏆' : dia.getDate()}</span>
                           {ses.length > 0 && !comp && !bloqueo && (
@@ -1519,26 +1505,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <input type="text" placeholder="Objetivo del mesociclo" value={mesoObj} onChange={e => setMesoObj(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <select value={mesoTipo} onChange={e => setMesoTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
                   <option value="">Tipo</option>
-                  {macroSel?.tipo_periodizacion === 'Tradicional' ? (<>
-                    <option value="General">General</option>
-                    <option value="Específica">Específica</option>
-                    <option value="Competitiva">Competitiva</option>
-                    <option value="Taper">Taper</option>
-                  </>) : macroSel?.tipo_periodizacion === 'Inversa' ? (<>
-                    <option value="Intensidad">Intensidad</option>
-                    <option value="Desarrollo">Desarrollo</option>
-                    <option value="Resistencia específica">Resistencia específica</option>
-                    <option value="Taper">Taper</option>
-                  </>) : macroSel?.tipo_periodizacion === 'Ondulatoria' ? (<>
-                    <option value="Carga alta">Carga alta</option>
-                    <option value="Carga media">Carga media</option>
-                    <option value="Recuperación">Recuperación</option>
-                  </>) : (<>
-                    <option value="Acumulación">Acumulación</option>
-                    <option value="Transmutación">Transmutación</option>
-                    <option value="Realización">Realización</option>
-                    <option value="Recuperación">Recuperación</option>
-                  </>)}
+                  {/* Los tipos salen de lib/periodizacion, que es donde vive
+                      también su color: escritos aquí a mano, el calendario se
+                      quedaba sin pintar en cuanto se añadía uno. */}
+                  {tiposDeMeso(macroSel?.tipo_periodizacion).map(t => (
+                    <option key={t.tipo} value={t.tipo}>{t.tipo}</option>
+                  ))}
                 </select>
                 <input type="number" placeholder="Duración en semanas" value={mesoDuracion} onChange={e => setMesoDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <input type="number" min="1" max="10" placeholder="Intensidad relativa (1-10)" value={mesoIntensidad} onChange={e => setMesoIntensidad(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />

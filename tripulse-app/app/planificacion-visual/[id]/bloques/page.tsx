@@ -8,6 +8,7 @@ import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
+import { tiposDeMeso } from '@/lib/periodizacion'
 
 const COLOR_MESO: Record<string, string> = {
   'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
@@ -590,26 +591,12 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
             <input type="text" placeholder="Objetivo (ej: Bloque de base)" value={mesoObj} onChange={e => setMesoObj(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <select value={mesoTipo} onChange={e => setMesoTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
               <option value="">Tipo de mesociclo</option>
-              {macroSel?.tipo_periodizacion === 'Tradicional' ? (<>
-                <option value="General">General</option>
-                <option value="Específica">Específica</option>
-                <option value="Competitiva">Competitiva</option>
-                <option value="Taper">Taper</option>
-              </>) : macroSel?.tipo_periodizacion === 'Inversa' ? (<>
-                <option value="Intensidad">Intensidad</option>
-                <option value="Desarrollo">Desarrollo</option>
-                <option value="Resistencia específica">Resistencia específica</option>
-                <option value="Taper">Taper</option>
-              </>) : macroSel?.tipo_periodizacion === 'Ondulatoria' ? (<>
-                <option value="Carga alta">Carga alta</option>
-                <option value="Carga media">Carga media</option>
-                <option value="Recuperación">Recuperación</option>
-              </>) : (<>
-                <option value="Acumulación">Acumulación</option>
-                <option value="Transmutación">Transmutación</option>
-                <option value="Realización">Realización</option>
-                <option value="Recuperación">Recuperación</option>
-              </>)}
+              {/* Segunda copia de esta lista que había: la primera estaba en el
+                  calendario y los colores en un tercer sitio, que fue el que se
+                  quedó atrás. Ahora las tres leen de lib/periodizacion. */}
+              {tiposDeMeso(macroSel?.tipo_periodizacion).map(t => (
+                <option key={t.tipo} value={t.tipo}>{t.tipo}</option>
+              ))}
             </select>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha de inicio</label><input type="date" value={mesoFecha} onChange={e => setMesoFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <input type="number" placeholder="Duracion en semanas" value={mesoDuracion} onChange={e => setMesoDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
