@@ -24,7 +24,9 @@ import { cargaZona } from '@/lib/zonas'
 import { construirContextoTexto } from '@/lib/asistente'
 import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, type NivelAtleta } from '@/lib/plan-semana'
 import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
-import { rellenarSemana, type SemanaRellena } from '@/lib/plan-relleno'
+import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
+import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
+import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 
 const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
@@ -52,6 +54,14 @@ function distanciaDeAnamnesis(txt: string | null | undefined): DistanciaTri | nu
 
 const fmtHoras = (min: number) => (Math.round(min / 6) / 10).toString().replace('.', ',') + ' h'
 
+/** El lunes que viene. Nadie planifica la semana que ya está empezada. */
+function proximoLunes(): string {
+  const d = new Date()
+  const hastaLunes = (8 - (d.getDay() || 7)) % 7 || 7
+  d.setDate(d.getDate() + hastaLunes)
+  return d.toISOString().slice(0, 10)
+}
+
 export default function Planificador() {
   const router = useRouter()
   useRequireEntrenador()
@@ -75,6 +85,14 @@ export default function Planificador() {
 
   const [revisando, setRevisando] = useState(false)
   const [revision, setRevision] = useState<{ aplicados: any[]; rechazados: any[]; nota: string; motivo?: string } | null>(null)
+
+  // El volcado. Por defecto el lunes que viene: nadie planifica la semana que ya
+  // está empezada.
+  const [lunes, setLunes] = useState(proximoLunes())
+  const [yaHay, setYaHay] = useState<number | null>(null)
+  const [confirmando, setConfirmando] = useState(false)
+  const [volcando, setVolcando] = useState(false)
+  const [volcado, setVolcado] = useState<ResultadoVolcado | null>(null)
 
   useEffect(() => { (async () => {
     const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima').order('nombre')
@@ -143,6 +161,31 @@ export default function Planificador() {
     } catch (e: any) {
       setRevision({ aplicados: [], rechazados: [], nota: '', motivo: 'No se pudo contactar con el asistente: ' + (e?.message || '') })
     } finally { setRevisando(false) }
+  }
+
+  // Qué hay ya esa semana. Se mira al entrar al paso 2 y cada vez que cambia la
+  // fecha: volcar sobre una semana que ya tiene sesiones la duplica, y eso hay
+  // que saberlo ANTES de pulsar, no después.
+  useEffect(() => {
+    if (paso !== 2 || !dep) { setYaHay(null); return }
+    let vivo = true
+    setYaHay(null)
+    loQueYaHay(supabase, dep.id, lunes).then(n => { if (vivo) setYaHay(n) }).catch(() => { if (vivo) setYaHay(null) })
+    return () => { vivo = false }
+  }, [paso, dep, lunes])
+
+  async function volcar() {
+    if (!semana || !dep) return
+    setVolcando(true); setConfirmando(false)
+    const nivelP = nivelDePlantilla(nivel)
+    const r = await volcarSemana(supabase, {
+      idDeportista: dep.id,
+      lunes,
+      relleno: semana.relleno,
+      aplicarBloques,
+      bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+    })
+    setVolcado(r); setVolcando(false)
   }
 
   useDeclararModulo('Planificador', dep && forma
@@ -307,7 +350,6 @@ export default function Planificador() {
                   {revisando ? 'El asistente la está mirando…' : '🤖 Que la revise el asistente'}
                 </button>
                 <button onClick={() => setPaso(1)} className="text-gray-400 hover:text-white text-sm transition">← Cambiar la forma</button>
-                <p className="text-[11.5px] text-gray-600 ml-auto">Nada de esto se ha guardado. Todavía no se puede volcar al calendario.</p>
               </div>
 
               {revision && (
@@ -341,6 +383,88 @@ export default function Planificador() {
                   )}
                 </div>
               )}
+            </Seccion>
+          )}
+
+          {/* ---- Paso 3: al calendario. El único sitio donde esto escribe ---- */}
+          {paso === 2 && semana && (
+            <Seccion n={3} titulo="Al calendario" activo>
+              {volcado ? (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                  <p className={'text-sm font-semibold ' + (volcado.creadas ? 'text-green-400' : 'text-red-400')}>
+                    {volcado.creadas
+                      ? `${volcado.creadas} sesiones creadas en la semana del ${lunes}`
+                      : (volcado.error || 'No se creó nada')}
+                  </p>
+                  {volcado.parte.some(p => p.ok && !p.enSuPlan) && (
+                    <p className="text-[12px] text-gray-400 mt-1.5">
+                      {volcado.parte.filter(p => p.ok && !p.enSuPlan).length} entraron como sesión libre: esos días
+                      no tenía semana planificada. Se ven igual en su calendario.
+                    </p>
+                  )}
+                  {volcado.parte.some(p => !p.ok) && (
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {volcado.parte.filter(p => !p.ok).map((p, k) => (
+                        <li key={k} className="text-[12px] text-red-300/80">{p.dia} · {p.nombre}: {p.error}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="flex gap-3 mt-3">
+                    <button onClick={() => router.push('/planificacion-visual/' + dep.id + '/calendario')}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                      Ver su calendario →
+                    </button>
+                    <button onClick={() => { setVolcado(null); setYaHay(null) }}
+                      className="text-gray-400 hover:text-white text-sm transition">Volcar otra semana</button>
+                  </div>
+                </div>
+              ) : (<>
+                <div className="flex flex-wrap items-end gap-4 mb-3">
+                  <Campo label="Semana (lunes)">
+                    <input type="date" value={lunes} onChange={e => { setLunes(e.target.value); setConfirmando(false) }}
+                      className={selectCls} />
+                  </Campo>
+                  <p className="text-[12px] text-gray-500 pb-2">
+                    Del {lunes} al {domingoDe(lunes)}
+                    {semana.relleno.length ? ` · ${semana.relleno.length} sesiones` : ''}
+                  </p>
+                </div>
+
+                {/* Volcar sobre una semana que ya tiene sesiones la duplica, y eso
+                    hay que saberlo antes de pulsar, no después. */}
+                {yaHay != null && yaHay > 0 && (
+                  <p className="text-[12px] text-yellow-300/85 bg-yellow-900/15 border border-yellow-700/25 rounded-lg px-3 py-2 mb-3">
+                    Esa semana ya tiene {yaHay} sesión(es) en su calendario. Si vuelcas ahora, se suman: no se
+                    reemplaza nada. Revisa antes si es lo que quieres.
+                  </p>
+                )}
+
+                {!confirmando ? (
+                  <button onClick={() => setConfirmando(true)} disabled={volcando}
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                    Volcar al calendario →
+                  </button>
+                ) : (
+                  <div className="bg-gray-900 border border-orange-500/40 rounded-xl p-4">
+                    <p className="text-sm font-semibold mb-1">
+                      Se van a crear {semana.relleno.length} sesiones en el calendario de {dep.nombre}
+                    </p>
+                    <p className="text-[12px] text-gray-400 mb-3">
+                      Del {lunes} al {domingoDe(lunes)}. Quedan como planificadas y se pueden editar o borrar después,
+                      una a una, desde su calendario.
+                    </p>
+                    <div className="flex gap-3">
+                      <button onClick={volcar} disabled={volcando}
+                        className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                        {volcando ? 'Creando…' : 'Sí, crearlas'}
+                      </button>
+                      <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm transition">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>)}
             </Seccion>
           )}
         </>)}
