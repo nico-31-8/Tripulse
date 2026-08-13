@@ -151,17 +151,74 @@ describe('no repetir lo que se acaba de hacer', () => {
   })
 
   it('con una sola opción lo dice, en vez de fingir que eligió', () => {
-    // Es el aviso que señala donde hace falta ampliar el catalogo.
-    const r = elegirPlantilla('Ciclismo', 'AER', [])
-    expect(r!.motivo).toMatch(/única/i)
+    // Es el aviso que señala donde hace falta ampliar el catalogo. La zona de
+    // ejemplo se BUSCA en vez de escribirse: este test uso AER en ciclismo hasta
+    // que esa zona paso de 1 opcion a 4, y entonces fallo por la razon correcta.
+    const unaSola = (['Natacion', 'Ciclismo', 'Carrera'] as const).flatMap(d =>
+      [...new Set(plantillasDe(d).map(p => p.zona))]
+        .map(z => ({ d, z, n: plantillasDe(d).filter(p => p.zona === z).reduce((a, p) => a + opcionesDe(p).length, 0) })))
+      .find(x => x.n === 1)
+    expect(unaSola, 'ya no queda ninguna zona con una sola opción — actualiza este test').toBeDefined()
+    expect(elegirPlantilla(unaSola!.d, unaSola!.z, [])!.motivo).toMatch(/única/i)
+  })
+
+  it('el aviso de «sin alternativa» sale cuando toca', () => {
     const s = llenar()
-    if (s.relleno.some(x => x.motivo.includes('la única'))) {
-      expect(s.avisos.join(' ')).toMatch(/Sin alternativa/)
-    }
+    const hayUnicas = s.relleno.some(x => x.motivo.includes('la única'))
+    expect(s.avisos.some(a => a.includes('Sin alternativa'))).toBe(hayUnicas)
   })
 
   it('una zona sin plantillas no revienta, se reporta', () => {
     expect(elegirPlantilla('Ciclismo', 'NO-EXISTE', [])).toBeNull()
+  })
+})
+
+describe('cuánto repite un atleta de verdad', () => {
+  /* EL TEST QUE VIGILA LA VARIEDAD, y vigila el numero que importa — no cuantas
+     plantillas hay, sino cuantas veces sale la misma sesion.
+
+     El catalogo tenia la variedad puesta AL REVES: yo puse variantes donde la
+     literatura documenta metodos, y B1-00d describe cinco formas de hacer un
+     VO2max y una de rodar suave. Resultado: la rodadura de recuperacion en bici
+     salia 12,8 veces en un bloque de 12 semanas con UNA sola opcion, mientras
+     AEI y PAE tenian 3-4 opciones para menos de tres usos.
+
+     Nueve variantes bien colocadas —no «mas plantillas» en todas partes— lo
+     bajaron todo por debajo de 3,5. */
+  const repeticiones = () => {
+    const SEMANAS = 12
+    const f = formaDeSemana(base())
+    const out: { zona: string; disc: string; rep: number }[] = []
+    ;(['Natacion', 'Ciclismo', 'Carrera'] as const).forEach(d => {
+      const b = f.bloques.find(x => x.bloque === d)!
+      if (!b.minutos) return
+      f.zonas[d].forEach(fr => {
+        const ses = (b.minutos * ((fr.min + fr.max) / 2) / 100 / b.minutosPorSesion) * SEMANAS
+        if (ses < 1) return
+        const op = plantillasDe(d).filter(p => fr.siglas.includes(p.zona))
+          .reduce((a, p) => a + opcionesDe(p).length, 0)
+        if (op) out.push({ zona: fr.siglas.join('+'), disc: d, rep: ses / op })
+      })
+    })
+    return out
+  }
+
+  it('ninguna sesión sale más de 3,5 veces en un bloque de 12 semanas', () => {
+    repeticiones().forEach(x => {
+      expect(x.rep, `${x.zona} en ${x.disc} sale ${x.rep.toFixed(1)} veces — le faltan variantes`)
+        .toBeLessThan(3.5)
+    })
+  })
+
+  it('las zonas donde se pasa el tiempo tienen al menos tres alternativas', () => {
+    // AER y AEL son el grueso del volumen en las tres disciplinas: son las que
+    // mas se repiten y las que menos documenta la literatura.
+    ;(['Natacion', 'Ciclismo', 'Carrera'] as const).forEach(d =>
+      ['AER', 'AEL'].forEach(z => {
+        const op = plantillasDe(d).filter(p => p.zona === z)
+          .reduce((a, p) => a + opcionesDe(p).length, 0)
+        expect(op, `${z} en ${d}`).toBeGreaterThanOrEqual(3)
+      }))
   })
 })
 

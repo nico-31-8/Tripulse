@@ -35,6 +35,87 @@ import type { VarianteSesion } from './plantillas-tipos'
 // 🚴 CICLISMO — B1-00d Parte 1
 // ------------------------------------------------------------
 
+// La zona con MÁS repeticiones de todo el catálogo y la que tenía menos
+// alternativas: con el reparto real, la rodadura sale unas 13 veces en un bloque
+// de 12 semanas y hasta ahora había UNA sola sesión. Esta es la corrección del
+// sesgo de fondo del catálogo: puse variantes donde la literatura documenta
+// métodos —y describe cinco formas de hacer un VO₂max y una de rodar suave—, no
+// donde el atleta pasa el tiempo.
+const CIC_AER: VarianteSesion[] = [
+  {
+    id: 'tecnica-pedaleo',
+    nombre: 'Pedaleo técnico',
+    objetivo: 'La rodadura suave aprovechada para pedalear mejor. Con la carga baja sobra cabeza para corregir el gesto, y la eficiencia de pedaleo es de las pocas cosas que se ganan sin pagar fatiga.',
+    origen: 'documentado', fuente: 'B1-00b · Z1 ciclismo («Rodadura suave: pedaleo técnico, trabajo de pedaling efficiency»)',
+    // B1-00b Z1: 30–90 min, cadencia libre, < 55 % FTP.
+    principal: {
+      principiante: [
+        { zona: 'AER', segundos: 15 * 60, nota: 'Entrar rodando' },
+        { zona: 'AER', series: 6, segundos: 60, descansoSeg: 60, nota: 'Drills: una pierna sola, alternando; y pedaleo redondo consciente' },
+        { zona: 'AER', segundos: 10 * 60 },
+      ],
+      intermedio: [
+        { zona: 'AER', segundos: 20 * 60, nota: 'Entrar rodando' },
+        { zona: 'AER', series: 8, segundos: 60, descansoSeg: 60, nota: 'Drills: una pierna sola, alternando; y pedaleo redondo consciente' },
+        { zona: 'AER', segundos: 15 * 60 },
+      ],
+      avanzado: [
+        { zona: 'AER', segundos: 25 * 60, nota: 'Entrar rodando' },
+        { zona: 'AER', series: 10, segundos: 60, descansoSeg: 60, nota: 'Drills: una pierna sola, alternando; y pedaleo redondo consciente' },
+        { zona: 'AER', segundos: 20 * 60 },
+      ],
+    },
+  },
+  {
+    id: 'cadencia',
+    nombre: 'Rodaje de cadencia alta',
+    objetivo: 'Rodar suave girando muy rápido (100–110 rpm). Trabaja la coordinación neuromuscular del pedaleo sin meter carga, que es justo lo que se busca en un día fácil.',
+    origen: 'propuesta', fuente: 'B1-00b · Z1 ciclismo (duración y «cadencia libre») · B1-00d Z5 (el rango de 95–110 rpm)',
+    aviso: 'B1-00b da la Z1 de ciclismo con «cadencia libre» y no describe una sesión de cadencia alta como método propio. La estructura es nuestra: respeta la duración y la intensidad de Z1 y toma el rango de cadencia alta que B1-00d usa en sus intervalos.',
+    principal: {
+      principiante: [
+        { zona: 'AER', segundos: 10 * 60 },
+        { zona: 'AER', series: 5, segundos: 3 * 60, descansoSeg: 2 * 60, nota: '100–110 rpm sin subir la potencia; si sube, bajar desarrollo' },
+        { zona: 'AER', segundos: 10 * 60 },
+      ],
+      intermedio: [
+        { zona: 'AER', segundos: 15 * 60 },
+        { zona: 'AER', series: 6, segundos: 4 * 60, descansoSeg: 2 * 60, nota: '100–110 rpm sin subir la potencia; si sube, bajar desarrollo' },
+        { zona: 'AER', segundos: 15 * 60 },
+      ],
+      avanzado: [
+        { zona: 'AER', segundos: 15 * 60 },
+        { zona: 'AER', series: 8, segundos: 5 * 60, descansoSeg: 2 * 60, nota: '100–110 rpm sin subir la potencia; si sube, bajar desarrollo' },
+        { zona: 'AER', segundos: 20 * 60 },
+      ],
+    },
+  },
+  {
+    id: 'activacion',
+    nombre: 'Activación (víspera)',
+    objetivo: 'Rodaje corto con unas aceleraciones muy breves. Es la sesión del día antes: despierta el sistema nervioso sin dejar nada de fatiga.',
+    origen: 'propuesta', fuente: 'B1-00b · Z1 ciclismo (recuperación activa) · B1-08 (el tapering mantiene la densidad de calidad con volumen bajo)',
+    aviso: 'La sesión de víspera no viene descrita como método en las notas de zonas. La estructura es nuestra: volumen corto de Z1 con aceleraciones de pocos segundos, que es la forma habitual de activar sin fatigar, y encaja con lo que B1-08 dice del tapering (menos volumen, la calidad no desaparece).',
+    principal: {
+      principiante: [
+        { zona: 'AER', segundos: 20 * 60 },
+        { zona: 'PAE', series: 3, segundos: 20, descansoSeg: 3 * 60, nota: 'Aceleraciones cortas, sin llegar a apretar de verdad' },
+        { zona: 'AER', segundos: 5 * 60 },
+      ],
+      intermedio: [
+        { zona: 'AER', segundos: 25 * 60 },
+        { zona: 'PAE', series: 4, segundos: 20, descansoSeg: 3 * 60, nota: 'Aceleraciones cortas, sin llegar a apretar de verdad' },
+        { zona: 'AER', segundos: 5 * 60 },
+      ],
+      avanzado: [
+        { zona: 'AER', segundos: 30 * 60 },
+        { zona: 'PAE', series: 5, segundos: 20, descansoSeg: 3 * 60, nota: 'Aceleraciones cortas, sin llegar a apretar de verdad' },
+        { zona: 'AER', segundos: 5 * 60 },
+      ],
+    },
+  },
+]
+
 const CIC_AEL: VarianteSesion[] = [
   {
     id: 'bloques-tempo',
@@ -78,6 +159,30 @@ const CIC_AEL: VarianteSesion[] = [
       avanzado: [
         { zona: 'AEL', segundos: 100 * 60, nota: 'Llano' },
         { zona: 'AEM', series: 6, segundos: 10 * 60, descansoSeg: 8 * 60, nota: 'Subidas moderadas; la bajada y el llano son la recuperación' },
+      ],
+    },
+  },
+]
+
+const CIC_AEL_EXTRA: VarianteSesion[] = [
+  {
+    id: 'progresivo',
+    nombre: 'Fondo progresivo',
+    objetivo: 'El mismo fondo acabando más fuerte de lo que se empezó. La última parte se rueda ya cansado y a intensidad de competición, que es exactamente lo que pasa el día de la prueba.',
+    origen: 'propuesta', fuente: 'B1-00b · Z2 ciclismo (el rango del fondo) · B1-00b Z3 («pace-setting: aprender a rodar a ritmo de carrera»)',
+    aviso: 'El fondo progresivo no aparece como método con nombre propio en las notas. La estructura es nuestra: se toma el rango del fondo de Z2 y se dedica el último tercio a Z3, aplicando el principio de pace-setting que B1-00b sí documenta para esa zona.',
+    principal: {
+      principiante: [
+        { zona: 'AEL', segundos: 60 * 60 },
+        { zona: 'AEM', segundos: 25 * 60, nota: 'Último tercio, sin parar' },
+      ],
+      intermedio: [
+        { zona: 'AEL', segundos: 90 * 60 },
+        { zona: 'AEM', segundos: 35 * 60, nota: 'Último tercio, sin parar' },
+      ],
+      avanzado: [
+        { zona: 'AEL', segundos: 130 * 60 },
+        { zona: 'AEM', segundos: 45 * 60, nota: 'Último tercio, sin parar' },
       ],
     },
   },
@@ -275,6 +380,29 @@ const NAT_AER: VarianteSesion[] = [
   },
 ]
 
+const NAT_AER_EXTRA: VarianteSesion[] = [
+  {
+    id: 'tecnica-extensiva',
+    nombre: 'Técnica extensiva',
+    objetivo: 'Volumen de drills, no cuatro al principio. La fuente lo explica bien: la técnica siempre acaba siendo Z1 porque la concentración que exige limita la intensidad sola.',
+    origen: 'documentado', fuente: 'B1-00b · Z1 natación («Técnica extensiva», 1.000–2.500 m)',
+    principal: {
+      principiante: [
+        { zona: 'AER', series: 8, metros: 50, descansoSeg: 20, nota: 'Drills: catch-up, zipper, fist' },
+        { zona: 'AER', metros: 600, nota: 'Nado completo pensando en lo que se acaba de hacer' },
+      ],
+      intermedio: [
+        { zona: 'AER', series: 12, metros: 50, descansoSeg: 20, nota: 'Drills: catch-up, zipper, fist, puño cerrado, un brazo' },
+        { zona: 'AER', metros: 1000, nota: 'Nado completo pensando en lo que se acaba de hacer' },
+      ],
+      avanzado: [
+        { zona: 'AER', series: 16, metros: 50, descansoSeg: 20, nota: 'Drills: catch-up, zipper, fist, puño cerrado, un brazo' },
+        { zona: 'AER', metros: 1700, nota: 'Nado completo pensando en lo que se acaba de hacer' },
+      ],
+    },
+  },
+]
+
 const NAT_AEL: VarianteSesion[] = [
   {
     id: 'continuo',
@@ -307,6 +435,33 @@ const NAT_AEL: VarianteSesion[] = [
       avanzado: [
         { zona: 'AEL', series: 8, metros: 200, nota: 'Alterna con el bloque siguiente, sin pausa' },
         { zona: 'AEM', series: 8, metros: 100 },
+      ],
+    },
+  },
+]
+
+const NAT_AEL_EXTRA: VarianteSesion[] = [
+  {
+    id: 'pull-kick',
+    nombre: 'Series con pull y pies',
+    objetivo: 'La misma base partida en tren superior y patada. Aísla cada mitad de la brazada, y en triatlón el pull tiene sentido extra: se compite con neopreno, que hace justo eso.',
+    origen: 'propuesta', fuente: 'B1-00b · Z2 natación (rango y «foco en stroke rate estable») · B1-15 (el neopreno eleva las piernas)',
+    aviso: 'B1-00b da la Z2 de natación como series largas extensivas y no describe el trabajo con pull-buoy y tabla como método propio. El reparto entre nado completo, pull y pies es nuestro: respeta el volumen y el ritmo de la zona.',
+    principal: {
+      principiante: [
+        { zona: 'AEL', series: 3, metros: 200, descansoSeg: 30, nota: 'Nado completo' },
+        { zona: 'AEL', series: 3, metros: 200, descansoSeg: 30, nota: 'Con pull-buoy' },
+        { zona: 'AEL', series: 4, metros: 50, descansoSeg: 30, nota: 'Solo pies, con tabla' },
+      ],
+      intermedio: [
+        { zona: 'AEL', series: 4, metros: 200, descansoSeg: 30, nota: 'Nado completo' },
+        { zona: 'AEL', series: 4, metros: 200, descansoSeg: 30, nota: 'Con pull-buoy' },
+        { zona: 'AEL', series: 6, metros: 50, descansoSeg: 30, nota: 'Solo pies, con tabla' },
+      ],
+      avanzado: [
+        { zona: 'AEL', series: 5, metros: 300, descansoSeg: 30, nota: 'Nado completo' },
+        { zona: 'AEL', series: 5, metros: 200, descansoSeg: 30, nota: 'Con pull-buoy' },
+        { zona: 'AEL', series: 8, metros: 50, descansoSeg: 30, nota: 'Solo pies, con tabla' },
       ],
     },
   },
@@ -538,7 +693,68 @@ const CAR_AER: VarianteSesion[] = [
   },
 ]
 
+const CAR_AER_EXTRA: VarianteSesion[] = [
+  {
+    id: 'regenerativo',
+    nombre: 'Trote regenerativo',
+    objetivo: 'El trote muy corto del día después de una sesión larga o dura. No busca adaptación —la Z1 no la produce sola—, busca mover la pierna para que llegue mejor a la siguiente.',
+    origen: 'documentado', fuente: 'B1-00b · Z1 carrera («Continuo lento K1»: para atletas de 70.3+, salidas de recuperación activa al día siguiente de sesión larga)',
+    // B1-00b Z1: 20–60 min, < 70 % FCmax, conversación fácil. Es el extremo corto
+    // del rango; la sesión base ya cubre el largo.
+    principal: {
+      principiante: [{ zona: 'AER', segundos: 20 * 60, nota: 'Conversación fácil. Si cuesta hablar, es demasiado rápido' }],
+      intermedio: [{ zona: 'AER', segundos: 30 * 60, nota: 'Conversación fácil. Si cuesta hablar, es demasiado rápido' }],
+      avanzado: [{ zona: 'AER', segundos: 40 * 60, nota: 'Conversación fácil. Si cuesta hablar, es demasiado rápido' }],
+    },
+  },
+]
+
 const CAR_AEL: VarianteSesion[] = [
+  {
+    id: 'ritmo-competicion',
+    nombre: 'Tirada con ritmo de competición',
+    objetivo: 'La tirada larga con bloques al ritmo del día de la prueba metidos dentro. Se aprende a encontrar ese ritmo cuando ya llevas kilómetros encima, que es la única vez que hace falta encontrarlo.',
+    origen: 'propuesta', fuente: 'B1-00b · Z2 carrera (el rango de la tirada) · B1-00b Z3 («pace-setting: aprender a correr a ritmo de carrera específico»)',
+    aviso: 'La tirada con bloques a ritmo no viene como método propio. La estructura es nuestra: rango de la tirada de Z2 con bloques de Z3 intercalados, aplicando el pace-setting que B1-00b documenta como aplicación directa de esa zona en triatlón. Se distingue de la progresiva en que aquí los bloques van repartidos, no todo al final.',
+    principal: {
+      principiante: [
+        { zona: 'AEL', segundos: 20 * 60 },
+        { zona: 'AEM', series: 2, segundos: 10 * 60, descansoSeg: 5 * 60, nota: 'A ritmo de competición; entre bloques se sigue trotando' },
+        { zona: 'AEL', segundos: 15 * 60 },
+      ],
+      intermedio: [
+        { zona: 'AEL', segundos: 25 * 60 },
+        { zona: 'AEM', series: 3, segundos: 10 * 60, descansoSeg: 5 * 60, nota: 'A ritmo de competición; entre bloques se sigue trotando' },
+        { zona: 'AEL', segundos: 20 * 60 },
+      ],
+      avanzado: [
+        { zona: 'AEL', segundos: 30 * 60 },
+        { zona: 'AEM', series: 3, segundos: 15 * 60, descansoSeg: 5 * 60, nota: 'A ritmo de competición; entre bloques se sigue trotando' },
+        { zona: 'AEL', segundos: 25 * 60 },
+      ],
+    },
+  },
+  {
+    id: 'terreno',
+    nombre: 'Tirada por terreno',
+    objetivo: 'La misma tirada en ondulado o en blando. El desnivel mete la intensidad sin pedir velocidad y la tierra baja el impacto, así que es la forma de sostener volumen cuando la pierna va justa.',
+    origen: 'propuesta', fuente: 'B1-00c Tabla 3 · Tuimil Z2 (rango) · B1-00d Ciclismo Z2 («fondo en montaña», el principio de dejar que el terreno ponga la intensidad)',
+    aviso: 'Las notas de carrera dan la tirada en llano y no describen la variante por terreno. Se traslada el principio que B1-00d sí documenta en ciclismo —el desnivel sube la zona sin cambiar el esfuerzo percibido— respetando el rango de la tirada de Tuimil Z2. El menor impacto del terreno blando es criterio propio.',
+    principal: {
+      principiante: [
+        { zona: 'AEL', segundos: 40 * 60, nota: 'Llano y bajadas' },
+        { zona: 'AEM', series: 4, segundos: 3 * 60, descansoSeg: 4 * 60, nota: 'Las subidas: sin apretar, dejando que suba sola la pulsación' },
+      ],
+      intermedio: [
+        { zona: 'AEL', segundos: 55 * 60, nota: 'Llano y bajadas' },
+        { zona: 'AEM', series: 5, segundos: 4 * 60, descansoSeg: 5 * 60, nota: 'Las subidas: sin apretar, dejando que suba sola la pulsación' },
+      ],
+      avanzado: [
+        { zona: 'AEL', segundos: 70 * 60, nota: 'Llano y bajadas' },
+        { zona: 'AEM', series: 6, segundos: 5 * 60, descansoSeg: 5 * 60, nota: 'Las subidas: sin apretar, dejando que suba sola la pulsación' },
+      ],
+    },
+  },
   {
     id: 'progresiva',
     nombre: 'Tirada progresiva',
@@ -677,22 +893,23 @@ const CAR_CLA: VarianteSesion[] = [
 // ver la nota de la cabecera sobre dónde tiene sentido meterlas.
 export const VARIANTES: Record<string, VarianteSesion[]> = {
   // Ciclismo
-  'cic-ael': CIC_AEL,
+  'cic-aer': CIC_AER,
+  'cic-ael': [...CIC_AEL, ...CIC_AEL_EXTRA],
   'cic-aem': CIC_AEM,
   'cic-aei': CIC_AEI,
   'cic-pae': CIC_PAE,
   'cic-cla': CIC_CLA,
   'cic-cala': CIC_CALA,
   // Natación
-  'nat-aer': NAT_AER,
-  'nat-ael': NAT_AEL,
+  'nat-aer': [...NAT_AER, ...NAT_AER_EXTRA],
+  'nat-ael': [...NAT_AEL, ...NAT_AEL_EXTRA],
   'nat-aem': NAT_AEM,
   'nat-aei': NAT_AEI,
   'nat-pae': NAT_PAE,
   'nat-pla': NAT_PLA,
   'nat-cala': NAT_CALA,
   // Carrera
-  'car-aer': CAR_AER,
+  'car-aer': [...CAR_AER, ...CAR_AER_EXTRA],
   'car-ael': CAR_AEL,
   'car-aem': CAR_AEM,
   'car-aem-int': CAR_AEM_INT,
