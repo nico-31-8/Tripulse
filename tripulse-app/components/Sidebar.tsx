@@ -16,6 +16,7 @@ const esModoEntreno = (p: string) => /^\/sesion\/[^/]+\/ejecutar/.test(p)
 const modulosEntrenador = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
   { icon: '📅', titulo: 'Planificacion', href: '/planificacion-visual' },
+  { icon: '🧩', titulo: 'Planificador', href: '/planificador' },
   { icon: '💚', titulo: 'Wellness', href: '/wellness-entrenador' },
   { icon: '📈', titulo: 'Carga', href: '/carga' },
   { icon: '🔬', titulo: 'SICAT', href: '/eco' },

@@ -1,0 +1,402 @@
+'use client'
+// ============================================================
+// El planificador — la pantalla
+// ============================================================
+// Hasta ahora todo el planificador era motor sin volante: cuatro módulos que
+// generan una semana y nadie que los llamara. Esto es la puerta.
+//
+// DOS PUERTAS DE REVISIÓN, NO UNA. Primero se aprueba la FORMA de la semana
+// —cuántas horas, cómo se reparten, cuántas de calidad—, que se lee en quince
+// segundos. Solo después se ven las sesiones. Volcar una semana entera de golpe
+// para que la revises de arriba abajo acaba en sello de goma o en reescribirla, y
+// ninguna de las dos aporta.
+//
+// Y NO ESCRIBE NADA. Genera, enseña y explica. Crear las sesiones es el paso
+// siguiente y va aparte: mientras eso no exista, esta pantalla no puede
+// estropear el calendario de nadie.
+import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { cargaZona } from '@/lib/zonas'
+import { construirContextoTexto } from '@/lib/asistente'
+import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, type NivelAtleta } from '@/lib/plan-semana'
+import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
+import { rellenarSemana, type SemanaRellena } from '@/lib/plan-relleno'
+import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
+
+const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
+const FASES: FaseMacro[] = ['transicion', 'pg-inicial', 'pg-avanzada', 'pe-inicial', 'pe-avanzada', 'tapering']
+const NIVELES: NivelAtleta[] = ['principiante', 'intermedio', 'avanzado', 'elite']
+
+/** El nivel que declara la anamnesis, traducido al del planificador. */
+function nivelDeAnamnesis(txt: string | null | undefined): NivelAtleta {
+  const t = String(txt ?? '').toLowerCase()
+  if (t.includes('elite') || t.includes('élite') || t.includes('profesional')) return 'elite'
+  if (t.includes('avanzad')) return 'avanzado'
+  if (t.includes('inicia') || t.includes('principi') || t.includes('popular')) return 'principiante'
+  return 'intermedio'
+}
+
+/** La distancia que declara la anamnesis (texto libre), si se reconoce. */
+function distanciaDeAnamnesis(txt: string | null | undefined): DistanciaTri | null {
+  const t = String(txt ?? '').toLowerCase()
+  if (t.includes('sprint') || t.includes('super')) return 'sprint'
+  if (t.includes('olím') || t.includes('olim') || t.includes('están') || t.includes('estan')) return 'olimpico'
+  if (t.includes('media') || t.includes('70.3') || t.includes('half')) return 'medio'
+  if (t.includes('larga') || t.includes('iron') || t.includes('140.6')) return 'largo'
+  return null
+}
+
+const fmtHoras = (min: number) => (Math.round(min / 6) / 10).toString().replace('.', ',') + ' h'
+
+export default function Planificador() {
+  const router = useRouter()
+  useRequireEntrenador()
+
+  const [deportistas, setDeportistas] = useState<any[]>([])
+  const [dep, setDep] = useState<any>(null)
+  const [anamnesis, setAnamnesis] = useState<any>(null)
+  const [disponibilidad, setDisponibilidad] = useState<DiaDisponible[]>([])
+  const [cargando, setCargando] = useState(true)
+
+  // Los mandos. Se rellenan solos con lo que sabe la app y se pueden tocar: la
+  // anamnesis es de cuando se dio de alta y el entrenador sabe más que ella.
+  const [distancia, setDistancia] = useState<DistanciaTri>('medio')
+  const [fase, setFase] = useState<FaseMacro>('pe-inicial')
+  const [nivel, setNivel] = useState<NivelAtleta>('intermedio')
+  const [horas, setHoras] = useState(10)
+  const [dias, setDias] = useState(6)
+
+  const [paso, setPaso] = useState<1 | 2>(1)
+  const [semana, setSemana] = useState<SemanaRellena | null>(null)
+
+  const [revisando, setRevisando] = useState(false)
+  const [revision, setRevision] = useState<{ aplicados: any[]; rechazados: any[]; nota: string; motivo?: string } | null>(null)
+
+  useEffect(() => { (async () => {
+    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima').order('nombre')
+    setDeportistas(data || [])
+    const activo = (data || []).find(d => d.id === getAtletaActivo())
+    if (activo) await elegir(activo, data || [])
+    setCargando(false)
+  })() }, [])
+
+  async function elegir(d: any, _todos = deportistas) {
+    setDep(d); setAtletaActivo(d.id); setPaso(1); setSemana(null); setRevision(null)
+    const [{ data: an }, { data: disp }] = await Promise.all([
+      supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
+      supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
+    ])
+    setAnamnesis(an)
+    if (an?.volumen_semanal) setHoras(Number(an.volumen_semanal))
+    if (an?.dias_semana) setDias(Number(an.dias_semana))
+    setNivel(nivelDeAnamnesis(an?.nivel_competitivo))
+    const dist = distanciaDeAnamnesis(an?.prueba_distancia)
+    if (dist) setDistancia(dist)
+
+    // Minutos reales de cada día a partir de sus franjas horarias.
+    const porDia = new Map<string, number>()
+    ;(disp || []).forEach((f: any) => {
+      const min = (h: string) => { const [a, b] = String(h).split(':').map(Number); return a * 60 + (b || 0) }
+      porDia.set(f.dia_semana, (porDia.get(f.dia_semana) || 0) + Math.max(0, min(f.hora_fin) - min(f.hora_inicio)))
+    })
+    setDisponibilidad([...porDia].map(([d2, minutos]) => ({ dia: d2 as DiaSemana, minutos })))
+  }
+
+  const entrada = (): EntradaSemana => ({
+    horasSemana: horas, diasSemana: dias, distancia, fase, nivel,
+    disciplinaDebil: anamnesis?.disciplina_debil || null,
+  })
+
+  const forma: FormaSemana | null = dep ? formaDeSemana(entrada()) : null
+
+  function generar() {
+    if (!forma) return
+    // Si el atleta tiene la disponibilidad rellena se usa; si no, el reparto por
+    // defecto según el número de días.
+    const s = rellenarSemana({
+      forma,
+      colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
+      nivel, fase,
+    })
+    setSemana(s); setRevision(null); setPaso(2)
+  }
+
+  async function pedirRevision() {
+    if (!semana || !dep) return
+    setRevisando(true); setRevision(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const contexto = await construirContextoTexto(supabase, dep)
+      const r = await fetch('/api/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ semana, contexto }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setRevision({ aplicados: [], rechazados: [], nota: '', motivo: j?.error || 'No se pudo revisar.' }); return }
+      if (j.semana) setSemana(j.semana)
+      setRevision({ aplicados: j.aplicados || [], rechazados: j.rechazados || [], nota: j.nota || '', motivo: j.revisada ? undefined : j.motivo })
+    } catch (e: any) {
+      setRevision({ aplicados: [], rechazados: [], nota: '', motivo: 'No se pudo contactar con el asistente: ' + (e?.message || '') })
+    } finally { setRevisando(false) }
+  }
+
+  useDeclararModulo('Planificador', dep && forma
+    ? `Generando una semana para ${dep.nombre}: ${ETIQUETA_DISTANCIA[distancia]}, fase ${DISTRIBUCION_POR_FASE[fase].etiqueta}, ${horas} h en ${dias} días. ${forma.resumen}`
+    : '')
+
+  if (cargando) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando…</div>
+
+  const porDia = new Map<string, typeof semana extends null ? never : any[]>()
+  semana?.relleno.forEach(r => {
+    if (!porDia.has(r.dia)) porDia.set(r.dia, [])
+    porDia.get(r.dia)!.push(r)
+  })
+
+  return (
+    <main className="min-h-screen bg-gray-950 text-white">
+      <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-between items-center border-b border-gray-800 gap-4">
+        <div className="flex items-baseline gap-3 min-w-0">
+          <h2 className="text-[17px] font-bold tracking-tight leading-none">Planificador</h2>
+          {dep && (<>
+            <span className="text-[12.5px] text-gray-500 truncate min-w-0">{dep.nombre}</span>
+            <button onClick={() => { setDep(null); setSemana(null); setPaso(1) }}
+              className="text-[12.5px] text-orange-400 hover:text-orange-300 transition flex-none">cambiar</button>
+          </>)}
+        </div>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition flex-none">← Dashboard</button>
+      </nav>
+
+      <div className="max-w-[1400px] mx-auto px-6 py-6">
+        <p className="text-gray-400 text-sm mb-6 max-w-2xl">
+          Monta una semana a partir de la prueba objetivo y la fase del plan. Primero decides la forma
+          —cuánto a cada deporte y cuántas sesiones de calidad—, y después ves qué sesión cae cada día
+          y por qué. No se guarda nada: esto propone.
+        </p>
+
+        {!dep && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+            {deportistas.map(d => (
+              <button key={d.id} onClick={() => elegir(d)} className="tp-card tp-tile p-5" style={{ ['--c' as any]: '#f97316' }}>
+                <h3 className="font-bold text-[15px] tracking-tight">{d.nombre}</h3>
+                <p className="text-[12px] text-gray-500 mt-1">FC máx {d.fc_maxima || '—'}</p>
+              </button>
+            ))}
+            {!deportistas.length && <p className="text-gray-500 text-sm">Todavía no tienes deportistas. Añade el primero desde el panel.</p>}
+          </div>
+        )}
+
+        {dep && forma && (<>
+          {/* ---- Los mandos ---- */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <Campo label="Prueba objetivo">
+                <select value={distancia} onChange={e => { setDistancia(e.target.value as DistanciaTri); setPaso(1) }} className={selectCls}>
+                  {DISTANCIAS.map(d => <option key={d} value={d}>{ETIQUETA_DISTANCIA[d]}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Fase del plan">
+                <select value={fase} onChange={e => { setFase(e.target.value as FaseMacro); setPaso(1) }} className={selectCls}>
+                  {FASES.map(f => <option key={f} value={f}>{DISTRIBUCION_POR_FASE[f].etiqueta}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Nivel">
+                <select value={nivel} onChange={e => { setNivel(e.target.value as NivelAtleta); setPaso(1) }} className={selectCls}>
+                  {NIVELES.map(n => <option key={n} value={n}>{n[0].toUpperCase() + n.slice(1)}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Horas/semana">
+                <input type="number" min={1} max={30} step={0.5} value={horas}
+                  onChange={e => { setHoras(Number(e.target.value)); setPaso(1) }} className={selectCls + ' w-24'} />
+              </Campo>
+              <Campo label="Días">
+                <input type="number" min={1} max={7} value={dias}
+                  onChange={e => { setDias(Number(e.target.value)); setPaso(1) }} className={selectCls + ' w-20'} />
+              </Campo>
+              {disponibilidad.length > 0 && (
+                <p className="text-[11.5px] text-gray-500 pb-2">
+                  Con su disponibilidad real: {disponibilidad.map(d => d.dia.slice(0, 3)).join(', ')}
+                </p>
+              )}
+            </div>
+            {anamnesis?.disciplina_debil && (
+              <p className="text-[11.5px] text-gray-500 mt-3">
+                Su punto flojo es <span className="text-gray-300">{anamnesis.disciplina_debil}</span>, así que el reparto se inclina hacia ahí sin salirse del rango.
+              </p>
+            )}
+          </div>
+
+          {/* ---- Paso 1: la forma ---- */}
+          <Seccion n={1} titulo="La forma de la semana" activo={paso === 1}>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <div className="flex h-9 rounded-lg overflow-hidden border border-gray-800 mb-3">
+                  {forma.bloques.filter(b => b.minutos > 0).map(b => (
+                    <div key={b.bloque} title={`${b.etiqueta} · ${b.pct}%`}
+                      className="flex items-center justify-center text-[11px] font-bold text-gray-950"
+                      style={{ width: `${b.pct}%`, background: COLOR_BLOQUE[b.bloque] }}>
+                      {b.pct >= 12 ? `${b.etiqueta} ${b.pct}%` : ''}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {forma.bloques.filter(b => b.sesiones > 0).map(b => (
+                    <div key={b.bloque} className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-widest text-gray-500 font-bold">{b.etiqueta}</p>
+                      <p className="text-[19px] font-bold tabular-nums leading-tight mt-0.5">{b.sesiones} × {b.minutosPorSesion}′</p>
+                      <p className="text-[11.5px] text-gray-500">{fmtHoras(b.minutos)} · {b.pct}%</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-2 justify-center">
+                <Dato valor={fmtHoras(forma.minutosTotales)} pie="volumen semanal" />
+                <Dato valor={String(forma.sesionesTotales)} pie="sesiones" />
+                <Dato valor={String(forma.sesionesCalidad)} pie={forma.sesionesCalidad === 1 ? 'de calidad' : 'de calidad'} />
+                <p className="text-[11.5px] text-gray-500 mt-1">Distribución {forma.tid.toLowerCase()}</p>
+              </div>
+            </div>
+
+            <Avisos lista={forma.avisos} />
+
+            {paso === 1 && (
+              <button onClick={generar}
+                className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+                Ver las sesiones →
+              </button>
+            )}
+          </Seccion>
+
+          {/* ---- Paso 2: la semana ---- */}
+          {paso === 2 && semana && (
+            <Seccion n={2} titulo="La semana" activo>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                {[...porDia].map(([dia, sesiones]) => (
+                  <div key={dia} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                    <p className="text-[11px] uppercase tracking-widest text-gray-500 font-bold px-3.5 pt-3 pb-2">{dia}</p>
+                    <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+                      {sesiones.map((r: any, k: number) => (
+                        <div key={k} className="rounded-lg border border-gray-800 bg-gray-950/60 p-3"
+                          style={{ borderLeftWidth: 3, borderLeftColor: cargaZona(r.zona).color }}>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded leading-none flex-none"
+                              style={{ background: cargaZona(r.zona).color, color: '#0a0b0f' }}>{r.zona}</span>
+                            <span className="text-[13px] font-semibold leading-tight">{r.nombre}</span>
+                          </div>
+                          <p className="text-[11.5px] text-gray-500 mt-1 tabular-nums">
+                            {ETIQUETA_BLOQUE[r.hueco.bloque as keyof typeof ETIQUETA_BLOQUE]} · {r.minutos}′
+                            {r.hueco.larga && ' · larga'}{r.hueco.calidad && ' · calidad'}{r.hueco.brick && ' · brick'}
+                          </p>
+                          <p className="text-[11.5px] text-gray-400 mt-1.5 leading-relaxed">{r.motivo}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Avisos lista={semana.avisos} />
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button onClick={pedirRevision} disabled={revisando}
+                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                  {revisando ? 'El asistente la está mirando…' : '🤖 Que la revise el asistente'}
+                </button>
+                <button onClick={() => setPaso(1)} className="text-gray-400 hover:text-white text-sm transition">← Cambiar la forma</button>
+                <p className="text-[11.5px] text-gray-600 ml-auto">Nada de esto se ha guardado. Todavía no se puede volcar al calendario.</p>
+              </div>
+
+              {revision && (
+                <div className="mt-4 bg-gray-900 border border-gray-800 rounded-xl p-4">
+                  {revision.motivo ? (
+                    <p className="text-[12.5px] text-yellow-300/90">{revision.motivo}</p>
+                  ) : revision.aplicados.length ? (
+                    <>
+                      <p className="text-[11px] uppercase tracking-widest text-gray-500 font-bold mb-2">
+                        El asistente cambió {revision.aplicados.length}
+                      </p>
+                      <ul className="flex flex-col gap-2">
+                        {revision.aplicados.map((a, k) => (
+                          <li key={k} className="text-[12.5px]">
+                            <span className="text-gray-500 line-through">{a.antes}</span>
+                            <span className="text-gray-500"> → </span>
+                            <span className="text-white font-medium">{a.despues}</span>
+                            <p className="text-gray-400 text-[11.5px] mt-0.5 leading-relaxed">{a.porque}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="text-[12.5px] text-gray-400">El asistente no cambiaría nada: la semana está bien como está.</p>
+                  )}
+                  {revision.nota && <p className="text-[12.5px] text-gray-300 mt-3 leading-relaxed border-t border-gray-800 pt-3">{revision.nota}</p>}
+                  {!!revision.rechazados.length && (
+                    <p className="text-[11.5px] text-gray-600 mt-2">
+                      {revision.rechazados.length} propuesta(s) descartada(s) por no pasar el filtro.
+                    </p>
+                  )}
+                </div>
+              )}
+            </Seccion>
+          )}
+        </>)}
+      </div>
+    </main>
+  )
+}
+
+// ------------------------------------------------------------
+// Piezas
+// ------------------------------------------------------------
+const selectCls = 'bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-1 focus:ring-orange-500 border border-gray-700'
+
+const COLOR_BLOQUE: Record<string, string> = {
+  Natacion: '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#a855f7',
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] uppercase tracking-widest text-gray-500 font-bold">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function Dato({ valor, pie }: { valor: string; pie: string }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-[22px] font-bold tabular-nums leading-none">{valor}</span>
+      <span className="text-[11.5px] text-gray-500">{pie}</span>
+    </div>
+  )
+}
+
+/** Los dos pasos, numerados porque el orden importa de verdad: no se puede ver
+    la semana sin haber fijado antes su forma. */
+function Seccion({ n, titulo, activo, children }: { n: number; titulo: string; activo: boolean; children: React.ReactNode }) {
+  return (
+    <section className={'mb-5 ' + (activo ? '' : 'opacity-60')}>
+      <div className="flex items-baseline gap-2.5 mb-3">
+        <span className="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center flex-none bg-orange-500/20 text-orange-400 tabular-nums">{n}</span>
+        <h3 className="text-[15px] font-bold tracking-tight">{titulo}</h3>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Avisos({ lista }: { lista: string[] }) {
+  if (!lista.length) return null
+  return (
+    <ul className="mt-3 flex flex-col gap-1.5">
+      {lista.map((a, k) => (
+        <li key={k} className="text-[12px] text-yellow-300/80 bg-yellow-900/15 border border-yellow-700/25 rounded-lg px-3 py-2 leading-relaxed">{a}</li>
+      ))}
+    </ul>
+  )
+}
