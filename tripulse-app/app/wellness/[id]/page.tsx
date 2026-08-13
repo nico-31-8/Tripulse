@@ -71,10 +71,17 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   // Con ?registrar=1 el formulario se abre solo. Lo usa el aviso del panel del
   // deportista: si el botón dice "Registrar", tiene que registrar, no dejarte en
   // la puerta buscando dónde se hace.
-  const [mostrarForm, setMostrarForm] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return new URLSearchParams(window.location.search).get('registrar') === '1'
-  })
+  //
+  // SE LEE EN UN EFECTO, NO EN EL ESTADO INICIAL. Antes estaba como inicializador
+  // de useState preguntando por `window`, y eso se evalúa TAMBIÉN en el render
+  // del servidor, donde `window` no existe: de ahí salía siempre `false`, y lo
+  // que llegara después dependía de cómo resolviera React la hidratación. Un
+  // efecto corre solo en el cliente y con el componente ya montado, así que lee
+  // la URL que el usuario abrió de verdad.
+  const [mostrarForm, setMostrarForm] = useState(false)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('registrar') === '1') setMostrarForm(true)
+  }, [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
