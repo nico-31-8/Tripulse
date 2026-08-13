@@ -256,6 +256,17 @@ export function rellenarSemana(e: EntradaRelleno): SemanaRellena {
     })
   }
 
+  // DE VUELTA AL ORDEN DE LA SEMANA. Arriba se recorre por prioridad —primero la
+  // larga y las de calidad, que son las que menos margen tienen— pero eso es un
+  // detalle del algoritmo, no algo que deba salir por la puerta: la salida venía
+  // en «Sábado, Domingo, Lunes, Miércoles, Martes…». Al modelo lo confunde y en
+  // una pantalla estaría directamente mal.
+  const ordenDia = new Map(e.colocada.dias.map((d, i) => [d.dia, i]))
+  const ordenEnDia = (r: Relleno) =>
+    e.colocada.dias.find(d => d.dia === r.dia)?.huecos.indexOf(r.hueco) ?? 0
+  relleno.sort((a, b) =>
+    (ordenDia.get(a.dia) ?? 0) - (ordenDia.get(b.dia) ?? 0) || ordenEnDia(a) - ordenEnDia(b))
+
   // Las que solo tienen una opción son las que más van a repetirse: se dice, con
   // nombre y apellidos, para que se sepa dónde hace falta ampliar el catálogo.
   const unicas = [...new Set(relleno.filter(r => r.motivo.includes('la única')).map(r => `${r.zona} en ${r.hueco.bloque}`))]

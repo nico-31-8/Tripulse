@@ -251,6 +251,36 @@ describe('el nivel', () => {
   })
 })
 
+describe('el orden de la salida', () => {
+  /* Por dentro se recorre por prioridad —primero la larga y las de calidad, que
+     son las que menos margen tienen— pero eso es un detalle del algoritmo. La
+     salida venia en «Sabado, Domingo, Lunes, Miercoles, Martes…»: al modelo lo
+     confunde y en una pantalla estaria mal. */
+  it('las sesiones salen en orden de la semana', () => {
+    ;[4, 6, 7].forEach(dias => {
+      const e = base({ diasSemana: dias, horasSemana: 12 })
+      const forma = formaDeSemana(e)
+      const colocada = colocarSemana(forma, dias)
+      const s = rellenarSemana({ forma, colocada, nivel: e.nivel, fase: e.fase })
+      const orden = colocada.dias.map(d => d.dia)
+      const vistos = s.relleno.map(r => orden.indexOf(r.dia))
+      expect(vistos, `${dias} dias: ${s.relleno.map(r => r.dia).join(', ')}`)
+        .toEqual([...vistos].sort((a, b) => a - b))
+    })
+  })
+
+  it('dentro de un día, en el orden en que se colocaron', () => {
+    const e = base({ diasSemana: 6, horasSemana: 12 })
+    const forma = formaDeSemana(e)
+    const colocada = colocarSemana(forma, 6)
+    const s = rellenarSemana({ forma, colocada, nivel: e.nivel, fase: e.fase })
+    colocada.dias.forEach(d => {
+      const enRelleno = s.relleno.filter(r => r.dia === d.dia).map(r => d.huecos.indexOf(r.hueco))
+      expect(enRelleno, d.dia).toEqual([...enRelleno].sort((a, b) => a - b))
+    })
+  })
+})
+
 describe('el resumen', () => {
   it('se lee por días', () => {
     const txt = resumenRelleno(llenar({ diasSemana: 6 }))

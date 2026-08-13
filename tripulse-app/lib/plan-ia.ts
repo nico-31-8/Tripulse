@@ -146,11 +146,71 @@ export function aplicarRevision(
     }
   }
 
-  const avisos = [...semana.avisos]
+  const avisos = [...semana.avisos, ...avisosDeConjunto(semana.relleno, relleno)]
   if (rechazados.length) {
     avisos.push(`${rechazados.length} cambio(s) del asistente descartados: ${[...new Set(rechazados.map(r => r.motivo))].join(' ')}`)
   }
   return { semana: { ...semana, relleno, avisos }, aplicados, rechazados }
+}
+
+/**
+ * Carga relativa de una semana: minutos ponderados por la dureza de su zona.
+ *
+ * No pretende ser una unidad de nada — es un número para comparar la misma semana
+ * antes y después de tocarla.
+ */
+export function cargaRelativa(relleno: Relleno[]): number {
+  return relleno.reduce((a, r) => a + r.minutos * (r.zona ? nivelDe(r.zona) : 1), 0)
+}
+
+/**
+ * Lo que ningún cambio suelto puede ver: qué le ha pasado a la SEMANA.
+ *
+ * `aplicarRevision` valida cada cambio por separado —clave válida, mismo deporte,
+ * sin subir— y cada uno puede ser razonable mientras el conjunto deja de serlo.
+ * En la primera prueba con el modelo, cinco cambios a la baja convirtieron un
+ * fondo de 93′ en AEL en un rodaje de recuperación: justificado con esa fatiga,
+ * pero le quitaba a la semana la zona que la sostiene y nadie lo comprobaba.
+ *
+ * NO BLOQUEA, INFORMA. Bajar carga no es peligroso —lo peligroso es subirla, y
+ * eso ya está prohibido—; puede ser exactamente lo que el atleta necesita. Pero
+ * convertir una semana de carga en una de descarga es una decisión del
+ * entrenador, no un efecto lateral de cinco cambios independientes. Así que se
+ * pone el número delante.
+ */
+function avisosDeConjunto(antes: Relleno[], despues: Relleno[]): string[] {
+  const avisos: string[] = []
+  const a = cargaRelativa(antes)
+  if (a <= 0) return avisos
+  const caida = Math.round((1 - cargaRelativa(despues) / a) * 100)
+
+  if (caida >= 30) {
+    avisos.push(`⚠️ Con los cambios del asistente la semana pierde un ${caida} % de carga: esto ya no es la semana que pidió la fase, es una semana de descarga. Si es lo que quieres, adelante; si no, revisa los cambios uno a uno.`)
+  } else if (caida >= 15) {
+    avisos.push(`El asistente ha bajado la carga de la semana un ${caida} %.`)
+  }
+
+  // Las de calidad son el eje del microciclo (B1-04 Principio 2). Que se caigan
+  // TODAS es una semana distinta, no un ajuste.
+  //
+  // Se compara CADA UNA CONSIGO MISMA, antes y después. Mirar solo si acaba por
+  // encima de un umbral daba por «suavizada» una sesión que nadie había tocado:
+  // cuando ninguna zona de calidad tiene presupuesto, el relleno ya la coloca en
+  // una zona base, y eso es decisión de las reglas, no del asistente.
+  const calidades = antes
+    .map((r, i) => ({ r, i }))
+    .filter(x => x.r.hueco.calidad && despues[x.i])
+  if (calidades.length) {
+    const suavizadas = calidades.filter(x => nivelDe(despues[x.i].zona) < nivelDe(x.r.zona))
+    const teniaEstimulo = calidades.some(x => nivelDe(x.r.zona) >= 3)
+    const sigueTeniendo = calidades.some(x => nivelDe(despues[x.i].zona) >= 3)
+    if (teniaEstimulo && !sigueTeniendo) {
+      avisos.push('Ninguna sesión de calidad ha quedado en zona de calidad: la semana se queda sin el estímulo que pedía la fase.')
+    } else if (suavizadas.length) {
+      avisos.push(`${suavizadas.length} de las ${calidades.length} sesiones de calidad se han suavizado.`)
+    }
+  }
+  return avisos
 }
 
 /**

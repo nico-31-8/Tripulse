@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  aplicarRevision, describirSemanaParaIA, opcionesPermitidas, ESQUEMA_REVISION,
-  INSTRUCCIONES_REVISION, type RevisionIA,
+  aplicarRevision, describirSemanaParaIA, opcionesPermitidas, cargaRelativa,
+  ESQUEMA_REVISION, INSTRUCCIONES_REVISION, type RevisionIA,
 } from './plan-ia'
 import { formaDeSemana, type EntradaSemana } from './plan-semana'
 import { colocarSemana } from './plan-colocacion'
@@ -106,13 +106,19 @@ describe('lo que NO se le acepta', () => {
   })
 
   it('duplicar una sesion que ya esta en la semana', () => {
+    // El par se BUSCA por sus propiedades, no se cogen los dos primeros: los
+    // rechazos se comprueban en orden, y si el destino ademas sube de zona salta
+    // antes ese. Este test se rompio justo asi al reordenar el relleno por dias.
     const s = semana()
-    const conClave = s.relleno.map((r, i) => ({ r, i })).filter(x => !!x.r.clave)
-    const otra = conClave.find(x => x.r.hueco.bloque === conClave[0].r.hueco.bloque && x.i !== conClave[0].i)
-    if (otra) {
-      const r = aplicarRevision(s, { cambios: [{ i: otra.i, clave: conClave[0].r.clave, porque: 'x' }] })
-      expect(r.rechazados[0].motivo).toMatch(/ya está en la semana/i)
-    }
+    const con = s.relleno.map((r, i) => ({ r, i })).filter(x => !!x.r.clave)
+    const par = con.flatMap(a => con
+      .filter(b => b.i !== a.i
+        && b.r.hueco.bloque === a.r.hueco.bloque
+        && cargaZona(b.r.zona).nivel <= cargaZona(a.r.zona).nivel)
+      .map(b => ({ destino: a, fuente: b })))[0]
+    expect(par, 'no hay dos sesiones del mismo deporte con las que probar').toBeDefined()
+    const r = aplicarRevision(s, { cambios: [{ i: par.destino.i, clave: par.fuente.r.clave, porque: 'x' }] })
+    expect(r.rechazados[0].motivo).toMatch(/ya está en la semana/i)
   })
 
   it('dos cambios para la misma sesion: solo vale el primero', () => {
@@ -204,6 +210,65 @@ describe('lo que se le ensena al modelo', () => {
     expect(item.required).toContain('porque')
     expect(item.required).toContain('clave')
     expect(item.additionalProperties).toBe(false)
+  })
+})
+
+describe('lo que ningun cambio suelto puede ver: la semana entera', () => {
+  /* EL HUECO QUE ENCONTRO LA PRIMERA LLAMADA REAL AL MODELO. `aplicarRevision`
+     valida cada cambio por separado y cada uno puede ser razonable mientras el
+     conjunto deja de serlo: cinco cambios a la baja convirtieron un fondo de 93'
+     en AEL en un rodaje de recuperacion. Justificado con esa fatiga, pero le
+     quitaba a la semana la zona que la sostiene y nadie lo comprobaba.
+
+     No bloquea, informa: bajar carga no es peligroso —lo peligroso es subirla y
+     eso ya esta prohibido— pero convertir una semana de carga en una de descarga
+     es una decision del entrenador, no un efecto lateral. */
+  const bajarTodo = (s: ReturnType<typeof semana>) => ({
+    cambios: s.relleno.map((r, i) => {
+      if (!r.clave) return null
+      const suave = opcionesPermitidas(s.relleno, i)
+        .filter(k => cargaZona(resolverClave(k)!.plantilla.zona).nivel < cargaZona(r.zona).nivel)
+        .sort((a, b) => cargaZona(resolverClave(a)!.plantilla.zona).nivel - cargaZona(resolverClave(b)!.plantilla.zona).nivel)[0]
+      return suave ? { i, clave: suave, porque: 'todo suave' } : null
+    }).filter(Boolean) as any[],
+  })
+
+  it('avisa cuando la semana pierde carga de verdad', () => {
+    const s = semana()
+    const r = aplicarRevision(s, bajarTodo(s))
+    expect(r.aplicados.length, 'la prueba no vale si no baja nada').toBeGreaterThan(0)
+    expect(r.semana.avisos.join(' ')).toMatch(/carga|descarga/i)
+  })
+
+  it('dice cuando la semana se ha quedado sin estímulo', () => {
+    const s = semana()
+    const r = aplicarRevision(s, bajarTodo(s))
+    const quedaCalidad = s.relleno.some((x, i) => x.hueco.calidad && cargaZona(r.semana.relleno[i].zona).nivel >= 3)
+    if (!quedaCalidad) {
+      expect(r.semana.avisos.join(' ')).toMatch(/sin el estímulo/i)
+    } else {
+      expect(r.semana.avisos.join(' ')).toMatch(/suavizado|carga/i)
+    }
+  })
+
+  it('un cambio suelto y pequeño no dispara ningún aviso de conjunto', () => {
+    // Si saltara con cualquier ajuste seria ruido, y el ruido tapa lo que importa.
+    const s = semana()
+    const i = primera(s)
+    const igual = opcionesPermitidas(s.relleno, i)
+      .find(k => cargaZona(resolverClave(k)!.plantilla.zona).nivel === cargaZona(s.relleno[i].zona).nivel)
+    if (igual) {
+      const r = aplicarRevision(s, { cambios: [{ i, clave: igual, porque: 'variedad' }] })
+      expect(r.semana.avisos).toEqual(s.avisos)
+    }
+  })
+
+  it('la carga relativa baja cuando se suaviza y no cambia cuando no', () => {
+    const s = semana()
+    expect(cargaRelativa(s.relleno)).toBeGreaterThan(0)
+    const r = aplicarRevision(s, bajarTodo(s))
+    expect(cargaRelativa(r.semana.relleno)).toBeLessThan(cargaRelativa(s.relleno))
+    expect(cargaRelativa(aplicarRevision(s, { cambios: [] }).semana.relleno)).toBe(cargaRelativa(s.relleno))
   })
 })
 
