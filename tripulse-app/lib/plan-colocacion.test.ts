@@ -109,6 +109,40 @@ describe('el duro-fácil se respeta', () => {
     })
   })
 
+  /* EL FALLO QUE ENCONTRO EL VERIFICADOR, y que llevaba ahi desde el primer dia.
+     La comprobacion de duro-facil miraba `est.dias[idx - 1]`: el dia anterior DE
+     LA LISTA de dias disponibles, no del calendario. Con martes-jueves-sabado el
+     algoritmo creia que martes y jueves eran dias seguidos, asi que ninguna
+     sesion de calidad cabia en ningun sitio y las TIRABA. Con seis o siete dias
+     no se veia, porque ahi los dias de la lista si son consecutivos. */
+  it('con dias no consecutivos, la calidad cabe y no se pierde nada', () => {
+    const dias = [
+      { dia: 'Martes' as const, minutos: null },
+      { dia: 'Jueves' as const, minutos: null },
+      { dia: 'Sábado' as const, minutos: null },
+    ]
+    const forma = formaDeSemana(base({ diasSemana: 3, horasSemana: 10 }))
+    const s = colocarSemana(forma, dias)
+    expect(s.sinColocar.map(h => h.bloque), 'se han caido sesiones').toEqual([])
+    expect(conDia(s).filter(h => h.calidad).length).toBe(forma.sesionesCalidad)
+  })
+
+  it('y aun asi respeta el duro-facil por CALENDARIO', () => {
+    // Martes y jueves valen (dos dias de hueco). Martes y miercoles, no.
+    const dias = [
+      { dia: 'Lunes' as const, minutos: null },
+      { dia: 'Martes' as const, minutos: null },
+      { dia: 'Viernes' as const, minutos: null },
+      { dia: 'Sábado' as const, minutos: null },
+    ]
+    const forma = formaDeSemana(base({ diasSemana: 4, horasSemana: 12, nivel: 'avanzado' }))
+    const s = colocarSemana(forma, dias)
+    const conCalidad = s.dias.filter(d => d.huecos.some(h => h.calidad)).map(d => DIAS.indexOf(d.dia))
+    for (let k = 1; k < conCalidad.length; k++) {
+      expect(conCalidad[k] - conCalidad[k - 1], 'dos calidades en dias de calendario seguidos').toBeGreaterThan(1)
+    }
+  })
+
   it('nunca hay dos de calidad el mismo día', () => {
     [3, 4, 5, 6, 7].forEach(dias => {
       const s = colocar({ nivel: 'elite', diasSemana: dias, horasSemana: 15 })

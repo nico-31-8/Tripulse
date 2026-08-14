@@ -44,7 +44,7 @@ export const ETIQUETA_BLOQUE: Record<Bloque, string> = {
 // ------------------------------------------------------------
 // La bici se lleva casi la mitad en todas las distancias, y su peso crece según
 // alarga la prueba. No es una preferencia: es donde está el tiempo de carrera.
-interface Franja { min: number; max: number }
+export interface Franja { min: number; max: number }
 
 const REPARTO_DISCIPLINA: Record<DistanciaTri, Record<Bloque, Franja>> = {
   sprint:   { Natacion: { min: 20, max: 25 }, Ciclismo: { min: 40, max: 45 }, Carrera: { min: 30, max: 35 }, Fuerza: { min: 0, max: 5 } },
@@ -148,7 +148,21 @@ export function bloqueDeTexto(txt: string | null | undefined): Bloque | null {
  * B1-11 dice que con tiempo limitado se prioriza por la debilidad del atleta,
  * pero el rango es el rango — si no cabe, se coge lo que quepa y se avisa.
  */
-const RESISTENCIA: Bloque[] = ['Natacion', 'Ciclismo', 'Carrera']
+export const RESISTENCIA: Bloque[] = ['Natacion', 'Ciclismo', 'Carrera']
+
+/**
+ * Los rangos de reparto de B1-04 para una distancia.
+ *
+ * Se exportan para que el VERIFICADOR pueda juzgar una semana que no ha generado
+ * él: la de la IA, o una que el entrenador haya editado a mano. La misma tabla
+ * que sirve para repartir sirve para comprobar si un reparto cualquiera vale.
+ */
+export function rangoDisciplina(distancia: DistanciaTri): Record<Bloque, Franja> {
+  return REPARTO_DISCIPLINA[distancia]
+}
+
+/** El mínimo y el máximo de sesiones por disciplina (B1-04 Principio 5). */
+export const LIMITES_SESIONES = { min: MIN_SESIONES, max: MAX_SESIONES }
 
 /** Empuja `sobre` hasta que sumen `objetivo`, sin salirse de sus franjas. */
 function ajustarA(

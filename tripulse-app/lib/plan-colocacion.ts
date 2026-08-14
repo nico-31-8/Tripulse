@@ -220,8 +220,18 @@ function tiene(d: DiaPlan | undefined, f: (h: Hueco) => boolean): boolean {
 /** Cuánto cuesta meter este hueco en este día. Cada penalización, con su regla. */
 function coste(est: Estado, idx: number, h: Hueco): { total: number; rotas: Regla[] } {
   const dia = est.dias[idx]
-  const ayer = est.dias[idx - 1]
-  const manana = est.dias[idx + 1]
+  // AYER Y MAÑANA SON DEL CALENDARIO, NO DEL ARRAY.
+  //
+  // Aquí había un fallo que solo se veía con días no consecutivos: se miraba
+  // `est.dias[idx - 1]`, que es el día ANTERIOR DE LA LISTA de días disponibles.
+  // Con martes-jueves-sábado, el algoritmo creía que martes y jueves eran días
+  // seguidos, así que ninguna sesión de calidad cabía en ninguna parte sin
+  // romper el duro-fácil y las tiraba. Con seis o siete días no se notaba,
+  // porque ahí los días de la lista sí son consecutivos.
+  const vecino = (salto: number) =>
+    est.dias.find(d => DIAS.indexOf(d.dia) === DIAS.indexOf(dia.dia) + salto)
+  const ayer = vecino(-1)
+  const manana = vecino(1)
   const rotas: Regla[] = []
   const romper = (id: string) => { rotas.push(regla(id)) }
 
