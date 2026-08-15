@@ -24,6 +24,7 @@ import { verificarSemana, resumenVeredicto, type Veredicto } from '@/lib/plan-ve
 import { nivelDePlantilla } from '@/lib/plan-relleno'
 import type { EntradaSemana, FormaSemana } from '@/lib/plan-semana'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
+import { IA_PLANIFICADOR } from '@/lib/flags'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -34,6 +35,11 @@ const json = (data: any, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } })
 
 export async function POST(req: Request) {
+  // Apagada en producción hasta probar la opción C a mano. El interruptor está
+  // aquí y no solo en el botón: si solo escondiera el botón, la ruta seguiría
+  // contestando y gastando créditos a quien supiera la URL.
+  if (!IA_PLANIFICADOR) return json({ error: 'La generación con IA no está disponible.' }, 404)
+
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return json({ error: 'No autenticado.' }, 401)
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {

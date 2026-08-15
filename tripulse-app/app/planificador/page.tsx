@@ -22,6 +22,7 @@ import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { cargaZona } from '@/lib/zonas'
 import { construirContextoTexto } from '@/lib/asistente'
+import { IA_PLANIFICADOR } from '@/lib/flags'
 import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, type NivelAtleta } from '@/lib/plan-semana'
 import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
 import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
@@ -353,15 +354,19 @@ export default function Planificador() {
                 </button>
                 {/* La alternativa: que la monte él entero. Se dice lo que cuesta
                     y lo que tarda, porque lo de al lado es instantáneo y gratis. */}
-                <button onClick={generarConIA} disabled={generando}
-                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                  {generando ? 'Montándola…' : '🤖 Que la monte el asistente'}
-                </button>
-                <p className="text-[11.5px] text-gray-600">
-                  {generando
-                    ? 'Genera, se comprueba contra las reglas y se corrige. Hasta medio minuto.'
-                    : 'A la derecha, para semanas raras: pocos días, viajes, material que no tiene.'}
-                </p>
+                {IA_PLANIFICADOR && (
+                  <>
+                    <button onClick={generarConIA} disabled={generando}
+                      className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                      {generando ? 'Montándola…' : '🤖 Que la monte el asistente'}
+                    </button>
+                    <p className="text-[11.5px] text-gray-600">
+                      {generando
+                        ? 'Genera, se comprueba contra las reglas y se corrige. Hasta medio minuto.'
+                        : 'A la derecha, para semanas raras: pocos días, viajes, material que no tiene.'}
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </Seccion>
@@ -414,7 +419,7 @@ export default function Planificador() {
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {/* Pedirle que revise lo que acaba de montar él no aporta nada. */}
-                {origen === 'reglas' && (
+                {IA_PLANIFICADOR && origen === 'reglas' && (
                   <button onClick={pedirRevision} disabled={revisando}
                     className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
                     {revisando ? 'El asistente la está mirando…' : '🤖 Que la revise el asistente'}

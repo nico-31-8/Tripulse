@@ -22,6 +22,7 @@ import {
   type RevisionIA,
 } from '@/lib/plan-ia'
 import type { SemanaRellena } from '@/lib/plan-relleno'
+import { IA_PLANIFICADOR } from '@/lib/flags'
 
 export const runtime = 'nodejs'
 
@@ -33,6 +34,9 @@ const sinRevision = (semana: SemanaRellena, motivo: string) =>
   json({ semana, aplicados: [], rechazados: [], nota: '', revisada: false, motivo })
 
 export async function POST(req: Request) {
+  // Apagada en producción hasta probar la capa de IA a mano. Ver lib/flags.ts.
+  if (!IA_PLANIFICADOR) return json({ error: 'La revisión con IA no está disponible.' }, 404)
+
   // El endpoint gasta créditos → solo usuarios autenticados, y solo entrenadores.
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return json({ error: 'No autenticado.' }, 401)
