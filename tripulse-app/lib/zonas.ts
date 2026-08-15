@@ -74,7 +74,9 @@ export const ZONAS_FUERZA: ZonaFuerza[] = [
   { sigla: 'RFLA',   nombre: 'Resistencia de Fuerza Lactácida',  factor: 'Resistencia de fuerza', rmMin: 40, rmMax: 65, rpeMin: 8, rpeMax: 10,series: '3–5', repTiempo: '20–40 rep',    descanso: '2–4 min',   durSerie: '20 s–2 min',indicador: 'FC+RPE', color: '#A855F7' },
   { sigla: 'RFMIX2', nombre: 'Resistencia de Fuerza Mixta 2',    factor: 'Resistencia de fuerza', rmMin: 35, rmMax: 55, rpeMin: 7, rpeMax: 8, series: '3–4', repTiempo: 'Continuo',     descanso: '2–3 min',   durSerie: '2–5 min',  indicador: 'FC+RPE', color: '#06B6D4' },
   { sigla: 'RFAE',   nombre: 'Resistencia de Fuerza Aeróbica',   factor: 'Resistencia de fuerza', rmMin: 20, rmMax: 45, rpeMin: 5, rpeMax: 7, series: '2–4', repTiempo: '> 30 rep',     descanso: '60–90 s',   durSerie: '> 5 min',  indicador: 'FC',     color: '#22C55E' },
-  { sigla: 'FLEX',   nombre: 'Flexibilidad / Movilidad',         factor: 'Flexibilidad',     rmMin: null,rmMax: null,rpeMin: 3,  rpeMax: 5,  series: '2–4', repTiempo: '20–60 s/pos.',  descanso: '30–60 s',   durSerie: '20–60 s',  indicador: 'RPE',    color: '#EC4899' },
+  // RPE 1–3, no 3–5: la movilidad no es una zona de esfuerzo. Con 3–5 empataba
+  // con el AFG y una sesión de estiramientos pesaba como una de gimnasio suave.
+  { sigla: 'FLEX',   nombre: 'Flexibilidad / Movilidad',         factor: 'Flexibilidad',     rmMin: null,rmMax: null,rpeMin: 1,  rpeMax: 3,  series: '2–4', repTiempo: '20–60 s/pos.',  descanso: '30–60 s',   durSerie: '20–60 s',  indicador: 'RPE',    color: '#EC4899' },
 ]
 
 // ------------------------------------------------------------
