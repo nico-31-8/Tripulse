@@ -21,6 +21,7 @@ import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
 import { colorMeso, tiposEnPlan, tiposDeMeso } from '@/lib/periodizacion'
 import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta'
 import { BotonGuiaZonas } from '@/components/GuiaZonas'
+import DesplazarCiclo from '@/components/DesplazarCiclo'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -191,6 +192,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [semanaCopiada, setSemanaCopiada] = useState<string|null>(null) // lunes de la semana copiada
   const [semanaDestino, setSemanaDestino] = useState<string|null>(null)
   const [mostrarToast, setMostrarToast] = useState('')
+  // Id de la sesión que se está arrastrando: marca los días como destino y
+  // atenúa la que se mueve. Null = no hay arrastre en curso.
+  const [arrastrando, setArrastrando] = useState<number | null>(null)
+  const [desplazar, setDesplazar] = useState<string | null>(null)
 
   useEffect(() => { cargarDatos() }, [id])
   // Las plantillas propias del panel del calendario, por disciplina (sin migración → lista vacía).
@@ -562,6 +567,30 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
   const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Mover esta sesión a la papelera?')) return; await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId); await cargarDatos() }
 
+  /**
+   * Arrastrar una sesión a otro día.
+   *
+   * Cambia también el microciclo: al cruzar de semana, dejarle el viejo la
+   * descuelga de su plan —cuenta en el volumen de una semana y se ve en otra— y
+   * no hay nada en pantalla que lo delate. Si el destino no tiene microciclo, se
+   * queda como sesión libre, que es lo que es.
+   */
+  const soltarSesionEn = async (sesId: number, fechaDestino: string) => {
+    const s = sesiones.find(x => x.id === sesId)
+    if (!s || s.fecha_sesion === fechaDestino) return
+    const micro = getMicroDelDia(fechaDestino)
+    const nuevoMicro = micro?.id ?? null
+    setSesiones(prev => prev.map(x => x.id === sesId
+      ? { ...x, fecha_sesion: fechaDestino, id_microciclo: nuevoMicro } : x))
+    const parche: any = { fecha_sesion: fechaDestino, id_microciclo: nuevoMicro }
+    // Sin microciclo hay que dejar dicho de quién es, o la sesión no aparece en
+    // ninguna consulta: las libres se buscan por id_deportista.
+    if (!nuevoMicro) { parche.id_deportista = Number(id); parche.origen = s.origen || 'entrenador' }
+    const { error } = await supabase.from('sesion').update(parche).eq('id', sesId)
+    if (error) { setMostrarToast('No se pudo mover: ' + error.message); setTimeout(() => setMostrarToast(''), 4000) }
+    await cargarDatos()
+  }
+
   const guardarEdicionSesion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
     const esF = sesionDisc === 'Fuerza'
@@ -713,6 +742,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {desplazar && (
+        <DesplazarCiclo
+          macros={macros} mesos={mesos} micros={micros}
+          sesiones={sesiones} competiciones={competiciones}
+          fecha={desplazar} hoy={hoy}
+          onCerrar={() => setDesplazar(null)}
+          onHecho={async () => { await cargarDatos(); setMostrarToast('Plan movido'); setTimeout(() => setMostrarToast(''), 3000) }} />
+      )}
+
       {/* Toast */}
       {mostrarToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-orange-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg">
@@ -749,6 +787,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               ['🏆', 'Añadir competición', () => { setFechaSel(hoy); setModalTipo('competicion') }],
               ['📋', 'Pegar una plantilla', () => setPanelPlantillas(true)],
               ['🚫', 'Bloquear una semana', () => { setFechaSel(hoy); setModalTipo('bloquear') }],
+              ['🔀', 'Mover el plan en el tiempo', () => setDesplazar(hoy)],
             ] as [string, string, () => void][]).map(([ic, txt, fn]) => (
               <button key={txt} onClick={() => { setHojaAcciones(false); fn() }}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
@@ -1053,6 +1092,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 (panelPlantillas ? 'bg-orange-500 border-orange-500 text-white' : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300 hover:text-white')}>
               📋 <span>Plantillas</span>
             </button>
+            {macros.length > 0 && (
+              <button onClick={() => setDesplazar(hoy)}
+                className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm px-3 py-2 rounded-lg transition">
+                🔀 <span>Mover en el tiempo</span>
+              </button>
+            )}
             <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
               <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
@@ -1147,7 +1192,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     return (
                       <div key={f}
                         onClick={() => abrirModalNuevaSesion(f)}
+                        onDragOver={e => { if (arrastrando) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
+                        onDrop={e => {
+                          e.preventDefault(); e.stopPropagation()
+                          const sid = Number(e.dataTransfer.getData('text/plain'))
+                          setArrastrando(null)
+                          if (sid) soltarSesionEn(sid, f)
+                        }}
                         className={'min-h-20 rounded-xl border p-1.5 cursor-pointer transition ' +
+                          (arrastrando ? 'ring-1 ring-orange-500/40 ' : '') +
                           (bloqueo ? 'bg-gray-800 border-red-900 opacity-60 ' :
                            comp ? 'ring-2 ring-yellow-500 bg-yellow-900/20 border-yellow-700 ' :
                            esCopiadaSemana ? 'ring-2 ring-purple-500 border-purple-700 bg-purple-900/20 ' :
@@ -1177,7 +1230,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                             {sesDia.map(s => (
                               <div key={s.id}
                                 onClick={e => { e.stopPropagation(); router.push('/sesion/' + s.id)}}
-                                className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' + (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
+                                /* Arrastrar para cambiarla de día. Solo en ratón:
+                                   `draggable` no existe en táctil, y ahí ya está
+                                   la ficha de la sesión para cambiarle la fecha. */
+                                draggable
+                                onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData('text/plain', String(s.id)); e.dataTransfer.effectAllowed = 'move'; setArrastrando(s.id) }}
+                                onDragEnd={() => setArrastrando(null)}
+                                className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' +
+                                  (arrastrando === s.id ? 'opacity-40 ' : '') +
+                                  (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
                                 <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}</span>
                                 {/* `opacity-0 group-hover:...` es un patrón de RATÓN: en una pantalla
                                     táctil no hay hover, así que estos tres botones se quedaban
