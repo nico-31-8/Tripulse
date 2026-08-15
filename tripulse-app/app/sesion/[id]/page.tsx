@@ -35,6 +35,7 @@ function iniciales(nombre: string | null | undefined): string {
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
+import BotonMovilidad from '@/components/BotonMovilidad'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
@@ -686,6 +687,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   </select>
                 ) : (
                   <span className="text-gray-500 text-[11.5px]">Cada tarea elige su cualidad</span>
+                )}
+                {!esDeportista && (
+                  <BotonMovilidad idSesion={Number(id)} ordenBase={tareas.length} onHecho={cargarDatos} />
                 )}
               </div>
             )}

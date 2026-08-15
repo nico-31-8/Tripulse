@@ -20,6 +20,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
 import { colorMeso, tiposEnPlan, tiposDeMeso } from '@/lib/periodizacion'
 import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta'
+import { BotonGuiaZonas } from '@/components/GuiaZonas'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -695,6 +696,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           vuelve y, sobre todo, avisar de que esto todavía no es de nadie. */}
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
+          <BotonGuiaZonas tests={tests} fcMax={deportista?.fc_maxima} />
           <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">← Bloques</button>
           {deportista?.id_grupo
             ? <button onClick={() => router.push('/grupo/' + deportista.id_grupo)} className="text-gray-400 hover:text-white text-sm transition">← Grupo</button>
@@ -1572,7 +1574,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 </select>
                 {sesionDisc === 'Fuerza' && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
-                    <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                      <BotonGuiaZonas familia="fuerza" sigla={sesionZonaFuerza || null} tests={tests} fcMax={deportista?.fc_maxima}
+                        clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es cada zona?" />
+                    </div>
                     <div className="flex gap-2">
                       {[{ v: 'simple', t: 'Simple', d: 'una cualidad' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
                         <button type="button" key={o.v} onClick={() => setSesionModoFuerza(o.v)}
@@ -1592,7 +1598,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 {/* Mismo concepto en resistencia. Solo con Zonas 2: con Z1–Z7 no aplica. */}
                 {zonas2 && DISC_RESISTENCIA.includes(sesionDisc) && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
-                    <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                      <BotonGuiaZonas familia="resistencia" sigla={sesionZonaRes || null} tests={tests} fcMax={deportista?.fc_maxima}
+                        clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es cada zona?" />
+                    </div>
                     <div className="flex gap-2">
                       {[{ v: 'simple', t: 'Simple', d: 'una zona' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
                         <button type="button" key={o.v} onClick={() => setSesionModoRes(o.v)}
@@ -1624,7 +1634,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 </select>
                 {sesionDisc === 'Fuerza' && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
-                    <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
+                      <BotonGuiaZonas familia="fuerza" sigla={sesionZonaFuerza || null} tests={tests} fcMax={deportista?.fc_maxima}
+                        clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es cada zona?" />
+                    </div>
                     <div className="flex gap-2">
                       {[{ v: 'simple', t: 'Simple', d: 'una cualidad' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
                         <button type="button" key={o.v} onClick={() => setSesionModoFuerza(o.v)}
@@ -1644,7 +1658,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 {/* Mismo concepto en resistencia. Solo con Zonas 2: con Z1–Z7 no aplica. */}
                 {zonas2 && DISC_RESISTENCIA.includes(sesionDisc) && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
-                    <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-400 text-xs">Tipo de sesión de resistencia</p>
+                      <BotonGuiaZonas familia="resistencia" sigla={sesionZonaRes || null} tests={tests} fcMax={deportista?.fc_maxima}
+                        clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es cada zona?" />
+                    </div>
                     <div className="flex gap-2">
                       {[{ v: 'simple', t: 'Simple', d: 'una zona' }, { v: 'compleja', t: 'Compleja', d: 'varias por tarea' }].map(o => (
                         <button type="button" key={o.v} onClick={() => setSesionModoRes(o.v)}

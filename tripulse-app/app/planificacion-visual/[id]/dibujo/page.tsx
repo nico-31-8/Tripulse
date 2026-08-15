@@ -7,6 +7,7 @@ import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
+import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -87,6 +88,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const { id } = use(params)
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
+  const [tests, setTests] = useState<TestsAtleta | null>(null)
   const [pantalla, setPantalla] = useState<'cargando'|'elegir'|'setup'|'canvas'>('cargando')
   const [macrosExistentes, setMacrosExistentes] = useState<any[]>([])
   const [modoEdicion, setModoEdicion] = useState(false)
@@ -176,6 +178,14 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     const init = async () => {
       const { data: depData } = await supabase.from('deportista').select('*').eq('id', id).single()
       setDep(depData)
+      // Los tests son solo para la guía de zonas: sin ellos enseña porcentajes,
+      // con ellos los ritmos reales de este atleta. Que falten no rompe nada.
+      const [tCarr, tNat, tCic] = await Promise.all([
+        supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+        supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      ])
+      setTests({ vam: tCarr.data?.[0]?.vam, css: tNat.data?.[0]?.css, ftp: tCic.data?.[0]?.ftp })
       const { data: macs } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
       if (macs && macs.length > 0) {
         setMacrosExistentes(macs)
@@ -841,6 +851,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-gray-300 text-sm font-medium">Dibujo — {dep.nombre}</span>
+          <BotonGuiaZonas tests={tests} fcMax={dep?.fc_maxima} />
           <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">Bloques</button>
           <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
         </div>
@@ -1505,7 +1516,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           const etiqueta = z2 ? (esFuerza ? '(Zonas 2 — fuerza)' : '(Zonas 2 — resistencia)') : ''
                           return (
                             <div>
-                              <label className="text-gray-400 text-xs mb-1.5 block">{esFuerza && z2 ? 'Cualidad de fuerza' : 'Zona'} {etiqueta}</label>
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <label className="text-gray-400 text-xs">{esFuerza && z2 ? 'Cualidad de fuerza' : 'Zona'} {etiqueta}</label>
+                                {/* Solo con Zonas 2: la guía habla en siglas, y a un atleta
+                                    de Z1–Z7 le enseñaría zonas que no está eligiendo. */}
+                                {z2 && (
+                                  <BotonGuiaZonas familia={esFuerza ? 'fuerza' : 'resistencia'} sigla={zonaSelZona || null}
+                                    tests={tests} fcMax={dep?.fc_maxima}
+                                    clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es?" />
+                                )}
+                              </div>
                               <div className={'grid gap-1.5 ' + (z2 ? 'grid-cols-3' : 'grid-cols-4')}>
                                 {zonaList.map(z => {
                                   const sel = zonaSelZona === z

@@ -28,7 +28,7 @@
 import type { Relleno } from './plan-relleno'
 import type { DiaSemana } from './plan-colocacion'
 import { DIAS } from './plan-colocacion'
-import { plantillaFuerzaPorId } from './plantillas-fuerza'
+import { plantillaFuerzaPorId, type BloqueFuerza } from './plantillas-fuerza'
 
 export interface ParteSesion {
   dia: DiaSemana
@@ -126,26 +126,47 @@ export function microDelDia(micros: any[], fecha: string): any | null {
 export async function aplicarBloquesFuerza(sb: any, idSesion: number, idPlantilla: string): Promise<string | null> {
   const p = plantillaFuerzaPorId(idPlantilla)
   if (!p) return 'No existe la plantilla de fuerza ' + idPlantilla
+  return escribirBloquesFuerza(sb, idSesion, p.bloques)
+}
+
+/**
+ * Los bloques, sin saber de qué catálogo vienen.
+ *
+ * Se separó de lo de arriba porque la movilidad usa el MISMO formato
+ * (`BloqueFuerza`) y el mismo destino, pero vive en otro catálogo — y lo que no
+ * puede pasar es que exista un segundo escritor de tareas de fuerza: en cuanto
+ * hay dos, uno de los dos se olvida de `p_duracion` y las planchas se guardan
+ * sin tiempo.
+ *
+ * `ordenBase` es para AÑADIR a una sesión que ya tiene tareas. Sin él, la
+ * movilidad que se mete al final de una sesión de fuerza pisaría el orden de
+ * las que ya estaban.
+ */
+export async function escribirBloquesFuerza(
+  sb: any, idSesion: number, bloques: BloqueFuerza[], ordenBase = 0,
+): Promise<string | null> {
+  if (!bloques.length) return null
 
   const { data: creadas, error } = await sb.from('tarea').insert(
-    p.bloques.map((b, i) => ({
+    bloques.map((b, i) => ({
       id_sesion: idSesion,
       disciplina: 'Fuerza',
       zona_entrenamiento: b.zona,
       series: b.series,
       descanso_segundos: b.descansoSeg,
-      orden: i + 1,
+      orden: ordenBase + i + 1,
       comentario: [b.ejercicio, b.carga, b.unilateral ? 'cada lado' : '', b.nota].filter(Boolean).join(' · '),
     })),
   ).select()
   if (error) return error.message
 
-  // Las repeticiones van en su tabla. Los isométricos (plancha) no tienen: esos
-  // llevan tiempo, y ahí sí sirve p_duracion.
+  // Las repeticiones van en su tabla. Los isométricos (plancha, y todos los
+  // estiramientos estáticos) no tienen: esos llevan tiempo, y ahí sí sirve
+  // p_duracion.
   const reps: any[] = []
   const durs: any[] = []
   ;(creadas || []).forEach((t: any) => {
-    const b = p.bloques[t.orden - 1]
+    const b = bloques[t.orden - 1 - ordenBase]
     if (!b) return
     if (b.repeticiones) reps.push({ id_tarea: t.id, repeticiones_planteadas: b.repeticiones })
     else if (b.segundos) durs.push({ id_tarea: t.id, tiempo_planeado: b.segundos })
