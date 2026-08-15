@@ -82,6 +82,12 @@ export default function Planificador() {
 
   const [paso, setPaso] = useState<1 | 2>(1)
   const [semana, setSemana] = useState<SemanaRellena | null>(null)
+  // De dónde salió la semana que hay en pantalla. Cambia lo que se ofrece
+  // después: no tiene sentido pedirle al asistente que revise una semana que
+  // acaba de montar él.
+  const [origen, setOrigen] = useState<'reglas' | 'ia'>('reglas')
+  const [generando, setGenerando] = useState(false)
+  const [infoIA, setInfoIA] = useState<{ intentos: number; razonamiento: string; motivo?: string } | null>(null)
 
   const [revisando, setRevisando] = useState(false)
   const [revision, setRevision] = useState<{ aplicados: any[]; rechazados: any[]; nota: string; motivo?: string } | null>(null)
@@ -131,16 +137,49 @@ export default function Planificador() {
 
   const forma: FormaSemana | null = dep ? formaDeSemana(entrada()) : null
 
+  // Si el atleta tiene la disponibilidad rellena se usa; si no, el reparto por
+  // defecto según el número de días.
+  const diasParaColocar = () => disponibilidad.length ? disponibilidad : dias
+
   function generar() {
     if (!forma) return
-    // Si el atleta tiene la disponibilidad rellena se usa; si no, el reparto por
-    // defecto según el número de días.
-    const s = rellenarSemana({
-      forma,
-      colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
-      nivel, fase,
-    })
-    setSemana(s); setRevision(null); setPaso(2)
+    const s = rellenarSemana({ forma, colocada: colocarSemana(forma, diasParaColocar()), nivel, fase })
+    setSemana(s); setRevision(null); setInfoIA(null); setOrigen('reglas'); setVolcado(null); setPaso(2)
+  }
+
+  /**
+   * Que la monte el asistente entero.
+   *
+   * Genera libre del catálogo, se comprueba contra las mismas reglas que usa el
+   * motor, y si no pasa se le devuelven los incumplimientos hasta tres veces. Si
+   * aun así no cuadra, se cae a la semana de las reglas — que es válida por
+   * construcción. El peor caso es tardar medio minuto y acabar donde estabas.
+   */
+  async function generarConIA() {
+    if (!forma || !dep) return
+    setGenerando(true); setRevision(null); setInfoIA(null); setVolcado(null)
+    const deLasReglas = rellenarSemana({ forma, colocada: colocarSemana(forma, diasParaColocar()), nivel, fase })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const contexto = await construirContextoTexto(supabase, dep)
+      const r = await fetch('/api/plan/generar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ entrada: entrada(), forma, dias: diasParaColocar(), contexto }),
+      })
+      const j = await r.json()
+      if (j?.generada && Array.isArray(j.relleno) && j.relleno.length) {
+        setSemana({ relleno: j.relleno, sinLlenar: [], avisos: j.avisos || [] })
+        setOrigen('ia')
+        setInfoIA({ intentos: j.intentos, razonamiento: j.razonamiento || '' })
+      } else {
+        setSemana(deLasReglas); setOrigen('reglas')
+        setInfoIA({ intentos: j?.intentos ?? 0, razonamiento: '', motivo: j?.motivo || j?.error || 'No se pudo generar.' })
+      }
+    } catch (e: any) {
+      setSemana(deLasReglas); setOrigen('reglas')
+      setInfoIA({ intentos: 0, razonamiento: '', motivo: 'No se pudo contactar con el asistente: ' + (e?.message || '') })
+    } finally { setGenerando(false); setPaso(2) }
   }
 
   async function pedirRevision() {
@@ -307,16 +346,45 @@ export default function Planificador() {
             <Avisos lista={forma.avisos} />
 
             {paso === 1 && (
-              <button onClick={generar}
-                className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-                Ver las sesiones →
-              </button>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button onClick={generar} disabled={generando}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                  Ver las sesiones →
+                </button>
+                {/* La alternativa: que la monte él entero. Se dice lo que cuesta
+                    y lo que tarda, porque lo de al lado es instantáneo y gratis. */}
+                <button onClick={generarConIA} disabled={generando}
+                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                  {generando ? 'Montándola…' : '🤖 Que la monte el asistente'}
+                </button>
+                <p className="text-[11.5px] text-gray-600">
+                  {generando
+                    ? 'Genera, se comprueba contra las reglas y se corrige. Hasta medio minuto.'
+                    : 'A la derecha, para semanas raras: pocos días, viajes, material que no tiene.'}
+                </p>
+              </div>
             )}
           </Seccion>
 
           {/* ---- Paso 2: la semana ---- */}
           {paso === 2 && semana && (
-            <Seccion n={2} titulo="La semana" activo>
+            <Seccion n={2} titulo={origen === 'ia' ? 'La semana · montada por el asistente' : 'La semana'} activo>
+              {infoIA && (
+                <div className={'rounded-xl p-4 mb-3 border ' + (infoIA.motivo
+                  ? 'bg-yellow-900/15 border-yellow-700/30'
+                  : 'bg-gray-900 border-gray-800')}>
+                  {infoIA.motivo ? (
+                    <p className="text-[12.5px] text-yellow-300/90">
+                      {infoIA.motivo} Abajo tienes la semana que montan las reglas.
+                    </p>
+                  ) : (<>
+                    <p className="text-[11px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">
+                      Pasó las reglas {infoIA.intentos > 1 ? `al ${infoIA.intentos}º intento` : 'a la primera'}
+                    </p>
+                    {infoIA.razonamiento && <p className="text-[12.5px] text-gray-300 leading-relaxed">{infoIA.razonamiento}</p>}
+                  </>)}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 {[...porDia].map(([dia, sesiones]) => (
                   <div key={dia} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -345,10 +413,19 @@ export default function Planificador() {
               <Avisos lista={semana.avisos} />
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button onClick={pedirRevision} disabled={revisando}
-                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                  {revisando ? 'El asistente la está mirando…' : '🤖 Que la revise el asistente'}
-                </button>
+                {/* Pedirle que revise lo que acaba de montar él no aporta nada. */}
+                {origen === 'reglas' && (
+                  <button onClick={pedirRevision} disabled={revisando}
+                    className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                    {revisando ? 'El asistente la está mirando…' : '🤖 Que la revise el asistente'}
+                  </button>
+                )}
+                {origen === 'ia' && (
+                  <button onClick={generar}
+                    className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+                    Ver la de las reglas
+                  </button>
+                )}
                 <button onClick={() => setPaso(1)} className="text-gray-400 hover:text-white text-sm transition">← Cambiar la forma</button>
               </div>
 
