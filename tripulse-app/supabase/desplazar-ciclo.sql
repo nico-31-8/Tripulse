@@ -131,3 +131,140 @@ end $$;
 
 revoke all on function desplazar_ciclo(text, int, int) from public;
 grant execute on function desplazar_ciclo(text, int, int) to authenticated;
+
+
+/* ============================================================
+   Cambiar la duración de un mesociclo
+   ============================================================
+
+   No es editar un número. Acortar un mesociclo de 4 a 3 semanas plantea dos
+   preguntas que la app tiene que hacer en voz alta:
+
+   1. QUÉ PASA CON LA SEMANA QUE SOBRA. Puede tener sesiones dentro. O se
+      mandan a la papelera, o se sueltan del plan y se quedan en el calendario
+      como sesiones libres. Nunca se borran de verdad y nunca se decide aquí:
+      lo elige el entrenador antes de confirmar.
+
+   2. QUÉ PASA CON LO QUE VIENE DETRÁS. Si nadie se mueve, queda un agujero de
+      siete días en mitad de la temporada. Con `_arrastrar`, los mesociclos
+      posteriores suben (o bajan) esa misma cantidad reutilizando
+      `desplazar_ciclo`, que ya sabe llevarse microciclos y sesiones consigo.
+
+   Alargar es lo simétrico: se crean los microciclos que faltan, vacíos, y lo
+   posterior se desplaza hacia adelante.
+   ============================================================ */
+
+create or replace function redimensionar_mesociclo(
+  _id int, _semanas int, _arrastrar boolean, _sobrante text
+)
+returns table (
+  semanas_antes int, semanas_ahora int,
+  micros_fuera int, sesiones_afectadas int, mesos_movidos int
+)
+language plpgsql security definer set search_path = public as $$
+declare
+  _dep int;
+  _macro int;
+  _ini date;
+  _antes int;
+  _delta int;
+  _fin_nuevo date;
+  _ids_fuera int[];
+  _n_ses int := 0;
+  _n_mesos int := 0;
+  _f date;
+  _otro record;
+begin
+  if _semanas < 1 then
+    raise exception 'Un mesociclo no puede durar menos de una semana';
+  end if;
+  if _sobrante not in ('liberar', 'papelera') then
+    raise exception 'Qué hacer con lo que sobra: liberar o papelera';
+  end if;
+
+  select ma.id_deportista, ma.id, me.fecha_inicio::date, coalesce(me.duracion_semanas, 4)
+    into _dep, _macro, _ini, _antes
+    from mesociclo me join macrociclo ma on ma.id = me.id_macrociclo
+   where me.id = _id;
+
+  if _dep is null then
+    raise exception 'No existe ese mesociclo';
+  end if;
+
+  if not exists (
+    select 1 from deportista d
+     where d.id = _dep and (d.id_usuario = auth.uid() or d.id_entrenador = auth.uid())
+  ) then
+    raise exception 'Sin permiso sobre ese plan';
+  end if;
+
+  _delta := _semanas - _antes;
+  if _delta = 0 then
+    return query select _antes, _antes, 0, 0, 0;
+    return;
+  end if;
+
+  _fin_nuevo := _ini + (_semanas * 7);
+
+  /* Las semanas que ya no caben dentro. Al alargar no hay ninguna. */
+  select array_agg(mi.id) into _ids_fuera
+    from microciclo mi
+   where mi.id_mesociclo = _id and mi.fecha_inicio::date >= _fin_nuevo;
+  _ids_fuera := coalesce(_ids_fuera, array[]::int[]);
+
+  if array_length(_ids_fuera, 1) > 0 then
+    /* SIEMPRE se despegan del microciclo, en las dos opciones. Si no, al
+       borrar el microciclo de abajo se irían con él por la clave ajena: la
+       "papelera" habría borrado las sesiones de verdad, que es justo lo que
+       esta función promete no hacer. `id_deportista` es obligatorio para que
+       sigan existiendo para alguien — las sesiones sin microciclo se buscan
+       por ahí. */
+    with t as (
+      update sesion s
+         set id_microciclo = null,
+             id_deportista = _dep,
+             eliminada = case when _sobrante = 'papelera' then true else s.eliminada end
+       where s.id_microciclo = any(_ids_fuera)
+      returning 1
+    ) select count(*) into _n_ses from t;
+
+    delete from microciclo where id = any(_ids_fuera);
+  end if;
+
+  /* Al alargar, las semanas nuevas nacen vacías. */
+  if _delta > 0 then
+    _f := _ini + (_antes * 7);
+    while _f < _fin_nuevo loop
+      if not exists (select 1 from microciclo mi where mi.id_mesociclo = _id and mi.fecha_inicio::date = _f) then
+        insert into microciclo (id_mesociclo, objetivo, tipo, fecha_inicio, duracion_dias)
+        values (_id, 'Semana ' || (((_f - _ini) / 7) + 1), 'Carga', _f, 7);
+      end if;
+      _f := _f + 7;
+    end loop;
+  end if;
+
+  update mesociclo set duracion_semanas = _semanas where id = _id;
+
+  /* Y lo que viene detrás, para no dejar un agujero. */
+  if _arrastrar then
+    for _otro in
+      select me.id from mesociclo me
+       where me.id_macrociclo = _macro
+         and me.id <> _id
+         and me.fecha_inicio::date > _ini
+       order by me.fecha_inicio
+    loop
+      perform * from desplazar_ciclo('mesociclo', _otro.id, _delta * 7);
+      _n_mesos := _n_mesos + 1;
+    end loop;
+
+    update macrociclo
+       set duracion_semanas = greatest(1, coalesce(duracion_semanas, 0) + _delta)
+     where id = _macro;
+  end if;
+
+  return query select _antes, _semanas, coalesce(array_length(_ids_fuera, 1), 0), _n_ses, _n_mesos;
+end $$;
+
+revoke all on function redimensionar_mesociclo(int, int, boolean, text) from public;
+grant execute on function redimensionar_mesociclo(int, int, boolean, text) to authenticated;

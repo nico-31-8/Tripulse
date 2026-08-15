@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   sumarDias, diasEntre, finDeCiclo, microsAfectados, previsualizar,
-  type CicloFila, type SesionFila,
+  previsualizarDuracion, type CicloFila, type SesionFila,
 } from './desplazar'
 
 // Un plan de juguete: 1 macro → 2 mesos → 4 micros, arrancando en jueves
@@ -129,6 +129,65 @@ describe('lo que de verdad hay que ver antes de confirmar', () => {
   it('avisa si la nueva fecha ya pasó', () => {
     const p = previsualizar({ ...base, nivel: 'macrociclo', id: 1, nuevaFecha: '2026-08-01', hoy: '2026-08-15' })
     expect(p.avisos.join(' ')).toMatch(/anterior a hoy/)
+  })
+})
+
+describe('cambiar la duración de un mesociclo', () => {
+  const dur = (p: Partial<Parameters<typeof previsualizarDuracion>[0]> = {}) =>
+    previsualizarDuracion({ id: 10, semanas: 1, arrastrar: true, sobrante: 'liberar', mesos, micros, sesiones, ...p })
+
+  it('acortar de 2 a 1 saca la segunda semana con lo que tenga dentro', () => {
+    const p = dur({ semanas: 1 })
+    expect(p.delta).toBe(-1)
+    expect(p.fuera.map(f => f.fecha_inicio)).toEqual(['2026-08-20'])
+    expect(p.sesionesFuera.map(s => s.id)).toEqual([1002])
+    expect(p.avisos.join(' ')).toMatch(/1 semana sale del mesociclo, con 1 sesión dentro/)
+  })
+
+  /* La razón por la que «liberar» es la opción por defecto: a la papelera, la
+     carga de esa semana desaparece de las gráficas sin explicación. */
+  it('avisa si mandarías a la papelera algo ya realizado', () => {
+    const p = previsualizarDuracion({
+      id: 10, semanas: 1, arrastrar: true, sobrante: 'papelera', mesos, micros,
+      sesiones: [{ id: 1002, id_microciclo: 101, fecha_sesion: '2026-08-21', estado: 'Realizada' }],
+    })
+    expect(p.hechasFuera).toHaveLength(1)
+    expect(p.avisos.join(' ')).toMatch(/desaparecen de las gráficas/)
+  })
+
+  it('no avisa de la papelera si nada de lo que sale está hecho', () => {
+    expect(dur({ semanas: 1, sobrante: 'papelera' }).avisos.join(' ')).not.toMatch(/gráficas/)
+  })
+
+  it('con arrastre, el mesociclo siguiente se mueve; sin él, queda hueco', () => {
+    expect(dur({ semanas: 1 }).mesosMovidos).toBe(1)
+    expect(dur({ semanas: 1 }).avisos.join(' ')).toMatch(/1 mesociclo posterior se mueve 7 días hacia adelante/)
+    const sin = dur({ semanas: 1, arrastrar: false })
+    expect(sin.mesosMovidos).toBe(0)
+    expect(sin.avisos.join(' ')).toMatch(/hueco de 7 días/)
+  })
+
+  it('alargar no saca ninguna semana, y empuja lo de detrás', () => {
+    const p = dur({ semanas: 3 })
+    expect(p.delta).toBe(1)
+    expect(p.fuera).toEqual([])
+    expect(p.avisos.join(' ')).toMatch(/se mueven?.*7 días hacia atrás/)
+  })
+
+  it('alargar sin arrastrar avisa del solape', () => {
+    expect(dur({ semanas: 3, arrastrar: false }).avisos.join(' ')).toMatch(/solapará 7 días/)
+  })
+
+  it('el último mesociclo no arrastra a nadie', () => {
+    const p = dur({ id: 11, semanas: 1 })
+    expect(p.mesosMovidos).toBe(0)
+    expect(p.avisos.join(' ')).not.toMatch(/posterior/)
+  })
+
+  it('la misma duración no es una operación, y menos de una semana no vale', () => {
+    expect(dur({ semanas: 2 }).vacio).toBe(true)
+    expect(dur({ semanas: 0 }).avisos.join(' ')).toMatch(/menos de una semana/)
+    expect(dur({ id: 999, semanas: 1 }).vacio).toBe(true)
   })
 })
 

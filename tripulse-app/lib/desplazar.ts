@@ -217,6 +217,125 @@ export function previsualizar(e: EntradaPrevisualizacion): Previsualizacion {
   }
 }
 
+// ------------------------------------------------------------
+// Cambiar la duración de un mesociclo
+// ------------------------------------------------------------
+// Acortar de 4 a 3 semanas no es editar un número: hay una semana que deja de
+// caber, y hay quince semanas detrás que o se mueven o dejan un agujero.
+
+/** Qué hacer con las sesiones de la semana que ya no cabe. */
+export type Sobrante = 'liberar' | 'papelera'
+
+export const ETIQUETA_SOBRANTE: Record<Sobrante, string> = {
+  liberar: 'Sacarlas del plan y dejarlas en el calendario',
+  papelera: 'Mandarlas a la papelera',
+}
+
+export interface SemanaFuera {
+  id: number
+  fecha_inicio: string
+  sesiones: SesionFila[]
+}
+
+export interface PrevisualizacionDuracion {
+  antes: number
+  ahora: number
+  delta: number
+  fuera: SemanaFuera[]
+  sesionesFuera: SesionFila[]
+  hechasFuera: SesionFila[]
+  mesosMovidos: number
+  avisos: string[]
+  vacio: boolean
+}
+
+export function previsualizarDuracion(e: {
+  id: number
+  semanas: number
+  arrastrar: boolean
+  sobrante: Sobrante
+  mesos: CicloFila[]
+  micros: CicloFila[]
+  sesiones: SesionFila[]
+}): PrevisualizacionDuracion {
+  const meso = e.mesos.find(m => m.id === e.id)
+  const antes = meso?.duracion_semanas || 4
+  const ahora = e.semanas
+  const delta = ahora - antes
+  const avisos: string[] = []
+
+  if (!meso) {
+    return { antes, ahora, delta: 0, fuera: [], sesionesFuera: [], hechasFuera: [], mesosMovidos: 0, vacio: true, avisos: ['No se encuentra el mesociclo: recarga la página.'] }
+  }
+  if (ahora < 1) avisos.push('Un mesociclo no puede durar menos de una semana.')
+  if (delta === 0) avisos.push('Ya dura ' + antes + (antes === 1 ? ' semana' : ' semanas') + '. No hay nada que cambiar.')
+
+  const ini = String(meso.fecha_inicio).slice(0, 10)
+  const finNuevo = sumarDias(ini, ahora * 7)
+
+  // Al acortar, las semanas que caen más allá del nuevo final.
+  const fuera: SemanaFuera[] = e.micros
+    .filter(m => m.id_mesociclo === e.id && String(m.fecha_inicio).slice(0, 10) >= finNuevo)
+    .map(m => ({
+      id: m.id,
+      fecha_inicio: String(m.fecha_inicio).slice(0, 10),
+      sesiones: e.sesiones.filter(s => s.id_microciclo === m.id),
+    }))
+    .sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio))
+
+  const sesionesFuera = fuera.flatMap(f => f.sesiones)
+  const hechasFuera = sesionesFuera.filter(s => s.estado === 'Realizada')
+
+  if (fuera.length) {
+    avisos.push(
+      fuera.length + (fuera.length === 1 ? ' semana sale' : ' semanas salen') + ' del mesociclo, con ' +
+      sesionesFuera.length + (sesionesFuera.length === 1 ? ' sesión' : ' sesiones') + ' dentro.',
+    )
+  }
+  // Mandar a la papelera algo que el atleta YA hizo borra historia, y la carga
+  // de esas semanas desaparece de las gráficas sin explicación.
+  if (hechasFuera.length && e.sobrante === 'papelera') {
+    avisos.push(
+      'Hay ' + hechasFuera.length + (hechasFuera.length === 1 ? ' sesión ya realizada' : ' sesiones ya realizadas') +
+      ' entre ellas: a la papelera desaparecen de las gráficas de carga. Mejor sacarlas del plan.',
+    )
+  }
+
+  const posteriores = e.mesos.filter(m =>
+    m.id !== e.id && m.id_macrociclo === meso.id_macrociclo &&
+    String(m.fecha_inicio).slice(0, 10) > ini).length
+
+  if (delta !== 0) {
+    if (e.arrastrar && posteriores) {
+      avisos.push(posteriores + (posteriores === 1 ? ' mesociclo posterior se mueve' : ' mesociclos posteriores se mueven') +
+        ' ' + Math.abs(delta * 7) + ' días ' + (delta < 0 ? 'hacia adelante en el calendario' : 'hacia atrás') + ', con sus sesiones.')
+    } else if (!e.arrastrar && posteriores) {
+      avisos.push(delta < 0
+        ? 'Quedará un hueco de ' + Math.abs(delta * 7) + ' días antes del siguiente mesociclo.'
+        : 'Se solapará ' + delta * 7 + ' días con el siguiente mesociclo.')
+    }
+  }
+
+  return {
+    antes, ahora, delta, fuera, sesionesFuera, hechasFuera,
+    mesosMovidos: e.arrastrar ? posteriores : 0,
+    avisos, vacio: delta === 0 || ahora < 1,
+  }
+}
+
+export async function aplicarDuracion(
+  sb: any, id: number, semanas: number, arrastrar: boolean, sobrante: Sobrante,
+): Promise<string | null> {
+  const { error } = await sb.rpc('redimensionar_mesociclo', {
+    _id: id, _semanas: semanas, _arrastrar: arrastrar, _sobrante: sobrante,
+  })
+  if (!error) return null
+  if (/redimensionar_mesociclo|does not exist|PGRST202/i.test(error.message || '')) {
+    return 'Falta ejecutar supabase/desplazar-ciclo.sql en la base de datos.'
+  }
+  return error.message
+}
+
 /**
  * Lanza el desplazamiento. Devuelve el mensaje de error, o `null` si fue bien.
  *
