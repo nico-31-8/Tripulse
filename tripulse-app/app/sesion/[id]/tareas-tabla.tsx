@@ -6,6 +6,7 @@ import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orde
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
+import SelectorEjercicio from '@/components/SelectorEjercicio'
 import { filtrarDrills } from '@/lib/tecnica'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
@@ -957,10 +958,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
                         </select>
                         {f.grupoMuscularSel && (
-                          <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={campoBase + ' basis-[58%] min-w-[190px]'}>
-                            <option value="">Ejercicio</option>
-                            {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                          </select>
+                          <SelectorEjercicio
+                            ejercicios={ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel)}
+                            valor={f.ejercicioSelId}
+                            onCambio={v => updateF(i, 'ejercicioSelId', v)}
+                            clase="basis-[58%] min-w-[190px]" />
                         )}
                       </div>
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
@@ -971,10 +973,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
                           </select>
                           {f.grupoMuscular2 && (
-                            <select value={f.ejercicioSelId2} onChange={e => updateF(i, 'ejercicioSelId2', e.target.value)} className={inputCls + ' mt-1'}>
-                              <option value="">Ejercicio 2</option>
-                              {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscular2).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                            </select>
+                            <SelectorEjercicio
+                              ejercicios={ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscular2)}
+                              valor={f.ejercicioSelId2}
+                              onCambio={v => updateF(i, 'ejercicioSelId2', v)}
+                              placeholder="Ejercicio 2" clase="mt-1" compacto />
                           )}
 
                         </div>
