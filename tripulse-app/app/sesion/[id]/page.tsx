@@ -36,7 +36,6 @@ import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
-import SelectorEjercicio from '@/components/SelectorEjercicio'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
@@ -967,11 +966,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                       {[...new Set(ejerciciosBiblioteca.map((e: any) => e.grupo_muscular))].map((g: any) => <option key={g as string} value={g as string}>{g as string}</option>)}
                     </select>
                     {grupoMuscular2 && (
-                      <SelectorEjercicio
-                        ejercicios={ejerciciosBiblioteca.filter((ej: any) => ej.grupo_muscular === grupoMuscular2)}
-                        valor={ejercicioSel2?.id ? String(ejercicioSel2.id) : ''}
-                        onCambio={v => setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => ej.id === Number(v)) || null)}
-                        placeholder="Selecciona ejercicio" compacto />
+                      <select value={ejercicioSel2?.id || ''} onChange={e => setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => ej.id === Number(e.target.value)) || null)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
+                        <option value="">Selecciona ejercicio</option>
+                        {ejerciciosBiblioteca.filter((ej: any) => ej.grupo_muscular === grupoMuscular2).map((ej: any) => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
+                      </select>
                     )}
                   </div>
                 )}
@@ -984,11 +982,10 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 )}
                 {grupoMuscularSel && (
                   <div>
-                    <SelectorEjercicio
-                      ejercicios={ejerciciosBiblioteca.filter(ej => ej.grupo_muscular === grupoMuscularSel)}
-                      valor={ejercicioSel?.id ? String(ejercicioSel.id) : ''}
-                      onCambio={v => setEjercicioSel(ejerciciosBiblioteca.find(ej => ej.id === Number(v)) || null)}
-                      placeholder="Selecciona ejercicio" />
+                    <select value={ejercicioSel?.id || ''} onChange={e => setEjercicioSel(ejerciciosBiblioteca.find(ej => ej.id === Number(e.target.value)) || null)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required>
+                      <option value="">Selecciona ejercicio</option>
+                      {ejerciciosBiblioteca.filter(ej => ej.grupo_muscular === grupoMuscularSel).map(ej => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
+                    </select>
                     {ejercicioSel?.url_video && (
                       <button type="button" onClick={() => setModalVideoFuerza(ejercicioSel.url_video)} className="mt-2 flex items-center gap-2 text-red-400 hover:text-red-300 text-sm transition">
                         <span>▶</span> Ver video del ejercicio
