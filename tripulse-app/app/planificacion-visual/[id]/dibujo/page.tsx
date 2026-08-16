@@ -8,6 +8,7 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
 import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
+import { diasEntre, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -470,6 +471,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const generar = async () => {
     if (!fechaInicio || macros.length === 0) { alert('Necesitas fecha de inicio y al menos un macrociclo'); return }
     setGenerando(true)
+    // Acortar un bloque saca sesiones del plan. Se cuentan para decirlo al
+    // final: es un cambio en los datos del atleta, no un detalle de dibujo.
+    let sueltas = 0
     try {
       for (const mac of macros) {
         const fechaMac = semFecha(fechaInicio, mac.si)
@@ -499,7 +503,37 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           let meDbId = me.dbId
 
           if (meDbId) {
-            // Actualizar meso existente
+            /* ANTES DE TOCAR LA FILA: si el bloque se ha movido o ha cambiado de
+               tamaño en el lienzo, hay que ARRASTRAR lo que tiene dentro.
+
+               Aquí vivía el fallo. Se actualizaba `fecha_inicio` del mesociclo y
+               luego se buscaban sus microciclos POR FECHA (más abajo). Como el
+               meso se había movido, ninguno coincidía: se creaban microciclos
+               nuevos y vacíos en las fechas nuevas y los viejos —con todas sus
+               sesiones— se quedaban donde estaban, colgando del mismo mesociclo
+               pero fuera de su rango. Mover un bloque te duplicaba las semanas y
+               te dejaba las sesiones atrás, sin un solo error por pantalla.
+
+               Se arregla reusando las dos operaciones que ya saben hacerlo bien.
+               `arrastrar: false` en el cambio de duración porque el lienzo coloca
+               cada mesociclo en su sitio de forma absoluta: si además dejáramos
+               que la función empujase a los posteriores, se moverían dos veces. */
+            const { data: enBd } = await supabase.from('mesociclo')
+              .select('fecha_inicio, duracion_semanas').eq('id', meDbId).single()
+            if (enBd) {
+              const delta = diasEntre(String(enBd.fecha_inicio).slice(0, 10), fechaMe)
+              if (delta !== 0) {
+                const err = await aplicarDesplazamiento(supabase, 'mesociclo', meDbId, delta)
+                if (err) throw new Error(err)
+              }
+              if ((enBd.duracion_semanas || 4) !== durMe) {
+                const r = await aplicarDuracion(supabase, meDbId, durMe, false, 'liberar')
+                if (r.error) throw new Error(r.error)
+                sueltas += r.sesiones
+              }
+            }
+            // La fecha y la duración ya las han dejado bien las funciones de
+            // arriba; esto es el nombre, el tipo y la intensidad.
             await supabase.from('mesociclo').update({
               objetivo: me.nombre, tipo: me.tipo,
               fecha_inicio: fechaMe, duracion_semanas: durMe, intensidad_relativa: me.intensidad
@@ -545,7 +579,14 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       }
       setGenerado(true)
       setModoEdicion(true)
-      alert(modoEdicion ? 'Planificacion actualizada. Las sesiones existentes se han conservado.' : 'Planificacion generada correctamente.')
+      const aviso = sueltas
+        ? '\n\n' + sueltas + (sueltas === 1
+          ? ' sesión estaba en una semana que ya no cabe: sigue en el calendario, pero fuera del plan.'
+          : ' sesiones estaban en semanas que ya no caben: siguen en el calendario, pero fuera del plan.')
+        : ''
+      alert((modoEdicion
+        ? 'Planificacion actualizada. Las sesiones existentes se han conservado.'
+        : 'Planificacion generada correctamente.') + aviso)
     } catch (e: any) { alert('Error: ' + e.message) }
     setGenerando(false)
   }

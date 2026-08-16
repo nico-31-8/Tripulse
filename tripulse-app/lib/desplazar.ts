@@ -323,17 +323,23 @@ export function previsualizarDuracion(e: {
   }
 }
 
+/**
+ * Devuelve cuántas sesiones se han visto afectadas además del error, porque
+ * quien llama a esto tiene que poder decirlo en voz alta: acortar un mesociclo
+ * saca sesiones del plan, y hacerlo en silencio es la mitad del problema que
+ * esta función viene a arreglar.
+ */
 export async function aplicarDuracion(
   sb: any, id: number, semanas: number, arrastrar: boolean, sobrante: Sobrante,
-): Promise<string | null> {
-  const { error } = await sb.rpc('redimensionar_mesociclo', {
+): Promise<{ error: string | null; sesiones: number }> {
+  const { data, error } = await sb.rpc('redimensionar_mesociclo', {
     _id: id, _semanas: semanas, _arrastrar: arrastrar, _sobrante: sobrante,
   })
-  if (!error) return null
+  if (!error) return { error: null, sesiones: data?.[0]?.sesiones_afectadas ?? 0 }
   if (/redimensionar_mesociclo|does not exist|PGRST202/i.test(error.message || '')) {
-    return 'Falta ejecutar supabase/desplazar-ciclo.sql en la base de datos.'
+    return { error: 'Falta ejecutar supabase/desplazar-ciclo.sql en la base de datos.', sesiones: 0 }
   }
-  return error.message
+  return { error: error.message, sesiones: 0 }
 }
 
 /**

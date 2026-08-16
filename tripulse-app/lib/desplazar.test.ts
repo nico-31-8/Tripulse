@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   sumarDias, diasEntre, finDeCiclo, microsAfectados, previsualizar,
-  previsualizarDuracion, type CicloFila, type SesionFila,
+  previsualizarDuracion, aplicarDuracion, aplicarDesplazamiento,
+  type CicloFila, type SesionFila,
 } from './desplazar'
 
 // Un plan de juguete: 1 macro → 2 mesos → 4 micros, arrancando en jueves
@@ -188,6 +189,41 @@ describe('cambiar la duración de un mesociclo', () => {
     expect(dur({ semanas: 2 }).vacio).toBe(true)
     expect(dur({ semanas: 0 }).avisos.join(' ')).toMatch(/menos de una semana/)
     expect(dur({ id: 999, semanas: 1 }).vacio).toBe(true)
+  })
+})
+
+describe('la llamada a la base', () => {
+  const sbCon = (respuesta: any) => ({ rpc: async () => respuesta })
+
+  it('devuelve cuántas sesiones salieron, para poder decirlo', () => {
+    // El dibujo lo usa para avisar al final: acortar un bloque saca sesiones
+    // del plan, y hacerlo en silencio es la mitad del problema.
+    return aplicarDuracion(sbCon({ data: [{ sesiones_afectadas: 3 }], error: null }), 10, 3, false, 'liberar')
+      .then(r => { expect(r).toEqual({ error: null, sesiones: 3 }) })
+  })
+
+  /* Sin la migración, PostgREST devuelve «Could not find the function...», que
+     no le dice a nadie qué tiene que hacer. */
+  it('si falta la migración, lo dice con esas palabras', async () => {
+    const err = { message: 'Could not find the function public.redimensionar_mesociclo' }
+    const r = await aplicarDuracion(sbCon({ data: null, error: err }), 10, 3, false, 'liberar')
+    expect(r.error).toMatch(/Falta ejecutar supabase\/desplazar-ciclo\.sql/)
+
+    const d = await aplicarDesplazamiento(
+      sbCon({ error: { message: 'Could not find the function public.desplazar_ciclo' } }), 'mesociclo', 10, 7)
+    expect(d).toMatch(/Falta ejecutar supabase\/desplazar-ciclo\.sql/)
+  })
+
+  it('cualquier otro error se pasa tal cual', async () => {
+    const r = await aplicarDesplazamiento(sbCon({ error: { message: 'Sin permiso sobre ese plan' } }), 'mesociclo', 10, 7)
+    expect(r).toBe('Sin permiso sobre ese plan')
+  })
+
+  it('mover cero días no llama a nadie', async () => {
+    let llamado = false
+    const sb = { rpc: async () => { llamado = true; return { error: null } } }
+    expect(await aplicarDesplazamiento(sb, 'mesociclo', 10, 0)).toBeNull()
+    expect(llamado).toBe(false)
   })
 })
 

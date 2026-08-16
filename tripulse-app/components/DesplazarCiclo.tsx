@@ -98,7 +98,7 @@ export default function DesplazarCiclo({
     if (tab === 'duracion') {
       if (!meso || !d || d.vacio) return
       setAplicando(true); setError('')
-      const err = await aplicarDuracion(supabase, meso.id, semanas, arrastrar, sobrante)
+      const { error: err } = await aplicarDuracion(supabase, meso.id, semanas, arrastrar, sobrante)
       setAplicando(false)
       if (err) { setError(err); return }
       onHecho(); onCerrar()
