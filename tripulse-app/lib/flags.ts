@@ -10,15 +10,18 @@
  * determinista (`/api/plan`) y la opción C, en la que el modelo monta la semana
  * entera (`/api/plan/generar`).
  *
- * APAGADO a propósito. El planificador por reglas sí está en producción; la
- * parte de IA todavía no la ha usado un humano y gasta créditos por llamada,
- * así que no se abre hasta probarla a mano.
+ * ENCENDIDO desde el 16/08/2026, a petición del entrenador.
  *
- * Apaga las DOS cosas: los botones de la pantalla y las rutas. Solo los botones
- * no bastaría — las rutas seguirían contestando a cualquier entrenador que
- * supiera la URL, y «no está desplegado» tiene que ser verdad, no una capa de
- * pintura.
+ * Lo que eso abre: los dos botones de `/planificador` y las rutas `/api/plan` y
+ * `/api/plan/generar`. Cada pulsación cuesta créditos de la API — la revisión
+ * unas centésimas, montar la semana entera del orden de 0,18 $.
  *
- * Para encenderlo: `true` aquí. No hay nada más que tocar.
+ * Lo que NO abre, porque no depende de esto: la IA no puede escribir en el
+ * calendario. Propone, y el volcado sigue siendo un clic del entrenador. Y en
+ * la capa de revisión solo puede BAJAR la intensidad, nunca subirla.
+ *
+ * El interruptor gobierna las dos cosas —pantalla y rutas— a propósito: solo
+ * esconder los botones dejaría las rutas contestando a cualquier entrenador que
+ * supiera la URL. Para volver a cerrarlo, `false` aquí y nada más.
  */
-export const IA_PLANIFICADOR = false
+export const IA_PLANIFICADOR = true
