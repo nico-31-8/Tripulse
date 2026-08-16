@@ -114,3 +114,49 @@ export function duracionSesionTexto(
   const estimada = !sesion?.duracion_real && !sesion?.duracion_minutos
   return (estimada ? '~' : '') + min + ' min'
 }
+
+// ------------------------------------------------------------
+// Carga de una sesión, en unidades arbitrarias (UA)
+// ------------------------------------------------------------
+// UA = RPE × minutos. La fórmula es de una línea, y por eso estaba copiada en
+// el panel de métricas, en la pantalla de carga, en la ficha del deportista y en
+// el lienzo de periodización. Tres decían lo mismo; la del lienzo NO:
+//
+//   (rpe_estimado || 0) * (duracion_minutos || 0)
+//
+// Con ese || 0 doble, una sesión sin RPE escrito y sin duración manual valía
+// CERO — y como casi ninguna lleva duración a mano, la capa «Programado» del
+// dibujo salía a 0 teniendo 18 sesiones en el calendario. No fallaba nada: el
+// número simplemente mentía.
+//
+// El 5 por defecto no es un invento de aquí: es el que ya usaban las otras tres.
+
+const RPE_POR_DEFECTO = 5
+
+type SesionCarga = {
+  duracion_real?: number | null
+  duracion_minutos?: number | null
+  rpe_estimado?: number | null
+  rpe_reportado?: number | null
+}
+
+/**
+ * Lo que el entrenador MANDÓ: RPE estimado × minutos.
+ *
+ * Para la capa «programado», que es lo que hay puesto en el calendario, se haya
+ * hecho o no. No mira `rpe_reportado` a propósito: si el atleta lo hizo más duro
+ * de lo previsto, eso es «realizado», no lo que se le pidió.
+ */
+export function cargaPlanificada(s: SesionCarga | null | undefined, est?: ResultadoDuracion): number {
+  if (!s) return 0
+  return (s.rpe_estimado || RPE_POR_DEFECTO) * minutosCarga(s, est)
+}
+
+/**
+ * Lo que COSTÓ de verdad: el RPE que reportó el atleta si lo hay, y si no el
+ * previsto. Es la que alimenta CTL/ATL/TSB.
+ */
+export function cargaReal(s: SesionCarga | null | undefined, est?: ResultadoDuracion): number {
+  if (!s) return 0
+  return (s.rpe_reportado || s.rpe_estimado || RPE_POR_DEFECTO) * minutosCarga(s, est)
+}

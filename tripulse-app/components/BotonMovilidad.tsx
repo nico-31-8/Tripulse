@@ -36,8 +36,18 @@ export default function BotonMovilidad({ idSesion, ordenBase, onHecho, clase }: 
   const aplicar = async (p: PlantillaMovilidad) => {
     setGuardando(p.id); setError('')
     const err = await escribirBloquesFuerza(supabase, idSesion, p.bloques, ordenBase)
+    if (err) { setGuardando(null); setError(err); return }
+
+    /* El RPE de la sesión, si está vacío.
+       La carga es RPE × minutos, y cuando el RPE no está puesto la fórmula mete
+       un 5 por defecto (lib/panel-metricas). O sea que una sesión de movilidad
+       sin RPE pesaba como una de calidad suave y se colaba en el CTL. FLEX es
+       RPE 1–3, así que el 2 es su punto medio.
+       Solo se rellena si está vacío: si el entrenador puso un número, es suyo. */
+    const { data: s } = await supabase.from('sesion').select('rpe_estimado').eq('id', idSesion).single()
+    if (!s?.rpe_estimado) await supabase.from('sesion').update({ rpe_estimado: 2 }).eq('id', idSesion)
+
     setGuardando(null)
-    if (err) { setError(err); return }
     setAbierto(false)
     onHecho()
   }

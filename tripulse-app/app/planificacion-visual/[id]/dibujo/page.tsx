@@ -9,6 +9,8 @@ import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/
 import type { ChipZona } from '@/lib/chips'
 import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
 import { diasEntre, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
+import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
+import type { ResultadoDuracion } from '@/lib/duracion'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -90,6 +92,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
   const [tests, setTests] = useState<TestsAtleta | null>(null)
+  const testsRef = useRef<TestsAtleta>({})
+  // Duración estimada de cada sesión, por id. Es lo que convierte «no tiene
+  // duración escrita» en volumen de verdad para la capa de programado.
+  const [duraciones, setDuraciones] = useState<Record<number, ResultadoDuracion>>({})
   const [pantalla, setPantalla] = useState<'cargando'|'elegir'|'setup'|'canvas'>('cargando')
   const [macrosExistentes, setMacrosExistentes] = useState<any[]>([])
   const [modoEdicion, setModoEdicion] = useState(false)
@@ -186,7 +192,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
       ])
-      setTests({ vam: tCarr.data?.[0]?.vam, css: tNat.data?.[0]?.css, ftp: tCic.data?.[0]?.ftp })
+      const t = { vam: tCarr.data?.[0]?.vam, css: tNat.data?.[0]?.css, ftp: tCic.data?.[0]?.ftp }
+      setTests(t)
+      // En una ref además del estado: `cargarExistente` corre justo después y
+      // necesita los tests para estimar duraciones. Leerlos del estado ahí sería
+      // leerlos antes de que React lo haya aplicado.
+      testsRef.current = t
       const { data: macs } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
       if (macs && macs.length > 0) {
         setMacrosExistentes(macs)
@@ -275,11 +286,20 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         const { data: microsData } = await supabase.from('microciclo').select('*').in('id_mesociclo', mesoIds)
       const microIds = microsData?.map(m => m.id) || []
       if (microIds.length) {
-        const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, rpe_estimado, rpe_reportado, estado, id_microciclo'
+        // `duracion_real` faltaba: sin ella, una sesión cerrada con el cronómetro
+        // contaba por lo planificado (o por nada, si no había duración manual).
+        const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, id_microciclo'
         // Excluir borradas (antes contaban en Programado/Realizado) e incluir las libres.
         const { data: sesData } = await supabase.from('sesion').select(selProg).in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
         const { data: sesLibres } = await supabase.from('sesion').select(selProg).eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
-        setSesionesProg([...(sesData || []), ...(sesLibres || [])])
+        const todas = [...(sesData || []), ...(sesLibres || [])]
+        setSesionesProg(todas)
+        // Las duraciones estimadas, que son las que dan volumen a casi todas las
+        // sesiones: sin esto, la capa «Programado» sale a 0 salvo en las pocas
+        // que llevan duración escrita a mano.
+        if (todas.length) {
+          setDuraciones(await estimarDuraciones(supabase, todas.map(s => s.id), testsRef.current))
+        }
       }
         if (microsData?.length) {
           const semsD = Array.from({ length: Math.max(totalW, 12) }, (_, i) => {
@@ -752,8 +772,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       const d = new Date(se.fecha_sesion + 'T12:00:00')
       return d >= lunes && d <= domingo
     })
-    const prog = sessSem.reduce((a, se) => a + ((se.rpe_estimado || 0) * (se.duracion_minutos || 0)), 0)
-    const real = sessSem.filter(se => se.rpe_reportado).reduce((a, se) => a + ((se.rpe_reportado || 0) * (se.duracion_minutos || 0)), 0)
+    // La misma fórmula que el resto de la app (lib/duracion-carga). Aquí se
+    // hacía `(rpe||0) * (duracion_minutos||0)`, así que una sesión sin RPE
+    // escrito y sin duración a mano valía CERO: la capa «Programado» salía a 0
+    // teniendo el calendario lleno, y nada avisaba de que el número mentía.
+    const prog = sessSem.reduce((a, se) => a + cargaPlanificada(se, duraciones[se.id]), 0)
+    const real = sessSem.filter(se => se.rpe_reportado)
+      .reduce((a, se) => a + cargaReal(se, duraciones[se.id]), 0)
     return { plan: s.ua || 0, prog, real }
   })
 

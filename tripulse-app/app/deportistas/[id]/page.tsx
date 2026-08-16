@@ -6,7 +6,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
-import { minutosCarga } from '@/lib/duracion-carga'
+import { minutosCarga, cargaReal } from '@/lib/duracion-carga'
 import { estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
@@ -247,7 +247,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             // rpe_estimado e iteraba por sesión → dos sesiones el mismo día se componían dos veces).
             const porDia: Record<string, number> = {}
             ses.forEach(s => {
-              porDia[s.fecha_sesion] = (porDia[s.fecha_sesion] || 0) + (s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s)
+              porDia[s.fecha_sesion] = (porDia[s.fecha_sesion] || 0) + cargaReal(s)
             })
             let atl = 0, ctl = 0
             Object.keys(porDia).sort().forEach(f => {
