@@ -268,7 +268,13 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           ejercicios: ejs?.filter(e => e.id_tarea === t.id) || [],
         }))
         const dur_estimada = calcularDuracionEstimada(tareasDur, testsDep)
-        return { ...s, metros_total: metros, seg_total: seg, dur_estimada }
+        // Las zonas de la sesión, de la más dura a la más suave. Es lo que dice
+        // de un vistazo si el martes es una tirada suave o unas series duras;
+        // hasta ahora el calendario solo decía el deporte y el volumen, que en
+        // una semana entera se leen igual.
+        const zonas = [...new Set(tarSes.map(t => t.zona_entrenamiento).filter(Boolean))]
+          .sort((a, b) => cargaZona(b).nivel - cargaZona(a).nivel)
+        return { ...s, metros_total: metros, seg_total: seg, dur_estimada, zonas }
       })
       setSesiones(sesConVolumen)
     } else { setSesiones([]) }
@@ -1239,7 +1245,19 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                 className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' +
                                   (arrastrando === s.id ? 'opacity-40 ' : '') +
                                   (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
-                                <span className="text-xs truncate">{s.disciplina?.slice(0,3)} {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}</span>
+                                {/* La ZONA ocupa el sitio de «Car»/«Fue», no se
+                                    añade al lado: el color del chip ya dice el
+                                    deporte, así que las tres letras eran la única
+                                    cosa de la línea que no aportaba nada — y el
+                                    texto ya iba truncado. Lo que diferencia dos
+                                    carreras de la misma semana es la zona.
+                                    Con varias, la más dura y cuántas más hay. */}
+                                <span className="text-xs truncate" title={s.zonas?.length ? s.zonas.join(' · ') : undefined}>
+                                  {s.zonas?.length > 0
+                                    ? <b>{s.zonas[0]}{s.zonas.length > 1 ? '+' + (s.zonas.length - 1) : ''}</b>
+                                    : s.disciplina?.slice(0, 3)}
+                                  {' '}{getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}
+                                </span>
                                 {/* `opacity-0 group-hover:...` es un patrón de RATÓN: en una pantalla
                                     táctil no hay hover, así que estos tres botones se quedaban
                                     invisibles PERO seguían respondiendo al dedo. Tocabas la sesión y
