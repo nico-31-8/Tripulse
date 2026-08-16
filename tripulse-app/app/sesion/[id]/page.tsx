@@ -36,6 +36,7 @@ import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
+import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
@@ -954,10 +955,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                     <option value="Complex">Complex</option>
                   </select>
                 </div>
-                <select value={grupoMuscularSel} onChange={e => { setGrupoMuscularSel(e.target.value); setEjercicioSel(null) }} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
-                  <option value="">Grupo muscular</option>
-                  {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
+                <div className="flex gap-2">
+                  <select value={grupoMuscularSel} onChange={e => { setGrupoMuscularSel(e.target.value); setEjercicioSel(null) }} className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                    <option value="">Grupo muscular</option>
+                    {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                  {/* El grupo se pone también: si no, el desplegable de abajo
+                      enseñaría una lista que no contiene lo que acabas de elegir. */}
+                  <BuscadorEjercicios
+                    ejercicios={ejerciciosBiblioteca}
+                    onBibliotecaCambia={cargarDatos}
+                    onElegir={ej => { setGrupoMuscularSel(ej.grupo_muscular || ''); setEjercicioSel(ej) }}
+                    clase="flex-none bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-3.5 transition" />
+                </div>
                 {(tipoSerie === 'Superserie' || tipoSerie === 'Complex') && ejercicioSel && (
                   <div className="bg-gray-800 rounded-xl p-4 border border-orange-500/50">
                     <p className="text-orange-400 text-sm font-medium mb-3">+ Ejercicio encadenado</p>
@@ -971,6 +981,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                         {ejerciciosBiblioteca.filter((ej: any) => ej.grupo_muscular === grupoMuscular2).map((ej: any) => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
                       </select>
                     )}
+                    <div className="mt-2">
+                      <BuscadorEjercicios
+                        ejercicios={ejerciciosBiblioteca}
+                        onBibliotecaCambia={cargarDatos}
+                        onElegir={ej => { setGrupoMuscular2(ej.grupo_muscular || ''); setEjercicioSel2(ej) }} />
+                    </div>
                   </div>
                 )}
                 {tipoSerie === 'Drop set' && ejercicioSel && (

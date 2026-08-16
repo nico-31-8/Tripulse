@@ -6,6 +6,7 @@ import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orde
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
+import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { filtrarDrills } from '@/lib/tecnica'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
@@ -962,6 +963,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                           </select>
                         )}
+                        {/* El grupo se pone JUNTO al ejercicio y en un solo parche:
+                            si se eligiera uno de otro grupo sin mover el desplegable
+                            de arriba, el de abajo quedaría enseñando una lista que
+                            no contiene lo elegido. Y en dos llamadas seguidas la
+                            segunda pisaría a la primera (ver `parcheF`). */}
+                        <BuscadorEjercicios
+                          ejercicios={ejerciciosBiblioteca}
+                          onBibliotecaCambia={cargarDatos}
+                          onElegir={ej => parcheF(i, {
+                            grupoMuscularSel: ej.grupo_muscular || '',
+                            ejercicioSelId: String(ej.id),
+                          })} />
                       </div>
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
@@ -976,6 +989,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                               {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscular2).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                             </select>
                           )}
+                          <div className="mt-1">
+                            <BuscadorEjercicios
+                              ejercicios={ejerciciosBiblioteca}
+                              onBibliotecaCambia={cargarDatos}
+                              onElegir={ej => parcheF(i, {
+                                grupoMuscular2: ej.grupo_muscular || '',
+                                ejercicioSelId2: String(ej.id),
+                              })} />
+                          </div>
 
                         </div>
                       )}
