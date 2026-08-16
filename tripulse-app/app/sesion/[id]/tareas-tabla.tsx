@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
-import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 import { filtrarDrills } from '@/lib/tecnica'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
@@ -156,6 +156,15 @@ interface FilaResistencia {
   esTecnica: boolean
   tecnicaId: string
   guardado?: boolean
+  /**
+   * Si viene, la fila EDITA esa tarea en vez de crear una nueva.
+   *
+   * Editar y crear son el mismo formulario a propósito. Cuando eran dos, el de
+   * editar se quedó con cuatro campos y el de crear tenía doce: el ejercicio,
+   * las repeticiones o el control del esfuerzo solo se podían poner al nacer la
+   * tarea, y para cambiarlos había que borrarla y escribirla otra vez.
+   */
+  idTarea?: number
 }
 
 interface FilaFuerza {
@@ -186,6 +195,8 @@ interface FilaFuerza {
   escalonDrop: string
   zonaFuerzaTarea: string
   guardado?: boolean
+  /** Igual que en resistencia: con id, la fila edita esa tarea. */
+  idTarea?: number
 }
 
 export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian }: {
@@ -210,14 +221,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [sistema, setSistema] = useState(1)
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
-  const [tareaEditando, setTareaEditando] = useState<any>(null)
-  const [editZona, setEditZona] = useState('')
-  const [editSeries, setEditSeries] = useState('')
-  const [editDescanso, setEditDescanso] = useState('')
-  const [editComentario, setEditComentario] = useState('')
-  const [editMedTipo, setEditMedTipo] = useState<UnidadMedicion>('')
-  const [editMedValor, setEditMedValor] = useState('')
-  const [editTecnicaId, setEditTecnicaId] = useState('')
+  // Aquí vivía el estado del modal de edición (zona, series, descanso, comentario,
+  // medición y técnica). Ya no hace falta: editar reabre la tarea en la fila de
+  // abajo, que es el mismo formulario con el que se creó y tiene todos los campos.
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
   const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
@@ -283,36 +289,74 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     onTareasCambian?.()
   }
 
+  /**
+   * Editar = volver a bajar la tarea al formulario donde se creó.
+   *
+   * Antes esto abría un modal con cuatro campos, así que media prescripción no
+   * se podía tocar. Ahora la tarea se convierte en una fila del mismo editor de
+   * abajo, con todo lo que tenía dentro, y al guardar se actualiza en vez de
+   * crear otra. Mientras se edita desaparece de la tabla de arriba: verla en dos
+   * sitios a la vez, con valores distintos, es peor que no poder editarla.
+   */
   const abrirEditarTarea = (t: any) => {
-    setTareaEditando(t)
-    setEditZona(t.zona_entrenamiento || '')
-    setEditSeries(t.series || '')
-    setEditDescanso(t.descanso_segundos || '')
-    setEditComentario(t.comentario || '')
+    if (esFuerza) {
+      const ej = t.ejercicios?.[0]
+      const segundos = t.p_duracion?.[0]?.tiempo_planeado
+      const esTiempo = !!segundos
+      // OJO: NO vale `duracionTexto`, que escribe «45 s» y «1:30 min». Ese texto
+      // es para leerlo, y al volver a guardar `mmssASegundos` no lo entiende. La
+      // casilla acepta «45» o «1:30», que es justo lo que hay que devolverle.
+      const tiempoEditable = segundos < 60 ? String(segundos) : segAMmss(segundos)
+      // El grupo del ejercicio encadenado, para que el desplegable lo enseñe: sin
+      // él, editar una superserie ocultaba el segundo ejercicio (seguía guardado,
+      // pero no había forma de verlo ni de cambiarlo).
+      const ej2 = ej?.ejercicio_encadenado_id
+        ? ejerciciosBiblioteca.find(e => e.id === Number(ej.ejercicio_encadenado_id))
+        : null
+      setFilasF(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev, {
+        ...nuevaFilaF(),
+        idTarea: t.id,
+        orden: t.orden ?? prev.length + 1,
+        grupoMuscularSel: ej?.grupo_muscular || '',
+        ejercicioSelId: ej ? String(ejerciciosBiblioteca.find(e => e.nombre === ej.nombre)?.id ?? '') : '',
+        tipoSerie: ej?.tipo_serie || 'Normal',
+        medida: esTiempo ? 'tiempo' : 'reps',
+        controlTipo: (ej?.control_tipo as ControlTipo) || 'rir',
+        series: t.series != null ? String(t.series) : '',
+        // En modo tiempo la casilla de «reps» es la que lleva los segundos.
+        repsFuerza: esTiempo ? tiempoEditable : (ej?.repeticiones != null ? String(ej.repeticiones) : ''),
+        kgFuerza: ej?.intensidad != null ? String(ej.intensidad) : '',
+        rir: ej?.control_valor || '',
+        descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',
+        comentario: t.comentario || '',
+        grupoMuscular2: ej2?.grupo_muscular || '',
+        ejercicioSelId2: ej2 ? String(ej2.id) : '',
+        escalonDrop: ej?.escalones_drop || '',
+        zonaFuerzaTarea: t.zona_entrenamiento || '',
+      }])
+      return
+    }
     const med = detectarMedicion(t)
-    setEditMedTipo(med.tipo)
-    setEditMedValor(med.valor)
-    setEditTecnicaId(t.tecnica_id ? String(t.tecnica_id) : '')
+    setFilasR(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev, {
+      ...nuevaFilaR(),
+      idTarea: t.id,
+      orden: t.orden ?? prev.length + 1,
+      zona: t.zona_entrenamiento || '',
+      disciplina: t.disciplina || '',
+      series: t.series != null ? String(t.series) : '',
+      descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',
+      tipoMedicion: med.tipo,
+      valorMedicion: med.valor,
+      comentario: t.comentario || '',
+      esTecnica: !!t.tecnica_id,
+      tecnicaId: t.tecnica_id ? String(t.tecnica_id) : '',
+    }])
   }
 
-  const guardarEditarTarea = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    await supabase.from('tarea').update({
-      zona_entrenamiento: editZona || null,
-      series: editSeries ? Number(editSeries) : null,
-      descanso_segundos: editDescanso ? Number(editDescanso) : null,
-      comentario: editComentario || null,
-      // Solo en resistencia. En una sesión de fuerza esto siempre va vacío, y
-      // escribirlo a null es lo correcto: una tarea de fuerza no es trabajo técnico.
-      tecnica_id: esFuerza ? null : (editTecnicaId ? Number(editTecnicaId) : null),
-    }).eq('id', tareaEditando.id)
-    if (!esFuerza) await guardarMedicion(supabase, tareaEditando, editMedTipo, editMedValor)
-    setTareaEditando(null)
-    setLoading(false)
-    await cargarDatos()   // la medición toca filas anidadas: releer es lo fiable
-    onTareasCambian?.()
-  }
+  /** Las que están abiertas abajo no se pintan arriba. */
+  const editandose = new Set<number>([
+    ...filasR.map(f => f.idTarea), ...filasF.map(f => f.idTarea),
+  ].filter((x): x is number => x != null))
 
   // Referencia de una zona por su código: sistema 2 (siglas) o clásico ('Zn')
   const getRef = (codigo: string | null | undefined, disciplina: string) => {
@@ -365,26 +409,44 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const f = filasR[i]
     setLoading(true)
     try {
-      const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
-        id_sesion: sesionId, zona_entrenamiento: f.zona || null,
-        disciplina: f.disciplina, series: f.series ? Number(f.series) : null,
+      const campos = {
+        zona_entrenamiento: f.zona || null,
+        disciplina: f.disciplina,
+        series: f.series ? Number(f.series) : null,
         descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
         comentario: f.comentario || null,
         // La zona que se guarda es AER, no «técnica»: eso es lo que hace que el
         // trabajo técnico cuente como el volumen suave que realmente es.
         tecnica_id: f.tecnicaId ? Number(f.tecnicaId) : null,
-        // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
-        // se ordenaban distinto (ver lib/tareas-orden).
-        orden: tareasGuardadas.length + i + 1,
-      }).select().single()
-      if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
-      if (tarea) {
+      }
+      let idTarea = f.idTarea ?? null
+      if (idTarea) {
+        const { error } = await supabase.from('tarea').update(campos).eq('id', idTarea)
+        if (error) { alert('Error al guardar tarea: ' + error.message); setLoading(false); return }
+        // La medición vive en TRES tablas y una tarea solo puede tener una. Al
+        // editar se limpian las tres antes de escribir: si solo se tocara la
+        // nueva, cambiar de metros a minutos dejaría las dos, y el volumen se
+        // contaría por partida doble sin que nada se queje.
+        await supabase.from('p_distancia').delete().eq('id_tarea', idTarea)
+        await supabase.from('p_duracion').delete().eq('id_tarea', idTarea)
+        await supabase.from('p_repeticiones').delete().eq('id_tarea', idTarea)
+      } else {
+        const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
+          id_sesion: sesionId, ...campos,
+          // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
+          // se ordenaban distinto (ver lib/tareas-orden).
+          orden: tareasGuardadas.length + i + 1,
+        }).select().single()
+        if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
+        idTarea = tarea?.id ?? null
+      }
+      if (idTarea) {
         const _ref = getRef(f.zona, f.disciplina)
         const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
         const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
-        if (_tabla === 'p_distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: _valor }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
-        else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: _valor })
-        else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valor })
+        if (_tabla === 'p_distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
+        else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: idTarea, tiempo_planeado: _valor })
+        else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
       }
       await cargarDatos()
       setFilasR(prev => prev.filter((_, idx) => idx !== i))
@@ -397,7 +459,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   const guardarFilaF = async (i: number) => {
     const f = filasF[i]
-    if (!f.ejercicioSelId) return
+    // Crear exige ejercicio. EDITAR no: las tareas de fuerza que vienen de una
+    // plantilla o del planificador llevan el ejercicio en el comentario y no
+    // tienen fila en `ejercicios`, y antes esas sí se podían editar. Exigirlo
+    // aquí sería quitar algo que ya se podía hacer.
+    if (!f.ejercicioSelId && !f.idTarea) return
     setLoading(true)
     try {
     const ejBib = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
@@ -408,14 +474,37 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     // Acepta «45» y «1:30»: mmssASegundos ya distingue por los dos puntos.
     const segundos = esTiempo ? mmssASegundos(f.repsFuerza) : 0
     const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
-    const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
-      id_sesion: sesionId, disciplina: 'Fuerza',
+    const campos = {
+      disciplina: 'Fuerza',
       zona_entrenamiento: zonaF,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
       comentario: f.comentario || null,
-    }).select().single()
-    if (errTarea) { alert('Error al guardar ejercicio: ' + errTarea.message); setLoading(false); return }
+    }
+    let tarea: any = null
+    if (f.idTarea) {
+      const { error } = await supabase.from('tarea').update(campos).eq('id', f.idTarea)
+      if (error) { alert('Error al guardar ejercicio: ' + error.message); setLoading(false); return }
+      // El ejercicio y la medición se reescriben enteros, pero SOLO si hay
+      // ejercicio con el que reescribirlos. Es más simple y más fiable que
+      // parchear campo a campo: cambiar de reps a tiempo mueve el dato de
+      // p_repeticiones a p_duracion, y dejar la vieja sin borrar duplicaría el
+      // volumen de la sesión en silencio. Sin ejercicio se tocan solo los campos
+      // de la tarea, para no vaciar lo que ya había.
+      if (ejBib) {
+        await supabase.from('ejercicios').delete().eq('id_tarea', f.idTarea)
+        await supabase.from('p_duracion').delete().eq('id_tarea', f.idTarea)
+        await supabase.from('p_repeticiones').delete().eq('id_tarea', f.idTarea)
+      }
+      tarea = { id: f.idTarea }
+    } else {
+      const { data, error: errTarea } = await supabase.from('tarea').insert({
+        id_sesion: sesionId, ...campos,
+        orden: tareasGuardadas.length + i + 1,
+      }).select().single()
+      if (errTarea) { alert('Error al guardar ejercicio: ' + errTarea.message); setLoading(false); return }
+      tarea = data
+    }
     if (tarea && ejBib) {
       const ejBib2 = f.ejercicioSelId2 ? ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2)) : null
       // Si hay ejercicio 2, añadirlo como nota en notas_ejecucion
@@ -544,6 +633,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             </thead>
             <tbody>
               {tareasGuardadas.map((t, i) => {
+                // La que se está editando abajo no se pinta aquí: verla en dos
+                // sitios con valores distintos es peor que no poder editarla.
+                // Se salta dentro del map y no filtrando el array, porque el
+                // índice es el que usa el reordenado por arrastre.
+                if (editandose.has(t.id)) return null
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 return (
                   <tr key={t.id}
@@ -773,9 +867,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             avisar. Mismo criterio que fuerza, que tampoco guarda sin
                             ejercicio. */}
                         <button onClick={() => guardarFilaR(i)} disabled={loading || (f.esTecnica && !f.tecnicaId)}
-                          title={f.esTecnica && !f.tecnicaId ? 'Elige el ejercicio de técnica' : 'Guardar'}
+                          title={f.esTecnica && !f.tecnicaId ? 'Elige el ejercicio de técnica' : f.idTarea ? 'Guardar los cambios' : 'Guardar'}
                           className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
-                        <button onClick={() => setFilasR(prev => prev.filter((_, idx) => idx !== i))} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition">×</button>
+                        <button onClick={() => setFilasR(prev => prev.filter((_, idx) => idx !== i))}
+                          title={f.idTarea ? 'Dejarla como estaba' : 'Quitar la fila'}
+                          className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition">×</button>
                       </div>
                     </td>
                   </tr>
@@ -932,8 +1028,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                   <td className="py-1 px-1">
                     <div className="flex gap-1">
-                      <button onClick={() => guardarFilaF(i)} disabled={loading || !f.ejercicioSelId} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
-                      <button onClick={() => setFilasF(prev => prev.filter((_, idx) => idx !== i))} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition">×</button>
+                      <button onClick={() => guardarFilaF(i)} disabled={loading || (!f.ejercicioSelId && !f.idTarea)}
+                        title={f.idTarea ? 'Guardar los cambios' : 'Guardar'}
+                        className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
+                      <button onClick={() => setFilasF(prev => prev.filter((_, idx) => idx !== i))}
+                        title={f.idTarea ? 'Dejarlo como estaba' : 'Quitar la fila'}
+                        className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition">×</button>
                     </div>
                   </td>
                 </tr>
@@ -982,91 +1082,6 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         </button>
       )}
 
-      {tareaEditando && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Editar tarea</h3>
-              <button onClick={() => setTareaEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button>
-            </div>
-            <form onSubmit={guardarEditarTarea} className="flex flex-col gap-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-gray-400 text-xs">Zona / intensidad</span>
-                <input type="text" placeholder="Zona (ej: Z2, AEM)" value={editZona} onChange={e => setEditZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              </label>
-              {/* Cambiar o quitar el ejercicio de técnica. Sin esto, equivocarse de
-                  drill obligaba a borrar la tarea entera y volver a escribirla. */}
-              {!esFuerza && (() => {
-                const drills = drillsDe(tareaEditando.disciplina)
-                // El drill que tiene puesto va en la lista SIEMPRE, aunque el filtro por
-                // disciplina no lo alcance (si a la tarea le cambiaron el deporte, por
-                // ejemplo). Si no, el desplegable saldría en blanco y al guardar se
-                // borraría el ejercicio sin que nadie lo hubiera pedido.
-                const puesto = editTecnicaId
-                  ? ejerciciosBiblioteca.find((e: any) => String(e.id) === String(editTecnicaId))
-                  : null
-                const lista = puesto && !drills.some((d: any) => String(d.id) === String(puesto.id))
-                  ? [puesto, ...drills] : drills
-                return (
-                  <label className="flex flex-col gap-1">
-                    <span className="text-gray-400 text-xs">Ejercicio de técnica</span>
-                    <select value={editTecnicaId}
-                      onChange={e => {
-                        setEditTecnicaId(e.target.value)
-                        // Al convertirla en técnica, si no tenía zona se le pone AER, que
-                        // es lo que hace que cuente como el volumen suave que es. Si ya
-                        // tenía una escrita, no se le toca: será por algo.
-                        if (e.target.value && !editZona) setEditZona(ZONA_DE_TECNICA)
-                      }}
-                      className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                      <option value="">Sin técnica — tarea de intensidad normal</option>
-                      {lista.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                    </select>
-                    {lista.length === 0 && (
-                      <span className="text-gray-500 text-xs">
-                        No hay ejercicios de técnica{tareaEditando.disciplina ? ' de ' + tareaEditando.disciplina : ''} en la biblioteca todavía.
-                      </span>
-                    )}
-                  </label>
-                )
-              })()}
-              {/* La medición (tiempo/distancia/reps) solo en resistencia: la fuerza se
-                  mide por ejercicios, no por estas tablas. */}
-              {!esFuerza && (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-gray-400 text-xs">Medición</span>
-                    <select value={editMedTipo} onChange={e => setEditMedTipo(e.target.value as UnidadMedicion)} className="bg-gray-800 text-white px-3 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                      <option value="">Sin medición</option>
-                      <optgroup label="Distancia"><option value="m">Metros</option><option value="km">Kilómetros</option></optgroup>
-                      <optgroup label="Tiempo"><option value="seg">Segundos</option><option value="min">Minutos</option><option value="mmss">mm:ss</option></optgroup>
-                      <option value="reps">Repeticiones</option>
-                    </select>
-                  </label>
-                  {editMedTipo && (
-                    <label className="flex flex-col gap-1">
-                      <span className="text-gray-400 text-xs">Valor {editMedTipo === 'mmss' ? '(mm:ss)' : ''}</span>
-                      <input type={editMedTipo === 'mmss' ? 'text' : 'number'} placeholder={editMedTipo === 'mmss' ? '2:30' : ''} value={editMedValor} onChange={e => setEditMedValor(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                    </label>
-                  )}
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-gray-400 text-xs">Series</span>
-                  <input type="number" placeholder="4" value={editSeries} onChange={e => setEditSeries(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-gray-400 text-xs">Descanso (seg)</span>
-                  <input type="number" placeholder="90" value={editDescanso} onChange={e => setEditDescanso(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                </label>
-              </div>
-              <textarea placeholder="Comentario" value={editComentario} onChange={e => setEditComentario(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
-              <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
