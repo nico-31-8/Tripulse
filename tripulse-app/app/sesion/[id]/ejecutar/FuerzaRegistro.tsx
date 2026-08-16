@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { controlDe, textoControl } from '@/lib/control-esfuerzo'
 
 function segAMmss(seg: number): string {
   const min = Math.floor(seg / 60)
@@ -46,13 +47,14 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
   //  · vel       → no se anota nada: la pérdida de velocidad la marca el encoder
   //                y lo que hace es CORTAR la serie, no puntuarla al final
   //  · pct1rm    → tampoco: el % es carga, y lo que levantó ya va en Kg
-  const CTRL: Record<string, { et: string; max: number; ayuda: string }> = {
-    rir: { et: 'RIR', max: 5, ayuda: 'Repeticiones que te quedaban en reserva' },
-    rpe: { et: 'RPE', max: 10, ayuda: 'Esfuerzo percibido de 1 a 10' },
-  }
+  // El catálogo es el compartido (lib/control-esfuerzo). Aquí había una copia
+  // que solo conocía dos de los cuatro tipos.
   const ctrlTipo: string = ejercicios[0]?.control_tipo || 'rir'
-  const ctrl = CTRL[ctrlTipo] || null
-  const seAnotaControl = !!ctrl
+  const control = controlDe(ctrlTipo)
+  const seAnotaControl = control.seAnota
+  const ctrl = seAnotaControl
+    ? { et: control.corto, max: control.max ?? 10, ayuda: control.ayuda }
+    : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,7 +83,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
         // hoy: si la última vez fue en RPE y hoy pides RIR, poner «RIR 8» sobre un
         // número que era un RPE sería mentir sobre el histórico.
         const ctrlPrev = seriesPrev[0]?.control_tipo || 'rir'
-        const etPrev = CTRL[ctrlPrev]?.et || (ctrlPrev === 'vel' ? '%vel' : '%1RM')
+        const etPrev = controlDe(ctrlPrev).corto
         const rirsPrev = seriesPrev.map((s: any) => s.control_real ?? s.rir_real).filter((v: any) => v != null)
         const rirPrev = rirsPrev.length
           ? (rirsPrev.every((r: any) => r === rirsPrev[0]) ? String(rirsPrev[0]) : `${Math.min(...rirsPrev)}-${Math.max(...rirsPrev)}`)
@@ -184,9 +186,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                           /* Con VBT o %1RM no hay nada que anotar al terminar la serie.
                              Se enseña lo prescrito para que sepa contra qué iba. */
                           <div className="text-center text-[11px] text-gray-500 leading-tight py-1">
-                            {ej.control_valor
-                              ? <>{ej.control_valor}{ctrlTipo === 'vel' ? '% vel' : '% 1RM'}</>
-                              : '—'}
+                            {textoControl(ej.control_tipo || ctrlTipo, ej.control_valor) || '—'}
                           </div>
                         )}
                       </div>
@@ -258,7 +258,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
               {!esDropSet && !tieneEj2 && (
                 <div className="grid grid-cols-4 gap-2 text-xs text-gray-600 text-center px-1">
                   <div></div><div>Kg</div><div>{porTiempo ? 'Seg' : 'Reps'}</div>
-                  <div>{ctrl ? ctrl.et : (ctrlTipo === 'vel' ? '%vel' : '%1RM')}</div>
+                  <div>{control.corto}</div>
                 </div>
               )}
             </div>

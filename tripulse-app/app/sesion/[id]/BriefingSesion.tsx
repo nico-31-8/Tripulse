@@ -15,6 +15,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
+import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
@@ -286,11 +287,17 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                           <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/15 px-1.5 py-0.5 rounded">{ej.tipo}</span>
                         )}
                       </span>
-                      {/* En fuerza el nombre manda y el «4 × 10 reps» pasa debajo. */}
+                      {/* En fuerza el nombre manda y el «4 × 10 reps» pasa debajo.
+                          Los kilos y el control van aquí porque sin ellos el atleta
+                          leía «4 × 8 reps» y nada más: no sabía con cuánto peso ni
+                          hasta dónde apretar, que es justo lo que se le prescribe. */}
                       <span className="text-[11.5px] text-gray-500">
-                        {ej ? objetivoTarea(t) : null}
-                        {ej && t.descanso_segundos ? ' · ' : null}
-                        {t.descanso_segundos ? t.descanso_segundos + ' s de descanso' : null}
+                        {[
+                          ej ? objetivoTarea(t) : null,
+                          t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : null,
+                          controlDeEjercicio(t.ejercicios?.[0]) || null,
+                          t.descanso_segundos ? t.descanso_segundos + ' s de descanso' : null,
+                        ].filter(Boolean).join(' · ')}
                       </span>
                       {t.comentario && <span className="text-[11.5px] text-gray-400 italic leading-snug">{t.comentario}</span>}
                     </div>

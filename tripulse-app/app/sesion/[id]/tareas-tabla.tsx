@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
+import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
 import { filtrarDrills } from '@/lib/tecnica'
 
 // Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
@@ -49,18 +50,11 @@ function duracionTexto(seg: number): string {
 // subjetivo a más objetivo. El cuarto es otra cosa: cuánto pesa la barra
 // respecto a su máximo. Se ofrecen juntos porque es donde el entrenador espera
 // encontrarlos, pero no significan lo mismo.
-export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'pct1rm'
-
-export const CONTROLES: { id: ControlTipo; corto: string; ph: string; ayuda: string }[] = [
-  { id: 'rir',    corto: 'RIR', ph: '0-2',  ayuda: 'Repeticiones en reserva: cuántas podría hacer aún' },
-  { id: 'rpe',    corto: 'RPE', ph: '7-8',  ayuda: 'Esfuerzo percibido de 1 a 10' },
-  { id: 'vel',    corto: '%vel', ph: '20',  ayuda: 'Pérdida de velocidad (VBT): corta la serie al perder ese % — necesita encoder' },
-  { id: 'pct1rm', corto: '%1RM', ph: '75',  ayuda: 'Porcentaje de su 1RM en ese ejercicio' },
-]
-
-export const controlDe = (t: ControlTipo) => CONTROLES.find(c => c.id === t) || CONTROLES[0]
-const siguienteControl = (t: ControlTipo): ControlTipo =>
-  CONTROLES[(CONTROLES.findIndex(c => c.id === t) + 1) % CONTROLES.length].id
+// El catálogo vive en lib/control-esfuerzo.ts: lo comparten esta tabla, el
+// briefing del atleta, la pantalla de ejecución y la de datos reales. Se
+// re-exporta para no tocar a quien ya lo importaba de aquí.
+export { CONTROLES, controlDe }
+export type { ControlTipo }
 
 function mostrarValorGuardado(t: any): string {
   if (t.p_duracion?.[0]?.tiempo_planeado) return segAMmss(t.p_duracion[0].tiempo_planeado) + ' min'
@@ -611,7 +605,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <th className="text-left py-2 px-2">Series</th>
                     <th className="text-left py-2 px-2">Reps</th>
                     <th className="text-left py-2 px-2">Kg</th>
-                    <th className="text-left py-2 px-2">RIR</th>
+                    {/* «Control», no «RIR»: el RIR es uno de los cuatro. Con la
+                        cabecera fija, prescribir por RPE o por %1RM enseñaba el
+                        número bajo la etiqueta equivocada — cuando lo enseñaba. */}
+                    <th className="text-left py-2 px-2">Control</th>
                     <th className="text-left py-2 px-2">Descanso</th>
                     <th className="text-left py-2 px-2">Notas</th>
                     {!esDeportista && <th className="py-2 px-2 w-16"></th>}
@@ -673,9 +670,21 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
                         <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.repeticiones ? t.ejercicios[0].repeticiones + ' reps' : mostrarValorGuardado(t)}</td>
                         <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
-                        <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.notas_ejecucion?.includes('RIR') ? t.ejercicios[0].notas_ejecucion.match(/RIR: (\d)/)?.[1] || '—' : '—'}</td>
+                        {/* El valor se guarda en `control_valor` + `control_tipo`.
+                            Aquí se leía con una expresión regular sobre el texto de
+                            las notas —«RIR: 2»—, que es donde vivía ANTES de que
+                            existieran esas columnas. O sea que desde entonces la
+                            columna salía vacía siempre, y con RPE o %1RM no había
+                            forma de que saliera nada. `controlDeEjercicio` lee la
+                            columna y, si está vacía, rescata el texto viejo. */}
+                        <td className="py-2 px-2 text-gray-300">{controlDeEjercicio(t.ejercicios?.[0]) || '—'}</td>
                         <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
-                        <td className="py-2 px-2 text-gray-500 text-xs">{t.notas_post || ''}</td>
+                        {/* El comentario del ENTRENADOR, que es lo que se prescribe.
+                            Aquí se pintaba `notas_post`, que es lo que escribe el
+                            ATLETA al terminar: la nota del entrenador se guardaba y
+                            no se veía en ningún sitio de esta tabla. Lo del atleta
+                            tiene su sitio en Datos reales y en Comunicación. */}
+                        <td className="py-2 px-2 text-gray-400 text-xs">{t.comentario || '—'}</td>
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">

@@ -1,12 +1,13 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { controlDe } from '@/lib/control-esfuerzo'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
 // Con qué se controló la serie. Las series antiguas no lo traen: eran RIR, que
 // era lo único que había.
-const ETIQUETA_CTRL: Record<string, string> = { rir: 'RIR', rpe: 'RPE', vel: '%vel', pct1rm: '%1RM' }
+// Las etiquetas vienen del catálogo compartido: aquí había una tercera copia.
 
 function segAMmss(seg: number): string {
   if (!seg) return '—'
@@ -223,7 +224,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                                 {/* La cabecera sale de lo que se anotó, no de un rótulo
                                     fijo: un RPE bajo el título «RIR» es un dato mal leído. */}
                                 <th className="text-center py-1 px-2">{srEj.some((sr: any) => sr.tiempo_real != null) ? 'Seg' : 'Reps'}</th>
-                                <th className="text-center py-1 px-2">{ETIQUETA_CTRL[srEj.find((sr: any) => sr.control_tipo)?.control_tipo || 'rir']}</th>
+                                <th className="text-center py-1 px-2">{controlDe(srEj.find((sr: any) => sr.control_tipo)?.control_tipo).corto}</th>
                                 <th className="text-center py-1 px-2">Estado</th>
                               </tr>
                             </thead>
