@@ -84,6 +84,33 @@ export type NivelTSB = 'sobrecarga' | 'productiva' | 'transicion' | 'optima' | '
 
 export const UMBRALES_TSB = { sobrecarga: -30, productiva: -10, transicion: 5, optima: 25 }
 
+// ------------------------------------------------------------
+// ACWR — carga aguda entre crónica
+// ------------------------------------------------------------
+// Estaba SOLO como texto dentro del prompt del asistente («< 0,8 Subcarga ·
+// 0,8-1,3 Zona óptima…»). En cuanto otro módulo necesita decidir con esos
+// números —y la capa que encadena mesociclos los necesita— o los copia o los
+// comparte. Aquí se comparten, y la línea del prompt se genera igual que la de
+// TSB en vez de escribirse a mano.
+export type NivelACWR = 'subcarga' | 'optima' | 'precaucion' | 'peligro'
+
+export const UMBRALES_ACWR = { subcarga: 0.8, optima: 1.3, precaucion: 1.5 }
+
+export function estadoACWR(acwr: number): { nivel: NivelACWR; label: string } {
+  if (acwr < UMBRALES_ACWR.subcarga) return { nivel: 'subcarga', label: 'Subcarga' }
+  if (acwr <= UMBRALES_ACWR.optima) return { nivel: 'optima', label: 'Zona óptima' }
+  if (acwr <= UMBRALES_ACWR.precaucion) return { nivel: 'precaucion', label: 'Precaución' }
+  return { nivel: 'peligro', label: 'Peligro' }
+}
+
+/** La escala en texto, para el prompt del asistente. Se genera, no se escribe. */
+export function escalaACWRTexto(): string {
+  const u = UMBRALES_ACWR
+  const c = (n: number) => String(n).replace('.', ',')
+  return `< ${c(u.subcarga)} Subcarga · ${c(u.subcarga)}–${c(u.optima)} Zona óptima`
+    + ` · ${c(u.optima)}–${c(u.precaucion)} Precaución · > ${c(u.precaucion)} Peligro`
+}
+
 export function estadoTSB(tsb: number): { nivel: NivelTSB; label: string; color: string; texto: string } {
   if (tsb < UMBRALES_TSB.sobrecarga) return { nivel: 'sobrecarga', label: 'Sobrecarga', color: '#ef4444', texto: 'text-red-400' }
   if (tsb < UMBRALES_TSB.productiva) return { nivel: 'productiva', label: 'Carga productiva', color: '#f97316', texto: 'text-orange-400' }
