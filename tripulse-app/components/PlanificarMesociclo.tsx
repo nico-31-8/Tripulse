@@ -11,6 +11,7 @@
 // nuevo abriría la puerta a dos periodizaciones distintas para el mismo atleta.
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import PlanCadena from '@/components/PlanCadena'
 import {
   semanasDelMesociclo, claseDeMeso, semanasHasta, pisaElTapering,
   type SemanaDelMeso,
@@ -46,6 +47,7 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
   const [mesos, setMesos] = useState<MesoFila[]>([])
   const [competis, setCompetis] = useState<{ nombre: string; fecha: string }[]>([])
   const [selId, setSelId] = useState<number | null>(null)
+  const [vista, setVista] = useState<'bloque' | 'plan'>('bloque')
   const [cargando, setCargando] = useState(true)
 
   const [generadas, setGeneradas] = useState<SemanaRellena[] | null>(null)
@@ -149,6 +151,19 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
     </div>
   )
 
+  if (vista === 'plan') return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <button onClick={() => setVista('bloque')} className="text-[13px] text-orange-400 hover:text-orange-300">← Un bloque</button>
+        <span className="text-[12.5px] text-gray-500">
+          Los {mesos.length} mesociclos de {dep.nombre}, encadenados.
+        </span>
+      </div>
+      <PlanCadena dep={dep} mesos={mesos} horasReferencia={horasReferencia}
+        distancia={base.distancia} competicion={competis[0]?.fecha ?? null} />
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -167,6 +182,12 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
           className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
           Ver las {semanas.length} semanas →
         </button>
+        {mesos.length > 1 && (
+          <button onClick={() => setVista('plan')}
+            className="text-[13px] text-orange-400 hover:text-orange-300 transition">
+            Ver todo el plan encadenado →
+          </button>
+        )}
         <button onClick={onCerrar} className="text-gray-400 hover:text-white text-sm transition">← Una semana suelta</button>
       </div>
 
