@@ -11,6 +11,7 @@ import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
 import { diasEntre, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
+import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -96,6 +97,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   // Duración estimada de cada sesión, por id. Es lo que convierte «no tiene
   // duración escrita» en volumen de verdad para la capa de programado.
   const [duraciones, setDuraciones] = useState<Record<number, ResultadoDuracion>>({})
+  const [reconstruyendo, setReconstruyendo] = useState(false)
   const [pantalla, setPantalla] = useState<'cargando'|'elegir'|'setup'|'canvas'>('cargando')
   const [macrosExistentes, setMacrosExistentes] = useState<any[]>([])
   const [modoEdicion, setModoEdicion] = useState(false)
@@ -374,6 +376,49 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     if (!data) return null
     if (data.sesiones_zonas) setSesZonas(data.sesiones_zonas)
     return data
+  }
+
+  /**
+   * Rehacer los chips de lo ya programado leyendo el calendario.
+   *
+   * Existe porque el autoguardado llegó a escribir `sesiones_zonas: []` encima
+   * de los buenos, y `dibujo_borrador` se actualiza en su sitio: no hay
+   * histórico. Un chip es semana + disciplina + zona, y una sesión programada
+   * tiene las tres, así que se reconstruyen enteros.
+   *
+   * Los chips que aún NO se han bajado al calendario se conservan: son los
+   * únicos que no están en ninguna otra tabla.
+   */
+  const reconstruirChips = async () => {
+    if (!fechaInicio) { alert('El lienzo no tiene fecha de inicio.'); return }
+    setReconstruyendo(true)
+    try {
+      const ses = sesionesProg
+      if (!ses.length) { alert('No hay sesiones en el calendario de este atleta.'); return }
+
+      const { data: tareas } = await supabase.from('tarea')
+        .select('id_sesion, zona_entrenamiento').in('id_sesion', ses.map((s: any) => s.id))
+
+      const nuevos = chipsDeSesiones(ses.map((s: any) => ({
+        id: s.id,
+        fecha_sesion: String(s.fecha_sesion).slice(0, 10),
+        disciplina: s.disciplina,
+        zonas: (tareas || []).filter((t: any) => t.id_sesion === s.id).map((t: any) => t.zona_entrenamiento),
+      })), fechaInicio, totalSem)
+
+      const fusion = fusionarChips(sesZonas, nuevos)
+      setSesZonas(fusion)
+      // Se guarda ya, sin esperar al autoguardado: lo que se acaba de recuperar
+      // no puede depender de que no se cierre la pestaña en los próximos 1,5 s.
+      await guardarBorrador(macros, mesos, sems, fechaInicio, totalSem, fusion)
+
+      const sinZona = ses.length - nuevos.length
+      alert('Recuperados ' + nuevos.length + ' chips de sesiones ya programadas.' +
+        (sinZona > 0 ? '\n\n' + sinZona + ' sesiones no han dado chip: o no tienen zona en sus tareas, o caen fuera de las semanas del lienzo.' : ''))
+    } catch (e: any) {
+      alert('No se han podido rehacer: ' + e.message)
+    }
+    setReconstruyendo(false)
   }
 
   const iniciarNuevo = () => {
@@ -1571,7 +1616,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         </button>
                       )
                     })}
-                    <span className="text-gray-700 text-xs ml-auto">{sesZonas.length} sesiones total</span>
+                    <button onClick={reconstruirChips} disabled={reconstruyendo}
+                      title="Vuelve a crear los chips de lo que ya está en el calendario. Los que aún no has bajado se quedan como están."
+                      className="ml-auto text-xs px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-white hover:border-orange-500 transition disabled:opacity-50">
+                      {reconstruyendo ? 'Rehaciendo…' : '⟳ Rehacer desde el calendario'}
+                    </button>
+                    <span className="text-gray-700 text-xs">{sesZonas.length} sesiones total</span>
                   </div>
                 </div>
                 {/* POPUP AÑADIR ZONA */}
