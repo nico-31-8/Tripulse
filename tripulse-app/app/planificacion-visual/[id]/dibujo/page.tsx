@@ -171,13 +171,34 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   // Copia viva de todo lo autoguardable, para poder volcar el borrador al salir.
   const flushDataRef = useRef<{ macros: MacroD[]; mesos: MesoD[]; sems: SemanaD[]; fechaInicio: string; totalSem: number; sesZonas: any[] }>({ macros: [], mesos: [], sems: [], fechaInicio: '', totalSem: 24, sesZonas: [] })
 
+  /**
+   * NADA se autoguarda hasta que el borrador se ha terminado de leer.
+   *
+   * ESTO COSTÓ LOS CHIPS DE UN ATLETA. El cargador hace `setMacros`, `setMesos`
+   * y `setSems`, y cada uno dispara su efecto de autoguardado. Los chips de
+   * zonas se leen del borrador AL FINAL de ese mismo cargador, así que durante
+   * un rato el estado tiene macros y semanas pero `sesZonas` vacío — y si algo
+   * corta el cargador antes de llegar al final, ese vacío es lo que se guarda:
+   * el autoguardado escribe `sesiones_zonas: []` encima de los buenos y no hay
+   * forma de recuperarlos.
+   *
+   * O sea que la ventana no la abrió el fallo de aquel día: ya estaba abierta,
+   * y cualquier error en mitad del cargador la habría disparado igual.
+   *
+   * El guardián es la bandera, no comprobar si `sesZonas` viene vacío: vaciarlos
+   * a propósito es legítimo, y confundir «no cargado» con «vacío» es justo la
+   * confusión que hay que quitar de en medio.
+   */
+  const borradorCargadoRef = useRef(false)
+  const puedeGuardar = () => borradorCargadoRef.current && macros.length > 0 && !!fechaInicio
+
   useEffect(() => {
     macrosRef.current = macros
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
+    if (puedeGuardar()) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [macros])
   useEffect(() => {
     mesosRef.current = mesos
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
+    if (puedeGuardar()) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [mesos])
 
   /**
@@ -236,11 +257,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }, [id])
 
   useEffect(() => {
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
+    if (puedeGuardar()) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [sems])
   useEffect(() => {
     sesZonasRef.current = sesZonas
-    if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
+    if (puedeGuardar()) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [sesZonas])
 
   // Mantener flushDataRef al día en cada render.
@@ -336,6 +357,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         if (bz.semanas?.length) setSems(bz.semanas)
         if (bz.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
       }
+      // A partir de aquí lo que hay en pantalla ES el borrador, así que ya se
+      // puede escribir encima.
+      //
+      // Y SOLO aquí: si el cargador se cae antes, la bandera se queda en false y
+      // no se autoguarda nada. Es lo correcto — no guardar es un incordio, pero
+      // guardar un estado a medias borra lo que había y eso no se deshace.
+      borradorCargadoRef.current = true
       setPantalla('canvas')
     } catch (e: any) { alert('Error al cargar: ' + e.message) }
     setCargandoDatos(false)
@@ -353,6 +381,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setSems(Array.from({ length: totalSem }, (_, i) => ({ i, ua: null, tipo: 'Carga', comp: '' })))
     setMacros([]); setMesos([])
     setModoEdicion(false)
+    // Empezar de cero también es un estado deliberado del entrenador, así que
+    // desde aquí sí se autoguarda: lo que hay en pantalla es lo que quiere.
+    borradorCargadoRef.current = true
     setPantalla('canvas')
   }
 
