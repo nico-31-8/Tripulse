@@ -180,6 +180,27 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     if (macros.length > 0 && fechaInicio) dispararGuardado(macros, mesos, sems, fechaInicio, totalSem, sesZonas)
   }, [mesos])
 
+  /**
+   * Las duraciones estimadas, APARTE del cargador.
+   *
+   * Estaban dentro de `cargarExistente`, con su `await` en mitad de la función.
+   * Los chips de zonas se leen del borrador AL FINAL de esa misma función, así
+   * que cualquier fallo aquí —cuatro consultas más— se llevaba por delante todo
+   * lo que venía después: la fila de ZONAS se quedaba vacía y no había ni un
+   * error en pantalla que lo explicara.
+   *
+   * Esto es un extra para que la capa «Programado» tenga volumen. Si falla, se
+   * queda corta; no puede tumbar el dibujo.
+   */
+  useEffect(() => {
+    if (!sesionesProg.length) { setDuraciones({}); return }
+    let vivo = true
+    estimarDuraciones(supabase, sesionesProg.map((s: any) => s.id), testsRef.current)
+      .then(d => { if (vivo) setDuraciones(d) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [sesionesProg])
+
   // Carga inicial — detecta si hay ciclos existentes
   useEffect(() => {
     const init = async () => {
@@ -292,14 +313,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         // Excluir borradas (antes contaban en Programado/Realizado) e incluir las libres.
         const { data: sesData } = await supabase.from('sesion').select(selProg).in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
         const { data: sesLibres } = await supabase.from('sesion').select(selProg).eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
-        const todas = [...(sesData || []), ...(sesLibres || [])]
-        setSesionesProg(todas)
-        // Las duraciones estimadas, que son las que dan volumen a casi todas las
-        // sesiones: sin esto, la capa «Programado» sale a 0 salvo en las pocas
-        // que llevan duración escrita a mano.
-        if (todas.length) {
-          setDuraciones(await estimarDuraciones(supabase, todas.map(s => s.id), testsRef.current))
-        }
+        setSesionesProg([...(sesData || []), ...(sesLibres || [])])
       }
         if (microsData?.length) {
           const semsD = Array.from({ length: Math.max(totalW, 12) }, (_, i) => {
