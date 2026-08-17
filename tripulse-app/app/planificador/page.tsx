@@ -27,6 +27,7 @@ import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, t
 import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
 import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
 import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
+import PlanificarMesociclo from '@/components/PlanificarMesociclo'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 
@@ -81,6 +82,8 @@ export default function Planificador() {
   const [horas, setHoras] = useState(10)
   const [dias, setDias] = useState(6)
 
+  // Qué se planifica: una semana suelta o el bloque entero.
+  const [alcance, setAlcance] = useState<'semana' | 'meso'>('semana')
   const [paso, setPaso] = useState<1 | 2>(1)
   const [semana, setSemana] = useState<SemanaRellena | null>(null)
   // De dónde salió la semana que hay en pantalla. Cambia lo que se ofrece
@@ -274,7 +277,30 @@ export default function Planificador() {
         )}
 
         {dep && forma && (<>
+          {/* ---- Qué se planifica: una semana o el bloque entero ---- */}
+          <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 mb-4 w-fit">
+            {([['semana', 'Una semana'], ['meso', 'Un mesociclo']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setAlcance(k)}
+                className={'px-4 py-2 text-[13.5px] font-medium rounded-lg transition ' +
+                  (alcance === k ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>{l}</button>
+            ))}
+          </div>
+
+          {/* El bloque entero: la progresión y la descarga las pone la periodización
+              que el entrenador ya dibujó, no un desplegable de fase. */}
+          {alcance === 'meso' && (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+              <PlanificarMesociclo
+                dep={dep}
+                base={{ diasSemana: dias, distancia, nivel, disciplinaDebil: anamnesis?.disciplina_debil || null }}
+                horasReferencia={horas}
+                disponibilidad={disponibilidad}
+                onCerrar={() => setAlcance('semana')} />
+            </div>
+          )}
+
           {/* ---- Los mandos ---- */}
+          {alcance === 'semana' && (<>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
             <div className="flex flex-wrap gap-4 items-end">
               <Campo label="Prueba objetivo">
@@ -549,6 +575,7 @@ export default function Planificador() {
               </>)}
             </Seccion>
           )}
+          </>)}
         </>)}
       </div>
     </main>
