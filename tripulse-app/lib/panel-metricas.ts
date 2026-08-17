@@ -96,6 +96,28 @@ export type NivelACWR = 'subcarga' | 'optima' | 'precaucion' | 'peligro'
 
 export const UMBRALES_ACWR = { subcarga: 0.8, optima: 1.3, precaucion: 1.5 }
 
+/**
+ * ACWR sobre una serie diaria de carga: la última semana entre la media semanal
+ * de las cuatro anteriores.
+ *
+ * Vivía dentro de `app/carga/page.tsx`, así que era la única pantalla que sabía
+ * calcularlo. La capa que encadena mesociclos también necesita el número para
+ * decidir si la semana que viene sube o no, y copiarlo habría sido la quinta
+ * copia de este concepto en el proyecto.
+ *
+ * `null` cuando no hay historia suficiente: con menos de cinco semanas el
+ * denominador no significa nada, y devolver un 1,0 tranquilizador sería peor que
+ * decir que no se sabe.
+ */
+export function calcularACWR(diario: { carga: number }[]): number | null {
+  if (diario.length < 8) return null
+  const aguda = diario.slice(-7).reduce((s, d) => s + d.carga, 0)
+  const cronicas = diario.slice(-35, -7)
+  if (!cronicas.length) return null
+  const media = cronicas.reduce((s, d) => s + d.carga, 0) / 4
+  return media > 0 ? Math.round((aguda / media) * 100) / 100 : null
+}
+
 export function estadoACWR(acwr: number): { nivel: NivelACWR; label: string } {
   if (acwr < UMBRALES_ACWR.subcarga) return { nivel: 'subcarga', label: 'Subcarga' }
   if (acwr <= UMBRALES_ACWR.optima) return { nivel: 'optima', label: 'Zona óptima' }

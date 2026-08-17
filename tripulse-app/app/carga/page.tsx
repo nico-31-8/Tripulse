@@ -10,7 +10,7 @@ import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
 import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
-import { estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
+import { estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
@@ -42,14 +42,9 @@ function calcularCargas(sesiones: any[], factorFn: (s: any) => number = () => 1)
   return resultado
 }
 
-function calcularACWR(datos: any[]) {
-  if (datos.length < 8) return null
-  const semanaActual = datos.slice(-7).reduce((s, d) => s + d.carga, 0)
-  const cuatroSemanas = datos.slice(-35, -7)
-  if (!cuatroSemanas.length) return null
-  const mediaCronica = cuatroSemanas.reduce((s, d) => s + d.carga, 0) / 4
-  return mediaCronica > 0 ? Math.round((semanaActual / mediaCronica) * 100) / 100 : null
-}
+// calcularACWR y los umbrales viven en lib/panel-metricas: esta pantalla era la
+// única que sabía calcularlo, y la capa que encadena mesociclos también lo
+// necesita para decidir si la semana que viene sube.
 
 // Umbrales y etiquetas de lib/panel-metricas: había cuatro copias de esto. El
 // fondo se queda aquí porque esta pantalla lo usa más saturado que las otras.
@@ -90,11 +85,15 @@ function estadoMonotonia(m: number) {
   return { label: 'Alta monotonía', color: 'text-red-400' }
 }
 
+// El color se queda aquí —es de esta pantalla— pero el umbral y la etiqueta
+// salen del catálogo compartido.
+const COLOR_ACWR: Record<NivelACWR, string> = {
+  subcarga: 'text-blue-400', optima: 'text-green-400',
+  precaucion: 'text-yellow-400', peligro: 'text-red-400',
+}
 function estadoACWR(acwr: number) {
-  if (acwr < 0.8)  return { label: 'Subcarga', color: 'text-blue-400' }
-  if (acwr <= 1.3) return { label: 'Zona óptima', color: 'text-green-400' }
-  if (acwr <= 1.5) return { label: 'Precaución', color: 'text-yellow-400' }
-  return { label: 'Peligro', color: 'text-red-400' }
+  const e = estadoACWRBase(acwr)
+  return { label: e.label, color: COLOR_ACWR[e.nivel] }
 }
 
 export default function CargaPage() {
