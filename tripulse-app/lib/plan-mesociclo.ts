@@ -166,6 +166,29 @@ const etiquetaDe = (carga: number, esDescarga: boolean): string => {
   return 'Volumen reducido'
 }
 
+/**
+ * La carga relativa que se deduce de la UA que el entrenador DIBUJÓ.
+ *
+ * Es la pieza que evita tener dos verdades sobre el mismo bloque. El patrón de
+ * B1-03 dice «la tercera semana al 107 %»; el lienzo dice «la tercera semana,
+ * 350 UA». Si las dos hablan, manda el entrenador: él ya decidió, y un patrón
+ * de libro no puede corregir a quien conoce al atleta.
+ *
+ * Se normaliza por el MÁXIMO del bloque, no por la media: la semana más dura de
+ * un mesociclo es su 100 % por definición, y así la descarga sale en su
+ * proporción real respecto al pico.
+ *
+ * `null` si no hay al menos dos semanas con UA: con una sola no hay forma, y
+ * normalizar un número por sí mismo daría un bloque plano al 100 %.
+ */
+export function cargasDeUA(uas: (number | null | undefined)[]): number[] | null {
+  const validas = uas.filter((u): u is number => typeof u === 'number' && u > 0)
+  if (validas.length < 2) return null
+  const pico = Math.max(...validas)
+  if (!pico) return null
+  return uas.map(u => (typeof u === 'number' && u > 0) ? Math.round((u / pico) * 1000) / 1000 : 0)
+}
+
 export interface EntradaMesociclo {
   /** Tipo del mesociclo tal y como está en la base (`mesociclo.tipo`). */
   tipo: string | null | undefined
@@ -175,17 +198,32 @@ export interface EntradaMesociclo {
   distancia: DistanciaTri
   /** Lunes de la primera semana, si se conoce. */
   lunes?: string
+  /**
+   * La UA que el entrenador dibujó en el lienzo, semana a semana. Si viene y
+   * tiene al menos dos valores, MANDA sobre el patrón de B1-03.
+   */
+  uaPorSemana?: (number | null | undefined)[]
 }
 
 /** Las semanas de un mesociclo, con su carga y su etiqueta. */
 export function semanasDelMesociclo(e: EntradaMesociclo): SemanaDelMeso[] {
   const clase = claseDeMeso(e.tipo)
-  const cargas = cargasDe(clase, e.semanas, e.distancia)
+  const dibujadas = e.uaPorSemana ? cargasDeUA(e.uaPorSemana) : null
+  // Las dibujadas se recortan o rellenan a la duración del bloque: la fuente de
+  // la forma es el lienzo, pero la duración la manda el mesociclo.
+  const cargas = dibujadas
+    ? Array.from({ length: e.semanas }, (_, i) => dibujadas[i] ?? 0).map(c => c || 0.55)
+    : cargasDe(clase, e.semanas, e.distancia)
   const p = PATRONES[clase]
   const ultima = cargas.length - 1
 
   return cargas.map((c, i) => {
-    const esDescarga = p.conDescarga && i === ultima && cargas.length > 1
+    // Con la forma dibujada, «descarga» es la semana que de verdad baja, no la
+    // que el patrón decía: si el entrenador puso el valle en la segunda, es la
+    // segunda.
+    const esDescarga = dibujadas
+      ? c < Math.max(...cargas) * 0.75
+      : p.conDescarga && i === ultima && cargas.length > 1
     return {
       n: i + 1,
       lunes: e.lunes ? sumarDias(e.lunes, i * 7) : undefined,

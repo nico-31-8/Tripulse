@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   claseDeMeso, cargasDe, semanasDelMesociclo, entradaDeSemana,
-  semanasHasta, pisaElTapering, DIAS_TAPER,
+  semanasHasta, pisaElTapering, DIAS_TAPER, cargasDeUA,
 } from './plan-mesociclo'
 
 describe('a qué familia pertenece cada mesociclo', () => {
@@ -147,5 +147,46 @@ describe('cuántas semanas quedan', () => {
 
   it('el sprint afina menos días que el Ironman', () => {
     expect(DIAS_TAPER.sprint).toBeLessThan(DIAS_TAPER.largo)
+  })
+})
+
+describe('cuando el entrenador ya dibujó la UA, manda él', () => {
+  /* La pieza que evita dos verdades sobre el mismo bloque: el patrón dice «la
+     tercera al 107 %», el lienzo dice «la tercera, 350 UA». Manda el lienzo. */
+  it('la forma sale de la UA dibujada, normalizada por el pico', () => {
+    expect(cargasDeUA([275, 350, 300, 200])).toEqual([0.786, 1, 0.857, 0.571])
+  })
+
+  it('con menos de dos semanas con UA no hay forma que deducir', () => {
+    // Normalizar un número por sí mismo daría un bloque plano al 100 %.
+    expect(cargasDeUA([350])).toBeNull()
+    expect(cargasDeUA([null, 350, null])).toBeNull()
+    expect(cargasDeUA([])).toBeNull()
+  })
+
+  it('el mesociclo usa la UA por encima del patrón', () => {
+    const conUA = semanasDelMesociclo({
+      tipo: 'Acumulación', semanas: 4, horasReferencia: 10, distancia: 'medio',
+      lunes: '2026-08-17', uaPorSemana: [275, 350, 300, 200],
+    })
+    // 10 h × la forma dibujada, no × [0.90, 1.00, 1.075, 0.575]
+    expect(conUA.map(s => s.horasSemana)).toEqual([8, 10, 8.5, 5.5])
+  })
+
+  it('sin UA sigue el patrón de B1-03', () => {
+    const sinUA = semanasDelMesociclo({
+      tipo: 'Acumulación', semanas: 4, horasReferencia: 10, distancia: 'medio', lunes: '2026-08-17',
+    })
+    expect(sinUA.map(s => s.horasSemana)).toEqual([9, 10, 11, 6])
+  })
+
+  /* Con la forma dibujada, la descarga es la semana que DE VERDAD baja: si el
+     entrenador puso el valle en la segunda, es la segunda. */
+  it('la descarga es donde el entrenador la puso, no donde decía el patrón', () => {
+    const s = semanasDelMesociclo({
+      tipo: 'Acumulación', semanas: 4, horasReferencia: 10, distancia: 'medio',
+      uaPorSemana: [350, 180, 340, 330],
+    })
+    expect(s.map(x => x.esDescarga)).toEqual([false, true, false, false])
   })
 })
