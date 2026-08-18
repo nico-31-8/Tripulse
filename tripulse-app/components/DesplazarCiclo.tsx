@@ -11,7 +11,7 @@
 // Enseña la previsualización ANTES de aplicar porque es una operación grande y
 // silenciosa: al terminar, el calendario simplemente tiene otro aspecto y no hay
 // forma de saber qué se movió.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   previsualizar, aplicarDesplazamiento, sumarDias, ETIQUETA_NIVEL,
@@ -61,7 +61,24 @@ export default function DesplazarCiclo({
 
   const primerNivel = NIVELES.find(n => candidatos[n]) || 'macrociclo'
   const [nivel, setNivel] = useState<NivelCiclo>(primerNivel)
-  const ciclo = candidatos[nivel]
+
+  /**
+   * Cuál se mueve, por nivel. Arranca en el que contiene el día desde el que se
+   * abrió el modal, pero se puede cambiar: atarlo a ese día obligaba a navegar
+   * el calendario hasta dentro del bloque que querías mover, que es al revés de
+   * como se cuadra una temporada.
+   */
+  const [elegidos, setElegidos] = useState<Record<NivelCiclo, number | null>>({
+    macrociclo: candidatos.macrociclo?.id ?? null,
+    mesociclo: candidatos.mesociclo?.id ?? null,
+    microciclo: candidatos.microciclo?.id ?? null,
+  })
+
+  const listaDe = (n: NivelCiclo) =>
+    [...(n === 'macrociclo' ? macros : n === 'mesociclo' ? mesos : micros)]
+      .sort((x, y) => String(x.fecha_inicio).localeCompare(String(y.fecha_inicio)))
+
+  const ciclo = listaDe(nivel).find(c => c.id === elegidos[nivel]) || candidatos[nivel]
 
   const inicioActual = ciclo?.fecha_inicio ? String(ciclo.fecha_inicio).slice(0, 10) : ''
   const [nuevaFecha, setNuevaFecha] = useState(inicioActual)
@@ -71,7 +88,15 @@ export default function DesplazarCiclo({
   // Cambiar de nivel cambia el ciclo, y con él la fecha de partida.
   const cambiarNivel = (n: NivelCiclo) => {
     setNivel(n)
-    const c = candidatos[n]
+    const c = listaDe(n).find(x => x.id === elegidos[n]) || candidatos[n]
+    setNuevaFecha(c?.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '')
+    setError('')
+  }
+
+  /** Cambiar cuál se mueve dentro del nivel actual. */
+  const cambiarCiclo = (id: number) => {
+    setElegidos(prev => ({ ...prev, [nivel]: id }))
+    const c = listaDe(nivel).find(x => x.id === id)
     setNuevaFecha(c?.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '')
     setError('')
   }
@@ -82,9 +107,24 @@ export default function DesplazarCiclo({
   }) : null, [nivel, ciclo, nuevaFecha, inicioActual, macros, mesos, micros, sesiones, competiciones, hoy])
 
   // --- Duración: solo tiene sentido sobre un mesociclo ---
-  const meso = candidatos.mesociclo
+  /**
+   * Los mesociclos del plan, en orden. TODOS, no solo el del día desde el que
+   * se abrió el modal: atar la pestaña de duración a ese dejaba fuera los
+   * demás, que es justo lo que hace falta cuando estás cuadrando la temporada
+   * y quieres quitarle una semana a un bloque de dentro de dos meses.
+   */
+  const mesosOrdenados = useMemo(
+    () => [...mesos].sort((a2, b2) => String(a2.fecha_inicio).localeCompare(String(b2.fecha_inicio))),
+    [mesos])
+
   const [tab, setTab] = useState<'mover' | 'duracion'>('mover')
+  // Arranca en el del día si lo hay; si no, en el primero del plan.
+  const [mesoDurId, setMesoDurId] = useState<number | null>(
+    candidatos.mesociclo?.id ?? mesosOrdenados[0]?.id ?? null)
+  const meso = mesosOrdenados.find(m => m.id === mesoDurId) || null
   const [semanas, setSemanas] = useState(meso?.duracion_semanas || 4)
+  // Al cambiar de mesociclo, las semanas parten de las suyas.
+  useEffect(() => { if (meso) setSemanas(meso.duracion_semanas || 4) }, [mesoDurId])
   const [arrastrar, setArrastrar] = useState(true)
   // Por defecto se sueltan del plan y NO se tiran: la papelera se elige, no
   // se hereda de un valor por defecto.
@@ -132,7 +172,7 @@ export default function DesplazarCiclo({
 
         <div className="flex gap-1 px-5 pt-3 border-b border-gray-800">
           {([['mover', 'Mover de fecha'], ['duracion', 'Cambiar la duración']] as const).map(([k, l]) => (
-            <button key={k} onClick={() => { setTab(k); setError('') }} disabled={k === 'duracion' && !meso}
+            <button key={k} onClick={() => { setTab(k); setError('') }} disabled={k === 'duracion' && !mesosOrdenados.length}
               className={'px-3 py-2 text-sm font-medium transition border-b-2 -mb-px disabled:opacity-35 ' +
                 (tab === k ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>{l}</button>
           ))}
@@ -140,11 +180,21 @@ export default function DesplazarCiclo({
 
         {tab === 'duracion' ? (
           <div className="overflow-y-auto p-5 flex flex-col gap-4">
-            <div className="rounded-xl bg-gray-950 border border-gray-800 px-3.5 py-2.5">
-              <p className="text-[13.5px] font-semibold text-gray-100">{meso?.objetivo || 'Mesociclo'}</p>
-              <p className="text-[11.5px] text-gray-500">
-                Empieza el {String(meso?.fecha_inicio).slice(0, 10)} · dura ahora {d?.antes} {d?.antes === 1 ? 'semana' : 'semanas'}
-              </p>
+            <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Qué mesociclo</label>
+              <select value={mesoDurId ?? ''} onChange={e => { setMesoDurId(Number(e.target.value)); setError('') }}
+                className="w-full bg-gray-800 text-white text-sm px-3 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500">
+                {mesosOrdenados.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {(m.objetivo || 'Sin nombre') + ' · ' + (m.duracion_semanas || 4) + ' sem · desde ' + String(m.fecha_inicio).slice(0, 10)}
+                  </option>
+                ))}
+              </select>
+              {meso && (
+                <p className="text-[11.5px] text-gray-500 mt-1.5">
+                  Empieza el {String(meso.fecha_inicio).slice(0, 10)} · dura ahora {d?.antes} {d?.antes === 1 ? 'semana' : 'semanas'}
+                </p>
+              )}
             </div>
 
             <div>
@@ -216,20 +266,34 @@ export default function DesplazarCiclo({
             <label className="text-gray-400 text-xs mb-1.5 block">Qué se mueve</label>
             <div className="flex flex-col gap-1.5">
               {NIVELES.map(n => {
-                const c = candidatos[n]
+                const hay = listaDe(n).length
+                const c = n === nivel ? ciclo : (listaDe(n).find(x => x.id === elegidos[n]) || candidatos[n])
                 return (
-                  <button key={n} onClick={() => cambiarNivel(n)} disabled={!c}
+                  <button key={n} onClick={() => cambiarNivel(n)} disabled={!hay}
                     className={'w-full text-left rounded-xl border px-3.5 py-2.5 transition disabled:opacity-35 ' +
                       (nivel === n ? 'bg-orange-500/15 border-orange-500/60' : 'bg-gray-950 border-gray-800 hover:border-gray-600')}>
                     <span className="text-[13.5px] font-semibold text-gray-100 capitalize">{ETIQUETA_NIVEL[n]}</span>
                     <span className="block text-[11.5px] text-gray-500">
-                      {c ? (c.objetivo || 'Sin nombre') + ' · empieza el ' + String(c.fecha_inicio).slice(0, 10)
-                        : 'No hay ' + n + ' en este día'}
+                      {hay
+                        ? (c ? (c.objetivo || 'Sin nombre') + ' · empieza el ' + String(c.fecha_inicio).slice(0, 10) : 'Elige cuál')
+                        : 'El plan no tiene ' + n}
                     </span>
                   </button>
                 )
               })}
             </div>
+
+            {/* Cuál de ellos. Solo cuando hay más de uno donde elegir. */}
+            {listaDe(nivel).length > 1 && (
+              <select value={ciclo?.id ?? ''} onChange={e => cambiarCiclo(Number(e.target.value))}
+                className="w-full mt-2 bg-gray-800 text-white text-sm px-3 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500">
+                {listaDe(nivel).map(c => (
+                  <option key={c.id} value={c.id}>
+                    {(c.objetivo || 'Sin nombre') + ' · desde ' + String(c.fecha_inicio).slice(0, 10)}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {ciclo && (
