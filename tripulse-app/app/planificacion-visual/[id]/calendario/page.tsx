@@ -22,6 +22,7 @@ import { colorMeso, tiposEnPlan, tiposDeMeso } from '@/lib/periodizacion'
 import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta'
 import { BotonGuiaZonas } from '@/components/GuiaZonas'
 import DesplazarCiclo from '@/components/DesplazarCiclo'
+import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -165,6 +166,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [tipoPeriodizacion, setTipoPeriodizacion] = useState('')
   const [compTipo, setCompTipo] = useState('')
   const [compNotas, setCompNotas] = useState('')
+  // La importancia de la carrera. Arranca en B: con A cada competición
+  // dispararía un tapering completo, con C ninguna lo haría.
+  const [compPrioridad, setCompPrioridad] = useState<Prioridad>('B')
   const [mostrarCatalogo, setMostrarCatalogo] = useState(false)
   const [bloqueoMotivo, setBloqueoMotivo] = useState('')
   const [mostrarGrafica, setMostrarGrafica] = useState(false)
@@ -693,9 +697,25 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const guardarCompeticion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
     const tipoNombre = pruebaPorId(compTipo)?.nombre ?? (compTipo === 'otro' ? 'Otro' : compTipo)
-    await supabase.from('competicion').insert({ id_deportista: Number(id), nombre: compNombre, fecha: fechaSel, tipo: tipoNombre, notas: compNotas })
-    setCompNombre(''); setCompTipo(''); setCompNotas(''); setModalTipo(null)
+    await supabase.from('competicion').insert({ id_deportista: Number(id), nombre: compNombre, fecha: fechaSel, tipo: tipoNombre, notas: compNotas, prioridad: compPrioridad })
+    setCompNombre(''); setCompTipo(''); setCompNotas(''); setCompPrioridad('B'); setModalTipo(null)
     await cargarDatos(); setLoading(false)
+  }
+
+  /** Cambia la importancia sin salir de la ficha. */
+  const cambiarPrioridad = async (compId: number, pr: Prioridad) => {
+    setLoading(true)
+    const { error } = await supabase.from('competicion').update({ prioridad: pr }).eq('id', compId)
+    setLoading(false)
+    if (error) {
+      setMostrarToast(/prioridad|column/i.test(error.message)
+        ? 'Falta ejecutar supabase/competicion-prioridad.sql en la base de datos.'
+        : 'No se pudo cambiar: ' + error.message)
+      setTimeout(() => setMostrarToast(''), 5000)
+      return
+    }
+    setCompSel({ ...compSel, prioridad: pr })
+    await cargarDatos()
   }
 
   const borrarCompeticion = async (compId: number) => {
@@ -1152,7 +1172,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             ))}</>
           )}
           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-white opacity-70"/><span className="text-gray-400">Sesión</span></div>
-          <div className="flex items-center gap-1.5"><span>🏆</span><span className="text-gray-400">Competición</span></div>
+          {PRIORIDADES.map(pr => (
+            <div key={pr.id} className="flex items-center gap-1.5">
+              <span>{pr.simbolo}</span><span className="text-gray-400">{pr.etiqueta}</span>
+            </div>
+          ))}
           <div className="flex items-center gap-1.5"><span>🚫</span><span className="text-gray-400">Semana bloqueada</span></div>
         </div>
 
@@ -1170,7 +1194,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <div className="flex items-center gap-3">
                   {compsDelMes.map(c => (
                     <span key={c.id} className="text-yellow-400 text-xs flex items-center gap-1">
-                      🏆 {c.nombre}
+                      {defDe(prioridadDe(c)).simbolo} {c.nombre}
                       <span className={`font-bold ml-1 ${colorSemanas(semanasHasta(c.fecha))}`}>
                         {semanasHasta(c.fecha) > 0 ? `${semanasHasta(c.fecha)}sem` : 'Esta semana'}
                       </span>
@@ -1214,7 +1238,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                           (!bloqueo && !comp && !esCopiadaSemana ? (meso ? (colorMeso(meso.tipo)?.suave || 'bg-gray-800/20 hover:bg-gray-800/30') + ' border-gray-700 ' : 'bg-gray-800 border-gray-700 hover:bg-gray-700 ') : '')}>
                         <div className="flex justify-between items-start mb-1">
                           <span className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : comp ? 'text-yellow-400' : bloqueo ? 'text-red-400' : 'text-gray-400')}>{dia.getDate()}</span>
-                          {comp ? <span className="text-sm">🏆</span> : bloqueo ? <span className="text-sm">🚫</span> : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
+                          {comp
+                            ? <span className="text-sm" title={defDe(prioridadDe(comp)).etiqueta}>{defDe(prioridadDe(comp)).simbolo}</span>
+                            : bloqueo ? <span className="text-sm">🚫</span>
+                            : micro && <span className="text-xs text-gray-600">{micro.tipo?.slice(0,3)}</span>}
                         </div>
                         {/* El nombre no cabe en 50px: «Triatlón Media…» no dice nada
                             que el 🏆 de arriba no diga mejor. Se ve al abrir el día. */}
@@ -1300,7 +1327,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <div className="px-4 py-3 border-b border-gray-800 bg-gray-800 flex justify-between items-center">
                   <p className="font-bold">{MESES[mes]} {año}</p>
                   {competiciones.filter(c => { const f = new Date(c.fecha); return f.getFullYear() === año && f.getMonth() === mes }).map(c => (
-                    <span key={c.id} className="text-yellow-400 text-xs">🏆 {semanasHasta(c.fecha) > 0 ? semanasHasta(c.fecha) + 'sem' : 'Ya'}</span>
+                    <span key={c.id} className="text-xs" style={{ color: defDe(prioridadDe(c)).hex }}>
+                      {defDe(prioridadDe(c)).simbolo} {semanasHasta(c.fecha) > 0 ? semanasHasta(c.fecha) + 'sem' : 'Ya'}
+                    </span>
                   ))}
                 </div>
                 <div className="p-3">
@@ -1331,7 +1360,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                'bg-blue-400/40 hover:bg-blue-400/60 text-white ') :
                               capaCalendario === 'mesos' && meso ? (colorMeso(meso.tipo)?.medio || 'bg-gray-700/40 hover:bg-gray-700/60') + ' text-white ' :
                               'text-gray-400 hover:bg-gray-800 ') : '')}>
-                          <span>{bloqueo ? '🚫' : comp ? '🏆' : dia.getDate()}</span>
+                          <span>{bloqueo ? '🚫' : comp ? defDe(prioridadDe(comp)).simbolo : dia.getDate()}</span>
+                  {avisoDeObjetivos(competiciones) && (
+                    <span className="text-[11px] text-amber-300/90" title="B1-02 §Paso 1">
+                      ⚠️ {avisoDeObjetivos(competiciones)}
+                    </span>
+                  )}
                           {ses.length > 0 && !comp && !bloqueo && (
                             <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center">
                               {ses.slice(0,3).map((s, i) => (
@@ -1536,6 +1570,22 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     {resumenSegmentos(pruebaPorId(compTipo)!)}{pruebaPorId(compTipo)!.aprox ? ' · distancias aprox.' : ''}
                   </p>
                 )}
+                {/* Que importancia tiene. Cambia el tapering, o sea las dos o tres
+                    semanas de antes: no es una etiqueta, es planificacion. */}
+                <div>
+                  <label className="text-gray-400 text-xs mb-1.5 block">Importancia</label>
+                  <div className="flex flex-col gap-1.5">
+                    {PRIORIDADES.map(pr => (
+                      <button type="button" key={pr.id} onClick={() => setCompPrioridad(pr.id)}
+                        className={'w-full text-left rounded-xl border px-3.5 py-2.5 transition ' +
+                          (compPrioridad === pr.id ? 'border-yellow-500/60 bg-yellow-500/10' : 'border-gray-700 bg-gray-800/60 hover:border-gray-500')}>
+                        <span className="text-[13.5px] font-semibold text-gray-100">{pr.simbolo} {pr.etiqueta}</span>
+                        <span className="block text-[11.5px] text-gray-400 mt-0.5">{pr.que}</span>
+                        <span className="block text-[11px] text-gray-600 mt-0.5">{pr.taperTexto} · {pr.alAno}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea placeholder="Notas (opcional)" value={compNotas} onChange={e => setCompNotas(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" rows={2} />
                 <button type="submit" disabled={loading} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : '🏆 Guardar competición'}</button>
               </form>
@@ -1543,12 +1593,30 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
             {modalTipo === 'verCompeticion' && compSel && (
               <div className="flex flex-col gap-4">
-                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-xl p-4 text-center">
-                  <p className="text-3xl mb-2">🏆</p>
-                  <p className="font-bold text-yellow-300 text-lg">{compSel.nombre}</p>
-                  {compSel.tipo && <p className="text-yellow-600 text-sm">{compSel.tipo}</p>}
+                <div className="rounded-xl p-4 text-center border"
+                  style={{ borderColor: defDe(prioridadDe(compSel)).hex + '80', background: defDe(prioridadDe(compSel)).hex + '18' }}>
+                  <p className="text-3xl mb-2">{defDe(prioridadDe(compSel)).simbolo}</p>
+                  <p className="font-bold text-lg" style={{ color: defDe(prioridadDe(compSel)).hex }}>{compSel.nombre}</p>
+                  {compSel.tipo && <p className="text-gray-400 text-sm">{compSel.tipo}</p>}
                   <p className="text-gray-400 text-sm mt-1">{compSel.fecha}</p>
                   {compSel.notas && <p className="text-gray-500 text-xs mt-2">{compSel.notas}</p>}
+                </div>
+
+                {/* Cambiarla desde aqui: la importancia de una carrera se decide
+                    muchas veces DESPUES de apuntarla, cuando ya se ve la temporada. */}
+                <div>
+                  <label className="text-gray-400 text-xs mb-1.5 block">Importancia</label>
+                  <div className="flex gap-1.5">
+                    {PRIORIDADES.map(pr => (
+                      <button key={pr.id} onClick={() => cambiarPrioridad(compSel.id, pr.id)} disabled={loading}
+                        className={'flex-1 rounded-lg border px-2 py-2 text-[12px] transition disabled:opacity-50 ' +
+                          (prioridadDe(compSel) === pr.id ? 'text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white')}
+                        style={prioridadDe(compSel) === pr.id ? { borderColor: pr.hex, background: pr.hex + '22' } : undefined}>
+                        {pr.simbolo} {pr.etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-600 mt-1.5">{defDe(prioridadDe(compSel)).taperTexto}</p>
                 </div>
                 <div className="text-center">
                   <p className={`text-5xl font-bold ${colorSemanas(semanasHasta(compSel.fecha))}`}>{Math.max(0, semanasHasta(compSel.fecha))}</p>
