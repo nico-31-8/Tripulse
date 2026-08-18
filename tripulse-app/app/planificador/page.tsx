@@ -27,6 +27,7 @@ import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, t
 import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
 import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
 import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
+import CadenaMesociclo from '@/components/CadenaMesociclo'
 import PlanificarMesociclo from '@/components/PlanificarMesociclo'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
@@ -84,6 +85,9 @@ export default function Planificador() {
 
   // Qué se planifica: una semana suelta o el bloque entero.
   const [alcance, setAlcance] = useState<'semana' | 'meso'>('semana')
+  // Una semana suelta o el mesociclo entero. Son la misma maquinaria: el bloque
+  // calcula las horas de cada semana y llama al mismo generador, una vez por semana.
+  const [modo, setModo] = useState<'semana' | 'mesociclo'>('semana')
   const [paso, setPaso] = useState<1 | 2>(1)
   const [semana, setSemana] = useState<SemanaRellena | null>(null)
   // De dónde salió la semana que hay en pantalla. Cambia lo que se ofrece
@@ -339,6 +343,28 @@ export default function Planificador() {
             )}
           </div>
 
+          {/* ---- Qué se planifica: una semana o el bloque entero ---- */}
+          <div className="flex h-9 rounded-lg overflow-hidden border border-gray-800 mb-5 max-w-md">
+            {([['semana', 'Una semana'], ['mesociclo', 'Un mesociclo entero']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setModo(k)}
+                className={'flex-1 text-[12.5px] font-medium transition ' +
+                  (modo === k ? 'bg-orange-500 text-white' : 'bg-gray-900 text-gray-400 hover:text-white')}>{l}</button>
+            ))}
+          </div>
+
+          {modo === 'mesociclo' ? (
+            <Seccion n={1} titulo="El mesociclo, semana a semana" activo>
+              <CadenaMesociclo
+                dep={dep}
+                distancia={distancia}
+                nivel={nivel}
+                dias={dias}
+                disponibilidad={disponibilidad}
+                horasReferencia={horas}
+                disciplinaDebil={anamnesis?.disciplina_debil || null} />
+            </Seccion>
+          ) : (
+          <>
           {/* ---- Paso 1: la forma ---- */}
           <Seccion n={1} titulo="La forma de la semana" activo={paso === 1}>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -577,6 +603,8 @@ export default function Planificador() {
           )}
           </>)}
         </>)}
+          </>
+          )}
       </div>
     </main>
   )
