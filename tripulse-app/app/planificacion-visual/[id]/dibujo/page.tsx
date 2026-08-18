@@ -8,10 +8,11 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
 import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
-import { diasEntre, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
+import { diasEntre, sumarDias, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
+import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -93,6 +94,17 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
   const [tests, setTests] = useState<TestsAtleta | null>(null)
+  /**
+   * Las competiciones de la tabla `competicion`, las mismas que el calendario.
+   *
+   * Antes el lienzo guardaba la suya como TEXTO en la semana, dentro del
+   * borrador: marcar una aqui no creaba nada en el calendario y al reves
+   * tampoco. Dos listas de carreras para el mismo atleta, y ninguna de las dos
+   * sabia de la otra.
+   */
+  const [compsReales, setCompsReales] = useState<any[]>([])
+  const [fCompFecha, setFCompFecha] = useState('')
+  const [fCompPrio, setFCompPrio] = useState<Prioridad>('A')
   const testsRef = useRef<TestsAtleta>({})
   // Duración estimada de cada sesión, por id. Es lo que convierte «no tiene
   // duración escrita» en volumen de verdad para la capa de programado.
@@ -566,14 +578,58 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setMesos(p => [...p, { id: uid(), macroId: mMacId, si: fIni, sf, nombre: fNom.trim(), tipo: fTipo, intensidad: fInt }]); setModal(null)
   }
 
-  const openCompModal = (wi: number) => { setMIdx(wi); setFComp(''); setTaperSug([wi - 1, wi - 2].filter(x => x >= 0)); setModal('comp') }
-  const saveComp = (taper: boolean) => {
-    setSems(prev => prev.map(s => {
-      if (s.i === mIdx) return { ...s, comp: fComp || 'Competición', tipo: 'Competición' }
-      if (taper && taperSug.includes(s.i)) return { ...s, tipo: 'Taper' }
-      return s
-    })); setModal(null)
+  const recargarComps = async () => {
+    const { data } = await supabase.from('competicion')
+      .select('*').eq('id_deportista', Number(id)).order('fecha')
+    setCompsReales((data || []).map((c: any) => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
   }
+
+  /** La competicion que cae en esa semana del lienzo, si la hay. */
+  const compDeSemana = (wi: number) => {
+    if (!fechaInicio) return null
+    const ini = semFecha(fechaInicio, wi)
+    const fin = semFecha(fechaInicio, wi + 1)
+    return compsReales.find(c => c.fecha >= ini && c.fecha < fin) || null
+  }
+
+  const guardarCompReal = async (taper: boolean) => {
+    if (!fCompFecha) { alert('Ponle fecha a la competicion'); return }
+    const { error } = await supabase.from('competicion').insert({
+      id_deportista: Number(id),
+      nombre: fComp.trim() || 'Competicion',
+      fecha: fCompFecha,
+      prioridad: fCompPrio,
+    })
+    if (error) {
+      alert(/prioridad|column/i.test(error.message)
+        ? 'Falta ejecutar supabase/competicion-prioridad.sql en la base de datos.'
+        : 'No se pudo guardar: ' + error.message)
+      return
+    }
+    // El taper sigue siendo del lienzo: es como se dibuja la temporada, no un
+    // dato de la carrera.
+    if (taper) setSems(prev => prev.map(x => taperSug.includes(x.i) ? { ...x, tipo: 'Taper' } : x))
+    await recargarComps()
+    setModal(null)
+  }
+
+  const borrarCompReal = async (compId: number) => {
+    if (!confirm('Borrar esta competicion? Desaparece tambien del calendario.')) return
+    await supabase.from('competicion').delete().eq('id', compId)
+    await recargarComps()
+  }
+
+  const openCompModal = (wi: number) => {
+    setMIdx(wi); setFComp(''); setFCompPrio('A')
+    // El domingo de esa semana, que es cuando se corre casi todo. OJO:
+    // semFecha(fi, wi+1) seria el lunes SIGUIENTE, ya fuera de la semana.
+    setFCompFecha(fechaInicio ? sumarDias(semFecha(fechaInicio, wi), 6) : '')
+    setTaperSug([wi - 1, wi - 2].filter(x => x >= 0))
+    setModal('comp')
+  }
+  // Aqui vivia saveComp, que escribia la competicion como TEXTO en la semana
+  // del borrador. Ahora la crea guardarCompReal en la tabla `competicion`, la
+  // misma que lee el calendario: una carrera, una fila, dos pantallas.
   const toggleTipo = (wi: number) => {
     setSems(prev => prev.map(s => { if (s.i !== wi) return s; const idx = TIPOS.indexOf(s.tipo); return { ...s, tipo: TIPOS[(idx + 1) % TIPOS.length] } }))
   }
@@ -980,15 +1036,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         pdf.text(`${fase}: ${ua.toLocaleString()} UA (${pct}%)`, margin + 6, y); y += 6
       }
 
-      const comps = sems.filter(s => s.comp)
       y += 6
       pdf.setTextColor(255, 255, 255); pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
       pdf.text('Competiciones', margin, y); y += 7
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(200, 200, 210)
-      if (comps.length === 0) pdf.text('Sin competiciones marcadas.', margin, y)
-      else for (const c of comps) {
-        const f = fechaDeSemana(c.i)
-        pdf.text(`S${c.i + 1}   ·   ${c.comp}${f ? '   ·   ' + f : ''}`, margin, y); y += 6
+      if (compsReales.length === 0) pdf.text('Sin competiciones.', margin, y)
+      else for (const c of compsReales) {
+        const wi = fechaInicio ? weeksBetween(fechaInicio, c.fecha) : null
+        const sem = wi != null && wi >= 0 ? 'S' + (wi + 1) + '   ·   ' : ''
+        pdf.text(`${sem}${c.nombre}   ·   ${c.fecha}   ·   ${defDe(prioridadDe(c)).etiqueta}`, margin, y); y += 6
       }
 
       pdf.save(`periodizacion-${(dep?.nombre || 'deportista').replace(/\s+/g, '_')}.pdf`)
@@ -1327,7 +1383,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         onClick={() => capas.has('prog') ? cargarDetalleSemana(s.i) : toggleTipo(s.i)}>
                         <div className="flex items-center gap-1">
                           <span className="text-gray-500 text-xs">S{s.i + 1}</span>
-                          {s.comp && <span className="text-sm leading-none">🏆</span>}
+                          {(() => { const c = compDeSemana(s.i); return c
+                            ? <span className="text-sm leading-none" title={c.nombre + ' · ' + defDe(prioridadDe(c)).etiqueta}>{defDe(prioridadDe(c)).simbolo}</span>
+                            : null })()}
                         </div>
                         <div className="text-xs px-1.5 py-0.5 rounded-full font-medium"
                           style={{ backgroundColor: col + '25', color: col, fontSize: 10 }}>
@@ -1871,18 +1929,20 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
             {/* Competiciones */}
             <div className="bg-gray-900 border-t border-gray-800 px-4 py-2 flex items-center gap-3 flex-shrink-0 overflow-x-auto">
-              <button onClick={() => openCompModal(sems.find(s => !s.comp)?.i ?? 0)}
+              <button onClick={() => openCompModal(sems.find(s => !compDeSemana(s.i))?.i ?? 0)}
                 className="bg-yellow-900/40 hover:bg-yellow-900/60 border border-yellow-700/50 text-yellow-400 text-xs px-3 py-1.5 rounded-lg transition flex-shrink-0 font-medium">
                 🏆 + Competicion
               </button>
-              {sems.filter(s => s.comp).map(s => (
-                <div key={s.i} className="flex items-center gap-1.5 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-2.5 py-1 flex-shrink-0">
-                  <span className="text-yellow-400 text-xs font-medium">S{s.i + 1}</span>
-                  <span className="text-yellow-300 text-xs">{s.comp}</span>
-                  <button onClick={() => setSems(p => p.map(x => x.i === s.i ? { ...x, comp: '', tipo: 'Carga' } : x))} className="text-yellow-700 hover:text-red-400 text-xs ml-0.5">x</button>
-                </div>
+              {compsReales.map(c => (
+                <span key={c.id} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5"
+                  style={{ background: defDe(prioridadDe(c)).hex + '1f', border: '1px solid ' + defDe(prioridadDe(c)).hex + '55' }}>
+                  <span className="text-[11px]">{defDe(prioridadDe(c)).simbolo}</span>
+                  <span className="text-xs" style={{ color: defDe(prioridadDe(c)).hex }}>{c.nombre}</span>
+                  <span className="text-[10px] text-gray-500">{c.fecha.slice(5)}</span>
+                  <button onClick={() => borrarCompReal(c.id)} className="text-gray-600 hover:text-red-400 text-xs ml-0.5">x</button>
+                </span>
               ))}
-              {sems.filter(s => s.comp).length === 0 && <span className="text-gray-700 text-xs">Sin competiciones todavia</span>}
+              {compsReales.length === 0 && <span className="text-gray-700 text-xs">Sin competiciones todavia</span>}
             </div>
           </div>
 
@@ -1975,18 +2035,25 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       </div>
                     )
                   })}
-                  {sems.filter(s => s.comp).length > 0 && (
+                  {compsReales.length > 0 && (
                     <div>
                       <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Competiciones</p>
-                      {sems.filter(s => s.comp).map(s => (
-                        <div key={s.i} className="flex items-center gap-2 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-2 mb-1">
-                          <span>🏆</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-yellow-300 text-xs font-medium truncate">{s.comp}</p>
-                            <p className="text-yellow-600 text-xs">Semana {s.i + 1}</p>
+                      {compsReales.map(c => {
+                        const wi = fechaInicio ? weeksBetween(fechaInicio, c.fecha) : -1
+                        const d = defDe(prioridadDe(c))
+                        return (
+                          <div key={c.id} className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
+                            style={{ background: d.hex + '18', border: '1px solid ' + d.hex + '4d' }}>
+                            <span>{d.simbolo}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate" style={{ color: d.hex }}>{c.nombre}</p>
+                              <p className="text-gray-500 text-xs">
+                                {wi >= 0 ? 'Semana ' + (wi + 1) + ' · ' : ''}{c.fecha} · {d.etiqueta}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                   <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
@@ -2211,23 +2278,48 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-xl">Nueva competicion</h3><button onClick={() => setModal(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button></div>
             <div className="flex flex-col gap-4">
               <div>
-                <label className="text-gray-400 text-sm mb-1.5 block">Semana</label>
-                <select value={mIdx} onChange={e => { const wi = Number(e.target.value); setMIdx(wi); setTaperSug([wi - 1, wi - 2].filter(x => x >= 0)) }} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 w-full">
-                  {sems.map(s => <option key={s.i} value={s.i}>Semana {s.i + 1} — {semLabel(fechaInicio, s.i)}</option>)}
-                </select>
+                {/* Fecha, no semana: la competicion se guarda en la tabla que
+                    comparte con el calendario, y ahi lo que hay es un dia. La
+                    semana del lienzo se deduce de ella. */}
+                <label className="text-gray-400 text-sm mb-1.5 block">Fecha</label>
+                <input type="date" value={fCompFecha}
+                  onChange={e => {
+                    setFCompFecha(e.target.value)
+                    const wi = fechaInicio && e.target.value ? weeksBetween(fechaInicio, e.target.value) : 0
+                    setMIdx(wi); setTaperSug([wi - 1, wi - 2].filter(x => x >= 0))
+                  }}
+                  className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 w-full" />
+                {fechaInicio && fCompFecha && (
+                  <p className="text-gray-500 text-xs mt-1">Cae en la semana {weeksBetween(fechaInicio, fCompFecha) + 1} del lienzo.</p>
+                )}
               </div>
-              <input type="text" placeholder="Nombre de la competicion" value={fComp} onChange={e => setFComp(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveComp(false)} autoFocus className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
+
+              <div>
+                <label className="text-gray-400 text-sm mb-1.5 block">Importancia</label>
+                <div className="flex gap-1.5">
+                  {PRIORIDADES.map(pr => (
+                    <button type="button" key={pr.id} onClick={() => setFCompPrio(pr.id)}
+                      className={'flex-1 rounded-lg border px-2 py-2 text-[12px] transition ' +
+                        (fCompPrio === pr.id ? 'text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white')}
+                      style={fCompPrio === pr.id ? { borderColor: pr.hex, background: pr.hex + '22' } : undefined}>
+                      {pr.simbolo} {pr.etiqueta}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-600 mt-1.5">{defDe(fCompPrio).taperTexto}</p>
+              </div>
+              <input type="text" placeholder="Nombre de la competicion" value={fComp} onChange={e => setFComp(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardarCompReal(false)} autoFocus className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
               {taperSug.length > 0 ? (
                 <div className="bg-purple-900/30 border border-purple-700/50 rounded-xl p-4">
                   <p className="text-purple-300 text-sm font-bold mb-1">Taper recomendado</p>
                   <p className="text-gray-400 text-xs mb-3">Reducir carga en S{taperSug.map(i => i + 1).reverse().join(' y S')} antes de la competicion.</p>
                   <div className="flex gap-2">
-                    <button onClick={() => saveComp(true)} className="flex-1 bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl text-sm font-bold transition">Aplicar taper</button>
-                    <button onClick={() => saveComp(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-sm transition">Sin taper</button>
+                    <button onClick={() => guardarCompReal(true)} className="flex-1 bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl text-sm font-bold transition">Aplicar taper</button>
+                    <button onClick={() => guardarCompReal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-sm transition">Sin taper</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => saveComp(false)} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-xl font-bold text-white transition">Guardar competicion</button>
+                <button onClick={() => guardarCompReal(false)} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-xl font-bold text-white transition">Guardar competicion</button>
               )}
             </div>
           </div>
