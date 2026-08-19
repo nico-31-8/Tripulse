@@ -32,6 +32,9 @@ const modulosEntrenador = [
 
 // Los módulos del deportista se construyen con su id (wellness y chat lo necesitan)
 const modulosDeportistaFn = (depId: number | null) => [
+  // Primero el plan: es lo que da sentido a todo lo demás. Un atleta sin plan
+  // que entra en «Mis sesiones» ve una lista vacía y no sabe por qué.
+  { icon: '🎯', titulo: 'Mi plan', href: '/mi-plan' },
   { icon: '📋', titulo: 'Mis sesiones', href: '/mis-sesiones' },
   { icon: '💚', titulo: 'Wellness', href: depId ? '/wellness/' + depId : '/dashboard-deportista' },
   { icon: '🏋️', titulo: 'Mis tests', href: '/mis-tests' },

@@ -1,0 +1,228 @@
+'use client'
+// ============================================================
+// Mi plan — la pantalla del DEPORTISTA
+// ============================================================
+// El resto del planificador está escrito para un entrenador que decide. Esta no:
+// aquí el atleta dice a qué se presenta y cuándo, y el plan sale solo. Por eso
+// no hay desplegable de fase, ni de modelo de periodización, ni de nivel — todo
+// eso o se deduce de su anamnesis o lo pone la plantilla de B1-02.
+//
+// Y por eso enseña LO QUE VA A PASAR antes de crear nada: un plan de seis meses
+// que aparece sin explicación no se entiende, y lo que no se entiende no se
+// sigue.
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
+import { planDeTemporada, type Temporada } from '@/lib/plan-macrociclo'
+import { crearTemporada, planesExistentes } from '@/lib/plan-macrociclo-volcado'
+import { semanasHasta } from '@/lib/plan-mesociclo'
+import { PRUEBAS, pruebaPorId } from '@/lib/pruebas'
+import { distanciaDePrueba, ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri } from '@/lib/distribucion-zonas'
+import { PRIORIDADES } from '@/lib/competicion-prioridad'
+
+/** El lunes que viene: los microciclos empiezan en lunes en toda la app. */
+function proximoLunes(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7))
+  return d.toISOString().slice(0, 10)
+}
+
+// Solo las pruebas para las que B1-02 da plantilla de cuenta atrás. Ofrecer las
+// demás sería prometer un plan que no se sabe dibujar.
+const PRUEBAS_CON_PLAN = PRUEBAS.filter(p => !!distanciaDePrueba(p.id))
+
+export default function MiPlan() {
+  const router = useRouter()
+  const [dep, setDep] = useState<any>(null)
+  const [cargando, setCargando] = useState(true)
+  const [yaTiene, setYaTiene] = useState(0)
+
+  const [pruebaId, setPruebaId] = useState('tri-olimpico')
+  const [fecha, setFecha] = useState('')
+  const [desde, setDesde] = useState(proximoLunes())
+  const [creando, setCreando] = useState(false)
+  const [error, setError] = useState('')
+  const [hecho, setHecho] = useState<{ mesos: number; micros: number } | null>(null)
+
+  useEffect(() => {
+    const cargar = async () => {
+      const user = await usuarioActual()
+      if (!user) { router.push('/login'); return }
+      const { data: d } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
+      setDep(d)
+      if (d) setYaTiene(await planesExistentes(supabase, d.id))
+      setCargando(false)
+    }
+    cargar()
+  }, [router])
+
+  const distancia: DistanciaTri = distanciaDePrueba(pruebaId) || 'olimpico'
+  const prueba = pruebaPorId(pruebaId)
+
+  const temporada: Temporada | null = fecha ? planDeTemporada({ desde, objetivo: fecha, distancia }) : null
+  const semanas = fecha ? semanasHasta(desde, fecha) + 1 : 0
+
+  const crear = async () => {
+    if (!dep || !temporada) return
+    setCreando(true); setError('')
+    const r = await crearTemporada(supabase, {
+      idDeportista: dep.id, temporada, distancia,
+      nombre: (prueba?.nombre || 'Objetivo') + ' · ' + fecha,
+    })
+    if (r.error) { setError(r.error); setCreando(false); return }
+
+    // La competición A, que es el ancla de todo el plan. Si falla por falta de
+    // la columna de prioridad, el plan ya está creado: se avisa y no se pierde.
+    const { error: eComp } = await supabase.from('competicion').insert({
+      id_deportista: dep.id,
+      nombre: prueba?.nombre || 'Competición',
+      fecha,
+      tipo: prueba?.nombre || null,
+      prioridad: 'A',
+    })
+    if (eComp) setError('El plan está creado, pero no se pudo guardar la competición: ' + eComp.message)
+
+    setHecho({ mesos: r.mesos, micros: r.micros })
+    setYaTiene(n => n + 1)
+    setCreando(false)
+  }
+
+  if (cargando) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
+
+  if (!dep) return (
+    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-6">
+      <p className="text-gray-400 text-sm">Tu cuenta todavía no tiene ficha de deportista.</p>
+    </main>
+  )
+
+  return (
+    <main className="min-h-screen bg-gray-950 text-white">
+      <div className="max-w-3xl mx-auto px-5 py-10">
+        <p className="text-orange-400/90 text-sm font-medium">Mi plan</p>
+        <h1 className="text-3xl font-bold tracking-tight mt-1">¿A qué te presentas?</h1>
+        <p className="text-gray-500 text-sm mt-2 max-w-xl">
+          Dime la prueba y el día. Reparto las semanas que quedan en fases, de atrás hacia
+          adelante desde la carrera, y te digo qué toca en cada una antes de crear nada.
+        </p>
+
+        {hecho ? (
+          <div className="mt-8 rounded-2xl border border-green-600/40 bg-green-500/[0.07] p-6">
+            <h2 className="text-xl font-bold text-green-300">Tu plan está creado</h2>
+            <p className="text-gray-300 text-sm mt-2">
+              {hecho.mesos} bloques y {hecho.micros} semanas, hasta el {fecha}.
+            </p>
+            {error && <p className="text-amber-300 text-[13px] mt-3">{error}</p>}
+            <div className="flex flex-wrap gap-3 mt-5">
+              <button onClick={() => router.push('/dashboard-deportista')}
+                className="bg-orange-500 hover:bg-orange-600 px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+                Ver mi panel
+              </button>
+              <button onClick={() => router.push('/mis-sesiones')}
+                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-5 py-2.5 rounded-lg text-sm transition">
+                Mis sesiones
+              </button>
+            </div>
+            <p className="text-gray-500 text-[12.5px] mt-4">
+              Todavía no hay sesiones dentro: el plan es el esqueleto. Las semanas se generan bloque a bloque.
+            </p>
+          </div>
+        ) : (
+          <>
+            {yaTiene > 0 && (
+              <div className="mt-6 flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
+                <span className="text-sm leading-none mt-0.5">⚠️</span>
+                <p className="text-[12.5px] text-amber-200/90">
+                  Ya tienes {yaTiene} {yaTiene === 1 ? 'plan' : 'planes'}. Crear otro no borra el anterior:
+                  se quedan los dos y el calendario pintará semanas de ambos.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">La prueba</span>
+                <select value={pruebaId} onChange={e => setPruebaId(e.target.value)}
+                  className="bg-gray-800 text-white text-sm px-3.5 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500">
+                  {PRUEBAS_CON_PLAN.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">El día</span>
+                <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+                  className="bg-gray-800 text-white text-sm px-3.5 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500" />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Empiezo el</span>
+                <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
+                  className="bg-gray-800 text-white text-sm px-3.5 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500" />
+                <span className="text-[11px] text-gray-600">Las semanas empiezan en lunes.</span>
+              </label>
+            </div>
+
+            {temporada && (
+              <div className="mt-8">
+                {temporada.imposible ? (
+                  <div className="rounded-2xl border border-red-600/40 bg-red-500/[0.07] p-5">
+                    <p className="text-red-300 text-sm font-semibold">Así no se puede preparar</p>
+                    {temporada.avisos.map((a, i) => (
+                      <p key={i} className="text-gray-300 text-[13px] mt-2">{a}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4">
+                      <p className="text-[13.5px] text-gray-300">
+                        <b className="text-orange-400 text-lg">{semanas}</b> semanas hasta la carrera
+                      </p>
+                      <p className="text-[13px] text-gray-500">
+                        {temporada.bloques.length} bloques · {ETIQUETA_DISTANCIA[distancia]}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      {temporada.bloques.map((b, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
+                          <span className="text-[11px] font-bold text-gray-600 w-6 tabular-nums">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[14px] font-semibold text-gray-100">{b.nombre}</p>
+                            <p className="text-[12px] text-gray-500">
+                              {DISTRIBUCION_POR_FASE[b.fase].etiqueta} · desde el {b.lunes}
+                            </p>
+                          </div>
+                          <span className="text-[12.5px] text-gray-400 tabular-nums flex-shrink-0">
+                            {b.semanas} {b.semanas === 1 ? 'semana' : 'semanas'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {temporada.avisos.map((a, i) => (
+                      <div key={i} className="mt-3 flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
+                        <span className="text-sm leading-none mt-0.5">⚠️</span>
+                        <p className="text-[12.5px] text-amber-200/90">{a}</p>
+                      </div>
+                    ))}
+
+                    {error && <p className="text-red-400 text-[13px] mt-3">{error}</p>}
+
+                    <button onClick={crear} disabled={creando}
+                      className="mt-6 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 px-6 py-3 rounded-xl text-sm font-semibold transition">
+                      {creando ? 'Creando tu plan…' : 'Crear mi plan'}
+                    </button>
+                    <p className="text-[11.5px] text-gray-600 mt-2">
+                      Se crea el esqueleto de la temporada y se marca la carrera como objetivo principal
+                      ({PRIORIDADES[0].simbolo} {PRIORIDADES[0].etiqueta}).
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </main>
+  )
+}
