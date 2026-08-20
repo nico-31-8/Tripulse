@@ -21,6 +21,7 @@ import { PRUEBAS, pruebaPorId } from '@/lib/pruebas'
 import { distanciaDePrueba, ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri } from '@/lib/distribucion-zonas'
 import { PRIORIDADES } from '@/lib/competicion-prioridad'
 import MisSemanas from '@/components/MisSemanas'
+import ChatEntrenador from '@/components/ChatEntrenador'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
 import type { NivelAtleta } from '@/lib/plan-semana'
 
@@ -161,6 +162,14 @@ export default function MiPlan() {
                 </p>
               </div>
             )}
+
+            <div className="border-t border-gray-800 pt-6">
+              <h2 className="text-lg font-bold tracking-tight">Habla con tu entrenador</h2>
+              <p className="text-gray-500 text-[12.5px] mt-1 mb-4">
+                Sabe qué te toca, cómo vas y cuánto queda para tu carrera.
+              </p>
+              <ChatEntrenador />
+            </div>
 
             <button onClick={() => setVerFormulario(true)}
               className="text-gray-500 hover:text-white text-[12.5px] transition self-start">
