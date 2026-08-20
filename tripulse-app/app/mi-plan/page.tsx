@@ -20,6 +20,18 @@ import { semanasHasta } from '@/lib/plan-mesociclo'
 import { PRUEBAS, pruebaPorId } from '@/lib/pruebas'
 import { distanciaDePrueba, ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri } from '@/lib/distribucion-zonas'
 import { PRIORIDADES } from '@/lib/competicion-prioridad'
+import MisSemanas from '@/components/MisSemanas'
+import type { DiaDisponible } from '@/lib/plan-colocacion'
+import type { NivelAtleta } from '@/lib/plan-semana'
+
+/** El nivel que declara la anamnesis, traducido al del planificador. */
+function nivelDeAnamnesis(txt: string | null | undefined): NivelAtleta {
+  const t = String(txt ?? '').toLowerCase()
+  if (t.includes('elite') || t.includes('élite') || t.includes('profesional')) return 'elite'
+  if (t.includes('avanzad')) return 'avanzado'
+  if (t.includes('inicia') || t.includes('principi') || t.includes('popular')) return 'principiante'
+  return 'intermedio'
+}
 
 /** El lunes que viene: los microciclos empiezan en lunes en toda la app. */
 function proximoLunes(): string {
@@ -37,6 +49,11 @@ export default function MiPlan() {
   const [dep, setDep] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
   const [yaTiene, setYaTiene] = useState(0)
+  const [anamnesis, setAnamnesis] = useState<any>(null)
+  const [disponibilidad, setDisponibilidad] = useState<DiaDisponible[]>([])
+  // Con plan hecho se entra directo a «qué me toca»; el formulario solo aparece
+  // si lo pide. Quien ya tiene plan no vuelve aquí a crearse otro.
+  const [verFormulario, setVerFormulario] = useState(false)
 
   const [pruebaId, setPruebaId] = useState('tri-olimpico')
   const [fecha, setFecha] = useState('')
@@ -51,7 +68,21 @@ export default function MiPlan() {
       if (!user) { router.push('/login'); return }
       const { data: d } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDep(d)
-      if (d) setYaTiene(await planesExistentes(supabase, d.id))
+      if (d) {
+        setYaTiene(await planesExistentes(supabase, d.id))
+        const [{ data: an }, { data: disp }] = await Promise.all([
+          supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
+          supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
+        ])
+        setAnamnesis(an)
+        // Minutos reales de cada día a partir de sus franjas horarias.
+        const porDia = new Map<string, number>()
+        ;(disp || []).forEach((f: any) => {
+          const min = (h: string) => { const [a, b] = String(h).split(':').map(Number); return a * 60 + (b || 0) }
+          porDia.set(f.dia_semana, (porDia.get(f.dia_semana) || 0) + Math.max(0, min(f.hora_fin) - min(f.hora_inicio)))
+        })
+        setDisponibilidad([...porDia].map(([dia, minutos]) => ({ dia: dia as any, minutos })))
+      }
       setCargando(false)
     }
     cargar()
@@ -100,13 +131,43 @@ export default function MiPlan() {
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-3xl mx-auto px-5 py-10">
         <p className="text-orange-400/90 text-sm font-medium">Mi plan</p>
-        <h1 className="text-3xl font-bold tracking-tight mt-1">¿A qué te presentas?</h1>
+        <h1 className="text-3xl font-bold tracking-tight mt-1">
+          {yaTiene > 0 && !verFormulario && !hecho ? '¿Qué me toca ahora?' : '¿A qué te presentas?'}
+        </h1>
         <p className="text-gray-500 text-sm mt-2 max-w-xl">
-          Dime la prueba y el día. Reparto las semanas que quedan en fases, de atrás hacia
-          adelante desde la carrera, y te digo qué toca en cada una antes de crear nada.
+          {yaTiene > 0 && !verFormulario && !hecho
+            ? 'Elige el bloque y te preparo sus semanas. Verás lo que sale antes de que se guarde nada.'
+            : 'Dime la prueba y el día. Reparto las semanas que quedan en fases, de atrás hacia adelante desde la carrera, y te digo qué toca en cada una antes de crear nada.'}
         </p>
 
-        {hecho ? (
+        {yaTiene > 0 && !hecho && !verFormulario ? (
+          <div className="mt-8 flex flex-col gap-6">
+            <MisSemanas
+              idDeportista={dep.id}
+              distancia={distancia}
+              nivel={nivelDeAnamnesis(anamnesis?.nivel_competitivo)}
+              dias={Number(anamnesis?.dias_semana) || 5}
+              disponibilidad={disponibilidad}
+              horasReferencia={Number(anamnesis?.volumen_semanal) || 8}
+              disciplinaDebil={anamnesis?.disciplina_debil || null} />
+
+            {!anamnesis && (
+              <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
+                <span className="text-sm leading-none mt-0.5">⚠️</span>
+                <p className="text-[12.5px] text-amber-200/90">
+                  No tienes la anamnesis rellena, así que voy con 8 horas en 5 días.
+                  <button onClick={() => router.push('/anamnesis')} className="underline ml-1 hover:text-white">Rellénala</button> y las
+                  semanas saldrán con tus horas de verdad.
+                </p>
+              </div>
+            )}
+
+            <button onClick={() => setVerFormulario(true)}
+              className="text-gray-500 hover:text-white text-[12.5px] transition self-start">
+              Preparar otra competición →
+            </button>
+          </div>
+        ) : hecho ? (
           <div className="mt-8 rounded-2xl border border-green-600/40 bg-green-500/[0.07] p-6">
             <h2 className="text-xl font-bold text-green-300">Tu plan está creado</h2>
             <p className="text-gray-300 text-sm mt-2">

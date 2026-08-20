@@ -1,0 +1,223 @@
+'use client'
+// ============================================================
+// Generar las semanas de un bloque — versión del DEPORTISTA
+// ============================================================
+// Es la misma maquinaria que usa el entrenador en `CadenaMesociclo`, pero
+// contada al revés. Allí se decide y se vuelca; aquí se pregunta «¿qué me toca
+// ahora?» y se responde. Nada de «volcar al calendario», ni de avisos sobre lo
+// que ya hay: para el atleta esas son palabras de otro oficio.
+//
+// Lo que SÍ se conserva es lo que le afecta: si ya tiene sesiones esas semanas
+// no se le crean encima sin decírselo.
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { semanasDelMesociclo, entradaDeSemana, type SemanaDelMeso } from '@/lib/plan-mesociclo'
+import { formaDeSemana, type EntradaSemana, type NivelAtleta } from '@/lib/plan-semana'
+import { colocarSemana, type DiaDisponible } from '@/lib/plan-colocacion'
+import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
+import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
+import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
+import { sumarDias } from '@/lib/desplazar'
+import type { DistanciaTri } from '@/lib/distribucion-zonas'
+
+interface MesoFila {
+  id: number
+  objetivo: string | null
+  tipo: string | null
+  fecha_inicio: string
+  duracion_semanas: number | null
+}
+
+interface Props {
+  idDeportista: number
+  distancia: DistanciaTri
+  nivel: NivelAtleta
+  dias: number
+  disponibilidad: DiaDisponible[]
+  horasReferencia: number
+  disciplinaDebil?: string | null
+  onCambio?: () => void
+}
+
+interface Generada extends SemanaDelMeso {
+  plan: SemanaRellena
+  yaHay: number | null
+  creadas?: number
+  error?: string | null
+}
+
+export default function MisSemanas({
+  idDeportista, distancia, nivel, dias, disponibilidad, horasReferencia, disciplinaDebil, onCambio,
+}: Props) {
+  const [mesos, setMesos] = useState<MesoFila[]>([])
+  const [uaPorMeso, setUaPorMeso] = useState<Record<number, (number | null)[]>>({})
+  const [selId, setSelId] = useState<number | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [generadas, setGeneradas] = useState<Generada[] | null>(null)
+  const [trabajando, setTrabajando] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    const cargar = async () => {
+      const { data: ms } = await supabase.from('mesociclo')
+        .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
+        .eq('id_deportista', idDeportista).order('fecha_inicio')
+      const lista: MesoFila[] = (ms || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
+
+      const { data: micros } = lista.length
+        ? await supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').in('id_mesociclo', lista.map(m => m.id))
+        : { data: [] as any[] }
+      const ua: Record<number, (number | null)[]> = {}
+      lista.forEach(m => {
+        const suyos = (micros || []).filter((mi: any) => mi.id_mesociclo === m.id)
+        ua[m.id] = Array.from({ length: m.duracion_semanas || 1 }, (_, i) => {
+          const obj = sumarDias(m.fecha_inicio, i * 7)
+          return suyos.find((x: any) => String(x.fecha_inicio).slice(0, 10) === obj)?.ua_planificada ?? null
+        })
+      })
+
+      if (!vivo) return
+      setMesos(lista); setUaPorMeso(ua)
+      // Arranca en el bloque en el que está HOY, que es lo que quiere ver: el
+      // primero cuyo final aún no ha pasado.
+      const hoy = new Date().toISOString().slice(0, 10)
+      const actual = lista.find(m => sumarDias(m.fecha_inicio, (m.duracion_semanas || 4) * 7) > hoy)
+      setSelId((actual || lista[0])?.id ?? null)
+      setCargando(false)
+    }
+    cargar()
+    return () => { vivo = false }
+  }, [idDeportista])
+
+  const meso = mesos.find(m => m.id === selId) || null
+
+  const semanas = useMemo(() => meso ? semanasDelMesociclo({
+    tipo: meso.tipo, semanas: meso.duracion_semanas || 4,
+    horasReferencia, distancia, lunes: meso.fecha_inicio, uaPorSemana: uaPorMeso[meso.id],
+  }) : [], [meso, horasReferencia, distancia, uaPorMeso])
+
+  const generar = async () => {
+    if (!meso) return
+    setTrabajando(true)
+    const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
+    const out: Generada[] = []
+    for (const s of semanas) {
+      const e: EntradaSemana = entradaDeSemana(s, base)
+      const forma = formaDeSemana(e)
+      const plan = rellenarSemana({
+        forma,
+        colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
+        nivel, fase: s.fase,
+      })
+      const yaHay = s.lunes ? await loQueYaHay(supabase, idDeportista, s.lunes).catch(() => null) : null
+      out.push({ ...s, plan, yaHay })
+    }
+    setGeneradas(out); setConfirmando(false); setTrabajando(false)
+  }
+
+  const guardar = async () => {
+    if (!generadas) return
+    setTrabajando(true); setConfirmando(false)
+    const nivelP = nivelDePlantilla(nivel)
+    const out = [...generadas]
+    for (let i = 0; i < out.length; i++) {
+      const s = out[i]
+      if (!s.lunes) continue
+      const r = await volcarSemana(supabase, {
+        idDeportista, lunes: s.lunes, relleno: s.plan.relleno,
+        aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+      })
+      out[i] = { ...s, creadas: r.creadas, error: r.error }
+      setGeneradas([...out])
+    }
+    setTrabajando(false)
+    onCambio?.()
+  }
+
+  if (cargando) return <p className="text-gray-500 text-sm">Buscando tu plan…</p>
+  if (!mesos.length) return null
+
+  const hecho = !!generadas?.length && generadas.every(s => s.creadas != null)
+  const totalCreadas = (generadas || []).reduce((a, s) => a + (s.creadas || 0), 0)
+  const yaHayTotal = (generadas || []).reduce((a, s) => a + (s.yaHay || 0), 0)
+  const totalSesiones = (generadas || []).reduce((a, s) => a + s.plan.relleno.length, 0)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Qué bloque</span>
+        <select value={selId ?? ''} onChange={e => { setSelId(Number(e.target.value)); setGeneradas(null) }}
+          className="bg-gray-800 text-white text-sm px-3.5 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500">
+          {mesos.map(m => (
+            <option key={m.id} value={m.id}>
+              {(m.objetivo || 'Bloque') + ' · ' + (m.duracion_semanas || 4) + ' semanas · desde el ' + m.fecha_inicio}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="flex flex-col gap-1.5">
+        {semanas.map((s, i) => {
+          const g = generadas?.[i]
+          return (
+            <div key={s.n} className={'flex items-center gap-3 rounded-xl border px-4 py-2.5 ' +
+              (s.esDescarga ? 'bg-green-500/[0.06] border-green-700/40' : 'bg-gray-900 border-gray-800')}>
+              <span className="text-[11px] font-bold text-gray-600 w-5 tabular-nums">{s.n}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] text-gray-200">
+                  Semana del {s.lunes} · <b className="text-gray-100">{s.horasSemana} h</b>
+                </p>
+                <p className={'text-[11.5px] ' + (s.esDescarga ? 'text-green-400' : 'text-gray-500')}>
+                  {s.esDescarga ? 'Semana suave: aquí es donde se asimila lo anterior' : s.etiqueta}
+                </p>
+              </div>
+              <span className="text-[12px] text-gray-500 tabular-nums flex-shrink-0">
+                {g?.creadas != null
+                  ? <span className="text-green-400">✓ {g.creadas}</span>
+                  : g
+                    ? g.plan.relleno.length + ' sesiones'
+                    : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {generadas && !hecho && (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
+          <p className="text-[13px] text-gray-200">Te salen {totalSesiones} sesiones en {generadas.length} semanas.</p>
+          {yaHayTotal > 0 && (
+            <p className="text-[12.5px] text-amber-200/90 mt-1">
+              Ya tienes {yaHayTotal} sesiones en esas semanas. Estas se añaden a las que hay, no las sustituyen.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={generar} disabled={trabajando || !meso}
+          className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-40">
+          {trabajando && !generadas ? 'Preparándolas…' : generadas ? 'Volver a prepararlas' : 'Ver qué me tocaría'}
+        </button>
+
+        {generadas && !hecho && (confirmando ? (
+          <>
+            <button onClick={guardar} disabled={trabajando}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+              {trabajando ? 'Guardando…' : 'Sí, ponlas en mi calendario'}
+            </button>
+            <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm px-2 transition">Ahora no</button>
+          </>
+        ) : (
+          <button onClick={() => setConfirmando(true)} disabled={trabajando}
+            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+            Ponerlas en mi calendario →
+          </button>
+        ))}
+
+        {hecho && <p className="text-green-400 text-sm">✓ {totalCreadas} sesiones en tu calendario.</p>}
+      </div>
+    </div>
+  )
+}
