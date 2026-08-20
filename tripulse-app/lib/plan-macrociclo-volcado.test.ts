@@ -70,3 +70,78 @@ describe('escribir la temporada', () => {
     expect(escrito.macrociclo).toEqual([])
   })
 })
+
+/**
+ * Doble aparte para los caminos de fallo: necesita apuntar los DELETE y poder
+ * fallar solo la primera vez, cosas que el doble de arriba no hace.
+ */
+function sbConFallos(opts: {
+  microciclo?: (filas: any[]) => { error: any }
+}) {
+  const borrados: string[] = []
+  let id = 200
+  const from = (tabla: string) => ({
+    insert: (filas: any) => {
+      const arr = Array.isArray(filas) ? filas : [filas]
+      if (tabla === 'microciclo' && opts.microciclo) {
+        const r = opts.microciclo(arr)
+        return { ...r, then: (f: any) => f(r) } as any
+      }
+      const conId = { ...arr[0], id: ++id }
+      const res: any = { data: conId, error: null }
+      res.select = () => ({ single: async () => ({ data: conId, error: null }) })
+      res.then = (f: any) => f({ error: null })
+      return res
+    },
+    select: () => ({
+      eq: (_c: string, _v: any) => {
+        const r = { data: [] as any[], error: null }
+        return { ...r, then: (f: any) => f(r) }
+      },
+    }),
+    delete: () => {
+      borrados.push(tabla)
+      const r = { error: null }
+      const enc: any = { in: () => ({ ...r, then: (f: any) => f(r) }), eq: () => ({ ...r, then: (f: any) => f(r) }) }
+      return enc
+    },
+  })
+  return { api: { from }, borrados }
+}
+
+describe('cuando la base dice que no', () => {
+  /* `microciclo.tipo` tiene un CHECK cuya lista NO está en el repo. Lo único
+     probado es que «Carga» entra: es lo que inserta /mis-sesiones. */
+  it('si el CHECK rechaza el tipo fino, reintenta con el seguro', async () => {
+    const escritos: any[] = []
+    const { api } = sbConFallos({
+      // Un CHECK de verdad rechaza SIEMPRE, no solo la primera vez. Con un doble
+      // que falla una sola vez, los bloques siguientes colarían el tipo fino y
+      // el test pasaría sin comprobar nada.
+      microciclo: filas => {
+        if (filas.some(f => f.tipo !== 'Carga')) {
+          return { error: { message: 'violates check constraint "microciclo_tipo_check"' } }
+        }
+        escritos.push(...filas)
+        return { error: null }
+      },
+    })
+    const r = await crearTemporada(api as any, { idDeportista: 1, temporada, distancia: 'olimpico', nombre: 'Test' } as any)
+    expect(r.error).toBeNull()
+    expect(escritos.length).toBeGreaterThan(0)
+    expect(escritos.every(f => f.tipo === 'Carga')).toBe(true)
+  })
+
+  /* Medio plan creado Y la pantalla diciendo que ya tienes uno es la peor
+     combinación: ni sirve ni deja crear otro. */
+  it('un fallo a mitad deshace lo que llevaba creado', async () => {
+    const { api, borrados } = sbConFallos({
+      microciclo: () => ({ error: { message: 'algo se rompió' } }),
+    })
+    const r = await crearTemporada(api as any, { idDeportista: 1, temporada, distancia: 'olimpico', nombre: 'Test' } as any)
+    expect(r.error).toMatch(/algo se rompió/)
+    expect(r.idMacrociclo).toBeNull()
+    expect(borrados).toContain('mesociclo')
+    expect(borrados).toContain('macrociclo')
+  })
+})

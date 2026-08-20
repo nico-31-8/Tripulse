@@ -61,6 +61,23 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
 
   let mesos = 0, micros = 0
 
+  /**
+   * Deshacer a mano lo que se lleve creado.
+   *
+   * Esto son tres inserts encadenados desde el navegador, no una transacción:
+   * si el tercero falla, los dos primeros ya están escritos. Sin esto el atleta
+   * se queda con medio plan Y con la pantalla diciéndole que ya tiene uno, que
+   * es la peor combinación posible — ni sirve ni deja crear otro.
+   */
+  const deshacer = async (motivo: string) => {
+    const { data: ms } = await sb.from('mesociclo').select('id').eq('id_macrociclo', macro.id)
+    const ids = (ms || []).map((m: any) => m.id)
+    if (ids.length) await sb.from('microciclo').delete().in('id_mesociclo', ids)
+    await sb.from('mesociclo').delete().eq('id_macrociclo', macro.id)
+    await sb.from('macrociclo').delete().eq('id', macro.id)
+    return { idMacrociclo: null, mesos: 0, micros: 0, error: motivo }
+  }
+
   for (const b of t.bloques) {
     const { data: meso, error: eMeso } = await sb.from('mesociclo').insert({
       id_macrociclo: macro.id,
@@ -73,7 +90,7 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
       // altura. Es una escala 1–10 y aquí solo hay tres alturas honestas.
       intensidad_relativa: b.clase === 'competicion' ? 8 : b.clase === 'transmutacion' ? 7 : b.clase === 'descarga' ? 3 : 5,
     }).select().single()
-    if (eMeso || !meso) return { idMacrociclo: macro.id, mesos, micros, error: eMeso?.message || 'No se pudo crear un mesociclo.' }
+    if (eMeso || !meso) return deshacer(eMeso?.message || 'No se pudo crear un mesociclo.')
     mesos++
 
     // Las semanas del bloque, con su carga: de aquí sale cuál es la de descarga,
@@ -94,8 +111,28 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
       // propia suposición como si fuera una decisión.
       ua_planificada: null,
     }))
-    const { error: eMicro } = await sb.from('microciclo').insert(filas)
-    if (eMicro) return { idMacrociclo: macro.id, mesos, micros, error: eMicro.message }
+    let { error: eMicro } = await sb.from('microciclo').insert(filas)
+
+    /* `microciclo.tipo` tiene un CHECK con una lista cerrada de valores, y esa
+       lista NO está en el repo: el esquema completo vive solo en la base. Dos
+       pantallas de la app ya discrepan sobre ella —el lienzo escribe
+       «Recuperación» con tilde y la ficha del microciclo compara contra
+       «Recuperacion» sin ella—, así que adivinar cuál pasa el CHECK es tirar una
+       moneda.
+
+       Lo que SÍ está probado es que «Carga» entra: es lo que inserta
+       /mis-sesiones desde hace tiempo. Así que si el CHECK rechaza el valor
+       fino, se reintenta con el seguro. Perder el color verde de la semana de
+       descarga en el calendario es un precio ridículo comparado con no poder
+       crear el plan — y nada funcional depende de este campo: si una semana es
+       de descarga se deduce del patrón del mesociclo, no de aquí. */
+    if (eMicro && /tipo_check/i.test(eMicro.message || '')) {
+      const seguras = filas.map(f => ({ ...f, tipo: 'Carga' }))
+      const r = await sb.from('microciclo').insert(seguras)
+      eMicro = r.error
+    }
+
+    if (eMicro) return deshacer(eMicro.message)
     micros += filas.length
   }
 
