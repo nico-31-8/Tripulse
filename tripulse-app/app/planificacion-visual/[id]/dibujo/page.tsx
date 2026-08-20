@@ -12,6 +12,7 @@ import { diasEntre, sumarDias, aplicarDesplazamiento, aplicarDuracion } from '@/
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
+import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
@@ -67,7 +68,10 @@ const C_TIPO: Record<string, string> = {
   Carga: '#EA580C', 'Recuperacion': '#22C55E', 'Recuperación': '#22C55E',
   'Competicion': '#3B82F6', 'Competición': '#3B82F6', Taper: '#A855F7',
 }
-const TIPOS = ['Carga', 'Recuperación', 'Competición', 'Taper']
+// Los tres que admite el CHECK de `microciclo.tipo`. Aquí había un cuarto,
+// «Taper», que la base RECHAZA: elegirlo y darle a generar reventaba el guardado
+// con un error de Postgres en crudo. Ahora la lista viene de un solo sitio.
+const TIPOS: string[] = [...TIPOS_MICROCICLO]
 
 function mesoOpts(tipo: string): string[] {
   if (tipo === 'Tradicional') return ['General', 'Específica', 'Competitiva', 'Taper']
@@ -726,7 +730,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
               // Solo actualizar UA y tipo — no tocar sesiones
               await supabase.from('microciclo').update({
                 objetivo: 'Semana ' + (wi - me.si + 1) + ' — ' + me.nombre,
-                tipo: sem?.tipo || 'Carga',
+                tipo: tipoMicrociclo(sem?.tipo),
                 ua_planificada: sem?.ua || null
               }).eq('id', microExist.id)
             } else {
@@ -734,7 +738,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
               await supabase.from('microciclo').insert({
                 id_mesociclo: meDbId,
                 objetivo: 'Semana ' + (wi - me.si + 1) + ' — ' + me.nombre,
-                tipo: sem?.tipo || 'Carga',
+                tipo: tipoMicrociclo(sem?.tipo),
                 fecha_inicio: fechaMicro,
                 duracion_dias: 7,
                 ua_planificada: sem?.ua || null

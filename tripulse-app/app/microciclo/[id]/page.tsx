@@ -3,6 +3,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { tipoMicrociclo } from '@/lib/microciclo-tipos'
 
 // Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
 // aquí no hay constructor. Sin bloques, su carga no se puede atribuir a ningún deporte
@@ -78,7 +79,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-8">
           <div className="flex items-center gap-3 mb-1">
             <h2 className="text-2xl font-bold">{microciclo.objetivo}</h2>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${microciclo.tipo === 'Carga' ? 'bg-orange-900 text-orange-300' : microciclo.tipo === 'Recuperacion' ? 'bg-green-900 text-green-300' : 'bg-blue-900 text-blue-300'}`}>{microciclo.tipo}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${microciclo.tipo === 'Carga' ? 'bg-orange-900 text-orange-300' : tipoMicrociclo(microciclo.tipo) === 'Recuperación' ? 'bg-green-900 text-green-300' : 'bg-blue-900 text-blue-300'}`}>{microciclo.tipo}</span>
           </div>
           <p className="text-gray-400 text-sm">Inicio: {microciclo.fecha_inicio}</p>
         </div>

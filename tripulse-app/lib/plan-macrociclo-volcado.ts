@@ -11,6 +11,7 @@
 // A, y las políticas de RLS filtran POR ESA COLUMNA. Un mesociclo sin ella no
 // es que quede feo: es que su propio dueño no lo puede leer.
 import { semanasDelMesociclo } from './plan-mesociclo'
+import { tipoMicrociclo } from './microciclo-tipos'
 import type { Temporada } from './plan-macrociclo'
 import type { DistanciaTri } from './distribucion-zonas'
 
@@ -103,7 +104,9 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
       id_mesociclo: meso.id,
       id_deportista: o.idDeportista,
       objetivo: 'Semana ' + (i + 1) + ' — ' + b.nombre,
-      tipo: s.esDescarga ? 'Recuperación' : b.clase === 'competicion' ? 'Taper' : 'Carga',
+      // «Taper» NO existe en el CHECK de la base: era lo que reventaba el
+      // guardado. El bloque de afinamiento es «Competición».
+      tipo: tipoMicrociclo(s.esDescarga ? 'Recuperación' : b.clase === 'competicion' ? 'Competición' : 'Carga'),
       fecha_inicio: s.lunes,
       duracion_dias: 7,
       // La UA se deja en blanco A PROPÓSITO: es lo que dibuja quien planifica, y
