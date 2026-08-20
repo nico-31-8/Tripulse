@@ -22,6 +22,7 @@ import { distanciaDePrueba, ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type Dist
 import { PRIORIDADES } from '@/lib/competicion-prioridad'
 import MisSemanas from '@/components/MisSemanas'
 import ChatEntrenador from '@/components/ChatEntrenador'
+import { estadoDelPlan, puedeRehacer, borrarPlan, type EstadoPlan } from '@/lib/plan-rehacer'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
 import type { NivelAtleta } from '@/lib/plan-semana'
 
@@ -55,6 +56,9 @@ export default function MiPlan() {
   // Con plan hecho se entra directo a «qué me toca»; el formulario solo aparece
   // si lo pide. Quien ya tiene plan no vuelve aquí a crearse otro.
   const [verFormulario, setVerFormulario] = useState(false)
+  const [estadoPlan, setEstadoPlan] = useState<EstadoPlan | null>(null)
+  const [rehaciendo, setRehaciendo] = useState(false)
+  const [confirmaRehacer, setConfirmaRehacer] = useState(false)
 
   const [pruebaId, setPruebaId] = useState('tri-olimpico')
   const [fecha, setFecha] = useState('')
@@ -71,6 +75,7 @@ export default function MiPlan() {
       setDep(d)
       if (d) {
         setYaTiene(await planesExistentes(supabase, d.id))
+        setEstadoPlan(await estadoDelPlan(supabase, d.id))
         const [{ data: an }, { data: disp }] = await Promise.all([
           supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
           supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
@@ -171,10 +176,57 @@ export default function MiPlan() {
               <ChatEntrenador />
             </div>
 
-            <button onClick={() => setVerFormulario(true)}
-              className="text-gray-500 hover:text-white text-[12.5px] transition self-start">
-              Preparar otra competición →
-            </button>
+            <div className="border-t border-gray-800 pt-5 flex flex-col gap-3">
+              <button onClick={() => setVerFormulario(true)}
+                className="text-gray-500 hover:text-white text-[12.5px] transition self-start">
+                Preparar otra competición →
+              </button>
+
+              {/* Rehacer el plan. El veredicto se calcula con lo que hay: sin
+                  semanas generadas es un borrador y sale gratis; con ellas, una
+                  cada siete días. Lo entrenado nunca se borra. */}
+              {(() => {
+                if (!estadoPlan) return null
+                const v = puedeRehacer(estadoPlan, new Date().toISOString().slice(0, 10))
+                if (!v.puede) {
+                  return (
+                    <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
+                      <p className="text-[12.5px] text-gray-300">{v.motivo}</p>
+                      <p className="text-[11.5px] text-gray-500 mt-1">{v.consecuencia}</p>
+                    </div>
+                  )
+                }
+                if (!confirmaRehacer) {
+                  return (
+                    <button onClick={() => setConfirmaRehacer(true)}
+                      className="text-gray-600 hover:text-red-400 text-[12.5px] transition self-start">
+                      No me convence este plan, quiero rehacerlo
+                    </button>
+                  )
+                }
+                return (
+                  <div className="rounded-xl bg-gray-900 border border-red-900/50 px-4 py-3 flex flex-col gap-2.5">
+                    <p className="text-[13px] text-gray-200">{v.motivo}</p>
+                    {v.consecuencia && <p className="text-[12px] text-amber-200/90">{v.consecuencia}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={async () => {
+                        if (!estadoPlan.idMacrociclo) return
+                        setRehaciendo(true)
+                        const r = await borrarPlan(supabase, dep.id, estadoPlan.idMacrociclo)
+                        setRehaciendo(false)
+                        if (r.error) { setError(r.error); return }
+                        setYaTiene(0); setEstadoPlan(null); setConfirmaRehacer(false); setVerFormulario(true)
+                      }} disabled={rehaciendo}
+                        className="bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white text-[12.5px] font-semibold px-3.5 py-2 rounded-lg transition">
+                        {rehaciendo ? 'Borrando…' : 'Sí, empezar de cero'}
+                      </button>
+                      <button onClick={() => setConfirmaRehacer(false)}
+                        className="text-gray-400 hover:text-white text-[12.5px] px-2 transition">Déjalo</button>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         ) : hecho ? (
           <div className="mt-8 rounded-2xl border border-green-600/40 bg-green-500/[0.07] p-6">
