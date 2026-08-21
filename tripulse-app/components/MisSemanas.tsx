@@ -196,24 +196,35 @@ export default function MisSemanas({
       )}
 
       <div className="flex flex-wrap items-center gap-3">
+        {/* El botón dice lo que hace. «Ver qué me tocaría» sonaba a que no iba a
+            pasar nada, y lo que hace es montar las semanas enteras. */}
         <button onClick={generar} disabled={trabajando || !meso}
-          className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-40">
-          {trabajando && !generadas ? 'Preparándolas…' : generadas ? 'Volver a prepararlas' : 'Ver qué me tocaría'}
+          className={'px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-40 ' +
+            (generadas
+              ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white'
+              : 'bg-orange-500 hover:bg-orange-600 text-white')}>
+          {trabajando && !generadas ? 'Generando…' : generadas ? 'Generar otras' : 'Generar mis sesiones'}
         </button>
 
-        {generadas && !hecho && (confirmando ? (
+        {/* La previsualización YA es la confirmación: has visto las horas de cada
+            semana y cuántas sesiones salen. Pedir un «¿seguro?» encima es
+            fricción sin nada que aporte... salvo que haya algo que perder, y
+            entonces sí: volcar sobre semanas que ya tienen sesiones las duplica. */}
+        {generadas && !hecho && (yaHayTotal > 0 && !confirmando ? (
+          <button onClick={() => setConfirmando(true)} disabled={trabajando}
+            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+            Guardar en mi calendario →
+          </button>
+        ) : (
           <>
             <button onClick={guardar} disabled={trabajando}
               className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-              {trabajando ? 'Guardando…' : 'Sí, ponlas en mi calendario'}
+              {trabajando ? 'Guardando…' : yaHayTotal > 0 ? 'Sí, añádelas igualmente' : 'Guardar en mi calendario'}
             </button>
-            <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm px-2 transition">Ahora no</button>
+            {confirmando && (
+              <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm px-2 transition">Ahora no</button>
+            )}
           </>
-        ) : (
-          <button onClick={() => setConfirmando(true)} disabled={trabajando}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-            Ponerlas en mi calendario →
-          </button>
         ))}
 
         {hecho && <p className="text-green-400 text-sm">✓ {totalCreadas} sesiones en tu calendario.</p>}

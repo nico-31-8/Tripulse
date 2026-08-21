@@ -142,7 +142,7 @@ export default function MiPlan() {
         </h1>
         <p className="text-gray-500 text-sm mt-2 max-w-xl">
           {yaTiene > 0 && !verFormulario && !hecho
-            ? 'Elige el bloque y te preparo sus semanas. Verás lo que sale antes de que se guarde nada.'
+            ? 'Elige el bloque y genero sus sesiones. Las ves antes de que se guarde nada.'
             : 'Dime la prueba y el día. Reparto las semanas que quedan en fases, de atrás hacia adelante desde la carrera, y te digo qué toca en cada una antes de crear nada.'}
         </p>
 
