@@ -18,6 +18,7 @@ import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
+import { testsDelPlan, type EncargoTests } from '@/lib/plan-tests'
 import type { DistanciaTri } from '@/lib/distribucion-zonas'
 
 interface MesoFila {
@@ -56,6 +57,7 @@ export default function MisSemanas({
   const [generadas, setGeneradas] = useState<Generada[] | null>(null)
   const [trabajando, setTrabajando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  const [competicion, setCompeticion] = useState<string | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -77,8 +79,12 @@ export default function MisSemanas({
         })
       })
 
+      const { data: comps } = await supabase.from('competicion')
+        .select('fecha').eq('id_deportista', idDeportista).order('fecha')
+
       if (!vivo) return
       setMesos(lista); setUaPorMeso(ua)
+      setCompeticion(comps?.length ? String(comps[comps.length - 1].fecha).slice(0, 10) : null)
       // Arranca en el bloque en el que está HOY, que es lo que quiere ver: el
       // primero cuyo final aún no ha pasado.
       const hoy = new Date().toISOString().slice(0, 10)
@@ -96,6 +102,28 @@ export default function MisSemanas({
     tipo: meso.tipo, semanas: meso.duracion_semanas || 4,
     horasReferencia, distancia, lunes: meso.fecha_inicio, uaPorSemana: uaPorMeso[meso.id],
   }) : [], [meso, horasReferencia, distancia, uaPorMeso])
+
+  /**
+   * Los tests que caen en este bloque.
+   *
+   * Se calculan sobre TODO el plan y no solo sobre el bloque: «la primera
+   * semana de la temporada» y «seis antes de la carrera» son posiciones dentro
+   * del plan entero, y mirando un bloque suelto no se sabe cuál es cuál.
+   */
+  const tests = useMemo<EncargoTests[]>(() => {
+    if (!mesos.length) return []
+    const todas = mesos.flatMap(m => semanasDelMesociclo({
+      tipo: m.tipo, semanas: m.duracion_semanas || 4,
+      horasReferencia, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
+    }).map(x => ({
+      lunes: x.lunes || '', n: 0, tipoMeso: m.tipo,
+      esDescarga: x.esDescarga, primeraDelBloque: x.n === 1,
+    })))
+    todas.sort((a, b) => a.lunes.localeCompare(b.lunes)).forEach((x, i) => { x.n = i })
+    return testsDelPlan(todas, competicion)
+  }, [mesos, uaPorMeso, horasReferencia, distancia, competicion])
+
+  const testDeLaSemana = (lunes?: string) => tests.find(t => t.lunes === lunes)
 
   const generar = async () => {
     if (!meso) return
@@ -171,6 +199,18 @@ export default function MisSemanas({
                 <p className={'text-[11.5px] ' + (s.esDescarga ? 'text-green-400' : 'text-gray-500')}>
                   {s.esDescarga ? 'Semana suave: aquí es donde se asimila lo anterior' : s.etiqueta}
                 </p>
+                {/* El test va en semana suave a propósito: testar cansado mide el
+                    cansancio, no la forma, y encima recorta las zonas. */}
+                {(() => {
+                  const t = testDeLaSemana(s.lunes)
+                  if (!t) return null
+                  return (
+                    <p className="text-[11.5px] text-blue-300 mt-0.5">
+                      📏 Toca medirse: {t.tests.map(x => x.protocolo).join(' · ')}
+                      <span className="block text-[11px] text-gray-500">{t.motivo}</span>
+                    </p>
+                  )
+                })()}
               </div>
               <span className="text-[12px] text-gray-500 tabular-nums flex-shrink-0">
                 {g?.creadas != null
