@@ -216,7 +216,12 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
         disciplina,
         fecha_sesion: fecha,
         estado: 'Planificada',
-        nombre: r.nombre,
+        /* NO va `nombre`: esa columna no existe en `sesion`. Me la inventé
+           porque el relleno trae el nombre de la plantilla y parecía el sitio
+           natural, pero el resto de la app crea sesiones solo con disciplina,
+           fecha y estado — la identidad de una sesión sale de sus TAREAS (zona
+           y volumen), que es justo lo que pintan el calendario y el briefing.
+           El nombre sigue viajando en el parte que se le enseña al usuario. */
       }).select('id').single()
 
       if (eS || !ses) { parte.push({ ...base, error: eS?.message || 'No se pudo crear la sesión' }); continue }

@@ -207,3 +207,25 @@ describe('cuando algo falla', () => {
     expect(txt).toMatch(/sesión libre/)
   })
 })
+
+describe('lo que se escribe en la tabla sesion', () => {
+  /* ESTE TEST NACE DE UN FALLO REAL. El volcado escribia `nombre`, una columna
+     que NO existe: PostgREST devolvia "Could not find the 'nombre' column of
+     'sesion' in the schema cache" y no se creaba ni una sesion. Los dobles de
+     test aceptan cualquier campo, asi que en verde no se veia nada.
+
+     El esquema completo no esta en el repo, asi que lo unico que se puede
+     vigilar desde aqui es que no se inventen columnas nuevas sin querer: si
+     alguien anade una, este test se cae y le obliga a comprobar que existe. */
+  it('solo escribe columnas que se sabe que existen', async () => {
+    const permitidas = new Set([
+      'id_microciclo', 'id_deportista', 'origen', 'disciplina', 'fecha_sesion', 'estado',
+    ])
+    const sb = fakeSb({ micros: [{ id: 5, fecha_inicio: '2026-08-17', duracion_dias: 7 }] })
+    await volcarSemana(sb, opts({ relleno: semanaDe().relleno }))
+    expect(sb.insertado.sesion.length).toBeGreaterThan(0)
+    sb.insertado.sesion.forEach((ses: any) => {
+      Object.keys(ses).forEach(k => expect(permitidas, 'columna inventada: ' + k).toContain(k))
+    })
+  })
+})
