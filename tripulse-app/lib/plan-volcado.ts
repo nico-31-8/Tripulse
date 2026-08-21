@@ -204,7 +204,15 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
     try {
       const { data: ses, error: eS } = await sb.from('sesion').insert({
         id_microciclo: micro ? micro.id : null,
-        ...(micro ? {} : { id_deportista: o.idDeportista, origen: 'entrenador' }),
+        /* `id_deportista` va SIEMPRE, cuelgue de un microciclo o no.
+           Antes solo se escribía en las sueltas, dando por hecho que la de
+           dentro del plan lo heredaba del microciclo. Pero la política de RLS
+           es `id_deportista in (auth_dep_ids())` sobre la propia fila, así que
+           una sesión con ese campo a null no pasa el WITH CHECK y el insert se
+           rechaza. Escribirlo aquí no depende de que exista un disparador que
+           lo rellene. */
+        id_deportista: o.idDeportista,
+        ...(micro ? {} : { origen: 'entrenador' }),
         disciplina,
         fecha_sesion: fecha,
         estado: 'Planificada',

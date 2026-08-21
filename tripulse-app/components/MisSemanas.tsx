@@ -48,6 +48,8 @@ interface Generada extends SemanaDelMeso {
   error?: string | null
 }
 
+const totalCreadasCalc = (g: Generada[] | null) => (g || []).reduce((a, s) => a + (s.creadas || 0), 0)
+
 export default function MisSemanas({
   idDeportista, distancia, nivel, dias, disponibilidad, horasReferencia, disciplinaDebil, onCambio,
 }: Props) {
@@ -232,6 +234,8 @@ export default function MisSemanas({
     return () => { vivo = false }
   }, [cargando, mesos, generadas])
 
+  const [detalle, setDetalle] = useState<string[]>([])
+
   const guardar = async () => {
     if (!generadas) return
     setTrabajando(true); setConfirmando(false)
@@ -246,6 +250,12 @@ export default function MisSemanas({
       })
       out[i] = { ...s, creadas: r.creadas, error: r.error }
       setGeneradas([...out])
+      // El porqué de cada sesión que no entró. Sin esto, un fallo de permisos
+      // y uno de datos se ven exactamente igual: nada.
+      const fallos = (r.parte || []).filter((x: any) => !x.ok && x.error)
+      if (fallos.length) {
+        setDetalle(d => [...d, ...fallos.slice(0, 3).map((x: any) => x.dia + ': ' + x.error)])
+      }
     }
     setTrabajando(false)
     onCambio?.()
@@ -254,8 +264,10 @@ export default function MisSemanas({
   if (cargando) return <p className="text-gray-500 text-sm">Buscando tu plan…</p>
   if (!mesos.length) return null
 
-  const hecho = !!generadas?.length && generadas.every(s => s.creadas != null)
-  const totalCreadas = (generadas || []).reduce((a, s) => a + (s.creadas || 0), 0)
+  // «Hecho» es que se haya creado algo, no que se haya intentado: con
+  // `creadas != null` un volcado rechazado entero contaba como terminado.
+  const hecho = !!generadas?.length && generadas.every(s => s.creadas != null) && totalCreadasCalc(generadas) > 0
+  const totalCreadas = totalCreadasCalc(generadas)
   const yaHayTotal = (generadas || []).reduce((a, s) => a + (s.yaHay || 0), 0)
   const totalSesiones = (generadas || []).reduce((a, s) => a + s.plan.relleno.length, 0)
 
@@ -282,6 +294,15 @@ export default function MisSemanas({
               Tus {horasReferencia} h pasan a {horasUsadas} h esta vez. Cuando vuelvas a llevarlo al día, suben solas.
             </p>
           )}
+        </div>
+      )}
+
+      {detalle.length > 0 && (
+        <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3">
+          <p className="text-[12.5px] text-red-300 font-semibold">No se han podido crear algunas sesiones</p>
+          {detalle.slice(0, 6).map((t, i) => (
+            <p key={i} className="text-[11.5px] text-red-200/80 mt-0.5">{t}</p>
+          ))}
         </div>
       )}
 
@@ -337,12 +358,20 @@ export default function MisSemanas({
                   )
                 })()}
               </div>
-              <span className="text-[12px] text-gray-500 tabular-nums flex-shrink-0">
-                {g?.creadas != null
-                  ? <span className="text-green-400">✓ {g.creadas}</span>
-                  : g
-                    ? g.plan.relleno.length + ' sesiones'
-                    : ''}
+              <span className="text-[12px] tabular-nums flex-shrink-0 text-right max-w-[45%]">
+                {/* Un fallo NO puede salir como «✓ 0». Antes, si el volcado se
+                    rechazaba, la fila decía «✓ 0» y el error se quedaba en una
+                    variable que nadie pintaba: el atleta veía un tick verde y
+                    ninguna sesión en su calendario. */}
+                {g?.error
+                  ? <span className="text-red-400">{g.error}</span>
+                  : g?.creadas
+                    ? <span className="text-green-400">✓ {g.creadas}</span>
+                    : g?.creadas === 0
+                      ? <span className="text-amber-300">no se creó ninguna</span>
+                      : g
+                        ? <span className="text-gray-500">{g.plan.relleno.length} sesiones</span>
+                        : null}
               </span>
             </div>
           )

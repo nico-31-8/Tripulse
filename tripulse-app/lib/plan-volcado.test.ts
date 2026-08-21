@@ -127,14 +127,19 @@ describe('el volcado', () => {
     })
   })
 
-  it('con semana planificada entran en su microciclo, sin id_deportista', async () => {
+  /* Este test fijaba lo contrario -«sin id_deportista»- dando por hecho que la
+     sesión de dentro del plan heredaba el dueño de su microciclo. No es así: la
+     política de RLS mira `id_deportista` EN LA PROPIA FILA, así que con ese
+     campo a null el insert no pasa el WITH CHECK y no se crea nada. Es lo que
+     impedía al deportista volcar sus semanas. */
+  it('entran en su microciclo Y con el dueño escrito', async () => {
     const s = semanaDe()
     const sb = fakeSb({ micros: [{ id: 5, fecha_inicio: '2026-08-17', duracion_dias: 7 }] })
     const r = await volcarSemana(sb, opts({ relleno: s.relleno }))
     expect(r.parte.every(p => p.enSuPlan)).toBe(true)
     sb.insertado.sesion.forEach((ses: any) => {
       expect(ses.id_microciclo).toBe(5)
-      expect(ses.id_deportista).toBeUndefined()
+      expect(ses.id_deportista).toBe(7)
     })
   })
 
