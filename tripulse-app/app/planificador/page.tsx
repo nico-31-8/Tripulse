@@ -31,19 +31,11 @@ import CadenaMesociclo from '@/components/CadenaMesociclo'
 import PlanificarMesociclo from '@/components/PlanificarMesociclo'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
+import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis } from '@/lib/anamnesis-datos'
 
 const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
 const FASES: FaseMacro[] = ['transicion', 'pg-inicial', 'pg-avanzada', 'pe-inicial', 'pe-avanzada', 'tapering']
 const NIVELES: NivelAtleta[] = ['principiante', 'intermedio', 'avanzado', 'elite']
-
-/** El nivel que declara la anamnesis, traducido al del planificador. */
-function nivelDeAnamnesis(txt: string | null | undefined): NivelAtleta {
-  const t = String(txt ?? '').toLowerCase()
-  if (t.includes('elite') || t.includes('élite') || t.includes('profesional')) return 'elite'
-  if (t.includes('avanzad')) return 'avanzado'
-  if (t.includes('inicia') || t.includes('principi') || t.includes('popular')) return 'principiante'
-  return 'intermedio'
-}
 
 /** La distancia que declara la anamnesis (texto libre), si se reconoce. */
 function distanciaDeAnamnesis(txt: string | null | undefined): DistanciaTri | null {
@@ -123,8 +115,8 @@ export default function Planificador() {
       supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
     ])
     setAnamnesis(an)
-    if (an?.volumen_semanal) setHoras(Number(an.volumen_semanal))
-    if (an?.dias_semana) setDias(Number(an.dias_semana))
+    const h = horasDeAnamnesis(an?.volumen_semanal); if (h !== null) setHoras(h)
+    const d2 = diasDeAnamnesis(an?.dias_semana); if (d2 !== null) setDias(d2)
     setNivel(nivelDeAnamnesis(an?.nivel_competitivo))
     const dist = distanciaDeAnamnesis(an?.prueba_distancia)
     if (dist) setDistancia(dist)

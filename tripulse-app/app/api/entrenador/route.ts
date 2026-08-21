@@ -16,6 +16,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ENTRENADOR_IA, contextoParaAtleta } from '@/lib/entrenador-ia'
+import { horasDeAnamnesis } from '@/lib/anamnesis-datos'
 import { semanasDelMesociclo } from '@/lib/plan-mesociclo'
 import { sumarDias, diasEntre } from '@/lib/desplazar'
 
@@ -113,7 +114,7 @@ async function armarContexto(sb: any, dep: any, hoy: string) {
     const n = Math.floor(diasEntre(actual.fecha_inicio, hoy) / 7) + 1
     const sem = semanasDelMesociclo({
       tipo: actual.tipo, semanas: actual.duracion_semanas || 4,
-      horasReferencia: Number(an?.volumen_semanal) || 8, distancia: 'medio',
+      horasReferencia: horasDeAnamnesis(an?.volumen_semanal) ?? 8, distancia: 'medio',
     })
     bloque = {
       nombre: actual.objetivo || 'Bloque',

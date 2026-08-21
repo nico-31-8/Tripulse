@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
+import { OPCIONES_VOLUMEN, OPCIONES_DIAS, OPCIONES_NIVEL, OPCIONES_DISCIPLINA } from '@/lib/anamnesis-datos'
 
 const SECCIONES = [
   'Datos personales',
@@ -586,9 +587,7 @@ export default function PaginaAnamnesis() {
               <label className={labelCls}>Nivel competitivo</label>
               <select className={selectCls} value={nivelCompetitivo} onChange={e => setNivelCompetitivo(e.target.value)}>
                 <option value="">Selecciona...</option>
-                <option>Popular / Recreativo</option>
-                <option>Amateur competitivo</option>
-                <option>Élite</option>
+                {OPCIONES_NIVEL.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -596,18 +595,14 @@ export default function PaginaAnamnesis() {
                 <label className={labelCls}>Disciplina más fuerte</label>
                 <select className={selectCls} value={disciplinaFuerte} onChange={e => setDisciplinaFuerte(e.target.value)}>
                   <option value="">—</option>
-                  <option>Natación</option>
-                  <option>Ciclismo</option>
-                  <option>Carrera</option>
+                  {OPCIONES_DISCIPLINA.map(o => <option key={o}>{o}</option>)}
                 </select>
               </div>
               <div>
                 <label className={labelCls}>Disciplina más débil</label>
                 <select className={selectCls} value={disciplinaDebil} onChange={e => setDisciplinaDebil(e.target.value)}>
                   <option value="">—</option>
-                  <option>Natación</option>
-                  <option>Ciclismo</option>
-                  <option>Carrera</option>
+                  {OPCIONES_DISCIPLINA.map(o => <option key={o}>{o}</option>)}
                 </select>
               </div>
             </div>
@@ -622,20 +617,14 @@ export default function PaginaAnamnesis() {
               <label className={labelCls}>Volumen semanal habitual</label>
               <select className={selectCls} value={volumenSemanal} onChange={e => setVolumenSemanal(e.target.value)}>
                 <option value="">Selecciona...</option>
-                <option>Menos de 5h</option>
-                <option>5–8h</option>
-                <option>8–12h</option>
-                <option>Más de 12h</option>
+                {OPCIONES_VOLUMEN.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div>
               <label className={labelCls}>Días de entrenamiento por semana</label>
               <select className={selectCls} value={diasSemana} onChange={e => setDiasSemana(e.target.value)}>
                 <option value="">Selecciona...</option>
-                <option>1–2 días</option>
-                <option>3–4 días</option>
-                <option>5–6 días</option>
-                <option>Todos los días</option>
+                {OPCIONES_DIAS.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
           </div>
