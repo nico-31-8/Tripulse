@@ -235,19 +235,32 @@ export default function MiPlan() {
               {hecho.mesos} bloques y {hecho.micros} semanas, hasta el {fecha}.
             </p>
             {error && <p className="text-amber-300 text-[13px] mt-3">{error}</p>}
+            <p className="text-gray-400 text-[12.5px] mt-2">
+              El plan es el esqueleto: dentro todavía no hay sesiones. Genera las del primer bloque y ya tienes
+              calendario.
+            </p>
+
+            {/* Aquí había un «Ver mi panel» que llevaba a un panel vacío: el plan
+                recién creado no tiene ni una sesión dentro. Lo que toca justo
+                después de crearlo es generarlas, así que va aquí lo mismo que
+                aparece luego, y no un enlace a otra pantalla. */}
+            <div className="mt-5 pt-5 border-t border-green-700/30">
+              <MisSemanas
+                idDeportista={dep.id}
+                distancia={distancia}
+                nivel={nivelDeAnamnesis(anamnesis?.nivel_competitivo)}
+                dias={Number(anamnesis?.dias_semana) || 5}
+                disponibilidad={disponibilidad}
+                horasReferencia={Number(anamnesis?.volumen_semanal) || 8}
+                disciplinaDebil={anamnesis?.disciplina_debil || null} />
+            </div>
+
             <div className="flex flex-wrap gap-3 mt-5">
-              <button onClick={() => router.push('/dashboard-deportista')}
-                className="bg-orange-500 hover:bg-orange-600 px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-                Ver mi panel
-              </button>
               <button onClick={() => router.push('/mis-sesiones')}
                 className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-5 py-2.5 rounded-lg text-sm transition">
                 Mis sesiones
               </button>
             </div>
-            <p className="text-gray-500 text-[12.5px] mt-4">
-              Todavía no hay sesiones dentro: el plan es el esqueleto. Las semanas se generan bloque a bloque.
-            </p>
           </div>
         ) : (
           <>
