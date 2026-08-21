@@ -34,7 +34,7 @@ describe('cuándo se puede rehacer', () => {
   it('pasada la espera, se puede y se dice qué se pierde', () => {
     const v = puedeRehacer(estado({ planificadas: 20, creado: '2026-08-01' }), HOY)
     expect(v.puede).toBe(true)
-    expect(v.consecuencia).toMatch(/Se borran las 20 sesiones/)
+    expect(v.consecuencia).toMatch(/Las 20 sesiones .* van a la papelera/)
   })
 
   it('justo al cumplirse el plazo ya se puede', () => {
@@ -116,5 +116,36 @@ describe('borrar el plan', () => {
     const r = await borrarPlan(api as any, 7, 99)
     expect(r.sueltas).toBe(0)
     expect(r.error).toBeNull()
+  })
+})
+
+describe('nada se borra de verdad', () => {
+  /* Este era el UNICO sitio de la app donde borrar una sesion significaba
+     borrarla. En todas las demas pantallas es `eliminada = true` y se puede
+     recuperar; aqui era un delete irreversible. */
+  it('las planificadas van a la papelera, no al vacio', async () => {
+    const parches: any[] = []
+    const from = (tabla: string) => ({
+      select: () => ({
+        eq: () => { const r = { data: tabla === 'mesociclo' ? [{ id: 10 }] : [], error: null }; return { ...r, then: (f: any) => f(r) } },
+        in: () => ({
+          eq: () => { const r = { data: [], error: null }; return { ...r, then: (f: any) => f(r) } },
+          ...(() => { const r = { data: [{ id: 1 }, { id: 2 }], error: null }; return { ...r, then: (f: any) => f(r) } })(),
+        }),
+      }),
+      update: (v: any) => ({
+        in: () => { parches.push({ tabla, v }); const r = { error: null }; return { ...r, then: (f: any) => f(r) } },
+      }),
+      delete: () => {
+        const r = { error: null }
+        return { in: () => ({ ...r, then: (f: any) => f(r) }), eq: () => ({ ...r, then: (f: any) => f(r) }) }
+      },
+    })
+    await borrarPlan({ from } as any, 7, 99)
+    const aPapelera = parches.find(p => p.v.eliminada === true)
+    expect(aPapelera, 'ninguna sesion marcada como eliminada').toBeTruthy()
+    // Y despegadas del microciclo, o la clave ajena se las lleva igual.
+    expect(aPapelera.v.id_microciclo).toBeNull()
+    expect(aPapelera.v.id_deportista).toBe(7)
   })
 })

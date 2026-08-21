@@ -14,8 +14,10 @@
 //   · CON semanas generadas → una cada 7 días. Aquí sí hay algo que se tira:
 //     sesiones planificadas, y sobre todo la coherencia de lo que llevaba.
 //
-// Y LO YA ENTRENADO NO SE BORRA NUNCA. Se suelta del plan y se queda en su
-// calendario: es historia del atleta, no del plan.
+// NADA SE BORRA DE VERDAD. Lo ya entrenado se suelta del plan y se queda en su
+// calendario —es historia del atleta, no del plan—, y lo planificado va a la
+// papelera, igual que cuando se borra una sesión desde cualquier otra pantalla.
+// Este era el único sitio de la app donde «borrar» significaba borrar.
 import { diasEntre } from './desplazar'
 
 /** Días entre rehacer y rehacer, cuando ya hay semanas puestas. */
@@ -66,7 +68,7 @@ export function puedeRehacer(e: EstadoPlan, hoy: string): Veredicto {
     return {
       puede: true, faltan: 0,
       motivo: 'Vas a rehacer tu plan.',
-      consecuencia: 'Se borran las ' + e.planificadas + ' sesiones que tenías por delante.' + conservadas,
+      consecuencia: 'Las ' + e.planificadas + ' sesiones que tenías por delante van a la papelera.' + conservadas,
     }
   }
 
@@ -75,7 +77,7 @@ export function puedeRehacer(e: EstadoPlan, hoy: string): Veredicto {
     return {
       puede: true, faltan: 0,
       motivo: 'Tu plan tiene ' + dias + ' días. Puedes rehacerlo.',
-      consecuencia: 'Se borran las ' + e.planificadas + ' sesiones que tenías por delante.' + conservadas,
+      consecuencia: 'Las ' + e.planificadas + ' sesiones que tenías por delante van a la papelera.' + conservadas,
     }
   }
 
@@ -95,9 +97,9 @@ export function puedeRehacer(e: EstadoPlan, hoy: string): Veredicto {
  * Borra el plan de un atleta y devuelve qué se llevó por delante.
  *
  * Las sesiones NO se borran a ciegas: las realizadas se sueltan del microciclo
- * y se quedan, y las planificadas se van. Si se borrara todo, el atleta perdería
- * el registro de lo que entrenó — que es justo lo único que no es del plan sino
- * suyo.
+ * y se quedan tal cual, y las planificadas van a la papelera. Si se borrara
+ * todo, el atleta perdería el registro de lo que entrenó — que es justo lo
+ * único que no es del plan sino suyo.
  */
 export async function borrarPlan(sb: any, idDeportista: number, idMacrociclo: number) {
   const { data: mesos } = await sb.from('mesociclo').select('id').eq('id_macrociclo', idMacrociclo)
@@ -116,9 +118,19 @@ export async function borrarPlan(sb: any, idDeportista: number, idMacrociclo: nu
       sueltas = hechas.length
     }
 
+    /* Las planificadas van a la PAPELERA, no al vacío.
+       Antes esto era un `delete` de verdad: irreversible, y encima el único
+       sitio de la app donde borrar una sesión no significaba `eliminada =
+       true`. En todas las demás pantallas «borrar» es recuperable, así que
+       aquí también. Se despegan del microciclo además de marcarse, porque el
+       microciclo se borra justo después y la clave ajena se las llevaría. */
     const { data: restantes } = await sb.from('sesion').select('id').in('id_microciclo', ids)
     borradas = restantes?.length || 0
-    if (borradas) await sb.from('sesion').delete().in('id_microciclo', ids)
+    if (borradas) {
+      await sb.from('sesion')
+        .update({ eliminada: true, id_microciclo: null, id_deportista: idDeportista })
+        .in('id_microciclo', ids)
+    }
 
     await sb.from('microciclo').delete().in('id_mesociclo', ids)
     await sb.from('mesociclo').delete().eq('id_macrociclo', idMacrociclo)
