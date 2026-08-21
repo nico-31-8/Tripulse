@@ -19,6 +19,7 @@ import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
 import { testsDelPlan, type EncargoTests } from '@/lib/plan-tests'
+import { adaptar, horasAdaptadas, type Adaptacion } from '@/lib/plan-adaptacion'
 import type { DistanciaTri } from '@/lib/distribucion-zonas'
 
 interface MesoFila {
@@ -58,6 +59,7 @@ export default function MisSemanas({
   const [trabajando, setTrabajando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const [competicion, setCompeticion] = useState<string | null>(null)
+  const [adap, setAdap] = useState<Adaptacion | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -82,12 +84,26 @@ export default function MisSemanas({
       const { data: comps } = await supabase.from('competicion')
         .select('fecha').eq('id_deportista', idDeportista).order('fecha')
 
+      /* Lo que ha hecho de verdad en las últimas cuatro semanas. Es lo que
+         hace que el plan reaccione en vez de repetirse. */
+      const hoy = new Date().toISOString().slice(0, 10)
+      const { data: hechas } = await supabase.from('sesion')
+        .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
+        .eq('id_deportista', idDeportista)
+        .gte('fecha_sesion', sumarDias(hoy, -28)).lt('fecha_sesion', hoy)
+        .or('eliminada.is.null,eliminada.eq.false')
+
       if (!vivo) return
       setMesos(lista); setUaPorMeso(ua)
       setCompeticion(comps?.length ? String(comps[comps.length - 1].fecha).slice(0, 10) : null)
+      setAdap(adaptar((hechas || []).map((x: any) => ({
+        fecha: String(x.fecha_sesion).slice(0, 10),
+        estado: x.estado,
+        rpeEsperado: x.rpe_estimado,
+        rpeReportado: x.rpe_reportado,
+      })), dias))
       // Arranca en el bloque en el que está HOY, que es lo que quiere ver: el
       // primero cuyo final aún no ha pasado.
-      const hoy = new Date().toISOString().slice(0, 10)
       const actual = lista.find(m => sumarDias(m.fecha_inicio, (m.duracion_semanas || 4) * 7) > hoy)
       setSelId((actual || lista[0])?.id ?? null)
       setCargando(false)
@@ -98,9 +114,14 @@ export default function MisSemanas({
 
   const meso = mesos.find(m => m.id === selId) || null
 
+  /* Las horas con las que se generan las semanas: las suyas, corregidas por lo
+     que de verdad está haciendo. Sin adaptación, las mismas de siempre. */
+  const horasUsadas = adap ? horasAdaptadas(horasReferencia, adap) : horasReferencia
+  const diasUsados = adap?.diasSugeridos ?? dias
+
   const semanas = useMemo(() => meso ? semanasDelMesociclo({
     tipo: meso.tipo, semanas: meso.duracion_semanas || 4,
-    horasReferencia, distancia, lunes: meso.fecha_inicio, uaPorSemana: uaPorMeso[meso.id],
+    horasReferencia: horasUsadas, distancia, lunes: meso.fecha_inicio, uaPorSemana: uaPorMeso[meso.id],
   }) : [], [meso, horasReferencia, distancia, uaPorMeso])
 
   /**
@@ -114,7 +135,7 @@ export default function MisSemanas({
     if (!mesos.length) return []
     const todas = mesos.flatMap(m => semanasDelMesociclo({
       tipo: m.tipo, semanas: m.duracion_semanas || 4,
-      horasReferencia, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
+      horasReferencia: horasUsadas, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
     }).map(x => ({
       lunes: x.lunes || '', n: 0, tipoMeso: m.tipo,
       esDescarga: x.esDescarga, primeraDelBloque: x.n === 1,
@@ -128,14 +149,14 @@ export default function MisSemanas({
   const generar = async () => {
     if (!meso) return
     setTrabajando(true)
-    const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
+    const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
     const out: Generada[] = []
     for (const s of semanas) {
       const e: EntradaSemana = entradaDeSemana(s, base)
       const forma = formaDeSemana(e)
       const plan = rellenarSemana({
         forma,
-        colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
+        colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : diasUsados),
         nivel, fase: s.fase,
       })
       const yaHay = s.lunes ? await loQueYaHay(supabase, idDeportista, s.lunes).catch(() => null) : null
@@ -174,7 +195,7 @@ export default function MisSemanas({
       const horizonte = sumarDias(hoy, 21)
       const candidatas = mesos.flatMap(m => semanasDelMesociclo({
         tipo: m.tipo, semanas: m.duracion_semanas || 4,
-        horasReferencia, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
+        horasReferencia: horasUsadas, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
       }).map(x => ({ s: x, meso: m })))
         .filter(({ s: x }) => x.lunes && x.lunes >= sumarDias(hoy, -6) && x.lunes <= horizonte)
         .sort((a, b) => (a.s.lunes || '').localeCompare(b.s.lunes || ''))
@@ -182,7 +203,7 @@ export default function MisSemanas({
       if (!candidatas.length) { if (vivo) setRodado(0) ; return }
 
       setRodando(true)
-      const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
+      const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
       let puestas = 0
       for (const { s: x } of candidatas) {
         if (!vivo || !x.lunes) break
@@ -192,7 +213,7 @@ export default function MisSemanas({
         const forma = formaDeSemana(e)
         const plan = rellenarSemana({
           forma,
-          colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
+          colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : diasUsados),
           nivel, fase: x.fase,
         })
         const r = await volcarSemana(supabase, {
@@ -240,6 +261,30 @@ export default function MisSemanas({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Por qué le ha cambiado el plan.
+          Adaptar en silencio es lo peor que puede hacer esto: el atleta abre la
+          app, ve menos horas que la semana pasada y no sabe si es un fallo, un
+          castigo o qué. Si algo cambia, se dice, y se dice con el dato que lo
+          justifica. */}
+      {adap && (adap.aplicado.length > 0 || adap.propuesto.length > 0) && (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3 flex flex-col gap-2">
+          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
+            He ajustado tu plan
+          </p>
+          {adap.aplicado.map((t, i) => (
+            <p key={'a' + i} className="text-[12.5px] text-gray-300 leading-relaxed">{t}</p>
+          ))}
+          {adap.propuesto.map((t, i) => (
+            <p key={'p' + i} className="text-[12.5px] text-orange-300 leading-relaxed">{t}</p>
+          ))}
+          {adap.aplicado.length > 0 && (
+            <p className="text-[11.5px] text-gray-600">
+              Tus {horasReferencia} h pasan a {horasUsadas} h esta vez. Cuando vuelvas a llevarlo al día, suben solas.
+            </p>
+          )}
+        </div>
+      )}
+
       {rodando && (
         <p className="text-[12.5px] text-gray-500">Preparando tus próximas semanas…</p>
       )}
