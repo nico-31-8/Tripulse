@@ -10,6 +10,7 @@ import { analizarWellness } from '@/lib/wellness-analisis'
 import { cargaZona } from '@/lib/zonas'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import OnboardingDeportista from '@/components/OnboardingDeportista'
+import { altaCompleta } from '@/lib/anamnesis-datos'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -43,6 +44,8 @@ export default function DashboardDeportista() {
   const [ultimoWellness, setUltimoWellness] = useState<any>(null)
   const [analisis, setAnalisis] = useState<any>(null)
   const [anamnesisPendiente, setAnamnesisPendiente] = useState(false)
+  const [altaHecha, setAltaHecha] = useState(false)
+  const [tienePlan, setTienePlan] = useState(false)
   const [semana, setSemana] = useState<any[]>([])
   const [cumplimiento, setCumplimiento] = useState<{ pct: number; realizadas: number; planificadas: number } | null>(null)
   const [semanaPlan, setSemanaPlan] = useState(0)
@@ -80,6 +83,7 @@ export default function DashboardDeportista() {
       const hasta = fmt(sunday)
 
       const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
+      setTienePlan(!!macros?.length)
       const macroIds = (macros || []).map((m: any) => m.id)
       const { data: mesos } = macroIds.length ? await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds) : { data: [] }
       const mesoIds = (mesos || []).map((m: any) => m.id)
@@ -153,8 +157,15 @@ export default function DashboardDeportista() {
 
       // Anamnesis: cargar SIEMPRE (también para el deportista que aún no tiene entrenador),
       // para que el checklist de primeros pasos la muestre como paso pendiente.
-      const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
+      // Antes solo se leía `estado`, que responde a «¿está la anamnesis larga
+      // enviada?». El alta corta deja la fila en 'borrador' a propósito, así que
+      // por ahí parecía que no había nada. Se traen los campos que de verdad
+      // hacen falta y se decide por ellos.
+      const { data: an } = await supabase.from('anamnesis')
+        .select('estado, volumen_semanal, dias_semana, nivel_competitivo, declaracion_responsabilidad')
+        .eq('id_deportista', dep.id).maybeSingle()
       setAnamnesisPendiente(!an || an.estado !== 'enviada')
+      setAltaHecha(altaCompleta(an))
     }
     cargar()
   }, [])
@@ -252,9 +263,11 @@ export default function DashboardDeportista() {
         {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
         <InvitacionesClub />
 
-        {/* Primeros pasos: checklist guiado (vincular entrenador + anamnesis). Se oculta solo
-            cuando ambos están hechos. Sustituye a los avisos sueltos de antes. */}
-        <OnboardingDeportista deportista={deportista} anamnesisPendiente={anamnesisPendiente} />
+        {/* Primeros pasos. Los pasos que cuentan son los que el atleta puede hacer
+            solo (contarme de él, crear su plan); el entrenador va aparte porque
+            depende de un tercero y antes dejaba la lista incompleta para siempre. */}
+        <OnboardingDeportista deportista={deportista} altaHecha={altaHecha}
+          anamnesisPendiente={anamnesisPendiente} tienePlan={tienePlan} />
 
         {/* ===== WELLNESS (solo si está PENDIENTE: es una tarea) ===== */}
         {!wellnessHoy && bloqueWellness}

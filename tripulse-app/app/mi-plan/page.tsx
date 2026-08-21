@@ -24,16 +24,7 @@ import MisSemanas from '@/components/MisSemanas'
 import ChatEntrenador from '@/components/ChatEntrenador'
 import { estadoDelPlan, puedeRehacer, borrarPlan, type EstadoPlan } from '@/lib/plan-rehacer'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
-import type { NivelAtleta } from '@/lib/plan-semana'
-
-/** El nivel que declara la anamnesis, traducido al del planificador. */
-function nivelDeAnamnesis(txt: string | null | undefined): NivelAtleta {
-  const t = String(txt ?? '').toLowerCase()
-  if (t.includes('elite') || t.includes('élite') || t.includes('profesional')) return 'elite'
-  if (t.includes('avanzad')) return 'avanzado'
-  if (t.includes('inicia') || t.includes('principi') || t.includes('popular')) return 'principiante'
-  return 'intermedio'
-}
+import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis, altaCompleta } from '@/lib/anamnesis-datos'
 
 /** El lunes que viene: los microciclos empiezan en lunes en toda la app. */
 function proximoLunes(): string {
@@ -94,6 +85,12 @@ export default function MiPlan() {
     cargar()
   }, [router])
 
+  // Lo que el atleta declaró, ya en números. `null` significa «no lo ha dicho»,
+  // y eso se ve en pantalla en vez de taparse con un valor por defecto mudo.
+  const horas = horasDeAnamnesis(anamnesis?.volumen_semanal)
+  const dias = diasDeAnamnesis(anamnesis?.dias_semana)
+  const listo = altaCompleta(anamnesis)
+
   const distancia: DistanciaTri = distanciaDePrueba(pruebaId) || 'olimpico'
   const prueba = pruebaPorId(pruebaId)
 
@@ -152,18 +149,20 @@ export default function MiPlan() {
               idDeportista={dep.id}
               distancia={distancia}
               nivel={nivelDeAnamnesis(anamnesis?.nivel_competitivo)}
-              dias={Number(anamnesis?.dias_semana) || 5}
+              dias={dias ?? 5}
               disponibilidad={disponibilidad}
-              horasReferencia={Number(anamnesis?.volumen_semanal) || 8}
+              horasReferencia={horas ?? 8}
               disciplinaDebil={anamnesis?.disciplina_debil || null} />
 
-            {!anamnesis && (
+            {!listo && (
               <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
                 <span className="text-sm leading-none mt-0.5">⚠️</span>
                 <p className="text-[12.5px] text-amber-200/90">
-                  No tienes la anamnesis rellena, así que voy con 8 horas en 5 días.
-                  <button onClick={() => router.push('/anamnesis')} className="underline ml-1 hover:text-white">Rellénala</button> y las
-                  semanas saldrán con tus horas de verdad.
+                  {horas === null || dias === null
+                    ? 'No me has dicho cuánto tiempo tienes, así que voy con 8 horas en 5 días.'
+                    : 'Estoy repartiendo ' + horas + ' h en ' + dias + ' días, pero falta algún dato tuyo.'}
+                  <button onClick={() => router.push('/alta')} className="underline ml-1 hover:text-white">Cuéntamelo en un minuto</button> y
+                  las semanas salen con lo tuyo.
                 </p>
               </div>
             )}
@@ -240,6 +239,17 @@ export default function MiPlan() {
               calendario.
             </p>
 
+            {!listo && (
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
+                <span className="text-sm leading-none mt-0.5">⚠️</span>
+                <p className="text-[12.5px] text-amber-200/90">
+                  El esqueleto está bien —solo depende de tu prueba y del día—, pero las sesiones
+                  de dentro las voy a escribir con 8 horas en 5 días porque no me has dicho las tuyas.
+                  <button onClick={() => router.push('/alta')} className="underline ml-1 hover:text-white">Un minuto y lo arreglamos</button>.
+                </p>
+              </div>
+            )}
+
             {/* Aquí había un «Ver mi panel» que llevaba a un panel vacío: el plan
                 recién creado no tiene ni una sesión dentro. Lo que toca justo
                 después de crearlo es generarlas, así que va aquí lo mismo que
@@ -249,9 +259,9 @@ export default function MiPlan() {
                 idDeportista={dep.id}
                 distancia={distancia}
                 nivel={nivelDeAnamnesis(anamnesis?.nivel_competitivo)}
-                dias={Number(anamnesis?.dias_semana) || 5}
+                dias={dias ?? 5}
                 disponibilidad={disponibilidad}
-                horasReferencia={Number(anamnesis?.volumen_semanal) || 8}
+                horasReferencia={horas ?? 8}
                 disciplinaDebil={anamnesis?.disciplina_debil || null} />
             </div>
 
