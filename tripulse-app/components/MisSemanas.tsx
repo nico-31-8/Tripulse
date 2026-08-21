@@ -144,6 +144,73 @@ export default function MisSemanas({
     setGeneradas(out); setConfirmando(false); setTrabajando(false)
   }
 
+  /**
+   * HORIZONTE RODANTE: las próximas semanas se generan solas.
+   *
+   * Ni un extremo ni el otro. Generar toda la temporada al crear el plan la
+   * deja escrita en piedra: seis meses de sesiones que ya no reaccionan a nada
+   * de lo que pase. Y obligar al atleta a pulsar un botón cada cuatro semanas
+   * termina con él abriendo la app y encontrándose el calendario vacío el lunes
+   * por la mañana.
+   *
+   * En medio: se mantienen llenas las próximas TRES semanas. Suficiente para no
+   * ver nunca un hueco, corto para que lo que venga después todavía pueda
+   * cambiar.
+   *
+   * Solo rellena huecos: una semana que ya tiene sesiones no se toca. Y no
+   * pisa la pantalla — si el atleta está mirando una previsualización, se
+   * espera.
+   */
+  const [rodando, setRodando] = useState(false)
+  const [rodado, setRodado] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (cargando || generadas || rodando || rodado != null || !mesos.length) return
+    let vivo = true
+
+    const rellenar = async () => {
+      const hoy = new Date().toISOString().slice(0, 10)
+      // Las semanas del plan entero que caen en las próximas tres.
+      const horizonte = sumarDias(hoy, 21)
+      const candidatas = mesos.flatMap(m => semanasDelMesociclo({
+        tipo: m.tipo, semanas: m.duracion_semanas || 4,
+        horasReferencia, distancia, lunes: m.fecha_inicio, uaPorSemana: uaPorMeso[m.id],
+      }).map(x => ({ s: x, meso: m })))
+        .filter(({ s: x }) => x.lunes && x.lunes >= sumarDias(hoy, -6) && x.lunes <= horizonte)
+        .sort((a, b) => (a.s.lunes || '').localeCompare(b.s.lunes || ''))
+
+      if (!candidatas.length) { if (vivo) setRodado(0) ; return }
+
+      setRodando(true)
+      const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
+      let puestas = 0
+      for (const { s: x } of candidatas) {
+        if (!vivo || !x.lunes) break
+        const yaHay = await loQueYaHay(supabase, idDeportista, x.lunes).catch(() => 1)
+        if (yaHay) continue          // esa semana ya tiene algo: no se toca
+        const e: EntradaSemana = entradaDeSemana(x, base)
+        const forma = formaDeSemana(e)
+        const plan = rellenarSemana({
+          forma,
+          colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
+          nivel, fase: x.fase,
+        })
+        const r = await volcarSemana(supabase, {
+          idDeportista, lunes: x.lunes, relleno: plan.relleno,
+          aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelDePlantilla(nivel)) || [],
+        })
+        if (!r.error) puestas += r.creadas
+      }
+      if (!vivo) return
+      setRodando(false)
+      setRodado(puestas)
+      if (puestas) onCambio?.()
+    }
+
+    rellenar()
+    return () => { vivo = false }
+  }, [cargando, mesos, generadas])
+
   const guardar = async () => {
     if (!generadas) return
     setTrabajando(true); setConfirmando(false)
@@ -173,8 +240,21 @@ export default function MisSemanas({
 
   return (
     <div className="flex flex-col gap-4">
+      {rodando && (
+        <p className="text-[12.5px] text-gray-500">Preparando tus próximas semanas…</p>
+      )}
+      {!rodando && !!rodado && (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
+          <p className="text-[13px] text-gray-200">He puesto {rodado} sesiones en tus próximas semanas.</p>
+          <p className="text-[11.5px] text-gray-500 mt-0.5">
+            Se van generando solas unas tres semanas por delante. Más allá no, para que el plan
+            todavía pueda cambiar según te vaya yendo.
+          </p>
+        </div>
+      )}
+
       <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Qué bloque</span>
+        <span className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Generar otro bloque a mano</span>
         <select value={selId ?? ''} onChange={e => { setSelId(Number(e.target.value)); setGeneradas(null) }}
           className="bg-gray-800 text-white text-sm px-3.5 py-2.5 rounded-lg border border-gray-700 outline-none focus:ring-2 focus:ring-orange-500">
           {mesos.map(m => (
