@@ -233,3 +233,64 @@ Verificado: `tsc` 0 · **956 tests** · `next build` OK.
 
 **Queda del Módulo 1**: bajar tests/FC por props para matar la doble petición,
 los `select('*')`, y los estados de carga.
+
+---
+
+## Verificación en navegador (2026-08-22)
+
+Primera vez que se ejecuta la app en este pase. El usuario abrió sesión y se
+recorrieron las pantallas tocadas. **Dos bugs encontrados que ni `tsc` ni los
+tests podían ver**, los dos de la misma familia.
+
+### 1. La semana del panel del entrenador empezaba en DOMINGO · ACTIVO en producción
+
+`lib/panel-metricas.ts` hacía:
+
+    const l = new Date(hoy); l.setDate(...); l.setHours(0,0,0,0)
+    const lunesStr = l.toISOString().split('T')[0]
+
+`setHours(0,0,0,0)` pone medianoche **local**; `toISOString()` la pasa a UTC, que
+en España son las **22:00 del día anterior**. Reproducido:
+
+    lunes en local : Mon Aug 17 2026 00:00:00
+    lunes en UTC   : 2026-08-16T22:00:00.000Z
+    lunesStr       : 2026-08-16   ← domingo
+
+En pantalla: la columna «L» enseñaba el domingo y el **sábado salía marcado como
+«D · HOY»**. Y no era solo la etiqueta — ese lunes alimenta las consultas de la
+semana, así que el recuento de sesiones y el volumen salían contados sobre
+**domingo→sábado**.
+
+Arreglado con `lib/fechas`. Test de regresión que recorre **los 365 días de
+2026** comprobando que la semana empieza en lunes y contiene el día de hoy; se
+verificó que la lógica vieja lo suspende. Confirmado en pantalla: **`S · HOY`**.
+
+### 2. «Añadida por el atleta»: dos definiciones · lo introduje yo hoy
+
+El panel de la semana marcaba las sesiones del atleta por `id_microciclo == null`.
+Toda la app las marca por **`origen === 'deportista'`** (`mis-sesiones`, la vista
+de mesociclo y la de semana). No es lo mismo: una sesión que se añade el atleta
+puede acabar colgada de un microciclo y sigue siendo suya.
+
+Se veía a simple vista: la vista de semana marcaba dos con 🙋 y el panel, ninguna.
+Corregido a `origen`, con tests para los dos casos que las distinguen. Confirmado
+en pantalla: **«2 añadidas por el atleta»**.
+
+### Lo que sí quedó verificado funcionando
+
+- Ficha de sesión con la cascada nueva: **`Meso 1 · Semana 1 (Carga)`** sale bien
+  → **`id_deportista` SÍ está relleno** en `mesociclo` y `microciclo`. Era la
+  suposición de la que colgaba todo el pase.
+- Panel de la semana: 10 sesiones, 4 hechas, zonas, días y marcas, cuadrando con
+  la vista de semana.
+- Calendario: agosto 2026 empieza en sábado (correcto), hoy recuadrado el 22.
+- Vista de semana: Lun 17 … Dom 23, «Semana 1 · Carga».
+- Lista de deportistas y ficha: edades correctas.
+
+### Anotado para mirar
+
+- El panel del entrenador dice **11 sesiones** esta semana y la vista de semana
+  **10**. El panel consulta por todos los microciclos del plan + fecha; la vista
+  de semana, solo por el microciclo de esa semana. Probablemente una sesión de
+  otro microciclo con fecha dentro del rango. Pendiente de confirmar; es previo
+  a este pase.

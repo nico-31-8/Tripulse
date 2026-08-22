@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   lunesDe, diasDeLaSemana, resumenDeSemana, etiquetaDeSemana, puedeCopiarse,
-  esDisciplinaDeFuerza, type SesionSemana, type MicroParaEtiqueta,
+  esDisciplinaDeFuerza, esDelAtleta, type SesionSemana, type MicroParaEtiqueta,
 } from '@/lib/semana-sesiones'
 import { vistaDeTarea, zonasDeSesion } from '@/lib/tarea-vista'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
@@ -116,7 +116,7 @@ export default function PanelSemana({
     setCargando(true)
     const domingo = sumarDias(lunes, 6)
     const { data: ses } = await supabase.from('sesion')
-      .select('id, fecha_sesion, disciplina, estado, id_microciclo, duracion_minutos')
+      .select('id, fecha_sesion, disciplina, estado, id_microciclo, duracion_minutos, origen')
       .eq('id_deportista', idDeportista)
       .gte('fecha_sesion', lunes).lte('fecha_sesion', domingo)
       .or('eliminada.is.null,eliminada.eq.false')
@@ -191,10 +191,10 @@ export default function PanelSemana({
               <span><b className="text-gray-300 font-semibold tabular-nums">{resumen.sesiones}</b> sesiones</span>
               <span><b className="text-gray-300 font-semibold tabular-nums">{resumen.realizadas}</b> hechas</span>
               <span><b className="text-gray-300 font-semibold tabular-nums">{resumen.descanso}</b> {resumen.descanso === 1 ? 'día libre' : 'días libres'}</span>
-              {/* Las que no cuelgan del plan: se las puso el atleta. Son las que
-                  el entrenador no espera, así que se cuentan aparte. */}
-              {resumen.libres > 0 && (
-                <span className="text-violet-400"><b className="font-semibold tabular-nums">{resumen.libres}</b> añadidas por el atleta</span>
+              {/* Las que se añadió él. Son las que el entrenador no espera, así
+                  que se cuentan aparte. */}
+              {resumen.delAtleta > 0 && (
+                <span className="text-violet-400"><b className="font-semibold tabular-nums">{resumen.delAtleta}</b> {resumen.delAtleta === 1 ? 'añadida' : 'añadidas'} por el atleta</span>
               )}
             </>}
           </div>
@@ -233,7 +233,7 @@ export default function PanelSemana({
                           ))}
                         </span>
                         {actual ? <span className="text-[9px] text-orange-400">la que edito</span>
-                          : s.id_microciclo == null ? <span className="text-[9px] text-violet-400">la añadió el atleta</span>
+                          : esDelAtleta(s) ? <span className="text-[9px] text-violet-400">🙋 la añadió él</span>
                           : s.estado === 'Realizada' ? <span className="text-[9px] text-green-400">✓ hecha</span> : null}
                       </button>
                     )

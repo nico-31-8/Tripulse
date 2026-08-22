@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -78,11 +79,11 @@ export default function Dashboard() {
     const { data: wells } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)
     setReadiness(analizarWellness(wells || []).readiness)
     const w0 = (wells || [])[0]
-    const hoyISO = new Date().toISOString().split('T')[0]
+    const hoyDia = hoyISO()
     // Se guarda el MALESTAR (alto = peor) pero se muestra invertido como bienestar.
-    setWellHoy({ hoy: w0?.fecha === hoyISO, score: bienestar(w0?.score_wellness) })
+    setWellHoy({ hoy: w0?.fecha === hoyDia, score: bienestar(w0?.score_wellness) })
     setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
-    const hoyStr = new Date().toISOString().split('T')[0]
+    const hoyStr = hoyISO()
     const { data: comp } = await supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id).gte('fecha', hoyStr).order('fecha').limit(1)
     setProximaComp(comp?.[0] || null)
 
@@ -141,7 +142,7 @@ export default function Dashboard() {
   const diasFicha = activo?.tec_fecha_actualizacion ? Math.floor((Date.now() - new Date(activo.tec_fecha_actualizacion).getTime()) / 86400000) : null
   const diasTest = metricas?.tests?.ultima ? Math.floor((Date.now() - new Date(metricas.tests.ultima).getTime()) / 86400000) : null
   const nSemana = (metricas?.semana || []).reduce((a: number, d: any) => a + d.sesiones.length, 0)
-  const hoyStr = new Date().toISOString().split('T')[0]
+  const hoyStr = hoyISO()
 
   // Avisos "Necesita tu atención" = wellness sin registrar + mensajes sin leer + sugerencias del atleta.
   const notifs: { color: string; texto: string; sub?: string; add?: string }[] = activo ? [

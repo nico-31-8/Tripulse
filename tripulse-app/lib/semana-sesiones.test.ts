@@ -81,23 +81,41 @@ describe('el resumen', () => {
       ses(3, '2026-08-18'),
       ses(4, '2026-08-22'),
     ]))
-    expect(r).toEqual({ sesiones: 4, realizadas: 2, descanso: 4, libres: 0 })
+    expect(r).toEqual({ sesiones: 4, realizadas: 2, descanso: 4, delAtleta: 0 })
   })
 
-  /* LA RAZÓN DE CALCULAR LA SEMANA POR FECHA Y NO POR MICROCICLO: estas son las
-     que no cuelgan del plan, y son las que el entrenador no espera. */
-  it('separa las que se añadió el atleta', () => {
+  /* QUIÉN AÑADIÓ LA SESIÓN LO DICE `origen`, NO `id_microciclo`. Aquí se miró
+     primero el microciclo y estaba mal: una sesión que se añade el atleta puede
+     acabar colgada de un microciclo y sigue siendo suya. El resto de la app
+     (mis-sesiones, la vista de mesociclo y la de semana) ya usaba `origen`, así
+     que había dos definiciones de lo mismo — y se veía en pantalla: la vista de
+     semana marcaba dos sesiones con 🙋 y el panel nuevo, ninguna. */
+  it('separa las que se añadió el atleta, por su origen', () => {
     const r = resumenDeSemana(diasDeLaSemana(L, [
       ses(1, '2026-08-17'),
-      ses(2, '2026-08-23', { id_microciclo: null }),
+      ses(2, '2026-08-23', { origen: 'deportista' }),
     ]))
-    expect(r.libres).toBe(1)
+    expect(r.delAtleta).toBe(1)
     expect(r.sesiones).toBe(2)
+  })
+
+  it('una suya que SÍ cuelga de un microciclo sigue siendo suya', () => {
+    const r = resumenDeSemana(diasDeLaSemana(L, [
+      ses(1, '2026-08-18', { id_microciclo: 9, origen: 'deportista' }),
+    ]))
+    expect(r.delAtleta).toBe(1)
+  })
+
+  it('una suelta que puso el entrenador NO es del atleta', () => {
+    const r = resumenDeSemana(diasDeLaSemana(L, [
+      ses(1, '2026-08-18', { id_microciclo: null, origen: 'entrenador' }),
+    ]))
+    expect(r.delAtleta).toBe(0)
   })
 
   it('una semana vacía son siete días de descanso', () => {
     expect(resumenDeSemana(diasDeLaSemana(L, []))).toEqual(
-      { sesiones: 0, realizadas: 0, descanso: 7, libres: 0 })
+      { sesiones: 0, realizadas: 0, descanso: 7, delAtleta: 0 })
   })
 })
 

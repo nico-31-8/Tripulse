@@ -9,6 +9,7 @@
 //   · duración      → lib/duracion-carga.ts (estimarDuraciones)
 
 import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
+import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fechas'
 import { cargarBloques } from './atribucion'
 import { minutosCarga, cargaReal } from './duracion-carga'
 
@@ -38,14 +39,14 @@ export interface MetricasPanel {
 }
 
 // Etiqueta relativa de un día: Hoy / Mañana / «mié 17».
+/* Esta SÍ estaba bien —comparaba local contra local— pero seguía haciendo
+   aritmética de fechas a mano, que es de donde salen estos fallos. */
 function etiquetaDia(fechaStr: string): string {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-  const d = new Date(fechaStr + 'T00:00:00')
-  const diff = Math.round((d.getTime() - hoy.getTime()) / 86400000)
+  const diff = diasEntre(hoyISO(), fechaStr)
   if (diff === 0) return 'Hoy'
   if (diff === 1) return 'Mañana'
-  const dows = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
-  return dows[d.getDay()] + ' ' + d.getDate()
+  const dows = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
+  return dows[indiceDia(fechaStr)] + ' ' + Number(soloDia(fechaStr).slice(8, 10))
 }
 
 // ---- Carga / TSB (frescura) ----
@@ -163,12 +164,26 @@ function semaforoPlan(v: number) {
   return { texto: 'Más duro de lo previsto', color: '#ef4444' }
 }
 
-function lunesDeEstaSemana(): Date {
-  const hoy = new Date()
-  const l = new Date(hoy)
-  l.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7))
-  l.setHours(0, 0, 0, 0)
-  return l
+/**
+ * Los siete días de esta semana, de lunes a domingo.
+ *
+ * ESTO ESTABA ROTO Y SE VEÍA EN PANTALLA. La versión anterior construía un
+ * `Date` local, le hacía `setHours(0,0,0,0)` y lo serializaba con
+ * `toISOString()`. Medianoche local en España son las 22:00 UTC del día
+ * ANTERIOR, así que el lunes salía siendo domingo y la semana entera se corría
+ * un día: la columna «L» del panel enseñaba el domingo, y el sábado aparecía
+ * marcado como «D · HOY».
+ *
+ * Y no era solo la etiqueta: ese lunes alimenta las consultas que traen las
+ * sesiones de la semana, así que «11 sesiones esta semana» y el volumen salían
+ * contados sobre domingo→sábado en vez de lunes→domingo.
+ *
+ * Se devuelven cadenas y no `Date`: en cuanto hay un `Date` de por medio
+ * vuelve a haber un huso que puede mover el día.
+ */
+export function diasDeLaSemanaActual(hoy: string = hoyISO()): string[] {
+  const lunes = lunesDe(hoy)
+  return Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i))
 }
 
 export async function cargarMetricasPanel(supabase: any, dep: any): Promise<MetricasPanel> {
@@ -183,12 +198,11 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   const microIds = (micros || []).map((m: any) => m.id)
 
   // ---- Ventanas temporales ----
-  const lunes = lunesDeEstaSemana()
-  const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6)
-  const lunesStr = lunes.toISOString().split('T')[0]
-  const domingoStr = domingo.toISOString().split('T')[0]
-  const desdeCarga = new Date(); desdeCarga.setDate(desdeCarga.getDate() - 70)
-  const desdeCargaStr = desdeCarga.toISOString().split('T')[0]
+  const hoyStr = hoyISO()
+  const diasSemana = diasDeLaSemanaActual(hoyStr)
+  const lunesStr = diasSemana[0]
+  const domingoStr = diasSemana[6]
+  const desdeCargaStr = sumarDias(hoyStr, -70)
 
   // ---- Tests: última fecha + valores para estimar duraciones ----
   const testTablas = ['test1_carrera', 'test2_natacion', 'test3_ciclismo', 'test_fuerza', 'tests_libres']
@@ -264,8 +278,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   // Mapa de la semana (puntitos por día)
   const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
   const semana = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(lunes); d.setDate(lunes.getDate() + i)
-    const f = d.toISOString().split('T')[0]
+    const f = diasSemana[i]
     const sesiones = sesSemana
       .filter(s => s.fecha_sesion === f)
       .map(s => ({ color: DISC_META[s.disciplina]?.color || '#94a3b8' }))
@@ -273,17 +286,15 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   })
 
   // Próxima sesión (hoy o después, dentro de la semana)
-  const hoyStr = new Date().toISOString().split('T')[0]
   const futuras = sesSemana
     .filter(s => s.fecha_sesion >= hoyStr)
     .sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))
   let proxima: MetricasPanel['proxima'] = null
   if (futuras[0]) {
     const s = futuras[0]
-    const d = new Date(s.fecha_sesion)
     proxima = {
       fecha: s.fecha_sesion,
-      dow: DOW[(d.getDay() + 6) % 7],
+      dow: DOW[indiceDia(s.fecha_sesion)],
       disciplina: s.disciplina || '—',
       color: DISC_META[s.disciplina]?.color || '#94a3b8',
     }
@@ -322,8 +333,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   }
 
   // ---- Agenda: próximas sesiones (hoy → +21 días, no realizadas) ----
-  const finVentana = new Date(); finVentana.setDate(finVentana.getDate() + 21)
-  const finStr = finVentana.toISOString().split('T')[0]
+  const finStr = sumarDias(hoyStr, 21)
   const agChain = microIds.length
     ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr)).data || [] : []
   const agLibres = (await supabase.from('sesion').select(selSes)

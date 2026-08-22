@@ -8,9 +8,14 @@
 //
 // LA SEMANA SE CALCULA POR FECHA, DE LUNES A DOMINGO, y no por el microciclo al
 // que cuelga la sesión. Es a propósito y tiene una consecuencia concreta: así
-// aparecen también las sesiones que el atleta se añade por su cuenta, que no
-// cuelgan de ningún microciclo — y son justo las que no esperas y las que más
-// conviene ver antes de mandarle nada.
+// aparecen también las sesiones que el atleta se añade por su cuenta — y son
+// justo las que no esperas y las que más conviene ver antes de mandarle nada.
+//
+// QUIÉN AÑADIÓ UNA SESIÓN LO DICE `origen`, NO `id_microciclo`. Aquí se miró
+// primero el microciclo, y estaba mal: una sesión que se añade el atleta puede
+// acabar colgada de un microciclo y sigue siendo suya. El resto de la app
+// (mis-sesiones, la vista de mesociclo y la de semana) ya usaba `origen`, así
+// que había dos definiciones de lo mismo — que es como empiezan a divergir.
 //
 // El microciclo sí se usa, pero solo para PONERLE NOMBRE a la semana («Semana 2
 // de 4 · Carga»). Si no hay ninguno que la cubra, la semana existe igual y se
@@ -33,8 +38,10 @@ export interface SesionSemana {
   fecha_sesion: string
   disciplina: string | null
   estado: string | null
-  /** Sin microciclo = se la añadió el atleta por su cuenta. */
+  /** Sin microciclo = suelta, fuera del plan. NO es lo mismo que «suya». */
   id_microciclo: number | null
+  /** 'deportista' = se la añadió él. Es lo que mira toda la app. */
+  origen?: string | null
   duracion_minutos?: number | null
   tareas?: any[]
 }
@@ -71,21 +78,26 @@ export interface ResumenSemana {
   realizadas: number
   /** Días sin ninguna sesión. */
   descanso: number
-  /** Las que no cuelgan de un microciclo: se las puso el atleta. */
-  libres: number
+  /** Las que se añadió el atleta (`origen = 'deportista'`). */
+  delAtleta: number
+}
+
+/** ¿Se la añadió el atleta? Mismo criterio que el resto de la app. */
+export function esDelAtleta(s: { origen?: string | null }): boolean {
+  return s.origen === 'deportista'
 }
 
 export function resumenDeSemana(dias: DiaSemana[]): ResumenSemana {
-  let sesiones = 0, realizadas = 0, descanso = 0, libres = 0
+  let sesiones = 0, realizadas = 0, descanso = 0, delAtleta = 0
   dias.forEach(d => {
     if (!d.sesiones.length) descanso++
     d.sesiones.forEach(s => {
       sesiones++
       if (s.estado === 'Realizada') realizadas++
-      if (s.id_microciclo == null) libres++
+      if (esDelAtleta(s)) delAtleta++
     })
   })
-  return { sesiones, realizadas, descanso, libres }
+  return { sesiones, realizadas, descanso, delAtleta }
 }
 
 export interface MicroParaEtiqueta {
