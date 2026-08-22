@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { semanasEntre, sumarDias, hoyISO } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
@@ -22,10 +23,6 @@ const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Natación: 'Nat', 
 // Para leer de un vistazo la secuencia de un brick en la tarjeta.
 const EMOJI_DISC: Record<string, string> = { Natacion: '🏊', Natación: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
-function fechaStr(d: Date): string {
-  return d.toISOString().split('T')[0]
-}
-
 // Color de texto legible (oscuro/blanco) según la luminancia del fondo del chip.
 function txtSobre(hex: string): string {
   const c = (hex || '#888888').replace('#', '')
@@ -35,17 +32,15 @@ function txtSobre(hex: string): string {
 
 function diasDeSemana(lunes: string): { fecha: string; dia: string; diaCorto: string; dayNum: number }[] {
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(lunes + 'T12:00:00')
-    d.setDate(d.getDate() + i)
-    return { fecha: fechaStr(d), dia: DIAS[i], diaCorto: DIAS_CORTO[i], dayNum: d.getDate() }
+    // Sobre texto, sin pasar por ningún `Date`: aquí se construía a mediodía
+    // local y se serializaba en UTC, que es la clase de mezcla por la que un día
+    // aparece en la semana que no es.
+    const fecha = sumarDias(lunes, i)
+    return { fecha, dia: DIAS[i], diaCorto: DIAS_CORTO[i], dayNum: Number(fecha.slice(8, 10)) }
   })
 }
 
 // Misma fórmula que en el Dibujo: índice de semana (0-based) desde el inicio del macrociclo.
-function weeksBetween(f1: string, f2: string): number {
-  const d1 = new Date(f1 + 'T12:00:00'); const d2 = new Date(f2 + 'T12:00:00')
-  return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24 * 7))
-}
 
 
 export default function SemanaPage({ params }: { params: Promise<{ id: string; fecha: string }> }) {
@@ -74,7 +69,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [seleccion, setSeleccion] = useState<string[]>([])
 
   const dias = diasDeSemana(fecha)
-  const hoy = fechaStr(new Date())
+  const hoy = hoyISO()
 
   useEffect(() => { cargar() }, [id, fecha])
 
@@ -87,7 +82,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     let sesiones_cargadas: any[] = []
     const { data: macs } = await supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', id).order('fecha_inicio')
     if (macs?.length) {
-      setWeekIndex(weeksBetween(macs[0].fecha_inicio, fecha))
+      setWeekIndex(semanasEntre(macs[0].fecha_inicio, fecha))
       const macIds = macs.map((m: any) => m.id)
       const { data: mes } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macIds)
       if (mes?.length) {

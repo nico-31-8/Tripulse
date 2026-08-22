@@ -1,29 +1,20 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useRef, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { fechaLarga } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
+import PanelSemana from '@/components/PanelSemana'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
-
-const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-
-function fechaLarga(f: string | null | undefined): string {
-  if (!f) return ''
-  const d = new Date(f + 'T12:00:00')
-  if (isNaN(d.getTime())) return f
-  const dia = DIAS[d.getDay()]
-  return dia.charAt(0).toUpperCase() + dia.slice(1) + ' ' + d.getDate() + ' ' + MESES[d.getMonth()]
-}
 
 // Iniciales para el avatar. Sin nombre cargado, un guion antes que una letra falsa.
 function iniciales(nombre: string | null | undefined): string {
@@ -54,6 +45,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   // Fuerza a TareasTabla a releer de la BD tras aplicar una plantilla (carga sus
   // tareas al montar, así que cambiarle la key es lo que la refresca).
   const [recargaTareas, setRecargaTareas] = useState(0)
+  /* El puente entre el panel de la semana y el formulario de tareas. El panel no
+     escribe en la base: manda las tareas aquí y la tabla las convierte en filas
+     nuevas por rellenar. El `token` es un contador y no la propia lista porque
+     copiar DOS VECES la misma tarea son dos objetos iguales: sin algo que
+     cambie, el efecto de la tabla no volvería a dispararse y la segunda copia se
+     perdería en silencio. */
+  const [aCopiar, setACopiar] = useState<{ token: number; tareas: any[] } | null>(null)
+  const contadorCopia = useRef(0)
+  const pedirCopia = (tareas: any[]) => setACopiar({ token: ++contadorCopia.current, tareas })
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   // De quién es la sesión y en qué punto del plan cae: la misma sesión significa una
@@ -893,6 +893,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           : ''}>
         <div className="min-w-0">
 
+        {vistaTabla && deportistaId && !esDeportista && sesion.fecha_sesion && (
+          <PanelSemana
+            idDeportista={deportistaId}
+            fechaSesion={String(sesion.fecha_sesion).slice(0, 10)}
+            idSesionActual={Number(id)}
+            disciplinaSesion={sesion.disciplina}
+            onCopiar={pedirCopia} />
+        )}
+
         <SessionLoadChart tareas={tareas} />
 
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
@@ -925,7 +934,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
-            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={false} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} modoResistencia={sesion.modo_resistencia || 'simple'} zonaResistencia={sesion.zona_resistencia || ''} onTareasCambian={cargarDatos} />
+            <TareasTabla key={recargaTareas} sesionId={Number(id)} deportistaId={deportistaId} disciplinaSesion={sesion.disciplina} esDeportista={false} modoFuerza={sesion.modo_fuerza || 'simple'} zonaFuerza={sesion.zona_fuerza || ''} modoResistencia={sesion.modo_resistencia || 'simple'} zonaResistencia={sesion.zona_resistencia || ''} onTareasCambian={cargarDatos} copiar={aCopiar} onCopiado={() => setACopiar(null)} />
           </div>
         ) : (
           <div>

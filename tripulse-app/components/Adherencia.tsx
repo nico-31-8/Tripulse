@@ -1,14 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-
-function getLunesDeSemana(fecha: string): string {
-  const d = new Date(fecha + 'T12:00:00')
-  const dia = d.getDay()
-  const diff = dia === 0 ? -6 : 1 - dia
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
-}
+import { lunesDe } from '@/lib/fechas'
 
 function colorCumplimiento(pct: number): string {
   if (pct >= 80) return 'bg-green-500'
@@ -61,7 +54,7 @@ export default function Adherencia({ depId }: Props) {
     // Agrupar por semana
     const mapa: Record<string, any[]> = {}
     sesiones.forEach(s => {
-      const lunes = getLunesDeSemana(s.fecha_sesion)
+      const lunes = lunesDe(s.fecha_sesion)
       if (!mapa[lunes]) mapa[lunes] = []
       mapa[lunes].push(s)
     })

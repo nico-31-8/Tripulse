@@ -8,31 +8,11 @@ import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type Uni
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { filtrarDrills } from '@/lib/tecnica'
-
-// Referencia de una zona del sistema Zonas 2 (misma forma que getReferencia)
-function refZona2(z: ZonaResistencia, disciplina: string, tests: any, fcMax: number) {
-  const fc = (z.fcMin || z.fcMax) && fcMax > 0
-    ? `${z.fcMin ? Math.round(fcMax * z.fcMin / 100) : ''}${z.fcMin && z.fcMax ? '–' : ''}${z.fcMax ? Math.round(fcMax * z.fcMax / 100) : ''} ppm`
-    : null
-  const rpe = 'RPE ' + z.rpeMin + (z.rpeMax !== z.rpeMin ? '–' + z.rpeMax : '')
-  return { fc, rpe, porcentaje: z.sigla + ' · ' + z.factor, ritmo: prescripcion(z, disciplina, tests) }
-}
-
-const ZONAS = [
-  { num: 1, nombre: 'Z1 Recuperación',   pct: [0, 75],    rpe: [2,3] },
-  { num: 2, nombre: 'Z2 Aeróbica',       pct: [75, 85],   rpe: [4,5] },
-  { num: 3, nombre: 'Z3 Tempo',          pct: [86, 93],   rpe: [6,7] },
-  { num: 4, nombre: 'Z4 Umbral',         pct: [94, 100],  rpe: [7,8] },
-  { num: 5, nombre: 'Z5 VO2máx',         pct: [101, 110], rpe: [8,9] },
-  { num: 6, nombre: 'Z6 Anaeróbica',     pct: [0, 0],     rpe: [9,10] },
-  { num: 7, nombre: 'Z7 Neuromuscular',  pct: [0, 0],     rpe: [10,10] },
-]
-
-function segAMmss(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
-}
+import {
+  segAMmss, filaResistenciaDesde, filaFuerzaDesde, avisaOtraDisciplina,
+  type FilaResistencia, type FilaFuerza,
+} from '@/lib/copiar-tarea'
+import { referenciaDeZona, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -83,51 +63,6 @@ function mostrarTotal(t: any): string {
   return '—'
 }
 
-// La tabla de %FTP/%VAM/%CSS del sistema clásico vive en lib/zonas.ts
-// (ZONAS_CLASICAS). Aquí había una copia con la columna de VAM desplazada 5–10
-// puntos respecto a la de la pantalla de ejecución: el mismo Z4 daba dos ritmos
-// distintos según por dónde entrases.
-function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number) {
-  if (!zona) return null
-  const ref = ZONAS_CLASICAS[zona.num]
-  const fcUmbral = fcMax ? fcMax * 0.85 : 0
-  const fcMin = fcUmbral > 0 && zona.pct[0] > 0 ? Math.round(fcUmbral * zona.pct[0] / 100) : null
-  const fcMax2 = fcUmbral > 0 && zona.pct[1] > 0 ? Math.round(fcUmbral * zona.pct[1] / 100) : null
-  const fc = fcMin && fcMax2 ? fcMin + '–' + fcMax2 + ' ppm' : null
-  const rpe = 'RPE ' + zona.rpe[0] + '–' + zona.rpe[1]
-  let ritmo = null
-  let porcentaje = null
-
-  if (disciplina === 'Ciclismo') {
-    porcentaje = ref.ftpPct[0] + '–' + ref.ftpPct[1] + '% FTP'
-    if (tests.ftp) {
-      const wMin = Math.round(tests.ftp * ref.ftpPct[0] / 100)
-      const wMax = Math.round(tests.ftp * ref.ftpPct[1] / 100)
-      ritmo = wMin + '–' + wMax + ' W'
-    }
-  } else if (disciplina === 'Carrera') {
-    porcentaje = ref.vamPct[0] + '–' + ref.vamPct[1] + '% VAM'
-    if (tests.vam) {
-      const velMin = tests.vam * ref.vamPct[0] / 100
-      const velMax = tests.vam * ref.vamPct[1] / 100
-      const pMin = velMin > 0 ? Math.floor(60/velMin) + ':' + String(Math.round((60/velMin % 1)*60)).padStart(2,'0') : null
-      const pMax = velMax > 0 ? Math.floor(60/velMax) + ':' + String(Math.round((60/velMax % 1)*60)).padStart(2,'0') : null
-      if (pMin && pMax) ritmo = pMin + '–' + pMax + ' /km'
-    }
-  } else if (disciplina === 'Natacion' || disciplina === 'Natación') {
-    porcentaje = ref.cssPct[0] + '–' + ref.cssPct[1] + '% CSS'
-    if (tests.css) {
-      const velMin = tests.css * ref.cssPct[0] / 100
-      const velMax = tests.css * ref.cssPct[1] / 100
-      const p100Min = velMin > 0 ? Math.round(100/velMin) : null
-      const p100Max = velMax > 0 ? Math.round(100/velMax) : null
-      if (p100Min && p100Max) ritmo = p100Min + '–' + p100Max + ' s/100m'
-    }
-  }
-
-  return { fc, rpe, porcentaje, ritmo }
-}
-
 // La técnica NO es una zona, pero se elige como si lo fuera: está en el mismo
 // desplegable porque es donde va la mano. Por debajo la tarea guarda AER, así que
 // carga, SICAT, calendario y mesociclo no se enteran de nada y no cambia una línea
@@ -135,70 +70,21 @@ function getReferencia(zona: any, disciplina: string, tests: any, fcMax: number)
 export const VALOR_TECNICA = '__tecnica'
 export const ZONA_DE_TECNICA = 'AER'
 
-interface FilaResistencia {
-  orden: number
-  zona: string
-  disciplina: string
-  series: string
-  descanso: string
-  tipoMedicion: string
-  valorMedicion: string
-  intensidadPersonalizada: string
-  comentario: string
-  // Solo del formulario. Lo que queda guardado es tecnica_id: si tiene valor, la
-  // tarea es trabajo técnico. Un booleano aparte en la BD sería una segunda verdad
-  // sobre lo mismo, y ahí es donde se pudren los datos.
-  esTecnica: boolean
-  tecnicaId: string
-  guardado?: boolean
-  /**
-   * Si viene, la fila EDITA esa tarea en vez de crear una nueva.
-   *
-   * Editar y crear son el mismo formulario a propósito. Cuando eran dos, el de
-   * editar se quedó con cuatro campos y el de crear tenía doce: el ejercicio,
-   * las repeticiones o el control del esfuerzo solo se podían poner al nacer la
-   * tarea, y para cambiarlos había que borrarla y escribirla otra vez.
-   */
-  idTarea?: number
-}
+/* FilaResistencia y FilaFuerza vivían aquí. Se han movido a lib/copiar-tarea
+   junto con la conversión que las rellena desde una tarea guardada: tener la
+   forma en un sitio y quien la construye en otro es como empiezan a divergir. */
+export type { FilaResistencia, FilaFuerza }
 
-interface FilaFuerza {
-  orden: number
-  grupoMuscularSel: string
-  ejercicioSelId: string
-  tipoSerie: string
-  series: string
-  // Qué se le pide al atleta en cada serie: repeticiones o tiempo. Antes esto
-  // dependía del tipo de serie (solo «Isométrico» iba en segundos), pero hay
-  // muchos ejercicios de tiempo que no son isométricos: paseos del granjero,
-  // remo, saltos a la comba, un bloque de core. Ahora se elige por fila.
-  medida: 'reps' | 'tiempo'
-  // Con qué se controla el esfuerzo de la serie. El RIR es solo una de las
-  // formas: según el contexto se usa RPE, el % de pérdida de velocidad (VBT) o
-  // el % del 1RM. Antes solo cabía RIR, y encima como texto dentro de las notas.
-  controlTipo: ControlTipo
-  repsFuerza: string
-  kgFuerza: string
-  rir: string
-  descanso: string
-  comentario: string
-  grupoMuscular2: string
-  ejercicioSelId2: string
-  series2: string
-  repsFuerza2: string
-  kgFuerza2: string
-  escalonDrop: string
-  zonaFuerzaTarea: string
-  guardado?: boolean
-  /** Igual que en resistencia: con id, la fila edita esa tarea. */
-  idTarea?: number
-}
-
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian, copiar, onCopiado }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
   esDeportista?: boolean
+  /* Tareas que llegan del panel de la semana para copiarse aquí. El `token`
+     hace de disparador: dos copias seguidas de la MISMA tarea son dos objetos
+     iguales, y sin algo que cambie el efecto no volvería a saltar. */
+  copiar?: { token: number; tareas: any[] } | null
+  onCopiado?: () => void
   modoFuerza?: string
   zonaFuerza?: string
   modoResistencia?: string
@@ -293,74 +179,58 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
    * crear otra. Mientras se edita desaparece de la tabla de arriba: verla en dos
    * sitios a la vez, con valores distintos, es peor que no poder editarla.
    */
+  /* Editar y copiar son la MISMA conversión (lib/copiar-tarea), y solo cambia
+     una cosa: editar lleva `idTarea` y copiar no. Con él, guardar hace UPDATE
+     sobre la tarea de origen; sin él, INSERT en esta sesión — que es lo que
+     hace que copiar desde el panel de la semana no toque la otra sesión.
+     Antes esta función tenía el mapeo entero escrito a mano; ahora hay uno. */
   const abrirEditarTarea = (t: any) => {
     if (esFuerza) {
-      const ej = t.ejercicios?.[0]
-      const segundos = t.p_duracion?.[0]?.tiempo_planeado
-      const esTiempo = !!segundos
-      // OJO: NO vale `duracionTexto`, que escribe «45 s» y «1:30 min». Ese texto
-      // es para leerlo, y al volver a guardar `mmssASegundos` no lo entiende. La
-      // casilla acepta «45» o «1:30», que es justo lo que hay que devolverle.
-      const tiempoEditable = segundos < 60 ? String(segundos) : segAMmss(segundos)
-      // El grupo del ejercicio encadenado, para que el desplegable lo enseñe: sin
-      // él, editar una superserie ocultaba el segundo ejercicio (seguía guardado,
-      // pero no había forma de verlo ni de cambiarlo).
-      const ej2 = ej?.ejercicio_encadenado_id
-        ? ejerciciosBiblioteca.find(e => e.id === Number(ej.ejercicio_encadenado_id))
-        : null
-      setFilasF(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev, {
-        ...nuevaFilaF(),
-        idTarea: t.id,
-        orden: t.orden ?? prev.length + 1,
-        grupoMuscularSel: ej?.grupo_muscular || '',
-        ejercicioSelId: ej ? String(ejerciciosBiblioteca.find(e => e.nombre === ej.nombre)?.id ?? '') : '',
-        tipoSerie: ej?.tipo_serie || 'Normal',
-        medida: esTiempo ? 'tiempo' : 'reps',
-        controlTipo: (ej?.control_tipo as ControlTipo) || 'rir',
-        series: t.series != null ? String(t.series) : '',
-        // En modo tiempo la casilla de «reps» es la que lleva los segundos.
-        repsFuerza: esTiempo ? tiempoEditable : (ej?.repeticiones != null ? String(ej.repeticiones) : ''),
-        kgFuerza: ej?.intensidad != null ? String(ej.intensidad) : '',
-        rir: ej?.control_valor || '',
-        descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',
-        comentario: t.comentario || '',
-        grupoMuscular2: ej2?.grupo_muscular || '',
-        ejercicioSelId2: ej2 ? String(ej2.id) : '',
-        escalonDrop: ej?.escalones_drop || '',
-        zonaFuerzaTarea: t.zona_entrenamiento || '',
-      }])
+      setFilasF(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev,
+        filaFuerzaDesde(t, {
+          base: nuevaFilaF(), orden: t.orden ?? prev.length + 1,
+          copia: false, ejerciciosBiblioteca,
+        })])
       return
     }
-    const med = detectarMedicion(t)
-    setFilasR(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev, {
-      ...nuevaFilaR(),
-      idTarea: t.id,
-      orden: t.orden ?? prev.length + 1,
-      zona: t.zona_entrenamiento || '',
-      disciplina: t.disciplina || '',
-      series: t.series != null ? String(t.series) : '',
-      descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',
-      tipoMedicion: med.tipo,
-      valorMedicion: med.valor,
-      comentario: t.comentario || '',
-      esTecnica: !!t.tecnica_id,
-      tecnicaId: t.tecnica_id ? String(t.tecnica_id) : '',
-    }])
+    setFilasR(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev,
+      filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false })])
   }
+
+  /* Lo que manda el panel de la semana. Cae en filas NUEVAS del formulario, no
+     en la base: una tarea de otra semana casi nunca vale tal cual, así que se
+     revisa y se le da a ✓, igual que a cualquier tarea escrita a mano. */
+  useEffect(() => {
+    if (!copiar?.tareas?.length) return
+    // Sin biblioteca cargada, los ejercicios de fuerza no se pueden resolver por
+    // id y la fila saldría con el desplegable vacío. Se espera: el efecto vuelve
+    // a dispararse cuando llega.
+    if (esFuerza && !ejerciciosBiblioteca.length) return
+    const base = tareasGuardadas.length
+    if (esFuerza) {
+      setFilasF(prev => [...prev, ...copiar.tareas.map((t, k) =>
+        filaFuerzaDesde(t, {
+          base: nuevaFilaF(), orden: base + prev.length + k + 1,
+          copia: true, ejerciciosBiblioteca,
+        }))])
+    } else {
+      setFilasR(prev => [...prev, ...copiar.tareas.map((t, k) =>
+        filaResistenciaDesde(t, { base: nuevaFilaR(), orden: base + prev.length + k + 1, copia: true }))])
+    }
+    onCopiado?.()
+  }, [copiar?.token, ejerciciosBiblioteca.length])
 
   /** Las que están abiertas abajo no se pintan arriba. */
   const editandose = new Set<number>([
     ...filasR.map(f => f.idTarea), ...filasF.map(f => f.idTarea),
   ].filter((x): x is number => x != null))
 
-  // Referencia de una zona por su código: sistema 2 (siglas) o clásico ('Zn')
-  const getRef = (codigo: string | null | undefined, disciplina: string) => {
-    if (!codigo) return null
-    const z2 = zonaResistencia(codigo)
-    if (z2) return refZona2(z2, disciplina, tests, fcMax)
-    const zonaObj = ZONAS.find(z => 'Z' + z.num === codigo)
-    return getReferencia(zonaObj, disciplina, tests, fcMax)
-  }
+  /* Traducir zona → ritmo/vatios/pulsaciones vive en lib/referencia-zona: lo
+     necesitan también el panel de la semana y el briefing. Aquí ya pasó una vez
+     que la copia local de la tabla de %VAM iba desplazada 5–10 puntos y el mismo
+     Z4 daba dos ritmos distintos según por dónde entrases. */
+  const getRef = (codigo: string | null | undefined, disciplina: string) =>
+    referenciaDeZona(codigo, disciplina, tests, fcMax)
 
   const nuevaFilaR = (): FilaResistencia => ({
     orden: filasR.length + tareasGuardadas.length + 1,
@@ -762,7 +632,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               {filasR.map((f, i) => {
                 const ref = getRef(f.zona, f.disciplina)
                 return (
-                  <tr key={i} className="border-b border-gray-800">
+                  <React.Fragment key={i}>
+                  <tr className="border-b border-gray-800">
                     <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
                     {/* Zona y disciplina en horizontal, no apiladas: apiladas hacen la
                         fila de dos pisos y descolocan la alineación de todo lo demás. */}
@@ -885,6 +756,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       </div>
                     </td>
                   </tr>
+                  {/* Traer una tarea de otro deporte es legítimo —un cambio de plan,
+                      un bloque que se repite—, pero el objetivo y los chips de la
+                      derecha se calculan con la disciplina de la FILA: «285–310 W»
+                      no significa nada corriendo. Se avisa en vez de convertirlo a
+                      ciegas o de borrarlo. En un brick no sale: ahí mezclar deportes
+                      es lo normal y el aviso saldría en todas las filas. */}
+                  {avisaOtraDisciplina(f, disciplinaSesion) && (
+                    <tr className="border-b border-gray-800">
+                      <td></td>
+                      <td colSpan={6} className="pt-0 pb-2 px-1.5">
+                        <p className="text-[11.5px] text-amber-300 bg-amber-500/[0.08] border border-amber-500/25 rounded-lg px-2.5 py-1.5">
+                          Es de {f.disciplina} y esta sesión es de {disciplinaSesion}: la referencia de la
+                          derecha está en las unidades de {f.disciplina}. Cambia el deporte o repasa la
+                          intensidad antes de guardar.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 )
               })}
             </tbody>

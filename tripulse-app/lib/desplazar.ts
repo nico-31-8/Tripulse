@@ -50,21 +50,16 @@ export interface CompeticionFila {
 // ------------------------------------------------------------
 // Aritmética de fechas
 // ------------------------------------------------------------
-// Sobre texto ISO en UTC, igual que en lib/plan-volcado.ts: construir una fecha
-// local y volver a serializarla puede saltar un día según la zona horaria, y una
-// sesión que se mueve un día de más no la ve nadie hasta que ya pasó.
-
-const dia = (iso: string) => new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
-
-export function sumarDias(iso: string, dias: number): string {
-  const d = dia(iso)
-  d.setUTCDate(d.getUTCDate() + dias)
-  return d.toISOString().slice(0, 10)
-}
-
-export function diasEntre(desde: string, hasta: string): number {
-  return Math.round((dia(hasta).getTime() - dia(desde).getTime()) / 86400000)
-}
+// Vivía aquí, en UTC sobre texto ISO, y esa decisión sigue siendo la buena: una
+// fecha construida en local y vuelta a serializar puede saltar un día según el
+// huso, y una sesión que se mueve un día de más no la ve nadie hasta que ya
+// pasó. Lo que ha cambiado es DÓNDE vive: en lib/fechas, porque dieciséis
+// ficheros más hacían esto mismo cada uno a su manera.
+//
+// Se siguen re-exportando desde aquí: media app las importa de este módulo y
+// cambiar todos esos imports en la misma tanda sería mezclar dos cosas.
+export { sumarDias, diasEntre } from './fechas'
+import { sumarDias, diasEntre } from './fechas'
 
 /** Fin (exclusivo) de un ciclo: los micros duran una semana; el resto, las suyas. */
 export function finDeCiclo(c: CicloFila, nivel: NivelCiclo): string {

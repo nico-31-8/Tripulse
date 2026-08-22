@@ -17,6 +17,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { proximoLunes } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -48,14 +49,6 @@ function distanciaDeAnamnesis(txt: string | null | undefined): DistanciaTri | nu
 }
 
 const fmtHoras = (min: number) => (Math.round(min / 6) / 10).toString().replace('.', ',') + ' h'
-
-/** El lunes que viene. Nadie planifica la semana que ya está empezada. */
-function proximoLunes(): string {
-  const d = new Date()
-  const hastaLunes = (8 - (d.getDay() || 7)) % 7 || 7
-  d.setDate(d.getDate() + hastaLunes)
-  return d.toISOString().slice(0, 10)
-}
 
 export default function Planificador() {
   const router = useRouter()

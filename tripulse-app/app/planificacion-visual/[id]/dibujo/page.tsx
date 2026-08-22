@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { semanasEntre } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
@@ -86,10 +87,6 @@ function semLabel(fi: string, i: number): string {
 function semFecha(fi: string, i: number): string {
   if (!fi) return ''
   try { const d = new Date(fi + 'T12:00:00'); d.setDate(d.getDate() + i * 7); return d.toISOString().split('T')[0] } catch { return '' }
-}
-function weeksBetween(f1: string, f2: string): number {
-  const d1 = new Date(f1 + 'T12:00:00'); const d2 = new Date(f2 + 'T12:00:00')
-  return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24 * 7))
 }
 
 export default function DibujoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -314,15 +311,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       setFechaInicio(fi)
 
       const totalW = macsData.reduce((max, m) => {
-        const end = weeksBetween(fi, m.fecha_inicio) + m.duracion_semanas
+        const end = semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas
         return Math.max(max, end)
       }, 12)
       setTotalSem(Math.max(totalW, 12))
 
       const macrosD: MacroD[] = macsData.map(m => ({
         id: uid(), dbId: m.id,
-        si: weeksBetween(fi, m.fecha_inicio),
-        sf: weeksBetween(fi, m.fecha_inicio) + m.duracion_semanas - 1,
+        si: semanasEntre(fi, m.fecha_inicio),
+        sf: semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas - 1,
         nombre: m.objetivo,
         tipo: m.tipo_periodizacion || 'Tradicional',
       }))
@@ -335,8 +332,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           const parentMacroD = macrosD.find(m => m.dbId === me.id_macrociclo)
           return {
             id: uid(), dbId: me.id, macroId: parentMacroD?.id || '',
-            si: weeksBetween(fi, me.fecha_inicio),
-            sf: weeksBetween(fi, me.fecha_inicio) + me.duracion_semanas - 1,
+            si: semanasEntre(fi, me.fecha_inicio),
+            sf: semanasEntre(fi, me.fecha_inicio) + me.duracion_semanas - 1,
             nombre: me.objetivo, tipo: me.tipo, intensidad: me.intensidad_relativa || 5,
           }
         })
@@ -356,7 +353,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       }
         if (microsData?.length) {
           const semsD = Array.from({ length: Math.max(totalW, 12) }, (_, i) => {
-            const micro = microsData.find(mi => weeksBetween(fi, mi.fecha_inicio) === i)
+            const micro = microsData.find(mi => semanasEntre(fi, mi.fecha_inicio) === i)
             return { i, ua: micro?.ua_planificada || null, tipo: micro?.tipo || 'Carga', comp: '' }
           })
           setSems(semsD)
@@ -1046,7 +1043,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(200, 200, 210)
       if (compsReales.length === 0) pdf.text('Sin competiciones.', margin, y)
       else for (const c of compsReales) {
-        const wi = fechaInicio ? weeksBetween(fechaInicio, c.fecha) : null
+        const wi = fechaInicio ? semanasEntre(fechaInicio, c.fecha) : null
         const sem = wi != null && wi >= 0 ? 'S' + (wi + 1) + '   ·   ' : ''
         pdf.text(`${sem}${c.nombre}   ·   ${c.fecha}   ·   ${defDe(prioridadDe(c)).etiqueta}`, margin, y); y += 6
       }
@@ -2043,7 +2040,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <div>
                       <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Competiciones</p>
                       {compsReales.map(c => {
-                        const wi = fechaInicio ? weeksBetween(fechaInicio, c.fecha) : -1
+                        const wi = fechaInicio ? semanasEntre(fechaInicio, c.fecha) : -1
                         const d = defDe(prioridadDe(c))
                         return (
                           <div key={c.id} className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
@@ -2289,12 +2286,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <input type="date" value={fCompFecha}
                   onChange={e => {
                     setFCompFecha(e.target.value)
-                    const wi = fechaInicio && e.target.value ? weeksBetween(fechaInicio, e.target.value) : 0
+                    const wi = fechaInicio && e.target.value ? semanasEntre(fechaInicio, e.target.value) : 0
                     setMIdx(wi); setTaperSug([wi - 1, wi - 2].filter(x => x >= 0))
                   }}
                   className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 w-full" />
                 {fechaInicio && fCompFecha && (
-                  <p className="text-gray-500 text-xs mt-1">Cae en la semana {weeksBetween(fechaInicio, fCompFecha) + 1} del lienzo.</p>
+                  <p className="text-gray-500 text-xs mt-1">Cae en la semana {semanasEntre(fechaInicio, fCompFecha) + 1} del lienzo.</p>
                 )}
               </div>
 

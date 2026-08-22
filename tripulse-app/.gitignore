@@ -42,3 +42,7 @@ next-env.d.ts
 
 # Claude Code local tooling
 .claude/
+
+# ...y cualquier .next anidado: ejecutar el build desde un subdirectorio por
+# error crea uno ahi y se cuela en el commit.
+.next/

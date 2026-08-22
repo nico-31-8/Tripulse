@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { calcularEdad } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
@@ -9,15 +10,6 @@ import Adherencia from '@/components/Adherencia'
 import { minutosCarga, cargaReal } from '@/lib/duracion-carga'
 import { estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
-
-function calcularEdad(fecha: string): number {
-  const hoy = new Date()
-  const nac = new Date(fecha)
-  let edad = hoy.getFullYear() - nac.getFullYear()
-  const m = hoy.getMonth() - nac.getMonth()
-  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--
-  return edad
-}
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]

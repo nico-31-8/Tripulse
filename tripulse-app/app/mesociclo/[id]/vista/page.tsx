@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { semanasEntre, sumarSemanas, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
@@ -18,15 +19,6 @@ const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Ciclismo: 'Cic', C
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
-function weeksBetween(f1: string, f2: string): number {
-  return Math.round((new Date(f2).getTime() - new Date(f1).getTime()) / (7 * 24 * 3600 * 1000))
-}
-function addWeeks(f: string, n: number): string {
-  const d = new Date(f); d.setDate(d.getDate() + n * 7); return d.toISOString().slice(0, 10)
-}
-function addDays(f: string, n: number): string {
-  const d = new Date(f); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10)
-}
 
 export default function VistaCiclo({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -85,7 +77,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     }
     if (macro) {
       const { data: bz } = await supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', macro.id_deportista).single()
-      const semanasMeso = new Set((mi || []).map(x => weeksBetween(macro.fecha_inicio, x.fecha_inicio)))
+      const semanasMeso = new Set((mi || []).map(x => semanasEntre(macro.fecha_inicio, x.fecha_inicio)))
       const todasZonas = (bz?.sesiones_zonas || []) as any[]
       setZonas(todasZonas.filter(z => semanasMeso.has(z.semana)))
     }
@@ -162,7 +154,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   if (!meso) return <Cargando noExiste={noExiste} />
 
   const col = C_MESO[meso.tipo] || '#f97316'
-  const fechaFin = addWeeks(meso.fecha_inicio, meso.duracion_semanas)
+  const fechaFin = sumarSemanas(meso.fecha_inicio, meso.duracion_semanas)
   const hoy = new Date().toISOString().slice(0, 10)
   const estado = hoy < meso.fecha_inicio ? 'Por venir' : hoy >= fechaFin ? 'Terminado' : 'En curso'
 
@@ -255,7 +247,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                     </div>
                     {/* 7 días */}
                     {DIAS.map((_, di) => {
-                      const fecha = addDays(mi.fecha_inicio, di)
+                      const fecha = sumarDias(mi.fecha_inicio, di)
                       const ses = sesDia(fecha)
                       const esHoy = fecha === hoy
                       const cellClick = () => {

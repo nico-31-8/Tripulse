@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
 import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
@@ -21,17 +22,6 @@ import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
-
-const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-
-function fechaLarga(f: string | null | undefined): string {
-  if (!f) return ''
-  const d = new Date(f + 'T12:00:00')
-  if (isNaN(d.getTime())) return f
-  const dia = DIAS[d.getDay()]
-  return dia.charAt(0).toUpperCase() + dia.slice(1) + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]
-}
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
 // delante si son varias («4 × 400 m»).

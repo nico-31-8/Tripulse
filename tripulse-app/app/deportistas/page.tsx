@@ -2,21 +2,16 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { calcularEdad } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargarGrupos, contarMiembros, crearGrupo, type Grupo } from '@/lib/grupos'
 
-function calcularEdad(fechaNacimiento: string): number {
-  const hoy = new Date()
-  const nac = new Date(fechaNacimiento)
-  let edad = hoy.getFullYear() - nac.getFullYear()
-  const m = hoy.getMonth() - nac.getMonth()
-  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--
-  return edad
-}
-
-function calcularFCMaxima(fechaNacimiento: string): number {
+function calcularFCMaxima(fechaNacimiento: string): number | null {
   const edad = calcularEdad(fechaNacimiento)
+  // Sin fecha de nacimiento no hay fórmula que valga: null, no un 208 que
+  // parece un dato y no lo es.
+  if (edad == null) return null
   return Math.round(208 - 0.7 * edad)
 }
 

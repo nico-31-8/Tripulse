@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { lunesDe } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
 import { minutosCarga } from '@/lib/duracion-carga'
@@ -20,17 +21,6 @@ const DISC_LABELS: Record<string, string> = {
   'Ciclismo': '🚴 Ciclismo',
   'Carrera': '🏃 Carrera',
   'Fuerza': '🏋️ Fuerza',
-}
-
-function getLunesDeSemana(fecha: string): string {
-  const d = new Date(fecha)
-  const dia = d.getDay()
-  const diff = dia === 0 ? -6 : 1 - dia
-  d.setDate(d.getDate() + diff)
-  const y = d.getFullYear()
-  const m = String(d.getMonth()+1).padStart(2,'0')
-  const dd = String(d.getDate()).padStart(2,'0')
-  return y+'-'+m+'-'+dd
 }
 
 function getEtiquetaSemana(lunes: string): string {
@@ -115,7 +105,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
 
     const mapa: Record<string, Record<string, number>> = {}
     sesionesConCarga.forEach(s => {
-      const clave = modo === 'dia' ? s.fecha : getLunesDeSemana(s.fecha)
+      const clave = modo === 'dia' ? s.fecha : lunesDe(s.fecha)
       if (!mapa[clave]) mapa[clave] = {}
       const suyos = bloques.filter(b => b.id_sesion === s.id)
       const totalUA = uaPorSesion[s.id] || 0

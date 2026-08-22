@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { proximoLunes } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { planDeTemporada, type Temporada } from '@/lib/plan-macrociclo'
 import { crearTemporada, planesExistentes } from '@/lib/plan-macrociclo-volcado'
@@ -25,13 +26,6 @@ import ChatEntrenador from '@/components/ChatEntrenador'
 import { estadoDelPlan, puedeRehacer, borrarPlan, type EstadoPlan } from '@/lib/plan-rehacer'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis, altaCompleta } from '@/lib/anamnesis-datos'
-
-/** El lunes que viene: los microciclos empiezan en lunes en toda la app. */
-function proximoLunes(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7))
-  return d.toISOString().slice(0, 10)
-}
 
 // Solo las pruebas para las que B1-02 da plantilla de cuenta atrás. Ofrecer las
 // demás sería prometer un plan que no se sabe dibujar.

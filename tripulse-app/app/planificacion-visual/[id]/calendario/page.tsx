@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { lunesDe, aISO } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
@@ -80,20 +81,6 @@ function getDuracionSesion(sesion: any): string {
   return ''
 }
 
-function fechaStr(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth()+1).padStart(2,'0')
-  const dd = String(d.getDate()).padStart(2,'0')
-  return y+'-'+m+'-'+dd
-}
-
-function getLunesDeSemana(fecha: string): string {
-  const d = new Date(fecha)
-  const dia = d.getDay()
-  const diff = dia === 0 ? -6 : 1 - dia
-  d.setDate(d.getDate() + diff)
-  return fechaStr(d)
-}
 
 function semanasHasta(fecha: string): number {
   const hoy = new Date(); hoy.setHours(0,0,0,0)
@@ -296,10 +283,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const getSesionesDia = (f: string) => sesiones.filter(s => s.fecha_sesion === f)
   const getCompeticionDia = (f: string) => competiciones.find(c => c.fecha?.slice(0,10) === f)
   const getBloqueoSemana = (f: string) => {
-    const lunes = getLunesDeSemana(f)
+    const lunes = lunesDe(f)
     return semanasBloqueadas.find(b => b.fecha_inicio?.slice(0,10) === lunes)
   }
-  const esSemanaCopiada = (f: string) => !!semanaCopiada && getLunesDeSemana(f) === semanaCopiada
+  const esSemanaCopiada = (f: string) => !!semanaCopiada && lunesDe(f) === semanaCopiada
 
   const proximaCompeticion = competiciones.filter(c => new Date(c.fecha) >= new Date()).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0]
 
@@ -471,7 +458,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // COPIAR SEMANA
   const copiarSemana = (f: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const lunes = getLunesDeSemana(f)
+    const lunes = lunesDe(f)
     setSemanaCopiada(lunes)
     setSesionCopiada(null)
     toast('Semana copiada — pulsa otra semana para pegar')
@@ -482,7 +469,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (!semanaCopiada) return
     setLoading(true)
     // Obtener sesiones de la semana origen
-    const sesionesSemana = sesiones.filter(s => getLunesDeSemana(s.fecha_sesion) === semanaCopiada)
+    const sesionesSemana = sesiones.filter(s => lunesDe(s.fecha_sesion) === semanaCopiada)
     if (!sesionesSemana.length) { toast('La semana copiada no tiene sesiones'); setLoading(false); return }
     const lunesOrigen = new Date(semanaCopiada)
     const lunesDest = new Date(lunesDestino)
@@ -490,7 +477,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     for (const s of sesionesSemana) {
       const fechaOrigen = new Date(s.fecha_sesion)
       fechaOrigen.setDate(fechaOrigen.getDate() + diffDias)
-      const nuevaFecha = fechaStr(fechaOrigen)
+      const nuevaFecha = aISO(fechaOrigen)
       const micro = getMicroDelDia(nuevaFecha)
       if (!micro) continue
       const { data: sesNueva2 } = await supabase.from('sesion').insert({
@@ -522,7 +509,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (sesionCopiada) { pegarSesion(f); return }
     // Si hay semana copiada, confirmar pegado
     if (semanaCopiada) {
-      const lunes = getLunesDeSemana(f)
+      const lunes = lunesDe(f)
       if (lunes === semanaCopiada) { toast('Elige una semana diferente'); return }
       setSemanaDestino(lunes)
       setFechaSel(f)
@@ -549,7 +536,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (plantillaEnMano) { pegarPlantilla(f); return }
     if (sesionCopiada) { pegarSesion(f); return }
     if (semanaCopiada) {
-      const lunes = getLunesDeSemana(f)
+      const lunes = lunesDe(f)
       if (lunes === semanaCopiada) { toast('Elige una semana diferente'); return }
       setSemanaDestino(lunes); setFechaSel(f); setModalTipo('pegarSemana'); return
     }
@@ -726,7 +713,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   const guardarBloqueo = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    const lunes = getLunesDeSemana(fechaSel)
+    const lunes = lunesDe(fechaSel)
     await supabase.from('semana_bloqueada').insert({ id_deportista: Number(id), fecha_inicio: lunes, motivo: bloqueoMotivo })
     setBloqueoMotivo(''); setModalTipo(null)
     await cargarDatos(); setLoading(false)
@@ -1211,7 +1198,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <div className="grid grid-cols-7 gap-1">
                   {diasMes.map((dia, i) => {
                     if (!dia) return <div key={i} />
-                    const f = fechaStr(dia)
+                    const f = aISO(dia)
                     const meso = getMesoDelDia(f)
                     const micro = getMicroDelDia(f)
                     const sesDia = getSesionesDia(f)
@@ -1339,7 +1326,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <div className="grid grid-cols-7 gap-0.5">
                     {getDiasDelMes(año, mes).map((dia, i) => {
                       if (!dia) return <div key={i} />
-                      const f = fechaStr(dia)
+                      const f = aISO(dia)
                       const meso = getMesoDelDia(f)
                       const micro = getMicroDelDia(f)
                       const ses = getSesionesDia(f)
