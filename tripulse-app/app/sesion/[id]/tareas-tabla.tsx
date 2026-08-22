@@ -12,7 +12,7 @@ import {
   segAMmss, filaResistenciaDesde, filaFuerzaDesde, avisaOtraDisciplina,
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
-import { referenciaDeZona, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
+import { referenciaDeZona, cargarReferencias, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -122,38 +122,50 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   useEffect(() => { cargarDatos() }, [deportistaId, sesionId])
 
+  /*
+   * Esto eran OCHO consultas en serie. Ahora son dos rondas.
+   *
+   * Las cuatro primeras —FC máxima, sistema de zonas y los tres tests— son
+   * ademas EXACTAMENTE las mismas que la pagina de la sesion acaba de hacer
+   * para su cabecera. Se pedian dos veces por cada apertura. Ahora al menos
+   * salen de la misma funcion (lib/referencia-zona), asi que no pueden
+   * divergir; quitar la segunda peticion del todo pide bajar los datos por
+   * props, y eso es otra tanda.
+   */
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('fc_maxima, sistema_zonas').eq('id', deportistaId).single()
-    setFcMax(dep?.fc_maxima || 0)
-    setSistema(dep?.sistema_zonas || 1)
-    const { data: t1 } = await supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    const { data: t2 } = await supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    const { data: t3 } = await supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', deportistaId).order('fecha', { ascending: false }).limit(1)
-    setTests({ vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp, fuerza: [] })
-    const { data: ejBib } = await supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre')
-    setEjerciciosBiblioteca(ejBib || [])
-    // 1RM por ejercicio, para poder enseñar el kilo cuando se prescribe en %.
-    // Se queda solo con el más reciente de cada uno: la lista viene ordenada por
-    // fecha descendente, así que el primero que aparece es el bueno.
-    const { data: tf } = await supabase.from('test_fuerza')
-      .select('ejercicio, rm_estimado, fecha').eq('id_deportista', deportistaId)
-      .not('rm_estimado', 'is', null).order('fecha', { ascending: false })
+    const [refs, ejBib, tf, tar] = await Promise.all([
+      cargarReferencias(supabase, deportistaId),
+      supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre'),
+      // 1RM por ejercicio, para poder enseñar el kilo cuando se prescribe en %.
+      supabase.from('test_fuerza')
+        .select('ejercicio, rm_estimado, fecha').eq('id_deportista', deportistaId)
+        .not('rm_estimado', 'is', null).order('fecha', { ascending: false }),
+      ordenarTareasQuery(
+        supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId)),
+    ])
+
+    setFcMax(refs.fcMax)
+    setSistema(refs.sistema)
+    setTests({ ...refs.tests, fuerza: [] })
+    setEjerciciosBiblioteca(ejBib.data || [])
+
+    // Se queda solo con el 1RM más reciente de cada ejercicio: la lista viene
+    // ordenada por fecha descendente, así que el primero que aparece es el bueno.
     const porEjercicio: Record<string, { rm: number; fecha: string }> = {}
-    for (const t of tf || []) {
+    for (const t of tf.data || []) {
       const clave = String(t.ejercicio || '').trim().toLowerCase()
       if (clave && !porEjercicio[clave]) porEjercicio[clave] = { rm: Number(t.rm_estimado), fecha: t.fecha }
     }
     setRmPorEjercicio(porEjercicio)
-    const { data: tar, error: errTar } = await ordenarTareasQuery(
-      supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*)').eq('id_sesion', sesionId))
-    if (tar && tar.length > 0) {
-      const tareaIds = tar.map((t: any) => t.id)
-      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
-      const tarConEjs = tar.map((t: any) => ({
+
+    // Los ejercicios cuelgan de las tareas, así que esta sí espera.
+    const filas = tar.data as any[] | null
+    if (filas && filas.length > 0) {
+      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', filas.map(t => t.id))
+      setTareasGuardadas(filas.map(t => ({
         ...t,
-        ejercicios: ejs?.filter((e: any) => e.id_tarea === t.id) || []
-      }))
-      setTareasGuardadas(tarConEjs)
+        ejercicios: ejs?.filter((e: any) => e.id_tarea === t.id) || [],
+      })))
     } else {
       setTareasGuardadas([])
     }

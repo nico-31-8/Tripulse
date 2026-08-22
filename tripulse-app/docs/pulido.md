@@ -210,3 +210,26 @@ Verificado: `tsc` 0 · **956 tests** (eran 935) · `next build` OK.
 
 **Queda del Módulo 1**: las consultas de `tareas-tabla` (carga la biblioteca
 entera de ejercicios al montar), la pantalla `ejecutar`, y los `select('*')`.
+
+**Hecho (2026-08-22) — el resto de la carga del módulo.**
+
+`tareas-tabla`: de **8 consultas en serie a 2 rondas**. Y algo peor que la
+serialización: las cuatro primeras (FC máxima, sistema de zonas y los tres
+tests) son **exactamente las mismas que la página acaba de hacer** para su
+cabecera. Se pedían dos veces por apertura. Ahora al menos salen de la misma
+función (`cargarReferencias`), así que no pueden divergir; quitar la segunda
+petición del todo pide bajar los datos por props — otra tanda.
+
+`ejecutar`: de **7 viajes encadenados a 1 ronda**. Tenía la misma cascada
+`microciclo→mesociclo→macrociclo→mesos→micros→sesiones del día`, por el mismo
+motivo, y con la misma respuesta. Es **la pantalla del atleta mientras entrena**,
+muchas veces con el móvil y mala cobertura: es donde más se nota.
+
+Los `await` que quedan en el módulo están casi todos en los caminos de GUARDADO
+(borrar tarea, guardar fila), que son secuenciales por necesidad —borrar y
+después insertar— y ocurren tras un clic, no antes de ver nada.
+
+Verificado: `tsc` 0 · **956 tests** · `next build` OK.
+
+**Queda del Módulo 1**: bajar tests/FC por props para matar la doble petición,
+los `select('*')`, y los estados de carga.

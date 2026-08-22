@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona, zonaClasica } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
@@ -128,66 +129,54 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         await supabase.from('sesion').update({ hora_inicio: new Date(ahora).toISOString() }).eq('id', id)
       }
     }
-    // Deportista de la sesión: directo si es libre, o por la cadena macro si es planificada.
-    let depIdLocal: number | null = ses?.id_deportista ?? null
-    if (ses?.id_microciclo) {
-      const { data: micro } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).single()
-      if (micro) {
-        const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
-        if (meso) {
-          const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
-          if (macro) {
-            depIdLocal = macro.id_deportista
+    /* De siete viajes encadenados a uno.
+     *
+     * Aquí había la misma cascada que en la ficha —microciclo → mesociclo →
+     * macrociclo → mesos → micros → sesiones del día— y por el mismo motivo:
+     * averiguar de quién era la sesión. `ses.id_deportista` ya lo dice, y la
+     * política RLS de `sesion` garantiza que está: una fila con ese campo a
+     * null no la ve nadie.
+     *
+     * Y esto es la pantalla del ATLETA mientras entrena, muchas veces con el
+     * móvil y mala cobertura. Es donde más se nota. */
+    const depIdLocal: number | null = ses?.id_deportista ?? null
 
-            // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
-            const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', meso.id_macrociclo)
-            const mesoIds = (mesos || []).map(m => m.id)
-            if (mesoIds.length) {
-              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio').in('id_mesociclo', mesoIds)
-              const microIds = (micros || []).map(m => m.id)
-              const fSes = new Date(ses.fecha_sesion)
-              let dias: number | null = null
-              for (const mi of micros || []) {
-                if (mi.tipo === 'Competición' && mi.fecha_inicio) {
-                  const d = Math.round((new Date(mi.fecha_inicio).getTime() - fSes.getTime()) / 86400000)
-                  if (d >= 0 && (dias === null || d < dias)) dias = d
-                }
-              }
-              setDiasHastaComp(dias)
-              if (microIds.length) {
-                const { data: mismasFecha } = await supabase.from('sesion')
-                  .select('id, estado').in('id_microciclo', microIds).eq('fecha_sesion', ses.fecha_sesion)
-                setOtraSesionHoy((mismasFecha || []).some(s => s.id !== Number(id) && s.estado !== 'Cancelada'))
-              }
-            }
-          }
-        }
-      }
-    }
-    // Tests del deportista (VAM/CSS/FTP) + peso. Para planificadas Y libres: se
-    // cargan por depIdLocal (venga de la cadena macro o del id_deportista directo),
-    // para que el ritmo objetivo por zona salga siempre que haya test.
+    const [mesos, micros, mismoDia, t1, t2, t3, an, tar] = await Promise.all([
+      depIdLocal ? supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
+      depIdLocal ? supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
+      /* Por deportista y fecha, no por los microciclos del plan: así cuenta
+         también la sesión que el atleta se haya añadido él ese día. */
+      depIdLocal ? supabase.from('sesion').select('id, estado').eq('id_deportista', depIdLocal)
+        .eq('fecha_sesion', ses.fecha_sesion).or('eliminada.is.null,eliminada.eq.false') : Promise.resolve({ data: [] }),
+      depIdLocal ? supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
+      depIdLocal ? supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
+      depIdLocal ? supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
+      depIdLocal ? supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden'),
+    ])
+
     if (depIdLocal) {
-      const [t1, t2, t3, an] = await Promise.all([
-        supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-        supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
-      ])
-      setTests({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
-      setPesoDeportista(an.data?.peso || null)
+      // Los ritmos objetivo por zona: salen siempre que haya test, planificada o libre.
+      setTests({ vam: (t1.data as any)?.[0]?.vam || null, css: (t2.data as any)?.[0]?.css || null, ftp: (t3.data as any)?.[0]?.ftp || null })
+      setPesoDeportista((an.data as any)?.peso || null)
+
+      // Contexto de recuperación, ya sin consultas: lógica pura sobre las listas.
+      const listaMesos = (mesos.data || []) as any[]
+      const listaMicros = (micros.data || []) as any[]
+      setDiasHastaComp(diasHastaCompeticion(
+        ses.fecha_sesion, microsDelPlan(ses.id_microciclo, listaMesos, listaMicros)))
+      setOtraSesionHoy(hayOtraSesionEseDia((mismoDia.data || []) as any[], Number(id)))
     }
-    const { data: tar } = await supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden')
     // Si el entrenador manda un drill, el deportista tiene que ver cuál es y cómo se
     // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
-    const tarConTecnica = await conTecnica(tar)
+    const tarConTecnica = await conTecnica(tar.data)
     setTareas(tarConTecnica)
     // Se entra directo a entrenar, pero si no hay nada que registrar eso sería una
     // pantalla vacía: en ese caso se abre por el plan, que sí explica que está vacío.
-    if (!tar || !tar.length) setFase('preview')
+    if (!tar.data || !tar.data.length) setFase('preview')
     // Cargar ejercicios de todas las tareas
-    if (tar && tar.length > 0) {
-      const tareaIds = tar.map((t: any) => t.id)
+    if (tar.data && tar.data.length > 0) {
+      const tareaIds = (tar.data as any[]).map((t: any) => t.id)
       const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
       const ejMap: Record<number, any[]> = {}
       tareaIds.forEach((tid: number) => { ejMap[tid] = [] })
