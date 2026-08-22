@@ -169,3 +169,44 @@ Verificado: `tsc` 0 · **935 tests** (eran 911) · `next build` OK.
 `estadoTSBBase`, que ya está compartido: valor bajo).
 
 ### Módulo 1 — Ficha de sesión · siguiente
+
+**Hecho (2026-08-22) — la cascada de la ficha de sesión.**
+
+`lib/contexto-sesion.ts` + 21 tests: `posicionEnPlan`, `diasHastaCompeticion`,
+`microsDelPlan`, `hayOtraSesionEseDia`. Era lógica enterrada dentro de la
+cascada; ahora es lógica pura sobre listas, probada.
+
+Con eso cubierto, `cargarDatos` pasa de **ocho viajes encadenados a dos rondas**:
+
+    antes: perfiles → sesion → microciclo → mesociclo → macrociclo → mesos
+           → micros → sesiones del día    (y luego un Promise.all)
+    ahora: [usuario, sesion, tareas]  →  [perfil, mesos, micros, sesiones del
+           día, 3 tests, anamnesis, deportista]
+
+**Tres de esos viajes no hacían falta.** La cadena microciclo→mesociclo→
+macrociclo estaba solo para averiguar de quién era la sesión, y
+`sesion.id_deportista` ya venía en la primera consulta. No es que «suela» estar:
+la política RLS de `sesion` es `id_deportista in (select auth_dep_ids())`, así
+que una fila con ese campo a null **no la ve nadie**. Si la estamos leyendo, está.
+Se deja igual una red de seguridad de tres consultas para el caso imposible.
+
+Los mesos y micros se traen enteros del deportista y el acotado al macrociclo se
+hace en memoria, así que un atleta con dos temporadas sigue viendo «semana 2 de
+4» de la suya.
+
+**Un cambio de comportamiento, a propósito y anotado**: «¿otra sesión hoy?» iba
+por los microciclos del plan; ahora va por deportista y fecha, así que **caza
+también las sesiones libres**. Antes, si el atleta se añadía una por su cuenta
+ese día, no contaba y la recomendación de recuperación salía como si tuviera el
+día suelto.
+
+**Fuera la recarga dura de `ResumenBrick`.** Guardar los bloques de un brick
+hacía `window.location.reload()`: pantalla en blanco y la app entera de cero para
+reflejar un cambio de dos campos. Ahora avisa al padre, que relee lo suyo y
+remonta la tabla. Queda **una** recarga dura en la app (`OnboardingDeportista`,
+va en el Módulo 3).
+
+Verificado: `tsc` 0 · **956 tests** (eran 935) · `next build` OK.
+
+**Queda del Módulo 1**: las consultas de `tareas-tabla` (carga la biblioteca
+entera de ejercicios al montar), la pantalla `ejecutar`, y los `select('*')`.

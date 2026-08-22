@@ -34,6 +34,9 @@ import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import {
+  posicionEnPlan, diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia,
+} from '@/lib/contexto-sesion'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -243,100 +246,105 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     })
   }, [])
 
+  /*
+   * DE OCHO VIAJES A DOS.
+   *
+   * Esto era una cascada: perfiles → sesion → microciclo → mesociclo →
+   * macrociclo → mesos → micros → sesiones del día, cada uno esperando al
+   * anterior. A ~100 ms el viaje, casi un segundo de pantalla vacía antes de
+   * pintar nada.
+   *
+   * Y TRES DE ESOS VIAJES NO HACÍAN FALTA. La cadena microciclo→mesociclo→
+   * macrociclo estaba solo para averiguar de quién era la sesión, y
+   * `sesion.id_deportista` ya viene en la primera consulta. No es que suela
+   * estar: la política RLS de `sesion` es `id_deportista in
+   * (select auth_dep_ids())`, así que una fila con ese campo a null no la ve
+   * NADIE. Si la estamos leyendo, está.
+   *
+   * Los mesos y micros se traen enteros del deportista, de una vez, y el
+   * acotado al macrociclo que toca se hace en memoria (lib/contexto-sesion).
+   * Un atleta con dos temporadas sigue viendo «semana 2 de 4» de la suya.
+   */
   const cargarDatos = async () => {
-    const user = await usuarioActual()
-    if (user) {
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
-      setEsDeportista(p?.rol === 'deportista')
-    }
-    const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
+    // ---- Ronda 1: lo que no depende de nada ----
+    const [user, { data: ses }, { data: tar }] = await Promise.all([
+      usuarioActual(),
+      supabase.from('sesion').select('*').eq('id', id).single(),
+      // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él,
+      // una sesión de fuerza en el briefing diría «4 series» de nada.
+      // `intensidad` y el control (tipo + valor) hacen falta para el briefing
+      // del atleta: sin ellos leía «4 × 8 reps» y nada más — ni con cuánto peso
+      // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
+      // sesiones anteriores a que el control tuviera columnas propias.
+      ordenarTareasQuery(
+        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre, ejercicio_encadenado_id, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id)),
+    ])
+
     setSesion(ses)
     if (!ses) { setNoExiste(true); return }
-    // Sin id_emision no se pregunta nada: esto no cuesta ni una consulta en las
+    setTareas(await conTecnica(tar))
+    // Sin id_emision no se pregunta nada: no cuesta ni una consulta en las
     // sesiones individuales, que son la mayoría.
     nombreDelGrupo(supabase, ses.id_emision).then(setNombreGrupo)
-    const { data: tar } = await ordenarTareasQuery(
-      // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él, una
-      // sesión de fuerza en el briefing del deportista diría «4 series» de nada.
-      // `intensidad` y el control (tipo + valor) hacen falta para el briefing del
-      // atleta: sin ellos leía «4 × 8 reps» y nada más — ni con cuánto peso ni
-      // hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
-      // sesiones anteriores a que el control tuviera columnas propias.
-      supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre, ejercicio_encadenado_id, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id))
-    setTareas(await conTecnica(tar))
-    if (ses) {
-      let depIdLocal: number | null = ses.id_deportista ?? null
-      const { data: micro } = await supabase.from('microciclo').select('id_mesociclo, tipo').eq('id', ses.id_microciclo).single()
-      if (micro) {
-        const { data: meso } = await supabase.from('mesociclo').select('id_macrociclo').eq('id', micro.id_mesociclo).single()
-        if (meso) {
-          const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
-          if (macro) {
-            depIdLocal = macro.id_deportista
 
-            // Contexto de recuperación: otras sesiones hoy + días hasta la próxima competición.
-            // Se recorre toda la cadena meso→micro del deportista (una vez).
-            const { data: mesos } = await supabase.from('mesociclo').select('id, fecha_inicio').eq('id_macrociclo', meso.id_macrociclo).order('fecha_inicio')
-            const mesoIds = (mesos || []).map(m => m.id)
-            if (mesoIds.length) {
-              const { data: micros } = await supabase.from('microciclo').select('id, tipo, fecha_inicio, id_mesociclo').in('id_mesociclo', mesoIds).order('fecha_inicio')
-              const microIds = (micros || []).map(m => m.id)
+    let depId: number | null = ses.id_deportista ?? null
 
-              // En qué punto del plan cae esta sesión. Ni mesociclo ni microciclo tienen
-              // columna de número: sale de su posición por fecha dentro de su padre.
-              const nMeso = mesoIds.indexOf(micro.id_mesociclo) + 1
-              const delMeso = (micros || []).filter(m => m.id_mesociclo === micro.id_mesociclo)
-              const nSemana = delMeso.findIndex(m => m.id === ses.id_microciclo) + 1
-              setCiclo({
-                meso: nMeso > 0 ? nMeso : null,
-                semana: nSemana > 0 ? nSemana : null,
-                tipo: micro.tipo || null,
-              })
-
-              // Días hasta la próxima competición (semana marcada como 'Competición')
-              const fSes = new Date(ses.fecha_sesion)
-              let dias: number | null = null
-              for (const mi of micros || []) {
-                if (mi.tipo === 'Competición' && mi.fecha_inicio) {
-                  const d = Math.round((new Date(mi.fecha_inicio).getTime() - fSes.getTime()) / 86400000)
-                  if (d >= 0 && (dias === null || d < dias)) dias = d
-                }
-              }
-              setDiasHastaComp(dias)
-
-              // ¿Otra sesión el mismo día (no cancelada)?
-              if (microIds.length) {
-                const { data: mismasFecha } = await supabase.from('sesion')
-                  .select('id, estado').in('id_microciclo', microIds).eq('fecha_sesion', ses.fecha_sesion)
-                const otra = (mismasFecha || []).some(s => s.id !== Number(id) && s.estado !== 'Cancelada')
-                setOtraSesionHoy(otra)
-              }
-            }
-          }
-        }
-      }
-      // Tests del deportista (VAM/CSS/FTP) + peso. Por depIdLocal: cadena macro o
-      // sesión libre por id_deportista → los ritmos sugeridos salen también en libres.
-      if (depIdLocal) {
-        setDeportistaId(depIdLocal)
-        const [t1, t2, t3, an, dep] = await Promise.all([
-          supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-          supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1),
-          supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle(),
-          // El modo simple/compleja de resistencia solo se ofrece con Zonas 2. El nombre
-          // es para la cabecera: la ficha recorría toda la cadena para saber de quién era
-          // la sesión y se quedaba solo con el id, así que no decía de quién era.
-          supabase.from('deportista').select('sistema_zonas, nombre').eq('id', depIdLocal).maybeSingle(),
-        ])
-        setSistemaZonas(dep.data?.sistema_zonas || 1)
-        setNombreDeportista(dep.data?.nombre || null)
-        setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
-        setPesoDeportista(an.data?.peso || null)
-      }
+    /* Red de seguridad, no camino normal. Por RLS esto no debería darse nunca
+       (ver arriba), pero si algún día una fila llegara sin `id_deportista` la
+       ficha se quedaría sin tareas y sin ritmos, y en silencio. Cuesta tres
+       consultas en un caso que no ocurre. */
+    if (!depId && ses.id_microciclo) {
+      const { data: mi } = await supabase.from('microciclo').select('id_mesociclo').eq('id', ses.id_microciclo).maybeSingle()
+      const { data: me } = mi ? await supabase.from('mesociclo').select('id_macrociclo').eq('id', mi.id_mesociclo).maybeSingle() : { data: null }
+      const { data: ma } = me ? await supabase.from('macrociclo').select('id_deportista').eq('id', me.id_macrociclo).maybeSingle() : { data: null }
+      depId = ma?.id_deportista ?? null
     }
-  }
 
+    if (!depId) {
+      // Sin dueño no hay contexto que calcular ni tests que traer.
+      if (user) {
+        const { data: pf } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+        setEsDeportista(pf?.rol === 'deportista')
+      }
+      return
+    }
+    setDeportistaId(depId)
+
+    // ---- Ronda 2: todo lo demás, a la vez ----
+    const [pf, mesos, micros, mismoDia, t1, t2, t3, an, dep] = await Promise.all([
+      user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depId),
+      supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depId),
+      /* Antes esto iba por los microciclos del plan. Ahora va por deportista y
+         fecha, que además CAZA LAS SESIONES LIBRES: si el atleta se añadió una
+         por su cuenta ese mismo día, antes no contaba y la recomendación de
+         recuperación salía como si tuviera el día suelto. */
+      supabase.from('sesion').select('id, estado')
+        .eq('id_deportista', depId).eq('fecha_sesion', ses.fecha_sesion)
+        .or('eliminada.is.null,eliminada.eq.false'),
+      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+      supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
+      // El modo simple/compleja de resistencia solo se ofrece con Zonas 2. El
+      // nombre es para la cabecera.
+      supabase.from('deportista').select('sistema_zonas, nombre').eq('id', depId).maybeSingle(),
+    ])
+
+    setEsDeportista((pf as any).data?.rol === 'deportista')
+    setSistemaZonas(dep.data?.sistema_zonas || 1)
+    setNombreDeportista(dep.data?.nombre || null)
+    setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
+    setPesoDeportista(an.data?.peso || null)
+
+    // El contexto del plan, ya sin consultas: lógica pura sobre las dos listas.
+    const listaMesos = (mesos.data || []) as any[]
+    const listaMicros = (micros.data || []) as any[]
+    setCiclo(posicionEnPlan(ses.id_microciclo, listaMesos, listaMicros))
+    setDiasHastaComp(diasHastaCompeticion(
+      ses.fecha_sesion, microsDelPlan(ses.id_microciclo, listaMesos, listaMicros)))
+    setOtraSesionHoy(hayOtraSesionEseDia(mismoDia.data || [], Number(id)))
+  }
 
   const borrarTarea = async (tareaId: number) => {
     if (!confirm('¿Borrar esta tarea?')) return
@@ -930,7 +938,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* Resumen del brick: las transiciones NO son tareas (no deben contar como
             carga de ninguna disciplina), así que no pueden salir en la tabla de abajo.
             Aquí es donde se ven, que para eso son un paso entrenable. */}
-        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId} />}
+        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId}
+          onGuardado={() => { cargarDatos(); setRecargaTareas(n => n + 1) }} />}
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">

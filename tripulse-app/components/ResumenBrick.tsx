@@ -22,9 +22,11 @@ interface Props {
   transiciones: BrickValor['transiciones']
   editable?: boolean
   depId?: number | null
+  /** Guardar cambia la duración y el RPE de la sesión: el padre tiene que releer. */
+  onGuardado?: () => void
 }
 
-export default function ResumenBrick({ sesionId, transiciones, editable = false, depId = null }: Props) {
+export default function ResumenBrick({ sesionId, transiciones, editable = false, depId = null, onGuardado }: Props) {
   const [valor, setValor] = useState<BrickValor>(BRICK_VACIO)
   const [minutos, setMinutos] = useState<number[]>([])
   const [editando, setEditando] = useState<BrickValor | null>(null)
@@ -52,8 +54,12 @@ export default function ResumenBrick({ sesionId, transiciones, editable = false,
     setEditando(null)
     setGuardando(false)
     await cargar()
-    // La tabla de tareas y la cabecera leen de la BD al montar: hay que recargar.
-    window.location.reload()
+    /* Aquí había un `window.location.reload()`. La razón era buena —la tabla
+       de tareas y la cabecera leen de la BD al montar, y la duración de la
+       sesión acaba de cambiar— pero la solución era la más bruta posible:
+       pantalla en blanco y la app entera de cero para reflejar un cambio.
+       Ahora se avisa al padre, que ya sabe releer lo suyo y remontar la tabla. */
+    onGuardado?.()
   }
 
   const bloques = valor.bloques
