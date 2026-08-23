@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { semanasEntre } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
@@ -301,83 +302,101 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }, [totalSem, pantalla])
 
   // Carga planificacion existente al canvas
+  /*
+   * DE SEIS VIAJES EN SERIE A UNO.
+   *
+   * Encadenaba macrociclo → mesociclo → microciclo → sesiones del plan →
+   * sesiones libres → borrador. Ahora todo va por `id_deportista` en una sola
+   * ronda: mesociclos y microciclos ya lo llevan desde la Fase A, y las
+   * sesiones lo llevan siempre (lo garantiza la política RLS de `sesion`).
+   *
+   * Y ESTO ES MÁS SEGURO, no solo más rápido. El autoguardado de esta pantalla
+   * llegó a borrar los chips de zonas de un atleta: entre los `setMacros` /
+   * `setMesos` / `setSems` de la carga y la lectura del borrador había awaits,
+   * y cada setState dispara su efecto. Con una sola ronda, TODOS los setState
+   * caen seguidos y sin un solo await entre medias, así que esa ventana ya no
+   * existe. El guardián (`borradorCargadoRef`) se queda igual: es la red, no el
+   * arreglo.
+   *
+   * Las sesiones libres se cargan SIEMPRE. Antes estaban dentro del
+   * `if (microIds.length)`, así que a quien no tenía microciclos no se le
+   * contaban ni en Programado ni en Realizado — el mismo fallo que había en el
+   * calendario.
+   */
   const cargarExistente = async () => {
     setCargandoDatos(true)
     try {
-      const { data: macsData } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
+      const depId = Number(id)
+      const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, id_microciclo'
+
+      const [macs, mesosQ, microsQ, sesQ, borr] = await Promise.all([
+        supabase.from('macrociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
+        supabase.from('mesociclo').select('*').eq('id_deportista', depId),
+        supabase.from('microciclo').select('*').eq('id_deportista', depId),
+        // `duracion_real` va en el select: sin ella, una sesión cerrada con el
+        // cronómetro contaba por lo planificado (o por nada, si no había
+        // duración manual).
+        vivas(supabase.from('sesion').select(selProg).eq('id_deportista', depId)),
+        supabase.from('dibujo_borrador').select('*').eq('id_deportista', depId).maybeSingle(),
+      ])
+
+      const macsData = macs.data
       if (!macsData?.length) { setPantalla('setup'); setCargandoDatos(false); return }
 
       const fi = macsData[0].fecha_inicio
-      setFechaInicio(fi)
+      const totalW = Math.max(12, macsData.reduce((max: number, m: any) => {
+        return Math.max(max, semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas)
+      }, 12))
 
-      const totalW = macsData.reduce((max, m) => {
-        const end = semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas
-        return Math.max(max, end)
-      }, 12)
-      setTotalSem(Math.max(totalW, 12))
-
-      const macrosD: MacroD[] = macsData.map(m => ({
+      const macrosD: MacroD[] = macsData.map((m: any) => ({
         id: uid(), dbId: m.id,
         si: semanasEntre(fi, m.fecha_inicio),
         sf: semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas - 1,
         nombre: m.objetivo,
         tipo: m.tipo_periodizacion || 'Tradicional',
       }))
-      setMacros(macrosD)
 
-      const macIds = macsData.map(m => m.id)
-      const { data: mesosData } = await supabase.from('mesociclo').select('*').in('id_macrociclo', macIds)
-      if (mesosData?.length) {
-        const mesosD: MesoD[] = mesosData.map(me => {
-          const parentMacroD = macrosD.find(m => m.dbId === me.id_macrociclo)
-          return {
-            id: uid(), dbId: me.id, macroId: parentMacroD?.id || '',
-            si: semanasEntre(fi, me.fecha_inicio),
-            sf: semanasEntre(fi, me.fecha_inicio) + me.duracion_semanas - 1,
-            nombre: me.objetivo, tipo: me.tipo, intensidad: me.intensidad_relativa || 5,
-          }
-        })
-        setMesos(mesosD)
-
-        const mesoIds = mesosData.map(m => m.id)
-        const { data: microsData } = await supabase.from('microciclo').select('*').in('id_mesociclo', mesoIds)
-      const microIds = microsData?.map(m => m.id) || []
-      if (microIds.length) {
-        // `duracion_real` faltaba: sin ella, una sesión cerrada con el cronómetro
-        // contaba por lo planificado (o por nada, si no había duración manual).
-        const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, id_microciclo'
-        // Excluir borradas (antes contaban en Programado/Realizado) e incluir las libres.
-        const { data: sesData } = await supabase.from('sesion').select(selProg).in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
-        const { data: sesLibres } = await supabase.from('sesion').select(selProg).eq('id_deportista', Number(id)).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
-        setSesionesProg([...(sesData || []), ...(sesLibres || [])])
-      }
-        if (microsData?.length) {
-          const semsD = Array.from({ length: Math.max(totalW, 12) }, (_, i) => {
-            const micro = microsData.find(mi => semanasEntre(fi, mi.fecha_inicio) === i)
-            return { i, ua: micro?.ua_planificada || null, tipo: micro?.tipo || 'Carga', comp: '' }
-          })
-          setSems(semsD)
+      const mesosData = mesosQ.data || []
+      const mesosD: MesoD[] = mesosData.map((me: any) => {
+        const parentMacroD = macrosD.find(m => m.dbId === me.id_macrociclo)
+        return {
+          id: uid(), dbId: me.id, macroId: parentMacroD?.id || '',
+          si: semanasEntre(fi, me.fecha_inicio),
+          sf: semanasEntre(fi, me.fecha_inicio) + me.duracion_semanas - 1,
+          nombre: me.objetivo, tipo: me.tipo, intensidad: me.intensidad_relativa || 5,
         }
-      }
+      })
 
+      const microsData = microsQ.data || []
+      const semsD = microsData.length
+        ? Array.from({ length: totalW }, (_, k) => {
+            const micro = microsData.find((mi: any) => semanasEntre(fi, mi.fecha_inicio) === k)
+            return { i: k, ua: micro?.ua_planificada || null, tipo: micro?.tipo || 'Carga', comp: '' }
+          })
+        : null
+
+      /* El borrador MANDA sobre lo reconstruido de las tablas: es el último
+         estado que dibujó el entrenador, y la carga o las semanas que aún no ha
+         «Generado» no están en las tablas confirmadas. Reconstruir solo desde
+         ellas borraría lo dibujado. */
+      const bz = borr.data
+
+      // Desde aquí, todos los setState seguidos y sin ningún await en medio.
+      setFechaInicio(fi)
+      setTotalSem(bz?.total_semanas || totalW)
+      setMacros(bz?.macros?.length ? bz.macros : macrosD)
+      if (bz?.mesos?.length) setMesos(bz.mesos)
+      else if (mesosD.length) setMesos(mesosD)
+      if (bz?.semanas?.length) setSems(bz.semanas)
+      else if (semsD) setSems(semsD)
+      if (bz?.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
+      setSesionesProg(sesQ.data || [])
       setModoEdicion(true)
-      // Opción A: preferir el borrador autoguardado. Es el último estado que dibujó el
-      // entrenador; la carga/semanas que aún no se ha "Generado" no está en las tablas
-      // confirmadas, así que reconstruir solo desde ellas borraría lo dibujado.
-      const { data: bz } = await supabase.from('dibujo_borrador').select('*').eq('id_deportista', Number(id)).single()
-      if (bz) {
-        if (bz.total_semanas) setTotalSem(bz.total_semanas)
-        if (bz.macros?.length) setMacros(bz.macros)
-        if (bz.mesos?.length) setMesos(bz.mesos)
-        if (bz.semanas?.length) setSems(bz.semanas)
-        if (bz.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
-      }
-      // A partir de aquí lo que hay en pantalla ES el borrador, así que ya se
-      // puede escribir encima.
-      //
-      // Y SOLO aquí: si el cargador se cae antes, la bandera se queda en false y
-      // no se autoguarda nada. Es lo correcto — no guardar es un incordio, pero
-      // guardar un estado a medias borra lo que había y eso no se deshace.
+
+      /* Y SOLO AQUÍ se abre el autoguardado. Si el cargador se cae antes, la
+         bandera se queda en false y no se escribe nada: no guardar es un
+         incordio, pero guardar un estado a medias borra lo que había y eso no
+         se deshace. */
       borradorCargadoRef.current = true
       setPantalla('canvas')
     } catch (e: any) { alert('Error al cargar: ' + e.message) }

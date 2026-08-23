@@ -385,3 +385,34 @@ Verificado: `tsc` 0 · **976 tests** · `next build` OK.
 
 **Queda del Módulo 2**: `dibujo` (2.331 líneas, 21 consultas), `bloques` y
 `semana`.
+
+### Dibujo (2026-08-23) — de seis viajes a uno, y con menos riesgo
+
+El fichero más grande del proyecto (2.331 líneas) y el que **ya provocó una
+pérdida de datos real**: el autoguardado escribió `sesiones_zonas: []` encima de
+los chips buenos de un atleta (ver `tripulse-autoguardado-dibujo`).
+
+Encadenaba `macrociclo → mesociclo → microciclo → sesiones del plan → sesiones
+libres → borrador`. Ahora todo por `id_deportista` en **una sola ronda**.
+
+**Y esto es más seguro, no solo más rápido.** La ventana que costó aquellos chips
+era ésta: entre los `setMacros`/`setMesos`/`setSems` de la carga y la lectura del
+borrador había `await`s, y cada `setState` dispara el efecto de autoguardado. Si
+algo cortaba el cargador en medio, se guardaba el estado a medias. Con una sola
+ronda, **todos los `setState` caen seguidos y sin un solo `await` entre medias**:
+esa ventana ya no existe.
+
+El guardián (`borradorCargadoRef`) se queda **igual**. Es la red, no el arreglo, y
+quitarla sería confundir «ahora no hace falta» con «no puede volver a hacer
+falta».
+
+Las sesiones libres se cargan **siempre**. Estaban dentro del
+`if (microIds.length)`, así que a quien no tenía microciclos no se le contaban ni
+en Programado ni en Realizado — el mismo fallo que había en el calendario.
+
+**Verificado en pantalla, que aquí no era opcional**: se abrió el lienzo, se dejó
+autoguardar, se recargó y se contó lo que quedaba. Idéntico a antes: **16 chips**
+(AEI, AEL, AER, FEA, FLEX, FMH, FMI, PAE), 16 sesiones, 625 UA, 4 mesociclos, 12
+semanas.
+
+Verificado: `tsc` 0 · **976 tests** · `next build` OK.
