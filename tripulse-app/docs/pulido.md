@@ -416,3 +416,35 @@ autoguardar, se recargó y se contó lo que quedaba. Idéntico a antes: **16 chi
 semanas.
 
 Verificado: `tsc` 0 · **976 tests** · `next build` OK.
+
+### Bloques y semana (2026-08-23) — módulo 2 cerrado
+
+**Bloques**: cada tarjeta de macrociclo lanzaba **su propia consulta** al montarse
+para pintar sus bloques. Con cinco macrociclos, cinco viajes — el N+1 de manual.
+Ahora el padre trae todos los mesociclos del deportista de una vez y reparte. De
+paso la tarjeta deja de ser un componente que hace red: se puede leer sin
+preguntarse cuándo consulta.
+
+**Semana**: de ocho viajes en serie a dos rondas. Dos cosas desaparecen:
+
+- El **mesociclo era solo un puente** para llegar a los microciclos. Con
+  `microciclo.id_deportista` sobra.
+- **`p_distancia` y `p_duracion` se pedían y no se usaban.** Restos de cuando la
+  UA programada sumaba metros + segundos como si fueran la misma unidad; eso se
+  arregló (ahora es RPE × min) pero las dos consultas se quedaron trayendo datos
+  que nadie leía.
+
+**Un cambio de comportamiento, a propósito**: las sesiones se piden por **fecha**
+y no por microciclo. La pantalla se titula «Semana del …» y pinta siete columnas
+de lunes a domingo: una sesión de ese microciclo fechada fuera se contaba en el
+resumen **y no se podía ver en ninguna columna**, y una de otro microciclo
+fechada dentro no salía.
+
+Con esto, la discrepancia del recuento queda **del todo cerrada**: panel,
+calendario y vista de semana dicen los tres **10**. El culpable era la papelera,
+no la forma de la consulta.
+
+Verificado en pantalla: la semana sale igual (275 UA, 10 sesiones, 4/10
+realizadas, Lun…Dom) y las tarjetas de bloques pintan sus 4 mesociclos.
+
+Verificado: `tsc` 0 · **976 tests** · `next build` OK.

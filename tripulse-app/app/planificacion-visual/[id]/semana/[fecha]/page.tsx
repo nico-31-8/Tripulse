@@ -2,7 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { semanasEntre, sumarDias, hoyISO } from '@/lib/fechas'
+import { semanasEntre, sumarDias, hoyISO, soloDia } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
@@ -73,85 +74,83 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
   useEffect(() => { cargar() }, [id, fecha])
 
+  /*
+   * DE OCHO VIAJES EN SERIE A DOS RONDAS.
+   *
+   * Encadenaba deportista → macrociclo → mesociclo → microciclo → sesiones del
+   * micro → sesiones libres → borrador → tareas → distancias → duraciones.
+   *
+   * Dos cosas desaparecen por el camino:
+   *
+   *   · El mesociclo solo servía de puente para llegar a los microciclos. Con
+   *     `microciclo.id_deportista` (Fase A) sobra.
+   *
+   *   · `p_distancia` y `p_duracion` se pedían y NO SE USABAN. Eran restos de
+   *     cuando la UA programada sumaba metros + segundos como si fueran la misma
+   *     unidad; eso se arregló (ahora es RPE × min) pero las dos consultas se
+   *     quedaron ahí, trayendo datos que nadie leía.
+   *
+   * Y UN CAMBIO DE COMPORTAMIENTO, a propósito: las sesiones se piden por FECHA
+   * y no por microciclo. Esta pantalla se titula «Semana del …» y pinta siete
+   * columnas de lunes a domingo: una sesión de este microciclo fechada fuera de
+   * esa semana se contaba en el resumen y no se podía ver en ninguna columna, y
+   * una de otro microciclo fechada dentro no salía. Ahora la semana es la
+   * semana. De paso, esto cuadra el recuento con el panel del entrenador, que ya
+   * iba por fecha.
+   */
   const cargar = async () => {
     setLoading(true)
-    const { data: depData } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDep(depData)
+    const depId = Number(id)
+    const domingo = sumarDias(fecha, 6)
 
-    // Buscar el microciclo que corresponde a esta semana
-    let sesiones_cargadas: any[] = []
-    const { data: macs } = await supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', id).order('fecha_inicio')
-    if (macs?.length) {
-      setWeekIndex(semanasEntre(macs[0].fecha_inicio, fecha))
-      const macIds = macs.map((m: any) => m.id)
-      const { data: mes } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macIds)
-      if (mes?.length) {
-        const mesIds = mes.map((m: any) => m.id)
-        const { data: micros } = await supabase.from('microciclo').select('*').in('id_mesociclo', mesIds)
-        const micro = micros?.find((m: any) => m.fecha_inicio === fecha)
-        setMicrociclo(micro || null)
-        if (micro) {
-          const { data: ses } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
-          sesiones_cargadas = ses || []
-          setSesiones(sesiones_cargadas)
-        }
-      }
-    }
+    // ---- Ronda 1: todo lo que depende solo del deportista y la fecha ----
+    const [dep, macs, micros, ses, borrador] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
+      supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', depId).order('fecha_inicio'),
+      supabase.from('microciclo').select('*').eq('id_deportista', depId),
+      vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)
+        .gte('fecha_sesion', fecha).lte('fecha_sesion', domingo)).order('fecha_sesion'),
+      supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', depId).maybeSingle(),
+    ])
 
-    // Sesiones "libres" (añadidas por el atleta, sin microciclo) que caen en esta semana.
-    const domISO = (() => { const d = new Date(fecha + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10) })()
-    const { data: libres } = await supabase.from('sesion').select('*')
-      .eq('id_deportista', Number(id)).is('id_microciclo', null)
-      .gte('fecha_sesion', fecha).lte('fecha_sesion', domISO)
-      .or('eliminada.is.null,eliminada.eq.false')
-    if (libres?.length) { sesiones_cargadas = [...sesiones_cargadas, ...libres]; setSesiones(sesiones_cargadas) }
+    setDep(dep.data)
+    if (macs.data?.length) setWeekIndex(semanasEntre(macs.data[0].fecha_inicio, fecha))
+    setMicrociclo((micros.data || []).find((m: any) => soloDia(m.fecha_inicio) === fecha) || null)
+    setBorradorId(borrador.data?.id ?? null)
+    setSesZonasAll(borrador.data?.sesiones_zonas || [])
 
-    // Unidades planificadas (zonas) para esta semana, desde el Dibujo
-    const { data: borrador } = await supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', Number(id)).maybeSingle()
-    setBorradorId(borrador?.id ?? null)
-    setSesZonasAll(borrador?.sesiones_zonas || [])
+    const sesiones_cargadas = (ses.data || []) as any[]
+    setSesiones(sesiones_cargadas)
 
-    // Calcular UA programada y real
-    const sesIds = sesiones_cargadas.map((s: any) => s.id)
-    if (sesIds.length > 0) {
-      const { data: tareasData } = await supabase.from('tarea').select('id, id_sesion, series, zona_entrenamiento, disciplina, orden').in('id_sesion', sesIds).order('orden')
-      const tareaIds = (tareasData || []).map((t: any) => t.id)
-      const [{ data: dists }, { data: durs }] = await Promise.all([
-        tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },
-        tareaIds.length ? supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] },
-      ])
-      // UA "programada" de la semana = Σ (RPE_estimado × duración_min) de cada sesión.
-      // Antes sumaba metros_planeados + tiempo_planeado (metros y segundos como si fueran
-      // la misma unidad), lo que inflaba la barra y marcaba "Semana completa" en falso.
-      // Ahora en la MISMA unidad (RPE×min) que uaReal, para que ambas sean comparables.
-      let progTotal = 0
-      sesiones_cargadas.forEach((s: any) => {
-        progTotal += (s.rpe_estimado || 5) * (s.duracion_minutos || 0)
-      })
-      setUaProg(Math.round(progTotal))
-      let realTotal = 0
-      sesiones_cargadas.filter((s: any) => s.rpe_reportado).forEach((s: any) => {
-        realTotal += (s.rpe_reportado || 0) * (s.duracion_minutos || 0)
-      })
-      setUaReal(Math.round(realTotal))
+    if (!sesiones_cargadas.length) { setUaProg(0); setUaReal(0); setLoading(false); return }
 
-      // Bloques de cada sesión, en orden (para la tarjeta: simple/compleja + siglas,
-      // y en un brick la secuencia de deportes: 🚴 AEM → 🏃 AEM).
-      const bloquesPorSes: Record<number, { zona: string; disciplina: string | null }[]> = {}
-      ;(tareasData || []).forEach((t: any) => {
-        if (!t.zona_entrenamiento) return
-        if (!bloquesPorSes[t.id_sesion]) bloquesPorSes[t.id_sesion] = []
-        bloquesPorSes[t.id_sesion].push({ zona: t.zona_entrenamiento, disciplina: t.disciplina })
-      })
-      setSesiones(sesiones_cargadas.map((s: any) => {
-        let bloques = bloquesPorSes[s.id] || []
-        if (bloques.length === 0 && s.zona_fuerza) bloques = [{ zona: s.zona_fuerza, disciplina: 'Fuerza' }]
-        return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
-      }))
-    } else {
-      setUaProg(0)
-      setUaReal(0)
-    }
+    /* UA «programada» de la semana = Σ (RPE estimado × duración) de cada sesión.
+       Antes sumaba metros_planeados + tiempo_planeado —metros y segundos como si
+       fueran la misma unidad—, lo que inflaba la barra y marcaba «Semana
+       completa» en falso. Ahora en la MISMA unidad que la real, que es lo que
+       hace que las dos se puedan comparar. */
+    setUaProg(Math.round(sesiones_cargadas.reduce((a, s) =>
+      a + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)))
+    setUaReal(Math.round(sesiones_cargadas.reduce((a, s) =>
+      a + (s.rpe_reportado ? s.rpe_reportado * (s.duracion_minutos || 0) : 0), 0)))
+
+    // ---- Ronda 2: los bloques de cada sesión ----
+    const { data: tareasData } = await supabase.from('tarea')
+      .select('id, id_sesion, series, zona_entrenamiento, disciplina, orden')
+      .in('id_sesion', sesiones_cargadas.map(s => s.id)).order('orden')
+
+    // Para la tarjeta: simple/compleja + siglas, y en un brick la secuencia de
+    // deportes (🚴 AEM → 🏃 AEM).
+    const bloquesPorSes: Record<number, { zona: string; disciplina: string | null }[]> = {}
+    ;(tareasData || []).forEach((t: any) => {
+      if (!t.zona_entrenamiento) return
+      ;(bloquesPorSes[t.id_sesion] ||= []).push({ zona: t.zona_entrenamiento, disciplina: t.disciplina })
+    })
+    setSesiones(sesiones_cargadas.map((s: any) => {
+      let bloques = bloquesPorSes[s.id] || []
+      if (bloques.length === 0 && s.zona_fuerza) bloques = [{ zona: s.zona_fuerza, disciplina: 'Fuerza' }]
+      return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
+    }))
     setLoading(false)
   }
 

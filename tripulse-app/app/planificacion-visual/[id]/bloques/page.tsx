@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
@@ -50,11 +50,13 @@ function Modal({ titulo, onClose, children }: { titulo: string, onClose: () => v
   )
 }
 
-function MacroCard({ mac, onClick, onEditar, onBorrar }: { mac: any, onClick: () => void, onEditar: (mac: any) => void, onBorrar: (id: number) => void }) {
-  const [mesos, setMesos] = useState<any[]>([])
-  useEffect(() => {
-    supabase.from('mesociclo').select('*').eq('id_macrociclo', mac.id).order('fecha_inicio').then(({ data }) => setMesos(data || []))
-  }, [mac.id])
+/* Los bloques LLEGAN, no se piden.
+   Cada tarjeta lanzaba su propia consulta al montarse: con cinco macrociclos,
+   cinco viajes que salen a la vez y ninguno depende de otro — el clásico N+1.
+   Ahora el padre trae todos los mesociclos del deportista de una vez y reparte.
+   Y de paso la tarjeta deja de ser un componente que hace red: se puede leer sin
+   preguntarse cuándo consulta. */
+function MacroCard({ mac, mesos, onClick, onEditar, onBorrar }: { mac: any, mesos: any[], onClick: () => void, onEditar: (mac: any) => void, onBorrar: (id: number) => void }) {
   return (
     <div onClick={onClick} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition text-left w-full cursor-pointer">
       <div className="flex justify-between items-start mb-4">
@@ -140,10 +142,25 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const [editMacroPeriodizacion, setEditMacroPeriodizacion] = useState("")
   const [tipoPeriodizacion, setTipoPeriodizacion] = useState('')
 
+  /* Todos los mesociclos del deportista en una consulta, agrupados por
+     macrociclo. Antes cada tarjeta pedía los suyos al montarse. */
+  const [mesosPorMacro, setMesosPorMacro] = useState<Record<number, any[]>>({})
+
   useEffect(() => {
-    supabase.from('deportista').select('*').eq('id', id).single()
-      .then(({ data }) => { if (data) setDeportista(data); else setNoExiste(true) })
-    supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio').then(({ data }) => setMacros(data || []))
+    ;(async () => {
+      const [dep, mac, me] = await Promise.all([
+        supabase.from('deportista').select('*').eq('id', id).maybeSingle(),
+        supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio'),
+        supabase.from('mesociclo').select('*').eq('id_deportista', id).order('fecha_inicio'),
+      ])
+      if (dep.data) setDeportista(dep.data); else setNoExiste(true)
+      setMacros(mac.data || [])
+      const agrupados: Record<number, any[]> = {}
+      ;(me.data || []).forEach((m: any) => {
+        (agrupados[m.id_macrociclo] ||= []).push(m)
+      })
+      setMesosPorMacro(agrupados)
+    })()
   }, [id])
 
   const cargarNavMesos = async (macroId: number) => {
@@ -228,7 +245,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
       const err = await guardarBrick(supabase, nueva.id, brick)
       if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
     }
-    const { data } = await supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_microciclo', microSel.id).order('fecha_sesion')
+    const { data } = await vivas(supabase.from('sesion').select('*').eq('id_microciclo', microSel.id)).order('fecha_sesion')
     setSesiones(data || [])
     setModalSesion(false)
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionCronometro(false)
@@ -476,7 +493,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
               </div>
               {macros.length === 0
                 ? <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📅</div><p>No hay macrociclos todavia.</p></div>
-                : <div className="grid gap-4">{macros.map(m => <MacroCard key={m.id} mac={m} onClick={() => verMesos(m)} onEditar={abrirEditarMacro} onBorrar={borrarMacro} />)}</div>
+                : <div className="grid gap-4">{macros.map(m => <MacroCard key={m.id} mac={m} mesos={mesosPorMacro[m.id] || []} onClick={() => verMesos(m)} onEditar={abrirEditarMacro} onBorrar={borrarMacro} />)}</div>
               }
             </div>
           )}
