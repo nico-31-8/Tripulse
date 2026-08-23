@@ -559,3 +559,38 @@ ahora se dice explícito con `not is null`, que significa lo mismo pero se lee.
 abierta es de atleta. Solo `tsc`, tests y build.
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+---
+
+## Módulo 6 — El resto · en curso
+
+### Los componentes del plan (2026-08-23)
+
+`Adherencia`, `GraficaCarga` y `CargaPorDisciplina` tenían **la misma cadena
+idéntica** de cuatro consultas —macrociclo → mesociclo → microciclo → sesión—
+para acabar pidiendo las sesiones de un atleta. Una consulta cada uno.
+
+Y con eso **entran las sesiones libres** en la adherencia y en las dos curvas de
+carga: antes se quedaban fuera por colgar de ningún microciclo.
+
+### La papelera tenía un bug, no solo una cascada
+
+Se llenaba recorriendo la cadena y pidiendo lo borrado **de esos microciclos**.
+O sea que **una sesión libre borrada no aparecía nunca**: el atleta que se añade
+un entrenamiento por su cuenta y luego lo borra se lo encontraba en la papelera…
+que no lo enseñaba. **Irrecuperable, y sin ningún error.**
+
+Toda la cadena existía además solo para averiguar de quién era cada sesión, y
+`sesion.id_deportista` lo dice directamente.
+
+### `mis-sesiones`
+
+Las del plan y las libres, en una consulta. Antes eran dos ramas y una cadena de
+tres saltos, con las libres colgando de un `if` que solo se evaluaba después por
+casualidad.
+
+Verificado en pantalla: `/mis-sesiones` con «Dom 23 Agosto · Hoy» y los días
+siguientes correctos. **La papelera no se ha podido ver** (es pantalla de
+entrenador y la sesión abierta es de atleta).
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

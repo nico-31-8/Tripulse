@@ -2,6 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { vivas } from '@/lib/papelera'
+import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
@@ -82,32 +84,15 @@ export default function MisSesiones() {
     setDep(d)
     if (!d) { setLoading(false); return }
 
-    // Planificadas (cadena de microciclos)
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', d.id)
-    const macroIds = (macros || []).map((m: any) => m.id)
-    let planificadas: any[] = []
-    if (macroIds.length) {
-      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-      const mesoIds = (mesos || []).map((m: any) => m.id)
-      if (mesoIds.length) {
-        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-        const microIds = (micros || []).map((m: any) => m.id)
-        if (microIds.length) {
-          const { data } = await supabase.from('sesion').select('*').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
-          planificadas = data || []
-        }
-      }
-    }
-    // Sesiones libres añadidas por el atleta (sin microciclo)
-    const { data: libres } = await supabase.from('sesion').select('*').eq('id_deportista', d.id).is('id_microciclo', null).or('eliminada.is.null,eliminada.eq.false')
-    const todas = [...planificadas, ...(libres || [])]
-
-    const [tc, tn, tci] = await Promise.all([
-      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(1),
+    /* Las del plan y las libres, en UNA consulta. Antes eran dos ramas y una
+       cadena de tres saltos, con las libres colgando de un `if` que solo se
+       llegaba a evaluar por casualidad después. */
+    const [ses, refs] = await Promise.all([
+      vivas(supabase.from('sesion').select('*').eq('id_deportista', d.id)),
+      cargarReferencias(supabase, d.id),
     ])
-    const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+    const todas = ses.data || []
+    const testsDep: TestsDeportista = refs.tests
     const durs = await estimarDuraciones(supabase, todas.map((s: any) => s.id), testsDep)
     setSesiones(todas.map((s: any) => ({ ...s, dur_estimada: durs[s.id] })).sort((a: any, b: any) => (a.fecha_sesion < b.fecha_sesion ? -1 : 1)))
     setLoading(false)

@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { soloPapelera } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
@@ -29,39 +30,22 @@ export default function PapeleraPage() {
     if (!deps?.length) { setLoading(false); return }
     const depIds = deps.map((d: any) => d.id)
 
-    const { data: macs } = await supabase.from('macrociclo').select('id, id_deportista').in('id_deportista', depIds)
-    if (!macs?.length) { setLoading(false); return }
+    /* AQUÍ HABÍA UN BUG, no solo una cascada.
+       La papelera se llenaba recorriendo macrociclo → mesociclo → microciclo y
+       pidiendo las sesiones borradas de esos microciclos. O sea que **una sesión
+       libre borrada no aparecía nunca**: la del atleta que se añade un
+       entrenamiento por su cuenta y luego lo borra se iba a la papelera y no
+       había forma de recuperarla, porque no se veía.
 
-    const { data: mes } = await supabase.from('mesociclo').select('id, id_macrociclo').in('id_macrociclo', macs.map((m: any) => m.id))
-    if (!mes?.length) { setLoading(false); return }
+       Toda esa cadena existía además solo para averiguar de quién era cada
+       sesión, y `sesion.id_deportista` lo dice directamente. */
+    const { data: ses } = await soloPapelera(supabase.from('sesion').select('*')
+      .in('id_deportista', depIds)).order('fecha_sesion', { ascending: false })
 
-    const { data: micros } = await supabase.from('microciclo').select('id, id_mesociclo').in('id_mesociclo', mes.map((m: any) => m.id))
-    if (!micros?.length) { setLoading(false); return }
-
-    const { data: ses } = await supabase.from('sesion')
-      .select('*')
-      .in('id_microciclo', micros.map((m: any) => m.id))
-      .eq('eliminada', true)
-      .order('fecha_sesion', { ascending: false })
-
-    // Construir mapa micro -> deportista
-    const microToMeso: Record<number, number> = {}
-    micros.forEach((mi: any) => { microToMeso[mi.id] = mi.id_mesociclo })
-    const mesoToMac: Record<number, number> = {}
-    mes.forEach((me: any) => { mesoToMac[me.id] = me.id_macrociclo })
-    const macToDep: Record<number, number> = {}
-    macs.forEach((ma: any) => { macToDep[ma.id] = ma.id_deportista })
     const depMap: Record<number, string> = {}
     deps.forEach((d: any) => { depMap[d.id] = d.nombre })
 
-    const sesEnriquecidas = (ses || []).map((s: any) => {
-      const mesoId = microToMeso[s.id_microciclo]
-      const macId = mesoToMac[mesoId]
-      const depId = macToDep[macId]
-      return { ...s, depNombre: depMap[depId] || 'Deportista' }
-    })
-
-    setSesiones(sesEnriquecidas)
+    setSesiones((ses || []).map((x: any) => ({ ...x, depNombre: depMap[x.id_deportista] || 'Deportista' })))
     setLoading(false)
   }
 

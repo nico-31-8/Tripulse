@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { lunesDe } from '@/lib/fechas'
 
 function colorCumplimiento(pct: number): string {
@@ -37,19 +37,14 @@ export default function Adherencia({ depId }: Props) {
   useEffect(() => { cargar() }, [depId])
 
   const cargar = async () => {
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    if (!macros?.length) { setLoading(false); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-    if (!mesos?.length) { setLoading(false); return }
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-    if (!micros?.length) { setLoading(false); return }
-
-    const { data: sesiones } = await supabase
+    /* Aquí había la cadena macrociclo → mesociclo → microciclo solo para acotar
+       las sesiones a este atleta. Cuatro viajes encadenados que `id_deportista`
+       resuelve en uno — y de paso entran las sesiones libres, que antes se
+       quedaban fuera de este cálculo por colgar de ningún microciclo. */
+    const { data: sesiones } = await vivas(supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, estado, rpe_estimado')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', micros.map(m => m.id))
-      .order('fecha_sesion')
+      .eq('id_deportista', depId)).order('fecha_sesion')
 
     if (!sesiones?.length) { setLoading(false); return }
 

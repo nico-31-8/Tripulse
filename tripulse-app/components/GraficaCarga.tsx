@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { lunesDe } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
@@ -50,20 +50,15 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
 
   const cargar = async () => {
     setLoading(true)
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    if (!macros?.length) { setDatos([]); setLoading(false); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map((m: any) => m.id))
-    if (!mesos?.length) { setDatos([]); setLoading(false); return }
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map((m: any) => m.id))
-    if (!micros?.length) { setDatos([]); setLoading(false); return }
-
-    let query = supabase
+    /* Aquí había la cadena macrociclo → mesociclo → microciclo solo para acotar
+       las sesiones a este atleta. Cuatro viajes encadenados que `id_deportista`
+       resuelve en uno — y de paso entran las sesiones libres, que antes se
+       quedaban fuera de este cálculo por colgar de ningún microciclo. */
+    let query = vivas(supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', micros.map((m: any) => m.id))
-      .eq('estado', 'Realizada')
-      .order('fecha_sesion')
+      .eq('id_deportista', depId)
+      .eq('estado', 'Realizada')).order('fecha_sesion')
 
     if (fechaInicio) query = query.gte('fecha_sesion', fechaInicio)
     if (fechaFin) query = query.lte('fecha_sesion', fechaFin)

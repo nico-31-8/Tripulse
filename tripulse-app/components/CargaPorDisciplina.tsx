@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
@@ -94,24 +94,17 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     desde.setDate(desde.getDate() - diasRango - 42)
     const desdeStr = desde.toISOString().split('T')[0]
 
-    // Obtener microciclos del deportista
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-    if (!macros?.length) { setBloques([]); setLoading(false); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-    if (!mesos?.length) { setBloques([]); setLoading(false); return }
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-    if (!micros?.length) { setBloques([]); setLoading(false); return }
-    const microIds = micros.map(m => m.id)
-
-    // Una sola consulta sin filtrar por disciplina: el deporte lo pone el bloque.
-    const { data: ses } = await supabase
+    /* Aquí había la cadena macrociclo → mesociclo → microciclo solo para acotar
+       las sesiones a este atleta. Cuatro viajes encadenados que `id_deportista`
+       resuelve en uno — y de paso entran las sesiones libres, que antes se
+       quedaban fuera de este cálculo por colgar de ningún microciclo. */
+    // Sin filtrar por disciplina: el deporte lo pone el BLOQUE, no la sesión.
+    const { data: ses } = await vivas(supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos, duracion_real')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', microIds)
+      .eq('id_deportista', depId)
       .eq('estado', 'Realizada')
-      .gte('fecha_sesion', desdeStr)
-      .order('fecha_sesion')
+      .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
 
     setBloques(await cargarBloques(supabase, ses || [], {
       rpe: s => s.rpe_estimado || 5,   // como antes: aquí se usa el RPE planificado
