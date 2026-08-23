@@ -518,3 +518,44 @@ deportista con su checklist «1 de 2» y la semana correcta, y `/mis-analisis` c
 sus 20 sesiones y sus UA.
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+---
+
+## Módulo 5 — Análisis (2026-08-23) · cerrado
+
+| Pantalla | Antes | Ahora |
+|---|---:|---:|
+| `/carga` | 9 consultas en serie | 1 |
+| `/volumen` | 11 | 2 |
+| `/indices` | 6 (+ N+1 de 20) | 2 |
+| `/eco` | ya iba en paralelo | — |
+
+**Lo peor que ha aparecido en todo el pase** estaba en `/carga`:
+
+```
+supabase.from('microciclo').select('id, mesociclo(id, macrociclo(id_deportista))')
+```
+
+Sin un solo `.eq()`. Traía **la tabla entera de microciclos** con dos joins
+anidados y filtraba el deportista **después, en JavaScript**. RLS lo acotaba a
+los atletas del entrenador, así que no era un agujero — pero traía los de todos
+para quedarse con los de uno, y eso empeora con cada alta.
+
+Y en la misma pantalla, **dos criterios distintos de papelera**: las sesiones del
+plan la filtraban y las libres no, así que una sesión borrada del atleta contaba
+en la visión diaria y no en la curva.
+
+`/indices` tenía un **N+1 de veinte consultas**: una de tareas por cada sesión.
+Ahora es una con `in` y se reparte en memoria. Y entran las sesiones libres, que
+también tienen RPE reportado y también dicen si percibe más duro de lo previsto
+— que es de lo que va esa pantalla.
+
+**La adherencia de `/volumen` se queda como estaba, a propósito**: mide lo que
+cumplió de lo que le PLANIFICARON, así que las que se añade el atleta no entran
+ni arriba ni abajo de la fracción. Antes eso salía de acotar por microciclo;
+ahora se dice explícito con `not is null`, que significa lo mismo pero se lee.
+
+**Sin verificar en pantalla**: las tres son pantallas de entrenador y la sesión
+abierta es de atleta. Solo `tsc`, tests y build.
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

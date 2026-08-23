@@ -2,7 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { hoyISO, sumarDias } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
@@ -139,35 +140,23 @@ export default function CargaPage() {
     setZonasRes(null)
     calcularSICAT(dep).then(setSicat)
     calcularSicatZonas(dep).then(setZonasRes)
-    const desde = new Date()
-    desde.setDate(desde.getDate() - dias - 42)
-    const { data: micros } = await supabase
-      .from('microciclo')
-      .select('id, mesociclo(id, macrociclo(id_deportista))')
-    const microsDelDep = (micros || []).filter((m: any) =>
-      m.mesociclo?.macrociclo?.id_deportista === dep.id
-    ).map((m: any) => m.id)
-    const desdeStr = desde.toISOString().split('T')[0]
-    let baseSes: any[] = []
-    if (microsDelDep.length > 0) {
-      const { data: ses } = await supabase
-        .from('sesion')
-        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-        .or(FILTRO_VIVAS)
-        .in('id_microciclo', microsDelDep)
-        .eq('estado', 'Realizada')
-        .gte('fecha_sesion', desdeStr)
-        .order('fecha_sesion')
-      baseSes = ses || []
-    }
-    // Sesiones "libres" del atleta (sin microciclo) también cuentan en la carga.
-    const { data: libres } = await supabase
+    /* AQUÍ SE TRAÍA LA TABLA ENTERA DE MICROCICLOS.
+       Literalmente: `from('microciclo').select('id, mesociclo(id, macrociclo(...)))'`
+       sin un solo `.eq()`, con dos joins anidados, y el filtrado del deportista
+       se hacía DESPUÉS en JavaScript. RLS acotaba a los atletas del entrenador,
+       así que no era un agujero — pero traía los microciclos de todos ellos para
+       quedarse con los de uno, y eso empeora con cada atleta que se da de alta.
+
+       Todo eso existía para acotar las sesiones, y `sesion.id_deportista` ya lo
+       hace. Las del plan y las libres pasan a ser una sola consulta. */
+    const desdeStr = sumarDias(hoyISO(), -(dias + 42))
+    const { data: baseSes } = await vivas(supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .or(FILTRO_VIVAS)
-      .eq('id_deportista', dep.id).is('id_microciclo', null)
-      .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
-    const todasSesiones = await attachZonaPico([...baseSes, ...(libres || [])])
+      .eq('id_deportista', dep.id)
+      .eq('estado', 'Realizada')
+      .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
+    const todasSesiones = await attachZonaPico(baseSes || [])
     // Minutos de cada sesión por el criterio único (real > manual > estimada). Antes se
     // leía `duracion_minutos` a pelo y una sesión sin duración manual valía 0 UA: no
     // sumaba a CTL/ATL/TSB aunque tuviera el entreno entero planificado.
@@ -207,38 +196,20 @@ export default function CargaPage() {
     : '')
 
   const cargarDiaria = async (dep: any) => {
-    const desde = new Date()
-    desde.setDate(desde.getDate() - 30)
-    const desdeStr = desde.toISOString().split('T')[0]
+    const desdeStr = sumarDias(hoyISO(), -30)
 
-    // Cadena de plan opcional: un atleta sin plan igual tiene sesiones libres, que
-    // también cuentan en la visión diaria. No cortar si la cadena está vacía.
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-    const macroIds = (macros || []).map((m: any) => m.id)
-    let microsDelDep: number[] = []
-    if (macroIds.length) {
-      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-      const mesoIds = (mesos || []).map((m: any) => m.id)
-      if (mesoIds.length) {
-        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-        microsDelDep = (micros || []).map((m: any) => m.id)
-      }
-    }
-
-    const { data: sesiones } = await supabase
+    /* La misma cadena otra vez, y aquí con un detalle peor: la consulta de las
+       libres NO filtraba la papelera, así que una sesión borrada del atleta
+       seguía contando en la visión diaria mientras que las del plan no. Dos
+       criterios distintos en la misma pantalla.
+       Ahora es una consulta por deportista, con el mismo filtro para todas. */
+    const { data: sesDia } = await vivas(supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', microsDelDep.length ? microsDelDep : [-1])
-      .gte('fecha_sesion', desdeStr)
-      .order('fecha_sesion')
-    const { data: libresD } = await supabase
-      .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', desdeStr)
-
-    const sesDia = [...(sesiones || []), ...(libresD || [])]
-    const conZona = await attachZonaPico(sesDia)
+      .eq('id_deportista', dep.id)
+      .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
+    const listaDia = sesDia || []
+    const conZona = await attachZonaPico(listaDia)
 
     // Reparto de la UA de cada sesión entre los deportes de sus BLOQUES. En una sesión
     // normal es [{su deporte, 1}] → los números de siempre no se mueven. En un brick, la
@@ -246,7 +217,7 @@ export default function CargaPage() {
     // (sesion.disciplina vale 'Brick', que no es un deporte — ver lib/atribucion).
     // usarRpeDeBloque: la UA de aquí solo sirve de PESO para repartir (la absoluta se
     // calcula abajo). En un brick, el RPE real de cada bloque es lo que reparte bien.
-    const bloques = await cargarBloques(supabase, sesDia, { estimar: false, usarRpeDeBloque: true })
+    const bloques = await cargarBloques(supabase, listaDia, { estimar: false, usarRpeDeBloque: true })
     const uaSes: Record<number, number> = {}
     bloques.forEach(b => { uaSes[b.id_sesion] = (uaSes[b.id_sesion] || 0) + b.ua })
     const reparto: Record<number, { disciplina: string; peso: number }[]> = {}

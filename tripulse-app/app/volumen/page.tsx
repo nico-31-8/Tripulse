@@ -2,7 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { hoyISO } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -111,53 +112,39 @@ export default function VolumenPage() {
     desde.setDate(desde.getDate() - dias)
     const desdeStr = desde.toISOString().split('T')[0]
 
-    // La cadena de plan puede estar vacía (atleta sin plan); NO cortar aquí, porque
-    // las sesiones libres (id_microciclo null) también cuentan en el volumen/carga.
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-    const macroIds = (macros || []).map((m: any) => m.id)
-    let microIds: number[] = []
-    // Se traen también fechas y TID objetivo: el veredicto de intensidad compara lo
-    // entrenado contra el modelo que el entrenador declaró en ESE mesociclo.
-    let mesosPlan: any[] = []
-    if (macroIds.length) {
-      const { data: mesos } = await supabase.from('mesociclo')
-        .select('id, fecha_inicio, duracion_semanas, objetivo, tid_objetivo').in('id_macrociclo', macroIds)
-      mesosPlan = mesos || []
-      const mesoIds = mesosPlan.map((m: any) => m.id)
-      if (mesoIds.length) {
-        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-        microIds = (micros || []).map((m: any) => m.id)
-      }
-    }
-    setMesociclos(mesosPlan)
+    /* Fuera la cadena macrociclo → mesociclo → microciclo. Los mesociclos SÍ se
+       siguen necesitando (el veredicto de intensidad compara lo entrenado contra
+       el TID que el entrenador declaró en ESE bloque), pero se piden por
+       deportista y sin pasar por el macrociclo.
 
-    const { data: sesChain } = await supabase
-      .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', microIds.length ? microIds : [-1])
-      .eq('estado', 'Realizada')
-      .gte('fecha_sesion', desdeStr)
-      .order('fecha_sesion')
-    // Sesiones "libres" del atleta (sin microciclo) también cuentan en el volumen.
-    const { data: sesLibres } = await supabase
-      .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .or(FILTRO_VIVAS)
-      .eq('id_deportista', dep.id).is('id_microciclo', null)
-      .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
-    const sesiones = [...(sesChain || []), ...(sesLibres || [])]
+       Las sesiones del plan y las libres pasan a ser una consulta.
 
+       LA ADHERENCIA SE QUEDA COMO ESTABA, y es a propósito: mide lo que cumplió
+       de lo que le PLANIFICARON, así que las que se añade el atleta no entran ni
+       arriba ni abajo de la fracción. Antes eso salía de acotar por microciclo;
+       ahora se dice explícito con `not is null`, que significa lo mismo pero se
+       lee. */
+    const hoyIso = hoyISO()
+    const [mesosQ, sesQ, planQ] = await Promise.all([
+      supabase.from('mesociclo')
+        .select('id, fecha_inicio, duracion_semanas, objetivo, tid_objetivo')
+        .eq('id_deportista', dep.id),
+      vivas(supabase.from('sesion')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
+        .eq('id_deportista', dep.id).eq('estado', 'Realizada')
+        .gte('fecha_sesion', desdeStr)).order('fecha_sesion'),
+      vivas(supabase.from('sesion').select('fecha_sesion, estado')
+        .eq('id_deportista', dep.id).not('id_microciclo', 'is', null)
+        .gte('fecha_sesion', desdeStr).lte('fecha_sesion', hoyIso)),
+    ])
+
+    setMesociclos(mesosQ.data || [])
+    const sesiones = sesQ.data || []
     if (!sesiones.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
 
-    // Adherencia: planificadas vs realizadas, solo hasta HOY (una sesión futura
-    // todavía no es una sesión perdida). Consulta aparte para no tocar el cálculo
-    // de volumen/carga, que debe seguir contando solo lo realizado.
-    const hoyIso = new Date().toISOString().split('T')[0]
-    const { data: planSes } = microIds.length ? await supabase.from('sesion')
-      .select('fecha_sesion, estado').in('id_microciclo', microIds)
-      .gte('fecha_sesion', desdeStr).lte('fecha_sesion', hoyIso)
-      .or('eliminada.is.null,eliminada.eq.false') : { data: [] }
+    // Adherencia: planificadas vs realizadas, solo hasta HOY — una sesión futura
+    // todavía no es una sesión perdida.
+    const planSes = planQ.data
     const adh: Record<string, { plan: number; hechas: number }> = {}
     ;(planSes || []).forEach((s: any) => {
       const k = getSemana(s.fecha_sesion).slice(5)
@@ -171,9 +158,14 @@ export default function VolumenPage() {
     const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos').in('id_sesion', sesIds)
     const tareaIds = tareas?.map(t => t.id) || []
 
-    const { data: distancias } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
-    const { data: duraciones } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
-    const { data: ejercicios } = tareaIds.length ? await supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones').in('id_tarea', tareaIds) : { data: [] }
+    // Los tres tipos de parámetro no dependen unos de otros: van juntos.
+    const [{ data: distancias }, { data: duraciones }, { data: ejercicios }] = tareaIds.length
+      ? await Promise.all([
+          supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
+          supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
+          supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones').in('id_tarea', tareaIds),
+        ])
+      : [{ data: [] }, { data: [] }, { data: [] }]
 
     const distMap: Record<number, number> = {}
     distancias?.forEach((d: any) => { distMap[d.id_tarea] = d.metros_planeados })

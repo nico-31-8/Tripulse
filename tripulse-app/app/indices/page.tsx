@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -72,42 +72,38 @@ export default function IndicesPage() {
     setLoadingSes(true)
     const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
 
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-    const macroIds = (macros || []).map((m: any) => m.id)
-    if (!macroIds.length) { setSesiones([]); setLoadingSes(false); return }
+    /* Aquí había la cadena macrociclo → mesociclo → microciclo solo para acotar
+       las sesiones. Con `sesion.id_deportista` sobra, y además ENTRAN LAS
+       LIBRES: las que el atleta se añade también tienen RPE reportado, así que
+       también dicen si percibe más duro de lo previsto — que es de lo que va
+       esta pantalla. */
+    const { data: ses } = await vivas(supabase.from('sesion').select('*')
+      .eq('id_deportista', dep.id).eq('estado', 'Realizada'))
+      .order('fecha_sesion', { ascending: false }).limit(20)
 
-    const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-    const mesoIds = (mesos || []).map((m: any) => m.id)
-    if (!mesoIds.length) { setSesiones([]); setLoadingSes(false); return }
+    if (!ses?.length) { setSesiones([]); setLoadingSes(false); return }
 
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-    const microIds = (micros || []).map((m: any) => m.id)
-    if (!microIds.length) { setSesiones([]); setLoadingSes(false); return }
+    /* Y aquí había un N+1: una consulta de tareas POR CADA sesión, veinte
+       viajes para una pantalla. Ahora es uno con `in` y se reparte en memoria. */
+    const { data: tareas } = await supabase
+      .from('tarea')
+      .select('id_sesion, rpe_reportado, fc_media, sensacion_tecnica')
+      .in('id_sesion', ses.map((s: any) => s.id))
+      .not('rpe_reportado', 'is', null)
 
-    const { data: ses } = await supabase
-      .from('sesion')
-      .select('*')
-      .or(FILTRO_VIVAS)
-      .in('id_microciclo', microIds)
-      .eq('estado', 'Realizada')
-      .order('fecha_sesion', { ascending: false })
-      .limit(20)
+    // La primera tarea con RPE de cada sesión, que es la que se usaba.
+    const primeraDe = new Map<number, any>()
+    ;(tareas || []).forEach((t: any) => {
+      if (!primeraDe.has(t.id_sesion)) primeraDe.set(t.id_sesion, t)
+    })
 
-    const sesConIndices = await Promise.all((ses || []).map(async s => {
-      const { data: tareas } = await supabase
-        .from('tarea')
-        .select('rpe_reportado, fc_media, sensacion_tecnica')
-        .eq('id_sesion', s.id)
-        .not('rpe_reportado', 'is', null)
-      const tarea = tareas?.[0]
+    setSesiones(ses.map((s: any) => {
+      const tarea = primeraDe.get(s.id)
       const indices = tarea ? calcularIndices(tarea, fcUmbral, s.rpe_estimado || 0) : null
       const per = indices ? semaforo(indices.indicePer, 'percepcion') : null
       const plan = indices ? semaforo(indices.indicePlan, 'planificacion') : null
-      const lectura = per && plan ? lecturaDoble(per, plan) : null
-      return { ...s, tarea, indices, per, plan, lectura }
+      return { ...s, tarea, indices, per, plan, lectura: per && plan ? lecturaDoble(per, plan) : null }
     }))
-
-    setSesiones(sesConIndices)
     setLoadingSes(false)
   }
 
