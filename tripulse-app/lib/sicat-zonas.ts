@@ -7,6 +7,7 @@
 // 1.0× = el coste medio del propio atleta.
 // ============================================================
 import { supabase } from './supabase'
+import { sumarDias } from './fechas'
 import { cargaZona } from './zonas'
 import { getMicrosDeportista, DISCIPLINAS_SICAT, type DisciplinaSicat } from './sicat'
 
@@ -77,8 +78,23 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
   if (!sesiones.length) return { celdas: [], costeMedioGlobal: null, nSesiones: 0 }
 
   const sesIds = sesiones.map((s: any) => s.id)
-  const { data: tareas } = await supabase.from('tarea')
-    .select('id_sesion, zona_entrenamiento, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden')
+
+  /* Los bloques y el wellness del rango no dependen uno de otro: iban en serie.
+     El rango va hasta dos días DESPUÉS de la última sesión porque las agujetas
+     se miden a 24 y 48 h, y la HRV del día siguiente. */
+  const fechas = sesiones.map((s: any) => s.fecha_sesion).sort()
+  const desde = fechas[0]
+  const hasta = sumarDias(fechas[fechas.length - 1], 2)
+
+  const [tareasQ, wellQ] = await Promise.all([
+    supabase.from('tarea')
+      .select('id_sesion, zona_entrenamiento, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden'),
+    supabase.from('wellness').select('fecha, dolor_muscular, hrv')
+      .eq('id_deportista', dep.id).gte('fecha', desde).lte('fecha', hasta),
+  ])
+  const tareas = tareasQ.data
+  const well = wellQ.data
+
   const zonasPorSesion: Record<number, string[]> = {}
   const bloquesPorSesion: Record<number, any[]> = {}
   ;(tareas || []).forEach((t: any) => {
@@ -87,15 +103,10 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
     ;(bloquesPorSesion[t.id_sesion] ||= []).push(t)
   })
 
-  // Wellness del rango (sesión + 2 días) para DOMS 24/48h y HRV del día siguiente.
-  const fechas = sesiones.map((s: any) => s.fecha_sesion).sort()
-  const desde = fechas[0]
-  const hd = new Date(fechas[fechas.length - 1] + 'T12:00:00'); hd.setDate(hd.getDate() + 2)
-  const hasta = hd.toISOString().slice(0, 10)
-  const { data: well } = await supabase.from('wellness').select('fecha, dolor_muscular, hrv').eq('id_deportista', dep.id).gte('fecha', desde).lte('fecha', hasta)
   const wByF: Record<string, any> = {}
   ;(well || []).forEach((w: any) => { wByF[w.fecha] = w })
-  const addDays = (f: string, n: number) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+  // Era la enésima copia de «suma n días»: ahora la de lib/fechas.
+  const addDays = sumarDias
 
   const acc: Record<string, number[]> = {}
   const todos: number[] = []

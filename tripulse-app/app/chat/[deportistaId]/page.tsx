@@ -37,10 +37,14 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
-    const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
-    const rol = p?.rol === 'deportista' ? 'deportista' : 'entrenador'
+    // Mi rol y la ficha del atleta se buscan por claves distintas: van a la vez.
+    const [perfilQ, depQ] = await Promise.all([
+      supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle(),
+      supabase.from('deportista').select('id, nombre, id_entrenador').eq('id', Number(deportistaId)).maybeSingle(),
+    ])
+    const rol = perfilQ.data?.rol === 'deportista' ? 'deportista' : 'entrenador'
     setMiRol(rol)
-    const { data: dep } = await supabase.from('deportista').select('id, nombre, id_entrenador').eq('id', Number(deportistaId)).single()
+    const dep = depQ.data
     setDeportista(dep)
     if (rol === 'entrenador') {
       setEntrenadorId(user.id)

@@ -738,3 +738,88 @@ Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
 El bug de las fechas se dio por cerrado buscando `toISOString().split`, y la
 mitad estaba escrita `toISOString().slice`. Si la primera búsqueda hubiera sido
 `toISOString` a secas, se habría cazado el primer día.
+
+### Cierre del módulo 6 (2026-08-23)
+
+`sicat-zonas` (los bloques y el wellness del rango no dependían uno de otro, y
+tenía otra copia de «suma n días») y `chat` (mi rol y la ficha del atleta se
+buscan por claves distintas).
+
+---
+
+# Balance del pase
+
+## Lo que se midió al empezar y lo que hay ahora
+
+**Los caminos de CARGA**, que es lo que se ve antes de que aparezca nada:
+
+| Pantalla | Antes | Ahora |
+|---|---:|---|
+| Calendario | 14 encadenadas | 3 rondas |
+| Dibujo | 6 | 1 ronda |
+| Ficha de sesión | 8 | 2 rondas |
+| Ejecutar (móvil del atleta) | 7 | 1 ronda |
+| Tabla de tareas | 8 | 2 rondas |
+| `/carga` | 9 | 1 |
+| `/volumen` | 11 | 2 |
+| `/indices` | 6 + N+1 de 20 | 2 |
+| Ficha del deportista | 13 | 2 rondas |
+| Semana | 8 | 2 rondas |
+| Panel del entrenador | 6 | 1 ronda |
+
+Los `await` que quedan en esos ficheros están en los caminos de **guardado**, que
+son secuenciales por necesidad —borrar y después insertar— y ocurren tras un
+clic, no antes de ver nada.
+
+## Los bugs que aparecieron por el camino
+
+Ninguno se buscó: salieron al tirar del hilo de una cascada.
+
+1. **Las horas y los días que declara el atleta nunca llegaban al plan.**
+   `Number('8–12h')` es `NaN`, así que todos entrenaban 8 h en 5 días.
+2. **La semana del panel empezaba en domingo.** Activo en producción: el sábado
+   salía marcado como «D · HOY» y el recuento de la semana iba de domingo a
+   sábado.
+3. **La papelera contaba.** Veinte consultas no filtraban `eliminada`: lo
+   borrado sumaba a la carga, al TSB, al volumen, a la adherencia y al contexto
+   de la IA.
+4. **La papelera no enseñaba lo que el atleta borraba.** Una sesión libre
+   borrada era **irrecuperable**, sin ningún error.
+5. **El wellness se guardaba en el día de ayer** si se abría de madrugada.
+6. **El feedback del atleta no llegaba** si la sesión era suya.
+7. **Las sesiones libres no contaban** en la ficha, la adherencia, las curvas de
+   carga, los índices ni el dibujo. Ocho pantallas, el mismo bug ocho veces.
+8. **`calcularFCMaxima` daba 208 ppm** a cualquiera sin fecha de nacimiento.
+9. **`intensidadPersonalizada` no se guarda** (anotado, pendiente de decidir
+   dónde va).
+
+## Los duplicados que se cerraron
+
+| Qué | Copias | Ahora |
+|---|---:|---|
+| Aritmética de fechas | 16 ficheros | `lib/fechas` |
+| «Hoy» en UTC | 16 sitios, 2 escrituras | `hoyISO()` |
+| La curva de forma (EWMA) | 4 | `serieForma` |
+| La cadena macro→meso→micro | 14 pantallas | `id_deportista` |
+| Filtro de papelera | 2 a mano | `lib/papelera` |
+| Referencia de zona | 2 | `lib/referencia-zona` |
+| Conversión tarea→formulario | 2 | `lib/copiar-tarea` |
+
+## Lo nuevo con tests
+
+`fechas` · `papelera` · `contexto-sesion` · `sesion-volumen` · `tarea-vista` ·
+`referencia-zona` · `copiar-tarea` · `semana-sesiones` · `sugerencias-entrenador`
+· `anamnesis-datos` · `alta` · `serieForma`/`cargaActual`/`diasDeLaSemanaActual`
+
+**De 888 a 1.003 tests.**
+
+## Lo que NO se hizo, y por qué
+
+- **Agrupar `num_deportistas` y `ultima_ejecucion_fuerza`**: son funciones SQL
+  que reciben UN id. Agruparlas pide una función nueva en la base — eso es una
+  migración, no un pulido.
+- **La adherencia sigue midiendo solo lo planificado.** Meter las sesiones que
+  se añade el atleta la inflaría.
+- **`intensidadPersonalizada`**: falta saber en qué columna va.
+- **Pantallas sin verificar en navegador**: `/carga`, `/volumen`, `/indices` y la
+  papelera (son de entrenador y la sesión abierta era de atleta).
