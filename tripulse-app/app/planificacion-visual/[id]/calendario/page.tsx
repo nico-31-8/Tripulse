@@ -3,6 +3,9 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { lunesDe, aISO } from '@/lib/fechas'
+import { cargarReferencias } from '@/lib/referencia-zona'
+import { conVolumen } from '@/lib/sesion-volumen'
+import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
@@ -192,83 +195,72 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // Las plantillas propias del panel del calendario, por disciplina (sin migración → lista vacía).
   useEffect(() => { if (panelPlantillas) cargarPropias(supabase, plantDisc).then(setPlantPropias) }, [panelPlantillas, plantDisc])
 
+  /*
+   * DE CATORCE VIAJES EN SERIE A TRES RONDAS.
+   *
+   * Esto encadenaba: deportista → test1 → test2 → test3 → macrociclo →
+   * competición → semana bloqueada → sesiones libres → mesociclo → microciclo →
+   * sesiones del plan → tareas → distancias → duraciones → ejercicios. Cada una
+   * esperando a la anterior, y es la pantalla más pesada de la app.
+   *
+   * LA SIMPLIFICACIÓN DE FONDO: las sesiones se piden UNA vez por deportista, no
+   * dos (las del plan por microciclo + las libres por separado). `id_deportista`
+   * está en todas las filas —lo garantiza la política RLS de `sesion`, que
+   * filtra justamente por ese campo— así que una sola consulta las cubre. De
+   * paso desaparece la clase de fallo que ya mordió aquí: las libres iban
+   * detrás de tres `return` que cortaban si faltaba plan, y a quien no tenía
+   * macrociclo no se le cargaban nunca.
+   *
+   * Mesociclos y microciclos también van por deportista, que es lo mismo que
+   * salía de encadenar macro → meso → micro.
+   */
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDeportista(dep)
-    if (!dep) { setNoExiste(true); return }
-    // Tests más recientes para estimar ritmos por zona
-    const { data: tCarr } = await supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    const { data: tNat } = await supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    const { data: tCic } = await supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    const testsDep: TestsDeportista = { vam: tCarr?.[0]?.vam, css: tNat?.[0]?.css, ftp: tCic?.[0]?.ftp }
-    setTests(testsDep)
-    const { data: mac } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
-    setMacros(mac || [])
-    const { data: comps } = await supabase.from('competicion').select('*').eq('id_deportista', Number(id)).order('fecha')
-    setCompeticiones(comps || [])
-    const { data: bloqs } = await supabase.from('semana_bloqueada').select('*').eq('id_deportista', Number(id))
-    setSemanasBloqueadas(bloqs || [])
-    // Las sesiones LIBRES (sin microciclo) se cargan SIEMPRE, antes de mirar el plan.
-    //
-    // Antes iban después de tres `return` que cortaban si faltaba macrociclo,
-    // mesociclo o microciclo. O sea que a quien no tenía plan montado NO se le
-    // cargaban nunca: ni las que se añade él desde «Mis sesiones», ni las que le
-    // manda el entrenador en una semana sin planificar, ni las que le llegan de un
-    // grupo. Su calendario salía vacío teniendo sesiones, y sin ningún error.
-    const { data: sesLibres } = await supabase.from('sesion').select('*')
-      .eq('id_deportista', Number(id)).is('id_microciclo', null)
-      .or('eliminada.is.null,eliminada.eq.false')
+    const depId = Number(id)
 
-    let sesChain: any[] = []
-    if (mac?.length) {
-      const macIds = mac.map(m => m.id)
-      const { data: me } = await supabase.from('mesociclo').select('*').in('id_macrociclo', macIds).order('fecha_inicio')
-      setMesos(me || [])
-      if (me?.length) {
-        const meIds = me.map(m => m.id)
-        const { data: mi } = await supabase.from('microciclo').select('*').in('id_mesociclo', meIds).order('fecha_inicio')
-        setMicros(mi || [])
-        if (mi?.length) {
-          const miIds = mi.map(m => m.id)
-          const { data: sc } = await supabase.from('sesion').select('*')
-            .in('id_microciclo', miIds).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
-          sesChain = sc || []
-        }
-      }
-    }
-    const ses = [...sesChain, ...(sesLibres || [])]
-    if (ses.length) {
-      const sesIds = ses.map(s => s.id)
-      const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos').in('id_sesion', sesIds)
-      const tareaIds = tareas?.map(t => t.id) || []
-      const { data: dists } = tareaIds.length ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] }
-      const { data: durs } = tareaIds.length ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] }
-      const { data: ejs } = tareaIds.length ? await supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds) : { data: [] }
-      const sesConVolumen = ses.map(s => {
-        const tarSes = tareas?.filter(t => t.id_sesion === s.id) || []
-        const metros = tarSes.reduce((acc, t) => { const d = dists?.find(d => d.id_tarea === t.id); return acc + (d ? d.metros_planeados * (t.series || 1) : 0) }, 0)
-        const seg = tarSes.reduce((acc, t) => { const d = durs?.find(d => d.id_tarea === t.id); return acc + (d ? d.tiempo_planeado * (t.series || 1) : 0) }, 0)
-        // Duración estimada: reconstruye las tareas con sus parámetros hijo
-        const tareasDur = tarSes.map(t => ({
-          disciplina: t.disciplina,
-          series: t.series,
-          descanso_segundos: t.descanso_segundos,
-          zona_entrenamiento: t.zona_entrenamiento,
-          p_distancia: dists?.filter(d => d.id_tarea === t.id) || [],
-          p_duracion: durs?.filter(d => d.id_tarea === t.id) || [],
-          ejercicios: ejs?.filter(e => e.id_tarea === t.id) || [],
-        }))
-        const dur_estimada = calcularDuracionEstimada(tareasDur, testsDep)
-        // Las zonas de la sesión, de la más dura a la más suave. Es lo que dice
-        // de un vistazo si el martes es una tirada suave o unas series duras;
-        // hasta ahora el calendario solo decía el deporte y el volumen, que en
-        // una semana entera se leen igual.
-        const zonas = [...new Set(tarSes.map(t => t.zona_entrenamiento).filter(Boolean))]
-          .sort((a, b) => cargaZona(b).nivel - cargaZona(a).nivel)
-        return { ...s, metros_total: metros, seg_total: seg, dur_estimada, zonas }
-      })
-      setSesiones(sesConVolumen)
-    } else { setSesiones([]) }
+    // ---- Ronda 1: todo lo que solo depende del deportista ----
+    const [dep, refs, mac, comps, bloqs, me, mi, ses] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
+      // VAM/CSS/FTP para estimar los ritmos por zona, de la misma función que
+      // usan la ficha de sesión y el panel de la semana.
+      cargarReferencias(supabase, depId),
+      supabase.from('macrociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
+      supabase.from('competicion').select('*').eq('id_deportista', depId).order('fecha'),
+      supabase.from('semana_bloqueada').select('*').eq('id_deportista', depId),
+      supabase.from('mesociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
+      supabase.from('microciclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
+      vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)).order('fecha_sesion'),
+    ])
+
+    setDeportista(dep.data)
+    if (!dep.data) { setNoExiste(true); return }
+    const testsDep: TestsDeportista = refs.tests
+    setTests(testsDep)
+    setMacros(mac.data || [])
+    setCompeticiones(comps.data || [])
+    setSemanasBloqueadas(bloqs.data || [])
+    setMesos(me.data || [])
+    setMicros(mi.data || [])
+
+    const sesiones = (ses.data || []) as any[]
+    if (!sesiones.length) { setSesiones([]); return }
+
+    // ---- Ronda 2: las tareas de esas sesiones ----
+    const { data: tareas } = await supabase.from('tarea')
+      .select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos')
+      .in('id_sesion', sesiones.map(x => x.id))
+
+    const tareaIds = (tareas || []).map(t => t.id)
+    if (!tareaIds.length) { setSesiones(conVolumen(sesiones, [], [], [], [], testsDep)); return }
+
+    // ---- Ronda 3: los tres tipos de parámetro, a la vez ----
+    const [dists, durs, ejs] = await Promise.all([
+      supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
+      supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
+      supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds),
+    ])
+
+    // El volumen, la duración y las zonas: lógica pura, en lib/sesion-volumen.
+    setSesiones(conVolumen(sesiones, tareas, dists.data, durs.data, ejs.data, testsDep))
   }
 
   const mesesAMostrar = Array.from({ length: rango }, (_, i) => {

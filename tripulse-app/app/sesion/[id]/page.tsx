@@ -37,6 +37,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import {
   posicionEnPlan, diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia,
 } from '@/lib/contexto-sesion'
+import { cargarReferencias } from '@/lib/referencia-zona'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -311,7 +312,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setDeportistaId(depId)
 
     // ---- Ronda 2: todo lo demás, a la vez ----
-    const [pf, mesos, micros, mismoDia, t1, t2, t3, an, dep] = await Promise.all([
+    const [pf, mesos, micros, mismoDia, refs, an] = await Promise.all([
       user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depId),
       supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depId),
@@ -322,19 +323,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       supabase.from('sesion').select('id, estado')
         .eq('id_deportista', depId).eq('fecha_sesion', ses.fecha_sesion)
         .or('eliminada.is.null,eliminada.eq.false'),
-      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depId).order('fecha', { ascending: false }).limit(1),
+      /* VAM/CSS/FTP, FC máxima, sistema de zonas y nombre salen de UNA función
+         (lib/referencia-zona) y no de cinco consultas escritas aquí a mano. Las
+         mismas cinco están también en la tabla de tareas: dos copias de las
+         mismas consultas es como empiezan a divergir, y con la tabla de %VAM ya
+         pasó — el mismo Z4 daba dos ritmos según por dónde entrases. */
+      cargarReferencias(supabase, depId),
       supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
-      // El modo simple/compleja de resistencia solo se ofrece con Zonas 2. El
-      // nombre es para la cabecera.
-      supabase.from('deportista').select('sistema_zonas, nombre').eq('id', depId).maybeSingle(),
     ])
 
     setEsDeportista((pf as any).data?.rol === 'deportista')
-    setSistemaZonas(dep.data?.sistema_zonas || 1)
-    setNombreDeportista(dep.data?.nombre || null)
-    setTestsData({ vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null })
+    setSistemaZonas(refs.sistema)
+    setNombreDeportista(refs.nombre)
+    setTestsData({ vam: refs.tests.vam ?? null, css: refs.tests.css ?? null, ftp: refs.tests.ftp ?? null })
     setPesoDeportista(an.data?.peso || null)
 
     // El contexto del plan, ya sin consultas: lógica pura sobre las dos listas.

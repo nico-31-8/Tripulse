@@ -342,3 +342,46 @@ Verificado en pantalla: el panel pasa de **11 a 10 sesiones**, que es lo que
 dice la vista de semana.
 
 Verificado: `tsc` 0 · **963 tests** · `next build` OK.
+
+---
+
+## Módulo 2 — Planificación visual · en curso
+
+### Calendario (2026-08-23) — de catorce viajes a tres rondas
+
+Era la peor cascada de la app: `deportista → test1 → test2 → test3 →
+macrociclo → competición → semana bloqueada → sesiones libres → mesociclo →
+microciclo → sesiones del plan → tareas → distancias → duraciones → ejercicios`.
+Catorce esperas encadenadas en la pantalla más pesada que hay.
+
+Ahora son tres rondas: todo lo que solo depende del deportista a la vez, después
+las tareas de esas sesiones, y después los tres tipos de parámetro juntos.
+
+**La simplificación de fondo**: las sesiones se piden **una** vez por deportista,
+no dos (las del plan por microciclo + las libres por separado). `id_deportista`
+está en todas las filas —lo garantiza la propia política RLS de `sesion`— así que
+una sola consulta las cubre. Y con eso desaparece la clase de fallo que ya mordió
+aquí: las libres iban detrás de tres `return` que cortaban si faltaba plan, así
+que a quien no tenía macrociclo **no se le cargaban nunca**.
+
+Mesociclos y microciclos también por deportista, que es lo mismo que salía de
+encadenar macro → meso → micro.
+
+`lib/sesion-volumen.ts` + 13 tests saca el cálculo de metros, segundos, duración
+estimada y zonas. Iba dentro de la pantalla, mezclado con la cascada que lo
+alimentaba. De paso deja de hacer `find`/`filter` sobre las listas completas por
+cada tarea de cada sesión —con 200 sesiones y 600 tareas eso son cientos de miles
+de recorridos por repintado— y usa mapas: una pasada para agrupar y otra para
+montar.
+
+Un test fija el criterio que **tiene que coincidir con el editor**: el total es
+valor × series. Si aquí se contara el valor por serie, el calendario diría 100 m
+donde la tabla dice 800.
+
+Verificado en pantalla: agosto empieza en sábado, puntos de sesión, colores de
+mesociclo y competiciones, todo igual que antes.
+
+Verificado: `tsc` 0 · **976 tests** · `next build` OK.
+
+**Queda del Módulo 2**: `dibujo` (2.331 líneas, 21 consultas), `bloques` y
+`semana`.

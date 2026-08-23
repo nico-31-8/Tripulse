@@ -125,10 +125,12 @@ export function referenciaDeZona(
  * reciente de cada una.
  */
 export async function cargarReferencias(sb: any, idDeportista: number): Promise<{
-  tests: Tests; fcMax: number; sistema: number
+  tests: Tests; fcMax: number; sistema: number; nombre: string | null
 }> {
   const [{ data: dep }, { data: t1 }, { data: t2 }, { data: t3 }] = await Promise.all([
-    sb.from('deportista').select('fc_maxima, sistema_zonas').eq('id', idDeportista).maybeSingle(),
+    // El nombre viaja aquí porque quien pide las referencias suele necesitarlo
+    // en la misma cabecera, y era una quinta consulta a la misma fila.
+    sb.from('deportista').select('fc_maxima, sistema_zonas, nombre').eq('id', idDeportista).maybeSingle(),
     sb.from('test1_carrera').select('vam').not('vam', 'is', null)
       .eq('id_deportista', idDeportista).order('fecha', { ascending: false }).limit(1),
     sb.from('test2_natacion').select('css').not('css', 'is', null)
@@ -140,5 +142,6 @@ export async function cargarReferencias(sb: any, idDeportista: number): Promise<
     tests: { vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp },
     fcMax: dep?.fc_maxima || 0,
     sistema: dep?.sistema_zonas || 1,
+    nombre: dep?.nombre || null,
   }
 }
