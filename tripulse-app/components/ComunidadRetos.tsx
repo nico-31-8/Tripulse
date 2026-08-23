@@ -6,6 +6,7 @@
 // (actualizar_mi_marcador); nadie ve el entrenamiento de otro ni puede falsear su marca.
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 
 const METRICAS: Record<string, { label: string; unidad: string }> = {
   sesiones: { label: 'Nº de sesiones', unidad: 'sesiones' },
@@ -30,7 +31,7 @@ export default function ComunidadRetos({ yoId }: { yoId: string | null }) {
   const [abierto, setAbierto] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
   const [actualizando, setActualizando] = useState<string | null>(null)
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyISO()
   const [nuevo, setNuevo] = useState({ titulo: '', metrica: 'sesiones', disciplina: '', fecha_inicio: hoy, fecha_fin: '' })
 
   const cargar = useCallback(async () => {

@@ -678,3 +678,24 @@ apunta a `aISO`. (`mis-sesiones` **no tenía el bug**: usaba local de principio 
 fin, que también es consistente.)
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+### Barrido final de fechas (2026-08-23)
+
+Al repasar los ficheros sin tocar apareció que el bug de «hoy en UTC» tenía **dos
+escrituras**: `.split('T')[0]` —que ya se había limpiado— y `.slice(0, 10)`, que
+se me había escapado por buscar solo la primera.
+
+Once sitios más. Y uno peor que los demás:
+
+> `app/grupo/[id]/page.tsx` definía **su propio `hoyISO`**… en UTC. Mismo nombre
+> que el de `lib/fechas` y la implementación contraria. Quien importara el bueno
+> más adelante se habría encontrado un choque silencioso, y mientras tanto
+> simplemente devolvía ayer de madrugada.
+
+    grep "new Date().toISOString().slice\|split" app components lib   →   ninguno
+
+`MisSemanas` de paso: las competiciones y el historial de cuatro semanas no
+dependen uno de otro, y ahora filtra papelera. `CadenaMesociclo`: fuera el
+macrociclo intermedio. `zonas/[id]`: cuatro consultas en fila, en paralelo.
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

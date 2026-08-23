@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
-import { semanasEntre, sumarSemanas, sumarDias } from '@/lib/fechas'
+import { hoyISO, semanasEntre, sumarSemanas, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
@@ -176,7 +176,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
 
   const col = C_MESO[meso.tipo] || '#f97316'
   const fechaFin = sumarSemanas(meso.fecha_inicio, meso.duracion_semanas)
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyISO()
   const estado = hoy < meso.fecha_inicio ? 'Por venir' : hoy >= fechaFin ? 'Terminado' : 'En curso'
 
   // --- Stats ---

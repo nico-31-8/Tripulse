@@ -8,6 +8,8 @@
 // importarlo arriba monta el cliente al cargar el módulo y eso revienta en los
 // tests, donde no hay ni URL ni clave.
 
+import { hoyISO } from './fechas'
+
 export interface Grupo {
   id: string
   nombre: string
@@ -106,7 +108,7 @@ export async function crearGrupo(
 // grupo sigue teniendo sentido, y se puede saber quién estaba dentro en marzo.
 export async function sacarDelGrupo(sb: any, idGrupo: string, idDeportista: number): Promise<string | null> {
   const { error } = await sb.from('grupo_entreno_miembro')
-    .update({ hasta: new Date().toISOString().slice(0, 10) })
+    .update({ hasta: hoyISO() })
     .eq('id_grupo', idGrupo).eq('id_deportista', idDeportista)
   return error ? error.message : null
 }
@@ -124,7 +126,7 @@ export async function meterEnGrupo(sb: any, idGrupo: string, idsDeportistas: num
 
   if (reabrir.length) {
     const { error } = await sb.from('grupo_entreno_miembro')
-      .update({ hasta: null, desde: new Date().toISOString().slice(0, 10) })
+      .update({ hasta: null, desde: hoyISO() })
       .eq('id_grupo', idGrupo).in('id_deportista', reabrir)
     if (error) return error.message
   }

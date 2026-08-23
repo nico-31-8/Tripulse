@@ -9,6 +9,7 @@
 //     Lo llama el cliente (con su sesión Supabase → respeta RLS) y lo envía a la ruta.
 
 import { ZONAS_RESISTENCIA } from './zonas'
+import { hoyISO } from './fechas'
 import { FILTRO_VIVAS } from './papelera'
 import { cargarMetricasPanel, fmtMin, escalaTSBTexto, escalaACWRTexto, type MetricasPanel } from './panel-metricas'
 import { analizarWellness } from './wellness-analisis'
@@ -149,7 +150,7 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   } catch { /* sin sesiones recientes */ }
 
   try {
-    const hoyIso = new Date().toISOString().slice(0, 10)
+    const hoyIso = hoyISO()
     const { data: comp } = await supabase.from('competicion').select('nombre, fecha, tipo')
       .eq('id_deportista', dep.id).gte('fecha', hoyIso).order('fecha').limit(1)
     if (comp?.[0]) {

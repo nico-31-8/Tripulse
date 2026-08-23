@@ -11,6 +11,8 @@
 // no se le crean encima sin decírselo.
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { semanasDelMesociclo, entradaDeSemana, type SemanaDelMeso } from '@/lib/plan-mesociclo'
 import { formaDeSemana, type EntradaSemana, type NivelAtleta } from '@/lib/plan-semana'
 import { colocarSemana, type DiaDisponible } from '@/lib/plan-colocacion'
@@ -83,22 +85,25 @@ export default function MisSemanas({
         })
       })
 
-      const { data: comps } = await supabase.from('competicion')
-        .select('fecha').eq('id_deportista', idDeportista).order('fecha')
-
-      /* Lo que ha hecho de verdad en las últimas cuatro semanas. Es lo que
-         hace que el plan reaccione en vez de repetirse. */
-      const hoy = new Date().toISOString().slice(0, 10)
-      const { data: hechas } = await supabase.from('sesion')
-        .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
-        .eq('id_deportista', idDeportista)
-        .gte('fecha_sesion', sumarDias(hoy, -28)).lt('fecha_sesion', hoy)
-        .or('eliminada.is.null,eliminada.eq.false')
+      /* Las competiciones y lo que ha hecho de verdad en las últimas cuatro
+         semanas —lo que hace que el plan reaccione en vez de repetirse— no
+         dependen una de otra. Y «hoy» es el del reloj del atleta, no el de UTC:
+         con `toISOString()`, quien abriera esto de madrugada perdía un día de
+         historial y ganaba uno que aún no ha pasado. */
+      const hoy = hoyISO()
+      const [comps, hechas] = await Promise.all([
+        supabase.from('competicion')
+          .select('fecha').eq('id_deportista', idDeportista).order('fecha'),
+        vivas(supabase.from('sesion')
+          .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
+          .eq('id_deportista', idDeportista)
+          .gte('fecha_sesion', sumarDias(hoy, -28)).lt('fecha_sesion', hoy)),
+      ])
 
       if (!vivo) return
       setMesos(lista); setUaPorMeso(ua)
-      setCompeticion(comps?.length ? String(comps[comps.length - 1].fecha).slice(0, 10) : null)
-      setAdap(adaptar((hechas || []).map((x: any) => ({
+      setCompeticion(comps.data?.length ? String(comps.data[comps.data.length - 1].fecha).slice(0, 10) : null)
+      setAdap(adaptar((hechas.data || []).map((x: any) => ({
         fecha: String(x.fecha_sesion).slice(0, 10),
         estado: x.estado,
         rpeEsperado: x.rpe_estimado,
@@ -192,7 +197,7 @@ export default function MisSemanas({
     let vivo = true
 
     const rellenar = async () => {
-      const hoy = new Date().toISOString().slice(0, 10)
+      const hoy = hoyISO()
       // Las semanas del plan entero que caen en las próximas tres.
       const horizonte = sumarDias(hoy, 21)
       const candidatas = mesos.flatMap(m => semanasDelMesociclo({

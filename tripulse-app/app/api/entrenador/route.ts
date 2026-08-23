@@ -13,6 +13,7 @@
 //      saber de él.
 //
 // Vive solo en el servidor: la API key nunca llega al navegador.
+import { hoyISO } from '@/lib/fechas'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ENTRENADOR_IA, contextoParaAtleta } from '@/lib/entrenador-ia'
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
   const messages = Array.isArray(body?.messages) ? body.messages : []
   if (!messages.length) return new Response('Sin mensajes.', { status: 400 })
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyISO()
   const contexto = await armarContexto(sb, dep, hoy)
 
   const anthropic = new Anthropic()

@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { proximoLunes } from '@/lib/fechas'
+import { hoyISO, proximoLunes } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { planDeTemporada, type Temporada } from '@/lib/plan-macrociclo'
 import { crearTemporada, planesExistentes } from '@/lib/plan-macrociclo-volcado'
@@ -180,7 +180,7 @@ export default function MiPlan() {
                   cada siete días. Lo entrenado nunca se borra. */}
               {(() => {
                 if (!estadoPlan) return null
-                const v = puedeRehacer(estadoPlan, new Date().toISOString().slice(0, 10))
+                const v = puedeRehacer(estadoPlan, hoyISO())
                 if (!v.puede) {
                   return (
                     <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">

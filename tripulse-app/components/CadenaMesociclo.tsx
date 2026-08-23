@@ -65,14 +65,17 @@ export default function CadenaMesociclo({
     let vivo = true
     const cargar = async () => {
       setCargando(true)
-      const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-      const ids = (macs || []).map((m: any) => m.id)
-      if (!ids.length) { if (vivo) { setMesos([]); setCargando(false) } return }
-
-      const { data: ms } = await supabase.from('mesociclo')
-        .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
-        .in('id_macrociclo', ids).order('fecha_inicio')
-      const lista: MesoFila[] = (ms || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
+      /* El macrociclo estaba solo para acotar los mesociclos, y
+         `mesociclo.id_deportista` ya lo hace. Los mesociclos y las
+         competiciones tampoco dependen unos de otros. */
+      const [ms, comps] = await Promise.all([
+        supabase.from('mesociclo')
+          .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
+          .eq('id_deportista', dep.id).order('fecha_inicio'),
+        supabase.from('competicion')
+          .select('nombre, fecha').eq('id_deportista', Number(dep.id)).order('fecha'),
+      ])
+      const lista: MesoFila[] = (ms.data || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
 
       // La UA que el entrenador dibujó, semana a semana. Es lo que hace que la
       // forma del bloque sea la suya y no la del libro. Se busca por FECHA y no
@@ -91,13 +94,10 @@ export default function CadenaMesociclo({
         })
       })
 
-      const { data: comps } = await supabase.from('competicion')
-        .select('nombre, fecha').eq('id_deportista', Number(dep.id)).order('fecha')
-
       if (!vivo) return
       setMesos(lista)
       setUaPorMeso(ua)
-      setCompeticiones((comps || []).map((c: any) => ({ nombre: c.nombre, fecha: String(c.fecha).slice(0, 10) })))
+      setCompeticiones((comps.data || []).map((c: any) => ({ nombre: c.nombre, fecha: String(c.fecha).slice(0, 10) })))
       setSelId(lista[0]?.id ?? null)
       setCargando(false)
     }

@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import Cargando from '@/components/Cargando'
@@ -21,7 +22,8 @@ import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, opcionesDe, resol
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera']
-const hoyISO = () => new Date().toISOString().slice(0, 10)
+/* Aquí había un `hoyISO` local... en UTC. Mismo nombre que el de lib/fechas y
+   la implementación contraria: de madrugada devolvía ayer. Se importa el bueno. */
 
 export default function PaginaGrupo({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()

@@ -13,6 +13,7 @@
 // precisión que no existe.
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import { cadenaDeMesos, ajustarCadena, type EstadoReal, type MesoDeCadena } from '@/lib/plan-cadena'
 import { calcularCargas, calcularACWR, estadoTSB, estadoACWR } from '@/lib/panel-metricas'
 import { cargaReal, estimarDuraciones } from '@/lib/duracion-carga'
@@ -44,7 +45,7 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
   useEffect(() => {
     const cargar = async () => {
       setCargandoEstado(true)
-      const hoy = new Date().toISOString().slice(0, 10)
+      const hoy = hoyISO()
       const lunesEsta = lunesDe(hoy)
       // La primera semana del plan que aún no ha empezado: es la única a la que
       // las métricas de hoy le dicen algo.

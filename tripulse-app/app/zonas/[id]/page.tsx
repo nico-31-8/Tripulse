@@ -218,15 +218,18 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDeportista(dep)
-    if (!dep) { setNoExiste(true); return }
-    const { data: t1 } = await supabase.from('test1_carrera').select('*').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    setTestCarrera(t1?.[0] || null)
-    const { data: t2 } = await supabase.from('test2_natacion').select('*').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    setTestNatacion(t2?.[0] || null)
-    const { data: t3 } = await supabase.from('test3_ciclismo').select('*').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    setTestCiclismo(t3?.[0] || null)
+    // Cuatro consultas independientes que iban en fila.
+    const [dep, t1, t2, t3] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id', id).maybeSingle(),
+      supabase.from('test1_carrera').select('*').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test2_natacion').select('*').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test3_ciclismo').select('*').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+    ])
+    setDeportista(dep.data)
+    if (!dep.data) { setNoExiste(true); return }
+    setTestCarrera(t1.data?.[0] || null)
+    setTestNatacion(t2.data?.[0] || null)
+    setTestCiclismo(t3.data?.[0] || null)
   }
 
   if (!deportista) return <Cargando noExiste={noExiste} />
