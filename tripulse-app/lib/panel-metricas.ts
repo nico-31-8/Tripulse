@@ -51,6 +51,62 @@ function etiquetaDia(fechaStr: string): string {
 }
 
 // ---- Carga / TSB (frescura) ----
+/* ------------------------------------------------------------------
+   LA CURVA DE FORMA, EN UN SOLO SITIO
+
+   ATL (fatiga) y CTL (condición) son dos medias exponenciales sobre la carga
+   diaria, y el TSB es la resta. Las constantes son las horas de vida de cada
+   una: 8 días la fatiga, 43 la condición. Que la fatiga suba y baje CINCO VECES
+   más rápido que la condición es lo que hace que el modelo signifique algo.
+
+   Estaba escrita cuatro veces —aquí, en /carga, en CargaPorDisciplina y en la
+   ficha del deportista— cada una con sus constantes copiadas a mano. El
+   comentario que había decía que se habían unificado, pero lo unificado fueron
+   las ETIQUETAS (`estadoTSB`): el cálculo seguía repetido. Un cambio de tau en
+   una copia habría dado dos curvas distintas para el mismo atleta.
+
+   Lo que NO se comparte es de dónde sale la carga de cada día: una pantalla
+   pondera por disciplina, otra por brick, otra no pondera. Eso es de cada una;
+   lo de aquí es la recurrencia.
+   ------------------------------------------------------------------ */
+
+/** Días de vida de la fatiga. */
+export const TAU_ATL = 8
+/** Días de vida de la condición. */
+export const TAU_CTL = 43
+
+export interface PuntoForma {
+  fecha: string
+  carga: number
+  atl: number
+  ctl: number
+  tsb: number
+}
+
+/**
+ * La serie de forma a partir de la carga POR DÍA.
+ *
+ * `porDia` va con las fechas como claves; se recorren ordenadas, que es lo que
+ * hace que la exponencial signifique algo. Los días sin carga no hacen falta:
+ * el modelo decae solo entre puntos consecutivos igual que lo hacía antes en
+ * las cuatro copias.
+ */
+export function serieForma(porDia: Record<string, number>): PuntoForma[] {
+  let atl = 0, ctl = 0
+  return Object.keys(porDia).sort().map(fecha => {
+    const carga = porDia[fecha] || 0
+    atl = carga * (2 / TAU_ATL) + atl * (1 - 2 / TAU_ATL)
+    ctl = carga * (2 / TAU_CTL) + ctl * (1 - 2 / TAU_CTL)
+    return {
+      fecha,
+      carga: Math.round(carga),
+      atl: Math.round(atl),
+      ctl: Math.round(ctl),
+      tsb: Math.round(ctl - atl),
+    }
+  })
+}
+
 export function calcularCargas(sesiones: any[]) {
   if (!sesiones.length) return [] as { carga: number; tsb: number }[]
   const mapa: Record<string, number> = {}
@@ -58,16 +114,24 @@ export function calcularCargas(sesiones: any[]) {
     const carga = cargaReal(s)
     mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + carga
   })
-  const fechas = Object.keys(mapa).sort()
-  const out: { carga: number; tsb: number }[] = []
-  let atl = 0, ctl = 0
-  fechas.forEach(f => {
-    const carga = mapa[f] || 0
-    atl = carga * (2 / 8) + atl * (1 - 2 / 8)
-    ctl = carga * (2 / 43) + ctl * (1 - 2 / 43)
-    out.push({ carga: Math.round(carga), tsb: Math.round(ctl - atl) })
-  })
-  return out
+  return serieForma(mapa).map(p => ({ carga: p.carga, tsb: p.tsb }))
+}
+/**
+ * El estado de forma de HOY: fatiga, condición y frescura.
+ *
+ * `calcularCargas` devuelve la serie entera para pintarla; esto devuelve el
+ * último punto con las tres cifras sueltas, que es lo que enseña la ficha del
+ * deportista. La EWMA estaba escrita OTRA VEZ allí a mano, con sus mismas
+ * constantes copiadas: el comentario de aquel fichero admitía que ya habían
+ * tenido que alinearlas una vez.
+ */
+export function cargaActual(sesiones: any[]): { atl: number; ctl: number; tsb: number } | null {
+  if (!sesiones.length) return null
+  const mapa: Record<string, number> = {}
+  sesiones.forEach(s => { mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + cargaReal(s) })
+  const serie = serieForma(mapa)
+  const u = serie[serie.length - 1]
+  return { atl: u.atl, ctl: u.ctl, tsb: u.tsb }
 }
 // ESTA ES LA ÚNICA. Estaba copiada cuatro veces —aquí, en /carga, en la ficha del
 // deportista y en CargaPorDisciplina— y las copias ya habían empezado a separarse

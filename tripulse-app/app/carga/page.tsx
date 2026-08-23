@@ -11,7 +11,7 @@ import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
 import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
-import { estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
+import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
@@ -30,17 +30,9 @@ function calcularCargas(sesiones: any[], factorFn: (s: any) => number = () => 1)
     const carga = (s.rpe_reportado || s.rpe_estimado || 5) * (s.minutos ?? s.duracion_minutos ?? 0) * factorFn(s)
     mapa[fecha] = (mapa[fecha] || 0) + carga
   })
-  const fechas = Object.keys(mapa).sort()
-  const resultado: any[] = []
-  let atl = 0, ctl = 0
-  fechas.forEach(fecha => {
-    const carga = mapa[fecha] || 0
-    atl = carga * (2 / 8) + atl * (1 - 2 / 8)
-    ctl = carga * (2 / 43) + ctl * (1 - 2 / 43)
-    const tsb = ctl - atl
-    resultado.push({ fecha: fecha.slice(5), fechaFull: fecha, carga: Math.round(carga), atl: Math.round(atl), ctl: Math.round(ctl), tsb: Math.round(tsb) })
-  })
-  return resultado
+  // La recurrencia y sus constantes viven en lib/panel-metricas: aquí solo se
+  // decide de dónde sale la carga de cada día (que esta pantalla pondera).
+  return serieForma(mapa).map(p => ({ ...p, fecha: p.fecha.slice(5), fechaFull: p.fecha }))
 }
 
 // calcularACWR y los umbrales viven en lib/panel-metricas: esta pantalla era la

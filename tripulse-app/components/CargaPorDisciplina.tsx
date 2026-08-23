@@ -6,7 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
-import { estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
+import { serieForma, estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
 
 /* Mismo interruptor que /carga y /volumen: una sola clave para toda la app, o el
    entrenador activaría la ponderación en un módulo y la vería apagada en otro. */
@@ -27,14 +27,9 @@ function calcularCargasDisc(bloques: Bloque[], factor: (b: Bloque) => number) {
   bloques.forEach(b => {
     mapa[b.fecha] = (mapa[b.fecha] || 0) + b.ua * factor(b)
   })
-  const fechas = Object.keys(mapa).sort()
-  let atl = 0, ctl = 0
-  return fechas.map(fecha => {
-    const carga = mapa[fecha] || 0
-    atl = carga * (2/8) + atl * (1 - 2/8)
-    ctl = carga * (2/43) + ctl * (1 - 2/43)
-    return { fecha: fecha.slice(5), atl: Math.round(atl), ctl: Math.round(ctl), tsb: Math.round(ctl - atl) }
-  })
+  // Misma recurrencia que el resto de la app (lib/panel-metricas). Lo propio de
+  // esta vista es el factor por disciplina, no la curva.
+  return serieForma(mapa).map(p => ({ fecha: p.fecha.slice(5), atl: p.atl, ctl: p.ctl, tsb: p.tsb }))
 }
 
 // Umbrales y etiquetas vienen de lib/panel-metricas: había cuatro copias de esta

@@ -481,3 +481,40 @@ sugerencias. **El del deportista NO se ha podido ver** —requiere entrar como
 atleta— así que ahí solo hay `tsc` y build.
 
 Verificado: `tsc` 0 · **992 tests** · `next build` OK.
+
+---
+
+## Módulo 4 — Ficha del deportista (2026-08-23) · cerrado
+
+Trece consultas en serie, con la cadena de tres saltos otra vez. Ahora las tres
+consultas de sesiones van juntas y por `id_deportista`.
+
+**Y con eso entran las sesiones libres.** Las que el atleta se añade por su
+cuenta no contaban ni en la curva de forma, ni en la adherencia, ni en «últimas
+sesiones»: quien entrenaba por libre salía en su ficha **como si no entrenara**.
+
+### La curva de forma estaba escrita cuatro veces
+
+Al tocar la ficha apareció que reimplementaba la EWMA a mano. Y no era la única:
+estaba en `panel-metricas`, en `/carga`, en `CargaPorDisciplina` y aquí — cada
+una con sus constantes copiadas.
+
+El comentario de `panel-metricas` decía que se habían unificado, pero **lo
+unificado fueron las etiquetas** (`estadoTSB`); el cálculo seguía repetido. Un
+cambio de tau en una copia habría dado dos curvas distintas para el mismo atleta.
+
+`serieForma(porDia)` + `TAU_ATL` / `TAU_CTL` son ahora el núcleo, con tests que
+fijan las constantes y la propiedad que hace que el modelo signifique algo: la
+fatiga se mueve **cinco veces más rápido** que la condición, y por eso el TSB se
+vuelve positivo tras unos días de descanso.
+
+Lo que **no** se comparte es de dónde sale la carga de cada día: una pantalla
+pondera por disciplina, otra por brick, otra no pondera. Eso es de cada una.
+
+    grep "2/43" app components lib   →   solo serieForma
+
+Verificado en pantalla (sesión de atleta abierta por el usuario): el panel del
+deportista con su checklist «1 de 2» y la semana correcta, y `/mis-analisis` con
+sus 20 sesiones y sus UA.
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

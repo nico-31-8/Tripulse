@@ -2,14 +2,14 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
-import { calcularEdad } from '@/lib/fechas'
+import { calcularEdad, hoyISO, sumarDias } from '@/lib/fechas'
+import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import Adherencia from '@/components/Adherencia'
 import { minutosCarga, cargaReal } from '@/lib/duracion-carga'
-import { estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
+import { cargaActual, estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
@@ -223,68 +223,49 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     const { data: eco } = await supabase.from('puntuacion_eco').select('*').eq('id_deportista', id).order('fecha_calculo', { ascending: false }).limit(3)
     setEcoScores(eco || [])
 
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
-    if (macros?.length) {
-      const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-      if (mesos?.length) {
-        const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-        if (micros?.length) {
-          const microIds = micros.map(m => m.id)
+    /* Aquí había la cadena de tres saltos macrociclo → mesociclo → microciclo
+       para acabar acotando tres consultas de sesiones. Con `sesion.id_deportista`
+       sobra entera, y de paso ENTRAN LAS SESIONES LIBRES: las que el atleta se
+       añade por su cuenta no contaban ni en la curva de forma, ni en la
+       adherencia, ni en «últimas sesiones». O sea que quien entrenaba por libre
+       salía como si no entrenara.
 
-          // Carga ATL/CTL
-          const desde = new Date(); desde.setDate(desde.getDate() - 42)
-          const { data: ses } = await supabase.from('sesion').select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos').or(FILTRO_VIVAS).in('id_microciclo', microIds).eq('estado', 'Realizada').gte('fecha_sesion', desde.toISOString().split('T')[0]).order('fecha_sesion')
-          if (ses?.length) {
-            // Agrupar por día y priorizar RPE reportado, igual que lib/panel-metricas,
-            // para que este TSB coincida con el del dashboard y /carga (antes usaba
-            // rpe_estimado e iteraba por sesión → dos sesiones el mismo día se componían dos veces).
-            const porDia: Record<string, number> = {}
-            ses.forEach(s => {
-              porDia[s.fecha_sesion] = (porDia[s.fecha_sesion] || 0) + cargaReal(s)
-            })
-            let atl = 0, ctl = 0
-            Object.keys(porDia).sort().forEach(f => {
-              const c = porDia[f]
-              atl = c * (2/8) + atl * (1 - 2/8)
-              ctl = c * (2/43) + ctl * (1 - 2/43)
-            })
-            setCarga({ atl: Math.round(atl), ctl: Math.round(ctl), tsb: Math.round(ctl - atl) })
-          }
+       Las tres consultas van a la vez: ninguna depende de otra. */
+    const hoyStr = hoyISO()
+    const [ses42, ses30, ultimas] = await Promise.all([
+      vivas(supabase.from('sesion')
+        .select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos')
+        .eq('id_deportista', Number(id)).eq('estado', 'Realizada')
+        .gte('fecha_sesion', sumarDias(hoyStr, -42))).order('fecha_sesion'),
+      // Adherencia: de lo planificado hasta HOY, cuánto completó. Solo hasta hoy,
+      // porque una sesión futura todavía no es una sesión perdida.
+      vivas(supabase.from('sesion').select('estado, fecha_sesion')
+        .eq('id_deportista', Number(id))
+        .gte('fecha_sesion', sumarDias(hoyStr, -30)).lte('fecha_sesion', hoyStr)),
+      vivas(supabase.from('sesion').select('*')
+        .eq('id_deportista', Number(id)).eq('estado', 'Realizada'))
+        .order('fecha_sesion', { ascending: false }).limit(10),
+    ])
 
-          // Adherencia 30 días: de lo planificado hasta HOY, ¿cuánto completó?
-          // Solo hasta hoy: una sesión futura aún no es una sesión perdida.
-          const d30 = new Date(); d30.setDate(d30.getDate() - 30)
-          const hoyIso = new Date().toISOString().split('T')[0]
-          const { data: ses30 } = await supabase.from('sesion')
-            .select('estado, fecha_sesion')
-            .in('id_microciclo', microIds)
-            .gte('fecha_sesion', d30.toISOString().split('T')[0])
-            .lte('fecha_sesion', hoyIso)
-            .or('eliminada.is.null,eliminada.eq.false')
-          if (ses30?.length) {
-            const orden = [...ses30].sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))
-            const hechas = orden.filter(s => s.estado === 'Realizada').length
-            setAdherencia({
-              pct: Math.round((hechas / orden.length) * 100),
-              hechas,
-              total: orden.length,
-              marcas: orden.slice(-16).map(s => s.estado === 'Realizada'),
-            })
-          }
+    /* La curva de forma sale de lib/panel-metricas, la misma que el panel y
+       /carga. Aquí estaba la EWMA escrita OTRA VEZ a mano con sus constantes
+       copiadas; el comentario que había admitía que ya habían tenido que
+       alinearlas una vez. */
+    setCarga(cargaActual(ses42.data || []))
 
-          // Últimas sesiones realizadas
-          const { data: ultimas } = await supabase
-            .from('sesion')
-            .select('*')
-            .or(FILTRO_VIVAS)
-            .in('id_microciclo', microIds)
-            .eq('estado', 'Realizada')
-            .order('fecha_sesion', { ascending: false })
-            .limit(10)
-          setUltimasSesiones(ultimas || [])
-        }
-      }
+    const lista30 = ses30.data || []
+    if (lista30.length) {
+      const orden = [...lista30].sort((a: any, b: any) => a.fecha_sesion.localeCompare(b.fecha_sesion))
+      const hechas = orden.filter((x: any) => x.estado === 'Realizada').length
+      setAdherencia({
+        pct: Math.round((hechas / orden.length) * 100),
+        hechas,
+        total: orden.length,
+        marcas: orden.slice(-16).map((x: any) => x.estado === 'Realizada'),
+      })
     }
+
+    setUltimasSesiones(ultimas.data || [])
     setLoading(false)
   }
 
