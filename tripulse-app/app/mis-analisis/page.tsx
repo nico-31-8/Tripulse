@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
@@ -45,25 +45,13 @@ export default function MisAnalisis() {
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
 
-      // Sesiones Realizadas: por la cadena de plan Y las libres (id_microciclo null).
-      const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-      const macroIds = (macros || []).map((m: any) => m.id)
-      let microIds: number[] = []
-      if (macroIds.length) {
-        const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-        const mesoIds = (mesos || []).map((m: any) => m.id)
-        if (mesoIds.length) {
-          const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
-          microIds = (micros || []).map((m: any) => m.id)
-        }
-      }
-      const [chainSes, libresSes] = await Promise.all([
-        supabase.from('sesion').select('*').or(FILTRO_VIVAS).in('id_microciclo', microIds.length ? microIds : [-1]).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
-        supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_deportista', dep.id).is('id_microciclo', null).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
-      ])
-      const ses = [...(chainSes.data || []), ...(libresSes.data || [])]
-        .sort((a: any, b: any) => (a.fecha_sesion > b.fecha_sesion ? -1 : 1))
-        .slice(0, 20)
+      /* Las últimas 20 realizadas: del plan y libres, en UNA consulta. Antes
+         eran tres para la cadena y dos más para las dos ramas, y encima el
+         `limit(20)` se aplicaba a CADA rama por separado y se recortaba
+         después: con 20 del plan y 20 libres se pedían 40 para tirar la mitad. */
+      const { data: ses } = await vivas(supabase.from('sesion').select('*')
+        .eq('id_deportista', dep.id).eq('estado', 'Realizada'))
+        .order('fecha_sesion', { ascending: false }).limit(20)
 
       const [tc, tn, tci] = await Promise.all([
         supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),

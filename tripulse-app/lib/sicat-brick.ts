@@ -50,13 +50,9 @@ function media(xs: number[]): number | null {
 export async function calcularFactorBrick(supabase: any, depId: number): Promise<FactorBrickResultado> {
   const out: FactorBrickResultado = {}
 
-  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-  const macroIds = (macros || []).map((m: any) => m.id)
-  const { data: mesos } = macroIds.length
-    ? await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds) : { data: [] }
-  const mesoIds = (mesos || []).map((m: any) => m.id)
-  const { data: micros } = mesoIds.length
-    ? await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds) : { data: [] }
+  /* Antes: macrociclo → mesociclo → microciclo. El microciclo ya lleva su
+     `id_deportista` desde la Fase A. */
+  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', depId)
   const microIds = (micros || []).map((m: any) => m.id)
 
   const sesChain = microIds.length

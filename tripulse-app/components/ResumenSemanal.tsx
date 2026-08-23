@@ -72,14 +72,10 @@ const ESTILOS = {
   rojo: { bg: 'bg-red-900/30 border-red-700/50', dot: 'bg-red-400', texto: 'text-red-400' },
 }
 
-async function getMicroIds(depId: number): Promise<number[]> {
-  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-  if (!macros?.length) return []
-  const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macros.map(m => m.id))
-  if (!mesos?.length) return []
-  const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-  return micros?.map(m => m.id) || []
-}
+/* `getMicroIds` vivía aquí: tres consultas encadenadas para acabar acotando las
+   sesiones de un atleta. En el resumen del entrenador se llamaba UNA VEZ POR
+   ATLETA, así que con diez deportistas eran treinta viajes solo para saber qué
+   sesiones mirar. `sesion.id_deportista` lo resuelve sin ninguno. */
 
 // RESUMEN ENTRENADOR
 export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
@@ -94,17 +90,36 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
   const cargar = async () => {
     const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorId)
     if (!deps?.length) { setLoading(false); return }
+    const depIds = deps.map((d: any) => d.id)
 
-    const resultados = await Promise.all(deps.map(async (dep) => {
-      const microIds = await getMicroIds(dep.id)
-      if (!microIds.length) return null
+    /* Antes esto era un N+1 doble: por cada atleta, tres consultas para la cadena
+       más una de sesiones y otra de wellness. Con diez deportistas, cincuenta
+       viajes para pintar una tarjeta.
 
-      const { data: sesiones } = await supabase.from('sesion').select('*')
-        .in('id_microciclo', microIds)
-        .gte('fecha_sesion', lunesAnt)
-        .lte('fecha_sesion', domingoAnt)
+       Ahora son dos consultas para TODOS y el reparto se hace en memoria. Y de
+       paso las sesiones se filtran por papelera, que aquí no se hacía: una
+       borrada contaba como planificada-y-no-hecha y bajaba el cumplimiento. */
+    const [sesQ, wellQ] = await Promise.all([
+      vivas(supabase.from('sesion').select('*')
+        .in('id_deportista', depIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
+      supabase.from('wellness').select('id_deportista, score_wellness')
+        .in('id_deportista', depIds).gte('fecha', lunesAnt).lte('fecha', domingoAnt),
+    ])
 
-      if (!sesiones?.length) return null
+    const sesPorDep = new Map<number, any[]>()
+    ;(sesQ.data || []).forEach((x: any) => {
+      const l = sesPorDep.get(x.id_deportista)
+      if (l) l.push(x); else sesPorDep.set(x.id_deportista, [x])
+    })
+    const wellPorDep = new Map<number, number[]>()
+    ;(wellQ.data || []).forEach((w: any) => {
+      const l = wellPorDep.get(w.id_deportista)
+      if (l) l.push(w.score_wellness || 0); else wellPorDep.set(w.id_deportista, [w.score_wellness || 0])
+    })
+
+    const resultados = deps.map((dep) => {
+      const sesiones = sesPorDep.get(dep.id) || []
+      if (!sesiones.length) return null
 
       const planificadas = sesiones.length
       const realizadas = sesiones.filter(s => s.estado === 'Realizada').length
@@ -119,17 +134,16 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
       const cargaPlan = sesiones.reduce((acc, s) => acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
       const desviacion = cargaPlan > 0 ? (cargaReal - cargaPlan) / cargaPlan : null
 
-      const { data: wellness } = await supabase.from('wellness').select('score_wellness')
-        .eq('id_deportista', dep.id).gte('fecha', lunesAnt).lte('fecha', domingoAnt)
-      const wellnessMedio = wellness?.length
-        ? wellness.reduce((acc, w) => acc + (w.score_wellness || 0), 0) / wellness.length
+      const wellness = wellPorDep.get(dep.id) || []
+      const wellnessMedio = wellness.length
+        ? wellness.reduce((acc, w) => acc + w, 0) / wellness.length
         : null
 
       const color = calcularSemaforo(cumplimiento, wellnessMedio)
       const frase = generarFrase(cumplimiento, wellnessMedio, desviacion)
 
       return { dep, planificadas, realizadas, cumplimiento, cargaReal, desviacion, wellnessMedio, color, frase }
-    }))
+    })
 
     setResumenes(resultados.filter(Boolean))
     setLoading(false)
@@ -203,29 +217,21 @@ export function ResumenDeportista({ depId, plegado, alternar }: { depId: number;
   useEffect(() => { cargar() }, [depId])
 
   const cargar = async () => {
-    const microIds = await getMicroIds(depId)
     const sel = 'id, estado, duracion_minutos, duracion_real'
 
-    let sesAnt: any[] = []
-    let sesAct: any[] = []
-    if (microIds.length) {
-      const [a, b] = await Promise.all([
-        vivas(supabase.from('sesion').select(sel).in('id_microciclo', microIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
-        vivas(supabase.from('sesion').select('id').in('id_microciclo', microIds).gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
-      ])
-      sesAnt = a.data || []
-      sesAct = b.data || []
-    }
-
-    // Sesiones libres (sin microciclo): las que el deportista se añade por su cuenta.
-    // El panel donde vive esta tarjeta ya las cuenta, así que aquí también, o las dos
-    // dan cifras distintas de la misma semana a cinco centímetros una de otra.
-    const [libAnt, libAct] = await Promise.all([
-      vivas(supabase.from('sesion').select(sel).eq('id_deportista', depId).is('id_microciclo', null).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
-      vivas(supabase.from('sesion').select('id').eq('id_deportista', depId).is('id_microciclo', null).gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
+    /* Cuatro consultas —las del plan y las libres, de cada una de las dos
+       semanas— eran una sola cosa: las sesiones del atleta en ese rango. El
+       comentario que había explicaba que las libres tenían que contar «o las dos
+       tarjetas dan cifras distintas de la misma semana a cinco centímetros una
+       de otra»; ahora no pueden, porque no hay dos consultas que separar. */
+    const [a, b] = await Promise.all([
+      vivas(supabase.from('sesion').select(sel).eq('id_deportista', depId)
+        .gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
+      vivas(supabase.from('sesion').select('id').eq('id_deportista', depId)
+        .gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
     ])
-    sesAnt = [...sesAnt, ...(libAnt.data || [])]
-    sesAct = [...sesAct, ...(libAct.data || [])]
+    const sesAnt = a.data || []
+    const sesAct = b.data || []
 
     setSesionesSemActual(sesAct.length)
 

@@ -35,10 +35,14 @@ function fakeSupabase(tablas: Record<string, any[]>) {
 }
 
 const DEP = 7
+/* El microciclo lleva `id_deportista` desde la Fase A, y es por ahí por donde se
+   busca ahora (antes se llegaba encadenando macrociclo → mesociclo → microciclo,
+   tres viajes para lo mismo). La maqueta lo refleja porque en la base está: si
+   se dejara fuera, el test pasaría con una estructura que no existe. */
 const estructura = {
   macrociclo: [{ id: 1, id_deportista: DEP }],
-  mesociclo: [{ id: 10, id_macrociclo: 1 }],
-  microciclo: [{ id: 100, id_mesociclo: 10 }],
+  mesociclo: [{ id: 10, id_macrociclo: 1, id_deportista: DEP }],
+  microciclo: [{ id: 100, id_mesociclo: 10, id_deportista: DEP }],
 }
 
 const sesNormal = (id: number, disciplina = 'Carrera') =>

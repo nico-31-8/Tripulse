@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FILTRO_VIVAS } from '@/lib/papelera'
+import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
@@ -50,28 +50,37 @@ export default function ComunicacionPage() {
     const { data: msgs } = await supabase.from('mensajes').select('*').eq('id_entrenador', user.id).order('created_at', { ascending: true })
     setMensajes(msgs || [])
 
-    // Feedback post-sesión (cadena macro → meso → micro → sesión → tarea).
+    /* El feedback post-sesión: lo que el atleta escribe al cerrar un
+       entrenamiento. Salía de recorrer macro → meso → micro → sesión → tarea y
+       de reconstruir de quién era cada nota con TRES mapas encadenados.
+
+       `sesion.id_deportista` lo dice directo, así que son dos consultas y un
+       mapa. Y con eso ENTRA EL FEEDBACK DE LAS SESIONES LIBRES: si el atleta se
+       añadía un entrenamiento por su cuenta y dejaba una nota, esa nota no le
+       llegaba al entrenador — que es exactamente lo contrario de para lo que
+       está esta pantalla. */
     if (deportistas.length) {
       const depIds = deportistas.map((d: any) => d.id)
-      const { data: macros } = await supabase.from('macrociclo').select('id, id_deportista').in('id_deportista', depIds)
-      if (macros?.length) {
-        const { data: mesos } = await supabase.from('mesociclo').select('id, id_macrociclo').in('id_macrociclo', macros.map((m: any) => m.id))
-        const { data: micros } = mesos?.length ? await supabase.from('microciclo').select('id, id_mesociclo').in('id_mesociclo', mesos.map((m: any) => m.id)) : { data: [] }
-        const { data: sesiones } = micros?.length ? await supabase.from('sesion').select('id, fecha_sesion, disciplina, id_microciclo').or(FILTRO_VIVAS).in('id_microciclo', micros.map((m: any) => m.id)).order('fecha_sesion', { ascending: false }) : { data: [] }
-        const { data: tareas } = sesiones?.length ? await supabase.from('tarea').select('id, id_sesion, notas_post, comentario_leido, rpe_reportado').in('id_sesion', sesiones.map((s: any) => s.id)).not('notas_post', 'is', null).neq('notas_post', '') : { data: [] }
+      const { data: sesiones } = await vivas(supabase.from('sesion')
+        .select('id, fecha_sesion, disciplina, id_deportista')
+        .in('id_deportista', depIds)).order('fecha_sesion', { ascending: false })
 
-        const microToMeso: Record<number, number> = {}; (micros || []).forEach((mi: any) => { microToMeso[mi.id] = mi.id_mesociclo })
-        const mesoToMacro: Record<number, number> = {}; (mesos || []).forEach((me: any) => { mesoToMacro[me.id] = me.id_macrociclo })
-        const macroToDep: Record<number, number> = {}; macros.forEach((ma: any) => { macroToDep[ma.id] = ma.id_deportista })
+      const { data: tareas } = sesiones?.length
+        ? await supabase.from('tarea')
+            .select('id, id_sesion, notas_post, comentario_leido, rpe_reportado')
+            .in('id_sesion', sesiones.map((x: any) => x.id))
+            .not('notas_post', 'is', null).neq('notas_post', '')
+        : { data: [] as any[] }
 
-        const fb = (tareas || []).map((t: any) => {
-          const s = (sesiones || []).find((x: any) => x.id === t.id_sesion)
-          if (!s) return null
-          const depId = macroToDep[mesoToMacro[microToMeso[s.id_microciclo]]]
-          return { tareaId: t.id, sesionId: s.id, fecha: s.fecha_sesion, disciplina: s.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId }
-        }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
-        setFeedback(fb as any[])
-      }
+      const porId = new Map<number, any>()
+      ;(sesiones || []).forEach((x: any) => porId.set(x.id, x))
+
+      const fb = (tareas || []).map((t: any) => {
+        const x = porId.get(t.id_sesion)
+        if (!x) return null
+        return { tareaId: t.id, sesionId: x.id, fecha: x.fecha_sesion, disciplina: x.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId: x.id_deportista }
+      }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
+      setFeedback(fb as any[])
     }
     setLoading(false)
   }

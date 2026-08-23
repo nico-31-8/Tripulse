@@ -594,3 +594,32 @@ siguientes correctos. **La papelera no se ha podido ver** (es pantalla de
 entrenador y la sesión abierta es de atleta).
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+### Los resúmenes, la comunicación y las últimas cadenas (2026-08-23)
+
+**`ResumenSemanal` tenía un N+1 doble.** `getMicroIds` —tres consultas
+encadenadas— se llamaba **una vez por atleta**, más una de sesiones y otra de
+wellness cada uno. Con diez deportistas, **cincuenta viajes para pintar una
+tarjeta**. Ahora son dos consultas para todos y el reparto se hace en memoria.
+
+Y ahí las sesiones tampoco se filtraban por papelera: una borrada contaba como
+planificada-y-no-hecha y **bajaba el cumplimiento** del atleta.
+
+**`comunicacion`**: el feedback post-sesión salía de recorrer la cadena y
+reconstruir de quién era cada nota con **tres mapas encadenados**. Ahora son dos
+consultas y un mapa — y **entra el feedback de las sesiones libres**: si el
+atleta se añadía un entrenamiento y dejaba una nota, esa nota **no le llegaba al
+entrenador**, que es lo contrario de para lo que está esa pantalla.
+
+**`mis-analisis`**: además de la cadena, el `limit(20)` se aplicaba a **cada rama
+por separado** y se recortaba después — se pedían 40 sesiones para tirar 20.
+
+**`panel-metricas`, `sicat` y `sicat-brick`**: fuera la cadena, que en
+`panel-metricas` estaba comentada como «base de casi todo».
+
+Los tests volvieron a cazar el cambio: la maqueta de `sicat-brick` tenía el
+microciclo **sin `id_deportista`**, que es la columna de la que ahora depende.
+Actualizada — si se dejara fuera, el test pasaría sobre una estructura que en la
+base no existe.
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

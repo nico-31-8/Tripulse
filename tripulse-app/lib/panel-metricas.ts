@@ -252,14 +252,10 @@ export function diasDeLaSemanaActual(hoy: string = hoyISO()): string[] {
 }
 
 export async function cargarMetricasPanel(supabase: any, dep: any): Promise<MetricasPanel> {
-  // ---- Cadena macro → meso → micro (base de casi todo) ----
-  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-  const macroIds = (macros || []).map((m: any) => m.id)
-  const { data: mesos } = macroIds.length
-    ? await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds) : { data: [] }
-  const mesoIds = (mesos || []).map((m: any) => m.id)
-  const { data: micros } = mesoIds.length
-    ? await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds) : { data: [] }
+  /* Aquí empezaba la cadena macro → meso → micro, «base de casi todo». Tres
+     viajes encadenados antes de poder pedir nada. El microciclo lleva su
+     `id_deportista` desde la Fase A: uno. */
+  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', dep.id)
   const microIds = (micros || []).map((m: any) => m.id)
 
   // ---- Ventanas temporales ----

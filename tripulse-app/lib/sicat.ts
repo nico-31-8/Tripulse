@@ -15,14 +15,16 @@ function vacio(): FactorSicatDisc {
   return { sesiones: 0, f1: null, f2: null, f3: null, f4: null, total: null, corrector: 1, porcentaje: null }
 }
 
+/**
+ * Los microciclos de un deportista.
+ *
+ * Antes esto encadenaba macrociclo → mesociclo → microciclo. Desde la Fase A el
+ * microciclo lleva su `id_deportista`, así que es una consulta. Se conserva la
+ * función porque quien la llama pide IDS DE MICROCICLO, no sesiones — que es lo
+ * que la distingue de las otras cadenas que se han ido quitando.
+ */
 export async function getMicrosDeportista(depId: number): Promise<number[]> {
-  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-  const macroIds = (macros || []).map((m: any) => m.id)
-  if (!macroIds.length) return []
-  const { data: mesos } = await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds)
-  const mesoIds = (mesos || []).map((m: any) => m.id)
-  if (!mesoIds.length) return []
-  const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds)
+  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', depId)
   return (micros || []).map((m: any) => m.id)
 }
 
