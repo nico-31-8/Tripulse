@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
@@ -11,6 +11,8 @@ import { cargaZona } from '@/lib/zonas'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import OnboardingDeportista from '@/components/OnboardingDeportista'
 import { altaCompleta } from '@/lib/anamnesis-datos'
+import { cargarReferencias } from '@/lib/referencia-zona'
+import { vivas } from '@/lib/papelera'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -57,8 +59,10 @@ export default function DashboardDeportista() {
   // de móvil vuelve a verlo todo abierto, que es el estado sano por defecto.
   const [plegados, setPlegados] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    const cargar = async () => {
+  /* Sale del efecto para poder volver a llamarla: el checklist la usa cuando el
+     atleta acaba de vincularse con un entrenador. Antes eso era un
+     `location.reload()`. */
+  const cargar = useCallback(async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
@@ -82,41 +86,27 @@ export default function DashboardDeportista() {
       const desde = fmt(addDays(new Date(), -27))
       const hasta = fmt(sunday)
 
-      const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-      setTienePlan(!!macros?.length)
-      const macroIds = (macros || []).map((m: any) => m.id)
-      const { data: mesos } = macroIds.length ? await supabase.from('mesociclo').select('id').in('id_macrociclo', macroIds) : { data: [] }
-      const mesoIds = (mesos || []).map((m: any) => m.id)
-      const { data: micros } = mesoIds.length ? await supabase.from('microciclo').select('id').in('id_mesociclo', mesoIds) : { data: [] }
-      const microIds = (micros || []).map((m: any) => m.id)
-
-      // duracion_real va en el SELECT o el arreglo no sirve de nada: sin pedirla,
-      // duracionSesionTexto no la ve y sigue enseñando lo planificado.
+      /* Aquí había una cadena de tres saltos —macrociclo → mesociclo →
+         microciclo— para acabar preguntando por las sesiones de un rango de
+         fechas. Desde la Fase A no hace falta ninguno: la sesión lleva su
+         `id_deportista`, así que las del plan y las libres son UNA consulta en
+         vez de dos ramas.
+         Y con eso desaparece el fallo que ya se parcheó aquí: las libres iban
+         por su lado porque las del plan cortaban si no había microciclos. */
       const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, duracion_real, notas_entrenador'
-      let sesiones: any[] = []
-      if (microIds.length) {
-        const { data } = await supabase.from('sesion').select(selSes)
-          .in('id_microciclo', microIds)
-          .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
-          .or('eliminada.is.null,eliminada.eq.false')
-        sesiones = data || []
-      }
-      // Sesiones libres (sin microciclo): sueltas o añadidas por el propio deportista.
-      // Antes no salían en el dashboard; ahora se cargan igual que las del plan.
-      const { data: libres } = await supabase.from('sesion').select(selSes)
-        .eq('id_deportista', dep.id).is('id_microciclo', null)
-        .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
-        .or('eliminada.is.null,eliminada.eq.false')
-      if (libres?.length) sesiones = [...sesiones, ...libres]
-
-      // Sesiones de hoy + duración estimada + tareas para el preview de series
-      const sesHoy = sesiones.filter(s => s.fecha_sesion === hoy)
-      const [tc, tn, tci] = await Promise.all([
-        supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-        supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      const [macros, ses, refs] = await Promise.all([
+        supabase.from('macrociclo').select('id').eq('id_deportista', dep.id).limit(1),
+        // `duracion_real` va en el SELECT o el arreglo no sirve de nada: sin
+        // pedirla, duracionSesionTexto sigue enseñando lo planificado.
+        vivas(supabase.from('sesion').select(selSes).eq('id_deportista', dep.id)
+          .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)),
+        cargarReferencias(supabase, dep.id),
       ])
-      const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
+
+      setTienePlan(!!macros.data?.length)
+      const sesiones: any[] = ses.data || []
+      const sesHoy = sesiones.filter(s => s.fecha_sesion === hoy)
+      const testsDep: TestsDeportista = refs.tests
       const durs = await estimarDuraciones(supabase, sesHoy.map(s => s.id), testsDep)
       setSesionesHoy(sesHoy.map(s => ({ ...s, dur_estimada: durs[s.id] })))
 
@@ -166,9 +156,9 @@ export default function DashboardDeportista() {
         .eq('id_deportista', dep.id).maybeSingle()
       setAnamnesisPendiente(!an || an.estado !== 'enviada')
       setAltaHecha(altaCompleta(an))
-    }
-    cargar()
-  }, [])
+  }, [router])
+
+  useEffect(() => { cargar() }, [cargar])
 
   const cerrarSesion = async () => { await supabase.auth.signOut(); router.push('/') }
 
@@ -267,7 +257,8 @@ export default function DashboardDeportista() {
             solo (contarme de él, crear su plan); el entrenador va aparte porque
             depende de un tercero y antes dejaba la lista incompleta para siempre. */}
         <OnboardingDeportista deportista={deportista} altaHecha={altaHecha}
-          anamnesisPendiente={anamnesisPendiente} tienePlan={tienePlan} />
+          anamnesisPendiente={anamnesisPendiente} tienePlan={tienePlan}
+          onVinculado={cargar} />
 
         {/* ===== WELLNESS (solo si está PENDIENTE: es una tarea) ===== */}
         {!wellnessHoy && bloqueWellness}

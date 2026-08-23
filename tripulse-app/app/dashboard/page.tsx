@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
+import { sugerenciasDelAtleta } from '@/lib/sugerencias-entrenador'
 import { usuarioActual } from '@/lib/sesion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -74,38 +75,32 @@ export default function Dashboard() {
     setAtletaActivo(dep.id)
     setMetricas(null)
     cargarMetricasPanel(supabase, dep).then(setMetricas)
-    const { data: ts } = await supabase.from('tarea_entrenador').select('*').eq('id_deportista', dep.id).order('hecho').order('created_at', { ascending: false })
-    setTareas(ts || [])
-    const { data: wells } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)
-    setReadiness(analizarWellness(wells || []).readiness)
-    const w0 = (wells || [])[0]
-    const hoyDia = hoyISO()
-    // Se guarda el MALESTAR (alto = peor) pero se muestra invertido como bienestar.
-    setWellHoy({ hoy: w0?.fecha === hoyDia, score: bienestar(w0?.score_wellness) })
-    setWellSpark((wells || []).slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
+    /* Seis consultas que no dependen unas de otras iban en serie. Y el
+       mesociclo pasaba antes por el macrociclo solo para acotar: con
+       `mesociclo.id_deportista` (Fase A) sobra ese salto. */
     const hoyStr = hoyISO()
-    const { data: comp } = await supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id).gte('fecha', hoyStr).order('fecha').limit(1)
-    setProximaComp(comp?.[0] || null)
+    const [ts, wells, comp, mesos, an] = await Promise.all([
+      supabase.from('tarea_entrenador').select('*').eq('id_deportista', dep.id)
+        .order('hecho').order('created_at', { ascending: false }),
+      supabase.from('wellness').select('*').eq('id_deportista', dep.id)
+        .order('fecha', { ascending: false }).limit(14),
+      supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id)
+        .gte('fecha', hoyStr).order('fecha').limit(1),
+      supabase.from('mesociclo').select('fecha_inicio, objetivo').eq('id_deportista', dep.id),
+      supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle(),
+    ])
 
-    const sug: string[] = []
-    const hoy = new Date()
-    if (!dep.tec_fecha_actualizacion) sug.push('Registrar la valoración técnica')
-    else {
-      const dias = Math.floor((hoy.getTime() - new Date(dep.tec_fecha_actualizacion).getTime()) / 86400000)
-      if (dias >= 28) sug.push('Actualizar la valoración técnica (' + Math.floor(dias / 7) + ' semanas sin tocar)')
-    }
-    const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-    if (macros?.length) {
-      const { data: mesos } = await supabase.from('mesociclo').select('fecha_inicio, objetivo').in('id_macrociclo', macros.map((m: any) => m.id))
-      for (const meso of (mesos || [])) {
-        if (!meso.fecha_inicio) continue
-        const d = Math.floor((new Date(meso.fecha_inicio).getTime() - hoy.getTime()) / 86400000)
-        if (d >= 0 && d <= 5) sug.push('Revisar el mesociclo "' + meso.objetivo + '" (empieza ' + (d === 0 ? 'hoy' : 'en ' + d + ' días') + ')')
-      }
-    }
-    const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
-    if (an?.estado === 'enviada') sug.push('Revisar la anamnesis que envió ' + dep.nombre)
-    setSugerencias(sug)
+    setTareas(ts.data || [])
+    const listaWell = wells.data || []
+    setReadiness(analizarWellness(listaWell).readiness)
+    const w0 = listaWell[0]
+    // Se guarda el MALESTAR (alto = peor) pero se muestra invertido como bienestar.
+    setWellHoy({ hoy: w0?.fecha === hoyStr, score: bienestar(w0?.score_wellness) })
+    setWellSpark(listaWell.slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
+    setProximaComp(comp.data?.[0] || null)
+
+    // Qué tiene pendiente con este atleta: lógica pura, en lib/sugerencias-entrenador.
+    setSugerencias(sugerenciasDelAtleta(dep, mesos.data, an.data?.estado, hoyStr))
   }
 
   const addTarea = async (texto?: string) => {

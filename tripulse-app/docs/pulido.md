@@ -448,3 +448,36 @@ Verificado en pantalla: la semana sale igual (275 UA, 10 sesiones, 4/10
 realizadas, Lun…Dom) y las tarjetas de bloques pintan sus 4 mesociclos.
 
 Verificado: `tsc` 0 · **976 tests** · `next build` OK.
+
+---
+
+## Módulo 3 — Paneles (2026-08-23) · cerrado
+
+**Panel del entrenador**: seis consultas que no dependen unas de otras iban en
+serie. Y el mesociclo pasaba antes por el macrociclo solo para acotar — con
+`mesociclo.id_deportista` sobra ese salto. Ahora es una ronda.
+
+`lib/sugerencias-entrenador.ts` + 16 tests saca el bloque «Necesita tu atención»:
+qué tiene pendiente el entrenador con el atleta que mira. Estaba dentro de la
+pantalla, entre las consultas que lo alimentaban y con aritmética de fechas a
+mano. Un test fija el umbral: **justo al cumplirse los 28 días ya avisa** — un
+`>` en vez de `>=` deja el aviso mudo el día que toca, de esos que nadie
+reporta. Y ahora dice «empieza mañana» en vez de «empieza en 1 días».
+
+**Panel del deportista**: fuera la cadena de tres saltos `macrociclo →
+mesociclo → microciclo` que solo servía para acabar preguntando por un rango de
+fechas. Las del plan y las libres pasan a ser **una** consulta, y con eso
+desaparece otra vez el mismo parche: las libres iban por su lado porque las del
+plan cortaban si no había microciclos.
+
+**Fuera la última recarga dura de la app.** Vincularse con un entrenador hacía
+`location.reload()`. Para quitarla hubo que sacar `cargar` del `useEffect` a un
+`useCallback`, y ahora el checklist avisa y el panel relee lo suyo.
+
+    grep -rn "location.reload()" app components lib   →   0
+
+Verificado en pantalla el del entrenador: 10 sesiones, `D · HOY` y las cuatro
+sugerencias. **El del deportista NO se ha podido ver** —requiere entrar como
+atleta— así que ahí solo hay `tsc` y build.
+
+Verificado: `tsc` 0 · **992 tests** · `next build` OK.

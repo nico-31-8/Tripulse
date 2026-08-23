@@ -31,9 +31,11 @@ interface Props {
   anamnesisPendiente: boolean
   /** Si ya tiene una temporada dibujada. */
   tienePlan: boolean
+  /** Se acaba de vincular con un entrenador: el panel tiene que releer. */
+  onVinculado?: () => void
 }
 
-export default function OnboardingDeportista({ deportista, altaHecha, anamnesisPendiente, tienePlan }: Props) {
+export default function OnboardingDeportista({ deportista, altaHecha, anamnesisPendiente, tienePlan, onVinculado }: Props) {
   const router = useRouter()
   const [codigo, setCodigo] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -98,7 +100,11 @@ export default function OnboardingDeportista({ deportista, altaHecha, anamnesisP
     if (!ent) { setError('Código no encontrado, revísalo bien.'); setCargando(false); return }
     const { error: errUpd } = await supabase.from('deportista').update({ id_entrenador: ent.id }).eq('id', deportista.id)
     if (errUpd) { setError('No se pudo vincular: ' + errUpd.message); setCargando(false); return }
-    location.reload() // que el panel reconozca al entrenador y recalcule el checklist
+    /* Aquí había un : pantalla en blanco y la app entera de
+       cero para reflejar que ya tiene entrenador. Era la última recarga dura que
+       quedaba. Ahora se avisa al panel, que relee lo suyo y recalcula la lista. */
+    setCargando(false)
+    onVinculado?.()
   }
 
   return (
