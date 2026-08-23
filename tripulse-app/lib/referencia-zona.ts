@@ -145,3 +145,37 @@ export async function cargarReferencias(sb: any, idDeportista: number): Promise<
     nombre: dep?.nombre || null,
   }
 }
+
+// ------------------------------------------------------------
+// Cómo se ENSEÑA un ritmo_objetivo ya guardado
+// ------------------------------------------------------------
+
+/**
+ * `p_distancia.ritmo_objetivo` guarda lo que devuelve `prescripcion()`, que es
+ * TEXTO y trae su propia unidad dentro: «4:12–4:30 /km», «180–220 W»,
+ * «> 2:05 /100m», «Por APR (sprint)».
+ *
+ * Dos pantallas del atleta lo leían como SEGUNDOS y lo pasaban por un m:ss:
+ * `Math.floor('180–220 W' / 60)` es `NaN`, así que en la caja naranja de «Ritmo
+ * objetivo» ponía **«NaN:NaN /km»**. Otras tres lo pintaban tal cual, bien. El
+ * mismo dato leído de dos formas, que es el fallo de siempre.
+ *
+ * Se acepta también el número por si quedan filas viejas guardadas en segundos:
+ * ahí sí hay que formatear y poner la unidad, porque el número no la lleva.
+ * Devuelve el texto completo listo para pintar, o null si no hay nada.
+ */
+export function ritmoObjetivoTexto(valor: unknown, disciplina?: string | null): string | null {
+  if (valor == null) return null
+  const bruto = String(valor).trim()
+  if (!bruto) return null
+
+  const esSegundos = /^\d+(\.\d+)?$/.test(bruto)
+  if (!esSegundos) return bruto
+
+  const seg = Number(bruto)
+  if (!Number.isFinite(seg) || seg <= 0) return null
+  const m = Math.floor(seg / 60)
+  const s = Math.round(seg % 60)
+  const unidad = (disciplina || '').startsWith('Nat') ? '/100m' : '/km'
+  return `${m}:${s.toString().padStart(2, '0')} ${unidad}`
+}

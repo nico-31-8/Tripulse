@@ -76,6 +76,33 @@ export interface OpcionesFila {
   copia: boolean
   /** Para resolver los ids de los ejercicios de fuerza. */
   ejerciciosBiblioteca?: any[]
+  /**
+   * Lo que la ZONA propone para esa disciplina, si se sabe.
+   *
+   * Hace falta para distinguir lo que escribió el entrenador de lo que se
+   * guardó solo: la columna es la misma para los dos casos. Se pasa como
+   * función y no como valor porque depende de la zona y la disciplina de CADA
+   * tarea, y aquí se reconstruyen varias de golpe.
+   */
+  ritmoDeZona?: (zona: string, disciplina: string) => string | null | undefined
+}
+
+/**
+ * Lo que debe volver a la casilla del «@».
+ *
+ * `ritmo_objetivo` guarda dos cosas distintas con la misma pinta: la intensidad
+ * que escribió el entrenador, o —si no escribió nada— la que propone la zona.
+ * La casilla solo quiere la primera: la segunda ya sale sola de fantasma. Si se
+ * rellenara con las dos, la propuesta automática pasaría a parecer una decisión
+ * y dejaría de actualizarse cuando cambien los tests del atleta.
+ */
+export function intensidadDeTarea(t: any, ritmoDeZona?: OpcionesFila['ritmoDeZona']): string {
+  const guardado = t?.p_distancia?.[0]?.ritmo_objetivo ?? t?.p_duracion?.[0]?.ritmo_objetivo
+  if (guardado == null) return ''
+  const texto = String(guardado).trim()
+  if (!texto) return ''
+  const sugerido = (ritmoDeZona?.(t.zona_entrenamiento || '', t.disciplina || '') || '').trim()
+  return texto === sugerido ? '' : texto
 }
 
 /** Una tarea de resistencia, de vuelta a su fila. */
@@ -92,6 +119,7 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     tipoMedicion: med.tipo,
     valorMedicion: med.valor,
     comentario: t.comentario || '',
+    intensidadPersonalizada: intensidadDeTarea(t, o.ritmoDeZona),
     // «Técnica» no es una zona: la tarea guarda AER y `tecnica_id` aparte. Que
     // la casilla vuelva a decir «Técnica» se deduce de ahí, no de una columna
     // propia — si hubiera dos, se contradirían.

@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona, zonaClasica } from '@/lib/zonas'
@@ -752,6 +753,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             const pu = t.p_duracion?.[0]
             const pr = t.p_repeticiones?.[0]
             const s0 = r['serie_0'] || {}
+            const ritmoObj = ritmoObjetivoTexto(pd?.ritmo_objetivo, t.disciplina || sesion?.disciplina)
             const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
             const totalSeries = t.series || 1
 
@@ -778,11 +780,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                       </div>
                     </>
                   )}
-                  {pd?.ritmo_objetivo && (
+                  {ritmoObj && (
                     <>
                       <div className="bg-orange-950 border border-orange-800 rounded-lg p-2 text-center">
                         <p className="text-orange-400 text-xs">Ritmo objetivo</p>
-                        <p className="font-bold text-sm text-white">{(() => { const s = pd.ritmo_objetivo; const m = Math.floor(s/60); const ss = s%60; return m+':'+(ss<10?'0':'')+ss })()}/km</p>
+                        <p className="font-bold text-sm text-white">{ritmoObj}</p>
                       </div>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Ritmo real</p>

@@ -206,7 +206,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       return
     }
     setFilasR(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev,
-      filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false })])
+      filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false, ritmoDeZona: (z, d) => getRef(z, d)?.ritmo })])
   }
 
   /* Lo que manda el panel de la semana. Cae en filas NUEVAS del formulario, no
@@ -227,7 +227,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         }))])
     } else {
       setFilasR(prev => [...prev, ...copiar.tareas.map((t, k) =>
-        filaResistenciaDesde(t, { base: nuevaFilaR(), orden: base + prev.length + k + 1, copia: true }))])
+        filaResistenciaDesde(t, { base: nuevaFilaR(), orden: base + prev.length + k + 1, copia: true, ritmoDeZona: (z, d) => getRef(z, d)?.ritmo }))])
     }
     onCopiado?.()
   }, [copiar?.token, ejerciciosBiblioteca.length])
@@ -321,7 +321,13 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         const _ref = getRef(f.zona, f.disciplina)
         const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
         const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
-        if (_tabla === 'p_distancia') { const { data: pd } = await supabase.from('p_distancia').insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single(); if (pd && _ref?.ritmo) { await supabase.from('p_distancia').update({ ritmo_objetivo: _ref.ritmo }).eq('id', pd.id) } }
+        /* Lo que el entrenador escribe en el «@» MANDA sobre lo que propone la
+           zona. Antes se guardaba siempre la propuesta y la casilla se tiraba:
+           escribir «4:00 /km» encima no servía de nada, el atleta seguía viendo
+           el rango de la zona. Y eran dos viajes (insert + update) para escribir
+           dos columnas de la misma fila. */
+        const _intensidad = f.intensidadPersonalizada.trim() || _ref?.ritmo || null
+        if (_tabla === 'p_distancia') await supabase.from('p_distancia').insert({ id_tarea: idTarea, metros_planeados: _valor, ritmo_objetivo: _intensidad })
         else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: idTarea, tiempo_planeado: _valor })
         else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
       }

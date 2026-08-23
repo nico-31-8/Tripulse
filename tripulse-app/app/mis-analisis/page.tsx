@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
+import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import type { TestsDeportista } from '@/lib/duracion'
 
 function secAMinSeg(seg: number): string {
@@ -237,13 +238,18 @@ export default function MisAnalisis() {
                           </div>
                         )}
 
-                        {/* Ritmo objetivo */}
-                        {pd?.ritmo_objetivo && (
-                          <div className="bg-orange-950 border border-orange-800 rounded-lg p-3 mb-2">
-                            <p className="text-orange-400 text-xs mb-1">Ritmo objetivo</p>
-                            <p className="font-bold text-white">{secAMinSeg(pd.ritmo_objetivo)} {t.disciplina === 'Natacion' ? '/100m' : '/km'}</p>
-                          </div>
-                        )}
+                        {/* Ritmo objetivo. Se guarda como TEXTO con su unidad dentro
+                            («180–220 W»); pasarlo por un m:ss daba «NaN:NaN /km». */}
+                        {(() => {
+                          const ritmo = ritmoObjetivoTexto(pd?.ritmo_objetivo, t.disciplina)
+                          if (!ritmo) return null
+                          return (
+                            <div className="bg-orange-950 border border-orange-800 rounded-lg p-3 mb-2">
+                              <p className="text-orange-400 text-xs mb-1">Ritmo objetivo</p>
+                              <p className="font-bold text-white">{ritmo}</p>
+                            </div>
+                          )
+                        })()}
 
                         {/* Duración */}
                         {pu && (
