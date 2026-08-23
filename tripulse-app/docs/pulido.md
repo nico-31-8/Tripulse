@@ -281,6 +281,12 @@ en pantalla: **«2 añadidas por el atleta»**.
 - Ficha de sesión con la cascada nueva: **`Meso 1 · Semana 1 (Carga)`** sale bien
   → **`id_deportista` SÍ está relleno** en `mesociclo` y `microciclo`. Era la
   suposición de la que colgaba todo el pase.
+
+  **Confirmado además contra la base el 2026-08-23** con
+  `supabase/comprobar-id-deportista.sql`: cero mesociclos, microciclos y
+  sesiones sin `id_deportista`; cero filas colgando de un dueño distinto al de
+  su padre; y los tres disparadores que rellenan la columna, encendidos. La
+  suposición ya no es una suposición.
 - Panel de la semana: 10 sesiones, 4 hechas, zonas, días y marcas, cuadrando con
   la vista de semana.
 - Calendario: agosto 2026 empieza en sábado (correcto), hoy recuadrado el 22.

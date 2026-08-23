@@ -71,3 +71,44 @@ order by tgname;
    colgando de un padre que no les corresponde y hay que mirar cuáles antes de
    tocar nada.
    ============================================================ */
+
+/* ============================================================
+   LAS TRES COMPROBACIONES EN UNA SOLA CONSULTA
+
+   El editor de Supabase solo muestra el resultado de la ULTIMA consulta cuando
+   se le mandan varias seguidas, asi que los dos primeros bloques se ejecutaban
+   y su resultado no se veia. Esta version devuelve las siete lineas juntas.
+
+   Correr SOLO esto. Sigue sin escribir nada.
+   ============================================================ */
+select * from (
+  select 1 as n, 'mesociclos sin dueno'      as comprobacion,
+         (select count(*) from mesociclo  where id_deportista is null) as valor,
+         0 as esperado
+  union all
+  select 2, 'microciclos sin dueno',
+         (select count(*) from microciclo where id_deportista is null), 0
+  union all
+  select 3, 'sesiones sin dueno',
+         (select count(*) from sesion     where id_deportista is null), 0
+  union all
+  select 4, 'mesociclos con dueno ajeno',
+         (select count(*) from mesociclo me
+            join macrociclo ma on ma.id = me.id_macrociclo
+          where me.id_deportista is distinct from ma.id_deportista), 0
+  union all
+  select 5, 'microciclos con dueno ajeno',
+         (select count(*) from microciclo mi
+            join mesociclo me on me.id = mi.id_mesociclo
+          where mi.id_deportista is distinct from me.id_deportista), 0
+  union all
+  select 6, 'sesiones con dueno ajeno',
+         (select count(*) from sesion s
+            join microciclo mi on mi.id = s.id_microciclo
+          where s.id_deportista is distinct from mi.id_deportista), 0
+  union all
+  select 7, 'disparadores encendidos',
+         (select count(*) from pg_trigger
+          where tgname in ('trg_fill_dep_mesociclo', 'trg_fill_dep_microciclo', 'trg_fill_dep_sesion')
+            and tgenabled = 'O'), 3
+) t order by n;
