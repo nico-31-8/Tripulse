@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -86,6 +87,7 @@ export default function IndicesPage() {
     const { data: ses } = await supabase
       .from('sesion')
       .select('*')
+      .or(FILTRO_VIVAS)
       .in('id_microciclo', microIds)
       .eq('estado', 'Realizada')
       .order('fecha_sesion', { ascending: false })

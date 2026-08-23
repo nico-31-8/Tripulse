@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { calcularEdad } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
@@ -232,7 +233,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
           // Carga ATL/CTL
           const desde = new Date(); desde.setDate(desde.getDate() - 42)
-          const { data: ses } = await supabase.from('sesion').select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos').in('id_microciclo', microIds).eq('estado', 'Realizada').gte('fecha_sesion', desde.toISOString().split('T')[0]).order('fecha_sesion')
+          const { data: ses } = await supabase.from('sesion').select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos').or(FILTRO_VIVAS).in('id_microciclo', microIds).eq('estado', 'Realizada').gte('fecha_sesion', desde.toISOString().split('T')[0]).order('fecha_sesion')
           if (ses?.length) {
             // Agrupar por día y priorizar RPE reportado, igual que lib/panel-metricas,
             // para que este TSB coincida con el del dashboard y /carga (antes usaba
@@ -275,6 +276,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
           const { data: ultimas } = await supabase
             .from('sesion')
             .select('*')
+            .or(FILTRO_VIVAS)
             .in('id_microciclo', microIds)
             .eq('estado', 'Realizada')
             .order('fecha_sesion', { ascending: false })

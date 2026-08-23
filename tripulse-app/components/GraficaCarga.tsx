@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { lunesDe } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
@@ -59,6 +60,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
     let query = supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real')
+      .or(FILTRO_VIVAS)
       .in('id_microciclo', micros.map((m: any) => m.id))
       .eq('estado', 'Realizada')
       .order('fecha_sesion')

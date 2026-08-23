@@ -294,3 +294,51 @@ en pantalla: **«2 añadidas por el atleta»**.
   de semana, solo por el microciclo de esa semana. Probablemente una sesión de
   otro microciclo con fecha dentro del rango. Pendiente de confirmar; es previo
   a este pase.
+
+---
+
+## Tanda 1 — Lo que está en la papelera no cuenta (2026-08-23)
+
+Salió tirando del hilo del «11 sesiones» del panel contra el «10» de la vista de
+semana. **Veinte consultas de lectura sobre `sesion` no filtraban `eliminada`.**
+
+Borrar en esta app es `eliminada = true`. El convenio estaba bien aplicado al
+ESCRIBIR y mal al LEER, así que una sesión en la papelera seguía:
+
+- sumando a la **carga y al TSB** (la curva de forma del atleta),
+- contando en el **volumen** y en las sesiones de la semana,
+- bajando el **porcentaje de adherencia**,
+- saliendo en **«próximas sesiones»**,
+- entrando en el **contexto que se manda al asistente de IA**,
+- y falseando el **factor de brick personalizado**, que aprende de RPEs reales.
+
+No rompía nada: hacía que los números fueran mentira. El entrenador ve
+«Sobrecarga» y afloja el plan por sesiones que él mismo borró.
+
+`lib/papelera.ts` fija el criterio: `vivas(query)` y `FILTRO_VIVAS`. Hacía falta
+una función porque **ya había dos copias del filtro escritas a mano** (una local
+en `ResumenSemanal`, otra que acababa de escribir yo en `panel-metricas`) y la
+tercera era cuestión de tiempo.
+
+Migradas 20 consultas en 16 ficheros: `carga`, `volumen`, `indices`,
+`deportistas/[id]`, `mis-analisis`, `microciclo`, `bloques`, `comunicacion`,
+`Adherencia`, `CargaPorDisciplina`, `GraficaCarga`, `PlanPeriodizacion`,
+`ResumenSemanal`, `panel-metricas`, `asistente`, `sicat-brick`.
+
+**Deliberadamente sin tocar** (no son agregados): abrir una sesión por su id
+—desde la papelera se abre a propósito—, la gestión de la propia papelera
+(`plan-rehacer`), copiar sesiones por id (`grupos-volcado`) y los `update` por id.
+
+`is.null` además de `eq.false`: la columna se añadió después y las filas
+anteriores la tienen a null. Con `eq.false` a secas desaparecería el histórico,
+que es el fallo contrario y peor.
+
+Los tests cazaron el cambio: el doble de Supabase de `sicat-brick` no
+implementaba `.or()`. Se le añadió **filtrando de verdad**, y con un test nuevo
+que mete una sesión borrada en el escenario y comprueba que el factor no se
+mueve — si el doble lo ignorara, el test pasaría con la sesión dentro.
+
+Verificado en pantalla: el panel pasa de **11 a 10 sesiones**, que es lo que
+dice la vista de semana.
+
+Verificado: `tsc` 0 · **963 tests** · `next build` OK.

@@ -10,6 +10,7 @@
 
 import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
 import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fechas'
+import { FILTRO_VIVAS } from './papelera'
 import { cargarBloques } from './atribucion'
 import { minutosCarga, cargaReal } from './duracion-carga'
 
@@ -226,13 +227,25 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
 
   const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado'
 
-  // ---- Carga (frescura): sesiones realizadas 70 días ----
+  /* LO QUE ESTÁ EN LA PAPELERA NO CUENTA.
+   Ninguna de las siete consultas de este fichero filtraba `eliminada`, y
+   `eliminada` solo aparecía para CONTAR la papelera. O sea que una sesión
+   borrada seguía sumando a la carga, al TSB, al volumen de la semana y salía en
+   «próximas sesiones». Con doce en la papelera, el «Sobrecarga» que veía el
+   entrenador estaba hinchado con sesiones que él mismo había borrado.
+
+   El resto de la app ya lo filtraba así (la vista de semana, el calendario): era
+   este fichero el que se había quedado fuera del convenio. Se pone en una
+   constante para que la próxima consulta no vuelva a olvidarlo. */
+const VIVAS = FILTRO_VIVAS
+
+// ---- Carga (frescura): sesiones realizadas 70 días ----
   const cargaChain = microIds.length
     ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds)
-        .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr)).data || [] : []
+        .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || [] : []
   const cargaLibres = (await supabase.from('sesion').select(selSes)
     .eq('id_deportista', dep.id).is('id_microciclo', null)
-    .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr)).data || []
+    .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || []
   const serieCarga = calcularCargas([...cargaChain, ...cargaLibres])
   const ultimaCarga = serieCarga[serieCarga.length - 1]
   const carga = ultimaCarga
@@ -243,10 +256,10 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   // ---- Semana en curso: sesiones planificadas (cualquier estado) ----
   const semChain = microIds.length
     ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds)
-        .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr)).data || [] : []
+        .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)).data || [] : []
   const semLibres = (await supabase.from('sesion').select(selSes)
     .eq('id_deportista', dep.id).is('id_microciclo', null)
-    .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr)).data || []
+    .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)).data || []
   const sesSemana = [...semChain, ...semLibres]
 
   // Volumen por disciplina. Si hay duración estimable → minutos; si no, conteo de sesiones.
@@ -306,7 +319,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   if (microIds.length && fcUmbral) {
     const { data: ses } = await supabase.from('sesion')
       .select('id, rpe_estimado, fecha_sesion').in('id_microciclo', microIds)
-      .eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20)
+      .eq('estado', 'Realizada').or(VIVAS).order('fecha_sesion', { ascending: false }).limit(20)
     const sesIds = (ses || []).map((s: any) => s.id)
     if (sesIds.length) {
       const { data: tareas } = await supabase.from('tarea')
@@ -335,9 +348,9 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
   // ---- Agenda: próximas sesiones (hoy → +21 días, no realizadas) ----
   const finStr = sumarDias(hoyStr, 21)
   const agChain = microIds.length
-    ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr)).data || [] : []
+    ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || [] : []
   const agLibres = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr)).data || []
+    .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || []
   const agSes = [...agChain, ...agLibres]
     .filter(s => s.estado !== 'Realizada')
     .sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))

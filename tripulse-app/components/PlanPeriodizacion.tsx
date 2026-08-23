@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
 
 const DISCIPLINAS_COLORES: Record<string, string> = {
@@ -291,7 +292,7 @@ export default function PlanPeriodizacion({
     if (!mesos?.length) { setLoading(false); return }
     const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
     if (!micros?.length) { setLoading(false); return }
-    const { data: ses } = await supabase.from('sesion').select('fecha_sesion, disciplina, duracion_minutos, estado').in('id_microciclo', micros.map(m => m.id)).order('fecha_sesion')
+    const { data: ses } = await supabase.from('sesion').select('fecha_sesion, disciplina, duracion_minutos, estado').or(FILTRO_VIVAS).in('id_microciclo', micros.map(m => m.id)).order('fecha_sesion')
     setSesionesReales(ses || [])
     setLoading(false)
   }

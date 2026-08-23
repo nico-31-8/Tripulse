@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
@@ -57,8 +58,8 @@ export default function MisAnalisis() {
         }
       }
       const [chainSes, libresSes] = await Promise.all([
-        supabase.from('sesion').select('*').in('id_microciclo', microIds.length ? microIds : [-1]).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
-        supabase.from('sesion').select('*').eq('id_deportista', dep.id).is('id_microciclo', null).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
+        supabase.from('sesion').select('*').or(FILTRO_VIVAS).in('id_microciclo', microIds.length ? microIds : [-1]).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
+        supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_deportista', dep.id).is('id_microciclo', null).eq('estado', 'Realizada').order('fecha_sesion', { ascending: false }).limit(20),
       ])
       const ses = [...(chainSes.data || []), ...(libresSes.data || [])]
         .sort((a: any, b: any) => (a.fecha_sesion > b.fecha_sesion ? -1 : 1))

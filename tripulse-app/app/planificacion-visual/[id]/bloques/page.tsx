@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
@@ -227,7 +228,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
       const err = await guardarBrick(supabase, nueva.id, brick)
       if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
     }
-    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', microSel.id).order('fecha_sesion')
+    const { data } = await supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_microciclo', microSel.id).order('fecha_sesion')
     setSesiones(data || [])
     setModalSesion(false)
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionCronometro(false)

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { FILTRO_VIVAS } from './papelera'
 import { calcularFactorBrick, factorPersonalizado, clavePar } from './sicat-brick'
 
 // ------------------------------------------------------------
@@ -17,6 +18,14 @@ function fakeSupabase(tablas: Record<string, any[]>) {
         in: (col: string, vals: any[]) => { filas = filas.filter(f => vals.includes(f[col])); return q },
         is: (col: string, val: any) => { filas = filas.filter(f => (f[col] ?? null) === val); return q },
         not: (col: string, _op: string, val: any) => { filas = filas.filter(f => (f[col] ?? null) !== val); return q },
+        /* Lo que está en la papelera no cuenta (lib/papelera). El doble lo
+           implementa de verdad y no como un paso vacío: si se ignorara, estos
+           tests seguirían en verde con una sesión borrada dentro del cálculo,
+           que es justo lo que se viene a impedir. */
+        or: (filtro: string) => {
+          if (filtro === FILTRO_VIVAS) filas = filas.filter(f => !f.eliminada)
+          return q
+        },
         order: (col: string) => { filas = [...filas].sort((a, b) => (a[col] ?? 0) - (b[col] ?? 0)); return q },
         then: (resolve: any) => resolve({ data: filas, error: null }),
       }
@@ -132,6 +141,34 @@ describe('calcularFactorBrick — qué NO debe contar', () => {
     expect(await calcularFactorBrick(sb, DEP)).toEqual({})
   })
 
+  /* LO QUE ESTA EN LA PAPELERA NO CUENTA. Este calculo aprende cuanto le cuesta
+     al atleta correr despues de la bici comparando RPEs reales. Una sesion que el
+     entrenador borro sigue en la tabla con eliminada = true, y hasta ahora entraba
+     en la media: el factor personalizado del atleta salia de datos que alguien
+     habia decidido tirar. */
+  it('una sesion en la papelera no entra en el aprendizaje', async () => {
+    const conBasura = escenario(3, 6, 8)
+    // El mismo escenario, pero con un brick borrado y absurdo dentro.
+    const sb = fakeSupabase({
+      ...estructura,
+      sesion: [
+        sesNormal(100), sesNormal(101), sesNormal(102),
+        sesBrick(200), sesBrick(201), sesBrick(202),
+        { ...sesBrick(299), eliminada: true },
+      ],
+      tarea: [
+        bloque(100, 1, 'Carrera', 'AEM', 6), bloque(101, 1, 'Carrera', 'AEM', 6), bloque(102, 1, 'Carrera', 'AEM', 6),
+        bloque(200, 1, 'Ciclismo', 'AEL', 6), bloque(200, 2, 'Carrera', 'AEM', 8),
+        bloque(201, 1, 'Ciclismo', 'AEL', 6), bloque(201, 2, 'Carrera', 'AEM', 8),
+        bloque(202, 1, 'Ciclismo', 'AEL', 6), bloque(202, 2, 'Carrera', 'AEM', 8),
+        bloque(299, 1, 'Ciclismo', 'AEL', 6), bloque(299, 2, 'Carrera', 'AEM', 10),
+      ],
+    })
+    const conPapelera = (await calcularFactorBrick(sb, DEP))[clavePar('Ciclismo', 'Carrera')]
+    const sinPapelera = (await calcularFactorBrick(conBasura, DEP))[clavePar('Ciclismo', 'Carrera')]
+    expect(conPapelera.nBrick).toBe(3)
+    expect(conPapelera.factor).toBe(sinPapelera.factor)
+  })
   it('el PRIMER bloque de un brick nunca cuenta como post-transición', async () => {
     // la transición está tras el bloque 1, así que solo el bloque 2 es "post".
     // Si el primero contara, aparecería también el par Carrera→Ciclismo.

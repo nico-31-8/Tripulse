@@ -13,6 +13,7 @@
 // costará un brick planificado. En un brick ya realizado NO se aplica, porque el RPE
 // reportado de cada bloque ya lleva dentro el coste de la concatenación.
 import { FACTOR_POR_NIVEL, interferencia, type NivelInterferencia } from './bricks'
+import { FILTRO_VIVAS } from './papelera'
 
 // Mínimo de muestras a cada lado para fiarse. Con menos, se usa el valor de B1-04:
 // aprender de dos sesiones es peor que no aprender.
@@ -60,9 +61,9 @@ export async function calcularFactorBrick(supabase: any, depId: number): Promise
 
   const sesChain = microIds.length
     ? (await supabase.from('sesion').select('id, disciplina, transiciones')
-        .in('id_microciclo', microIds).eq('estado', 'Realizada')).data || [] : []
+        .or(FILTRO_VIVAS).in('id_microciclo', microIds).eq('estado', 'Realizada')).data || [] : []
   const sesLibres = (await supabase.from('sesion').select('id, disciplina, transiciones')
-    .eq('id_deportista', depId).is('id_microciclo', null).eq('estado', 'Realizada')).data || []
+    .or(FILTRO_VIVAS).eq('id_deportista', depId).is('id_microciclo', null).eq('estado', 'Realizada')).data || []
   const sesiones = [...sesChain, ...sesLibres]
   if (!sesiones.length) return out
 

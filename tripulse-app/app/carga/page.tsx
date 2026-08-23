@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
@@ -160,6 +161,7 @@ export default function CargaPage() {
       const { data: ses } = await supabase
         .from('sesion')
         .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
+        .or(FILTRO_VIVAS)
         .in('id_microciclo', microsDelDep)
         .eq('estado', 'Realizada')
         .gte('fecha_sesion', desdeStr)
@@ -170,6 +172,7 @@ export default function CargaPage() {
     const { data: libres } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
+      .or(FILTRO_VIVAS)
       .eq('id_deportista', dep.id).is('id_microciclo', null)
       .eq('estado', 'Realizada').gte('fecha_sesion', desdeStr)
     const todasSesiones = await attachZonaPico([...baseSes, ...(libres || [])])
@@ -233,6 +236,7 @@ export default function CargaPage() {
     const { data: sesiones } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
+      .or(FILTRO_VIVAS)
       .in('id_microciclo', microsDelDep.length ? microsDelDep : [-1])
       .gte('fecha_sesion', desdeStr)
       .order('fecha_sesion')

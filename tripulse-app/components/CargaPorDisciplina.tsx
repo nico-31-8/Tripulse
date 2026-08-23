@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
@@ -111,6 +112,7 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     const { data: ses } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos, duracion_real')
+      .or(FILTRO_VIVAS)
       .in('id_microciclo', microIds)
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)

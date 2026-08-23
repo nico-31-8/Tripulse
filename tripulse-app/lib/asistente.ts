@@ -9,6 +9,7 @@
 //     Lo llama el cliente (con su sesión Supabase → respeta RLS) y lo envía a la ruta.
 
 import { ZONAS_RESISTENCIA } from './zonas'
+import { FILTRO_VIVAS } from './papelera'
 import { cargarMetricasPanel, fmtMin, escalaTSBTexto, escalaACWRTexto, type MetricasPanel } from './panel-metricas'
 import { analizarWellness } from './wellness-analisis'
 import { attachZonaPico } from './sicat-zonas'
@@ -130,6 +131,7 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
     const desde = new Date(); desde.setDate(desde.getDate() - 21)
     const { data: ses } = await supabase.from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado')
+      .or(FILTRO_VIVAS)
       .eq('id_deportista', dep.id).eq('estado', 'Realizada')
       .gte('fecha_sesion', desde.toISOString().slice(0, 10))
       .order('fecha_sesion', { ascending: false }).limit(14)

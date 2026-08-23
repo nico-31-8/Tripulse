@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tipoMicrociclo } from '@/lib/microciclo-tipos'
@@ -34,7 +35,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
     const { data: micro } = await supabase.from('microciclo').select('*').eq('id', id).single()
     setMicrociclo(micro)
     if (!micro) { setNoExiste(true); return }
-    const { data: ses } = await supabase.from('sesion').select('*').eq('id_microciclo', id).order('fecha_sesion', { ascending: true })
+    const { data: ses } = await supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_microciclo', id).order('fecha_sesion', { ascending: true })
     setSesiones(ses || [])
   }
 

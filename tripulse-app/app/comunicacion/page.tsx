@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 
@@ -56,7 +57,7 @@ export default function ComunicacionPage() {
       if (macros?.length) {
         const { data: mesos } = await supabase.from('mesociclo').select('id, id_macrociclo').in('id_macrociclo', macros.map((m: any) => m.id))
         const { data: micros } = mesos?.length ? await supabase.from('microciclo').select('id, id_mesociclo').in('id_mesociclo', mesos.map((m: any) => m.id)) : { data: [] }
-        const { data: sesiones } = micros?.length ? await supabase.from('sesion').select('id, fecha_sesion, disciplina, id_microciclo').in('id_microciclo', micros.map((m: any) => m.id)).order('fecha_sesion', { ascending: false }) : { data: [] }
+        const { data: sesiones } = micros?.length ? await supabase.from('sesion').select('id, fecha_sesion, disciplina, id_microciclo').or(FILTRO_VIVAS).in('id_microciclo', micros.map((m: any) => m.id)).order('fecha_sesion', { ascending: false }) : { data: [] }
         const { data: tareas } = sesiones?.length ? await supabase.from('tarea').select('id, id_sesion, notas_post, comentario_leido, rpe_reportado').in('id_sesion', sesiones.map((s: any) => s.id)).not('notas_post', 'is', null).neq('notas_post', '') : { data: [] }
 
         const microToMeso: Record<number, number> = {}; (micros || []).forEach((mi: any) => { microToMeso[mi.id] = mi.id_mesociclo })

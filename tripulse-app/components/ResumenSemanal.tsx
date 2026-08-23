@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { vivas } from '@/lib/papelera'
 // El score guardado es de MALESTAR (alto = peor). La lógica de semáforo/frases sigue
 // usando esa escala cruda; solo se invierte lo que se PINTA (ver lib/wellness-score).
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
@@ -204,7 +205,6 @@ export function ResumenDeportista({ depId, plegado, alternar }: { depId: number;
   const cargar = async () => {
     const microIds = await getMicroIds(depId)
     const sel = 'id, estado, duracion_minutos, duracion_real'
-    const vivas = (q: any) => q.or('eliminada.is.null,eliminada.eq.false')
 
     let sesAnt: any[] = []
     let sesAct: any[] = []

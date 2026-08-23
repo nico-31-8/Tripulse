@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { FILTRO_VIVAS } from '@/lib/papelera'
 import { lunesDe } from '@/lib/fechas'
 
 function colorCumplimiento(pct: number): string {
@@ -46,6 +47,7 @@ export default function Adherencia({ depId }: Props) {
     const { data: sesiones } = await supabase
       .from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, estado, rpe_estimado')
+      .or(FILTRO_VIVAS)
       .in('id_microciclo', micros.map(m => m.id))
       .order('fecha_sesion')
 
