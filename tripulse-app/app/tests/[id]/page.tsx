@@ -206,16 +206,19 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
     if (!dep) { setNoExiste(true); return }
-    const { data: t1 } = await supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
-    setTests1(t1 || [])
-    const { data: t2 } = await supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
-    setTests2(t2 || [])
-    const { data: t3 } = await supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
-    setTests3(t3 || [])
-    const { data: tf } = await supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
-    setTestsFuerza(tf || [])
-    const { data: tl } = await supabase.from('tests_libres').select('*').eq('id_deportista', id).order('fecha', { ascending: false })
-    setTestsLibres(tl || [])
+    // Cinco tablas distintas, ninguna depende de otra: iban en fila por costumbre.
+    const [t1, t2, t3, tf, tl] = await Promise.all([
+      supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      supabase.from('tests_libres').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+    ])
+    setTests1(t1.data || [])
+    setTests2(t2.data || [])
+    setTests3(t3.data || [])
+    setTestsFuerza(tf.data || [])
+    setTestsLibres(tl.data || [])
   }
 
   const calcularVAM = () => {

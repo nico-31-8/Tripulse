@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -113,7 +114,7 @@ export default function ComunicacionPage() {
   const formatFecha = (ts: string) => new Date(ts).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
   const previewTime = (ts?: string) => {
     if (!ts) return ''
-    const hoy = new Date().toISOString().split('T')[0]
+    const hoy = hoyISO()
     return ts.split('T')[0] === hoy ? formatHora(ts) : formatFecha(ts)
   }
 

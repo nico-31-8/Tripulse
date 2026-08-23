@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { aISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
@@ -19,7 +20,9 @@ const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
 // Fecha local YYYY-MM-DD. NO usar toISOString: en husos UTC+ (España) desplaza
 // una fecha a medianoche local al día anterior, y fecha_sesion es fecha local.
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+/* Era la cuarta copia de «un Date al día que marca el reloj local». Se queda el
+   nombre corto porque se usa mucho en esta pantalla, pero apunta a la de siempre. */
+const ymd = aISO
 
 // Microciclo de la semana de una fecha si cae dentro de un mesociclo del atleta (creándolo
 // si no existe). Si la fecha queda fuera de todo plan → null (sesión "libre").

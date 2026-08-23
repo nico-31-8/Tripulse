@@ -41,16 +41,19 @@ export default function ComunidadGrupos({ yoId }: { yoId: string | null }) {
   const [nuevoEvento, setNuevoEvento] = useState<{ grupo: string; titulo: string; dia: string; hora: string; lugar: string } | null>(null)
 
   const cargar = useCallback(async () => {
-    const { data: g } = await supabase.from('grupo').select('*').order('created_at', { ascending: false })
-    setGrupos(g || [])
-    const { data: gm } = await supabase.from('grupo_miembro').select('id_grupo').eq('id_perfil', yoId)
-    setMios(new Set((gm || []).map((x: any) => x.id_grupo)))
-    const { data: r } = await supabase.from('grupo_roster').select('*')
-    setRoster(r || [])
-    const { data: ev } = await supabase.from('evento').select('*').order('fecha')
-    setEventos(ev || [])
-    const { data: as } = await supabase.from('evento_asistentes_v').select('*')
-    setAsist(as || [])
+    // Cinco consultas independientes en fila. Nada dependía de nada.
+    const [g, gm, r, ev, as] = await Promise.all([
+      supabase.from('grupo').select('*').order('created_at', { ascending: false }),
+      supabase.from('grupo_miembro').select('id_grupo').eq('id_perfil', yoId),
+      supabase.from('grupo_roster').select('*'),
+      supabase.from('evento').select('*').order('fecha'),
+      supabase.from('evento_asistentes_v').select('*'),
+    ])
+    setGrupos(g.data || [])
+    setMios(new Set((gm.data || []).map((x: any) => x.id_grupo)))
+    setRoster(r.data || [])
+    setEventos(ev.data || [])
+    setAsist(as.data || [])
     setCargando(false)
   }, [yoId])
 

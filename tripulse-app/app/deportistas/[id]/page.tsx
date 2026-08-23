@@ -295,7 +295,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       tec_natacion: editTecNatacion ? Number(editTecNatacion) : null,
       tec_ciclismo: editTecCiclismo ? Number(editTecCiclismo) : null,
       tec_carrera: editTecCarrera ? Number(editTecCarrera) : null,
-      tec_fecha_actualizacion: new Date().toISOString().split('T')[0],
+      tec_fecha_actualizacion: hoyISO(),
     }).eq('id', id)
     await cargarDatos()
     setEditando(false)

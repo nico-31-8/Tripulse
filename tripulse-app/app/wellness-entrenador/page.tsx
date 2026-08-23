@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
@@ -47,7 +48,7 @@ export default function WellnessEntrenador() {
   const [query, setQuery] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'atencion' | 'sin_hoy'>('todos')
 
-  const hoyStr = new Date().toISOString().split('T')[0]
+  const hoyStr = hoyISO()
 
   useEffect(() => {
     const cargar = async () => {

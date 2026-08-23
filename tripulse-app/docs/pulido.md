@@ -644,3 +644,37 @@ numeración de semanas— y ya no bloquea a las otras cuatro consultas.
     mesociclo   6              →  2
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+### Carga en paralelo y el último «hoy» en UTC (2026-08-23)
+
+`tests/[id]` (cinco tablas de tests en fila), `wellness/[id]`, `ComunidadGrupos`
+y `ComunidadRetos`: consultas independientes que iban una detrás de otra por
+costumbre. Todas en paralelo.
+
+**Y el último rastro del bug de las fechas.** Quedaban cinco
+`new Date().toISOString().split('T')[0]` — «hoy» en UTC donde se quería el del
+reloj de quien mira. El que dolía:
+
+> **La fecha por defecto del formulario de wellness.** Un atleta que lo abría a
+> las 00:30 en España se lo encontraba rellenado con **ayer**, registraba ahí su
+> wellness, y al entrenador le salía que **no lo había registrado hoy**.
+
+Demostrado:
+
+    El atleta abre el formulario a las 00:30 del domingo 23:
+      antes (toISOString) -> 2026-08-22   <== AYER
+      ahora (hoyISO)      -> 2026-08-23
+
+No se puede verificar en pantalla a media tarde —a esa hora local y UTC
+coinciden—, así que la prueba es ésa.
+
+Los otros cuatro: el «hoy» de comunicación, el del wellness del entrenador, el de
+`tec_fecha_actualizacion` al guardarla y el del calendario.
+
+    grep "new Date().toISOString().split" app components lib   →   ninguno
+
+Y `ymd` de `mis-sesiones` era la cuarta copia de «un `Date` al día local»: ahora
+apunta a `aISO`. (`mis-sesiones` **no tenía el bug**: usaba local de principio a
+fin, que también es consistente.)
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.

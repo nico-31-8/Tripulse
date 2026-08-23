@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
@@ -85,7 +86,11 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [varsActivas, setVarsActivas] = useState<string[]>(['fatiga', 'estres', 'animo', 'motivacion'])
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
+  /* «Hoy» tiene que ser el del reloj del atleta, no el de UTC. Con
+     `toISOString()` —que es lo que había— quien abría este formulario a las
+     00:30 en España se lo encontraba rellenado con AYER, registraba ahí su
+     wellness, y al entrenador le salía que no lo había registrado hoy. */
+  const [fecha, setFecha] = useState(hoyISO())
   const [calidadSueno, setCalidadSueno] = useState(4)
   const [horasSueno, setHorasSueno] = useState(7)
   const [fatiga, setFatiga] = useState(4)
@@ -99,24 +104,26 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [registrosPeso, setRegistrosPeso] = useState<any[]>([])
   const [mostrarFormPeso, setMostrarFormPeso] = useState(false)
   const [pesoKg, setPesoKg] = useState('')
-  const [fechaPeso, setFechaPeso] = useState(new Date().toISOString().split('T')[0])
+  const [fechaPeso, setFechaPeso] = useState(hoyISO())
   const [guardandoPeso, setGuardandoPeso] = useState(false)
 
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
     const user = await usuarioActual()
-    if (user) {
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
-      setEsDeportista(p?.rol === 'deportista')
-    }
-    const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDeportista(dep)
-    if (!dep) { setNoExiste(true); return }
-    const { data: reg } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30)
-    setRegistros(reg || [])
-    const { data: pesos } = await supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60)
-    setRegistrosPeso(pesos || [])
+    // Cuatro consultas independientes: el rol de quien mira, el deportista y sus
+    // dos historiales. Iban en serie.
+    const [perfil, dep, reg, pesos] = await Promise.all([
+      user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('deportista').select('*').eq('id', id).maybeSingle(),
+      supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30),
+      supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60),
+    ])
+    setEsDeportista((perfil as any).data?.rol === 'deportista')
+    setDeportista(dep.data)
+    if (!dep.data) { setNoExiste(true); return }
+    setRegistros(reg.data || [])
+    setRegistrosPeso(pesos.data || [])
   }
 
   const preview = scoreWellness({ calidad_sueno: calidadSueno, fatiga, estres, dolor_muscular: dolorMuscular, animo, motivacion })

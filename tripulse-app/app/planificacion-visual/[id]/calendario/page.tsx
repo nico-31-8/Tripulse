@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { lunesDe, aISO } from '@/lib/fechas'
+import { hoyISO, lunesDe, aISO } from '@/lib/fechas'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { conVolumen } from '@/lib/sesion-volumen'
 import { vivas } from '@/lib/papelera'
@@ -718,7 +718,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     toast('Bloqueo eliminado')
   }
 
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = hoyISO()
   const modoActivo = sesionCopiada ? 'pegar-sesion' : semanaCopiada ? 'pegar-semana' : null
 
   if (!deportista) return <Cargando noExiste={noExiste} />

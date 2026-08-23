@@ -34,12 +34,14 @@ export default function ComunidadRetos({ yoId }: { yoId: string | null }) {
   const [nuevo, setNuevo] = useState({ titulo: '', metrica: 'sesiones', disciplina: '', fecha_inicio: hoy, fecha_fin: '' })
 
   const cargar = useCallback(async () => {
-    const { data: r } = await supabase.from('reto').select('*').order('fecha_fin', { ascending: false })
-    setRetos(r || [])
-    const { data: rp } = await supabase.from('reto_participante').select('id_reto').eq('id_perfil', yoId)
-    setMios(new Set((rp || []).map((x: any) => x.id_reto)))
-    const { data: m } = await supabase.from('reto_marcador_v').select('*')
-    setMarcadores(m || [])
+    const [r, rp, m] = await Promise.all([
+      supabase.from('reto').select('*').order('fecha_fin', { ascending: false }),
+      supabase.from('reto_participante').select('id_reto').eq('id_perfil', yoId),
+      supabase.from('reto_marcador_v').select('*'),
+    ])
+    setRetos(r.data || [])
+    setMios(new Set((rp.data || []).map((x: any) => x.id_reto)))
+    setMarcadores(m.data || [])
     setCargando(false)
   }, [yoId])
 
