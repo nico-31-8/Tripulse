@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO } from '@/lib/fechas'
+import { sumarDias, hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
@@ -56,16 +56,35 @@ export default function WellnessEntrenador() {
       if (!user) { router.push('/login'); return }
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
       if (deps) {
-        const conWellness = await Promise.all(deps.map(async d => {
-          const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', d.id).order('fecha', { ascending: false }).limit(14)
-          const recientes = w || []
+        /* Esto era una consulta POR ATLETA: con veinte deportistas, veinte
+           viajes para pintar la lista. Ahora es uno para todos y se reparte en
+           memoria.
+
+           SE PIDEN LAS DOS ÚLTIMAS SEMANAS EN VEZ DE «LAS 14 ÚLTIMAS FILAS» de
+           cada uno, porque un `limit` global cortaría por el atleta más
+           constante y dejaría sin datos a los demás. Es la misma ventana que
+           analizaba antes —catorce registros diarios son catorce días— pero
+           expresada en lo que de verdad se quiere: los últimos catorce días. */
+        const { data: todos } = await supabase.from('wellness')
+          .select('*').in('id_deportista', deps.map((d: any) => d.id))
+          .gte('fecha', sumarDias(hoyStr, -14))
+          .order('fecha', { ascending: false })
+
+        const porDep = new Map<number, any[]>()
+        ;(todos || []).forEach((w: any) => {
+          const l = porDep.get(w.id_deportista)
+          if (l) l.push(w); else porDep.set(w.id_deportista, [w])
+        })
+
+        const conWellness = deps.map((d: any) => {
+          const recientes = porDep.get(d.id) || []
           return {
             ...d,
             ultimoWellness: recientes[0] || null,
             readiness: analizarWellness(recientes).readiness,
             spark: recientes.slice(0, 10).reverse().map((r: any) => bienestar(r.score_wellness) ?? 0),
           }
-        }))
+        })
         setDeportistas(conWellness)
         const act = getAtletaActivo()
         const d0 = conWellness.find(d => d.id === act)

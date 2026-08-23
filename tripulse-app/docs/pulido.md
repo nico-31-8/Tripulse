@@ -699,3 +699,42 @@ dependen uno de otro, y ahora filtra papelera. `CadenaMesociclo`: fuera el
 macrociclo intermedio. `zonas/[id]`: cuatro consultas en fila, en paralelo.
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+### El rebarrido (2026-08-23)
+
+Los dos hallazgos anteriores —el `.slice(0, 10)` y el `hoyISO` impostor— no
+salieron de tocar código sino de **volver a buscar lo que creía cerrado**. Así
+que se hizo un rebarrido de cada categoría **con una consulta distinta a la que
+la encontró la primera vez**.
+
+Apareció **un N+1 más**: `wellness-entrenador` pedía el wellness **por cada
+atleta**. Con veinte deportistas, veinte viajes para pintar la lista.
+
+Al agruparlo hubo que cambiar la ventana: se piden **los últimos catorce días** en
+vez de «las catorce últimas filas de cada uno», porque un `limit` global cortaría
+por el atleta más constante y dejaría sin datos a los demás. Es la misma ventana
+que se analizaba —catorce registros diarios son catorce días— pero dicha en lo
+que de verdad se quiere.
+
+Lo demás que salió ya se conocía y **se deja a propósito**:
+
+- `ultima_ejecucion_fuerza` (modo mejora) y `num_deportistas`: funciones SQL que
+  reciben UN id. Agruparlas es una migración, no un pulido.
+- Las lecturas de `sesion` sin filtro de papelera que quedan son **por id** o de
+  gestión de la propia papelera.
+- Los `in('id_microciclo')` que quedan tienen los microciclos de un bloque
+  concreto, no de un atleta: ahí la cadena no sobra.
+
+`perfil`: el perfil y la ficha del deportista se buscan por claves distintas, así
+que no había que esperar a uno para pedir el otro.
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+---
+
+## Regla nueva del método
+
+**Cuando se cierre una categoría, buscarla otra vez con una consulta distinta.**
+El bug de las fechas se dio por cerrado buscando `toISOString().split`, y la
+mitad estaba escrita `toISOString().slice`. Si la primera búsqueda hubiera sido
+`toISOString` a secas, se habría cazado el primer día.

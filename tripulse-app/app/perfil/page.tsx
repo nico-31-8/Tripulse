@@ -120,12 +120,19 @@ export default function PerfilPage() {
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
-    const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
+    /* La ficha del deportista se busca por `id_usuario`, así que no necesita
+       esperar al perfil: las dos van a la vez. Solo el entrenador depende de una
+       de ellas. */
+    const [perfilQ, depQ] = await Promise.all([
+      supabase.from('perfiles').select('*').eq('id', user.id).maybeSingle(),
+      supabase.from('deportista').select('id_entrenador').eq('id_usuario', user.id).maybeSingle(),
+    ])
+    const p = perfilQ.data
     setPerfil(p)
     setCodigo(p?.codigo_entrenador || '')
 
     if (p?.rol === 'deportista') {
-      const { data: dep } = await supabase.from('deportista').select('id_entrenador').eq('id_usuario', user.id).maybeSingle()
+      const dep = depQ.data
       if (dep?.id_entrenador) {
         const { data: ent } = await supabase.from('perfiles').select('nombre, email').eq('id', dep.id_entrenador).single()
         setEntrenador(ent)
