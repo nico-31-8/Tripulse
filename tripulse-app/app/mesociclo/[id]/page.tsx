@@ -35,24 +35,24 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
-    const { data: meso } = await supabase.from('mesociclo').select('*').eq('id', id).single()
+    const { data: meso } = await supabase.from('mesociclo').select('*').eq('id', id).maybeSingle()
     setMesociclo(meso)
     if (!meso) { setNoExiste(true); return }
-    const { data: micro } = await supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true })
-    setMicrociclos(micro || [])
-    if (meso) {
-      // Cargar deportistas del macrociclo
-      const { data: macro } = await supabase.from('macrociclo').select('id_deportista').eq('id', meso.id_macrociclo).single()
-      if (macro) {
-        const { data: dep } = await supabase.from('deportista').select('id, nombre').eq('id', macro.id_deportista)
-        setDeportistas(dep || [])
-      }
-    }
-    const { data: vals } = await supabase.from('valoracion_tecnica_mesociclo').select('*').eq('id_mesociclo', id)
-    setValoraciones(vals || [])
+
+    /* El macrociclo estaba en medio solo para averiguar de quién era el bloque, y
+       `mesociclo.id_deportista` ya lo dice. Las tres consultas que quedan no
+       dependen unas de otras. */
+    const [micro, dep, vals] = await Promise.all([
+      supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true }),
+      supabase.from('deportista').select('id, nombre').eq('id', meso.id_deportista),
+      supabase.from('valoracion_tecnica_mesociclo').select('*').eq('id_mesociclo', id),
+    ])
+    setMicrociclos(micro.data || [])
+    setDeportistas(dep.data || [])
+    setValoraciones(vals.data || [])
     // Inicializar draft con valores existentes
     const initDraft: Record<string, { valoracion: number; notas: string }> = {}
-    ;(vals || []).forEach((v: any) => {
+    ;(vals.data || []).forEach((v: any) => {
       initDraft[`${v.id_deportista}_${v.disciplina}`] = { valoracion: v.valoracion, notas: v.notas || '' }
     })
     setDraft(initDraft)

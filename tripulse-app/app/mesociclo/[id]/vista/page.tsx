@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { vivas } from '@/lib/papelera'
 import { semanasEntre, sumarSemanas, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -46,40 +47,60 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { cargar() }, [id])
 
+  /*
+   * De ocho viajes encadenados a cuatro rondas.
+   *
+   * El macrociclo ya no hace de puente para saber de quién es el bloque:
+   * `mesociclo.id_deportista` lo dice. Se sigue pidiendo, pero solo por su
+   * `fecha_inicio` —el origen de la numeración de semanas— y ya no bloquea a
+   * los demás.
+   */
   const cargar = async () => {
-    const { data: m } = await supabase.from('mesociclo').select('*').eq('id', id).single()
+    const { data: m } = await supabase.from('mesociclo').select('*').eq('id', id).maybeSingle()
     // Aquí ya había un `return` seco: la consulta terminaba sin resultado y la
     // pantalla se quedaba cargando eternamente sin que nadie lo dijera.
     if (!m) { setNoExiste(true); return }
     setMeso(m)
-    const { data: mi } = await supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true })
-    setMicros(mi || [])
-    const { data: macro } = await supabase.from('macrociclo').select('id, id_deportista, fecha_inicio').eq('id', m.id_macrociclo).single()
-    if (macro) {
-      setDepId(macro.id_deportista)
-      const { data: dep } = await supabase.from('deportista').select('sistema_zonas').eq('id', macro.id_deportista).single()
-      setSistemaZonas(dep?.sistema_zonas || 1)
+    setDepId(m.id_deportista)
+
+    // ---- Ronda 2: todo lo que cuelga del mesociclo, a la vez ----
+    const [micros, macro, dep, hermanos, borrador] = await Promise.all([
+      supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true }),
+      supabase.from('macrociclo').select('id, fecha_inicio').eq('id', m.id_macrociclo).maybeSingle(),
+      supabase.from('deportista').select('sistema_zonas').eq('id', m.id_deportista).maybeSingle(),
+      supabase.from('mesociclo').select('id, fecha_inicio').eq('id_macrociclo', m.id_macrociclo).order('fecha_inicio', { ascending: true }),
+      supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', m.id_deportista).maybeSingle(),
+    ])
+
+    const mi = micros.data || []
+    setMicros(mi)
+    setSistemaZonas(dep.data?.sistema_zonas || 1)
+
+    if (hermanos.data) {
+      const idx = hermanos.data.findIndex((h: any) => String(h.id) === String(id))
+      setPosicion({ n: idx + 1, total: hermanos.data.length })
     }
-    const { data: hermanos } = await supabase.from('mesociclo').select('id, fecha_inicio').eq('id_macrociclo', m.id_macrociclo).order('fecha_inicio', { ascending: true })
-    if (hermanos) {
-      const idx = hermanos.findIndex(h => String(h.id) === String(id))
-      setPosicion({ n: idx + 1, total: hermanos.length })
-    }
-    const microIds = (mi || []).map(x => x.id)
-    if (microIds.length) {
-      const { data: ses } = await supabase.from('sesion').select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen').in('id_microciclo', microIds).or('eliminada.is.null,eliminada.eq.false')
-      setSesiones(ses || [])
-      const sesIds = (ses || []).map(s => s.id)
-      if (sesIds.length) {
-        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento').in('id_sesion', sesIds)
-        setTareas(tar || [])
-      }
-    }
-    if (macro) {
-      const { data: bz } = await supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', macro.id_deportista).single()
-      const semanasMeso = new Set((mi || []).map(x => semanasEntre(macro.fecha_inicio, x.fecha_inicio)))
-      const todasZonas = (bz?.sesiones_zonas || []) as any[]
+
+    const inicioMacro = macro.data?.fecha_inicio
+    if (inicioMacro) {
+      const semanasMeso = new Set(mi.map((x: any) => semanasEntre(inicioMacro, x.fecha_inicio)))
+      const todasZonas = (borrador.data?.sesiones_zonas || []) as any[]
       setZonas(todasZonas.filter(z => semanasMeso.has(z.semana)))
+    }
+
+    // ---- Ronda 3: las sesiones de ESTAS semanas ----
+    const microIds = mi.map((x: any) => x.id)
+    if (!microIds.length) { setSesiones([]); return }
+    const { data: ses } = await vivas(supabase.from('sesion')
+      .select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen')
+      .in('id_microciclo', microIds))
+    setSesiones(ses || [])
+
+    // ---- Ronda 4: sus bloques ----
+    if (ses?.length) {
+      const { data: tar } = await supabase.from('tarea')
+        .select('id, id_sesion, zona_entrenamiento').in('id_sesion', ses.map((x: any) => x.id))
+      setTareas(tar || [])
     }
   }
 

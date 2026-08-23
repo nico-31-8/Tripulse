@@ -150,58 +150,83 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
   const [invitaciones, setInvitaciones] = useState<{ id: string; id_club: string; nombre_club: string; rol_club: string }[]>([])
   const [invPend, setInvPend] = useState<{ id: string; id_club: string; email: string; rol_club: string }[]>([])
 
+  /*
+   * DE ONCE VIAJES EN SERIE A DOS RONDAS.
+   *
+   * Ninguna de las consultas de la primera ronda dependía de otra: la gente, el
+   * roster de clubes, si soy plataforma, mis invitaciones, las que mandé y mi
+   * propio perfil. Iban una detrás de otra sin motivo.
+   *
+   * La segunda ronda sí depende de la primera: los palmareses de los atletas
+   * que han salido, los clubes del roster y el recuento de deportistas por
+   * entrenador.
+   *
+   * ESE RECUENTO SIGUE SIENDO UNA LLAMADA POR ENTRENADOR (`num_deportistas` es
+   * una función SQL que recibe UN id) y se deja así a propósito: agruparlo pide
+   * una función nueva en la base, y eso es una migración, no un pulido. Al menos
+   * van todas a la vez.
+   */
   const cargar = useCallback(async () => {
     const user = await usuarioActual()
     setYoId(user?.id ?? null)
 
-    const { data: g } = await supabase.from('perfil_publico').select('*').order('nombre')
-    setGente((g as Persona[]) || [])
-    // Prueba social: nº de deportistas por entrenador + palmarés de los atletas.
-    const listaG = ((g as Persona[]) || [])
+    // ---- Ronda 1: lo que no depende de nada ----
+    const [gente, roster, plataforma, invitaciones, invPendientes, mio, misPalm] = await Promise.all([
+      supabase.from('perfil_publico').select('*').order('nombre'),
+      supabase.from('club_roster').select('*'),
+      supabase.rpc('soy_plataforma'),
+      supabase.rpc('mis_invitaciones'),
+      // Las que he mandado y siguen pendientes: RLS me deja verlas como admin del
+      // club, y así el admin sabe que se enviaron y a quién.
+      supabase.from('invitacion_club').select('id, id_club, email, rol_club').eq('estado', 'pendiente'),
+      user ? supabase.from('perfiles').select('ciudad, deportes, bio, rol').eq('id', user.id).maybeSingle()
+           : Promise.resolve({ data: null }),
+      user ? supabase.from('palmares').select('*').eq('id_perfil', user.id)
+               .order('destacada', { ascending: false }).order('fecha', { ascending: false })
+           : Promise.resolve({ data: [] }),
+    ])
+
+    const listaG = ((gente.data as Persona[]) || [])
+    setGente(listaG)
+    setRoster(roster.data || [])
+    setEsPlataforma(!!plataforma.data)
+    setInvitaciones(invitaciones.data || [])
+    setInvPend(invPendientes.data || [])
+    if (user) {
+      const m = (mio as any).data
+      setMiCiudad(m?.ciudad || '')
+      setMisDeportes(m?.deportes || [])
+      setMiBio(m?.bio || '')
+      setMiRol(m?.rol || '')
+      setMisPalmares(((misPalm as any).data as Palmar[]) || [])
+    }
+
+    // ---- Ronda 2: lo que sale de lo anterior ----
     const idsEntrenador = listaG.filter(x => x.rol === 'entrenador' || x.rol === 'admin').map(x => x.id)
     const idsAtleta = listaG.filter(x => x.rol === 'deportista').map(x => x.id)
-    if (idsEntrenador.length) {
-      const pares = await Promise.all(idsEntrenador.map(async id => {
+    const idsClub = [...new Set((roster.data || []).map((x: any) => x.id_club))]
+
+    const [conteosPares, palmares, clubes] = await Promise.all([
+      // Prueba social: cuántos deportistas lleva cada entrenador.
+      Promise.all(idsEntrenador.map(async id => {
         const { data } = await supabase.rpc('num_deportistas', { _id: id })
         return [id, (data as number) || 0] as [string, number]
-      }))
-      setConteos(Object.fromEntries(pares))
-    } else setConteos({})
-    if (idsAtleta.length) {
-      const { data: pl } = await supabase.from('palmares').select('*').in('id_perfil', idsAtleta).order('destacada', { ascending: false }).order('fecha', { ascending: false })
-      const porPerfil: Record<string, Palmar[]> = {}
-      ;((pl as Palmar[]) || []).forEach(x => { (porPerfil[x.id_perfil] ||= []).push(x) })
-      setPalmaresPorPerfil(porPerfil)
-    } else setPalmaresPorPerfil({})
+      })),
+      idsAtleta.length
+        ? supabase.from('palmares').select('*').in('id_perfil', idsAtleta)
+            .order('destacada', { ascending: false }).order('fecha', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      idsClub.length
+        ? supabase.from('club').select('id, nombre, descripcion, tipo, ciudad, logo_url').in('id', idsClub)
+        : Promise.resolve({ data: [] }),
+    ])
 
-    const { data: r } = await supabase.from('club_roster').select('*')
-    setRoster(r || [])
-    const idsClub = [...new Set((r || []).map((x: any) => x.id_club))]
-    if (idsClub.length) {
-      const { data: c } = await supabase.from('club').select('id, nombre, descripcion, tipo, ciudad, logo_url').in('id', idsClub)
-      setClubs(Object.fromEntries((c || []).map((x: any) => [x.id, x as Club])))
-    } else setClubs({})
+    setConteos(Object.fromEntries(conteosPares))
+    const porPerfil: Record<string, Palmar[]> = {}
+    ;(((palmares as any).data as Palmar[]) || []).forEach(x => { (porPerfil[x.id_perfil] ||= []).push(x) })
+    setPalmaresPorPerfil(porPerfil)
+    setClubs(Object.fromEntries((((clubes as any).data) || []).map((x: any) => [x.id, x as Club])))
 
-    const { data: pl } = await supabase.rpc('soy_plataforma')
-    setEsPlataforma(!!pl)
-
-    const { data: inv } = await supabase.rpc('mis_invitaciones')
-    setInvitaciones(inv || [])
-
-    // Invitaciones que he mandado y siguen pendientes (el RLS me deja verlas como admin
-    // del club). Para que el admin sepa que se enviaron y a quién.
-    const { data: ip } = await supabase.from('invitacion_club').select('id, id_club, email, rol_club').eq('estado', 'pendiente')
-    setInvPend(ip || [])
-
-    if (user) {
-      const { data: mio } = await supabase.from('perfiles').select('ciudad, deportes, bio, rol').eq('id', user.id).single()
-      setMiCiudad(mio?.ciudad || '')
-      setMisDeportes(mio?.deportes || [])
-      setMiBio(mio?.bio || '')
-      setMiRol(mio?.rol || '')
-      const { data: mp } = await supabase.from('palmares').select('*').eq('id_perfil', user.id).order('destacada', { ascending: false }).order('fecha', { ascending: false })
-      setMisPalmares((mp as Palmar[]) || [])
-    }
     setCargando(false)
   }, [])
 

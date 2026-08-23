@@ -623,3 +623,24 @@ Actualizada — si se dejara fuera, el test pasaría sobre una estructura que en
 base no existe.
 
 Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
+
+### Comunidad y los mesociclos (2026-08-23)
+
+**`ComunidadDirectorio`**: once viajes en serie para pintar el directorio, y
+ninguno de los siete primeros dependía de otro (la gente, el roster, si soy
+plataforma, mis invitaciones, las que mandé, mi perfil, mi palmarés). Dos rondas.
+
+El recuento de deportistas por entrenador **sigue siendo una llamada por
+entrenador** y se deja así a propósito: `num_deportistas` es una función SQL que
+recibe UN id, y agruparla pide una función nueva en la base — eso es una
+migración, no un pulido. Al menos ahora van todas a la vez.
+
+**`mesociclo` y `mesociclo/vista`**: el macrociclo estaba en medio solo para
+averiguar de quién era el bloque, y `mesociclo.id_deportista` ya lo dice. En
+`vista` se sigue pidiendo, pero solo por su `fecha_inicio` —el origen de la
+numeración de semanas— y ya no bloquea a las otras cuatro consultas.
+
+    vista       8 encadenados  →  4 rondas
+    mesociclo   6              →  2
+
+Verificado: `tsc` 0 · **1.003 tests** · `next build` OK.
