@@ -242,7 +242,13 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       vivas(supabase.from('sesion').select('estado, fecha_sesion')
         .eq('id_deportista', Number(id))
         .gte('fecha_sesion', sumarDias(hoyStr, -30)).lte('fecha_sesion', hoyStr)),
-      vivas(supabase.from('sesion').select('*')
+      /* Solo lo que se pinta. Estas diez sesiones van a `ultimasSesiones` y de
+         ahí a una lista; NO alimentan la curva de forma, que sale de `ses42`.
+         Esa distinción es la que hace seguro recortar aquí: si estas filas
+         entraran en `lib/panel-metricas`, la lista de columnas tendría que salir
+         de lo que lee ESA librería, no de lo que usa este fichero. */
+      vivas(supabase.from('sesion')
+        .select('id, fecha_sesion, disciplina, duracion_minutos, rpe_estimado, notas_entrenador, estado')
         .eq('id_deportista', Number(id)).eq('estado', 'Realizada'))
         .order('fecha_sesion', { ascending: false }).limit(10),
     ])

@@ -268,3 +268,56 @@ describe('intensidadDeTarea', () => {
     expect(f.idTarea).toBeUndefined()
   })
 })
+
+/*
+  El viaje de ida y vuelta del encadenado. Antes los tres números se quedaban en
+  el camino: se escribían dentro de las notas y al reabrir la fila volvían
+  vacíos, así que editar una superserie perdía la mitad de la prescripción.
+*/
+describe('los números del encadenado vuelven a la fila', () => {
+  const conEncadenado = (extra: any = {}) => ({
+    id: 9, orden: 1, series: 4,
+    ejercicios: [{
+      nombre: 'Sentadilla', grupo_muscular: 'Pierna', series: 4, repeticiones: 8, intensidad: 80,
+      ejercicio_encadenado_id: 22, ejercicio_encadenado_nombre: 'Press banca',
+      ...extra,
+    }],
+  })
+  const BIB = [
+    { id: 11, nombre: 'Sentadilla', grupo_muscular: 'Pierna' },
+    { id: 22, nombre: 'Press banca', grupo_muscular: 'Pecho' },
+  ]
+
+  it('los tres vuelven', () => {
+    const f = filaFuerzaDesde(
+      conEncadenado({ encadenado_series: 3, encadenado_repeticiones: 10, encadenado_intensidad: 40 }),
+      { base: BASE_F, orden: 1, copia: false, ejerciciosBiblioteca: BIB })
+    expect(f.ejercicioSelId2).toBe('22')
+    expect(f.series2).toBe('3')
+    expect(f.repsFuerza2).toBe('10')
+    expect(f.kgFuerza2).toBe('40')
+  })
+
+  it('al copiar también viajan: es la misma prescripción', () => {
+    const f = filaFuerzaDesde(
+      conEncadenado({ encadenado_series: 3, encadenado_repeticiones: 10, encadenado_intensidad: 40 }),
+      { base: BASE_F, orden: 1, copia: true, ejerciciosBiblioteca: BIB })
+    expect(f.series2).toBe('3')
+    expect(f.idTarea).toBeUndefined()
+  })
+
+  it('una tarea anterior a la migración vuelve con los huecos vacíos, no rota', () => {
+    const f = filaFuerzaDesde(conEncadenado(), { base: BASE_F, orden: 1, copia: false, ejerciciosBiblioteca: BIB })
+    expect(f.ejercicioSelId2).toBe('22')
+    expect(f.series2).toBe('')
+    expect(f.repsFuerza2).toBe('')
+    expect(f.kgFuerza2).toBe('')
+  })
+
+  it('un 0 no se confunde con vacío', () => {
+    const f = filaFuerzaDesde(
+      conEncadenado({ encadenado_intensidad: 0 }),
+      { base: BASE_F, orden: 1, copia: false, ejerciciosBiblioteca: BIB })
+    expect(f.kgFuerza2).toBe('0')
+  })
+})

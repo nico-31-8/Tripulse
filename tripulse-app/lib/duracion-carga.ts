@@ -160,3 +160,32 @@ export function cargaReal(s: SesionCarga | null | undefined, est?: ResultadoDura
   if (!s) return 0
   return (s.rpe_reportado || s.rpe_estimado || RPE_POR_DEFECTO) * minutosCarga(s, est)
 }
+
+// ------------------------------------------------------------
+// Segundos → texto
+// ------------------------------------------------------------
+// Había CUATRO `segAMmss` repartidas, y no eran la misma función: tres siempre
+// devolvían «m:ss» y la cuarta se comía el «:00» cuando los segundos eran
+// exactos. Dos comportamientos bajo un nombre, que es la forma en que estos
+// fallos se esconden. No se fusionan —los dos hacen falta— pero se les separa el
+// nombre y la implementación vive aquí una sola vez.
+
+/** «2:00», «1:30», «0:45». Siempre con los dos puntos. Para MOSTRAR. */
+export function mmss(seg: number): string {
+  const min = Math.floor(seg / 60)
+  const s = seg % 60
+  return min + ':' + String(s).padStart(2, '0')
+}
+
+/**
+ * «2», «1:30», «0:45». Sin el «:00» cuando el minuto es exacto.
+ *
+ * Es lo que espera una CASILLA editable: al guardar, `mmssASegundos` entiende
+ * «2» y «1:30», pero el usuario no quiere teclear «2:00» para dos minutos.
+ * También se usa donde detrás va un « min», que deshace la ambigüedad.
+ */
+export function mmssCorto(seg: number): string {
+  const min = Math.floor(seg / 60)
+  const s = seg % 60
+  return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
+}

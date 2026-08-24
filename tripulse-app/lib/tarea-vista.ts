@@ -96,7 +96,7 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number): VistaTarea {
         { k: 'Descanso', v: descanso },
       ],
       comentario,
-      encadenado: ej.ejercicio_encadenado_nombre || '',
+      encadenado: textoEncadenado(ej),
     }
   }
 
@@ -134,4 +134,33 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number): VistaTarea {
 /** Las zonas distintas que toca una sesión, para el resumen del día. */
 export function zonasDeSesion(tareas: any[]): string[] {
   return [...new Set((tareas || []).map(t => t?.zona_entrenamiento).filter(Boolean))] as string[]
+}
+
+/**
+ * El segundo ejercicio de una superserie, con sus números.
+ *
+ * «Press banca · 3×10 · 40 kg», o solo «Press banca» si no los tiene.
+ *
+ * Esos tres números vivían METIDOS COMO TEXTO dentro de `notas_ejecucion`
+ * (« | EJ2: Press banca 3x10 @40kg »), que es el mismo apaño que ya se pagó caro
+ * con el RIR. Ahora tienen columnas propias, así que se pueden leer, editar y
+ * copiar — pero por eso mismo el texto hay que armarlo en algún sitio, y ese
+ * sitio es este y no las cinco pantallas que lo pintan.
+ *
+ * Las tareas VIEJAS no tienen las columnas rellenas: ahí sale el nombre solo, y
+ * sus números se siguen viendo donde siempre, dentro de las notas.
+ */
+export function textoEncadenado(ej: any): string {
+  const nombre = ej?.ejercicio_encadenado_nombre
+  if (!nombre) return ''
+  const ser = ej.encadenado_series
+  const rep = ej.encadenado_repeticiones
+  const kg = ej.encadenado_intensidad
+  const trozos = [
+    ser != null && rep != null ? ser + '×' + rep
+      : ser != null ? ser + (Number(ser) === 1 ? ' serie' : ' series')
+      : rep != null ? rep + ' reps' : '',
+    kg != null ? kg + ' kg' : '',
+  ].filter(Boolean)
+  return trozos.length ? nombre + ' · ' + trozos.join(' · ') : String(nombre)
 }

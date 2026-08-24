@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { mmss } from '@/lib/duracion-carga'
+import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
@@ -9,11 +11,11 @@ const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carr
 // era lo único que había.
 // Las etiquetas vienen del catálogo compartido: aquí había una tercera copia.
 
+// El «—» del vacío es una decisión de ESTA pantalla, no del formateador: por eso
+// se queda aquí y lo de convertir se comparte.
 function segAMmss(seg: number): string {
   if (!seg) return '—'
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return min + ':' + String(s).padStart(2, '0')
+  return mmss(seg)
 }
 
 export default function DatosReales({ sesionId, disciplina }: { sesionId: number, disciplina: string }) {
@@ -244,7 +246,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                         {/* Ejercicio 2 si hay superserie */}
                         {ej.ejercicio_encadenado_nombre && srEj.some(sr => sr.ejercicio_numero === 2) && (
                           <div className="mt-2">
-                            <p className="text-xs text-orange-300 mb-1">+ {ej.ejercicio_encadenado_nombre}</p>
+                            <p className="text-xs text-orange-300 mb-1">+ {textoEncadenado(ej)}</p>
                             <table className="w-full text-xs">
                               <tbody>
                                 {srEj.filter(sr => sr.ejercicio_numero === 2).map((sr: any) => (

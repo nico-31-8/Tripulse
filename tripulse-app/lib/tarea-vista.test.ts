@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { valorPorSerie, totalDeTarea, vistaDeTarea, zonasDeSesion, nombreDeZona } from './tarea-vista'
+import { valorPorSerie, totalDeTarea, vistaDeTarea, zonasDeSesion, nombreDeZona, textoEncadenado } from './tarea-vista'
 
 const SIN_TESTS = {}
 const CON_TESTS = { vam: 18, ftp: 260, css: 1.25 }
@@ -168,5 +168,44 @@ describe('las zonas de una sesión', () => {
     expect(nombreDeZona('PAE')).toBe('Potencia aeróbica')
     expect(nombreDeZona('FMH')).toBe('Fuerza Máxima Hipertrofia')
     expect(nombreDeZona('loquesea')).toBe('')
+  })
+})
+
+/*
+  Los tres números del 2.º ejercicio de una superserie vivían como texto dentro
+  de `notas_ejecucion` (« | EJ2: Press banca 3x10 @40kg »). Ya tienen columnas,
+  y el texto que se enseña se arma en un solo sitio.
+*/
+describe('textoEncadenado', () => {
+  it('nombre y los tres números', () => {
+    expect(textoEncadenado({
+      ejercicio_encadenado_nombre: 'Press banca',
+      encadenado_series: 3, encadenado_repeticiones: 10, encadenado_intensidad: 40,
+    })).toBe('Press banca · 3×10 · 40 kg')
+  })
+
+  it('una tarea vieja, sin las columnas, sigue enseñando el nombre', () => {
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: 'Press banca' })).toBe('Press banca')
+  })
+
+  it('sin encadenado, vacío', () => {
+    expect(textoEncadenado({})).toBe('')
+    expect(textoEncadenado(null)).toBe('')
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: null, encadenado_series: 3 })).toBe('')
+  })
+
+  it('con solo una parte de los números no se inventa el resto', () => {
+    const n = 'Press banca'
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: n, encadenado_series: 3 })).toBe('Press banca · 3 series')
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: n, encadenado_series: 1 })).toBe('Press banca · 1 serie')
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: n, encadenado_repeticiones: 10 })).toBe('Press banca · 10 reps')
+    expect(textoEncadenado({ ejercicio_encadenado_nombre: n, encadenado_intensidad: 40 })).toBe('Press banca · 40 kg')
+  })
+
+  it('un 0 es un dato, no un hueco', () => {
+    expect(textoEncadenado({
+      ejercicio_encadenado_nombre: 'Plancha', encadenado_series: 3,
+      encadenado_repeticiones: 10, encadenado_intensidad: 0,
+    })).toBe('Plancha · 3×10 · 0 kg')
   })
 })

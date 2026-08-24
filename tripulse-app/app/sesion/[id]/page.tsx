@@ -278,7 +278,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
       // sesiones anteriores a que el control tuviera columnas propias.
       ordenarTareasQuery(
-        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre, ejercicio_encadenado_id, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id)),
+        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id)),
     ])
 
     setSesion(ses)

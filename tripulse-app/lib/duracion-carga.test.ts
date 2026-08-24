@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos } from './duracion-carga'
+import { estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos, mmss, mmssCorto } from './duracion-carga'
 import type { ResultadoDuracion } from './duracion'
 
 const est = (minutos: number, estimable = true): ResultadoDuracion =>
@@ -213,5 +213,33 @@ describe('origenMinutos — de dónde salió el número', () => {
   })
   it('null cuando no hay nada que enseñar', () => {
     expect(origenMinutos({ duracion_real: null, duracion_minutos: null })).toBeNull()
+  })
+})
+
+/*
+  Había CUATRO `segAMmss` y no eran la misma función: tres siempre devolvían
+  «m:ss» y la cuarta se comía el «:00». Mismo nombre, dos comportamientos. Estos
+  tests fijan que siguen siendo DOS y cuál es cuál, para que nadie las «unifique»
+  creyendo que son una.
+*/
+describe('mmss y mmssCorto son distintas a propósito', () => {
+  it('mmss siempre lleva los dos puntos: es para MOSTRAR', () => {
+    expect(mmss(120)).toBe('2:00')
+    expect(mmss(90)).toBe('1:30')
+    expect(mmss(45)).toBe('0:45')
+    expect(mmss(185)).toBe('3:05')
+    expect(mmss(0)).toBe('0:00')
+  })
+
+  it('mmssCorto se come el «:00»: es para una CASILLA que se teclea', () => {
+    expect(mmssCorto(120)).toBe('2')
+    expect(mmssCorto(90)).toBe('1:30')
+    expect(mmssCorto(45)).toBe('0:45')
+    expect(mmssCorto(185)).toBe('3:05')
+  })
+
+  it('solo se diferencian en el minuto exacto', () => {
+    for (const seg of [45, 90, 185, 3599]) expect(mmss(seg)).toBe(mmssCorto(seg))
+    for (const seg of [60, 120, 600]) expect(mmss(seg)).not.toBe(mmssCorto(seg))
   })
 })

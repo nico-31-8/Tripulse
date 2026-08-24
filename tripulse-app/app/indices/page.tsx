@@ -78,7 +78,13 @@ export default function IndicesPage() {
        LIBRES: las que el atleta se añade también tienen RPE reportado, así que
        también dicen si percibe más duro de lo previsto — que es de lo que va
        esta pantalla. */
-    const { data: ses } = await vivas(supabase.from('sesion').select('*')
+    /* Las cinco columnas que esta pantalla usa, no la fila entera. `estado` y
+       `eliminada` se FILTRAN pero no se piden: para filtrar no hace falta
+       traerlas. Recortar un `select('*')` rompe en silencio —el campo llega
+       `undefined` y nadie se queja—, así que la lista sale de mirar todos los
+       `s.` del fichero, no de suponer. */
+    const { data: ses } = await vivas(supabase.from('sesion')
+      .select('id, fecha_sesion, disciplina, duracion_minutos, rpe_estimado')
       .eq('id_deportista', dep.id).eq('estado', 'Realizada'))
       .order('fecha_sesion', { ascending: false }).limit(20)
 

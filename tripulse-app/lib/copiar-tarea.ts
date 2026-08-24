@@ -17,6 +17,7 @@
 // que la de origen no se toca — que es justo lo que se le promete al entrenador
 // en el panel.
 import { detectarMedicion } from './medicion'
+import { mmssCorto } from './duracion-carga'
 import type { ControlTipo } from './control-esfuerzo'
 
 export interface FilaResistencia {
@@ -61,11 +62,10 @@ export interface FilaFuerza {
 }
 
 /** «90» → «1:30». Los segundos sueltos no llevan minutos delante. */
-export function segAMmss(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
-}
+/* Se llamaba `segAMmss`, igual que tres funciones locales que hacían otra cosa
+   (esas nunca se comen el «:00»). Ahora vive en lib/duracion-carga con nombre
+   propio; se reexporta porque media app la importa desde aquí. */
+export { mmssCorto as segAMmss } from './duracion-carga'
 
 export interface OpcionesFila {
   /** La fila vacía de la que se parte: trae los valores por defecto de la sesión. */
@@ -137,7 +137,7 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
   const esTiempo = !!segundos
   // OJO: aquí NO vale el texto de leer («45 s», «1:30 min»): al guardar,
   // mmssASegundos no lo entiende. La casilla acepta «45» o «1:30».
-  const tiempoEditable = esTiempo ? (segundos < 60 ? String(segundos) : segAMmss(segundos)) : ''
+  const tiempoEditable = esTiempo ? (segundos < 60 ? String(segundos) : mmssCorto(segundos)) : ''
   // El grupo del encadenado, para que su desplegable lo enseñe: sin él, una
   // superserie seguía guardada pero no había forma de verla ni cambiarla.
   const ej2 = ej?.ejercicio_encadenado_id
@@ -162,13 +162,17 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
     comentario: t.comentario || '',
     grupoMuscular2: ej2?.grupo_muscular || '',
     ejercicioSelId2: ej2 ? String(ej2.id) : '',
-    /* series2/repsFuerza2/kgFuerza2 se quedan como estaban en la fila vacía, y
-       NO es un olvido de este fichero: hoy esos tres números del encadenado no
-       tienen columna propia — se guardan metidos como texto dentro de
-       `notas_ejecucion` («| EJ2: Nombre 3x10 @40kg»). Recuperarlos exigiría
-       leer esa cadena con una expresión regular, que es justo el apaño que ya
-       nos costó caro con el RIR. Se deja el hueco a la vista en vez de taparlo
-       con un parser frágil. Editar una superserie ya se comportaba así. */
+    /* Los tres números del encadenado ya tienen columna propia, así que vuelven.
+       Antes se quedaban como estaban en la fila vacía porque vivían metidos como
+       texto dentro de `notas_ejecucion`, y sacarlos de ahí habría exigido una
+       expresión regular — el mismo apaño que costó caro con el RIR.
+
+       Las tareas creadas ANTES de la migración siguen sin ellos: vuelven vacíos,
+       igual que antes, y sus números se siguen leyendo en las notas. No se
+       rellenan hacia atrás, que exigiría justo el parser que se ha evitado. */
+    series2: ej?.encadenado_series != null ? String(ej.encadenado_series) : '',
+    repsFuerza2: ej?.encadenado_repeticiones != null ? String(ej.encadenado_repeticiones) : '',
+    kgFuerza2: ej?.encadenado_intensidad != null ? String(ej.encadenado_intensidad) : '',
     escalonDrop: ej?.escalones_drop || '',
     zonaFuerzaTarea: t.zona_entrenamiento || '',
   }

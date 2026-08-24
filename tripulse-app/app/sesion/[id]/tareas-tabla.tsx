@@ -2,6 +2,7 @@
 import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { textoEncadenado } from '@/lib/tarea-vista'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
@@ -409,9 +410,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     }
     if (tarea && ejBib) {
       const ejBib2 = f.ejercicioSelId2 ? ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2)) : null
-      // Si hay ejercicio 2, añadirlo como nota en notas_ejecucion
-      const notasEj2 = ejBib2 ? ' | EJ2: ' + ejBib2.nombre + (f.series2 ? ' ' + f.series2 + 'x' : '') + (f.repsFuerza2 ? f.repsFuerza2 : '') + (f.kgFuerza2 ? ' @' + f.kgFuerza2 + 'kg' : '') : ''
-      await supabase.from('ejercicios').insert({
+      /* Los números del encadenado van a SUS columnas, y ya no se pegan también
+         dentro de `notas_ejecucion` como « | EJ2: Nombre 3x10 @40kg ». Escribir
+         las dos cosas dejaría el mismo dato en dos sitios, y con el tiempo
+         dirían cosas distintas: es el fallo que este pase lleva persiguiendo.
+         Lo que el atleta lee lo arma `textoEncadenado` en lib/tarea-vista. */
+      const { error: errEj } = await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
         nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
@@ -427,13 +431,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         notas_ejecucion: [
           esTiempo && segundos > 0 ? duracionTexto(segundos) + (f.tipoSerie === 'Isométrico' ? ' isométrico' : ' por serie') : '',
           f.comentario || '',
-        ].filter(Boolean).join(' · ') + notasEj2,
+        ].filter(Boolean).join(' · '),
         tipo_serie: f.tipoSerie || 'Normal',
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
+        encadenado_series: ejBib2 && f.series2 ? Number(f.series2) : null,
+        encadenado_repeticiones: ejBib2 && f.repsFuerza2 ? Number(f.repsFuerza2) : null,
+        encadenado_intensidad: ejBib2 && f.kgFuerza2 ? Number(f.kgFuerza2) : null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
       })
+      /* Este insert no miraba su error. Si fallaba, la tarea se guardaba y el
+         EJERCICIO se perdía sin decir nada — y una tarea de fuerza sin ejercicio
+         no es nada. Se avisa. */
+      if (errEj) { alert('Error al guardar el ejercicio: ' + errEj.message); setLoading(false); return }
       // Una tarea tiene UNA medición: o segundos o repeticiones, nunca las dos.
       if (esTiempo) {
         if (segundos > 0) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: segundos })
@@ -569,7 +580,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                 <div key={ej.id} className="flex items-center gap-1.5">
                                   {ej.tipo_serie && ej.tipo_serie !== 'Normal' && <span className="text-xs bg-orange-900 text-orange-300 px-1.5 rounded">{ej.tipo_serie}</span>}
                                   <span className="text-sm">{ej.nombre}</span>
-                                  {ej.ejercicio_encadenado_nombre && <span className="text-orange-400 text-xs">+ {ej.ejercicio_encadenado_nombre}</span>}
+                                  {textoEncadenado(ej) && <span className="text-orange-400 text-xs">+ {textoEncadenado(ej)}</span>}
                                 </div>
                               ))}
                             </div>

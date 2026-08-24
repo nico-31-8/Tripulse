@@ -1,12 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { controlDe, textoControl } from '@/lib/control-esfuerzo'
+import { mmss } from '@/lib/duracion-carga'
+import { textoEncadenado } from '@/lib/tarea-vista'
 
-function segAMmss(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return min + ':' + String(s).padStart(2, '0')
-}
+const segAMmss = mmss
 
 function getYoutubeId(url: string) {
   const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([^&\n?#/]+)/)
@@ -115,7 +113,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                   </span>
                   <span className="font-bold text-white">{ej.nombre}</span>
                   {ej.ejercicio_encadenado_nombre && (
-                    <span className="text-orange-400 text-sm"> + {ej.ejercicio_encadenado_nombre}</span>
+                    <span className="text-orange-400 text-sm"> + {textoEncadenado(ej)}</span>
                   )}
                   {superado && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white align-middle">✓ superado</span>}
                 </div>

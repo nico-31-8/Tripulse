@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { mmss } from '@/lib/duracion-carga'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
@@ -12,11 +13,7 @@ import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 
-function segAMmss(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return min + ':' + String(s).padStart(2, '0')
-}
+const segAMmss = mmss
 
 function mmssASeg(str: string): number {
   if (!str) return 0
