@@ -537,7 +537,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             </div>
             {/* Ritmo / Potencia objetivo */}
             {(() => {
-              const ritmoGuardado = tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo
+              /* Solo p_distancia: `p_duracion` NO tiene columna `ritmo_objetivo`,
+                 comprobado contra la base. Leerla de ahí era código muerto que
+                 hacía creer que una tarea por tiempo podía traer ritmo guardado.
+                 Para esas, el ritmo sale del cálculo de la zona, abajo. */
+              const ritmoGuardado = tarea?.p_distancia?.[0]?.ritmo_objetivo
               const ritmoCalculado = calcularRango(tarea?.zona_entrenamiento || '', tarea?.disciplina || sesion?.disciplina || '', tests)
               const ritmoMostrar = ritmoGuardado || ritmoCalculado
               if (!ritmoMostrar) return null
@@ -612,11 +616,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                       <div>
                         <label className="text-gray-400 text-xs mb-1 flex justify-between">
                           <span>Ritmo / Potencia</span>
-                          {(tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo) && (
-                            <span className="text-orange-400 font-medium">Objetivo: {tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo}</span>
+                          {tarea?.p_distancia?.[0]?.ritmo_objetivo && (
+                            <span className="text-orange-400 font-medium">Objetivo: {tarea.p_distancia[0].ritmo_objetivo}</span>
                           )}
                         </label>
-                        <input type="text" placeholder={tarea?.p_distancia?.[0]?.ritmo_objetivo || tarea?.p_duracion?.[0]?.ritmo_objetivo || "Ritmo real"}
+                        <input type="text" placeholder={tarea?.p_distancia?.[0]?.ritmo_objetivo || "Ritmo real"}
                           value={serieData.ritmo || ''}
                           onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, ritmo: e.target.value })}
                           className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-orange-500" />

@@ -324,10 +324,29 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         /* Lo que el entrenador escribe en el «@» MANDA sobre lo que propone la
            zona. Antes se guardaba siempre la propuesta y la casilla se tiraba:
            escribir «4:00 /km» encima no servía de nada, el atleta seguía viendo
-           el rango de la zona. Y eran dos viajes (insert + update) para escribir
-           dos columnas de la misma fila. */
+           el rango de la zona.
+
+           EL RITMO SE ESCRIBE EN UN SEGUNDO PASO, Y ESO NO ES UN DESCUIDO.
+           `ritmo_objetivo` está declarada `numeric` y lo que se guarda es TEXTO
+           con su unidad dentro («180–220 W», «4:12–4:30 /km»), así que la
+           escritura falla. Si fuera dentro del insert, se caería la fila entera
+           y la tarea se quedaría SIN DISTANCIA: se perdería el dato importante
+           por no poder guardar el accesorio. Separada, lo peor que pasa es que
+           no haya ritmo. Se arregla de verdad pasando la columna a texto:
+           supabase/ritmo-objetivo-a-texto.sql. */
         const _intensidad = f.intensidadPersonalizada.trim() || _ref?.ritmo || null
-        if (_tabla === 'p_distancia') await supabase.from('p_distancia').insert({ id_tarea: idTarea, metros_planeados: _valor, ritmo_objetivo: _intensidad })
+        if (_tabla === 'p_distancia') {
+          const { data: pd, error: errD } = await supabase.from('p_distancia')
+            .insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single()
+          if (errD) { alert('Error al guardar la distancia: ' + errD.message); setLoading(false); return }
+          if (pd && _intensidad) {
+            const { error: errR } = await supabase.from('p_distancia')
+              .update({ ritmo_objetivo: _intensidad }).eq('id', pd.id)
+            // No se avisa al entrenador: la tarea está guardada y esto no lo
+            // puede arreglar él. Pero tampoco se calla, que es como llegó aquí.
+            if (errR) console.warn('[tripulse] ritmo_objetivo no se guardó (¿columna numeric?):', errR.message)
+          }
+        }
         else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: idTarea, tiempo_planeado: _valor })
         else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
       }

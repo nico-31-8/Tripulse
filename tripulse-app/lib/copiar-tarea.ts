@@ -97,7 +97,8 @@ export interface OpcionesFila {
  * y dejaría de actualizarse cuando cambien los tests del atleta.
  */
 export function intensidadDeTarea(t: any, ritmoDeZona?: OpcionesFila['ritmoDeZona']): string {
-  const guardado = t?.p_distancia?.[0]?.ritmo_objetivo ?? t?.p_duracion?.[0]?.ritmo_objetivo
+  /* Solo p_distancia: `p_duracion` no tiene esa columna. */
+  const guardado = t?.p_distancia?.[0]?.ritmo_objetivo
   if (guardado == null) return ''
   const texto = String(guardado).trim()
   if (!texto) return ''

@@ -232,9 +232,13 @@ describe('intensidadDeTarea', () => {
     expect(intensidadDeTarea(t)).toBe('4:12–4:30 /km')
   })
 
-  it('también la lee de p_duracion', () => {
+  /* p_duracion NO tiene columna ritmo_objetivo (comprobado contra la base con
+     supabase/comprobar-ritmo-objetivo.sql). Este test decía que sí se leía de
+     ahí, y era una invención mía: lo que fija ahora es que solo cuenta
+     p_distancia, para que nadie vuelva a añadir la rama. */
+  it('solo la lee de p_distancia: p_duracion no tiene esa columna', () => {
     const t = { zona_entrenamiento: 'Z3', disciplina: 'Carrera', p_duracion: [{ ritmo_objetivo: '180–220 W' }] }
-    expect(intensidadDeTarea(t, sugiere)).toBe('180–220 W')
+    expect(intensidadDeTarea(t, sugiere)).toBe('')
   })
 
   it('sin nada guardado, vacío', () => {

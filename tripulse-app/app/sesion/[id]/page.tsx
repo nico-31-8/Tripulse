@@ -519,7 +519,22 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     const _tabla = tablaMedicion(_u)
     const _valorInput = (_u === 'm' || _u === 'km') ? metros : (_u === 'seg' || _u === 'min') ? tiempo : _u === 'mmss' ? tiempoDisplay : repeticiones
     const _valorC = valorCanonico(_u, _valorInput)
-    if (_tabla === 'p_distancia' && tarea) await supabase.from('p_distancia').insert({ id_tarea: tarea.id, metros_planeados: _valorC, ritmo_objetivo: ritmoManual || ritmoSugerido || null })
+    /* El ritmo va en un segundo paso porque `ritmo_objetivo` es `numeric` y
+       aquí se le mete TEXTO («4:30 min/km»). Dentro del insert, la fila entera
+       se caía: la tarea quedaba SIN DISTANCIA, en silencio, y solo a los atletas
+       que tienen el test hecho (sin test no hay ritmo sugerido y el insert
+       pasaba). Ver supabase/ritmo-objetivo-a-texto.sql. */
+    if (_tabla === 'p_distancia' && tarea) {
+      const { data: pdNueva, error: errPd } = await supabase.from('p_distancia')
+        .insert({ id_tarea: tarea.id, metros_planeados: _valorC }).select().single()
+      if (errPd) { setError('Error al guardar la distancia: ' + errPd.message); setLoading(false); return }
+      const _ritmo = ritmoManual || ritmoSugerido || null
+      if (pdNueva && _ritmo) {
+        const { error: errRitmo } = await supabase.from('p_distancia')
+          .update({ ritmo_objetivo: _ritmo }).eq('id', pdNueva.id)
+        if (errRitmo) console.warn('[tripulse] ritmo_objetivo no se guardó (¿columna numeric?):', errRitmo.message)
+      }
+    }
     else if (_tabla === 'p_duracion' && tarea) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: _valorC })
     else if (_tabla === 'p_repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valorC })
     if (tareaEditandoId) await cargarDatos()
