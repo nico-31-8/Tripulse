@@ -297,7 +297,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
         enVista.forEach(s => { porDisc[s.disciplina] = (porDisc[s.disciplina] || 0) + 1 })
         const hechas = enVista.filter(s => s.estado === 'Realizada').length
         return [
-          `Calendario de ${deportista.nombre}, viendo ${rango} ${rango === 1 ? 'mes' : 'meses'} desde ${desde.toISOString().slice(0, 7)}.`,
+          /* El mes se arma con los números que ya tenemos. Iba por
+             `desde.toISOString()`, y `new Date(año, mes, 1)` es medianoche
+             LOCAL: en España eso son las 22:00 del día anterior en UTC, así que
+             la etiqueta decía SIEMPRE el mes de antes. Y esto es justo lo que
+             lee el asistente para saber qué está mirando el entrenador. */
+          `Calendario de ${deportista.nombre}, viendo ${rango} ${rango === 1 ? 'mes' : 'meses'} desde ${mesesAMostrar[0].año}-${String(mesesAMostrar[0].mes + 1).padStart(2, '0')}.`,
           `${enVista.length} sesiones en ese rango (${hechas} realizadas):`,
           Object.entries(porDisc).map(([d, n]) => `${d} ${n}`).join(', ') + '.',
           micros.length ? `Hay ${micros.length} semanas planificadas y ${mesos.length} mesociclos.` : 'Este atleta no tiene estructura de plan (macro/meso/micro) todavía.',
