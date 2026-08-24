@@ -259,6 +259,15 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                 // justo lo que hay que ver.
                 const discDistinta = t.disciplina && t.disciplina !== sesion.disciplina
                 const ej = ejercicioTarea(t)
+                /* El vídeo, de la técnica o del ejercicio de fuerza. AQUÍ es
+                   donde el atleta lo quiere: antes de entrenar, cuando decide
+                   cómo se hace el movimiento. Hasta hoy solo aparecía dentro de
+                   la pantalla de ejecución, a mitad de registrar series.
+
+                   El del ejercicio viene ya resuelto contra la biblioteca (ver
+                   lib/video-ejercicio), no de la copia que se guardó al
+                   prescribir: si no, un vídeo añadido después no llegaría. */
+                const video = t.tecnica?.url_video || t.ejercicios?.[0]?.video || null
                 return (
                   <div key={t.id} className="border border-white/[0.075] rounded-[13px] bg-[#0e1218] px-3.5 py-3 flex items-center gap-3">
                     {t.zona_entrenamiento && (
@@ -295,6 +304,16 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                       <span className="text-right font-mono tabular-nums text-[13.5px] font-semibold flex-shrink-0" style={{ color: zc }}>
                         {ritmo}
                       </span>
+                    )}
+                    {video && (
+                      <a href={video} target="_blank" rel="noopener noreferrer"
+                        title={'Ver cómo se hace' + (ej ? ': ' + ej.nombre : '')}
+                        aria-label={'Ver el vídeo de ' + (ej ? ej.nombre : 'este ejercicio')}
+                        className="flex-shrink-0 -my-1 px-2 py-2 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M21.6 7.2a2.6 2.6 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.6 2.6 0 0 0 2.4 7.2 27 27 0 0 0 2 12a27 27 0 0 0 .4 4.8 2.6 2.6 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.6 2.6 0 0 0 1.8-1.8A27 27 0 0 0 22 12a27 27 0 0 0-.4-4.8ZM10 15V9l5.2 3-5.2 3Z" />
+                        </svg>
+                      </a>
                     )}
                   </div>
                 )

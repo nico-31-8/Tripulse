@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { conVideos } from '@/lib/video-ejercicio'
 import { mmss } from '@/lib/duracion-carga'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
@@ -175,7 +176,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     // Cargar ejercicios de todas las tareas
     if (tar.data && tar.data.length > 0) {
       const tareaIds = (tar.data as any[]).map((t: any) => t.id)
-      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
+      /* El vídeo NO sale de la copia guardada, sale de la biblioteca. Ver
+         lib/video-ejercicio: la copia se hacía al prescribir, así que un vídeo
+         añadido después no llegaba nunca al atleta. */
+      const { data: ejsCrudos } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
+      const ejs = await conVideos(ejsCrudos, supabase)
       const ejMap: Record<number, any[]> = {}
       tareaIds.forEach((tid: number) => { ejMap[tid] = [] })
       ejs?.forEach((e: any) => {

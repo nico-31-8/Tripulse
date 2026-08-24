@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { conVideosEnTareas } from '@/lib/video-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
@@ -278,12 +279,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
       // sesiones anteriores a que el control tuviera columnas propias.
       ordenarTareasQuery(
-        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id)),
+        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion)').eq('id_sesion', id)),
     ])
 
     setSesion(ses)
     if (!ses) { setNoExiste(true); return }
-    setTareas(await conTecnica(tar))
+    setTareas(await conVideosEnTareas(await conTecnica(tar), supabase))
     // Sin id_emision no se pregunta nada: no cuesta ni una consulta en las
     // sesiones individuales, que son la mayoría.
     nombreDelGrupo(supabase, ses.id_emision).then(setNombreGrupo)
@@ -456,6 +457,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       const ejBib2 = ejercicioSel2
       const { error: errorEjercicio } = await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
+        // El id de la biblioteca: el vídeo se resuelve con él al leer, no se copia.
+        ejercicio_id: ejercicioSel.id,
         nombre: ejercicioSel.nombre,
         tipo_serie: tipoSerie,
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,

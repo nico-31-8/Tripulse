@@ -417,6 +417,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
          Lo que el atleta lee lo arma `textoEncadenado` en lib/tarea-vista. */
       const { error: errEj } = await supabase.from('ejercicios').insert({
         id_tarea: tarea.id,
+        /* El id de la biblioteca, para poder resolver el vídeo EN VIVO al leer.
+           El nombre se sigue guardando: es la prescripción y tiene que quedar
+           congelada aunque el ejercicio se renombre después. */
+        ejercicio_id: ejBib.id,
         nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
         series: f.series ? Number(f.series) : null,
