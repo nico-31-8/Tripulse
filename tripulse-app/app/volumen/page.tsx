@@ -241,6 +241,12 @@ export default function VolumenPage() {
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
         ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s)),
+        /* Se guarda para poder DECIR cuántas no suman. Esta pantalla no estima
+           (los bloques se piden con `estimar: false`), así que una sesión sin
+           duración cronometrada ni planificada cuenta en «sesiones realizadas»
+           pero aporta 0 minutos y 0 UA. Antes eso no se veía: la cabecera decía
+           3 sesiones y los totales eran de 2. */
+        minutos: minutosCarga(s),
         uaDisc: uaDiscPorSes[s.id] || null,
         rpe: s.rpe_estimado,
         duracion: s.duracion_minutos,
@@ -293,6 +299,9 @@ export default function VolumenPage() {
     }
     return factorSicat(s.disciplina, sicat)
   }
+
+  // Cuántas de las contadas arriba no aportan nada a los totales.
+  const sinDuracion = volSesionRaw.filter((s: any) => !s.minutos).length
 
   const cargaSesiones = useMemo(() =>
     volSesionRaw.map(s => ({ ...s, fecha: s.fecha.slice(5), ua: Math.round(s.ua * factorFn(s)) })),
@@ -455,7 +464,12 @@ export default function VolumenPage() {
               style={{ background: 'linear-gradient(145deg,#fb923c,#ea580c)' }}>{(seleccionado.nombre || '?').trim()[0]?.toUpperCase()}</span>
             <div>
               <h2 className="text-[20px] font-bold tracking-tight leading-none">{seleccionado.nombre}</h2>
-              <p className="text-[11.5px] text-gray-500 mt-1">{volSesionRaw.length} {volSesionRaw.length === 1 ? 'sesión realizada' : 'sesiones realizadas'} en el período</p>
+              <p className="text-[11.5px] text-gray-500 mt-1">
+                {volSesionRaw.length} {volSesionRaw.length === 1 ? 'sesión realizada' : 'sesiones realizadas'} en el período
+                {sinDuracion > 0 && (
+                  <span className="text-amber-500/80"> · {sinDuracion} sin duración, no {sinDuracion === 1 ? 'suma' : 'suman'}</span>
+                )}
+              </p>
             </div>
           </div>
 

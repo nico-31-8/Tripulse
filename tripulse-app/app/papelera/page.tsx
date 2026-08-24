@@ -91,8 +91,8 @@ export default function PapeleraPage() {
         {sesiones.length === 0 ? (
           <div className="text-center py-20 text-gray-600">
             <div className="text-5xl mb-4">🗑</div>
-            <p className="text-lg">La papelera esta vacia</p>
-            <p className="text-sm mt-1">Las sesiones eliminadas apareceran aqui</p>
+            <p className="text-lg">La papelera está vacía</p>
+            <p className="text-sm mt-1">Aquí aparecen las sesiones que borréis tú o el atleta</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">

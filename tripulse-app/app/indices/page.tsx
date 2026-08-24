@@ -7,6 +7,7 @@ import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { hoyISO, sumarDias } from '@/lib/fechas'
 
 function calcularIndices(tarea: any, fcUmbral: number, rpeEstimado: number) {
   if (!tarea.fc_media || !tarea.rpe_reportado || !fcUmbral) return null
@@ -107,12 +108,22 @@ export default function IndicesPage() {
     setLoadingSes(false)
   }
 
+  /* El límite del período es un DÍA de calendario, no «hace N×24 horas». Con
+     Date contra Date entraba la hora a la que se mira la pantalla en la cuenta:
+     la misma sesión estaba dentro por la mañana y fuera por la tarde. Con ISO se
+     compara día con día. */
+  const limiteRango = sumarDias(hoyISO(), -rango)
+  const enRango = (ses: any) => rango === 365 || (ses.fecha_sesion || '') >= limiteRango
+
   const sesionesConDatos = sesiones.filter(s => s.indices)
-  const sesionesRango = rango === 365 ? sesionesConDatos : sesionesConDatos.filter(s => {
-    const d = new Date(s.fecha_sesion)
-    const limite = new Date(); limite.setDate(limite.getDate() - rango)
-    return d >= limite
-  })
+  const sesionesRango = sesionesConDatos.filter(enRango)
+
+  /* La lista de abajo enseña TAMBIÉN las que no tienen RPE ni FC («sin datos
+     para calcular índices»), así que no puede salir de sesionesRango. Pero sí
+     tiene que respetar el período, y no lo hacía: la cabecera decía «30 días · 2
+     sesiones con datos» y debajo se listaban sesiones de hace tres meses. Las
+     medias eran del período y la lista era de todo, con el mismo título. */
+  const sesionesListadas = sesiones.filter(enRango)
 
   const mediaPercepcion = sesionesRango.length ? sesionesRango.reduce((acc, s) => acc + s.indices.indicePer, 0) / sesionesRango.length : null
   const mediaPlanificacion = sesionesRango.filter(s => s.indices.indicePlan !== null).length ?
@@ -231,9 +242,16 @@ export default function IndicesPage() {
           </div>
         )}
 
-        {!loadingSes && sesiones.length > 0 && (
+        {!loadingSes && sesiones.length > 0 && sesionesListadas.length === 0 && (
+          <div className="tp-card p-8 text-center text-gray-400">
+            <p>Ninguna sesión en los últimos {rango} días.</p>
+            <p className="text-sm mt-2 text-gray-600">Hay {sesiones.length} más fuera del período — amplíalo arriba.</p>
+          </div>
+        )}
+
+        {!loadingSes && sesionesListadas.length > 0 && (
           <div className="grid gap-4">
-            {sesiones.map(s => (
+            {sesionesListadas.map(s => (
               <div key={s.id} className="tp-card p-5">
                 <div className="flex justify-between items-start mb-4">
                   <div>
