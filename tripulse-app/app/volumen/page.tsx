@@ -14,7 +14,8 @@ import { expandirEnBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
-import { minutosCarga } from '@/lib/duracion-carga'
+import { origenMinutos } from '@/lib/duracion-carga'
+import { cargarReferencias } from '@/lib/referencia-zona'
 
 /** Minutos → "1h20" / "45′". */
 function fmtMinutos(min: number): string {
@@ -125,7 +126,7 @@ export default function VolumenPage() {
        ahora se dice explícito con `not is null`, que significa lo mismo pero se
        lee. */
     const hoyIso = hoyISO()
-    const [mesosQ, sesQ, planQ] = await Promise.all([
+    const [mesosQ, sesQ, planQ, refs] = await Promise.all([
       supabase.from('mesociclo')
         .select('id, fecha_inicio, duracion_semanas, objetivo, tid_objetivo')
         .eq('id_deportista', dep.id),
@@ -136,7 +137,13 @@ export default function VolumenPage() {
       vivas(supabase.from('sesion').select('fecha_sesion, estado')
         .eq('id_deportista', dep.id).not('id_microciclo', 'is', null)
         .gte('fecha_sesion', desdeStr).lte('fecha_sesion', hoyIso)),
+      /* VAM/CSS/FTP: hacen falta para estimar cuánto dura una sesión que el
+         atleta no cronometró. Del cargador compartido, no de tres consultas a
+         mano como en /carga: si cada pantalla se busca los tests por su cuenta,
+         acaban difiriendo en cuál es «el último test». */
+      cargarReferencias(supabase, dep.id),
     ])
+    const tests = refs.tests
 
     setMesociclos(mesosQ.data || [])
     const sesiones = sesQ.data || []
@@ -186,7 +193,27 @@ export default function VolumenPage() {
       p_distancia: (distancias || []).filter((d: any) => d.id_tarea === t.id),
       p_duracion: (duraciones || []).filter((d: any) => d.id_tarea === t.id),
       ejercicios: (ejercicios || []).filter((e: any) => e.id_tarea === t.id),
-    })), { estimar: false })
+    })), { tests })
+    /* ESTA PANTALLA NO ESTIMABA Y LAS OTRAS DOS SÍ. Una sesión que el atleta
+       hizo pero no cronometró valía 0 minutos y 0 UA aquí, y sus 225 UA en
+       /carga y en el análisis del propio atleta. Las dos pantallas del
+       entrenador daban totales distintos para la misma semana sin decir por qué.
+
+       Ahora estima igual que ellas, con la misma función y los mismos tests, y
+       la cabecera dice cuánta parte del total es estimada — que es lo que el
+       entrenador necesita para saber cuánto se fía.
+
+       La estimación sale de lo PLANIFICADO, así que si el atleta hizo media
+       sesión el número dice sesión entera. Es la misma limitación que ya tenía
+       /carga; lo que no tiene defensa es que cada pantalla resuelva eso distinto.
+
+       Los minutos por sesión salen ahora de los BLOQUES en vez de calcularse
+       otra vez con minutosCarga: los bloques reparten exactamente esos minutos,
+       así que el volumen por disciplina y las UA de la sesión no pueden
+       descuadrar entre sí. */
+    const minutosPorSesion: Record<number, number> = {}
+    bloques.forEach(b => { minutosPorSesion[b.id_sesion] = (minutosPorSesion[b.id_sesion] || 0) + b.minutos })
+
     // Los bloques ya traen { fecha, zona, minutos } → se guardan para el reparto por zonas.
     setBloquesRaw(bloques)
     const minFuerza: Record<number, number> = {}
@@ -240,13 +267,12 @@ export default function VolumenPage() {
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
-        ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s)),
-        /* Se guarda para poder DECIR cuántas no suman. Esta pantalla no estima
-           (los bloques se piden con `estimar: false`), así que una sesión sin
-           duración cronometrada ni planificada cuenta en «sesiones realizadas»
-           pero aporta 0 minutos y 0 UA. Antes eso no se veía: la cabecera decía
-           3 sesiones y los totales eran de 2. */
-        minutos: minutosCarga(s),
+        ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * (minutosPorSesion[s.id] || 0)),
+        minutos: minutosPorSesion[s.id] || 0,
+        /* De dónde salen esos minutos, para poder decirlo. `origenMinutos` sin
+           estimación devuelve 'real' o 'manual' cuando los hay; si no devuelve
+           nada y aun así tenemos minutos, es que los hemos estimado nosotros. */
+        origen: origenMinutos(s) ?? ((minutosPorSesion[s.id] || 0) > 0 ? 'estimada' : null),
         uaDisc: uaDiscPorSes[s.id] || null,
         rpe: s.rpe_estimado,
         duracion: s.duracion_minutos,
@@ -300,7 +326,9 @@ export default function VolumenPage() {
     return factorSicat(s.disciplina, sicat)
   }
 
-  // Cuántas de las contadas arriba no aportan nada a los totales.
+  // Cuánto del total de arriba es estimado y cuánto no llega a contar.
+  const estimadas = volSesionRaw.filter((s: any) => s.origen === 'estimada')
+  const minutosEstimados = estimadas.reduce((a: number, s: any) => a + (s.minutos || 0), 0)
   const sinDuracion = volSesionRaw.filter((s: any) => !s.minutos).length
 
   const cargaSesiones = useMemo(() =>
@@ -466,8 +494,11 @@ export default function VolumenPage() {
               <h2 className="text-[20px] font-bold tracking-tight leading-none">{seleccionado.nombre}</h2>
               <p className="text-[11.5px] text-gray-500 mt-1">
                 {volSesionRaw.length} {volSesionRaw.length === 1 ? 'sesión realizada' : 'sesiones realizadas'} en el período
+                {estimadas.length > 0 && (
+                  <span className="text-amber-500/80"> · {estimadas.length} con duración estimada ({fmtMinutos(minutosEstimados)})</span>
+                )}
                 {sinDuracion > 0 && (
-                  <span className="text-amber-500/80"> · {sinDuracion} sin duración, no {sinDuracion === 1 ? 'suma' : 'suman'}</span>
+                  <span className="text-gray-600"> · {sinDuracion} sin datos, no {sinDuracion === 1 ? 'suma' : 'suman'}</span>
                 )}
               </p>
             </div>
