@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { hoyISO, sumarDias } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
@@ -90,9 +91,7 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
   const cargar = async () => {
     setLoading(true)
 
-    const desde = new Date()
-    desde.setDate(desde.getDate() - diasRango - 42)
-    const desdeStr = desde.toISOString().split('T')[0]
+    const desdeStr = sumarDias(hoyISO(), -(diasRango + 42))
 
     /* Aquí había la cadena macrociclo → mesociclo → microciclo solo para acotar
        las sesiones a este atleta. Cuatro viajes encadenados que `id_deportista`

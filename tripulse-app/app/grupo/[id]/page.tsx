@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO } from '@/lib/fechas'
+import { hoyISO, sumarDias } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import Cargando from '@/components/Cargando'
@@ -53,10 +53,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   // Volcar el plan del grupo a los miembros
   const [volcando, setVolcando] = useState(false)
   const [desde, setDesde] = useState(hoyISO())
-  const [hasta, setHasta] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() + 6)
-    return d.toISOString().slice(0, 10)
-  })
+  const [hasta, setHasta] = useState(() => sumarDias(hoyISO(), 6))
   const [aVolcar, setAVolcar] = useState<SesionDelGrupo[] | null>(null)
   const [parteVolcado, setParteVolcado] = useState<ResultadoVolcado[] | null>(null)
   const [previo, setPrevio] = useState<VolcadoPrevio | null>(null)
@@ -64,10 +61,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   // Cumplimiento. Por defecto los últimos 14 días: lo que quieres saber es qué ha
   // pasado con lo que mandaste hace poco, no el histórico entero.
   const [cump, setCump] = useState<Cumplimiento | null>(null)
-  const [cDesde, setCDesde] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 13)
-    return d.toISOString().slice(0, 10)
-  })
+  const [cDesde, setCDesde] = useState(() => sumarDias(hoyISO(), -13))
   const [cHasta, setCHasta] = useState(hoyISO())
   const [renombrando, setRenombrando] = useState(false)
   const [nombreNuevo, setNombreNuevo] = useState('')
@@ -196,8 +190,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
 
     const hoy = hoyISO()
     // Un año por delante: el horizonte de cualquier planificación real.
-    const finDeAno = new Date(); finDeAno.setDate(finDeAno.getDate() + 365)
-    const hasta365 = finDeAno.toISOString().slice(0, 10)
+    const hasta365 = sumarDias(hoy, 365)
 
     const delGrupo = await sesionesDelGrupo(supabase, ficha, hoy, hasta365)
     const tiene = await loQueYaTiene(supabase, id, m.id_deportista, hoy, hasta365)

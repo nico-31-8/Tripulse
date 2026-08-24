@@ -13,11 +13,15 @@ import OnboardingDeportista from '@/components/OnboardingDeportista'
 import { altaCompleta } from '@/lib/anamnesis-datos'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { vivas } from '@/lib/papelera'
+import { aISO } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
-const fmt = (d: Date) => d.toISOString().split('T')[0]
+/* Era `toISOString()`: pasa la hora LOCAL a UTC y luego se queda con el día.
+   De madrugada, el panel del atleta enseñaba el día de ayer como «hoy» y la
+   semana entera corrida. `aISO` se queda con el día que ve él. */
+const fmt = aISO
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 const lunesDe = (d: Date) => { const off = (d.getDay() + 6) % 7; return addDays(d, -off) }
 const CLAVE_PANEL = 'tp-panel-'

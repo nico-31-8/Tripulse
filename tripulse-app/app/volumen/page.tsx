@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO } from '@/lib/fechas'
+import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -41,12 +41,8 @@ const DISCS = [
 
 const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }
 
-function getSemana(fecha: string) {
-  const d = new Date(fecha)
-  const lunes = new Date(d)
-  lunes.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-  return lunes.toISOString().split('T')[0]
-}
+// El lunes de esa fecha. Era una quinta copia del cálculo, con Date por medio.
+const getSemana = (fecha: string) => lunesDe(fecha)
 
 export default function VolumenPage() {
   const router = useRouter()
@@ -109,9 +105,7 @@ export default function VolumenPage() {
     calcularSICAT(dep).then(setSicat)
     calcularSicatZonas(dep).then(setZonasRes)
 
-    const desde = new Date()
-    desde.setDate(desde.getDate() - dias)
-    const desdeStr = desde.toISOString().split('T')[0]
+    const desdeStr = sumarDias(hoyISO(), -dias)
 
     /* Fuera la cadena macrociclo → mesociclo → microciclo. Los mesociclos SÍ se
        siguen necesitando (el veredicto de intensidad compara lo entrenado contra

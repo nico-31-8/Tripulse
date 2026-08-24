@@ -100,9 +100,7 @@ export default function WellnessEntrenador() {
     if (custom && desde) query = query.gte('fecha', desde)
     if (custom && hasta) query = query.lte('fecha', hasta)
     if (!custom) {
-      const fechaLimite = new Date()
-      fechaLimite.setDate(fechaLimite.getDate() - dias)
-      query = query.gte('fecha', fechaLimite.toISOString().split('T')[0])
+      query = query.gte('fecha', sumarDias(hoyISO(), -dias))
     }
     const { data } = await query
     setRegistros(data || [])

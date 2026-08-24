@@ -3,41 +3,30 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
+import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
 // El score guardado es de MALESTAR (alto = peor). La lógica de semáforo/frases sigue
 // usando esa escala cruda; solo se invierte lo que se PINTA (ver lib/wellness-score).
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import { minutosCarga } from '@/lib/duracion-carga'
 
 function getLunesAnterior(): string {
-  const hoy = new Date()
-  const dia = hoy.getDay()
-  const diff = dia === 0 ? -6 : 1 - dia
-  const lunes = new Date(hoy)
-  lunes.setDate(hoy.getDate() + diff - 7)
-  return lunes.toISOString().split('T')[0]
+  /* Cuatro funciones que hacían a mano lo que hace lib/fechas, y las cuatro con
+     el mismo fallo: `toISOString()` sobre una fecha LOCAL. De madrugada, el
+     resumen del atleta enseñaba la semana de antes. El `dia === 0 ? -6 : 1-dia`
+     era además la enésima versión del «el domingo cierra la semana». */
+  return sumarDias(lunesDe(hoyISO()), -7)
 }
 
 function getDomingoAnterior(): string {
-  const lunes = new Date(getLunesAnterior())
-  const domingo = new Date(lunes)
-  domingo.setDate(lunes.getDate() + 6)
-  return domingo.toISOString().split('T')[0]
+  return sumarDias(getLunesAnterior(), 6)
 }
 
 function getLunesActual(): string {
-  const hoy = new Date()
-  const dia = hoy.getDay()
-  const diff = dia === 0 ? -6 : 1 - dia
-  const lunes = new Date(hoy)
-  lunes.setDate(hoy.getDate() + diff)
-  return lunes.toISOString().split('T')[0]
+  return lunesDe(hoyISO())
 }
 
 function getDomingoActual(): string {
-  const lunes = new Date(getLunesActual())
-  const domingo = new Date(lunes)
-  domingo.setDate(lunes.getDate() + 6)
-  return domingo.toISOString().split('T')[0]
+  return sumarDias(getLunesActual(), 6)
 }
 
 function generarFrase(cumplimiento: number, wellness: number | null, desviacion: number | null): string {

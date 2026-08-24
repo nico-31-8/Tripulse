@@ -9,7 +9,7 @@
 //     Lo llama el cliente (con su sesión Supabase → respeta RLS) y lo envía a la ruta.
 
 import { ZONAS_RESISTENCIA } from './zonas'
-import { hoyISO } from './fechas'
+import { hoyISO, sumarDias, indiceDia, DIAS_SEMANA } from './fechas'
 import { FILTRO_VIVAS } from './papelera'
 import { cargarMetricasPanel, fmtMin, escalaTSBTexto, escalaACWRTexto, type MetricasPanel } from './panel-metricas'
 import { analizarWellness } from './wellness-analisis'
@@ -83,9 +83,12 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
 
   // La fecha va SIEMPRE y va primero. Sin ella el modelo la deduce de su
   // entrenamiento y falla todo lo que dependa de "esta semana" o "el martes".
-  const hoy = new Date()
-  const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-  p.push(`Hoy es ${DIAS[hoy.getDay()]} ${hoy.toISOString().slice(0, 10)}.`)
+  /* El día de la semana salía del reloj LOCAL y la fecha de `toISOString()`,
+     que es UTC. De madrugada no coincidían: «Hoy es domingo 2026-08-23» cuando
+     para el atleta ya era lunes 24. Al modelo se le daba una fecha y un día que
+     se contradicen, y encima es lo primero que lee. */
+  const hoy = hoyISO()
+  p.push(`Hoy es ${DIAS_SEMANA[indiceDia(hoy)].toLowerCase()} ${hoy}.`)
 
   p.push(`Deportista: ${dep.nombre}${dep.fc_maxima ? ` · FCmáx ${dep.fc_maxima} ppm` : ''}`)
 
@@ -129,12 +132,11 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   // "¿cómo le fue el martes?": con esto sí, y sin ellas el asistente solo puede
   // decir "no lo sé" a media conversación.
   try {
-    const desde = new Date(); desde.setDate(desde.getDate() - 21)
     const { data: ses } = await supabase.from('sesion')
       .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado')
       .or(FILTRO_VIVAS)
       .eq('id_deportista', dep.id).eq('estado', 'Realizada')
-      .gte('fecha_sesion', desde.toISOString().slice(0, 10))
+      .gte('fecha_sesion', sumarDias(hoyISO(), -21))
       .order('fecha_sesion', { ascending: false }).limit(14)
     const conZona = await attachZonaPico(ses || [])
     if (conZona.length) {

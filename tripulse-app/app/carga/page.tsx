@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { cargarReferencias } from '@/lib/referencia-zona'
 import { hoyISO, sumarDias } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
@@ -160,12 +161,11 @@ export default function CargaPage() {
     // Minutos de cada sesión por el criterio único (real > manual > estimada). Antes se
     // leía `duracion_minutos` a pelo y una sesión sin duración manual valía 0 UA: no
     // sumaba a CTL/ATL/TSB aunque tuviera el entreno entero planificado.
-    const [t1, t2, t3] = await Promise.all([
-      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-    ])
-    const tests = { vam: t1.data?.[0]?.vam || null, css: t2.data?.[0]?.css || null, ftp: t3.data?.[0]?.ftp || null }
+    /* Los tests, del cargador compartido. Eran tres consultas escritas a mano
+       aquí, una cuarta copia de las mismas tres: si cada pantalla decide por su
+       cuenta cuál es «el último test», acaban discrepando en cuánto dura una
+       sesión y por tanto en la carga. */
+    const { tests } = await cargarReferencias(supabase, dep.id)
     const estimaciones = await estimarDuraciones(supabase, todasSesiones.map(s => s.id), tests)
     setSesionesRaw(todasSesiones.map(s => ({ ...s, minutos: minutosCarga(s, estimaciones[s.id]) })))
     setLoadingDatos(false)
@@ -197,6 +197,7 @@ export default function CargaPage() {
 
   const cargarDiaria = async (dep: any) => {
     const desdeStr = sumarDias(hoyISO(), -30)
+    const { tests } = await cargarReferencias(supabase, dep.id)
 
     /* La misma cadena otra vez, y aquí con un detalle peor: la consulta de las
        libres NO filtraba la papelera, así que una sesión borrada del atleta
@@ -217,7 +218,22 @@ export default function CargaPage() {
     // (sesion.disciplina vale 'Brick', que no es un deporte — ver lib/atribucion).
     // usarRpeDeBloque: la UA de aquí solo sirve de PESO para repartir (la absoluta se
     // calcula abajo). En un brick, el RPE real de cada bloque es lo que reparte bien.
-    const bloques = await cargarBloques(supabase, listaDia, { estimar: false, usarRpeDeBloque: true })
+    /* CON ESTIMACIÓN, como el resto de la pantalla. Iba con `estimar: false` y
+       eso dejaba a cero los minutos de una sesión sin cronometrar, así que sus
+       bloques valían 0 UA y el reparto se descartaba entero (`if (!total)`).
+       Consecuencia: un brick sin duración registrada caía al reparto por defecto
+       —todo a `sesion.disciplina`, que en un brick es 'Brick'— y desaparecía de
+       las barras por deporte. La gráfica global de arriba SÍ lo estimaba: la
+       misma pantalla se contradecía consigo misma. */
+    /* Y la estimación de duración, que es la otra mitad. Los bloques arreglados
+       arriba solo deciden a QUÉ deporte va la carga; cuánta carga hay sale de
+       `s.minutos`, y a las sesiones de esta vista nadie se lo ponía. Así que una
+       sesión sin `duracion_minutos` valía 0 UA aquí y sus 225 UA en la gráfica
+       de arriba, en la misma pantalla. Se piden a la vez que los bloques. */
+    const [bloques, estimaciones] = await Promise.all([
+      cargarBloques(supabase, listaDia, { tests, usarRpeDeBloque: true }),
+      estimarDuraciones(supabase, listaDia.map((s: any) => s.id), tests),
+    ])
     const uaSes: Record<number, number> = {}
     bloques.forEach(b => { uaSes[b.id_sesion] = (uaSes[b.id_sesion] || 0) + b.ua })
     const reparto: Record<number, { disciplina: string; peso: number }[]> = {}
@@ -229,6 +245,7 @@ export default function CargaPage() {
 
     setDiariaRaw(conZona.map(s => ({
       ...s,
+      minutos: minutosCarga(s, estimaciones[s.id]),
       _reparto: reparto[s.id] || [{ disciplina: s.disciplina, peso: 1 }],
     })))
   }
@@ -236,10 +253,11 @@ export default function CargaPage() {
   const datosDiarios = useMemo(() => {
     const dias: any[] = []
     for (let i = 29; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      const fechaStr = d.toISOString().split('T')[0]
-      const label = d.toLocaleDateString('es', { day: '2-digit', month: '2-digit' })
+      /* Iba con `new Date()` + `toISOString()`: eso convierte la hora LOCAL a
+         UTC antes de quedarse con el día, así que de madrugada el eje entero se
+         corría un día y «hoy» caía en la casilla de ayer. */
+      const fechaStr = sumarDias(hoyISO(), -i)
+      const label = fechaStr.slice(8, 10) + '/' + fechaStr.slice(5, 7)
 
       const sesDia = diariaRaw.filter(s => s.fecha_sesion === fechaStr)
       const planificadas = sesDia.filter(s => s.estado === 'Planificada')

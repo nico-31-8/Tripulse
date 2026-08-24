@@ -6,6 +6,7 @@
 // que faltaban: partir por tramos y medir la distancia entre deportes.
 // ============================================================
 import { DISCIPLINAS_SICAT, type SicatResultado, type Periodo } from './sicat-tipos'
+import { aISO } from './fechas'
 
 export const SUELO_SICAT = 4    // los 4 factores valen 1 como mínimo
 export const TOPE_SICAT = 16    // y 4 como máximo
@@ -20,7 +21,10 @@ export const GRANULARIDADES: { id: Granularidad; label: string; dias: number }[]
   { id: 'trimestre', label: 'Trimestres', dias: 90 },
 ]
 
-const iso = (d: Date) => d.toISOString().slice(0, 10)
+/* `aISO` y no `toISOString()`: las etiquetas de los tramos se construyen con
+   `getDate()`/`getMonth()`, que son LOCALES. Con toISOString el borde del tramo
+   y su etiqueta podían decir días distintos. */
+const iso = aISO
 
 /**
  * Los últimos `cuantos` tramos hasta hoy, del más antiguo al más reciente.
