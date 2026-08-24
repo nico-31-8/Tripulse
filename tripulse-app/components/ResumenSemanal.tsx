@@ -89,7 +89,12 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
        paso las sesiones se filtran por papelera, que aquí no se hacía: una
        borrada contaba como planificada-y-no-hecha y bajaba el cumplimiento. */
     const [sesQ, wellQ] = await Promise.all([
-      vivas(supabase.from('sesion').select('*')
+      /* `duracion_real` está en la lista porque lo lee `minutosCarga`, no este
+         fichero: al recortar un select hay que mirar también lo que consumen las
+         LIBRERÍAS a las que se le pasan las filas. Olvidarla no daría error —
+         la carga real saldría calculada con lo planificado. */
+      vivas(supabase.from('sesion')
+        .select('id_deportista, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real')
         .in('id_deportista', depIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
       supabase.from('wellness').select('id_deportista, score_wellness')
         .in('id_deportista', depIds).gte('fecha', lunesAnt).lte('fecha', domingoAnt),

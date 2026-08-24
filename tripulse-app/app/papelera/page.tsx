@@ -39,7 +39,12 @@ export default function PapeleraPage() {
 
        Toda esa cadena existía además solo para averiguar de quién era cada
        sesión, y `sesion.id_deportista` lo dice directamente. */
-    const { data: ses } = await soloPapelera(supabase.from('sesion').select('*')
+    /* Las siete que se pintan, no la fila entera. La lista salió de leer TODOS
+       los usos del fichero, no de suponer: recortar un select rompe en silencio
+       —el campo llega `undefined` y nadie se queja— y `eliminada` se filtra
+       pero no se pide, que para filtrar no hace falta traerla. */
+    const { data: ses } = await soloPapelera(supabase.from('sesion')
+      .select('id, id_deportista, disciplina, fecha_sesion, duracion_minutos, rpe_estimado, notas_entrenador')
       .in('id_deportista', depIds)).order('fecha_sesion', { ascending: false })
 
     const depMap: Record<number, string> = {}

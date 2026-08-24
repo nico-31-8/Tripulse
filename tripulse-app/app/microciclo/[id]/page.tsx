@@ -35,7 +35,10 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
     const { data: micro } = await supabase.from('microciclo').select('*').eq('id', id).single()
     setMicrociclo(micro)
     if (!micro) { setNoExiste(true); return }
-    const { data: ses } = await supabase.from('sesion').select('*').or(FILTRO_VIVAS).eq('id_microciclo', id).order('fecha_sesion', { ascending: true })
+    // Solo lo que pinta la lista de la semana.
+    const { data: ses } = await supabase.from('sesion')
+      .select('id, disciplina, fecha_sesion, duracion_minutos, rpe_estimado, estado')
+      .or(FILTRO_VIVAS).eq('id_microciclo', id).order('fecha_sesion', { ascending: true })
     setSesiones(ses || [])
   }
 
