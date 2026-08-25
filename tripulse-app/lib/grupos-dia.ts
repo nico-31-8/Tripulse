@@ -164,3 +164,26 @@ export function hechasDe(b: BloqueDia): { hechas: number; total: number } {
     total: b.quien.length,
   }
 }
+
+/**
+ * La línea de una tarea en la hoja: «4 × 400 m», «30 min», «3 series».
+ *
+ * Sale de los campos de `vistaDeTarea`, pero unir sus valores a pelo daba cosas
+ * como «Recuperación 1» — un uno suelto que era el número de series sin decirlo.
+ * Aquí se arma la frase: las series solo si son más de una, y el valor por serie
+ * si lo hay; si no, el total; si tampoco, se dice «N series», que al menos se
+ * entiende.
+ */
+export function detalleDeTarea(campos: { k: string; v: string }[] | null | undefined): string {
+  const de = (k: string) => {
+    const v = (campos || []).find(c => c.k === k)?.v
+    return v && v !== '—' ? v : ''
+  }
+  const series = de('Series')
+  const porSerie = de('Por serie') || de('Tiempo') || de('Repeticiones')
+  const total = de('Total')
+
+  if (porSerie) return series && series !== '1' ? series + ' × ' + porSerie : porSerie
+  if (total) return total
+  return series && series !== '1' ? series + ' series' : ''
+}

@@ -8,7 +8,7 @@ import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { miembrosDe, type MiembroGrupo } from '@/lib/grupos'
 import { cargarReferenciasDeVarios } from '@/lib/referencia-zona'
-import { hojaDelDia, hechasDe, type BloqueDia } from '@/lib/grupos-dia'
+import { hojaDelDia, hechasDe, detalleDeTarea, type BloqueDia } from '@/lib/grupos-dia'
 import { vistaDeTarea } from '@/lib/tarea-vista'
 
 /* La hoja del día: qué toca hoy y, al lado de cada nombre, SUS números.
@@ -143,10 +143,7 @@ export default function HojaDelDia({ params }: { params: Promise<{ id: string }>
                       <div key={t.id ?? i} className="flex items-baseline gap-2 text-sm">
                         <span className="text-gray-600 text-xs w-4 tabular-nums">{i + 1}</span>
                         <span className="text-gray-300">{v.titulo}</span>
-                        <span className="text-gray-600 text-xs">
-                          {v.campos.filter(c => c.k === 'Series' || c.k === 'Por serie' || c.k === 'Total')
-                            .map(c => c.v).filter(x => x && x !== '—').join(' · ')}
-                        </span>
+                        <span className="text-gray-600 text-xs">{detalleDeTarea(v.campos)}</span>
                       </div>
                     )
                   })}

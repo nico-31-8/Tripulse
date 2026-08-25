@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hojaDelDia, zonasDe, leFaltaElTest, hechasDe } from './grupos-dia'
+import { hojaDelDia, zonasDe, leFaltaElTest, hechasDe, detalleDeTarea } from './grupos-dia'
 import type { ReferenciasDeUno } from './referencia-zona'
 
 const MIEMBROS = [
@@ -142,5 +142,31 @@ describe('hechasDe', () => {
       sesion(12, 3, { estado: 'Realizada' }),
     ], MIEMBROS, refs)
     expect(hechasDe(h[0])).toEqual({ hechas: 2, total: 3 })
+  })
+})
+
+describe('detalleDeTarea', () => {
+  const c = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => ({ k, v }))
+
+  it('series por valor cuando hay más de una', () => {
+    expect(detalleDeTarea(c({ Series: '4', 'Por serie': '400 m', Total: '1,6 km' }))).toBe('4 × 400 m')
+  })
+
+  it('una sola serie no se anuncia', () => {
+    expect(detalleDeTarea(c({ Series: '1', 'Por serie': '30 min' }))).toBe('30 min')
+  })
+
+  it('sin valor por serie, el total', () => {
+    expect(detalleDeTarea(c({ Series: '1', 'Por serie': '—', Total: '10 km' }))).toBe('10 km')
+  })
+
+  it('sin nada de eso, se dice cuántas series y no un número suelto', () => {
+    /* Antes salía «Recuperación 1»: el 1 era el número de series, sin etiqueta. */
+    expect(detalleDeTarea(c({ Series: '3', 'Por serie': '—', Total: '—' }))).toBe('3 series')
+    expect(detalleDeTarea(c({ Series: '1', 'Por serie': '—', Total: '—' }))).toBe('')
+  })
+
+  it('sin campos, vacío', () => {
+    expect(detalleDeTarea(null)).toBe('')
   })
 })
