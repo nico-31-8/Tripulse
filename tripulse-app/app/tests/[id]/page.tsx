@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
+import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tablaIntensidades } from '@/lib/zonas'
@@ -221,20 +222,20 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setTestsLibres(tl.data || [])
   }
 
-  const calcularVAM = () => {
-    if (!velUltimo || !durTotal || !tiempoAguantado || !incrementoVel) return null
-    return Math.round((Number(velUltimo) - (Number(incrementoVel) * (1 - Number(tiempoAguantado) / Number(durTotal)))) * 10) / 10
-  }
+  /* Las tres fórmulas viven en lib/tests-formulas: el test de GRUPO usa las
+     mismas. Estaban aquí dentro, y escribirlas otra vez allí habría sido
+     tener dos VAM que pueden acabar diciendo cosas distintas.
 
-  const calcularCSS = () => {
-    if (!tiempoGrande || !tiempoPequeno) return null
-    return Math.round(((Number(distGrande) - Number(distPequena)) / (Number(tiempoGrande) - Number(tiempoPequeno))) * 1000) / 1000
-  }
-
-  const calcularFTP = () => {
-    if (!potenciaPico || !durEscalones || !tiempoNoCompletado || !incrementoPot) return null
-    return Math.round((Number(potenciaPico) - Number(incrementoPot)) + (Number(incrementoPot) * Number(tiempoNoCompletado) / Number(durEscalones)))
-  }
+     El CSS además cambia un poco: antes, con los dos tiempos iguales la
+     división era entre cero y salía `Infinity`, y con el corto más lento que
+     el largo salía negativo. Ahora eso devuelve null, que es lo que es: un
+     dato mal metido, no un CSS. */
+  const calcularVAM = () => vamDeMontreal({ velUltimo, durTotal, tiempoAguantado, incrementoVel })
+  const calcularCSS = () => cssDeDosDistancias({
+    distanciaGrande: distGrande, distanciaPequena: distPequena,
+    tiempoGrande, tiempoPequeno,
+  })
+  const calcularFTP = () => ftpDeRampa({ potenciaPico, incrementoPot, tiempoNoCompletado, durEscalones })
 
   const calcularRM = () => {
     if (!pesoKg || !reps) return null
@@ -242,8 +243,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     return Math.round(Number(pesoKg) * (1 + Number(reps) / 30))
   }
 
-  const formatCSS = (css: number) => { const s = 100/css; return `${Math.floor(s/60)}:${Math.round(s%60).toString().padStart(2,'0')} /100m` }
-  const formatVAM = (vam: number) => { const s = 3600/vam; return `${Math.floor(s/60)}:${Math.round(s%60).toString().padStart(2,'0')} /km` }
+  const formatCSS = ritmoDeCss
+  const formatVAM = ritmoDeVam
 
   // Sprint: MSS (km/h) desde distancia + tiempo; V25/V50 (m/s) desde tiempo
   const calcularMSS = () => (sprintDist && sprintTiempo && Number(sprintTiempo) > 0) ? Math.round((Number(sprintDist) / Number(sprintTiempo)) * 3.6 * 10) / 10 : null

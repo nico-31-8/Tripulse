@@ -18,6 +18,7 @@ import {
   type SesionDelGrupo, type ResultadoVolcado, type VolcadoPrevio,
 } from '@/lib/grupos-volcado'
 import { cargarCumplimiento, porcentaje, type Cumplimiento } from '@/lib/grupos-cumplimiento'
+import { mandarAlGrupo, resumenMensaje, type ResultadoMensaje } from '@/lib/grupos-mensaje'
 import { plantillasDe, bloquesDe, aplicarBloques, textoBloque, opcionesDe, resolverClave, NIVELES, type NivelPlantilla } from '@/lib/plantillas'
 import { cargarPropias, type PlantillaPropia } from '@/lib/plantillas-propias'
 
@@ -66,6 +67,12 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   const [renombrando, setRenombrando] = useState(false)
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [aviso, setAviso] = useState('')
+  // Mensaje al grupo. `userId` se guarda porque el mensaje lo necesita y hasta
+  // ahora el usuario solo vivía dentro de cargar().
+  const [userId, setUserId] = useState<string | null>(null)
+  const [escribiendo, setEscribiendo] = useState(false)
+  const [textoMsg, setTextoMsg] = useState('')
+  const [parteMsg, setParteMsg] = useState<ResultadoMensaje[] | null>(null)
 
   const actualizarZonas = async () => {
     setOcupado(true); setError(''); setAviso('')
@@ -112,6 +119,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
+    setUserId(user.id)
 
     const { data: g } = await supabase.from('grupo_entreno')
       .select('id, nombre, descripcion').eq('id', id).maybeSingle()
@@ -161,6 +169,20 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     if (!miembros.length) return
     setCump(await cargarCumplimiento(supabase, id,
       miembros.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })), d, h))
+  }
+
+  const mandarMensaje = async () => {
+    if (!userId) return
+    setOcupado(true); setError(''); setAviso(''); setParteMsg(null)
+    const r = await mandarAlGrupo(supabase, {
+      idEntrenador: userId,
+      miembros: miembros.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })),
+      texto: textoMsg,
+    })
+    if (r.error) setError(r.error)
+    else { setTextoMsg(''); setEscribiendo(false) }
+    setParteMsg(r.resultados.length ? r.resultados : null)
+    setOcupado(false)
   }
 
   const anadir = async (idDep: number) => {
@@ -360,6 +382,13 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
               title="Vuelve a mirar qué sistema de zonas usan sus miembros y pone el grupo igual"
               className="text-gray-400 hover:text-white text-xs border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
               Actualizar zonas
+            </button>
+            {/* Un test lo hace el grupo entero de una sentada: un protocolo y N
+                resultados. Ver app/grupo/[id]/test. */}
+            <button onClick={() => router.push(`/grupo/${id}/test`)} disabled={miembros.length === 0}
+              title="Meter los resultados de un test de todo el grupo de una vez"
+              className="text-gray-400 hover:text-white text-xs border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
+              Test del grupo
             </button>
             <button onClick={eliminar} disabled={ocupado}
               className="text-gray-600 hover:text-red-400 text-xs border border-gray-800 hover:border-red-900 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
@@ -753,6 +782,56 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </section>
+
+        {/* Un mensaje al grupo son N mensajes de verdad, uno por miembro: le llega
+            a cada uno a su conversación de siempre. Ver lib/grupos-mensaje. */}
+        <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div className="flex justify-between items-center gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">Mandar un mensaje al grupo</p>
+              <p className="text-gray-500 text-xs mt-0.5">
+                Le llega a {miembros.length === 1 ? 'la persona del grupo' : 'cada uno de los ' + miembros.length} a su chat de siempre.
+              </p>
+            </div>
+            <button onClick={() => { setEscribiendo(!escribiendo); setParteMsg(null) }} disabled={miembros.length === 0}
+              className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
+              {escribiendo ? 'Cancelar' : 'Escribir'}
+            </button>
+          </div>
+
+          {escribiendo && (
+            <div className="flex flex-col gap-3 mt-5 pt-5 border-t border-gray-800">
+              <textarea value={textoMsg} onChange={e => setTextoMsg(e.target.value)} rows={3}
+                placeholder="Mañana entrenamos a las 7 en la piscina municipal."
+                className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 resize-y" />
+              <div className="flex justify-end">
+                <button onClick={mandarMensaje} disabled={ocupado || !textoMsg.trim()}
+                  className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
+                  {ocupado ? 'Mandando…' : 'Mandar a ' + miembros.length + (miembros.length === 1 ? ' deportista' : ' deportistas')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {parteMsg && (
+            <div className="mt-5 pt-5 border-t border-gray-800">
+              <p className="text-sm font-medium mb-2">{resumenMensaje(parteMsg)}</p>
+              {/* Solo se listan los que fallaron: si llegó a todos, el resumen ya
+                  lo dice y ocho líneas verdes son ruido. */}
+              {parteMsg.some(r => !r.ok) && (
+                <div className="flex flex-col gap-1">
+                  {parteMsg.filter(r => !r.ok).map(r => (
+                    <div key={r.id_deportista} className="flex items-center gap-2 text-xs">
+                      <span className="text-red-400">✕</span>
+                      <span className="text-gray-300">{r.nombre}</span>
+                      {r.error && <span className="text-red-400/80">· {r.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
