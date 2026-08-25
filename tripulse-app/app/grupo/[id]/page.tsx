@@ -383,6 +383,13 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
               className="text-gray-400 hover:text-white text-xs border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
               Actualizar zonas
             </button>
+            {/* Lo que toca hoy con los números de cada uno, para dirigir el
+                entrenamiento sin abrir diez fichas. Ver app/grupo/[id]/dia. */}
+            <button onClick={() => router.push(`/grupo/${id}/dia`)} disabled={miembros.length === 0}
+              title="Qué toca hoy y los ritmos de cada uno, en una pantalla"
+              className="bg-orange-500/90 hover:bg-orange-500 text-white text-xs px-3 py-1.5 rounded-lg transition disabled:opacity-40">
+              Hoja del día
+            </button>
             {/* Un test lo hace el grupo entero de una sentada: un protocolo y N
                 resultados. Ver app/grupo/[id]/test. */}
             <button onClick={() => router.push(`/grupo/${id}/test`)} disabled={miembros.length === 0}

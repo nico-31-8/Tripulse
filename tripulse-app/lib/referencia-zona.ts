@@ -179,3 +179,70 @@ export function ritmoObjetivoTexto(valor: unknown, disciplina?: string | null): 
   const unidad = (disciplina || '').startsWith('Nat') ? '/100m' : '/km'
   return `${m}:${s.toString().padStart(2, '0')} ${unidad}`
 }
+
+// ------------------------------------------------------------
+// Las referencias de VARIOS deportistas de una vez
+// ------------------------------------------------------------
+
+/** Lo que hace falta para traducir zonas a números, por deportista. */
+export interface ReferenciasDeUno {
+  tests: Tests
+  fcMax: number
+  sistema: number
+  nombre: string | null
+}
+
+/**
+ * Lo mismo que `cargarReferencias` pero para un grupo entero.
+ *
+ * `cargarReferencias` hace CUATRO consultas por persona. Llamarla en un bucle
+ * para la hoja del día de diez atletas serían cuarenta viajes encadenados, que
+ * es el mismo N+1 que ya costó caro en el volcado de grupos. Aquí son cuatro,
+ * y el reparto se hace en memoria.
+ *
+ * Los tests vienen ordenados por fecha descendente y se coge el PRIMERO de cada
+ * deportista, que es su último test. Sin `.limit(1)` por persona: eso volvería a
+ * ser una consulta por cabeza.
+ */
+export async function cargarReferenciasDeVarios(
+  sb: any, ids: number[],
+): Promise<Map<number, ReferenciasDeUno>> {
+  const limpios = [...new Set((ids || []).filter(n => n != null))]
+  const salida = new Map<number, ReferenciasDeUno>()
+  if (!limpios.length) return salida
+
+  const [deps, t1, t2, t3] = await Promise.all([
+    sb.from('deportista').select('id, fc_maxima, sistema_zonas, nombre').in('id', limpios),
+    sb.from('test1_carrera').select('id_deportista, vam').not('vam', 'is', null)
+      .in('id_deportista', limpios).order('fecha', { ascending: false }),
+    sb.from('test2_natacion').select('id_deportista, css').not('css', 'is', null)
+      .in('id_deportista', limpios).order('fecha', { ascending: false }),
+    sb.from('test3_ciclismo').select('id_deportista, ftp').not('ftp', 'is', null)
+      .in('id_deportista', limpios).order('fecha', { ascending: false }),
+  ])
+
+  // El primero que aparece de cada uno es el más reciente: la consulta viene
+  // ordenada, así que no se pisa lo nuevo con lo viejo.
+  const primero = (filas: any[] | null, campo: string) => {
+    const m = new Map<number, any>()
+    for (const f of filas || []) {
+      const k = Number(f.id_deportista)
+      if (!m.has(k)) m.set(k, f[campo])
+    }
+    return m
+  }
+  const vam = primero(t1?.data, 'vam')
+  const css = primero(t2?.data, 'css')
+  const ftp = primero(t3?.data, 'ftp')
+
+  for (const d of deps?.data || []) {
+    const k = Number(d.id)
+    salida.set(k, {
+      tests: { vam: vam.get(k) ?? null, css: css.get(k) ?? null, ftp: ftp.get(k) ?? null },
+      fcMax: d.fc_maxima || 0,
+      sistema: d.sistema_zonas || 1,
+      nombre: d.nombre || null,
+    })
+  }
+  return salida
+}
