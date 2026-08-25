@@ -48,9 +48,16 @@ interface Props {
   onBibliotecaCambia?: () => void
   /** El botón se pinta con la clase que le venga bien a cada sitio. */
   clase?: string
+  /**
+   * Qué pone en el botón. Por defecto una lupa, que es lo que necesita la
+   * tabla del entrenador (va apretada al lado de un desplegable). Donde el
+   * botón es la acción principal —el atleta apuntando su fuerza— una lupa sola
+   * no dice qué hace.
+   */
+  etiqueta?: React.ReactNode
 }
 
-export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase }: Props) {
+export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [filtro, setFiltro] = useState('todo')
   const [consulta, setConsulta] = useState('')
@@ -114,7 +121,7 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
       <button type="button" onClick={() => setAbierto(true)} title="Buscar en toda la biblioteca"
         aria-label="Buscar ejercicio en toda la biblioteca"
         className={clase ?? 'flex-none bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-2.5 py-2 text-sm transition'}>
-        🔍
+        {etiqueta ?? '🔍'}
       </button>
 
       {abierto && (

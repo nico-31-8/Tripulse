@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   seriesPrincipales, resumenUltimaVez, controlUltimaVez, volumenDe,
-  haSuperado, serieAnterior, haceTexto,
+  haSuperado, haMejorado, serieAnterior, haceTexto,
 } from './modo-mejora'
 
 const SERIES = [
@@ -113,5 +113,23 @@ describe('haceTexto', () => {
     expect(haceTexto(1)).toBe('ayer')
     expect(haceTexto(5)).toBe('hace 5 días')
     expect(haceTexto(null)).toBe('')
+  })
+})
+
+describe('haMejorado', () => {
+  it('igualar NO basta: aquí las casillas empiezan con lo de la última vez', () => {
+    /* Si valiera con >=, la insignia saldría encendida nada más añadir el
+       ejercicio, antes de haber entrenado. */
+    expect(haMejorado(1000, 1000)).toBe(false)
+    expect(haMejorado(1000, 1001)).toBe(true)
+  })
+
+  it('sin última vez no hay nada que mejorar', () => {
+    expect(haMejorado(0, 500)).toBe(false)
+  })
+
+  it('es MÁS estricta que haSuperado, no otra cosa', () => {
+    expect(haSuperado(1000, 1000)).toBe(true)
+    expect(haMejorado(1000, 1000)).toBe(false)
   })
 })

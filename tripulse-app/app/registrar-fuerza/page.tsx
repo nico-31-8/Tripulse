@@ -11,7 +11,7 @@ import {
   guardarRegistroFuerza, type EjercicioRegistro,
 } from '@/lib/registro-fuerza'
 import {
-  resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior, haceTexto,
+  resumenUltimaVez, controlUltimaVez, volumenDe, haMejorado, serieAnterior, haceTexto,
 } from '@/lib/modo-mejora'
 import { microDelDia } from '@/lib/grupos-emision'
 import { diasEntre } from '@/lib/fechas'
@@ -67,6 +67,28 @@ export default function RegistrarFuerza() {
     setHistorial(prev => ({ ...prev, [nombre]: h }))
     return h
   }
+
+  /* Si cambia el día DESPUÉS de haber añadido ejercicios, «la última vez» ya no
+     es la misma: la que valía para hoy no vale para el martes pasado. Se vuelve
+     a preguntar por todos.
+
+     Solo se refresca el cartel, NO las casillas: si se recalcularan, borraría lo
+     que el atleta ya ha escrito. Lo prerrellenado se decide al añadir. */
+  useEffect(() => {
+    if (!dep || !ejercicios.length) return
+    let vivo = true
+    ;(async () => {
+      const nuevo: Record<string, Historial> = {}
+      for (const nombre of [...new Set(ejercicios.map(e => e.nombre))]) {
+        const { data } = await supabase.rpc('ultima_ejecucion_fuerza', { _dep: dep.id, _nombre: nombre, _antes: fecha })
+        if (data?.length) {
+          nuevo[nombre] = { dias: Math.max(0, diasEntre(String(data[0].fecha).slice(0, 10), fecha)), series: data }
+        }
+      }
+      if (vivo) setHistorial(nuevo)
+    })()
+    return () => { vivo = false }
+  }, [fecha, dep])
 
   const anadirEjercicio = async (e: EjercicioBib) => {
     const porTiempo = /planch|isom|planc/i.test(e.nombre)
@@ -180,7 +202,11 @@ export default function RegistrarFuerza() {
           const resumen = resumenUltimaVez(previas, ej.porTiempo)
           const ctrl = controlUltimaVez(previas)
           const volPrev = volumenDe(previas, ej.porTiempo)
-          const superado = !!h && haSuperado(volPrev, volumenHoy(ej))
+          /* `haMejorado` y no `haSuperado`: aquí las casillas nacen RELLENAS con
+             lo de la última vez, así que igualar es el punto de partida. Con >=
+             la insignia salía encendida nada más añadir el ejercicio, antes de
+             haber entrenado. */
+          const superado = !!h && haMejorado(volPrev, volumenHoy(ej))
 
           return (
             <section key={iEj} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -242,6 +268,7 @@ export default function RegistrarFuerza() {
         <BuscadorEjercicios
           ejercicios={biblioteca}
           onElegir={anadirEjercicio}
+          etiqueta={ejercicios.length ? "＋ Añadir otro ejercicio" : "＋ Añadir el primer ejercicio"}
           clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500 text-gray-400 hover:text-white py-4 rounded-xl transition"
         />
 

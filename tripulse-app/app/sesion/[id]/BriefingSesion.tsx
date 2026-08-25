@@ -247,7 +247,9 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
         {tareas.length > 0 && (
           <div>
             <span className="text-[10.5px] uppercase tracking-[.11em] text-gray-500 font-bold">
-              {realizada ? 'Lo que estaba planificado' : 'Lo que toca'}
+              {/* En una sesión que se apunta el propio atleta no hay nada
+                  «planificado»: la escribió él después de hacerla. */}
+              {!realizada ? 'Lo que toca' : (sesion?.origen === 'deportista' ? 'Lo que hiciste' : 'Lo que estaba planificado')}
             </span>
             <div className="flex flex-col gap-2 mt-2.5">
               {tareas.map(t => {

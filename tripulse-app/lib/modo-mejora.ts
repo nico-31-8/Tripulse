@@ -109,3 +109,19 @@ export function haceTexto(dias: number | null | undefined): string {
   if (dias === 1) return 'ayer'
   return 'hace ' + dias + ' días'
 }
+
+/**
+ * ¿Lo de hoy PASA lo de la última vez? Estrictamente mayor.
+ *
+ * Se diferencia de `haSuperado` a propósito, y la diferencia depende de con qué
+ * empiezan las casillas:
+ *
+ *   · En la pantalla de ejecución nacen VACÍAS, así que llegar a lo de la última
+ *     vez ya es un logro y se marca (`haSuperado`, con >=).
+ *   · Cuando el atleta apunta su propia sesión, las casillas nacen RELLENAS con
+ *     lo de la última vez. Ahí igualar es el punto de partida, no un logro: si
+ *     se marcara con >=, la insignia saldría encendida antes de entrenar.
+ */
+export function haMejorado(volAnterior: number, volHoy: number): boolean {
+  return volAnterior > 0 && volHoy > volAnterior
+}

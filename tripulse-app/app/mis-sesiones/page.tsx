@@ -101,6 +101,22 @@ export default function MisSesiones() {
     setLoading(false)
   }
 
+  /* Borrar una sesión que se añadió él mismo.
+     Solo las suyas (`origen === 'deportista'`): lo que le prescribe el
+     entrenador no le toca a él quitarlo de en medio.
+
+     Va a la PAPELERA, no se borra de verdad — el entrenador la ve ahí y puede
+     restaurarla. Y hasta hoy esto no existía: las CUATRO formas de borrar una
+     sesión eran de entrenador, así que el atleta podía apuntarse un
+     entrenamiento y no tenía forma de deshacerlo si se equivocaba. */
+  const borrarPropia = async (sesId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('¿Quitar esta sesión? Va a la papelera y tu entrenador puede recuperarla.')) return
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    if (error) { alert('No se pudo quitar: ' + error.message); return }
+    await cargar()
+  }
+
   const crearSesion = async () => {
     if (!dep) return
     setGuardando(true)
@@ -267,18 +283,36 @@ export default function MisSesiones() {
                     {sesionesDia.length > 0 && (
                       <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-2">
                         {sesionesDia.map(s => (
-                          <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                          <div key={s.id} role="button" tabIndex={0}
+                            onClick={() => router.push('/sesion/' + s.id)}
+                            onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); router.push('/sesion/' + s.id) } }}
+                            className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full cursor-pointer">
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
-                              <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE est: {s.rpe_estimado || '—'}</p>
+                              {/* En una sesión HECHA el RPE que existe es el que reportó, no el
+                                  que se estimó: las que se apunta el atleta ni siquiera tienen
+                                  estimado, así que salía «RPE est: —» habiendo puesto un 7. */}
+                              <p className="text-gray-400 text-xs">
+                                {duracionSesionTexto(s, s.dur_estimada)}
+                                {' · '}
+                                {s.estado === 'Realizada'
+                                  ? 'RPE: ' + (s.rpe_reportado || s.rpe_estimado || '—')
+                                  : 'RPE est: ' + (s.rpe_estimado || '—')}
+                              </p>
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
                               {s.origen === 'deportista' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/50 text-orange-300">🙋 Tú</span>}
                               <span className={'text-xs px-2 py-0.5 rounded-full ' + estadoColor(s.estado)}>{s.estado}</span>
+                              {s.origen === 'deportista' && (
+                                <button onClick={ev => borrarPropia(s.id, ev)}
+                                  title="Quitar esta sesión (va a la papelera)"
+                                  aria-label="Quitar esta sesión"
+                                  className="text-gray-600 hover:text-red-400 text-sm px-1.5 py-1 rounded transition">🗑</button>
+                              )}
                               <span className="text-orange-500 text-sm">→</span>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -467,8 +501,10 @@ export default function MisSesiones() {
                       <p className="font-bold text-sm">{duracionSesionTexto(s, s.dur_estimada)}</p>
                     </div>
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
-                      <p className="text-gray-500 text-xs">RPE estimado</p>
-                      <p className="font-bold text-sm">{s.rpe_estimado || '—'}/10</p>
+                      <p className="text-gray-500 text-xs">{s.estado === 'Realizada' ? 'RPE' : 'RPE estimado'}</p>
+                      <p className="font-bold text-sm">
+                        {(s.estado === 'Realizada' ? (s.rpe_reportado ?? s.rpe_estimado) : s.rpe_estimado) || '—'}/10
+                      </p>
                     </div>
                   </div>
 
