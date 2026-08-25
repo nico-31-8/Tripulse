@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   serieTieneAlgo, seriesConDatos, ejerciciosQueCuentan, tareaDe, ejercicioDe, seriesDe,
   volumenHoy, resumenRegistro, guardarRegistroFuerza, SERIE_VACIA,
-  seMidePorTiempo, ejerciciosDesdeSesion,
+  seMidePorTiempo, ejerciciosDesdeSesion, resumenDeEjercicios, actualizarRegistroFuerza,
   type EjercicioRegistro,
 } from './registro-fuerza'
 
@@ -251,5 +251,88 @@ describe('ejerciciosDesdeSesion', () => {
 
   it('sin nombre no es un ejercicio', () => {
     expect(ejerciciosDesdeSesion([{ id: 9 }], new Map())).toEqual([])
+  })
+})
+
+describe('resumenDeEjercicios', () => {
+  it('los nombres, y un «+N» si son muchos', () => {
+    expect(resumenDeEjercicios(['Sentadilla', 'Press banca'])).toBe('Sentadilla · Press banca')
+    expect(resumenDeEjercicios(['A', 'B', 'C', 'D', 'E'])).toBe('A · B · C · +2')
+  })
+
+  it('sin nada, se dice', () => {
+    expect(resumenDeEjercicios([])).toBe('Sin ejercicios')
+    expect(resumenDeEjercicios([null, '  '])).toBe('Sin ejercicios')
+  })
+})
+
+describe('actualizarRegistroFuerza', () => {
+  const base = { fecha: '2026-08-25', duracionMinutos: 50, rpe: 7, notas: null }
+
+  function sbEdicion(op: { fallaInsert?: string } = {}) {
+    const ops: any[] = []
+    let n = 500
+    return {
+      ops,
+      from(tabla: string) {
+        return {
+          insert(v: any) {
+            const filas = Array.isArray(v) ? v : [v]
+            if (op.fallaInsert === tabla) {
+              return {
+                select: () => ({ single: () => Promise.resolve({ data: null, error: { message: 'no va' } }) }),
+                then: (r: any) => r({ error: { message: 'no va' } }),
+              }
+            }
+            ops.push({ op: 'insert', tabla, n: filas.length })
+            const res = { data: { id: ++n }, error: null }
+            return { select: () => ({ single: () => Promise.resolve(res) }), then: (r: any) => r({ error: null }) }
+          },
+          select() {
+            const q: any = {
+              eq: () => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] }),
+              in: () => Promise.resolve({ data: [{ id: 11 }] }),
+            }
+            return q
+          },
+          delete() {
+            return { in: (_c: string, ids: any[]) => { ops.push({ op: 'delete', tabla, ids }); return Promise.resolve({ error: null }) } }
+          },
+          update() { return { eq: () => { ops.push({ op: 'update', tabla }); return Promise.resolve({ error: null }) } } },
+        }
+      },
+    }
+  }
+
+  it('escribe lo nuevo y DESPUÉS borra lo viejo', async () => {
+    const sb = sbEdicion()
+    const r = await actualizarRegistroFuerza(sb, 400, { ...base, ejercicios: [SENTADILLA] })
+    expect(r.error).toBeNull()
+    const orden = sb.ops.map(o => o.op + ':' + o.tabla)
+    const primerBorrado = orden.findIndex(x => x.startsWith('delete'))
+    const ultimoInsert = orden.map((x, i) => x.startsWith('insert') ? i : -1).filter(i => i >= 0).pop()!
+    expect(ultimoInsert).toBeLessThan(primerBorrado)
+  })
+
+  it('si el insert falla NO se borra nada, y se dice', async () => {
+    /* Al revés —borrar primero— un fallo a mitad dejaría al atleta sin el
+       registro de un entrenamiento que sí hizo. */
+    const sb = sbEdicion({ fallaInsert: 'ejercicios' })
+    const r = await actualizarRegistroFuerza(sb, 400, { ...base, ejercicios: [SENTADILLA] })
+    expect(r.error).toContain('No se ha borrado nada')
+    expect(sb.ops.some(o => o.op === 'delete')).toBe(false)
+  })
+
+  it('sin ejercicios no se vacía la sesión por accidente', async () => {
+    const sb = sbEdicion()
+    const r = await actualizarRegistroFuerza(sb, 400, { ...base, ejercicios: [] })
+    expect(r.error).toBeTruthy()
+    expect(sb.ops).toHaveLength(0)
+  })
+
+  it('actualiza la cabecera al final', async () => {
+    const sb = sbEdicion()
+    await actualizarRegistroFuerza(sb, 400, { ...base, ejercicios: [SENTADILLA] })
+    expect(sb.ops.filter(o => o.op === 'update' && o.tabla === 'sesion')).toHaveLength(1)
   })
 })

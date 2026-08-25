@@ -276,3 +276,89 @@ export function ejerciciosDesdeSesion(
     }
   }).filter(e => !!e.nombre)
 }
+
+/** «Sentadilla · Press banca · Remo» y, si son muchos, «+2». */
+export function resumenDeEjercicios(nombres: (string | null | undefined)[], tope = 3): string {
+  const limpios = (nombres || []).map(x => (x || '').trim()).filter(Boolean)
+  if (!limpios.length) return 'Sin ejercicios'
+  const vistos = limpios.slice(0, tope).join(' · ')
+  return limpios.length > tope ? vistos + ' · +' + (limpios.length - tope) : vistos
+}
+
+/**
+ * Reescribir una sesión ya apuntada.
+ *
+ * SE INSERTA LO NUEVO ANTES DE BORRAR LO VIEJO, y no al revés. Borrar primero es
+ * lo que hace el editor del entrenador, y allí tiene sentido porque la fila que
+ * se borra se acaba de leer; aquí estamos reescribiendo el registro de un
+ * entrenamiento que el atleta ya hizo, y si el insert fallara a mitad se
+ * quedaría sin él. Con este orden, lo peor que pasa es que queden las dos
+ * versiones y se avise — y eso se puede arreglar; lo otro no.
+ *
+ * No se toca `id_deportista` ni `origen`: se está corrigiendo un dato, no
+ * cambiando de dueño.
+ */
+export async function actualizarRegistroFuerza(
+  sb: any,
+  idSesion: number,
+  opciones: {
+    fecha: string
+    duracionMinutos: number | null
+    rpe: number | null
+    notas: string | null
+    ejercicios: EjercicioRegistro[]
+  },
+): Promise<{ guardados: number; error: string | null }> {
+  const { fecha, duracionMinutos, rpe, notas, ejercicios } = opciones
+  const cuentan = ejerciciosQueCuentan(ejercicios)
+  if (!fecha) return { guardados: 0, error: 'Falta el día.' }
+  if (!cuentan.length) return { guardados: 0, error: 'Deja al menos un ejercicio con sus series.' }
+
+  /* El aviso de que NO se ha borrado nada va SIEMPRE, también cuando la base da
+     su propio mensaje: al atleta le importa más saber que su registro sigue ahí
+     que leer el error de Postgres. */
+  const fallo = (e: any) =>
+    (e?.message ? e.message + '. ' : '') + 'No se ha borrado nada: tu registro anterior sigue como estaba.'
+
+  // Lo viejo, apuntado antes de tocar nada.
+  const { data: viejas } = await sb.from('tarea').select('id').eq('id_sesion', idSesion)
+  const idsViejos = (viejas || []).map((t: any) => t.id)
+
+  // 1) Lo nuevo, con el orden empezando por detrás de lo viejo para no chocar.
+  const filasSeries: any[] = []
+  let orden = idsViejos.length + 1
+  for (const ej of cuentan) {
+    const { data: tarea, error: eT } = await sb.from('tarea')
+      .insert(tareaDe(ej, idSesion, orden++)).select('id').single()
+    if (eT || !tarea) return { guardados: 0, error: fallo(eT) }
+
+    const { data: fila, error: eE } = await sb.from('ejercicios')
+      .insert(ejercicioDe(ej, tarea.id)).select('id').single()
+    if (eE || !fila) return { guardados: 0, error: fallo(eE) }
+
+    filasSeries.push(...seriesDe(ej, fila.id))
+  }
+  if (filasSeries.length) {
+    const { error: eSer } = await sb.from('series_realizadas').insert(filasSeries)
+    if (eSer) return { guardados: 0, error: fallo(eSer) }
+  }
+
+  // 2) Y ahora sí, fuera lo viejo. Las series y los ejercicios cuelgan de la
+  //    tarea; si hay borrado en cascada se van solos, y si no, se piden aparte.
+  if (idsViejos.length) {
+    const { data: ejsViejos } = await sb.from('ejercicios').select('id').in('id_tarea', idsViejos)
+    const idsEjViejos = (ejsViejos || []).map((e: any) => e.id)
+    if (idsEjViejos.length) await sb.from('series_realizadas').delete().in('id_ejercicio', idsEjViejos)
+    await sb.from('ejercicios').delete().in('id_tarea', idsViejos)
+    await sb.from('tarea').delete().in('id', idsViejos)
+  }
+
+  await sb.from('sesion').update({
+    fecha_sesion: fecha,
+    duracion_minutos: duracionMinutos,
+    rpe_reportado: rpe,
+    notas_entrenador: notas || null,
+  }).eq('id', idSesion)
+
+  return { guardados: cuentan.length, error: null }
+}

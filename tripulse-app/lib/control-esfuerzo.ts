@@ -1,10 +1,15 @@
 // ============================================================
 // TRIPULSE — Cómo se controla el esfuerzo de una serie de fuerza
 // ============================================================
-// Los tres primeros miden lo cerca del fallo que se queda la serie, de más
-// subjetivo a más objetivo. El cuarto es otra cosa: cuánto pesa la barra
-// respecto a su máximo. Se ofrecen juntos porque es donde el entrenador espera
-// encontrarlos, pero no significan lo mismo.
+// Los cuatro primeros miden lo cerca del fallo que se queda la serie, de más
+// subjetivo a más objetivo: RIR y RPE los pone la cabeza; `% vel` y `m/s` los
+// mide un encoder. Y esos dos últimos tampoco son lo mismo entre sí — la
+// velocidad es lo MEDIDO y el porcentaje sale de compararla con la primera
+// repetición, así que guardar solo el porcentaje tira el dato de origen.
+//
+// El quinto es otra cosa: cuánto pesa la barra respecto a su máximo. Se ofrece
+// aquí porque es donde el entrenador espera encontrarlo, pero es CARGA, no
+// esfuerzo — vive con los demás por costumbre, no porque signifique lo mismo.
 //
 // ESTE FICHERO EXISTE PORQUE HABÍA TRES COPIAS
 // El catálogo vivía en `tareas-tabla.tsx` (CONTROLES), en `DatosReales.tsx`
@@ -13,7 +18,7 @@
 // la de ejecución solo conocía dos de los cuatro tipos, y la de la tabla del
 // entrenador ni siquiera leía la columna donde se guarda el valor.
 
-export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'pct1rm'
+export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'vel_ms' | 'pct1rm'
 
 export interface Control {
   id: ControlTipo
@@ -44,6 +49,14 @@ export const CONTROLES: Control[] = [
     ayuda: 'Esfuerzo percibido de 1 a 10' },
   { id: 'vel', corto: '% vel', ph: '20', seAnota: false, numeroDelante: true,
     ayuda: 'Pérdida de velocidad (VBT): corta la serie al perder ese % — necesita encoder' },
+  /* La velocidad MEDIDA, no el porcentaje que sale de ella.
+     `vel` dice cuándo cortar; esto dice a qué se movió. El encoder da 0,62 m/s
+     y el porcentaje se calcula después comparando con la primera repetición, así
+     que guardar solo el porcentaje tira el dato original.
+     `seAnota` sí: aquí hay un número delante que apuntar. Sin `max`, porque no
+     es una escala de 1 a 10 — es una medida. */
+  { id: 'vel_ms', corto: 'm/s', ph: '0.60', seAnota: true, numeroDelante: true,
+    ayuda: 'Velocidad media de la repetición, la que marca el encoder' },
   { id: 'pct1rm', corto: '% 1RM', ph: '75', seAnota: false, numeroDelante: true,
     ayuda: 'Porcentaje de su 1RM en ese ejercicio' },
 ]
