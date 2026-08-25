@@ -9,12 +9,12 @@ import {
 const serie = (peso = '', reps = '', control = '', tiempo = '') => ({ peso, reps, control, tiempo })
 
 const SENTADILLA: EjercicioRegistro = {
-  ejercicioId: 7, nombre: 'Sentadilla', grupoMuscular: 'Pierna', porTiempo: false,
+  ejercicioId: 7, nombre: 'Sentadilla', grupoMuscular: 'Pierna', porTiempo: false, controlTipo: 'rir',
   series: [serie('80', '8', '2'), serie('80', '8', '2'), serie('75', '6', '1')],
 }
 
 const PLANCHA: EjercicioRegistro = {
-  ejercicioId: 9, nombre: 'Plancha', grupoMuscular: 'Core', porTiempo: true,
+  ejercicioId: 9, nombre: 'Plancha', grupoMuscular: 'Core', porTiempo: true, controlTipo: 'rpe',
   series: [serie('', '', '', '45'), serie('', '', '', '40')],
 }
 
@@ -334,5 +334,42 @@ describe('actualizarRegistroFuerza', () => {
     const sb = sbEdicion()
     await actualizarRegistroFuerza(sb, 400, { ...base, ejercicios: [SENTADILLA] })
     expect(sb.ops.filter(o => o.op === 'update' && o.tabla === 'sesion')).toHaveLength(1)
+  })
+})
+
+describe('la escala viaja con el ejercicio', () => {
+  it('se guarda la que se eligió, no un RIR por defecto', () => {
+    const enRpe = { ...SENTADILLA, controlTipo: 'rpe' as const }
+    expect(ejercicioDe(enRpe, 50).control_tipo).toBe('rpe')
+    expect(seriesDe(enRpe, 60).every(s => s.control_tipo === 'rpe')).toBe(true)
+  })
+
+  it('con encoder también: m/s y % de pérdida son escalas normales aquí', () => {
+    const conEncoder = { ...SENTADILLA, controlTipo: 'vel_ms' as const, series: [serie('72.5', '5', '0.62')] }
+    expect(seriesDe(conEncoder, 60)[0].control_real).toBe(0.62)
+    expect(seriesDe(conEncoder, 60)[0].control_tipo).toBe('vel_ms')
+  })
+
+  it('al traer una sesión vieja, la escala es la de AQUEL día', () => {
+    /* Si lo anotaba en RPE en julio, repetirlo hoy no puede convertirlo en RIR:
+       el número significaría otra cosa. */
+    const ejs = [{ id: 1, nombre: 'Sentadilla', ejercicio_id: 7, series: 2, control_tipo: 'rpe' }]
+    const series = new Map<number, any[]>([[1, [
+      { numero_serie: 1, peso_real: 80, repeticiones_reales: 8, control_real: 8, control_tipo: 'rpe', ejercicio_numero: 1 },
+    ]]])
+    expect(ejerciciosDesdeSesion(ejs, series)[0].controlTipo).toBe('rpe')
+  })
+
+  it('la de la SERIE manda sobre la del ejercicio: es lo que de verdad se anotó', () => {
+    const ejs = [{ id: 1, nombre: 'Press banca', series: 1, control_tipo: 'rir' }]
+    const series = new Map<number, any[]>([[1, [
+      { numero_serie: 1, peso_real: 70, repeticiones_reales: 5, control_real: 0.6, control_tipo: 'vel_ms', ejercicio_numero: 1 },
+    ]]])
+    expect(ejerciciosDesdeSesion(ejs, series)[0].controlTipo).toBe('vel_ms')
+  })
+
+  it('sin nada guardado cae a RIR, que es lo más común', () => {
+    const ejs = [{ id: 1, nombre: 'Fondos', series: 2 }]
+    expect(ejerciciosDesdeSesion(ejs, new Map())[0].controlTipo).toBe('rir')
   })
 })

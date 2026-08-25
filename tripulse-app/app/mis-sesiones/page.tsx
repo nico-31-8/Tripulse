@@ -304,6 +304,15 @@ export default function MisSesiones() {
                             <div className="flex items-center gap-2">
                               {s.origen === 'deportista' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/50 text-orange-300">🙋 Tú</span>}
                               <span className={'text-xs px-2 py-0.5 rounded-full ' + estadoColor(s.estado)}>{s.estado}</span>
+                              {/* Corregir: solo la fuerza que se apuntó él. Se abre la MISMA
+                                  pantalla donde la escribió, no otra: dos sitios para apuntar
+                                  series acabarían diciendo cosas distintas. */}
+                              {s.origen === 'deportista' && s.disciplina === 'Fuerza' && (
+                                <button onClick={ev => { ev.stopPropagation(); router.push('/registrar-fuerza?sesion=' + s.id) }}
+                                  title="Corregir lo que apuntaste"
+                                  aria-label="Corregir esta sesión"
+                                  className="text-gray-600 hover:text-orange-400 text-sm px-1.5 py-1 rounded transition">✏️</button>
+                              )}
                               {s.origen === 'deportista' && (
                                 <button onClick={ev => borrarPropia(s.id, ev)}
                                   title="Quitar esta sesión (va a la papelera)"

@@ -19,6 +19,7 @@
 // es lo que hizo.
 
 import { volumenDe } from './modo-mejora'
+import { type ControlTipo } from './control-esfuerzo'
 
 export interface SerieRegistro {
   peso: string
@@ -34,6 +35,15 @@ export interface EjercicioRegistro {
   grupoMuscular: string | null
   /** Los de plancha y similares se miden en segundos, no en repeticiones. */
   porTiempo: boolean
+  /**
+   * En qué escala se anota la tercera casilla.
+   *
+   * No se fuerza a RIR: quien entrena con encoder apunta m/s o pérdida de
+   * velocidad, y quien va por sensaciones apunta RPE. Se guarda CON la serie,
+   * así que el histórico sigue diciendo la verdad aunque mañana cambie de forma
+   * de anotar.
+   */
+  controlTipo: ControlTipo
   series: SerieRegistro[]
 }
 
@@ -98,7 +108,7 @@ export function ejercicioDe(ej: EjercicioRegistro, idTarea: number) {
     series: series.length,
     repeticiones: ej.porTiempo ? null : n(primera?.reps || ''),
     intensidad: n(primera?.peso || ''),
-    control_tipo: series.some(s => n(s.control) != null) ? 'rir' : null,
+    control_tipo: series.some(s => n(s.control) != null) ? ej.controlTipo : null,
     tipo_serie: 'Normal',
   }
 }
@@ -118,7 +128,7 @@ export function seriesDe(ej: EjercicioRegistro, idEjercicio: number) {
     repeticiones_reales: ej.porTiempo ? null : n(s.reps),
     tiempo_real: ej.porTiempo ? n(s.tiempo) : null,
     control_real: n(s.control),
-    control_tipo: n(s.control) != null ? 'rir' : null,
+    control_tipo: n(s.control) != null ? ej.controlTipo : null,
     completada: true,
     ejercicio_numero: 1,
   }))
@@ -267,11 +277,17 @@ export function ejerciciosDesdeSesion(
         control: '',
       }))
 
+    /* La escala es la de AQUEL día, no la de hoy: la de la serie manda sobre la
+       del ejercicio porque es lo que de verdad se anotó. */
+    const controlTipo = (hechas.find(x => x?.control_tipo)?.control_tipo
+      || e?.control_tipo || 'rir') as ControlTipo
+
     return {
       ejercicioId: e?.ejercicio_id ?? null,
       nombre: e?.nombre || '',
       grupoMuscular: e?.grupo_muscular || null,
       porTiempo,
+      controlTipo,
       series,
     }
   }).filter(e => !!e.nombre)
