@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   serieTieneAlgo, seriesConDatos, ejerciciosQueCuentan, tareaDe, ejercicioDe, seriesDe,
   volumenHoy, resumenRegistro, guardarRegistroFuerza, SERIE_VACIA,
+  seMidePorTiempo, ejerciciosDesdeSesion,
   type EjercicioRegistro,
 } from './registro-fuerza'
 
@@ -179,5 +180,76 @@ describe('guardarRegistroFuerza', () => {
     expect(r.error).toBeTruthy()
     expect(r.idSesion).toBeNull()
     expect(sb.escritas.some(e => e._borrada != null)).toBe(true)
+  })
+})
+
+describe('seMidePorTiempo', () => {
+  it('caza los isométricos por como se llaman', () => {
+    for (const n of ['Plancha', 'Plancha lateral', 'Isométrico de cuádriceps', 'Hollow hold', 'Puente estático']) {
+      expect(seMidePorTiempo(n)).toBe(true)
+    }
+  })
+
+  it('lo normal va por repeticiones', () => {
+    for (const n of ['Sentadilla', 'Press banca', 'Dominadas', 'Hip thrust']) {
+      expect(seMidePorTiempo(n)).toBe(false)
+    }
+  })
+
+  it('es una SUPOSICIÓN, no un dato: por eso el atleta puede cambiarla', () => {
+    /* La biblioteca no guarda si un ejercicio va por tiempo, así que no hay
+       dónde mirarlo. Esto solo acierta el valor inicial de la casilla. */
+    expect(seMidePorTiempo('Isquios excéntricos 5s')).toBe(false)
+    expect(seMidePorTiempo(null)).toBe(false)
+  })
+})
+
+describe('ejerciciosDesdeSesion', () => {
+  const EJS = [
+    { id: 1, nombre: 'Sentadilla', ejercicio_id: 7, grupo_muscular: 'Pierna', series: 3, repeticiones: 8, intensidad: 80 },
+    { id: 2, nombre: 'Plancha', ejercicio_id: 9, grupo_muscular: 'Core', series: 2 },
+  ]
+  const SERIES = new Map<number, any[]>([
+    [1, [
+      { numero_serie: 2, peso_real: 80, repeticiones_reales: 8, control_real: 2, ejercicio_numero: 1 },
+      { numero_serie: 1, peso_real: 80, repeticiones_reales: 8, control_real: 2, ejercicio_numero: 1 },
+      { numero_serie: 1, peso_real: 40, repeticiones_reales: 10, ejercicio_numero: 2 },
+    ]],
+    [2, [{ numero_serie: 1, tiempo_real: 45, ejercicio_numero: 1 }]],
+  ])
+
+  it('trae los ejercicios con lo que se hizo aquel día', () => {
+    const r = ejerciciosDesdeSesion(EJS, SERIES)
+    expect(r.map(e => e.nombre)).toEqual(['Sentadilla', 'Plancha'])
+    expect(r[0].series.map(s => s.peso)).toEqual(['80', '80'])
+    expect(r[0].ejercicioId).toBe(7)
+  })
+
+  it('ordena las series por su número, no por como vengan de la base', () => {
+    const r = ejerciciosDesdeSesion([EJS[0]], SERIES)
+    expect(r[0].series).toHaveLength(2)
+  })
+
+  it('deja fuera las del encadenado: son de otro ejercicio', () => {
+    const r = ejerciciosDesdeSesion([EJS[0]], SERIES)
+    expect(r[0].series.every(s => s.peso === '80')).toBe(true)
+  })
+
+  it('la plancha viene por tiempo', () => {
+    const r = ejerciciosDesdeSesion(EJS, SERIES)
+    expect(r[1].porTiempo).toBe(true)
+    expect(r[1].series[0].tiempo).toBe('45')
+  })
+
+  it('sin series registradas cae a lo prescrito, no a filas en blanco', () => {
+    /* Es una sesión que se planificó y no se llegó a rellenar. Repetirla vacía
+       sería peor que repetirla con lo que ponía. */
+    const r = ejerciciosDesdeSesion([EJS[0]], new Map())
+    expect(r[0].series).toHaveLength(3)
+    expect(r[0].series[0]).toMatchObject({ peso: '80', reps: '8' })
+  })
+
+  it('sin nombre no es un ejercicio', () => {
+    expect(ejerciciosDesdeSesion([{ id: 9 }], new Map())).toEqual([])
   })
 })

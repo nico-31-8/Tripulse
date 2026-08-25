@@ -215,3 +215,64 @@ export async function guardarRegistroFuerza(
 
   return { idSesion: ses.id, guardados: cuentan.length, error: null }
 }
+
+/**
+ * ¿Este ejercicio se mide en segundos o en repeticiones?
+ *
+ * Es una SUPOSICIÓN a partir del nombre y solo sirve para acertar el valor
+ * inicial de la casilla: la biblioteca no guarda si un ejercicio va por tiempo,
+ * así que no hay dónde mirarlo. Por eso el atleta puede cambiarlo con un
+ * interruptor — una plancha se llama plancha, pero un «hollow hold» o un
+ * «isquios excéntricos 5s» no los caza ningún patrón, y pedirle repeticiones a
+ * quien ha aguantado 45 segundos es pedirle que se invente un dato.
+ */
+export function seMidePorTiempo(nombre: string | null | undefined): boolean {
+  return /planch|isom|hold|est[áa]tic|sostenid|aguant/i.test(nombre || '')
+}
+
+/**
+ * Los ejercicios de una sesión ya hecha, listos para volver a apuntarlos.
+ *
+ * Para «repetir mi última sesión»: en un gimnasio se repite la rutina, y
+ * añadirla ejercicio a ejercicio cada vez es justo la fricción que hace que la
+ * gente deje de apuntar. Vienen con los números de aquel día puestos, igual que
+ * al añadir uno suelto: se cambia lo que haya cambiado.
+ *
+ * `porEjercicio` son las series realizadas agrupadas por id de ejercicio.
+ */
+export function ejerciciosDesdeSesion(
+  ejercicios: any[] | null | undefined,
+  porEjercicio: Map<number, any[]>,
+): EjercicioRegistro[] {
+  return (ejercicios || []).map(e => {
+    const porTiempo = seMidePorTiempo(e?.nombre)
+    const hechas = (porEjercicio.get(Number(e.id)) || [])
+      .filter(s => (s?.ejercicio_numero ?? 1) === 1)
+      .slice()
+      .sort((a, b) => (a?.numero_serie || 0) - (b?.numero_serie || 0))
+
+    const series = hechas.length
+      ? hechas.map(s => ({
+        peso: s.peso_real != null ? String(Number(s.peso_real)) : '',
+        reps: s.repeticiones_reales != null ? String(Number(s.repeticiones_reales)) : '',
+        tiempo: s.tiempo_real != null ? String(Number(s.tiempo_real)) : '',
+        control: s.control_real != null ? String(Number(s.control_real)) : '',
+      }))
+      /* Sin series registradas se cae a lo prescrito: es una sesión que se
+         planificó y no se llegó a rellenar, y repetirla en blanco sería peor. */
+      : Array.from({ length: Math.max(1, Number(e?.series) || 3) }, () => ({
+        peso: e?.intensidad != null ? String(Number(e.intensidad)) : '',
+        reps: e?.repeticiones != null ? String(Number(e.repeticiones)) : '',
+        tiempo: '',
+        control: '',
+      }))
+
+    return {
+      ejercicioId: e?.ejercicio_id ?? null,
+      nombre: e?.nombre || '',
+      grupoMuscular: e?.grupo_muscular || null,
+      porTiempo,
+      series,
+    }
+  }).filter(e => !!e.nombre)
+}

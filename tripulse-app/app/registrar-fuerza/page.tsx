@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO, fechaLarga } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
+import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import BuscadorEjercicios, { type EjercicioBib } from '@/components/BuscadorEjercicios'
 import {
   SERIE_VACIA, seriesConDatos, ejerciciosQueCuentan, volumenHoy, resumenRegistro,
-  guardarRegistroFuerza, type EjercicioRegistro,
+  guardarRegistroFuerza, seMidePorTiempo, ejerciciosDesdeSesion, type EjercicioRegistro,
 } from '@/lib/registro-fuerza'
 import {
   resumenUltimaVez, controlUltimaVez, volumenDe, haMejorado, serieAnterior, haceTexto,
@@ -42,6 +43,8 @@ export default function RegistrarFuerza() {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [hecho, setHecho] = useState<number | null>(null)
+  const [repitiendo, setRepitiendo] = useState(false)
+  const [ultima, setUltima] = useState<{ id: number; fecha: string } | null>(null)
 
   useEffect(() => { cargar() }, [])
 
@@ -51,6 +54,14 @@ export default function RegistrarFuerza() {
     const { data: d } = await supabase.from('deportista').select('id, nombre').eq('id_usuario', user.id).maybeSingle()
     if (!d) { setCargando(false); return }
     setDep(d)
+    /* ¿Tiene una sesión de fuerza anterior? Solo el encabezado: los ejercicios
+       se traen si pulsa, que es lo que no se debe pagar de entrada. */
+    const { data: ult } = await vivas(supabase.from('sesion')
+      .select('id, fecha_sesion')
+      .eq('id_deportista', d.id).eq('disciplina', 'Fuerza').eq('estado', 'Realizada'))
+      .order('fecha_sesion', { ascending: false }).limit(1)
+    if (ult?.length) setUltima({ id: ult[0].id, fecha: ult[0].fecha_sesion })
+
     const { data: bib } = await supabase.from('ejercicios_biblioteca')
       .select('id, nombre, grupo_muscular, descripcion, url_video').order('nombre')
     setBiblioteca(bib || [])
@@ -91,7 +102,7 @@ export default function RegistrarFuerza() {
   }, [fecha, dep])
 
   const anadirEjercicio = async (e: EjercicioBib) => {
-    const porTiempo = /planch|isom|planc/i.test(e.nombre)
+    const porTiempo = seMidePorTiempo(e.nombre)
     const h = dep ? await traerHistorial(e.nombre, dep.id) : null
 
     /* Las casillas nacen con lo de la última vez puesto: así solo tiene que
@@ -110,6 +121,47 @@ export default function RegistrarFuerza() {
       ejercicioId: e.id, nombre: e.nombre, grupoMuscular: e.grupo_muscular || null, porTiempo, series,
     }])
   }
+
+  /* Repetir la última: en un gimnasio se repite la rutina, y añadir cinco
+     ejercicios uno a uno cada vez es la fricción que hace que la gente deje de
+     apuntar. Vienen con los números de aquel día puestos. */
+  const repetirUltima = async () => {
+    if (!ultima || !dep) return
+    setRepitiendo(true); setError('')
+    const { data: tareas } = await supabase.from('tarea').select('id').eq('id_sesion', ultima.id).order('orden')
+    const idsTarea = (tareas || []).map((t: any) => t.id)
+    const { data: ejs } = idsTarea.length
+      ? await supabase.from('ejercicios')
+        .select('id, nombre, ejercicio_id, grupo_muscular, series, repeticiones, intensidad, id_tarea')
+        .in('id_tarea', idsTarea)
+      : { data: [] as any[] }
+
+    const idsEj = (ejs || []).map((e: any) => e.id)
+    const { data: series } = idsEj.length
+      ? await supabase.from('series_realizadas')
+        .select('id_ejercicio, numero_serie, peso_real, repeticiones_reales, tiempo_real, control_real, ejercicio_numero')
+        .in('id_ejercicio', idsEj)
+      : { data: [] as any[] }
+
+    const porEj = new Map<number, any[]>()
+    for (const x of series || []) {
+      const l = porEj.get(Number(x.id_ejercicio))
+      if (l) l.push(x); else porEj.set(Number(x.id_ejercicio), [x])
+    }
+
+    // En el orden de las tareas, que es el orden en que se entrenó.
+    const orden = new Map(idsTarea.map((id: number, i: number) => [id, i]))
+    const ordenados = [...(ejs || [])].sort((a, b) =>
+      (orden.get(a.id_tarea) ?? 99) - (orden.get(b.id_tarea) ?? 99))
+
+    const traidos = ejerciciosDesdeSesion(ordenados, porEj)
+    if (!traidos.length) setError('Esa sesión no tenía ejercicios que traer.')
+    else setEjercicios(prev => [...prev, ...traidos])
+    setRepitiendo(false)
+  }
+
+  const cambiarPorTiempo = (iEj: number) =>
+    setEjercicios(prev => prev.map((e, i) => i !== iEj ? e : { ...e, porTiempo: !e.porTiempo }))
 
   const cambiarSerie = (iEj: number, iSerie: number, campo: keyof typeof SERIE_VACIA, valor: string) =>
     setEjercicios(prev => prev.map((e, i) => i !== iEj ? e : {
@@ -212,6 +264,15 @@ export default function RegistrarFuerza() {
             <section key={iEj} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <div className="px-4 py-3 flex items-center gap-2 border-b border-gray-800">
                 <span className="font-semibold flex-1">{ej.nombre}</span>
+                {/* Si se mide por tiempo o por repeticiones es una SUPOSICIÓN sacada
+                    del nombre: la biblioteca no lo guarda. Se puede cambiar, porque
+                    pedirle repeticiones a quien ha aguantado 45 segundos es pedirle
+                    que se invente un dato. */}
+                <button onClick={() => cambiarPorTiempo(iEj)}
+                  title="Cambiar entre repeticiones y segundos"
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 hover:text-white transition">
+                  {ej.porTiempo ? 'por tiempo' : 'por reps'}
+                </button>
                 {superado && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white">✓ superado</span>}
                 <button onClick={() => quitarEjercicio(iEj)} className="text-gray-600 hover:text-red-400 text-sm px-1 transition" aria-label="Quitar">✕</button>
               </div>
@@ -264,6 +325,13 @@ export default function RegistrarFuerza() {
             </section>
           )
         })}
+
+        {ultima && ejercicios.length === 0 && (
+          <button onClick={repetirUltima} disabled={repitiendo}
+            className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-orange-500/60 text-gray-300 hover:text-white py-4 rounded-xl transition disabled:opacity-40">
+            {repitiendo ? 'Trayendo…' : '↻ Repetir mi última sesión · ' + fechaLarga(ultima.fecha)}
+          </button>
+        )}
 
         <BuscadorEjercicios
           ejercicios={biblioteca}
