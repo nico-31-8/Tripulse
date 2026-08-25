@@ -1,6 +1,9 @@
 'use client'
 import { useState } from 'react'
 import { controlDe, textoControl } from '@/lib/control-esfuerzo'
+import {
+  seriesPrincipales, resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
+} from '@/lib/modo-mejora'
 import { mmss } from '@/lib/duracion-carga'
 import { textoEncadenado } from '@/lib/tarea-vista'
 
@@ -63,41 +66,26 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
         const esDropSet = tipoSerie === 'Drop set'
         const escalones = esDropSet && ej.escalones_drop ? ej.escalones_drop.split(',').map((s: string) => s.trim()) : []
 
-        // Modo mejora: qué hizo la última vez en este ejercicio (serie principal).
+        /* Modo mejora: qué hizo la última vez. La lógica vive en lib/modo-mejora
+           porque la pantalla donde el ATLETA registra su propia sesión de fuerza
+           enseña exactamente lo mismo, y escribirlo dos veces acabaría con las
+           dos pantallas diciendo cosas distintas de la misma serie. */
         const prev = historial?.[ej.nombre]
-        const seriesPrev = prev ? prev.series.filter((s: any) => (s.ejercicio_numero ?? 1) === 1) : []
-        // En un ejercicio por tiempo, «45×? reps» no dice nada: se enseñan los
-        // segundos, que es lo que hay que superar.
-        const resumenPrev = seriesPrev
-          .map((s: any) => {
-            if (porTiempo) {
-              const seg = Number(s.tiempo_real) || 0
-              return seg ? (s.peso_real ? `${Number(s.peso_real)}kg·${seg}s` : `${seg}s`) : '?'
-            }
-            return s.peso_real ? `${Number(s.peso_real)}×${Number(s.repeticiones_reales) || '?'}` : `${Number(s.repeticiones_reales) || '?'} reps`
-          })
-          .join(' · ')
-        // La etiqueta sale del tipo con el que se ANOTÓ, no del que se prescribe
-        // hoy: si la última vez fue en RPE y hoy pides RIR, poner «RIR 8» sobre un
-        // número que era un RPE sería mentir sobre el histórico.
-        const ctrlPrev = seriesPrev[0]?.control_tipo || 'rir'
-        const etPrev = controlDe(ctrlPrev).corto
-        const rirsPrev = seriesPrev.map((s: any) => s.control_real ?? s.rir_real).filter((v: any) => v != null)
-        const rirPrev = rirsPrev.length
-          ? (rirsPrev.every((r: any) => r === rirsPrev[0]) ? String(rirsPrev[0]) : `${Math.min(...rirsPrev)}-${Math.max(...rirsPrev)}`)
-          : ''
-        // Fantasma por serie (lo que hizo esa misma serie la vez pasada) y "¿ha superado el volumen?".
-        const prevSerie = (n: number) => seriesPrev.find((s: any) => s.numero_serie === n)
-        // "¿He superado lo de la última vez?" En reps el volumen es kg×reps; en
-        // tiempo son los segundos aguantados (con o sin peso encima). Mezclarlos
-        // daría 0 siempre en los de tiempo y el aviso no saltaría nunca.
-        const carga = (s: any) => porTiempo
-          ? (Number(s.tiempo_real) || 0)
-          : (Number(s.peso_real) || 0) * (Number(s.repeticiones_reales) || 0)
-        const volPrev = seriesPrev.reduce((a: number, s: any) => a + carga(s), 0)
-        const volHoy = Array.from({ length: numSeries }, (_, i) => getSerieFuerza(ej.id, i + 1, 1))
-          .reduce((a: number, s: any) => a + carga(s), 0)
-        const superado = !!prev && volPrev > 0 && volHoy >= volPrev
+        const seriesPrev = seriesPrincipales(prev?.series)
+        const resumenPrev = resumenUltimaVez(prev?.series, porTiempo)
+        /* `ctrlPrevio`, no `ctrl`: arriba ya hay un `ctrl` que es el control que se
+           PRESCRIBE hoy. Son dos cosas distintas y pisarlas confundiría la
+           etiqueta de hoy con la de aquel día. */
+        const ctrlPrevio = controlUltimaVez(prev?.series)
+        const etPrev = ctrlPrevio.etiqueta
+        const rirPrev = ctrlPrevio.valor
+        const prevSerie = (n: number) => serieAnterior(prev?.series, n)
+        const volPrev = volumenDe(prev?.series, porTiempo)
+        const volHoy = volumenDe(
+          Array.from({ length: numSeries }, (_, i) => getSerieFuerza(ej.id, i + 1, 1)),
+          porTiempo,
+        )
+        const superado = !!prev && haSuperado(volPrev, volHoy)
 
         return (
           <div key={ej.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
@@ -161,17 +149,17 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
                           {completada ? '✓' : numSerie}
                         </button>
-                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie).peso_real)) : (ej.intensidad || 'Kg')}
+                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : (ej.intensidad || 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
                         {porTiempo ? (
                           <input type="number" value={s1.tiempo_real || ''}
-                            placeholder={prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie).tiempo_real)) + ' s' : segPlan + ' s'}
+                            placeholder={prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie)?.tiempo_real)) + ' s' : segPlan + ' s'}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'tiempo_real', e.target.value)}
                             title="Segundos que aguantaste esta serie"
                             className={inputCls} />
                         ) : (
-                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie).repeticiones_reales)) : (ej.repeticiones || 'Reps')}
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (ej.repeticiones || 'Reps')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
