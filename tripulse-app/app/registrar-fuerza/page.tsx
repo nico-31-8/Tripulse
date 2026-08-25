@@ -100,8 +100,16 @@ export default function RegistrarFuerza() {
     setBiblioteca(bib.data || [])
     await resumirSesiones(lista.data || [])
 
+    const params = new URLSearchParams(window.location.search)
+
+    /* `?fecha=` viene de quien nos manda desde otra pantalla ya con un día
+       elegido — el alta de sesión de /mis-sesiones. Sin esto, cambiar de
+       pantalla te devolvía a hoy y había que volver a ponerlo. */
+    const dia = params.get('fecha')
+    if (dia && /^\d{4}-\d{2}-\d{2}$/.test(dia)) setFecha(dia)
+
     // ¿Venimos a corregir una?
-    const idSes = Number(new URLSearchParams(window.location.search).get('sesion') || 0)
+    const idSes = Number(params.get('sesion') || 0)
     if (idSes) await abrirParaCorregir(idSes, d.id)
 
     setCargando(false)

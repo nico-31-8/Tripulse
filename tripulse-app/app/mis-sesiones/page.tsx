@@ -577,8 +577,27 @@ export default function MisSesiones() {
                 <label className="text-gray-400 text-sm mb-1 block">Notas — opcional</label>
                 <textarea value={fNotas} onChange={e => setFNotas(e.target.value)} rows={2} placeholder={fModo === 'realizada' ? '¿Cómo fue?' : '¿Qué vas a hacer?'} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
               </div>
+              {/* La fuerza YA HECHA tiene su propia pantalla, donde se apunta
+                  ejercicio a ejercicio y se ve lo que hiciste la última vez.
+                  Este formulario solo guarda la cabecera —«hice 50 min de
+                  fuerza»— y desde aquí no había forma de llegar a la otra.
+
+                  Se ofrecen las dos y no se redirige a la fuerza: apuntar solo
+                  la cabecera es legítimo y más rápido cuando no te apetece el
+                  detalle. Y solo en «ya la hice»: la otra pantalla registra lo
+                  que PASÓ, no sirve para planificar. */}
+              {fDisc === 'Fuerza' && fModo === 'realizada' && (
+                <button onClick={() => router.push('/registrar-fuerza?fecha=' + fFecha)}
+                  className="text-left border border-orange-500/45 bg-orange-500/[0.09] hover:bg-orange-500/15 rounded-xl px-4 py-3 transition">
+                  <span className="block text-orange-300 font-medium text-sm">💪 Apuntar los ejercicios →</span>
+                  <span className="block text-gray-500 text-xs mt-0.5 leading-snug">
+                    Series, kilos y repeticiones, con lo que hiciste la última vez delante.
+                  </span>
+                </button>
+              )}
+
               <button onClick={crearSesion} disabled={guardando} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition disabled:opacity-50">
-                {guardando ? 'Guardando...' : 'Añadir sesión'}
+                {guardando ? 'Guardando...' : fDisc === 'Fuerza' && fModo === 'realizada' ? 'Guardar solo la cabecera' : 'Añadir sesión'}
               </button>
               <p className="text-gray-600 text-xs text-center">Tu entrenador la verá marcada como añadida por ti.</p>
             </div>
