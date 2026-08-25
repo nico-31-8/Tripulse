@@ -17,14 +17,27 @@ import {
 } from '@/lib/modo-mejora'
 import { controlDe, siguienteControl, type ControlTipo } from '@/lib/control-esfuerzo'
 import { microDelDia } from '@/lib/grupos-emision'
+import BloquesResistencia from '@/components/BloquesResistencia'
+import {
+  BLOQUE_VACIO, bloquesQueCuentan, resumenTotal, bloquesDesdeSesion,
+  guardarRegistroResistencia, actualizarRegistroResistencia, type BloqueRegistro,
+} from '@/lib/registro-resistencia'
+import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
 
-/* Aquí el atleta apunta la fuerza que hace por su cuenta.
-   Se apunta MIENTRAS se entrena, no se planifica: la sesión nace ya Realizada.
+/* Aquí el atleta apunta lo que entrena por su cuenta, sea lo que sea.
+   Es UNA sola puerta a propósito. Antes había dos: un modal que solo guardaba
+   la cabecera —«nadé 62 minutos»— y esta pantalla, que solo servía para fuerza.
+   La primera dejaba rectángulos vacíos en el calendario que no entraban ni en
+   el volumen ni en la distribución de zonas.
 
-   Lo que hace que esto sirva de algo es el «la última vez»: al añadir un
-   ejercicio se le pregunta al histórico qué hizo la vez anterior, se enseña ahí
-   mismo y se le rellenan las casillas con esos números. Solo tiene que cambiar
-   lo que ha cambiado, que suele ser un kilo o una repetición.
+   Según la disciplina cambia el cuerpo, no la pantalla:
+   · Fuerza    → ejercicios y series, con lo que hizo la última vez delante.
+   · Las demás → bloques: zona, series × distancia o tiempo, ritmo y descanso.
+
+   Lo que hace que la parte de fuerza sirva de algo es el «la última vez»: al
+   añadir un ejercicio se le pregunta al histórico qué hizo la vez anterior, se
+   enseña ahí mismo y se le rellenan las casillas con esos números. Solo tiene
+   que cambiar lo que ha cambiado, que suele ser un kilo o una repetición.
 
    Con `?sesion=<id>` la misma pantalla CORRIGE una ya guardada en vez de crear
    otra. Es la misma pantalla a propósito: dos sitios donde se apuntan series
@@ -36,7 +49,24 @@ type Resumida = { id: number; fecha: string; nombres: string[]; series: number }
 
 const DESCANSO_POR_DEFECTO = 120
 
-export default function RegistrarFuerza() {
+/* Los valores van SIN tilde porque es lo que escriben las demás pantallas en
+   `sesion.disciplina` (microciclo, mesociclo, grupo). Escribir «Natación» aquí
+   dejaría estas sesiones fuera de cualquier filtro que compare la cadena.
+
+   No está Brick a propósito: en un brick cada bloque es de una disciplina
+   distinta, y la atribución por bloque necesita eso para repartir la carga.
+   Con una sola disciplina por sesión saldría todo como «Brick» y no contaría
+   en ninguna. */
+const DISCIPLINAS = [
+  { v: 'Natacion', et: '🏊 Natación' },
+  { v: 'Ciclismo', et: '🚴 Ciclismo' },
+  { v: 'Carrera', et: '🏃 Carrera' },
+  { v: 'Fuerza', et: '🏋️ Fuerza' },
+]
+
+const SIN_TESTS: Tests = { vam: 0, ftp: 0, css: 0 }
+
+export default function Apuntar() {
   const router = useRouter()
   const [dep, setDep] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
@@ -46,11 +76,20 @@ export default function RegistrarFuerza() {
   // envolver la página en un Suspense solo por esto.
   const [editando, setEditando] = useState<number | null>(null)
 
+  const [disciplina, setDisciplina] = useState('Fuerza')
+  const [realizada, setRealizada] = useState(true)
   const [fecha, setFecha] = useState(hoyISO())
   const [duracion, setDuracion] = useState('')
   const [rpe, setRpe] = useState('')
   const [notas, setNotas] = useState('')
   const [ejercicios, setEjercicios] = useState<EjercicioRegistro[]>([])
+
+  /* Los bloques de las disciplinas de resistencia, y los tests que hacen falta
+     para poder decirle a qué ritmo va en cada zona. */
+  const [bloques, setBloques] = useState<BloqueRegistro[]>([])
+  const [tests, setTests] = useState<Tests>(SIN_TESTS)
+  const [fcMax, setFcMax] = useState(0)
+  const [sistema, setSistema] = useState(1)
   const [historial, setHistorial] = useState<Record<string, Historial>>({})
 
   // Progresión: se pide al desplegar, no al cargar. Con seis ejercicios serían
@@ -67,6 +106,9 @@ export default function RegistrarFuerza() {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [hecho, setHecho] = useState<number | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  const esFuerza = disciplina === 'Fuerza'
 
   useEffect(() => { cargar() }, [])
 
@@ -96,9 +138,12 @@ export default function RegistrarFuerza() {
       .eq('id_deportista', d.id).eq('disciplina', 'Fuerza').eq('estado', 'Realizada'))
       .order('fecha_sesion', { ascending: false }).limit(12)
 
-    const [bib, lista] = await Promise.all([bibQ, listaQ])
+    const [bib, lista, refs] = await Promise.all([bibQ, listaQ, cargarReferencias(supabase, d.id)])
     setBiblioteca(bib.data || [])
     await resumirSesiones(lista.data || [])
+    setTests(refs.tests)
+    setFcMax(refs.fcMax)
+    setSistema(refs.sistema)
 
     const params = new URLSearchParams(window.location.search)
 
@@ -107,6 +152,12 @@ export default function RegistrarFuerza() {
        pantalla te devolvía a hoy y había que volver a ponerlo. */
     const dia = params.get('fecha')
     if (dia && /^\d{4}-\d{2}-\d{2}$/.test(dia)) setFecha(dia)
+
+    const disc = params.get('disciplina')
+    if (disc && DISCIPLINAS.some(x => x.v === disc)) {
+      setDisciplina(disc)
+      if (disc !== 'Fuerza') setBloques([{ ...BLOQUE_VACIO }])
+    }
 
     // ¿Venimos a corregir una?
     const idSes = Number(params.get('sesion') || 0)
@@ -171,20 +222,34 @@ export default function RegistrarFuerza() {
 
   const abrirParaCorregir = async (idSesion: number, idDep: number) => {
     const { data: s } = await supabase.from('sesion')
-      .select('id, fecha_sesion, duracion_minutos, rpe_reportado, notas_entrenador, origen, disciplina, id_deportista')
+      .select('id, fecha_sesion, duracion_minutos, rpe_reportado, rpe_estimado, estado, notas_entrenador, origen, disciplina, id_deportista')
       .eq('id', idSesion).maybeSingle()
     /* Solo las suyas y solo las que se apuntó él. Lo que le prescribe el
        entrenador se corrige en la pantalla de ejecución, no aquí. */
-    if (!s || Number(s.id_deportista) !== Number(idDep) || s.origen !== 'deportista' || s.disciplina !== 'Fuerza') {
+    if (!s || Number(s.id_deportista) !== Number(idDep) || s.origen !== 'deportista') {
       setError('Esa sesión no se puede corregir desde aquí.')
       return
     }
+    const hecha = s.estado === 'Realizada'
     setEditando(s.id)
+    setDisciplina(s.disciplina || 'Fuerza')
+    setRealizada(hecha)
     setFecha(String(s.fecha_sesion).slice(0, 10))
     setDuracion(s.duracion_minutos != null ? String(s.duracion_minutos) : '')
-    setRpe(s.rpe_reportado != null ? String(s.rpe_reportado) : '')
+    setRpe(String((hecha ? s.rpe_reportado : s.rpe_estimado) ?? ''))
     setNotas(s.notas_entrenador || '')
-    setEjercicios(await ejerciciosDe(s.id))
+
+    if (s.disciplina === 'Fuerza') setEjercicios(await ejerciciosDe(s.id))
+    else setBloques(await bloquesDe(s.id))
+  }
+
+  /** Los bloques de una sesión de resistencia ya guardada, para corregirla. */
+  const bloquesDe = async (idSesion: number): Promise<BloqueRegistro[]> => {
+    const { data: tareas } = await supabase.from('tarea')
+      .select('id, zona_entrenamiento, series, descanso_segundos, p_distancia(metros_planeados, metros_reales, ritmo_objetivo), p_duracion(tiempo_planeado, tiempo_real)')
+      .eq('id_sesion', idSesion).order('orden')
+    const v = bloquesDesdeSesion(tareas || [])
+    return v.length ? v : [{ ...BLOQUE_VACIO }]
   }
 
   /* Qué hizo la última vez con este ejercicio. Sale del mismo RPC que usa la
@@ -317,16 +382,18 @@ export default function RegistrarFuerza() {
     if (!dep) return
     setGuardando(true); setError('')
 
+    const comun = {
+      duracionMinutos: duracion ? Number(duracion) : null,
+      rpe: rpe ? Number(rpe) : null,
+      notas: notas || null,
+    }
+
     if (editando) {
-      const r = await actualizarRegistroFuerza(supabase, editando, {
-        fecha,
-        duracionMinutos: duracion ? Number(duracion) : null,
-        rpe: rpe ? Number(rpe) : null,
-        notas: notas || null,
-        ejercicios,
-      })
+      const r = esFuerza
+        ? await actualizarRegistroFuerza(supabase, editando, { fecha, ...comun, ejercicios })
+        : await actualizarRegistroResistencia(supabase, editando, { disciplina, fecha, realizada, ...comun, bloques })
       if (r.error) setError(r.error)
-      else setHecho(editando)
+      else { setAviso((r as any).aviso || null); setHecho(editando) }
       setGuardando(false)
       return
     }
@@ -335,19 +402,31 @@ export default function RegistrarFuerza() {
        suelta y no suma en la vista de semana del entrenador. */
     const { data: micros } = await supabase.from('microciclo')
       .select('id, fecha_inicio, duracion_dias').eq('id_deportista', dep.id)
+    const idMicrociclo = microDelDia(micros || [], fecha)?.id ?? null
 
-    const r = await guardarRegistroFuerza(supabase, {
-      idDeportista: dep.id,
-      fecha,
-      idMicrociclo: microDelDia(micros || [], fecha)?.id ?? null,
-      duracionMinutos: duracion ? Number(duracion) : null,
-      rpe: rpe ? Number(rpe) : null,
-      notas: notas || null,
-      ejercicios,
-    })
+    const r = esFuerza
+      ? await guardarRegistroFuerza(supabase, { idDeportista: dep.id, fecha, idMicrociclo, ...comun, ejercicios })
+      : await guardarRegistroResistencia(supabase, {
+        idDeportista: dep.id, disciplina, fecha, idMicrociclo, realizada, ...comun, bloques,
+      })
     if (r.error) setError(r.error)
-    else setHecho(r.idSesion)
+    else { setAviso((r as any).aviso || null); setHecho(r.idSesion) }
     setGuardando(false)
+  }
+
+  const cambiarBloque = (i: number, campo: keyof BloqueRegistro, valor: string) =>
+    setBloques(prev => prev.map((b, j) => j !== i ? b : { ...b, [campo]: valor }))
+  const quitarBloque = (i: number) => setBloques(prev => prev.filter((_, j) => j !== i))
+  const anadirBloque = () => setBloques(prev => [...prev, { ...BLOQUE_VACIO }])
+
+  /* Cambiar de disciplina no arrastra lo apuntado de la anterior: unos
+     ejercicios de fuerza no son bloques de natación. */
+  const cambiarDisciplina = (v: string) => {
+    if (v === disciplina) return
+    setDisciplina(v)
+    setEjercicios([])
+    setBloques(v === 'Fuerza' ? [] : [{ ...BLOQUE_VACIO }])
+    if (v === 'Fuerza') setRealizada(true)
   }
 
   if (cargando) return <Cargando volverA="/dashboard-deportista" />
@@ -357,9 +436,16 @@ export default function RegistrarFuerza() {
     return (
       <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
-          <div className="text-5xl mb-4">💪</div>
+          <div className="text-5xl mb-4">{esFuerza ? '💪' : DISCIPLINAS.find(d => d.v === disciplina)?.et.slice(0, 2)}</div>
           <p className="text-xl font-bold mb-1">{editando ? 'Corregido' : 'Guardado'}</p>
-          <p className="text-gray-500 text-sm mb-6">{resumenRegistro(ejercicios)} · {fechaLarga(fecha)}</p>
+          <p className="text-gray-500 text-sm mb-6">
+            {esFuerza ? resumenRegistro(ejercicios) : resumenTotal(bloques)} · {fechaLarga(fecha)}
+          </p>
+          {aviso && (
+            <p className="text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2.5 text-[12.5px] mb-5 text-left leading-relaxed">
+              {aviso}
+            </p>
+          )}
           <div className="flex flex-col gap-2">
             <button onClick={() => router.push('/sesion/' + hecho)}
               className="bg-orange-500 hover:bg-orange-600 px-4 py-2.5 rounded-lg text-sm font-medium transition">Ver la sesión</button>
@@ -371,7 +457,7 @@ export default function RegistrarFuerza() {
     )
   }
 
-  const cuentan = ejerciciosQueCuentan(ejercicios)
+  const cuentan = esFuerza ? ejerciciosQueCuentan(ejercicios) : bloquesQueCuentan(bloques)
   const mmss = (seg: number) => {
     const m = Math.floor(Math.abs(seg) / 60), s = Math.abs(seg) % 60
     return (seg < 0 ? '+' : '') + m + ':' + String(s).padStart(2, '0')
@@ -379,12 +465,15 @@ export default function RegistrarFuerza() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white pb-40">
-      <nav className="bg-gray-900 px-5 py-4 flex justify-between items-center border-b border-gray-800">
-        <span className="font-semibold">{editando ? 'Corregir fuerza' : 'Apuntar fuerza'}</span>
+      {/* Sin título aquí: el logo de la app va fijo sobre esta esquina y se lo
+          come. Va en el cuerpo, como en /mis-sesiones. */}
+      <nav className="bg-gray-900 pl-16 pr-5 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">Salir</button>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-5 flex flex-col gap-3.5">
+        <h1 className="text-xl font-bold">{editando ? 'Corregir sesión' : 'Apuntar sesión'}</h1>
+
         {error && <div className="bg-red-950/60 border border-red-900 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>}
 
         {editando && (
@@ -396,15 +485,44 @@ export default function RegistrarFuerza() {
           </div>
         )}
 
-        {/* El día, y solo el día. Los minutos y el RPE se saben AL TERMINAR, así
-            que van abajo: pedirlos aquí es pedir que se adivinen. */}
-        <div className="tp-card px-3.5 py-3 flex items-center gap-3">
-          <span className="text-gray-400 text-[11px] flex-none">Qué día</span>
-          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-            className="flex-1 bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+        {/* Qué, cuándo — y nada más. Los minutos y el RPE se saben AL TERMINAR,
+            así que van abajo: pedirlos aquí es pedir que se adivinen.
+
+            La disciplina va en píldoras y no en un desplegable porque son cinco
+            y se ven de un vistazo; con un desplegable hay que abrirlo para saber
+            qué hay. */}
+        <div className="tp-card overflow-hidden">
+          {/* Para fuerza no hay «la voy a hacer»: se apunta serie a serie
+              mientras se entrena, y una serie planeada no tiene kilos reales. */}
+          {!esFuerza && (
+            <div className="grid grid-cols-2 gap-1.5 p-3 pb-0">
+              {[{ v: false, et: 'La voy a hacer' }, { v: true, et: 'Ya la hice' }].map(m => (
+                <button key={String(m.v)} onClick={() => setRealizada(m.v)} aria-pressed={realizada === m.v}
+                  className={'py-2.5 rounded-xl text-[13.5px] font-semibold transition ' + (realizada === m.v
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-white')}>{m.et}</button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-1.5 overflow-x-auto p-3" role="group" aria-label="Disciplina">
+            {DISCIPLINAS.map(d => (
+              <button key={d.v} onClick={() => cambiarDisciplina(d.v)} aria-pressed={disciplina === d.v}
+                disabled={!!editando}
+                className={'flex-none px-3.5 py-2 rounded-full text-[12.5px] whitespace-nowrap transition disabled:opacity-60 ' + (disciplina === d.v
+                  ? 'bg-orange-500/15 text-orange-300 ring-1 ring-inset ring-orange-500/45'
+                  : 'bg-gray-800 text-gray-400 hover:text-white')}>{d.et}</button>
+            ))}
+          </div>
+
+          <div className="px-3.5 pb-3 flex items-center gap-3 border-t border-white/[0.075] pt-3">
+            <span className="text-gray-400 text-[11px] flex-none">Qué día</span>
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+              className="flex-1 bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+          </div>
         </div>
 
-        {ejercicios.length === 0 && (
+        {esFuerza && ejercicios.length === 0 && (
           <div className="tp-card px-4 py-7 text-center">
             <div className="text-4xl mb-2.5 opacity-90">🏋️</div>
             <p className="text-lg font-bold mb-1.5">¿Qué has hecho hoy?</p>
@@ -414,7 +532,26 @@ export default function RegistrarFuerza() {
           </div>
         )}
 
-        {ejercicios.map((ej, iEj) => {
+        {!esFuerza && (
+          <>
+            <BloquesResistencia
+              bloques={bloques} onCambiar={cambiarBloque} onQuitar={quitarBloque}
+              disciplina={disciplina} tests={tests} fcMax={fcMax} sistema={sistema}
+            />
+            <button onClick={anadirBloque}
+              className="w-full border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white rounded-2xl py-4 text-[13.5px] transition">
+              ＋ Añadir un bloque
+            </button>
+            {bloquesQueCuentan(bloques).length > 0 && (
+              <div className="tp-card px-3.5 py-3 flex justify-between items-baseline">
+                <span className="text-gray-400 text-[12.5px]">Total de la sesión</span>
+                <span className="font-bold tabular-nums">{resumenTotal(bloques)}</span>
+              </div>
+            )}
+          </>
+        )}
+
+        {esFuerza && ejercicios.map((ej, iEj) => {
           const h = historial[ej.nombre]
           const previas = h?.series
           const ctrl = controlDe(ej.controlTipo)
@@ -545,17 +682,19 @@ export default function RegistrarFuerza() {
         })}
 
         {/* Los minutos y el RPE, al final: al empezar no se saben. */}
-        {ejercicios.length > 0 && (
+        {cuentan.length > 0 && (
           <div className="tp-card p-3.5">
-            <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-2.5">Al terminar</p>
+            <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-2.5">
+              {realizada ? 'Al terminar' : 'Lo que tienes previsto'}
+            </p>
             <div className="grid grid-cols-2 gap-2.5">
               <label className="flex flex-col gap-1.5">
-                <span className="text-gray-400 text-[11px]">Cuánto duró</span>
+                <span className="text-gray-400 text-[11px]">{realizada ? 'Cuánto duró' : 'Cuánto durará'}</span>
                 <input type="number" inputMode="numeric" value={duracion} onChange={e => setDuracion(e.target.value)} placeholder="minutos"
                   className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-gray-400 text-[11px]">Cómo fue (RPE)</span>
+                <span className="text-gray-400 text-[11px]">{realizada ? 'Cómo fue (RPE)' : 'RPE estimado'}</span>
                 <input type="number" inputMode="numeric" min="1" max="10" value={rpe} onChange={e => setRpe(e.target.value)} placeholder="1-10"
                   className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               </label>
@@ -569,7 +708,7 @@ export default function RegistrarFuerza() {
           </div>
         )}
 
-        {sesiones.length > 0 && (
+        {esFuerza && sesiones.length > 0 && (
           <button onClick={() => setHojaAbierta(true)} disabled={trayendo}
             className={'w-full rounded-2xl py-4 text-[13.5px] transition disabled:opacity-40 ' + (ejercicios.length === 0
               ? 'border border-orange-500/45 bg-orange-500/[0.09] text-orange-300 hover:bg-orange-500/15'
@@ -578,12 +717,14 @@ export default function RegistrarFuerza() {
           </button>
         )}
 
-        <BuscadorEjercicios
-          ejercicios={biblioteca}
-          onElegir={anadirEjercicio}
-          etiqueta={ejercicios.length ? '＋ Añadir otro ejercicio' : '＋ Añadir un ejercicio'}
-          clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white py-4 rounded-2xl text-[13.5px] transition"
-        />
+        {esFuerza && (
+          <BuscadorEjercicios
+            ejercicios={biblioteca}
+            onElegir={anadirEjercicio}
+            etiqueta={ejercicios.length ? '＋ Añadir otro ejercicio' : '＋ Añadir un ejercicio'}
+            clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white py-4 rounded-2xl text-[13.5px] transition"
+          />
+        )}
       </div>
 
       {/* Barras fijas: se apunta con el móvil en la mano y a media sesión la
@@ -608,7 +749,9 @@ export default function RegistrarFuerza() {
         )}
         <div className="bg-gray-900/95 backdrop-blur border-t border-gray-800 px-4 py-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
-            <span className="text-gray-500 text-xs">{resumenRegistro(ejercicios)}</span>
+            <span className="text-gray-500 text-xs">
+              {esFuerza ? resumenRegistro(ejercicios) : resumenTotal(bloques)}
+            </span>
             <button onClick={guardar} disabled={guardando || cuentan.length === 0}
               className="bg-orange-500 hover:bg-orange-600 px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-40">
               {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : 'Guardar'}

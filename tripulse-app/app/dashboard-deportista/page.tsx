@@ -370,14 +370,14 @@ export default function DashboardDeportista() {
             El modal de alta vive en /mis-sesiones; ?anadir=1 lo abre al llegar. Sin
             eso, este botón te llevaba a una lista con el mismo botón otra vez. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-          <button onClick={() => router.push('/mis-sesiones?anadir=1')}
+          <button onClick={() => router.push('/apuntar')}
             className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded-xl py-3 text-sm transition">
             ＋ Añadir una sesión que vas a hacer
           </button>
           {/* Apuntar fuerza es otra cosa que añadir una sesión: aquí se anota lo
               que ACABAS de hacer, ejercicio a ejercicio y con lo de la última vez
-              delante. Ver app/registrar-fuerza. */}
-          <button onClick={() => router.push('/registrar-fuerza')}
+              delante. Ver app/apuntar. */}
+          <button onClick={() => router.push('/apuntar')}
             className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-orange-500/60 rounded-xl py-3 text-sm transition">
             💪 Apuntar la fuerza que he hecho
           </button>

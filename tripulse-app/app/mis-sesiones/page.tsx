@@ -12,39 +12,11 @@ import type { TestsDeportista } from '@/lib/duracion'
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-// Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
-// aquí no hay constructor. Sin bloques, su carga no se puede atribuir a ningún deporte
-// y desaparecería de volumen, carga y SICAT (ver lib/atribucion). Los bricks se crean
-// en planificación (bloques, calendario, semana o canvas).
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
-
 // Fecha local YYYY-MM-DD. NO usar toISOString: en husos UTC+ (España) desplaza
 // una fecha a medianoche local al día anterior, y fecha_sesion es fecha local.
 /* Era la cuarta copia de «un Date al día que marca el reloj local». Se queda el
    nombre corto porque se usa mucho en esta pantalla, pero apunta a la de siempre. */
 const ymd = aISO
-
-// Microciclo de la semana de una fecha si cae dentro de un mesociclo del atleta (creándolo
-// si no existe). Si la fecha queda fuera de todo plan → null (sesión "libre").
-async function resolverMicro(depId: number, fechaStr: string): Promise<number | null> {
-  const { data: macros } = await supabase.from('macrociclo').select('id').eq('id_deportista', depId)
-  const macroIds = (macros || []).map((m: any) => m.id)
-  if (!macroIds.length) return null
-  const { data: mesos } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macroIds)
-  const d = new Date(fechaStr + 'T12:00:00')
-  const meso = (mesos || []).find((me: any) => {
-    const ini = new Date(me.fecha_inicio + 'T12:00:00'); const fin = new Date(ini); fin.setDate(ini.getDate() + me.duracion_semanas * 7)
-    return d >= ini && d < fin
-  })
-  if (!meso) return null
-  const off = (d.getDay() + 6) % 7; const monday = new Date(d); monday.setDate(d.getDate() - off)
-  const mondayStr = ymd(monday)
-  const { data: micros } = await supabase.from('microciclo').select('id, fecha_inicio').eq('id_mesociclo', meso.id)
-  const ex = (micros || []).find((mi: any) => mi.fecha_inicio === mondayStr)
-  if (ex) return ex.id
-  const { data: nuevo } = await supabase.from('microciclo').insert({ id_mesociclo: meso.id, id_deportista: depId, objetivo: 'Semana del ' + mondayStr, tipo: 'Carga', fecha_inicio: mondayStr, duracion_dias: 7 }).select('id').single()
-  return nuevo?.id ?? null
-}
 
 export default function MisSesiones() {
   const router = useRouter()
@@ -62,21 +34,16 @@ export default function MisSesiones() {
   // Modal calendario
   const [diaModal, setDiaModal] = useState<{ fechaStr: string, sesiones: any[] } | null>(null)
   const [dep, setDep] = useState<any>(null)
-  // Modal añadir sesión (deportista).
-  // Con ?anadir=1 se abre solo. Lo usa el botón del panel, que dice "Añadir una
-  // sesión que vas a hacer": si lo dice, tiene que añadirla, no dejarte aquí
-  // mirando el mismo botón otra vez.
-  const [modalAnadir, setModalAnadir] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return new URLSearchParams(window.location.search).get('anadir') === '1'
-  })
-  const [fDisc, setFDisc] = useState('Natacion')
-  const [fFecha, setFFecha] = useState(() => ymd(new Date()))
-  const [fDur, setFDur] = useState('')
-  const [fNotas, setFNotas] = useState('')
-  const [fModo, setFModo] = useState<'planificada' | 'realizada'>('planificada')
-  const [fRpe, setFRpe] = useState('')
-  const [guardando, setGuardando] = useState(false)
+  /* Añadir una sesión ya no se hace aquí.
+     Este modal solo guardaba la CABECERA —«nadé 62 minutos»— y eso deja un
+     rectángulo en el calendario que no entra ni en el volumen ni en la
+     distribución de zonas. Ahora se va a /apuntar, donde se dice también qué se
+     hizo: bloques con su zona, o ejercicios con sus series si es fuerza.
+     `?anadir=1` sigue funcionando porque lo usa el botón del panel: lleva
+     derecho a /apuntar en vez de dejarte aquí mirando otro botón. */
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('anadir') === '1') router.replace('/apuntar')
+  }, [])
 
   useEffect(() => { cargar() }, [])
 
@@ -115,29 +82,6 @@ export default function MisSesiones() {
     const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
     if (error) { alert('No se pudo quitar: ' + error.message); return }
     await cargar()
-  }
-
-  const crearSesion = async () => {
-    if (!dep) return
-    setGuardando(true)
-    const micro = await resolverMicro(dep.id, fFecha)
-    const realizada = fModo === 'realizada'
-    const { error } = await supabase.from('sesion').insert({
-      id_deportista: dep.id,
-      id_microciclo: micro,
-      origen: 'deportista',
-      disciplina: fDisc,
-      fecha_sesion: fFecha,
-      duracion_minutos: fDur ? Number(fDur) : null,
-      estado: realizada ? 'Realizada' : 'Planificada',
-      rpe_estimado: !realizada && fRpe ? Number(fRpe) : null,
-      rpe_reportado: realizada && fRpe ? Number(fRpe) : null,
-      notas_entrenador: fNotas || null,
-    })
-    if (error) { alert('Error al crear la sesión: ' + error.message); setGuardando(false); return }
-    setModalAnadir(false); setFDur(''); setFNotas(''); setFRpe(''); setFModo('planificada')
-    await cargar()
-    setGuardando(false)
   }
 
   const colorDisciplina = (d: string) => {
@@ -245,9 +189,9 @@ export default function MisSesiones() {
           </div>
         </div>
 
-        <button onClick={() => { setFFecha(ymd(new Date())); setModalAnadir(true) }}
+        <button onClick={() => router.push('/apuntar?fecha=' + ymd(new Date()))}
           className="w-full mb-6 border border-dashed border-gray-700 text-gray-300 hover:text-white hover:border-orange-500 rounded-xl py-3 text-sm font-medium transition">
-          ＋ Añadir una sesión que vas a hacer
+          ＋ Apuntar una sesión
         </button>
 
         {/* VISTA LISTA */}
@@ -308,7 +252,7 @@ export default function MisSesiones() {
                                   pantalla donde la escribió, no otra: dos sitios para apuntar
                                   series acabarían diciendo cosas distintas. */}
                               {s.origen === 'deportista' && s.disciplina === 'Fuerza' && (
-                                <button onClick={ev => { ev.stopPropagation(); router.push('/registrar-fuerza?sesion=' + s.id) }}
+                                <button onClick={ev => { ev.stopPropagation(); router.push('/apuntar?sesion=' + s.id) }}
                                   title="Corregir lo que apuntaste"
                                   aria-label="Corregir esta sesión"
                                   className="text-gray-600 hover:text-orange-400 text-sm px-1.5 py-1 rounded transition">✏️</button>
@@ -542,68 +486,6 @@ export default function MisSesiones() {
       )}
 
       {/* MODAL — añadir sesión (deportista) */}
-      {modalAnadir && (
-        <div className="fixed inset-0 bg-black/75 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0" onClick={() => setModalAnadir(false)}>
-          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center px-5 py-4 border-b border-gray-800">
-              <p className="font-bold text-lg">Añadir sesión</p>
-              <button onClick={() => setModalAnadir(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
-            </div>
-            <div className="px-5 py-4 flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-2">
-                {([['planificada', 'La voy a hacer'], ['realizada', 'Ya la hice']] as [typeof fModo, string][]).map(([k, l]) => (
-                  <button key={k} onClick={() => setFModo(k)} className={'py-2 rounded-lg text-sm font-medium transition ' + (fModo === k ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>{l}</button>
-                ))}
-              </div>
-              <div>
-                <label className="text-gray-400 text-sm mb-1 block">Disciplina</label>
-                <select value={fDisc} onChange={e => setFDisc(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-                  {DISCIPLINAS.map(d => <option key={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
-                <input type="date" value={fFecha} onChange={e => setFFecha(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              <div>
-                <label className="text-gray-400 text-sm mb-1 block">Duración (min) — opcional</label>
-                <input type="number" value={fDur} onChange={e => setFDur(e.target.value)} placeholder="Ej: 60" className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              <div>
-                <label className="text-gray-400 text-sm mb-1 block">{fModo === 'realizada' ? 'RPE real (1-10)' : 'RPE estimado (1-10) — opcional'}</label>
-                <input type="number" min={1} max={10} value={fRpe} onChange={e => setFRpe(e.target.value)} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              <div>
-                <label className="text-gray-400 text-sm mb-1 block">Notas — opcional</label>
-                <textarea value={fNotas} onChange={e => setFNotas(e.target.value)} rows={2} placeholder={fModo === 'realizada' ? '¿Cómo fue?' : '¿Qué vas a hacer?'} className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              {/* La fuerza YA HECHA tiene su propia pantalla, donde se apunta
-                  ejercicio a ejercicio y se ve lo que hiciste la última vez.
-                  Este formulario solo guarda la cabecera —«hice 50 min de
-                  fuerza»— y desde aquí no había forma de llegar a la otra.
-
-                  Se ofrecen las dos y no se redirige a la fuerza: apuntar solo
-                  la cabecera es legítimo y más rápido cuando no te apetece el
-                  detalle. Y solo en «ya la hice»: la otra pantalla registra lo
-                  que PASÓ, no sirve para planificar. */}
-              {fDisc === 'Fuerza' && fModo === 'realizada' && (
-                <button onClick={() => router.push('/registrar-fuerza?fecha=' + fFecha)}
-                  className="text-left border border-orange-500/45 bg-orange-500/[0.09] hover:bg-orange-500/15 rounded-xl px-4 py-3 transition">
-                  <span className="block text-orange-300 font-medium text-sm">💪 Apuntar los ejercicios →</span>
-                  <span className="block text-gray-500 text-xs mt-0.5 leading-snug">
-                    Series, kilos y repeticiones, con lo que hiciste la última vez delante.
-                  </span>
-                </button>
-              )}
-
-              <button onClick={crearSesion} disabled={guardando} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition disabled:opacity-50">
-                {guardando ? 'Guardando...' : fDisc === 'Fuerza' && fModo === 'realizada' ? 'Guardar solo la cabecera' : 'Añadir sesión'}
-              </button>
-              <p className="text-gray-600 text-xs text-center">Tu entrenador la verá marcada como añadida por ti.</p>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   )
 }

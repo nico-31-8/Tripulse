@@ -14,6 +14,12 @@
 // biblioteca tiene 162, con pares como «Estiramiento de sóleo (rodilla
 // flexionada)» y «Estiramiento de gemelo (rodilla recta)» que solo se
 // distinguen leyendo el paréntesis.
+//
+// LA LISTA MANDA
+// La primera versión tenía el buscador, dos filas de filtros y el detalle
+// siempre en pantalla. En un móvil eso dejaba la lista con dos resultados
+// visibles. Ahora los filtros se pliegan y el detalle sube en una hoja solo
+// cuando lo pides con el ⓘ, así que la lista se lleva toda la altura.
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { partirInstrucciones } from '@/lib/instrucciones'
@@ -60,8 +66,10 @@ interface Props {
 export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [filtro, setFiltro] = useState('todo')
+  const [verFiltros, setVerFiltros] = useState(false)
   const [consulta, setConsulta] = useState('')
   const [sel, setSel] = useState(0)
+  const [detalle, setDetalle] = useState<EjercicioBib | null>(null)
   const [videos, setVideos] = useState<Record<number, string | null>>({})
   const [guardando, setGuardando] = useState(false)
 
@@ -77,24 +85,37 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
       // Se busca también en la descripción: «lordosis» encuentra el psoas
       // aunque la palabra no esté en su nombre.
       .filter(e => !q || sinTildes(e.nombre).includes(q) || sinTildes(e.descripcion || '').includes(q))
+      /* Por grupo y luego por nombre. La biblioteca llega ordenada por nombre, y
+         así las cabeceras de grupo salían una por fila —«Core», «Cadera»,
+         «Movilidad»…— comiéndose la mitad de la altura para agrupar de uno en
+         uno. Agrupadas de verdad, una cabecera cubre diez ejercicios. */
+      .sort((a, b) => {
+        const ga = a.grupo_muscular || 'zzz', gb = b.grupo_muscular || 'zzz'
+        if (ga !== gb) return ga.localeCompare(gb, 'es')
+        return a.nombre.localeCompare(b.nombre, 'es')
+      })
   }, [ejercicios, filtro, consulta])
 
   useEffect(() => { setSel(0) }, [consulta, filtro])
 
-  const elegido = resultados[Math.min(sel, resultados.length - 1)]
-
-  const usar = () => {
-    if (!elegido) return
-    onElegir(elegido)
-    cerrar()
+  const cerrar = () => {
+    setAbierto(false); setConsulta(''); setFiltro('todo')
+    setSel(0); setDetalle(null); setVerFiltros(false)
   }
 
-  const cerrar = () => { setAbierto(false); setConsulta(''); setFiltro('todo'); setSel(0) }
+  /* Un toque lo añade y cierra. El doble clic de antes no existe en un móvil, y
+     obligar a «seleccionar y luego confirmar» son dos toques para lo que se
+     quiere el 95% de las veces. */
+  const usar = (e: EjercicioBib | null) => {
+    if (!e) return
+    onElegir(e)
+    cerrar()
+  }
 
   const teclas = (ev: React.KeyboardEvent) => {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); setSel(i => Math.min(i + 1, resultados.length - 1)) }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); setSel(i => Math.max(i - 1, 0)) }
-    else if (ev.key === 'Enter') { ev.preventDefault(); usar() }
+    else if (ev.key === 'Enter') { ev.preventDefault(); usar(resultados[sel] || null) }
     else if (ev.key === 'Escape') { cerrar() }
   }
 
@@ -114,7 +135,8 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
     onBibliotecaCambia?.()
   }
 
-  const ins = partirInstrucciones(elegido?.instrucciones)
+  const filtroActivo = FILTROS.find(f => f.id === filtro) || FILTROS[0]
+  const ins = partirInstrucciones(detalle?.instrucciones)
 
   return (
     <>
@@ -125,75 +147,93 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
       </button>
 
       {abierto && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={cerrar}>
-          <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-3xl h-[min(78vh,640px)] flex flex-col overflow-hidden"
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-stretch sm:items-center justify-center sm:p-4" onClick={cerrar}>
+          <div className="bg-gray-900 border-gray-700 w-full sm:max-w-2xl sm:rounded-2xl sm:border h-full sm:h-[min(85vh,700px)] flex flex-col overflow-hidden relative"
             onClick={ev => ev.stopPropagation()}>
 
-            <div className="px-4 pt-4 border-b border-gray-800">
-              <div className="flex justify-between items-start gap-4">
-                <div>
-                  <h3 className="text-[17px] font-bold">Buscar ejercicio</h3>
-                  <p className="text-gray-500 text-xs mt-0.5">En toda la biblioteca, sin importar el grupo muscular.</p>
+            <div className="px-4 pt-4 pb-3 border-b border-gray-800 flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                <h3 className="text-[17px] font-bold flex-1">Añadir ejercicio</h3>
+                <button onClick={cerrar} aria-label="Cerrar" className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2.5 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
+                  <span className="text-gray-500">🔍</span>
+                  <input autoFocus value={consulta} onChange={ev => setConsulta(ev.target.value)} onKeyDown={teclas}
+                    placeholder="Escribe: glúteo, dominada, plancha…"
+                    className="flex-1 min-w-0 bg-transparent text-white text-[14.5px] outline-none placeholder:text-gray-600" />
                 </div>
-                <button onClick={cerrar} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+                {/* Los filtros ocupaban dos filas fijas. Ahora se abren solo si
+                    hacen falta, y el botón dice cuál está puesto. */}
+                <button onClick={() => setVerFiltros(v => !v)} aria-expanded={verFiltros}
+                  className={'flex-none rounded-xl px-3 py-2 text-[12.5px] border transition whitespace-nowrap ' + (filtro !== 'todo'
+                    ? 'bg-orange-500/15 border-orange-500/55 text-orange-300'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>
+                  {filtro === 'todo' ? 'Filtros' : filtroActivo.et}
+                </button>
               </div>
 
-              <div className="flex items-center gap-2.5 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 my-3">
-                <span className="text-gray-500">🔍</span>
-                <input autoFocus value={consulta} onChange={ev => setConsulta(ev.target.value)} onKeyDown={teclas}
-                  placeholder="Escribe: gluteo, tobillo, psoas, dominada…"
-                  className="flex-1 bg-transparent text-white text-[14.5px] outline-none placeholder:text-gray-600" />
-                <span className="hidden sm:inline text-[10.5px] text-gray-600 border border-gray-700 rounded px-1.5 py-px whitespace-nowrap">
-                  ↑↓ para moverte · Enter para elegir
-                </span>
-              </div>
-
-              <div className="flex gap-1.5 flex-wrap pb-3">
-                {FILTROS.map(f => (
-                  <button key={f.id} onClick={() => setFiltro(f.id)} aria-pressed={filtro === f.id}
-                    className={'rounded-full px-3 py-1 text-xs border transition ' + (filtro === f.id
-                      ? 'bg-orange-500/15 border-orange-500/55 text-orange-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>{f.et}</button>
-                ))}
-              </div>
+              {verFiltros && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {FILTROS.map(f => (
+                    <button key={f.id} onClick={() => { setFiltro(f.id); setVerFiltros(false) }} aria-pressed={filtro === f.id}
+                      className={'rounded-full px-3 py-1 text-xs border transition ' + (filtro === f.id
+                        ? 'bg-orange-500/15 border-orange-500/55 text-orange-300'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>{f.et}</button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* En estrecho el detalle NO se esconde: se pone debajo. Esconderlo
-                quitaría justo lo que este panel viene a resolver. */}
-            <div className="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 grid-rows-[minmax(120px,38%)_minmax(0,1fr)] sm:grid-rows-1">
-              <div className="overflow-y-auto border-b sm:border-b-0 sm:border-r border-gray-800 py-1.5">
-                {resultados.length === 0 && (
-                  <p className="text-gray-500 text-[13px] px-4 py-5">
-                    Nada con «{consulta}». Prueba con otra palabra, o quita el filtro.
-                  </p>
-                )}
-                {resultados.map((e, i) => {
-                  const nuevoGrupo = i === 0 || e.grupo_muscular !== resultados[i - 1].grupo_muscular
-                  return (
-                    <div key={e.id}>
-                      {nuevoGrupo && (
-                        <p className="sticky top-0 bg-gray-900 text-[10.5px] uppercase tracking-wide text-gray-600 font-bold px-4 pt-2 pb-1">
-                          {e.grupo_muscular}
-                        </p>
-                      )}
-                      <button onClick={() => setSel(i)} onDoubleClick={usar}
-                        className={'w-full text-left px-4 py-1.5 text-[13.5px] flex items-center gap-2 transition ' +
-                          (i === sel ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800/50')}>
+            <div className="flex-1 min-h-0 overflow-y-auto py-1">
+              {resultados.length === 0 && (
+                <p className="text-gray-500 text-[13px] px-4 py-5">
+                  Nada con «{consulta}». Prueba con otra palabra, o quita el filtro.
+                </p>
+              )}
+              {resultados.map((e, i) => {
+                const nuevoGrupo = i === 0 || e.grupo_muscular !== resultados[i - 1].grupo_muscular
+                return (
+                  <div key={e.id}>
+                    {nuevoGrupo && (
+                      <p className="sticky top-0 bg-gray-900 text-[10.5px] uppercase tracking-wide text-gray-600 font-bold px-4 pt-2.5 pb-1 z-[1]">
+                        {e.grupo_muscular}
+                      </p>
+                    )}
+                    <div className={'w-full flex items-center gap-2 border-b border-white/[0.04] transition ' +
+                      (i === sel ? 'bg-gray-800' : 'hover:bg-gray-800/50')}>
+                      <button onClick={() => usar(e)} onMouseEnter={() => setSel(i)}
+                        className="flex-1 min-w-0 text-left pl-4 pr-1 py-3 text-[14px] flex items-center gap-2">
                         <span className="flex-1 min-w-0 truncate">{e.nombre}</span>
                         {videoDe(e) && <span className="text-red-400 text-[10px] flex-none" title="Tiene vídeo">▶</span>}
                       </button>
+                      <button onClick={() => setDetalle(e)} aria-label={'Ver qué es ' + e.nombre}
+                        className="flex-none mr-3 w-8 h-8 grid place-items-center rounded-lg border border-gray-700 text-gray-600 hover:text-gray-300 hover:border-gray-600 text-[12px] transition">
+                        ⓘ
+                      </button>
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+                )
+              })}
+            </div>
 
-              <div className="overflow-y-auto p-4">
-                {elegido ? (
-                  <>
-                    <h4 className="text-[17px] font-bold leading-tight">{elegido.nombre}</h4>
-                    <p className="text-[11px] text-gray-500 mt-1.5">{elegido.grupo_muscular}</p>
-                    {elegido.descripcion && (
-                      <p className="text-[13.5px] text-gray-300 mt-3 leading-relaxed">{elegido.descripcion}</p>
+            <div className="border-t border-gray-800 px-4 py-2.5 flex justify-between items-center gap-3 text-[11.5px] text-gray-600">
+              <span className="tabular-nums">{resultados.length} de {ejercicios.length} ejercicios</span>
+              <span className="text-right">Toca uno para añadirlo · ⓘ para verlo</span>
+            </div>
+
+            {/* El detalle, bajo demanda. Antes vivía siempre en pantalla y en un
+                móvil se comía la mitad de la lista. */}
+            {detalle && (
+              <div className="absolute inset-0 bg-black/75 flex items-end z-10" onClick={() => setDetalle(null)}>
+                <div className="bg-gray-900 border-t border-gray-700 w-full rounded-t-2xl max-h-[80%] flex flex-col overflow-hidden"
+                  onClick={ev => ev.stopPropagation()}>
+                  <div className="overflow-y-auto p-4">
+                    <h4 className="text-[17px] font-bold leading-tight">{detalle.nombre}</h4>
+                    <p className="text-[11px] text-gray-500 mt-1.5">{detalle.grupo_muscular}</p>
+                    {detalle.descripcion && (
+                      <p className="text-[13.5px] text-gray-300 mt-3 leading-relaxed">{detalle.descripcion}</p>
                     )}
 
                     {ins.pasos.length > 0 && (
@@ -211,13 +251,13 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                     )}
 
                     <p className="text-[10.5px] uppercase tracking-wide text-gray-500 font-bold mt-4 mb-1.5">Vídeo</p>
-                    {videoDe(elegido) ? (
+                    {videoDe(detalle) ? (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <a href={videoDe(elegido)!} target="_blank" rel="noopener noreferrer"
+                        <a href={videoDe(detalle)!} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 text-red-300 hover:text-red-200 border border-red-500/40 hover:border-red-500 bg-red-500/10 rounded-xl px-3 py-2 text-[13px] transition">
                           ▶ Acceder al enlace
                         </a>
-                        <button onClick={() => pedirVideo(elegido)} disabled={guardando}
+                        <button onClick={() => pedirVideo(detalle)} disabled={guardando}
                           className="bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-2.5 py-1 text-[11.5px] transition disabled:opacity-50">
                           Cambiar
                         </button>
@@ -226,28 +266,27 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                       <div className="flex items-center gap-2 border border-dashed border-gray-700 rounded-xl px-3 py-2.5 text-[12.5px] text-gray-500">
                         <span>▶</span>
                         <span>Sin vídeo todavía.</span>
-                        <button onClick={() => pedirVideo(elegido)} disabled={guardando}
+                        <button onClick={() => pedirVideo(detalle)} disabled={guardando}
                           className="ml-auto bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-2.5 py-1 text-[11.5px] transition disabled:opacity-50">
                           {guardando ? 'Guardando…' : 'Pegar enlace'}
                         </button>
                       </div>
                     )}
-                  </>
-                ) : (
-                  <p className="text-gray-600 text-[13px]">Señala un ejercicio para ver qué es.</p>
-                )}
-              </div>
-            </div>
+                  </div>
 
-            <div className="border-t border-gray-800 px-4 py-3 flex justify-between items-center gap-3">
-              <span className="text-xs text-gray-600 tabular-nums">
-                {resultados.length} de {ejercicios.length} ejercicios
-              </span>
-              <button onClick={usar} disabled={!elegido}
-                className="bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white text-[13.5px] font-semibold px-4 py-2 rounded-lg transition">
-                Usar este ejercicio
-              </button>
-            </div>
+                  <div className="border-t border-gray-800 p-3 flex gap-2">
+                    <button onClick={() => setDetalle(null)}
+                      className="flex-1 bg-gray-800 text-gray-400 hover:text-white rounded-xl py-2.5 text-[13.5px] transition">
+                      Volver
+                    </button>
+                    <button onClick={() => usar(detalle)}
+                      className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl py-2.5 text-[13.5px] transition">
+                      Usar este ejercicio
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
