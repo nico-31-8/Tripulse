@@ -61,18 +61,27 @@ function sbFalso(opciones: { sinPlan?: number[]; fallaSesionN?: number; fallaEmi
     },
     delete() { return { eq: (_c: string, val: any) => { ops.push({ op: 'delete', tabla, val }); return Promise.resolve({ error: null }) } } },
     select(_cols?: string) {
+      ops.push({ op: 'select', tabla })
       const q: any = {}
       q.eq = (_c: string, val: any) => {
         // macrociclo: quien está en sinPlan no tiene ninguno
         q._dep = val
         return q
       }
-      q.in = () => q
+      /* Los microciclos se piden ahora de TODO el grupo de una vez, con un `in`
+         sobre `id_deportista`. Antes eran tres consultas encadenadas por persona
+         (macrociclo → mesociclo → microciclo), y el falso las imitaba una a una;
+         ahora tiene que devolver las filas de los ids que se le pidan, marcadas
+         con su dueño, y saltarse a los que no tienen plan. */
+      q.in = (col: string, vals: any[]) => { q._col = col; q._vals = vals; return q }
       q.then = (r: any) => {
         let data: any[] = []
-        if (tabla === 'macrociclo') data = opciones.sinPlan?.includes(q._dep) ? [] : [{ id: 10 }]
-        else if (tabla === 'mesociclo') data = [{ id: 20 }]
-        else if (tabla === 'microciclo') data = [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }]
+        if (tabla === 'microciclo') {
+          const pedidos: number[] = q._vals || []
+          data = pedidos
+            .filter(id => !opciones.sinPlan?.includes(id))
+            .map(id => ({ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7, id_deportista: id }))
+        }
         return Promise.resolve({ data, error: null }).then(r)
       }
       return q
@@ -169,5 +178,44 @@ describe('resumenEmision', () => {
     ])
     expect(r).toContain('2 de 3')
     expect(r).toContain('1 sin semana planificada')
+  })
+})
+
+/*
+  Esto es lo que se acaba de arreglar y lo que más fácil se deshace sin querer:
+  bastaría con volver a meter la consulta dentro del bucle. Con ocho personas eran
+  veinticuatro viajes encadenados (macrociclo → mesociclo → microciclo, una vez por
+  cada una) para averiguar en qué semana cae la sesión; ahora es UNO para todo el
+  grupo, porque `microciclo` lleva `id_deportista` desde la Fase A.
+*/
+describe('las semanas del grupo se piden UNA vez, no una por persona', () => {
+  it('con dos miembros, una sola consulta de microciclos', async () => {
+    const sb = sbFalso()
+    await emitirSesion(sb, { ...BASE, miembros: MIEMBROS })
+    const micros = sb.ops.filter(o => o.op === 'select' && o.tabla === 'microciclo')
+    expect(micros).toHaveLength(1)
+  })
+
+  it('con seis miembros, sigue siendo una', async () => {
+    const sb = sbFalso()
+    const seis = [1, 2, 3, 4, 5, 6].map(i => ({ id_deportista: i, nombre: 'Atleta ' + i }))
+    await emitirSesion(sb, { ...BASE, miembros: seis })
+    expect(sb.ops.filter(o => o.op === 'select' && o.tabla === 'microciclo')).toHaveLength(1)
+    expect(sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')).toHaveLength(6)
+  })
+
+  it('la cadena vieja ya no se recorre: ni macrociclo ni mesociclo', async () => {
+    const sb = sbFalso()
+    await emitirSesion(sb, { ...BASE, miembros: MIEMBROS })
+    expect(sb.ops.filter(o => o.op === 'select' && o.tabla === 'macrociclo')).toHaveLength(0)
+    expect(sb.ops.filter(o => o.op === 'select' && o.tabla === 'mesociclo')).toHaveLength(0)
+  })
+
+  it('y cada uno sigue recibiendo la suya: quien no tiene plan, como libre', async () => {
+    const sb = sbFalso({ sinPlan: [2] })
+    await emitirSesion(sb, { ...BASE, miembros: MIEMBROS })
+    const ses = sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')
+    expect(ses[0].v.id_microciclo).toBe(30)
+    expect(ses[1].v.id_microciclo).toBeNull()
   })
 })

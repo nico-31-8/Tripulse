@@ -186,7 +186,11 @@ function sbFalso(opciones: { fallaSesionN?: number } = {}) {
 const BASE = {
   idGrupo: 'g1', nombre: 'Semana 1',
   sesiones: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera' }],
-  microsDe: async () => [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }],
+  /* Un mapa por deportista, que es lo que pide `volcar` ahora. Antes era una
+     función por persona y se llamaba dentro del bucle: con ocho miembros, ocho
+     llamadas, y cada una eran tres consultas encadenadas. */
+  microsDeTodos: async (ids: number[]) =>
+    new Map(ids.map(id => [id, [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }]])),
   microDelDia: (ms: any[]) => ms[0] || null,
 }
 const MIEMBROS = [{ id_deportista: 1, nombre: 'Ana' }, { id_deportista: 2, nombre: 'Luis' }]
@@ -260,5 +264,44 @@ describe('resumenVolcado', () => {
     ])
     expect(t).toContain('6 sesiones creadas en 2 de 3')
     expect(t).toContain('3 sin semana planificada')
+  })
+})
+
+/*
+  Volcar hacía lo mismo que emitir: una llamada de microciclos POR MIEMBRO, y cada
+  una eran tres consultas encadenadas. Con ocho personas y una semana de seis
+  sesiones, el entrenador esperaba mirando la pantalla.
+*/
+describe('las semanas de los miembros se piden UNA vez', () => {
+  it('una sola llamada, con todos los ids dentro', async () => {
+    const sb = sbFalso()
+    let llamadas = 0
+    let recibidos: number[] = []
+    await volcar(sb, {
+      ...BASE, miembros: MIEMBROS,
+      microsDeTodos: async (ids: number[]) => {
+        llamadas++
+        recibidos = ids
+        return new Map(ids.map(id => [id, [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }]]))
+      },
+    })
+    expect(llamadas).toBe(1)
+    expect(recibidos).toEqual([1, 2])
+  })
+
+  it('quien no está en el mapa entra como sesión libre, no se queda fuera', async () => {
+    const sb = sbFalso()
+    await volcar(sb, {
+      ...BASE, miembros: MIEMBROS,
+      /* Solo Ana tiene plan. Luis no está en el mapa: eso NO es un error, su
+         sesión tiene que entrar igual y colgar de él directamente. */
+      microsDeTodos: async () =>
+        new Map([[1, [{ id: 30, fecha_inicio: '2026-03-02', duracion_dias: 7 }]]]),
+    })
+    const ses = sb.ops.filter((o: any) => o.op === 'insert' && o.tabla === 'sesion')
+    expect(ses).toHaveLength(2)
+    expect(ses[0].v.id_microciclo).toBe(30)
+    expect(ses[1].v.id_microciclo).toBeNull()
+    expect(ses[1].v.id_deportista).toBe(2)
   })
 })

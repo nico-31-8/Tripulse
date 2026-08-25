@@ -154,11 +154,15 @@ export async function volcar(
     nombre: string
     sesiones: SesionDelGrupo[]
     miembros: { id_deportista: number; nombre: string }[]
-    microsDe: (idDeportista: number) => Promise<any[]>
+    /* Los microciclos de TODO el grupo de una vez. Se inyecta —en vez de
+       consultar aquí— para poder probar el volcado sin base de datos. Antes era
+       `microsDe(idDeportista)`, una llamada por persona, y cada llamada eran
+       tres consultas encadenadas. */
+    microsDeTodos: (ids: number[]) => Promise<Map<number, any[]>>
     microDelDia: (micros: any[], fecha: string) => any | null
   },
 ): Promise<{ idEmision: string | null; resultados: ResultadoVolcado[]; error: string | null }> {
-  const { idGrupo, nombre, sesiones, miembros, microsDe, microDelDia } = opciones
+  const { idGrupo, nombre, sesiones, miembros, microsDeTodos, microDelDia } = opciones
 
   if (!sesiones.length) return { idEmision: null, resultados: [], error: 'No hay nada que volcar en esas fechas.' }
   if (!miembros.length) return { idEmision: null, resultados: [], error: 'El grupo no tiene a nadie.' }
@@ -186,12 +190,14 @@ export async function volcar(
   ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
   const TABLAS = ['p_distancia', 'p_duracion', 'p_repeticiones', 'ejercicios']
 
+  const microsPorDep = await microsDeTodos(miembros.map(m => m.id_deportista))
+
   const resultados: ResultadoVolcado[] = []
 
   for (const m of miembros) {
     const parte: ResultadoVolcado = { ...m, creadas: 0, fallos: 0, enSuPlan: 0 }
     try {
-      const micros = await microsDe(m.id_deportista)
+      const micros = microsPorDep.get(Number(m.id_deportista)) || []
 
       for (const s of sesiones) {
         const src = porSesion[s.id]

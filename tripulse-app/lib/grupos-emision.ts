@@ -42,17 +42,36 @@ export function microDelDia(micros: any[], fecha: string): any | null {
   return null
 }
 
-// Todos los microciclos de un deportista. La cadena es
-// deportista → macrociclo → mesociclo → microciclo, y se corta en cuanto un eslabón
-// viene vacío: sin plan no hay microciclos, y eso NO es un error.
-export async function microsDeDeportista(sb: any, idDeportista: number): Promise<any[]> {
-  const { data: mac } = await sb.from('macrociclo').select('id').eq('id_deportista', idDeportista)
-  if (!mac?.length) return []
-  const { data: me } = await sb.from('mesociclo').select('id').in('id_macrociclo', mac.map((m: any) => m.id))
-  if (!me?.length) return []
-  const { data: mi } = await sb.from('microciclo')
-    .select('id, fecha_inicio, duracion_dias').in('id_mesociclo', me.map((m: any) => m.id))
-  return mi || []
+/**
+ * Los microciclos de VARIOS deportistas, en UNA consulta.
+ *
+ * Antes esto era `microsDeDeportista`, que recorría la cadena
+ * `macrociclo → mesociclo → microciclo` UNA VEZ POR PERSONA: tres consultas
+ * encadenadas por miembro. Con ocho, veinticuatro viajes solo para averiguar en
+ * qué semana cae cada sesión; con veinte, sesenta. Y volcar o emitir se hacen
+ * justo cuando el entrenador está esperando.
+ *
+ * La cadena entera sobra desde la Fase A: `microciclo` lleva `id_deportista` y
+ * la RLS lo garantiza (una fila sin él no la ve nadie). Es la misma cadena que se
+ * quitó de catorce pantallas en el pase de agosto; aquí se había quedado.
+ *
+ * Devuelve un mapa por deportista. Quien no tenga plan simplemente no está en el
+ * mapa, y eso NO es un error: su sesión entrará como libre.
+ */
+export async function microsDeVarios(sb: any, ids: number[]): Promise<Map<number, any[]>> {
+  const limpios = [...new Set((ids || []).filter(n => n != null).map(Number))]
+  if (!limpios.length) return new Map()
+
+  const { data } = await sb.from('microciclo')
+    .select('id, fecha_inicio, duracion_dias, id_deportista').in('id_deportista', limpios)
+
+  const porDep = new Map<number, any[]>()
+  for (const m of data || []) {
+    const k = Number(m.id_deportista)
+    const l = porDep.get(k)
+    if (l) l.push(m); else porDep.set(k, [m])
+  }
+  return porDep
 }
 
 /**
@@ -89,11 +108,13 @@ export async function emitirSesion(
     .insert({ id_grupo: idGrupo, nombre: nombre || null }).select('id').single()
   if (eE || !emi) return { idEmision: null, resultados: [], error: eE?.message || 'No se pudo abrir la emisión.' }
 
+  // Los microciclos de TODOS, una vez. Antes se pedían dentro del bucle.
+  const microsPorDep = await microsDeVarios(sb, miembros.map(m => m.id_deportista))
+
   const resultados: ResultadoMiembro[] = []
   for (const m of miembros) {
     try {
-      const micros = await microsDeDeportista(sb, m.id_deportista)
-      const micro = microDelDia(micros, fecha)
+      const micro = microDelDia(microsPorDep.get(Number(m.id_deportista)) || [], fecha)
 
       const { data: ses, error: eS } = await sb.from('sesion').insert({
         id_microciclo: micro ? micro.id : null,

@@ -11,7 +11,7 @@ import {
   borrarGrupo, renombrarGrupo, sincronizarZonasDelGrupo,
   type MiembroGrupo,
 } from '@/lib/grupos'
-import { emitirSesion, resumenEmision, microsDeDeportista, microDelDia, type ResultadoMiembro } from '@/lib/grupos-emision'
+import { emitirSesion, resumenEmision, microsDeVarios, microDelDia, type ResultadoMiembro } from '@/lib/grupos-emision'
 import {
   sesionesDelGrupo, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio,
   loQueYaTiene, sesionesQueLeFaltan,
@@ -210,7 +210,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     const r = await volcar(supabase, {
       idGrupo: id, nombre: 'Alta de ' + m.nombre, sesiones: faltan,
       miembros: [{ id_deportista: m.id_deportista, nombre: m.nombre }],
-      microsDe: (idDep) => microsDeDeportista(supabase, idDep),
+      microsDeTodos: (ids) => microsDeVarios(supabase, ids),
       microDelDia,
     })
     if (r.error) setError(r.error)
@@ -266,7 +266,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
       nombre: 'Del ' + desde.slice(8) + '/' + desde.slice(5, 7) + ' al ' + hasta.slice(8) + '/' + hasta.slice(5, 7),
       sesiones: aVolcar,
       miembros: miembros.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })),
-      microsDe: (idDep) => microsDeDeportista(supabase, idDep),
+      microsDeTodos: (ids) => microsDeVarios(supabase, ids),
       microDelDia,
     })
     if (r.error) setError(r.error)
