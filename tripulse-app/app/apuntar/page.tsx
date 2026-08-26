@@ -128,6 +128,10 @@ export default function Apuntar() {
     if (!d) { setCargando(false); return }
     setDep(d)
 
+    /* No se pide `id_deportista` a propósito. La columna es nueva y si el SQL
+       no está corrido, un select de una columna que no existe tumba la pantalla
+       ENTERA, no solo el alta. Quién ve qué ya lo decide la política de la
+       tabla, así que aquí no hace falta para nada. */
     const bibQ = supabase.from('ejercicios_biblioteca')
       .select('id, nombre, grupo_muscular, descripcion, url_video').order('nombre')
 
@@ -721,6 +725,7 @@ export default function Apuntar() {
           <BuscadorEjercicios
             ejercicios={biblioteca}
             onElegir={anadirEjercicio}
+            idDeportista={dep?.id ?? null}
             etiqueta={ejercicios.length ? '＋ Añadir otro ejercicio' : '＋ Añadir un ejercicio'}
             clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white py-4 rounded-2xl text-[13.5px] transition"
           />

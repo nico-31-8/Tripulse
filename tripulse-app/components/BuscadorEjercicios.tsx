@@ -23,6 +23,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { partirInstrucciones } from '@/lib/instrucciones'
+import {
+  EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, gruposExistentes, crearEjercicioPropio,
+  type EjercicioNuevo,
+} from '@/lib/ejercicio-propio'
 
 export interface EjercicioBib {
   id: number
@@ -61,10 +65,20 @@ interface Props {
    * no dice qué hace.
    */
   etiqueta?: React.ReactNode
+  /**
+   * Si viene, quien busca puede además CREARSE un ejercicio que no esté.
+   *
+   * Es el id del deportista dueño. Sin él no se ofrece: la tabla exige dueño
+   * para las filas privadas y crear una sin él la rechaza la base.
+   */
+  idDeportista?: number | null
 }
 
-export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta }: Props) {
+export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista }: Props) {
   const [abierto, setAbierto] = useState(false)
+  const [creando, setCreando] = useState<EjercicioNuevo | null>(null)
+  const [guardandoNuevo, setGuardandoNuevo] = useState(false)
+  const [errorNuevo, setErrorNuevo] = useState('')
   const [filtro, setFiltro] = useState('todo')
   const [verFiltros, setVerFiltros] = useState(false)
   const [consulta, setConsulta] = useState('')
@@ -101,6 +115,27 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
   const cerrar = () => {
     setAbierto(false); setConsulta(''); setFiltro('todo')
     setSel(0); setDetalle(null); setVerFiltros(false)
+    setCreando(null); setErrorNuevo('')
+  }
+
+  /* Se abre con lo que ya habías escrito puesto de nombre: si has buscado
+     «prensa inclinada» y no está, eso es justo como se llama. */
+  const abrirAlta = () => {
+    setErrorNuevo('')
+    setCreando({ ...EJERCICIO_NUEVO_VACIO, nombre: consulta.trim() })
+  }
+
+  const guardarNuevo = async () => {
+    if (!creando || !idDeportista) return
+    setGuardandoNuevo(true); setErrorNuevo('')
+    const r = await crearEjercicioPropio(supabase, creando, idDeportista, ejercicios.map(e => e.nombre))
+    setGuardandoNuevo(false)
+    if (r.error) { setErrorNuevo(r.error); return }
+
+    /* Se elige solo. Quien viene aquí a crear un ejercicio es porque lo está
+       haciendo AHORA: obligarle a buscarlo después sería un paso de más. */
+    onBibliotecaCambia?.()
+    usar(r.ejercicio as EjercicioBib)
   }
 
   /* Un toque lo añade y cierra. El doble clic de antes no existe en un móvil, y
@@ -188,9 +223,24 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
 
             <div className="flex-1 min-h-0 overflow-y-auto py-1">
               {resultados.length === 0 && (
-                <p className="text-gray-500 text-[13px] px-4 py-5">
-                  Nada con «{consulta}». Prueba con otra palabra, o quita el filtro.
-                </p>
+                <div className="px-4 py-5 flex flex-col gap-3 items-start">
+                  <p className="text-gray-500 text-[13px]">
+                    Nada con «{consulta}». Prueba con otra palabra, o quita el filtro.
+                  </p>
+                  {/* Aquí es donde te enteras de que el ejercicio no está, así
+                      que aquí es donde tiene que estar el botón de crearlo. */}
+                  {idDeportista != null && (
+                    <button onClick={abrirAlta}
+                      className="text-left border border-orange-500/45 bg-orange-500/[0.09] hover:bg-orange-500/15 rounded-xl px-3.5 py-2.5 transition">
+                      <span className="block text-orange-300 font-medium text-[13.5px]">
+                        ＋ Crear {consulta.trim() ? '«' + consulta.trim() + '»' : 'un ejercicio mío'}
+                      </span>
+                      <span className="block text-gray-500 text-[11.5px] mt-0.5">
+                        Le pones nombre, para qué te sirve y de qué es. Solo lo ves tú.
+                      </span>
+                    </button>
+                  )}
+                </div>
               )}
               {resultados.map((e, i) => {
                 const nuevoGrupo = i === 0 || e.grupo_muscular !== resultados[i - 1].grupo_muscular
@@ -220,8 +270,93 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
 
             <div className="border-t border-gray-800 px-4 py-2.5 flex justify-between items-center gap-3 text-[11.5px] text-gray-600">
               <span className="tabular-nums">{resultados.length} de {ejercicios.length} ejercicios</span>
-              <span className="text-right">Toca uno para añadirlo · ⓘ para verlo</span>
+              {idDeportista != null && resultados.length > 0 ? (
+                <button onClick={abrirAlta} className="text-gray-500 hover:text-orange-400 underline transition flex-none">
+                  ＋ crear uno mío
+                </button>
+              ) : (
+                <span className="text-right">Toca uno para añadirlo · ⓘ para verlo</span>
+              )}
             </div>
+
+            {/* Crear uno propio. Sube por encima de la lista como el detalle,
+                para no llevarte a otra pantalla a mitad de una búsqueda. */}
+            {creando && (
+              <div className="absolute inset-0 bg-black/75 flex items-end z-20" onClick={() => setCreando(null)}>
+                <div className="bg-gray-900 border-t border-gray-700 w-full rounded-t-2xl max-h-[92%] flex flex-col overflow-hidden"
+                  onClick={ev => ev.stopPropagation()}>
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-800">
+                    <h4 className="text-[16px] font-bold">Un ejercicio tuyo</h4>
+                    <p className="text-gray-500 text-[11.5px] mt-0.5 leading-snug">
+                      Se guarda solo para ti. Tu entrenador lo verá en lo que apuntes, pero no se mete en el catálogo de todos.
+                    </p>
+                  </div>
+
+                  <div className="overflow-y-auto p-4 flex flex-col gap-3.5">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-gray-400 text-[12.5px]">Cómo se llama</span>
+                      <input autoFocus value={creando.nombre}
+                        onChange={ev => setCreando({ ...creando, nombre: ev.target.value })}
+                        placeholder="Prensa inclinada a una pierna"
+                        className="bg-gray-800 border border-gray-700 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-gray-400 text-[12.5px]">Para qué te sirve</span>
+                      <textarea value={creando.descripcion} rows={2}
+                        onChange={ev => setCreando({ ...creando, descripcion: ev.target.value })}
+                        placeholder="Lo que quieras acordarte dentro de tres meses."
+                        className="bg-gray-800 border border-gray-700 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 resize-y" />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-gray-400 text-[12.5px]">De qué es</span>
+                      <select value={creando.grupoMuscular}
+                        onChange={ev => setCreando({ ...creando, grupoMuscular: ev.target.value })}
+                        className="bg-gray-800 border border-gray-700 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
+                        <option value="">Sin clasificar</option>
+                        {gruposExistentes(ejercicios).map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                      {/* Este campo no es adorno: el reparto de series de la
+                          semana que mira el entrenador agrupa por esta cadena. */}
+                      <span className="text-gray-600 text-[11px] leading-snug">
+                        Es lo que hace que estas series cuenten en el reparto por grupo muscular de tu semana. Si lo dejas sin clasificar, salen en su propio montón.
+                      </span>
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-gray-400 text-[12.5px]">Tipo</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {TIPOS_EJERCICIO.map(t => (
+                          <button key={t} onClick={() => setCreando({ ...creando, tipo: t })}
+                            aria-pressed={creando.tipo === t}
+                            className={'rounded-full px-3 py-1.5 text-xs border transition ' + (creando.tipo === t
+                              ? 'bg-orange-500/15 border-orange-500/55 text-orange-300'
+                              : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>{t}</button>
+                        ))}
+                      </div>
+                    </label>
+
+                    {errorNuevo && (
+                      <p className="text-red-300 bg-red-950/60 border border-red-900 rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed">
+                        {errorNuevo}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-gray-800 p-3 flex gap-2">
+                    <button onClick={() => setCreando(null)}
+                      className="flex-1 bg-gray-800 text-gray-400 hover:text-white rounded-xl py-2.5 text-[13.5px] transition">
+                      Volver
+                    </button>
+                    <button onClick={guardarNuevo} disabled={guardandoNuevo}
+                      className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl py-2.5 text-[13.5px] transition disabled:opacity-50">
+                      {guardandoNuevo ? 'Creando…' : 'Crear y usarlo'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* El detalle, bajo demanda. Antes vivía siempre en pantalla y en un
                 móvil se comía la mitad de la lista. */}
