@@ -3,6 +3,7 @@
 // Recibe { messages, contexto } y devuelve la respuesta de Claude en streaming.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { consumirCuota, mensajeDeTope } from '@/lib/cuota-api'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ASISTENTE } from '@/lib/asistente'
 import { ESQUEMA_PROPUESTA } from '@/lib/propuesta-sesion'
@@ -39,6 +40,11 @@ export async function POST(req: Request) {
   // no dejar que un deportista (u otro rol) lo dispare.
   const { data: perfil } = await sb.from('perfiles').select('rol').eq('id', user.id).single()
   if (perfil?.rol !== 'entrenador') return new Response('El asistente es solo para entrenadores.', { status: 403 })
+  /* El tope de llamadas. Va DESPUÉS de saber quién es: contar por usuario
+     necesita el usuario, y una llamada sin sesión ya se ha ido en el 401. */
+  const cuota = await consumirCuota(sb, 'asistente')
+  if (!cuota.ok) return new Response(mensajeDeTope(cuota, 'consultas al asistente'), { status: 429, headers: cabecerasTexto })
+
 
   let body: any
   try { body = await req.json() } catch { return new Response('Petición inválida.', { status: 400 }) }

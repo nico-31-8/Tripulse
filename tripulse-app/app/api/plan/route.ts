@@ -16,6 +16,7 @@
 // queda sin plan porque el proveedor está de baja no sirve de nada.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { consumirCuota, mensajeDeTope } from '@/lib/cuota-api'
 import { createClient } from '@supabase/supabase-js'
 import {
   ESQUEMA_REVISION, INSTRUCCIONES_REVISION, aplicarRevision, describirSemanaParaIA,
@@ -47,6 +48,11 @@ export async function POST(req: Request) {
   if (authErr || !user) return json({ error: 'Sesión no válida.' }, 401)
   const { data: perfil } = await sb.from('perfiles').select('rol').eq('id', user.id).single()
   if (perfil?.rol !== 'entrenador') return json({ error: 'El planificador es solo para entrenadores.' }, 403)
+  /* El tope de llamadas. Va DESPUÉS de saber quién es: contar por usuario
+     necesita el usuario, y una llamada sin sesión ya se ha ido en el 401. */
+  const cuota = await consumirCuota(sb, 'plan')
+  if (!cuota.ok) return json({ error: mensajeDeTope(cuota, 'planes') }, 429)
+
 
   let body: any
   try { body = await req.json() } catch { return json({ error: 'Petición inválida.' }, 400) }

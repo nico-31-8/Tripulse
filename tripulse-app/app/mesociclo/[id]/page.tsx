@@ -84,10 +84,21 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
         const { valoracion, notas } = draft[key]
         // Buscar si ya existe
         const existe = valoraciones.find(v => v.id_deportista === dep.id && v.disciplina === disc.key)
-        if (existe) {
-          await supabase.from('valoracion_tecnica_mesociclo').update({ valoracion, notas }).eq('id', existe.id)
-        } else {
-          await supabase.from('valoracion_tecnica_mesociclo').insert({ id_mesociclo: Number(id), id_deportista: dep.id, disciplina: disc.key, valoracion, notas })
+        /* El error se MIRA. Antes no, y por eso esto llevaba tiempo sin guardar
+           nada sin que se notara: la tabla tenía RLS y ninguna política, así que
+           Postgres rechazaba cada escritura, la pantalla recargaba vacía y
+           parecía que había guardado. Un guardado que no comprueba si guardó no
+           es un guardado, es una animación. */
+        const { error: err } = existe
+          ? await supabase.from('valoracion_tecnica_mesociclo').update({ valoracion, notas }).eq('id', existe.id)
+          : await supabase.from('valoracion_tecnica_mesociclo').insert({ id_mesociclo: Number(id), id_deportista: dep.id, disciplina: disc.key, valoracion, notas })
+
+        if (err) {
+          setErrorVal(/policy|row-level/i.test(err.message)
+            ? 'La base no deja guardar la valoración técnica. Falta correr supabase/politicas-que-faltaban.sql.'
+            : 'No se pudo guardar la valoración de ' + dep.nombre + ': ' + err.message)
+          setLoadingVal(false)
+          return
         }
       }
     }

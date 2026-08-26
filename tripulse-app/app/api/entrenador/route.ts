@@ -14,6 +14,7 @@
 //
 // Vive solo en el servidor: la API key nunca llega al navegador.
 import { hoyISO } from '@/lib/fechas'
+import { consumirCuota, mensajeDeTope } from '@/lib/cuota-api'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ENTRENADOR_IA, contextoParaAtleta } from '@/lib/entrenador-ia'
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
   const { data: dep } = await sb.from('deportista')
     .select('id, nombre').eq('id_usuario', user.id).maybeSingle()
   if (!dep) return new Response('Esto es para deportistas: no encuentro tu ficha.', { status: 403 })
+  /* El tope de llamadas. Va DESPUÉS de saber quién es: contar por usuario
+     necesita el usuario, y una llamada sin sesión ya se ha ido en el 401. */
+  const cuota = await consumirCuota(sb, 'entrenador')
+  if (!cuota.ok) return new Response(mensajeDeTope(cuota, 'consultas'), { status: 429, headers: cabecerasTexto })
+
 
   let body: any
   try { body = await req.json() } catch { return new Response('Petición inválida.', { status: 400 }) }
