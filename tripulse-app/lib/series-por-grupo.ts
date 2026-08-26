@@ -37,6 +37,13 @@ export interface GrupoSeries {
   /** Las series del periodo entero. */
   series: number
   /**
+   * Lo que el entrenador dijo que debería llevar ese grupo a la semana.
+   *
+   * `null` cuando no lo ha dicho, que es lo normal y no es un fallo: entonces
+   * manda la banda genérica. Un objetivo inventado sería peor que ninguno.
+   */
+  objetivo?: number | null
+  /**
    * Las de una semana media de ese periodo.
    *
    * Es el número que hay que MIRAR. El volumen de fuerza se piensa siempre por
@@ -74,6 +81,97 @@ export function seriesPorGrupo(
        grupos con las mismas series se colocaban según el orden en que llegaran
        de la base y el gráfico bailaba entre recargas. */
     .sort((a, b) => (b.series - a.series) || a.grupo.localeCompare(b.grupo, 'es'))
+}
+
+/**
+ * Trae las series por grupo de un atleta en los últimos `dias`.
+ *
+ * Solo sesiones REALIZADAS: esto es lo que se ha hecho, no lo que hay puesto en
+ * el calendario. Y de la papelera no sale nada, igual que en el resto de la app.
+ */
+export async function cargarSeriesDeGrupos(
+  sb: any,
+  idDeportista: number,
+  dias: number,
+  desdeISO: string,
+): Promise<GrupoSeries[]> {
+  const { data: ses } = await sb.from('sesion')
+    .select('id, eliminada')
+    .eq('id_deportista', idDeportista).eq('estado', 'Realizada')
+    .gte('fecha_sesion', desdeISO)
+
+  const ids = (ses || []).filter((s: any) => !s.eliminada).map((s: any) => s.id)
+  if (!ids.length) return []
+
+  const { data: tareas } = await sb.from('tarea').select('id').in('id_sesion', ids)
+  const idsTarea = (tareas || []).map((t: any) => t.id)
+  if (!idsTarea.length) return []
+
+  const { data: ejs } = await sb.from('ejercicios')
+    .select('grupo_muscular, series').in('id_tarea', idsTarea)
+
+  return seriesPorGrupo(ejs || [], dias)
+}
+
+/**
+ * Pega los objetivos del entrenador a lo que se ha hecho.
+ *
+ * Un grupo con objetivo pero SIN nada hecho también sale, con cero. Es el caso
+ * que más importa ver: le dijiste que hiciera seis series de glúteo y no ha
+ * hecho ninguna. Si solo se listaran los grupos entrenados, ese hueco sería
+ * justo el que no aparece.
+ */
+export function conObjetivos(
+  grupos: GrupoSeries[],
+  objetivos: Record<string, number> | null | undefined,
+): GrupoSeries[] {
+  const obj = objetivos || {}
+  const salida = grupos.map(g => ({ ...g, objetivo: obj[g.grupo] ?? null }))
+
+  for (const [grupo, series] of Object.entries(obj)) {
+    if (!salida.some(g => g.grupo === grupo)) {
+      salida.push({ grupo, series: 0, porSemana: 0, objetivo: series })
+    }
+  }
+  return salida.sort((a, b) => (b.porSemana - a.porSemana) || a.grupo.localeCompare(b.grupo, 'es'))
+}
+
+/** Qué parte del objetivo lleva cumplida, en tanto por ciento. Null si no hay objetivo. */
+export function cumplimientoDe(g: GrupoSeries): number | null {
+  if (g.objetivo == null || g.objetivo <= 0) return null
+  return Math.round((g.porSemana / g.objetivo) * 100)
+}
+
+export async function cargarObjetivos(sb: any, idDeportista: number): Promise<Record<string, number>> {
+  const { data } = await sb.from('objetivo_series')
+    .select('grupo_muscular, series_semana').eq('id_deportista', idDeportista)
+  const mapa: Record<string, number> = {}
+  for (const o of data || []) mapa[o.grupo_muscular] = Number(o.series_semana)
+  return mapa
+}
+
+/**
+ * Fija o quita el objetivo de un grupo.
+ *
+ * `null` lo borra en vez de guardar un cero: cero series es una prescripción
+ * («no toques ese grupo»), y no decir nada es otra cosa. Guardar cero por «no
+ * lo sé» convertiría un silencio en una orden.
+ */
+export async function fijarObjetivo(
+  sb: any,
+  idDeportista: number,
+  grupo: string,
+  series: number | null,
+): Promise<string | null> {
+  if (series == null) {
+    const { error } = await sb.from('objetivo_series').delete()
+      .eq('id_deportista', idDeportista).eq('grupo_muscular', grupo)
+    return error?.message || null
+  }
+  const { error } = await sb.from('objetivo_series')
+    .upsert({ id_deportista: idDeportista, grupo_muscular: grupo, series_semana: series, actualizado_en: new Date().toISOString() },
+      { onConflict: 'id_deportista,grupo_muscular' })
+  return error?.message || null
 }
 
 /** El total, para poder decir porcentajes sin volver a sumar por otro lado. */

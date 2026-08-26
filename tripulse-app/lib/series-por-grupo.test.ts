@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  seriesPorGrupo, totalSeries, porcentajeDe, seriesTexto, periodoTexto, bandaDe, bandasDe, SIN_CLASIFICAR,
+  seriesPorGrupo, totalSeries, porcentajeDe, seriesTexto, periodoTexto, bandaDe, bandasDe,
+  conObjetivos, cumplimientoDe, SIN_CLASIFICAR,
 } from './series-por-grupo'
 
 describe('series por grupo', () => {
@@ -179,6 +180,57 @@ describe('el objetivo cambia lo que significa el mismo número', () => {
   it('los dos juegos tienen las mismas cuatro bandas, para que el color case', () => {
     const ids = (o: string) => bandasDe(o).map(b => b.id)
     expect(ids('hipertrofia')).toEqual(ids('resistencia'))
+  })
+})
+
+describe('los objetivos del entrenador', () => {
+  const hechas = [
+    { grupo_muscular: 'Glúteos', series: 8 },
+    { grupo_muscular: 'Core', series: 4 },
+  ]
+
+  it('el objetivo se pega al grupo que le toca', () => {
+    const r = conObjetivos(seriesPorGrupo(hechas), { 'Glúteos': 10 })
+    expect(r.find(g => g.grupo === 'Glúteos')!.objetivo).toBe(10)
+  })
+
+  it('un grupo sin objetivo lo trae en null, no en cero', () => {
+    /* Cero significaría «no toques ese grupo», que es una prescripción. No
+       decir nada es otra cosa. */
+    const r = conObjetivos(seriesPorGrupo(hechas), { 'Glúteos': 10 })
+    expect(r.find(g => g.grupo === 'Core')!.objetivo).toBe(null)
+  })
+
+  /* El caso que más importa ver: le dijiste que hiciera glúteo y no ha hecho
+     nada. Si solo se listaran los grupos entrenados, ese hueco no saldría. */
+  it('un grupo con objetivo y sin nada hecho SALE, con cero', () => {
+    const r = conObjetivos(seriesPorGrupo(hechas), { 'Isquiotibiales': 6 })
+    const isquios = r.find(g => g.grupo === 'Isquiotibiales')
+    expect(isquios).toBeTruthy()
+    expect(isquios!.porSemana).toBe(0)
+    expect(isquios!.objetivo).toBe(6)
+  })
+
+  it('sin objetivos ninguno, la lista queda igual', () => {
+    const base = seriesPorGrupo(hechas)
+    expect(conObjetivos(base, null).map(g => g.grupo)).toEqual(base.map(g => g.grupo))
+  })
+
+  it('el cumplimiento es el porcentaje del objetivo', () => {
+    const r = conObjetivos(seriesPorGrupo(hechas), { 'Glúteos': 10 })
+    expect(cumplimientoDe(r.find(g => g.grupo === 'Glúteos')!)).toBe(80)
+  })
+
+  it('sin objetivo no hay cumplimiento que calcular', () => {
+    expect(cumplimientoDe({ grupo: 'Core', series: 4, porSemana: 4 })).toBe(null)
+  })
+
+  it('un objetivo de cero no divide por cero', () => {
+    expect(cumplimientoDe({ grupo: 'Core', series: 4, porSemana: 4, objetivo: 0 })).toBe(null)
+  })
+
+  it('pasarse del objetivo da más de cien', () => {
+    expect(cumplimientoDe({ grupo: 'Core', series: 12, porSemana: 12, objetivo: 8 })).toBe(150)
   })
 })
 

@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import MiFuerza from '@/components/MiFuerza'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
@@ -38,6 +39,7 @@ export default function MisAnalisis() {
   const [tareasSel, setTareasSel] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingTareas, setLoadingTareas] = useState(false)
+  const [depId, setDepId] = useState<number | null>(null)
 
   useEffect(() => {
     const cargar = async () => {
@@ -45,6 +47,7 @@ export default function MisAnalisis() {
       if (!user) { router.push('/login'); return }
       const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', user.id).maybeSingle()
       if (!dep) { setLoading(false); return }
+      setDepId(dep.id)
 
       /* Las últimas 20 realizadas: del plan y libres, en UNA consulta. Antes
          eran tres para la cadena y dos más para las dos ramas, y encima el
@@ -101,7 +104,13 @@ export default function MisAnalisis() {
         {!sesionSel ? (
           <>
             <h2 className="text-2xl font-bold mb-1">Mis análisis</h2>
-            <p className="text-gray-400 text-sm mb-6">Últimas 20 sesiones realizadas — pulsa una para ver el análisis</p>
+            <p className="text-gray-400 text-sm mb-5">Últimas 20 sesiones realizadas — pulsa una para ver el análisis</p>
+
+            {/* El reparto de fuerza solo vivía en las pantallas del entrenador.
+                El atleta apuntaba sus series y no sabía si iba corto de algo
+                sin preguntar. Va plegado: no es lo que viene a buscar aquí,
+                pero es donde tiene sentido que esté. */}
+            {depId != null && <MiFuerza idDeportista={depId} />}
 
             {sesiones.length === 0 ? (
               <div className="text-center py-16 text-gray-500">

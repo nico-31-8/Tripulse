@@ -2,7 +2,8 @@
 import { useRouter } from 'next/navigation'
 import {
   seriesPorGrupo, seriesTexto, periodoTexto, bandaDe, bandasDe,
-  OBJETIVOS, OBJETIVO_POR_DEFECTO, type ObjetivoId,
+  OBJETIVOS, OBJETIVO_POR_DEFECTO, conObjetivos, cumplimientoDe,
+  cargarObjetivos, fijarObjetivo, type ObjetivoId,
 } from '@/lib/series-por-grupo'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -95,6 +96,10 @@ export default function VolumenPage() {
      no un dato del atleta. */
   const [objetivo, setObjetivo] = useState<ObjetivoId>(OBJETIVO_POR_DEFECTO)
 
+  /* Las series semanales que el entrenador ha fijado para cada grupo. Vacio
+     mientras no diga nada, y entonces manda la banda generica. */
+  const [objetivos, setObjetivos] = useState<Record<string, number>>({})
+
   useEffect(() => {
     const v = localStorage.getItem('tp_objetivo_fuerza')
     if (v && OBJETIVOS.some(o => o.id === v)) setObjetivo(v as ObjetivoId)
@@ -103,6 +108,35 @@ export default function VolumenPage() {
   const cambiarObjetivo = (id: ObjetivoId) => {
     setObjetivo(id)
     localStorage.setItem('tp_objetivo_fuerza', id)
+  }
+
+  /* Fijar cuántas series semanales debería llevar un grupo.
+     Vaciarlo lo QUITA, y eso es distinto de poner un cero: cero es una
+     prescripción («no toques ese grupo») y no decir nada es no decir nada.
+     Guardar cero por «no lo sé» convertiría un silencio en una orden. */
+  const ponerObjetivo = async (grupo: string, actual: number | null) => {
+    if (!seleccionado) return
+    const v = prompt(
+      'Series semanales de ' + grupo + '.\n\n' +
+      'Un número, o déjalo vacío para quitar el objetivo.',
+      actual == null ? '' : String(actual))
+    if (v === null) return
+
+    const limpio = v.trim()
+    const n = limpio === '' ? null : Number(limpio.replace(',', '.'))
+    if (n != null && (!Number.isFinite(n) || n < 0 || n > 100)) {
+      alert('El objetivo tiene que ser un número entre 0 y 100.')
+      return
+    }
+
+    const err = await fijarObjetivo(supabase, seleccionado.id, grupo, n)
+    if (err) {
+      alert(/relation|does not exist/i.test(err)
+        ? 'Falta preparar la base para los objetivos (supabase/objetivo-series.sql).'
+        : err)
+      return
+    }
+    setObjetivos(await cargarObjetivos(supabase, seleccionado.id))
   }
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
@@ -343,6 +377,7 @@ export default function VolumenPage() {
        clasificar». El total de este gráfico salía menor que el de verdad sin
        que nada lo dijera. */
     setDatosMusculo(seriesPorGrupo(ejercicios as any, dias))
+    setObjetivos(await cargarObjetivos(supabase, dep.id))
 
     // Carga: guardamos las sesiones en bruto y derivamos sesión/semana/mes vía useMemo
     // (así el toggle SICAT recalcula al vuelo sin volver a consultar la base de datos).
@@ -976,18 +1011,31 @@ export default function VolumenPage() {
                           que son semanales: con «4 sem» elegidas, 5 series
                           —1,25 por semana, mantenimiento— salían en verde como
                           «Desarrollo». */}
-                      {datosMusculo.map(m => {
+                      {conObjetivos(datosMusculo, objetivos).map(m => {
                         const banda = bandaDe(m.porSemana, objetivo)
                         const estado = COLOR_BANDA[banda.id]
+                        const cumple = cumplimientoDe(m)
                         return (
-                          <div key={m.grupo} className={'flex justify-between items-center rounded-xl px-4 py-3 border ' + estado.bg}>
-                            <p className="font-medium text-sm text-white">{m.grupo}</p>
-                            <div className="flex items-center gap-3">
-                              <p className={'text-xs ' + estado.color}>{banda.id === 'sobrevolumen' ? '⚠️ ' : ''}{banda.label}</p>
+                          <div key={m.grupo} className={'flex justify-between items-center gap-3 rounded-xl px-4 py-3 border ' + estado.bg}>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-white truncate">{m.grupo}</p>
+                              {/* El objetivo manda sobre la banda cuando lo hay:
+                                  la banda es una referencia genérica y esto es
+                                  lo que dijiste para ESTE atleta. */}
+                              {cumple != null
+                                ? <p className="text-[11px] text-gray-400 mt-0.5">{cumple}% de las {seriesTexto(m.objetivo!)} que le pusiste</p>
+                                : <p className={'text-[11px] mt-0.5 ' + estado.color}>{banda.id === 'sobrevolumen' ? '⚠️ ' : ''}{banda.label}</p>}
+                            </div>
+                            <div className="flex items-center gap-3 flex-none">
                               <div className="text-right">
                                 <p className="font-bold text-white leading-tight">{seriesTexto(m.porSemana)} <span className="text-xs font-normal text-gray-400">ser/sem</span></p>
                                 <p className="text-[10.5px] text-gray-500 leading-tight">{m.series} en total</p>
                               </div>
+                              <button onClick={() => ponerObjetivo(m.grupo, m.objetivo ?? null)}
+                                title="Fijar cuántas series semanales debería llevar"
+                                className="text-[11px] text-gray-400 hover:text-orange-400 border border-gray-700 hover:border-orange-500/60 rounded-lg px-2 py-1 transition">
+                                {m.objetivo != null ? 'objetivo ' + seriesTexto(m.objetivo) : 'poner objetivo'}
+                              </button>
                             </div>
                           </div>
                         )
