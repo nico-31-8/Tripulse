@@ -248,10 +248,18 @@ export default function MisSesiones() {
                             <div className="flex items-center gap-2">
                               {s.origen === 'deportista' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/50 text-orange-300">🙋 Tú</span>}
                               <span className={'text-xs px-2 py-0.5 rounded-full ' + estadoColor(s.estado)}>{s.estado}</span>
-                              {/* Corregir: solo la fuerza que se apuntó él. Se abre la MISMA
-                                  pantalla donde la escribió, no otra: dos sitios para apuntar
-                                  series acabarían diciendo cosas distintas. */}
-                              {s.origen === 'deportista' && s.disciplina === 'Fuerza' && (
+                              {/* Corregir: cualquier sesión que se apuntó él, sea de lo que
+                                  sea. Se abre la MISMA pantalla donde la escribió, no otra:
+                                  dos sitios para apuntar series acabarían diciendo cosas
+                                  distintas de la misma serie.
+
+                                  Estuvo limitado a fuerza mientras fue lo único que se podía
+                                  apuntar con detalle. Dejarlo así ahora sería un callejón sin
+                                  salida: te apuntas 8×100 mal y no hay forma de tocarlo.
+
+                                  Una sesión vieja de las que solo tenían cabecera se abre con
+                                  un bloque en blanco, así que sirve además para rellenarlas. */}
+                              {s.origen === 'deportista' && (
                                 <button onClick={ev => { ev.stopPropagation(); router.push('/apuntar?sesion=' + s.id) }}
                                   title="Corregir lo que apuntaste"
                                   aria-label="Corregir esta sesión"

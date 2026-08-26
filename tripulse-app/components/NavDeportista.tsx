@@ -71,6 +71,11 @@ export default function NavDeportista() {
     { icono: '📊', texto: 'Análisis', href: '/mis-analisis' as string | null },
   ]
   const secundarias = [
+    /* Apuntar es lo que más veces al día se hace, y desde el móvil no había
+       forma de llegar sin pasar por otra pantalla primero. Va en «Más» y no
+       abajo del todo porque las cuatro de la barra son sitios donde MIRAS algo;
+       esta es la única donde escribes. */
+    { icono: '📝', texto: 'Apuntar', href: '/apuntar' as string | null },
     { icono: '🏋️', texto: 'Mis tests', href: '/mis-tests' as string | null },
     { icono: '💬', texto: 'Chat', href: depId ? '/chat/' + depId : null },
     { icono: '🤝', texto: 'Comunidad', href: '/comunidad' as string | null },

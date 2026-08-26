@@ -366,20 +366,19 @@ export default function DashboardDeportista() {
           </div>}
         </div>
 
-        {/* ===== AÑADIR SESIÓN NO PROGRAMADA =====
-            El modal de alta vive en /mis-sesiones; ?anadir=1 lo abre al llegar. Sin
-            eso, este botón te llevaba a una lista con el mismo botón otra vez. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+        {/* ===== APUNTAR UNA SESIÓN =====
+            Eran DOS botones —«añadir una sesión que vas a hacer» y «apuntar la
+            fuerza que he hecho»— porque eran dos pantallas distintas. Ahora las
+            dos llevan a /apuntar, donde lo primero que eliges es justo eso: si
+            la vas a hacer o ya la hiciste, y de qué. Dejar los dos sería la
+            misma puerta pintada dos veces. */}
+        <div className="mb-5">
           <button onClick={() => router.push('/apuntar')}
-            className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded-xl py-3 text-sm transition">
-            ＋ Añadir una sesión que vas a hacer
-          </button>
-          {/* Apuntar fuerza es otra cosa que añadir una sesión: aquí se anota lo
-              que ACABAS de hacer, ejercicio a ejercicio y con lo de la última vez
-              delante. Ver app/apuntar. */}
-          <button onClick={() => router.push('/apuntar')}
-            className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-orange-500/60 rounded-xl py-3 text-sm transition">
-            💪 Apuntar la fuerza que he hecho
+            className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-orange-500/60 rounded-xl py-3.5 text-sm transition">
+            ＋ Apuntar una sesión
+            <span className="block text-gray-600 text-[11.5px] mt-0.5">
+              La que acabas de hacer o la que vas a hacer, de lo que sea.
+            </span>
           </button>
         </div>
 
