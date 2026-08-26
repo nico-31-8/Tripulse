@@ -55,9 +55,9 @@ comment on column ejercicios_biblioteca.id_deportista is
 create index if not exists eb_deportista_idx
   on ejercicios_biblioteca (id_deportista) where id_deportista is not null;
 
-/* ------------------------------------------------------------
+/* ============================================================
    Quién lee qué
-   ------------------------------------------------------------
+   ============================================================
    La política de antes era `auth.role() = 'authenticated'`: todo el mundo veía
    todo. Con filas privadas por medio eso significaría que el atleta A ve los
    ejercicios que se inventó el atleta B.
@@ -75,9 +75,9 @@ create policy eb_read on ejercicios_biblioteca for select using (
   )
 );
 
-/* ------------------------------------------------------------
+/* ============================================================
    Quién escribe qué
-   ------------------------------------------------------------
+   ============================================================
    El entrenador sigue con el catálogo entero, como hasta hoy. El atleta gana
    una política propia que le ata a sus propias filas por los dos lados:
    `using` para no poder tocar las ajenas, `with check` para no poder crear una

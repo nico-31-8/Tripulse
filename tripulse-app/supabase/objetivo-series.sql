@@ -52,9 +52,9 @@ comment on table objetivo_series is
 
 alter table objetivo_series enable row level security;
 
-/* ------------------------------------------------------------
+/* ============================================================
    El entrenador de ese atleta escribe. El atleta lee lo suyo.
-   ------------------------------------------------------------
+   ============================================================
    El atleta NO escribe: es una prescripción, no una preferencia. Si pudiera
    cambiarse el objetivo, la pantalla dejaría de decirle si va corto y pasaría
    a decirle lo que él mismo se puso. */
