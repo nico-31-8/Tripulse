@@ -25,7 +25,7 @@ import { supabase } from '@/lib/supabase'
 import { partirInstrucciones } from '@/lib/instrucciones'
 import {
   EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, gruposExistentes, crearEjercicioPropio,
-  type EjercicioNuevo,
+  editarEjercicioPropio, borrarEjercicioPropio, esMio, type EjercicioNuevo,
 } from '@/lib/ejercicio-propio'
 
 export interface EjercicioBib {
@@ -35,6 +35,8 @@ export interface EjercicioBib {
   descripcion?: string | null
   instrucciones?: string | null
   url_video?: string | null
+  /** Con valor = se lo creó ese deportista. NULL = catálogo común. */
+  id_deportista?: number | null
 }
 
 /* Los filtros salen de cómo la biblioteca YA está ordenada, no de etiquetas
@@ -77,8 +79,13 @@ interface Props {
 export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [creando, setCreando] = useState<EjercicioNuevo | null>(null)
+  /* Cuando se está CORRIGIENDO uno, aquí va el id. Es el mismo formulario:
+     dos sitios distintos para lo mismo acabarían pidiendo campos distintos. */
+  const [editandoId, setEditandoId] = useState<number | null>(null)
+  const [nombreAntes, setNombreAntes] = useState<string | null>(null)
   const [guardandoNuevo, setGuardandoNuevo] = useState(false)
   const [errorNuevo, setErrorNuevo] = useState('')
+  const [errorDetalle, setErrorDetalle] = useState('')
   const [filtro, setFiltro] = useState('todo')
   const [verFiltros, setVerFiltros] = useState(false)
   const [consulta, setConsulta] = useState('')
@@ -115,27 +122,59 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
   const cerrar = () => {
     setAbierto(false); setConsulta(''); setFiltro('todo')
     setSel(0); setDetalle(null); setVerFiltros(false)
-    setCreando(null); setErrorNuevo('')
+    setCreando(null); setErrorNuevo(''); setEditandoId(null); setNombreAntes(null)
   }
 
   /* Se abre con lo que ya habías escrito puesto de nombre: si has buscado
      «prensa inclinada» y no está, eso es justo como se llama. */
   const abrirAlta = () => {
-    setErrorNuevo('')
+    setErrorNuevo(''); setEditandoId(null); setNombreAntes(null)
     setCreando({ ...EJERCICIO_NUEVO_VACIO, nombre: consulta.trim() })
+  }
+
+  /** Corregir uno propio: el mismo formulario, relleno con lo que ya tenía. */
+  const abrirEdicion = (e: EjercicioBib) => {
+    setErrorNuevo(''); setDetalle(null)
+    setEditandoId(e.id); setNombreAntes(e.nombre)
+    setCreando({
+      nombre: e.nombre,
+      descripcion: e.descripcion || '',
+      grupoMuscular: e.grupo_muscular || '',
+      tipo: EJERCICIO_NUEVO_VACIO.tipo,
+    })
+  }
+
+  const borrar = async (e: EjercicioBib) => {
+    if (!confirm('¿Borrar «' + e.nombre + '» de tu biblioteca?')) return
+    setGuardandoNuevo(true)
+    const r = await borrarEjercicioPropio(supabase, e.id)
+    setGuardandoNuevo(false)
+    /* Si se ha usado no se borra, y el motivo se dice en el sitio donde se
+       pidió: un alert suelto se cierra y no queda nada. */
+    if (r.error) { setDetalle(e); setErrorDetalle(r.error); return }
+    setDetalle(null)
+    onBibliotecaCambia?.()
   }
 
   const guardarNuevo = async () => {
     if (!creando || !idDeportista) return
     setGuardandoNuevo(true); setErrorNuevo('')
-    const r = await crearEjercicioPropio(supabase, creando, idDeportista, ejercicios.map(e => e.nombre))
+    const nombres = ejercicios.map(e => e.nombre)
+    const r = editandoId
+      ? await editarEjercicioPropio(supabase, editandoId, creando, nombres, nombreAntes)
+      : await crearEjercicioPropio(supabase, creando, idDeportista, nombres)
     setGuardandoNuevo(false)
-    if (r.error) { setErrorNuevo(r.error); return }
+    /* Al corregir puede volver ejercicio Y error a la vez: el cambio entró pero
+       el histórico no se renombró. Se avisa sin cerrar el formulario. */
+    if (r.error) { setErrorNuevo(r.error); if (!r.ejercicio) return }
 
     /* Se elige solo. Quien viene aquí a crear un ejercicio es porque lo está
        haciendo AHORA: obligarle a buscarlo después sería un paso de más. */
     onBibliotecaCambia?.()
-    usar(r.ejercicio as EjercicioBib)
+    /* Al crear se elige solo: quien viene a crear un ejercicio lo está haciendo
+       AHORA. Al corregir NO, que puede ser solo una errata. */
+    if (editandoId) { if (!r.error) { setCreando(null); setEditandoId(null); setNombreAntes(null) } }
+    else usar(r.ejercicio as EjercicioBib)
   }
 
   /* Un toque lo añade y cierra. El doble clic de antes no existe en un móvil, y
@@ -258,7 +297,7 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                         <span className="flex-1 min-w-0 truncate">{e.nombre}</span>
                         {videoDe(e) && <span className="text-red-400 text-[10px] flex-none" title="Tiene vídeo">▶</span>}
                       </button>
-                      <button onClick={() => setDetalle(e)} aria-label={'Ver qué es ' + e.nombre}
+                      <button onClick={() => { setErrorDetalle(''); setDetalle(e) }} aria-label={'Ver qué es ' + e.nombre}
                         className="flex-none mr-3 w-8 h-8 grid place-items-center rounded-lg border border-gray-700 text-gray-600 hover:text-gray-300 hover:border-gray-600 text-[12px] transition">
                         ⓘ
                       </button>
@@ -286,9 +325,11 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                 <div className="bg-gray-900 border-t border-gray-700 w-full rounded-t-2xl max-h-[92%] flex flex-col overflow-hidden"
                   onClick={ev => ev.stopPropagation()}>
                   <div className="px-4 pt-4 pb-3 border-b border-gray-800">
-                    <h4 className="text-[16px] font-bold">Un ejercicio tuyo</h4>
+                    <h4 className="text-[16px] font-bold">{editandoId ? 'Corregir tu ejercicio' : 'Un ejercicio tuyo'}</h4>
                     <p className="text-gray-500 text-[11.5px] mt-0.5 leading-snug">
-                      Se guarda solo para ti. Tu entrenador lo verá en lo que apuntes, pero no se mete en el catálogo de todos.
+                      {editandoId
+                        ? 'Si le cambias el nombre, se cambia también en las sesiones que ya apuntaste, para que su progresión no salga partida en dos.'
+                        : 'Se guarda solo para ti. Tu entrenador lo verá en lo que apuntes, pero no se mete en el catálogo de todos.'}
                     </p>
                   </div>
 
@@ -351,7 +392,7 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                     </button>
                     <button onClick={guardarNuevo} disabled={guardandoNuevo}
                       className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl py-2.5 text-[13.5px] transition disabled:opacity-50">
-                      {guardandoNuevo ? 'Creando…' : 'Crear y usarlo'}
+                      {guardandoNuevo ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear y usarlo'}
                     </button>
                   </div>
                 </div>
@@ -408,6 +449,30 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                       </div>
                     )}
                   </div>
+
+                  {/* Corregir y borrar, SOLO en los suyos. Sin esto podía
+                      crearse un ejercicio y no tenía forma de deshacerlo: una
+                      errata en el nombre se quedaba en su biblioteca para
+                      siempre. */}
+                  {esMio(detalle, idDeportista) && (
+                    <div className="border-t border-gray-800 px-3 py-2.5 flex items-center gap-2">
+                      <span className="text-[10.5px] uppercase tracking-wide text-orange-300/70 font-semibold flex-1">Tuyo</span>
+                      <button onClick={() => abrirEdicion(detalle)}
+                        className="text-[12px] text-gray-400 hover:text-white border border-gray-700 rounded-lg px-2.5 py-1 transition">
+                        Corregir
+                      </button>
+                      <button onClick={() => borrar(detalle)} disabled={guardandoNuevo}
+                        className="text-[12px] text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-500/50 rounded-lg px-2.5 py-1 transition disabled:opacity-50">
+                        Borrar
+                      </button>
+                    </div>
+                  )}
+
+                  {errorDetalle && (
+                    <p className="mx-3 mb-1 text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2.5 text-[12px] leading-relaxed">
+                      {errorDetalle}
+                    </p>
+                  )}
 
                   <div className="border-t border-gray-800 p-3 flex gap-2">
                     <button onClick={() => setDetalle(null)}

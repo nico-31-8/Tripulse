@@ -121,6 +121,25 @@ export default function Apuntar() {
     return () => clearInterval(t)
   }, [!!descanso])
 
+  /* La consulta de la biblioteca, en un sitio: la usa la carga inicial y la
+     recarga de después de crear o corregir un ejercicio propio.
+
+     Pide `id_deportista` para saber cuáles son SUYOS y poder ofrecerle
+     corregirlos o borrarlos. La columna es nueva: si el SQL no estuviera
+     corrido, un select de algo que no existe tumbaría la pantalla entera y no
+     solo esos dos botones. Por eso lleva vuelta atrás. */
+  const bibliotecaQ = () => supabase.from('ejercicios_biblioteca')
+    .select('id, nombre, grupo_muscular, descripcion, url_video, id_deportista').order('nombre')
+    .then(r => r.error
+      ? supabase.from('ejercicios_biblioteca')
+        .select('id, nombre, grupo_muscular, descripcion, url_video').order('nombre')
+      : r)
+
+  const recargarBiblioteca = async () => {
+    const { data } = await bibliotecaQ()
+    setBiblioteca(data || [])
+  }
+
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
@@ -128,12 +147,7 @@ export default function Apuntar() {
     if (!d) { setCargando(false); return }
     setDep(d)
 
-    /* No se pide `id_deportista` a propósito. La columna es nueva y si el SQL
-       no está corrido, un select de una columna que no existe tumba la pantalla
-       ENTERA, no solo el alta. Quién ve qué ya lo decide la política de la
-       tabla, así que aquí no hace falta para nada. */
-    const bibQ = supabase.from('ejercicios_biblioteca')
-      .select('id, nombre, grupo_muscular, descripcion, url_video').order('nombre')
+    const bibQ = bibliotecaQ()
 
     /* Las últimas sesiones de fuerza, para poder elegir cuál repetir. Solo la
        cabecera; los ejercicios de cada una se traen al elegirla. */
@@ -725,6 +739,10 @@ export default function Apuntar() {
           <BuscadorEjercicios
             ejercicios={biblioteca}
             onElegir={anadirEjercicio}
+            /* Sin esto, un ejercicio recién creado no volvía a salir en la
+               lista hasta recargar la página: podías crearlo dos veces, y la
+               segunda ni siquiera se detectaba como nombre repetido. */
+            onBibliotecaCambia={recargarBiblioteca}
             idDeportista={dep?.id ?? null}
             etiqueta={ejercicios.length ? '＋ Añadir otro ejercicio' : '＋ Añadir un ejercicio'}
             clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white py-4 rounded-2xl text-[13.5px] transition"

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  EJERCICIO_NUEVO_VACIO, type EjercicioNuevo, gruposExistentes, queLeFalta, filaDe, SIN_CLASIFICAR,
+  EJERCICIO_NUEVO_VACIO, type EjercicioNuevo, gruposExistentes, queLeFalta, filaDe, esMio, SIN_CLASIFICAR,
 } from './ejercicio-propio'
 
 const e = (p: Partial<EjercicioNuevo>): EjercicioNuevo => ({ ...EJERCICIO_NUEVO_VACIO, ...p })
@@ -79,5 +79,40 @@ describe('la fila que va a la base', () => {
 
   it('el nombre se guarda sin los espacios de los lados', () => {
     expect(filaDe(e({ nombre: '  Prensa  ' }), 1).nombre).toBe('Prensa')
+  })
+})
+
+describe('corregir uno propio', () => {
+  /* Sin esto no se podría cambiar solo la descripción: su propio nombre se
+     detectaría como repetido contra sí mismo. */
+  it('su propio nombre no cuenta como repetido', () => {
+    expect(queLeFalta(e({ nombre: 'Prensa' }), ['Prensa', 'Sentadilla'], 'Prensa')).toBe(null)
+  })
+
+  it('pero el de OTRO sigue contando', () => {
+    expect(queLeFalta(e({ nombre: 'Sentadilla' }), ['Prensa', 'Sentadilla'], 'Prensa')).toMatch(/ya hay/i)
+  })
+
+  it('la comparación con el propio también ignora tildes', () => {
+    expect(queLeFalta(e({ nombre: 'Zancada búlgara' }), ['Zancada Bulgara'], 'Zancada Bulgara')).toBe(null)
+  })
+})
+
+describe('de quién es cada ejercicio', () => {
+  it('los del catálogo común no son de nadie', () => {
+    expect(esMio({ id_deportista: null }, 14)).toBe(false)
+  })
+
+  it('el suyo sí', () => {
+    expect(esMio({ id_deportista: 14 }, 14)).toBe(true)
+  })
+
+  it('el de otro atleta no', () => {
+    expect(esMio({ id_deportista: 7 }, 14)).toBe(false)
+  })
+
+  it('sin sesión de deportista, ninguno', () => {
+    expect(esMio({ id_deportista: 14 }, null)).toBe(false)
+    expect(esMio(null, 14)).toBe(false)
   })
 })

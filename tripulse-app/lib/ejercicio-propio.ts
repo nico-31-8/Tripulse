@@ -57,7 +57,13 @@ export function gruposExistentes(ejercicios: { grupo_muscular?: string | null }[
  * El nombre es lo único imprescindible: sin él la fila no se puede ni enseñar
  * en una lista. El resto se puede rellenar después.
  */
-export function queLeFalta(e: EjercicioNuevo, yaExisten: string[] = []): string | null {
+export function queLeFalta(
+  e: EjercicioNuevo,
+  yaExisten: string[] = [],
+  /* Al CORREGIR uno, su propio nombre no cuenta como repetido: si no, no se
+     podría cambiar solo la descripción sin cambiar también el nombre. */
+  nombreActual?: string | null,
+): string | null {
   const nombre = limpio(e?.nombre)
   if (!nombre) return 'Ponle un nombre.'
   if (nombre.length < 3) return 'El nombre se queda corto. Con tres letras no lo vas a reconocer dentro de un mes.'
@@ -65,10 +71,24 @@ export function queLeFalta(e: EjercicioNuevo, yaExisten: string[] = []): string 
   /* Repetir un nombre que ya está rompe el histórico: el «la última vez» casa
      los ejercicios POR NOMBRE, así que dos filas distintas con el mismo nombre
      se mezclarían en una sola progresión. */
-  const igual = yaExisten.some(n => sinTildes(n) === sinTildes(nombre))
+  const propio = sinTildes(nombreActual || '')
+  const igual = yaExisten.some(n => sinTildes(n) === sinTildes(nombre) && sinTildes(n) !== propio)
   if (igual) return 'Ya hay un ejercicio que se llama así. Búscalo en la lista o ponle otro nombre.'
 
   return null
+}
+
+/** ¿Este ejercicio se lo creó él? Solo esos se pueden tocar. */
+export function esMio(ej: { id_deportista?: number | null } | null | undefined, idDeportista: number | null | undefined): boolean {
+  return ej?.id_deportista != null && Number(ej.id_deportista) === Number(idDeportista)
+}
+
+/** En cuántas sesiones se ha usado ya. Decide si se puede borrar. */
+export async function vecesUsado(sb: any, idEjercicio: number): Promise<number> {
+  const { count } = await sb.from('ejercicios')
+    .select('id', { count: 'exact', head: true })
+    .eq('ejercicio_id', idEjercicio)
+  return count || 0
 }
 
 export const sinTildes = (s: string) =>
@@ -122,4 +142,76 @@ export async function crearEjercicioPropio(
   }
 
   return { ejercicio: data, error: null }
+}
+
+/**
+ * Corregir uno propio.
+ *
+ * SI CAMBIA EL NOMBRE, TAMBIÉN CAMBIA EN EL HISTÓRICO.
+ * `ejercicios.nombre` es una COPIA que se hizo al apuntar la sesión, y el «la
+ * última vez» casa por ese nombre, no por el id. Cambiar solo la biblioteca
+ * partiría la progresión en dos: lo de antes bajo el nombre viejo y lo de ahora
+ * bajo el nuevo, sin que nada lo dijera. Se arrastra el cambio.
+ */
+export async function editarEjercicioPropio(
+  sb: any,
+  idEjercicio: number,
+  e: EjercicioNuevo,
+  yaExisten: string[] = [],
+  nombreActual?: string | null,
+): Promise<ResultadoAlta> {
+  const falta = queLeFalta(e, yaExisten, nombreActual)
+  if (falta) return { ejercicio: null, error: falta }
+
+  const fila = filaDe(e, 0)
+  delete (fila as any).id_deportista   // el dueño no se toca al corregir
+
+  const { data, error } = await sb.from('ejercicios_biblioteca')
+    .update(fila).eq('id', idEjercicio)
+    .select('id, nombre, grupo_muscular, descripcion, url_video, id_deportista')
+    .single()
+
+  if (error || !data) return { ejercicio: null, error: error?.message || 'No se pudo guardar el cambio.' }
+
+  const nuevo = limpio(e.nombre)
+  if (nombreActual && nuevo !== nombreActual) {
+    const { error: eH } = await sb.from('ejercicios')
+      .update({ nombre: nuevo, grupo_muscular: fila.grupo_muscular })
+      .eq('ejercicio_id', idEjercicio)
+    /* Si el histórico no se deja renombrar, el ejercicio YA se cambió. Se avisa
+       en vez de callarlo: a partir de ahora la progresión saldrá partida. */
+    if (eH) {
+      return {
+        ejercicio: data,
+        error: 'Se cambió el ejercicio, pero no las sesiones anteriores: seguirán con el nombre viejo y su progresión saldrá aparte.',
+      }
+    }
+  }
+
+  return { ejercicio: data, error: null }
+}
+
+/**
+ * Borrar uno propio, SOLO si no se ha usado nunca.
+ *
+ * Si se ha usado, no se borra y punto. El repo no define qué le pasa a
+ * `ejercicios.ejercicio_id` cuando desaparece la fila de la biblioteca, y una
+ * clave ajena en cascada se llevaría por delante el histórico de fuerza del
+ * atleta. No se averigua eso probando en la base de alguien.
+ */
+export async function borrarEjercicioPropio(
+  sb: any,
+  idEjercicio: number,
+): Promise<{ borrado: boolean; error: string | null }> {
+  const usos = await vecesUsado(sb, idEjercicio)
+  if (usos > 0) {
+    return {
+      borrado: false,
+      error: 'No se puede borrar: ya lo has usado en ' + usos + (usos === 1 ? ' sesión' : ' sesiones') +
+        '. Si te equivocaste con el nombre, corrígelo y el cambio llega también a lo que ya apuntaste.',
+    }
+  }
+
+  const { error } = await sb.from('ejercicios_biblioteca').delete().eq('id', idEjercicio)
+  return { borrado: !error, error: error?.message || null }
 }
