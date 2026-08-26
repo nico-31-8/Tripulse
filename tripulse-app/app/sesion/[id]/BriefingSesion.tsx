@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
+import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
@@ -194,7 +195,12 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
         {sesion.notas_entrenador && (
           <div className="rounded-2xl px-4 py-3.5 flex flex-col gap-1.5 border border-orange-500/25 bg-orange-500/[0.07]">
             <p className="text-[14.5px] leading-relaxed text-white">{sesion.notas_entrenador}</p>
-            <span className="text-[11.5px] text-gray-500">— tu entrenador</span>
+            {/* La columna se llama `notas_entrenador` por historia, pero en una
+                sesión que se apuntó el propio atleta la nota es SUYA. Firmarla
+                como del entrenador es atribuirle a otro lo que escribió él. */}
+            <span className="text-[11.5px] text-gray-500">
+              {sesion.origen === 'deportista' ? '— lo apuntaste tú' : '— tu entrenador'}
+            </span>
           </div>
         )}
 
@@ -255,7 +261,15 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
               {tareas.map(t => {
                 const zc = cargaZona(t.zona_entrenamiento).color
                 const disc = t.disciplina || sesion.disciplina
-                const ritmo = ritmoObjetivo(t.zona_entrenamiento, disc, tests)
+                /* El ritmo GUARDADO manda sobre el calculado.
+                   Antes solo se calculaba a partir de la zona y los tests, así
+                   que bajo un título que dice «Lo que hiciste» salía el rango
+                   objetivo de la zona y no el ritmo al que fue de verdad: te
+                   apuntabas 8×100 a 1:38 y la pantalla ponía 2:19–2:23.
+                   El mismo concepto resuelto en dos sitios, con la pantalla
+                   enseñando el que no era. */
+                const ritmo = ritmoObjetivoTexto(t.p_distancia?.[0]?.ritmo_objetivo, disc)
+                  || ritmoObjetivo(t.zona_entrenamiento, disc, tests)
                 // La disciplina de la tarea solo se pinta si difiere de la de la sesión:
                 // en una de natación repetirla en cada fila es ruido; en un brick es
                 // justo lo que hay que ver.
