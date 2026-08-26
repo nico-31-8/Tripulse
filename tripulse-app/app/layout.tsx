@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar'
 import AsistenteFlotante from '../components/AsistenteFlotante'
 import NavDeportista from '../components/NavDeportista'
 import CazaErrores from '../components/CazaErrores'
+import AvisoMantenimiento from '../components/AvisoMantenimiento'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -34,6 +35,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-950`}>
+        {/* Arriba del todo y en TODAS las pantallas, incluida la de entrar: es
+            contra la que se choca cuando la app está caída. Se apaga solo. */}
+        <AvisoMantenimiento />
         <Sidebar />
         {children}
         {/* El asistente vive en todos los módulos. Él decide si aparece: solo para

@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import Sugerencias from '@/components/Sugerencias'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -320,6 +321,20 @@ export default function PerfilPage() {
           <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
             <Link href="/privacidad" className="hover:text-orange-400 transition underline">Política de privacidad</Link>
             <Link href="/terminos" className="hover:text-orange-400 transition underline">Términos de uso</Link>
+          </div>
+
+          {/* El buzón va ANTES de la zona peligrosa: si algo no funciona,
+              contarlo tiene que ser más fácil de encontrar que borrarse la
+              cuenta. */}
+          <div className="border-t border-gray-800 pt-4">
+            <p className="text-sm font-medium mb-1">¿Algo no va, o echas algo de menos?</p>
+            <p className="text-gray-500 text-xs mb-3">
+              Cuéntamelo desde aquí. Llega con la pantalla en la que estabas, así que no hace falta que me expliques dónde.
+            </p>
+            <Sugerencias
+              clase="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-300 hover:text-white py-3 rounded-lg text-sm transition"
+              etiqueta="📬 Contar un fallo o pedir algo"
+            />
           </div>
 
           <div className="border-t border-gray-800 pt-4">

@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 
-type Pestana = 'cuentas' | 'invitaciones' | 'salud' | 'eventos'
+type Pestana = 'cuentas' | 'invitaciones' | 'buzon' | 'salud' | 'eventos'
 
 const fmtFecha = (v: string | null) => {
   if (!v) return '—'
@@ -97,6 +97,16 @@ export default function AdminPage() {
   const [eGuardando, setEGuardando] = useState(false)
   const [eAviso, setEAviso] = useState('')
 
+  /* El buzón: lo que manda la gente desde la app, y el aviso de mantenimiento
+     programado. Los dos viven aquí porque los dos son «hablar con quien usa
+     esto», y los dos son cosa de plataforma. */
+  const [sugerencias, setSugerencias] = useState<any[]>([])
+  const [avisos, setAvisos] = useState<any[]>([])
+  const [avMensaje, setAvMensaje] = useState('Volvemos enseguida.')
+  const [avDesde, setAvDesde] = useState('')
+  const [avHasta, setAvHasta] = useState('')
+  const [avGuardando, setAvGuardando] = useState(false)
+
   const cargarTodo = useCallback(async () => {
     const [r, c, i, e, s, ev] = await Promise.all([
       supabase.rpc('admin_resumen'),
@@ -125,7 +135,52 @@ export default function AdminPage() {
     setEntrenadores(e.data || [])
     setSalud(s.data || [])
     setEventos(ev.data || [])
+
+    /* El buzón y los avisos se leen directo de sus tablas, no por RPC: la
+       política ya deja pasar solo a la plataforma, así que no hace falta una
+       función que vuelva a comprobar lo mismo. */
+    const [sug, av] = await Promise.all([
+      supabase.from('sugerencia').select('*').order('creada_en', { ascending: false }).limit(100),
+      supabase.from('aviso_app').select('*').order('desde', { ascending: false }).limit(10),
+    ])
+    setSugerencias(sug.data || [])
+    setAvisos(av.data || [])
   }, [])
+
+  const marcarSugerencia = async (id: number, estado: string) => {
+    const { error: err } = await supabase.from('sugerencia').update({ estado }).eq('id', id)
+    if (err) { setError(err.message); return }
+    await cargarTodo()
+  }
+
+  const programarAviso = async () => {
+    if (!avDesde || !avHasta) { setError('Pon las dos horas: desde cuándo y hasta cuándo.'); return }
+    const desde = new Date(avDesde), hasta = new Date(avHasta)
+    if (!(hasta > desde)) { setError('El final tiene que ser posterior al principio.'); return }
+
+    setAvGuardando(true); setError('')
+    const { error: err } = await supabase.from('aviso_app').insert({
+      mensaje: avMensaje.trim(), desde: desde.toISOString(), hasta: hasta.toISOString(),
+    })
+    setAvGuardando(false)
+    if (err) {
+      setError(/relation|does not exist/i.test(err.message)
+        ? 'Falta correr supabase/avisos-y-sugerencias.sql.'
+        : err.message)
+      return
+    }
+    setAvDesde(''); setAvHasta('')
+    await cargarTodo()
+  }
+
+  /* Quitarlo es ponerle fin AHORA, no borrar la fila: así queda constancia de
+     qué se anunció y cuándo, que es lo que se pregunta después de una caída. */
+  const quitarAviso = async (id: number) => {
+    const { error: err } = await supabase.from('aviso_app')
+      .update({ hasta: new Date(Date.now() - 1000).toISOString() }).eq('id', id)
+    if (err) { setError(err.message); return }
+    await cargarTodo()
+  }
 
   useEffect(() => {
     const arrancar = async () => {
@@ -332,6 +387,7 @@ export default function AdminPage() {
           {([
             ['cuentas', 'Cuentas'],
             ['invitaciones', 'Invitaciones'],
+            ['buzon', 'Buzón'],
             ['salud', 'Salud de los datos'],
             ['eventos', 'Errores'],
           ] as [Pestana, string][]).map(([k, txt]) => (
@@ -564,6 +620,114 @@ export default function AdminPage() {
         )}
 
         {/* ===================== SALUD ===================== */}
+        {/* ===================== BUZÓN ===================== */}
+        {pestana === 'buzon' && (
+          <div className="flex flex-col gap-8">
+
+            <section className="flex flex-col gap-3">
+              <div>
+                <h2 className="text-gray-500 text-xs font-semibold uppercase tracking-wide">Aviso de mantenimiento</h2>
+                <p className="text-gray-600 text-[12px] mt-0.5 leading-snug">
+                  Sale arriba en todas las pantallas, también en la de entrar. Se apaga solo cuando pasa la hora.
+                </p>
+              </div>
+
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-xs">Desde</span>
+                    <input type="datetime-local" value={avDesde} onChange={e => setAvDesde(e.target.value)}
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-xs">Hasta</span>
+                    <input type="datetime-local" value={avHasta} onChange={e => setAvHasta(e.target.value)}
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-gray-400 text-xs">Coletilla (opcional)</span>
+                  <input value={avMensaje} onChange={e => setAvMensaje(e.target.value)}
+                    placeholder="Volvemos enseguida."
+                    className="bg-gray-800 text-white px-3 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+                  <span className="text-gray-600 text-[11px] leading-snug">
+                    Las fechas y las horas las escribe la app sola. Esto es lo que quieras añadir detrás.
+                  </span>
+                </label>
+                <button onClick={programarAviso} disabled={avGuardando}
+                  className="bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-50">
+                  {avGuardando ? 'Programando…' : 'Programar el aviso'}
+                </button>
+              </div>
+
+              {avisos.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {avisos.map(a => {
+                    const fin = new Date(a.hasta)
+                    const vivo = fin > new Date()
+                    return (
+                      <div key={a.id} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+                        <div className="flex-1 min-w-[200px]">
+                          <p className="text-sm">{fmtHora(a.desde)} → {fmtHora(a.hasta)}</p>
+                          <p className="text-gray-500 text-xs mt-0.5">{a.mensaje}</p>
+                        </div>
+                        {vivo ? <Chip tono="naranja">activo</Chip> : <Chip>pasado</Chip>}
+                        {vivo && (
+                          <button onClick={() => quitarAviso(a.id)}
+                            className="text-gray-600 hover:text-red-400 text-xs underline transition">quitar</button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <div>
+                <h2 className="text-gray-500 text-xs font-semibold uppercase tracking-wide">
+                  Lo que manda la gente ({sugerencias.filter(s => s.estado === 'nueva').length} sin ver)
+                </h2>
+                <p className="text-gray-600 text-[12px] mt-0.5 leading-snug">
+                  Cada mensaje llega con la pantalla en la que estaba esa persona, así que no hace falta preguntar dónde.
+                </p>
+              </div>
+
+              {sugerencias.length === 0 && (
+                <p className="text-gray-600 text-sm">Todavía no ha escrito nadie.</p>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {sugerencias.map(s => (
+                  <div key={s.id} className={'border rounded-xl p-3.5 flex flex-col gap-2 '
+                    + (s.estado === 'nueva' ? 'bg-gray-900 border-orange-500/30' : 'bg-gray-900/50 border-gray-800')}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Chip tono={s.tipo === 'error' ? 'rojo' : 'azul'}>{s.tipo}</Chip>
+                      {s.estado === 'nueva' && <Chip tono="naranja">nueva</Chip>}
+                      {s.estado === 'resuelta' && <Chip tono="verde">resuelta</Chip>}
+                      <span className="text-gray-600 text-[11px] ml-auto">{fmtHora(s.creada_en)}</span>
+                    </div>
+                    <p className="text-[14px] text-gray-200 leading-relaxed whitespace-pre-wrap">{s.texto}</p>
+                    <div className="flex items-center gap-3 flex-wrap text-[11px] text-gray-600">
+                      {s.pantalla && <span className="font-mono">{s.pantalla}</span>}
+                      <div className="ml-auto flex gap-2.5">
+                        {s.estado !== 'vista' && (
+                          <button onClick={() => marcarSugerencia(s.id, 'vista')}
+                            className="hover:text-gray-300 underline transition">marcar vista</button>
+                        )}
+                        {s.estado !== 'resuelta' && (
+                          <button onClick={() => marcarSugerencia(s.id, 'resuelta')}
+                            className="hover:text-green-400 underline transition">resuelta</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
         {pestana === 'salud' && (
           <div className="flex flex-col gap-2">
             <p className="text-gray-500 text-sm mb-2">
