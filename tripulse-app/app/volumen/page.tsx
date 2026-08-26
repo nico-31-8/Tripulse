@@ -1,6 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
-import { seriesPorGrupo } from '@/lib/series-por-grupo'
+import { seriesPorGrupo, seriesTexto, periodoTexto, bandaDe, BANDAS } from '@/lib/series-por-grupo'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
@@ -24,6 +24,16 @@ function fmtMinutos(min: number): string {
   if (m <= 0) return '0'
   const h = Math.floor(m / 60), r = m % 60
   return h ? h + 'h' + (r ? String(r).padStart(2, '0') : '') : r + '′'
+}
+
+/* Solo los colores viven aquí, que es presentación. Los umbrales y las
+   etiquetas están en lib/series-por-grupo para que la leyenda de arriba y la
+   lista de abajo no puedan volver a decir cosas distintas. */
+const COLOR_BANDA: Record<string, { color: string; bg: string }> = {
+  'mantenimiento': { color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' },
+  'desarrollo': { color: 'text-green-400', bg: 'bg-green-900 border-green-700' },
+  'carga-alta': { color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-700' },
+  'sobrevolumen': { color: 'text-red-400', bg: 'bg-red-900 border-red-700' },
 }
 
 const RANGOS = [
@@ -303,7 +313,7 @@ export default function VolumenPage() {
        reglas distintas: aquí un ejercicio sin grupo se TIRABA y allí iba a «Sin
        clasificar». El total de este gráfico salía menor que el de verdad sin
        que nada lo dijera. */
-    setDatosMusculo(seriesPorGrupo(ejercicios as any))
+    setDatosMusculo(seriesPorGrupo(ejercicios as any, dias))
 
     // Carga: guardamos las sesiones en bruto y derivamos sesión/semana/mes vía useMemo
     // (así el toggle SICAT recalcula al vuelo sin volver a consultar la base de datos).
@@ -808,7 +818,9 @@ export default function VolumenPage() {
                           <div className="flex items-center gap-3 min-w-0">
                             <p className="text-sm font-medium text-red-400">💪 Volumen muscular</p>
                             <span className="text-[11px] text-gray-500">
-                              {datosMusculo.length} {datosMusculo.length === 1 ? 'grupo' : 'grupos'} · {datosMusculo.reduce((a, m) => a + (m.series || 0), 0)} series
+                              {/* El total del periodo sí va entero: aquí es un
+                                  recuento, no una media contra la que medirse. */}
+                              {datosMusculo.length} {datosMusculo.length === 1 ? 'grupo' : 'grupos'} · {datosMusculo.reduce((a, m) => a + (m.series || 0), 0)} series en total
                             </span>
                           </div>
                           <span className={'text-gray-500 text-xs tp-chev' + (musculoAbierto ? ' open' : '')}>▼</span>
@@ -816,14 +828,15 @@ export default function VolumenPage() {
 
                         {musculoAbierto && (
                           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                            <p className="text-sm font-medium text-red-400 mb-3">Series por grupo</p>
+                            <p className="text-sm font-medium text-red-400">Series por grupo</p>
+                            <p className="text-[11px] text-gray-500 mb-3">Media por semana · {periodoTexto(rango)}</p>
                             <ResponsiveContainer width="100%" height={Math.max(200, datosMusculo.length * 40)}>
                               <BarChart data={datosMusculo} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" series" />
+                                <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" ser/sem" />
                                 <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={140} />
-                                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' series', 'Volumen']} />
-                                <Bar dataKey="series" fill="#f87171" radius={[0,4,4,0]} />
+                                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [seriesTexto(v) + ' series/semana', 'Volumen']} />
+                                <Bar dataKey="porSemana" fill="#f87171" radius={[0,4,4,0]} />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
@@ -848,47 +861,55 @@ export default function VolumenPage() {
                   </div>
                 ) : (
                   <>
+                    {/* Estas bandas son POR SEMANA y siempre lo fueron, pero el
+                        gráfico de al lado pintaba el total del periodo. Con 8
+                        semanas elegidas, 16 series -que son 2 por semana, o sea
+                        mantenimiento- caían en «Sobrevolumen». La leyenda y el
+                        gráfico estaban en unidades distintas, uno al lado del
+                        otro. Ahora los dos van por semana. */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {[
-                        { label: 'Mantenimiento', rango: '< 4 series', color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' },
-                        { label: 'Desarrollo', rango: '4–8 series', color: 'text-green-400', bg: 'bg-green-900 border-green-700' },
-                        { label: 'Carga alta', rango: '9–12 series', color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-700' },
-                        { label: 'Sobrevolumen', rango: '> 12 series', color: 'text-red-400', bg: 'bg-red-900 border-red-700' },
-                      ].map(z => (
-                        <div key={z.label} className={'rounded-xl p-3 border text-center ' + z.bg}>
-                          <p className={'font-bold text-sm ' + z.color}>{z.label}</p>
+                      {BANDAS.map(z => (
+                        <div key={z.id} className={'rounded-xl p-3 border text-center ' + COLOR_BANDA[z.id].bg}>
+                          <p className={'font-bold text-sm ' + COLOR_BANDA[z.id].color}>{z.label}</p>
                           <p className="text-gray-400 text-xs mt-0.5">{z.rango}</p>
                         </div>
                       ))}
                     </div>
 
                     <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                      <p className="text-sm font-medium text-red-400 mb-3">Series por grupo muscular</p>
+                      <p className="text-sm font-medium text-red-400">Series por grupo muscular</p>
+                      <p className="text-[11px] text-gray-500 mb-3">Media por semana · {periodoTexto(rango)}</p>
                       <ResponsiveContainer width="100%" height={Math.max(250, datosMusculo.length * 45)}>
                         <BarChart data={datosMusculo} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                          <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" series" />
+                          <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" ser/sem" />
                           <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={160} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [v + ' series', 'Volumen']} />
-                          <Bar dataKey="series" radius={[0,4,4,0]} name="Series"
+                          <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [seriesTexto(v) + ' series/semana', 'Volumen']} />
+                          <Bar dataKey="porSemana" radius={[0,4,4,0]} name="Series"
                             fill="#f87171"
-                            label={{ position: 'right', fontSize: 11, fill: '#9ca3af', formatter: (v: any) => v + ' series' }} />
+                            label={{ position: 'right', fontSize: 11, fill: '#9ca3af', formatter: (v: any) => seriesTexto(v) + ' ser/sem' }} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
 
                     <div className="grid gap-2">
+                      {/* Clasifica por las series SEMANALES, no por el total del
+                          periodo. Antes comparaba el total contra unos umbrales
+                          que son semanales: con «4 sem» elegidas, 5 series
+                          —1,25 por semana, mantenimiento— salían en verde como
+                          «Desarrollo». */}
                       {datosMusculo.map(m => {
-                        const estado = m.series < 4 ? { label: 'Mantenimiento', color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' }
-                          : m.series <= 8 ? { label: 'Desarrollo', color: 'text-green-400', bg: 'bg-green-900 border-green-700' }
-                          : m.series <= 12 ? { label: 'Carga alta', color: 'text-yellow-400', bg: 'bg-yellow-900 border-yellow-700' }
-                          : { label: '⚠️ Sobrevolumen', color: 'text-red-400', bg: 'bg-red-900 border-red-700' }
+                        const banda = bandaDe(m.porSemana)
+                        const estado = COLOR_BANDA[banda.id]
                         return (
                           <div key={m.grupo} className={'flex justify-between items-center rounded-xl px-4 py-3 border ' + estado.bg}>
                             <p className="font-medium text-sm text-white">{m.grupo}</p>
                             <div className="flex items-center gap-3">
-                              <p className={'text-xs ' + estado.color}>{estado.label}</p>
-                              <p className="font-bold text-white">{m.series} series</p>
+                              <p className={'text-xs ' + estado.color}>{banda.id === 'sobrevolumen' ? '⚠️ ' : ''}{banda.label}</p>
+                              <div className="text-right">
+                                <p className="font-bold text-white leading-tight">{seriesTexto(m.porSemana)} <span className="text-xs font-normal text-gray-400">ser/sem</span></p>
+                                <p className="text-[10.5px] text-gray-500 leading-tight">{m.series} en total</p>
+                              </div>
                             </div>
                           </div>
                         )
