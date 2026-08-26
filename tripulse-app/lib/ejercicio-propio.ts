@@ -28,8 +28,11 @@ export const EJERCICIO_NUEVO_VACIO: EjercicioNuevo = {
 
 export const TIPOS_EJERCICIO = ['Fuerza', 'Movilidad', 'Tecnica', 'Rehab']
 
-/** El grupo que se guarda cuando no se dice ninguno. */
-export const SIN_CLASIFICAR = 'Sin clasificar'
+/* El cajon de los que no dicen de que son. Se importa de donde vive la
+   metrica para que el formulario y el grafico usen la MISMA cadena: si aqui
+   pusiera otra, lo que crea el atleta saldria en un monton aparte. */
+export { SIN_CLASIFICAR } from './series-por-grupo'
+import { SIN_CLASIFICAR } from './series-por-grupo'
 
 const limpio = (s: string | null | undefined) => (s || '').trim()
 

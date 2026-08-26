@@ -1,5 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
+import { seriesPorGrupo, totalSeries as sumaSeries } from '@/lib/series-por-grupo'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { semanasEntre } from '@/lib/fechas'
@@ -1864,12 +1865,14 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         const minutos = sesDisc.reduce((a: number, s: any) => a + (s.duracion_minutos || 0), 0)
 
                         if (label === 'Fuerza') {
-                          const grupos: Record<string, number> = {}
-                          detalleSem.ejercicios
-                            .filter((e: any) => tareasDisc.some((t: any) => t.id === e.id_tarea))
-                            .forEach((e: any) => { const g = e.grupo_muscular || 'Sin clasificar'; grupos[g] = (grupos[g] || 0) + (e.series || 1) })
-                          const topGrupos = Object.entries(grupos).sort((a: any, b: any) => b[1] - a[1]).slice(0, 4)
-                          const totalSeries = Object.values(grupos).reduce((a: number, v: any) => a + v, 0)
+                          /* La cuenta la hace lib/series-por-grupo, que es la
+                             misma que usa /volumen. Estaban escritas dos veces
+                             y no coincidían: aquí una fila sin número de series
+                             contaba 1 y allí 0. */
+                          const porGrupo = seriesPorGrupo(
+                            detalleSem.ejercicios.filter((e: any) => tareasDisc.some((t: any) => t.id === e.id_tarea)))
+                          const topGrupos: [string, number][] = porGrupo.slice(0, 4).map(g => [g.grupo, g.series])
+                          const totalSeries = sumaSeries(porGrupo)
                           return (
                             <div key={label} className="bg-gray-800 rounded-xl p-3">
                               <div className="flex items-center gap-1.5 mb-2">

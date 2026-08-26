@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import { seriesPorGrupo } from '@/lib/series-por-grupo'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
@@ -297,12 +298,12 @@ export default function VolumenPage() {
     })
     setDatosSemanas(Object.values(semanasMap))
 
-    // Volumen muscular
-    const musculoMap: Record<string, number> = {}
-    ejercicios?.forEach((e: any) => {
-      if (e.grupo_muscular) musculoMap[e.grupo_muscular] = (musculoMap[e.grupo_muscular] || 0) + (e.series || 0)
-    })
-    setDatosMusculo(Object.entries(musculoMap).map(([grupo, series]) => ({ grupo, series })).sort((a, b) => b.series - a.series))
+    /* Volumen muscular. La cuenta vive en lib/series-por-grupo porque esta
+       misma pregunta se respondía también en el canvas de planificación, y con
+       reglas distintas: aquí un ejercicio sin grupo se TIRABA y allí iba a «Sin
+       clasificar». El total de este gráfico salía menor que el de verdad sin
+       que nada lo dijera. */
+    setDatosMusculo(seriesPorGrupo(ejercicios as any))
 
     // Carga: guardamos las sesiones en bruto y derivamos sesión/semana/mes vía useMemo
     // (así el toggle SICAT recalcula al vuelo sin volver a consultar la base de datos).
