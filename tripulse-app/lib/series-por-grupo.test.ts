@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  seriesPorGrupo, totalSeries, porcentajeDe, seriesTexto, periodoTexto, bandaDe, SIN_CLASIFICAR,
+  seriesPorGrupo, totalSeries, porcentajeDe, seriesTexto, periodoTexto, bandaDe, bandasDe, SIN_CLASIFICAR,
 } from './series-por-grupo'
 
 describe('series por grupo', () => {
@@ -145,6 +145,40 @@ describe('las bandas de referencia', () => {
   it('cero series es mantenimiento y no revienta', () => {
     expect(bandaDe(0).label).toBe('Mantenimiento')
     expect(bandaDe(NaN).label).toBe('Mantenimiento')
+  })
+})
+
+describe('el objetivo cambia lo que significa el mismo número', () => {
+  /* El motivo de que exista el botón: 12 series de cuádriceps son el techo de
+     un triatleta y una semana corta de quien busca hipertrofia. */
+  it('doce series son carga alta en resistencia y aún poco en hipertrofia', () => {
+    expect(bandaDe(12, 'resistencia').id).toBe('sobrevolumen')
+    expect(bandaDe(11.9, 'resistencia').id).toBe('carga-alta')
+    expect(bandaDe(12, 'hipertrofia').id).toBe('desarrollo')
+  })
+
+  it('seis series son desarrollo entrenando triatlón y quedarse corto en hipertrofia', () => {
+    expect(bandaDe(6, 'resistencia').id).toBe('desarrollo')
+    expect(bandaDe(6, 'hipertrofia').id).toBe('mantenimiento')
+  })
+
+  it('en hipertrofia hace falta pasarse de 26 para que salte el aviso', () => {
+    expect(bandaDe(25, 'hipertrofia').id).toBe('carga-alta')
+    expect(bandaDe(27, 'hipertrofia').id).toBe('sobrevolumen')
+  })
+
+  it('sin decir objetivo se usa resistencia, que es de lo que va la app', () => {
+    expect(bandaDe(12).id).toBe(bandaDe(12, 'resistencia').id)
+  })
+
+  it('un objetivo que no existe no revienta: cae en el primero', () => {
+    expect(bandaDe(6, 'lo-que-sea').id).toBe('desarrollo')
+    expect(bandasDe('lo-que-sea').length).toBe(4)
+  })
+
+  it('los dos juegos tienen las mismas cuatro bandas, para que el color case', () => {
+    const ids = (o: string) => bandasDe(o).map(b => b.id)
+    expect(ids('hipertrofia')).toEqual(ids('resistencia'))
   })
 })
 

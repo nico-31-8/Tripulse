@@ -87,6 +87,72 @@ export function porcentajeDe(series: number, total: number): number {
 }
 
 /**
+ * ============================================================
+ * Las bandas dependen de PARA QUÉ entrena la persona
+ * ============================================================
+ *
+ * Un mismo número dice lo contrario según el objetivo. Doce series semanales de
+ * cuádriceps son una semana normal tirando a corta para quien busca hipertrofia,
+ * y son el techo de todo lo que un triatleta debería hacer en su bloque más
+ * duro. Con un solo juego de umbrales, a uno se le pinta un aviso rojo estando
+ * donde debe y al otro se le dice «carga alta» como si fuera una meta.
+ *
+ * DE DÓNDE SALEN ESTOS NÚMEROS
+ * Ni el vault ni la NSCA dan «series por grupo y semana»: dan series POR
+ * EJERCICIO Y SESIÓN. Así que están derivados, y conviene saberlo antes de
+ * tocarlos.
+ *
+ * Resistencia — de B3-01-Fuerza-General-Triatlon:
+ *   · Mantenimiento y competición: 1–2 sesiones/sem × 2–3 series  →   2–6
+ *   · Adaptación anatómica:        2–3 sesiones/sem × 2–3 series  →   4–9
+ *   · Fuerza máxima:               2 sesiones/sem × 3–5 series, y su propia
+ *     sesión tipo mete dos ejercicios al mismo grupo (sentadilla 4 + step-up 3)
+ *                                                                 →  hasta 14
+ *   El propio vault avisa: «2 sesiones/semana, no más — el volumen de
+ *   resistencia es prioritario». Por encima de 12 se está quitando pierna a las
+ *   sesiones de carrera, que es lo que se venía a proteger.
+ *
+ * Hipertrofia — de Hoffman 2002 y NSCA (3–5 series por ejercicio), con una
+ *   semana normal de 2 sesiones por grupo y 2 ejercicios por sesión:
+ *                                              2 × 2 × 4          →  ~16
+ *   Con tres sesiones se va a ~24. De ahí el rango 10–20 como zona de trabajo.
+ *
+ * Son derivados, no citados. Si tienes otros que prefieras, se cambian aquí y
+ * cambian en toda la app.
+ */
+export const OBJETIVOS = [
+  {
+    id: 'resistencia',
+    label: 'Deportes de resistencia',
+    bandas: [
+      { id: 'mantenimiento', label: 'Mantenimiento', rango: '< 4 / semana', hasta: 4 },
+      { id: 'desarrollo', label: 'Desarrollo', rango: '4–8 / semana', hasta: 8 },
+      { id: 'carga-alta', label: 'Carga alta', rango: '9–12 / semana', hasta: 12 },
+      { id: 'sobrevolumen', label: 'Sobrevolumen', rango: '> 12 / semana', hasta: Infinity },
+    ],
+  },
+  {
+    id: 'hipertrofia',
+    label: 'Hipertrofia',
+    bandas: [
+      { id: 'mantenimiento', label: 'Por debajo', rango: '< 10 / semana', hasta: 10 },
+      { id: 'desarrollo', label: 'Desarrollo', rango: '10–20 / semana', hasta: 20 },
+      { id: 'carga-alta', label: 'Carga alta', rango: '20–26 / semana', hasta: 26 },
+      { id: 'sobrevolumen', label: 'Sobrevolumen', rango: '> 26 / semana', hasta: Infinity },
+    ],
+  },
+] as const
+
+export type ObjetivoId = typeof OBJETIVOS[number]['id']
+export type Banda = typeof OBJETIVOS[number]['bandas'][number]
+
+export const OBJETIVO_POR_DEFECTO: ObjetivoId = 'resistencia'
+
+export function bandasDe(objetivo: ObjetivoId | string): readonly Banda[] {
+  return (OBJETIVOS.find(o => o.id === objetivo) || OBJETIVOS[0]).bandas
+}
+
+/**
  * En qué banda cae un grupo según sus series SEMANALES.
  *
  * Los umbrales estaban escritos dos veces en /volumen: en las cuatro tarjetas
@@ -95,18 +161,10 @@ export function porcentajeDe(series: number, total: number): number {
  * elegidas un grupo con 5 series —1,25 por semana, mantenimiento— salía
  * etiquetado como «Desarrollo» en verde.
  */
-export const BANDAS = [
-  { id: 'mantenimiento', label: 'Mantenimiento', rango: '< 4 / semana', hasta: 4 },
-  { id: 'desarrollo', label: 'Desarrollo', rango: '4–8 / semana', hasta: 8 },
-  { id: 'carga-alta', label: 'Carga alta', rango: '9–12 / semana', hasta: 12 },
-  { id: 'sobrevolumen', label: 'Sobrevolumen', rango: '> 12 / semana', hasta: Infinity },
-] as const
-
-export type BandaId = typeof BANDAS[number]['id']
-
-export function bandaDe(seriesSemanales: number): typeof BANDAS[number] {
+export function bandaDe(seriesSemanales: number, objetivo: ObjetivoId | string = OBJETIVO_POR_DEFECTO): Banda {
+  const bandas = bandasDe(objetivo)
   const n = Number(seriesSemanales) || 0
-  return BANDAS.find(b => n < b.hasta) || BANDAS[BANDAS.length - 1]
+  return bandas.find(b => n < b.hasta) || bandas[bandas.length - 1]
 }
 
 /** «2,5» / «5». Sin decimal cuando es redondo, para no pintar «5,0». */

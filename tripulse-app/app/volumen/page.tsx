@@ -1,13 +1,16 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
-import { seriesPorGrupo, seriesTexto, periodoTexto, bandaDe, BANDAS } from '@/lib/series-por-grupo'
+import {
+  seriesPorGrupo, seriesTexto, periodoTexto, bandaDe, bandasDe,
+  OBJETIVOS, OBJETIVO_POR_DEFECTO, type ObjetivoId,
+} from '@/lib/series-por-grupo'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargaZona } from '@/lib/zonas'
@@ -29,6 +32,15 @@ function fmtMinutos(min: number): string {
 /* Solo los colores viven aquí, que es presentación. Los umbrales y las
    etiquetas están en lib/series-por-grupo para que la leyenda de arriba y la
    lista de abajo no puedan volver a decir cosas distintas. */
+/* Los mismos cuatro colores en hex, porque Recharts pinta con un color, no con
+   una clase de Tailwind. Si se cambian arriba hay que cambiarlos aquí. */
+const HEX_BANDA: Record<string, string> = {
+  'mantenimiento': '#60a5fa',
+  'desarrollo': '#4ade80',
+  'carga-alta': '#facc15',
+  'sobrevolumen': '#f87171',
+}
+
 const COLOR_BANDA: Record<string, { color: string; bg: string }> = {
   'mantenimiento': { color: 'text-blue-400', bg: 'bg-blue-900 border-blue-700' },
   'desarrollo': { color: 'text-green-400', bg: 'bg-green-900 border-green-700' },
@@ -75,6 +87,23 @@ export default function VolumenPage() {
   const [pondZona, setPondZona] = useState(false)
   useEffect(() => { setPondZona(typeof window !== 'undefined' && localStorage.getItem('sicat_pond_zona') === '1') }, [])
   const [rango, setRango] = useState(28)
+
+  /* Para qué es la fuerza de esta persona. No es un campo del deportista sino
+     un control de vista: el mismo entrenador puede llevar triatletas y gente
+     de gimnasio, y así puede cambiar de uno a otro para comparar sin tocar
+     nada. Se recuerda en el navegador porque es una preferencia de quien mira,
+     no un dato del atleta. */
+  const [objetivo, setObjetivo] = useState<ObjetivoId>(OBJETIVO_POR_DEFECTO)
+
+  useEffect(() => {
+    const v = localStorage.getItem('tp_objetivo_fuerza')
+    if (v && OBJETIVOS.some(o => o.id === v)) setObjetivo(v as ObjetivoId)
+  }, [])
+
+  const cambiarObjetivo = (id: ObjetivoId) => {
+    setObjetivo(id)
+    localStorage.setItem('tp_objetivo_fuerza', id)
+  }
   const [loading, setLoading] = useState(true)
   const [loadingDatos, setLoadingDatos] = useState(false)
   // Volumen y Carga eran dos pestañas: son la misma pregunta medida distinto,
@@ -828,15 +857,43 @@ export default function VolumenPage() {
 
                         {musculoAbierto && (
                           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                            <p className="text-sm font-medium text-red-400">Series por grupo</p>
-                            <p className="text-[11px] text-gray-500 mb-3">Media por semana · {periodoTexto(rango)}</p>
+                            <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+                              <div>
+                                <p className="text-sm font-medium text-red-400">Series por grupo</p>
+                                <p className="text-[11px] text-gray-500">Media por semana · {periodoTexto(rango)}</p>
+                              </div>
+                              {/* El mismo botón que en la pestaña de Fuerza, y
+                                  el mismo estado: aquí es donde se mira esto de
+                                  pasada, así que aquí tiene que poder cambiarse
+                                  sin ir a otra pantalla. */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-gray-500 text-[10.5px] uppercase tracking-wide font-semibold">Objetivo</span>
+                                <div className="flex gap-1 bg-gray-950 border border-gray-800 rounded-full p-1">
+                                  {OBJETIVOS.map(o => (
+                                    <button key={o.id} onClick={() => cambiarObjetivo(o.id)} aria-pressed={objetivo === o.id}
+                                      className={'px-3 py-1 rounded-full text-[11.5px] transition ' + (objetivo === o.id
+                                        ? 'bg-orange-500 text-white font-semibold'
+                                        : 'text-gray-400 hover:text-white')}>
+                                      {o.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                             <ResponsiveContainer width="100%" height={Math.max(200, datosMusculo.length * 40)}>
                               <BarChart data={datosMusculo} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                                 <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 10 }} unit=" ser/sem" />
                                 <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={140} />
                                 <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [seriesTexto(v) + ' series/semana', 'Volumen']} />
-                                <Bar dataKey="porSemana" fill="#f87171" radius={[0,4,4,0]} />
+                                {/* Cada barra con el color de SU banda. Sin esto
+                                    el botón de objetivo no cambiaría nada aquí
+                                    y sería un control que no hace nada. */}
+                                <Bar dataKey="porSemana" radius={[0,4,4,0]}>
+                                  {datosMusculo.map(m => (
+                                    <Cell key={m.grupo} fill={HEX_BANDA[bandaDe(m.porSemana, objetivo).id]} />
+                                  ))}
+                                </Bar>
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
@@ -861,6 +918,24 @@ export default function VolumenPage() {
                   </div>
                 ) : (
                   <>
+                    {/* El objetivo va DELANTE de las bandas porque es lo que las
+                        decide: sin saber para qué entrena, un número de series
+                        no significa nada. Doce de cuádriceps son el techo de un
+                        triatleta y una semana corta de quien busca hipertrofia. */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-gray-500 text-xs uppercase tracking-wide font-semibold">Objetivo</span>
+                      <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-full p-1">
+                        {OBJETIVOS.map(o => (
+                          <button key={o.id} onClick={() => cambiarObjetivo(o.id)} aria-pressed={objetivo === o.id}
+                            className={'px-3.5 py-1.5 rounded-full text-[12.5px] transition ' + (objetivo === o.id
+                              ? 'bg-orange-500 text-white font-semibold'
+                              : 'text-gray-400 hover:text-white')}>
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Estas bandas son POR SEMANA y siempre lo fueron, pero el
                         gráfico de al lado pintaba el total del periodo. Con 8
                         semanas elegidas, 16 series -que son 2 por semana, o sea
@@ -868,7 +943,7 @@ export default function VolumenPage() {
                         gráfico estaban en unidades distintas, uno al lado del
                         otro. Ahora los dos van por semana. */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {BANDAS.map(z => (
+                      {bandasDe(objetivo).map(z => (
                         <div key={z.id} className={'rounded-xl p-3 border text-center ' + COLOR_BANDA[z.id].bg}>
                           <p className={'font-bold text-sm ' + COLOR_BANDA[z.id].color}>{z.label}</p>
                           <p className="text-gray-400 text-xs mt-0.5">{z.rango}</p>
@@ -886,8 +961,11 @@ export default function VolumenPage() {
                           <YAxis type="category" dataKey="grupo" stroke="#9ca3af" tick={{ fontSize: 10 }} width={160} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [seriesTexto(v) + ' series/semana', 'Volumen']} />
                           <Bar dataKey="porSemana" radius={[0,4,4,0]} name="Series"
-                            fill="#f87171"
-                            label={{ position: 'right', fontSize: 11, fill: '#9ca3af', formatter: (v: any) => seriesTexto(v) + ' ser/sem' }} />
+                            label={{ position: 'right', fontSize: 11, fill: '#9ca3af', formatter: (v: any) => seriesTexto(v) + ' ser/sem' }}>
+                            {datosMusculo.map(m => (
+                              <Cell key={m.grupo} fill={HEX_BANDA[bandaDe(m.porSemana, objetivo).id]} />
+                            ))}
+                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -899,7 +977,7 @@ export default function VolumenPage() {
                           —1,25 por semana, mantenimiento— salían en verde como
                           «Desarrollo». */}
                       {datosMusculo.map(m => {
-                        const banda = bandaDe(m.porSemana)
+                        const banda = bandaDe(m.porSemana, objetivo)
                         const estado = COLOR_BANDA[banda.id]
                         return (
                           <div key={m.grupo} className={'flex justify-between items-center rounded-xl px-4 py-3 border ' + estado.bg}>
