@@ -59,13 +59,17 @@ export default function MiFuerza({ idDeportista }: { idDeportista: number }) {
 
   // Mientras carga no se enseña un cero: parecería que no ha entrenado nada.
   if (grupos === null) return null
-  if (grupos.length === 0) return null
+
+  /* Vacío NO es desaparecer. Un elemento que no se pinta cuando no hay datos no
+     dice «no tienes series apuntadas», dice «esto no existe en la app», y
+     entonces te pones a buscarlo. Se queda con su explicación. */
+  const vacio = grupos.length === 0
 
   /* La escala se estira hasta el techo de la banda de desarrollo, no hasta el
      grupo que más tenga. Si se escalara al máximo, el que más trabaja saldría
      siempre lleno aunque hiciera dos series, y la barra diría «vas bien». */
   const bandas = bandasDe(objetivo)
-  const tope = Math.max(bandas[1].hasta, ...grupos.map(g => g.porSemana))
+  const tope = Math.max(bandas[1].hasta, ...grupos.map(g => g.porSemana), 1)
 
   return (
     <section className="tp-card overflow-hidden mb-5">
@@ -75,7 +79,7 @@ export default function MiFuerza({ idDeportista }: { idDeportista: number }) {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px]">Tu fuerza por grupo</p>
           <p className="text-gray-500 text-[11.5px] mt-0.5">
-            Series por semana · {periodoTexto(DIAS)}
+            {vacio ? 'Sin series apuntadas todavía' : 'Series por semana · ' + periodoTexto(DIAS)}
           </p>
         </div>
         <span className="text-gray-500 text-xs flex-none">{abierto ? '▲' : '▼'}</span>
@@ -83,6 +87,12 @@ export default function MiFuerza({ idDeportista }: { idDeportista: number }) {
 
       {abierto && (
         <div className="px-4 pb-4 flex flex-col gap-3 border-t border-white/[0.075] pt-3.5">
+          {vacio && (
+            <p className="text-[12.5px] text-gray-400 leading-relaxed">
+              No has apuntado ejercicios de fuerza en {periodoTexto(DIAS).replace('últimas ', 'las últimas ')}.
+              Cuando apuntes una sesión con sus series, aquí verás cuánto llevas de cada grupo muscular y si vas corto de alguno.
+            </p>
+          )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-500 text-[10.5px] uppercase tracking-wide font-semibold">Objetivo</span>
             <div className="flex gap-1 bg-gray-950 border border-gray-800 rounded-full p-1">

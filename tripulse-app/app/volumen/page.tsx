@@ -875,8 +875,11 @@ export default function VolumenPage() {
                       )
                     })()}
 
-                    {datosMusculo.length > 0 && (
-                      <div className="flex flex-col gap-4">
+                    {/* Se enseña SIEMPRE, tenga o no datos. Antes desaparecía
+                        cuando el atleta no había apuntado series, y un bloque que
+                        no está no dice «no hay series»: dice «esto no existe» y te
+                        pones a buscarlo por la app. */}
+                    <div className="flex flex-col gap-4">
                         <button onClick={() => setMusculoAbierto(v => !v)}
                           className="w-full flex items-center justify-between gap-3 bg-gray-900 hover:bg-gray-800/80 rounded-xl px-5 py-3.5 border border-gray-800 transition text-left">
                           <div className="flex items-center gap-3 min-w-0">
@@ -884,7 +887,9 @@ export default function VolumenPage() {
                             <span className="text-[11px] text-gray-500">
                               {/* El total del periodo sí va entero: aquí es un
                                   recuento, no una media contra la que medirse. */}
-                              {datosMusculo.length} {datosMusculo.length === 1 ? 'grupo' : 'grupos'} · {datosMusculo.reduce((a, m) => a + (m.series || 0), 0)} series en total
+                              {datosMusculo.length === 0
+                                ? 'sin series apuntadas en este período'
+                                : datosMusculo.length + (datosMusculo.length === 1 ? ' grupo · ' : ' grupos · ') + datosMusculo.reduce((a, m) => a + (m.series || 0), 0) + ' series en total'}
                             </span>
                           </div>
                           <span className={'text-gray-500 text-xs tp-chev' + (musculoAbierto ? ' open' : '')}>▼</span>
@@ -915,6 +920,12 @@ export default function VolumenPage() {
                                 </div>
                               </div>
                             </div>
+                            {datosMusculo.length === 0 && (
+                              <p className="text-[12.5px] text-gray-500 leading-relaxed">
+                                No hay ejercicios de fuerza apuntados en este período. En cuanto haya una sesión con sus series, aquí sale el reparto por grupo muscular.
+                              </p>
+                            )}
+                            {datosMusculo.length > 0 && (
                             <ResponsiveContainer width="100%" height={Math.max(200, datosMusculo.length * 40)}>
                               <BarChart data={datosMusculo} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -931,10 +942,10 @@ export default function VolumenPage() {
                                 </Bar>
                               </BarChart>
                             </ResponsiveContainer>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
                   </>
                 )}
                 </div>
