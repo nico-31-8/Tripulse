@@ -149,8 +149,13 @@ export default function AdminPage() {
         setError('Pon cuántos deportistas puede tener. Si quieres que no tenga tope, créalo con un número y luego quítaselo desde su ficha, en «cambiar cupo».')
         return
       }
-      if (!Number.isInteger(n) || n < 0) {
-        setError('El cupo tiene que ser un número entero de 0 en adelante.')
+      /* Cero no es «poco cupo», es un entrenador muerto al nacer: el trigger
+         comprueba `n_deportistas >= cupo`, y con cero salta desde el primero.
+         Entraría a una app en la que no puede dar de alta a nadie por ninguna
+         de las tres puertas. Si de verdad quieres congelar a un entrenador, se
+         le pone el cero desde su ficha, cuando ya existe. */
+      if (!Number.isInteger(n) || n < 1) {
+        setError('El cupo tiene que ser 1 o más. Con 0 el entrenador no podría dar de alta a nadie.')
         return
       }
     }
@@ -435,9 +440,11 @@ export default function AdminPage() {
                 {fRol === 'entrenador' ? (
                   <div>
                     <label className="text-gray-400 text-xs mb-1 block">Cuántos deportistas podrá tener</label>
-                    <input type="number" min={0} value={fCupo} onChange={e => setFCupo(e.target.value)}
+                    <input type="number" min={1} value={fCupo} onChange={e => setFCupo(e.target.value)}
                       className="bg-gray-800 text-white px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 w-full" />
-                    <p className="text-gray-600 text-[11px] mt-1">Vacío = sin límite. Se puede cambiar después desde Cuentas.</p>
+                    {/* Decía «Vacío = sin límite» y era mentira desde que se
+                        endureció la validación: el vacío se rechaza. */}
+                    <p className="text-gray-600 text-[11px] mt-1">De 1 en adelante. Se cambia después aquí mismo, en «cambiar», o desde Cuentas.</p>
                   </div>
                 ) : (
                   <div>
@@ -668,7 +675,7 @@ export default function AdminPage() {
               {editando.rol === 'entrenador' && (
                 <label className="flex flex-col gap-1.5">
                   <span className="text-gray-400 text-sm">Deportistas que podrá tener</span>
-                  <input type="number" min={0} value={eCupo} onChange={ev => setECupo(ev.target.value)}
+                  <input type="number" min={1} value={eCupo} onChange={ev => setECupo(ev.target.value)}
                     disabled={eCupoSinLimite} placeholder="cupo"
                     className="bg-gray-800 text-white px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 tabular-nums disabled:opacity-40" />
                   <label className="flex items-center gap-2 text-gray-400 text-[12.5px] mt-0.5 cursor-pointer">

@@ -65,8 +65,14 @@ begin
   if _dias_validez is not null and _dias_validez < 0 then
     return jsonb_build_object('ok', false, 'error', 'Los días no pueden ser negativos.');
   end if;
-  if _cupo_deportistas is not null and _cupo_deportistas < 0 then
-    return jsonb_build_object('ok', false, 'error', 'El cupo tiene que ser de 0 en adelante.');
+  /* Cero no es «poco cupo»: el trigger de `deportista` compara
+     n_deportistas >= cupo, así que con cero salta desde el primero. El
+     entrenador que saliera de este código entraría a una app donde no puede
+     dar de alta a nadie por ninguna de las tres puertas. Congelar a un
+     entrenador que YA existe es otra cosa y se hace con admin_fijar_cupo. */
+  if _cupo_deportistas is not null and _cupo_deportistas < 1 then
+    return jsonb_build_object('ok', false, 'error',
+      'El cupo tiene que ser 1 o más. Con 0 el entrenador no podría dar de alta a nadie.');
   end if;
 
   /* El cupo solo existe en los códigos de entrenador: en uno de deportista la
