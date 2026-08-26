@@ -83,6 +83,20 @@ export default function AdminPage() {
   const [codigoNuevo, setCodigoNuevo] = useState('')
   const [copiado, setCopiado] = useState(false)
 
+  /* Cambiar un código ya enviado. Antes, quedarse corto de usos o de plazo
+     obligaba a anularlo y mandar otro — y mandar un segundo código a quien ya
+     tiene el primero es la mejor forma de que use el que no toca. */
+  const [editando, setEditando] = useState<any>(null)
+  const [eUsos, setEUsos] = useState('')
+  const [eDias, setEDias] = useState('')
+  const [eSinCaduca, setESinCaduca] = useState(false)
+  const [eCupo, setECupo] = useState('')
+  const [eCupoSinLimite, setECupoSinLimite] = useState(false)
+  const [eNota, setENota] = useState('')
+  const [eReactivar, setEReactivar] = useState(false)
+  const [eGuardando, setEGuardando] = useState(false)
+  const [eAviso, setEAviso] = useState('')
+
   const cargarTodo = useCallback(async () => {
     const [r, c, i, e, s, ev] = await Promise.all([
       supabase.rpc('admin_resumen'),
@@ -162,6 +176,62 @@ export default function AdminPage() {
     const { error: err } = await supabase.rpc('revocar_invitacion', { _codigo: codigo })
     if (err) { setError(err.message); return }
     await cargarTodo()
+  }
+
+  /** Cuántos días le quedan de aquí a que caduque. Null si no caduca. */
+  const diasQueQuedan = (caduca: string | null): number | null => {
+    if (!caduca) return null
+    return Math.max(0, Math.ceil((new Date(caduca).getTime() - Date.now()) / 86400000))
+  }
+
+  const abrirEdicion = (i: any) => {
+    setError(''); setEAviso('')
+    setEditando(i)
+    setEUsos(String(i.usos_max))
+    /* Los días se enseñan como «cuántos le quedan», que es la pregunta que uno
+       se hace, no como la fecha. Volver a mandar el mismo número lo deja donde
+       estaba. */
+    /* Vacío cuando no caduca o cuando ya caducó: en los dos casos no hay un
+       número que reproponer, hay que decir cuántos días se quieren. Y el 0 no
+       se ofrece porque aquí se leería como «que caduque hoy», justo lo
+       contrario de lo que significa en crear_invitacion. */
+    const quedan = diasQueQuedan(i.caduca)
+    setEDias(!quedan ? '' : String(quedan))
+    setESinCaduca(false)
+    setECupo(i.cupo_deportistas == null ? '' : String(i.cupo_deportistas))
+    setECupoSinLimite(false)
+    setENota(i.nota || '')
+    setEReactivar(false)
+  }
+
+  const guardarEdicion = async () => {
+    if (!editando) return
+    setEGuardando(true); setError(''); setEAviso('')
+
+    const num = (v: string) => (v.trim() === '' ? null : Number(v))
+    const esEntrenador = editando.rol === 'entrenador'
+
+    const { data, error: err } = await supabase.rpc('editar_invitacion', {
+      _codigo: editando.codigo,
+      _usos_max: num(eUsos),
+      _dias_validez: eSinCaduca ? null : num(eDias),
+      _sin_caducidad: eSinCaduca,
+      _cupo_deportistas: esEntrenador && !eCupoSinLimite ? num(eCupo) : null,
+      _cupo_sin_limite: esEntrenador && eCupoSinLimite,
+      _nota: eNota || null,
+      _reactivar: eReactivar,
+    })
+    setEGuardando(false)
+
+    if (err) { setError(err.message); return }
+    if (data && (data as any).ok === false) { setError((data as any).error); return }
+
+    /* El aviso no es un fallo: el cambio se hizo, pero no llega a quien ya
+       entró con el código. Se queda en pantalla en vez de cerrar el modal. */
+    const aviso = (data as any)?.aviso
+    await cargarTodo()
+    if (aviso) { setEAviso(aviso); return }
+    setEditando(null)
   }
 
   const cambiarCupo = async (id: string, nombre: string, actual: number | null) => {
@@ -459,6 +529,11 @@ export default function AdminPage() {
                             : agotada ? <Chip tono="verde">usada</Chip>
                             : caducada ? <Chip tono="gris">caducada</Chip>
                             : <Chip tono="verde">activa</Chip>}
+                          {/* Se puede cambiar aunque esté agotada o caducada:
+                              son justo los dos casos en los que quieres darle
+                              más usos o más plazo en vez de mandar otro. */}
+                          <button onClick={() => abrirEdicion(i)}
+                            className="text-gray-500 hover:text-orange-400 text-xs underline transition">cambiar</button>
                           {viva && (
                             <button onClick={() => revocar(i.codigo)}
                               className="text-gray-600 hover:text-red-400 text-xs underline transition">anular</button>
@@ -468,6 +543,9 @@ export default function AdminPage() {
                       <p className="text-gray-600 text-[11px] mt-2 tabular-nums">
                         {i.usos}/{i.usos_max} usos · creada {fmtFecha(i.creada_en)}
                         {i.caduca && <> · caduca {fmtFecha(i.caduca)}</>}
+                        {i.rol === 'entrenador' && (
+                          <> · cupo {i.cupo_deportistas == null ? 'sin límite' : i.cupo_deportistas}</>
+                        )}
                         {i.usada_por && <> · la usó {i.usada_por}</>}
                       </p>
                     </div>
@@ -538,6 +616,108 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {editando && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center sm:p-5"
+          onClick={ev => { if (ev.target === ev.currentTarget) setEditando(null) }}>
+          <div className="bg-gray-900 border-t sm:border border-gray-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[92%] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-mono font-bold tracking-widest">{editando.codigo}</p>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {editando.rol} · {editando.usos}/{editando.usos_max} usos
+                  {editando.caduca
+                    ? ' · caduca ' + fmtFecha(editando.caduca)
+                    : ' · sin caducidad'}
+                </p>
+              </div>
+              <button onClick={() => setEditando(null)} aria-label="Cerrar"
+                className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4 flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-gray-400 text-sm">Para cuántas personas vale</span>
+                <input type="number" min={Math.max(1, editando.usos)} value={eUsos} onChange={ev => setEUsos(ev.target.value)}
+                  className="bg-gray-800 text-white px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 tabular-nums" />
+                <span className="text-gray-600 text-[11px] leading-snug">
+                  {editando.usos > 0
+                    ? 'Ya lo han usado ' + editando.usos + '. No se puede dejar por debajo de ahí.'
+                    : 'Todavía no lo ha usado nadie.'}
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-gray-400 text-sm">Caduca dentro de</span>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={1} value={eDias} onChange={ev => setEDias(ev.target.value)}
+                    disabled={eSinCaduca} placeholder={editando.caduca ? 'ya caducó — pon los días' : 'días'}
+                    className="flex-1 bg-gray-800 text-white px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 tabular-nums disabled:opacity-40" />
+                  <span className="text-gray-500 text-sm flex-none">días desde hoy</span>
+                </div>
+                <label className="flex items-center gap-2 text-gray-400 text-[12.5px] mt-0.5 cursor-pointer">
+                  <input type="checkbox" checked={eSinCaduca} onChange={ev => setESinCaduca(ev.target.checked)}
+                    className="accent-orange-500" />
+                  Que no caduque nunca
+                </label>
+                <span className="text-gray-600 text-[11px] leading-snug">
+                  Se cuenta desde hoy, no desde la fecha que tuviera: si ya caducó, «15» le da quince días buenos.
+                </span>
+              </label>
+
+              {editando.rol === 'entrenador' && (
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-gray-400 text-sm">Deportistas que podrá tener</span>
+                  <input type="number" min={0} value={eCupo} onChange={ev => setECupo(ev.target.value)}
+                    disabled={eCupoSinLimite} placeholder="cupo"
+                    className="bg-gray-800 text-white px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 tabular-nums disabled:opacity-40" />
+                  <label className="flex items-center gap-2 text-gray-400 text-[12.5px] mt-0.5 cursor-pointer">
+                    <input type="checkbox" checked={eCupoSinLimite} onChange={ev => setECupoSinLimite(ev.target.checked)}
+                      className="accent-orange-500" />
+                    Sin límite
+                  </label>
+                  {editando.usos > 0 && (
+                    <span className="text-amber-200/80 text-[11px] leading-snug">
+                      Este código ya se usó. El cupo de quien entró con él no cambia desde aquí: se le cambia en su ficha.
+                    </span>
+                  )}
+                </label>
+              )}
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-gray-400 text-sm">Nota</span>
+                <input value={eNota} onChange={ev => setENota(ev.target.value)} placeholder="Para acordarte de a quién se lo diste"
+                  className="bg-gray-800 text-white px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+              </label>
+
+              {editando.revocada && (
+                <label className="flex items-center gap-2.5 text-[13px] cursor-pointer border border-green-500/30 bg-green-500/[0.07] rounded-xl px-3.5 py-3">
+                  <input type="checkbox" checked={eReactivar} onChange={ev => setEReactivar(ev.target.checked)}
+                    className="accent-green-500" />
+                  <span className="text-green-300">Volver a activarlo</span>
+                </label>
+              )}
+
+              {eAviso && (
+                <p className="text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed">
+                  Guardado. {eAviso}
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-800 flex gap-2.5">
+              <button onClick={() => setEditando(null)}
+                className="flex-1 bg-gray-800 text-gray-400 hover:text-white py-2.5 rounded-xl text-sm transition">
+                {eAviso ? 'Cerrar' : 'Cancelar'}
+              </button>
+              <button onClick={guardarEdicion} disabled={eGuardando}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-50">
+                {eGuardando ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
