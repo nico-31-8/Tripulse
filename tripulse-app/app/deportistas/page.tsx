@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import { tokenSeguro } from '@/lib/token-seguro'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calcularEdad } from '@/lib/fechas'
@@ -111,7 +112,10 @@ export default function Deportistas() {
 
   const generarEnlaceInvitacion = async (dep: any) => {
     setGenerandoEnlace(dep.id)
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+    /* Antes: Math.random() + Date.now(). El primero no es criptografico y el
+       segundo es la hora, o sea nada. Y este token da de alta a alguien como
+       deportista tuyo: es el ultimo sitio donde improvisar. */
+    const token = tokenSeguro()
     const user = await usuarioActual()
     await supabase.from('invitacion_deportista').insert({
       token,
