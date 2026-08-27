@@ -34,8 +34,15 @@ export default function ResetPassword() {
           <div className="text-center py-6">
             <div className="text-5xl mb-4">📧</div>
             <p className="font-bold text-white text-lg mb-2">Email enviado</p>
-            <p className="text-gray-400 text-sm mb-6">
+            {/* Lo de spam no es relleno: estos correos salen de un remitente
+                compartido y caen ahí más de lo que parece. Sin decirlo, la
+                persona da por hecho que no ha llegado y lo pide otra vez, que
+                es justo lo que agota el límite por hora. */}
+            <p className="text-gray-400 text-sm mb-2">
               Revisa tu bandeja de entrada y sigue el enlace para crear una nueva contraseña.
+            </p>
+            <p className="text-gray-500 text-xs mb-6">
+              Si en unos minutos no ha llegado, mira en spam antes de volver a pedirlo.
             </p>
             <Link href="/login" className="text-orange-500 hover:underline text-sm">
               Volver al login
