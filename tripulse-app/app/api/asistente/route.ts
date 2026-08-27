@@ -3,6 +3,7 @@
 // Recibe { messages, contexto } y devuelve la respuesta de Claude en streaming.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { REGLA_DATOS_AJENOS, bloqueDeDatos } from '@/lib/contexto-seguro'
 import { consumirCuota, mensajeDeTope } from '@/lib/cuota-api'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ASISTENTE } from '@/lib/asistente'
@@ -59,14 +60,23 @@ export async function POST(req: Request) {
 
   const anthropic = new Anthropic()
 
+  /* La regla de los datos ajenos va pegada a la metodología y con el mismo
+     cache_control: es parte del encargo permanente, no del contexto de esta
+     conversación. */
   const system: any[] = [
-    { type: 'text', text: METODOLOGIA_ASISTENTE, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: METODOLOGIA_ASISTENTE + '\n\n' + REGLA_DATOS_AJENOS, cache_control: { type: 'ephemeral' } },
   ]
-  if (contexto) system.push({ type: 'text', text: 'DATOS DEL DEPORTISTA (contexto actual):\n' + contexto })
+  /* Las notas y la anamnesis las escribió el ATLETA, no el entrenador que está
+     preguntando. Van acotadas para que una frase suya no se lea como una orden
+     al asistente de su entrenador. */
+  if (contexto) {
+    const bloque = bloqueDeDatos('Datos del deportista (contexto actual)', contexto)
+    if (bloque) system.push({ type: 'text', text: bloque })
+  }
   if (contextoModulo) {
     system.push({
       type: 'text',
-      text: `PANTALLA QUE TIENE DELANTE AHORA MISMO${modulo ? ` (módulo ${modulo})` : ''}:\n` + contextoModulo +
+      text: bloqueDeDatos(`Pantalla que tiene delante ahora mismo${modulo ? ` (módulo ${modulo})` : ''}`, contextoModulo) +
         '\n\nSi la pregunta es ambigua, interprétala sobre esto: es lo que está mirando. ' +
         'No se lo repitas de vuelta —ya lo ve—; úsalo para interpretarlo y decirle qué hacer.',
     })

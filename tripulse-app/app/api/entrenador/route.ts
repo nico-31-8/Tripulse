@@ -14,6 +14,7 @@
 //
 // Vive solo en el servidor: la API key nunca llega al navegador.
 import { hoyISO } from '@/lib/fechas'
+import { REGLA_DATOS_AJENOS, bloqueDeDatos } from '@/lib/contexto-seguro'
 import { consumirCuota, mensajeDeTope } from '@/lib/cuota-api'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
@@ -66,9 +67,12 @@ export async function POST(req: Request) {
     model: 'claude-opus-5',
     max_tokens: 8000,
     thinking: { type: 'adaptive' },
+    /* Aquí el contexto lo arma el servidor, pero DENTRO va texto que escribió
+       el propio atleta: sus notas, su anamnesis. Que no venga del navegador no
+       lo convierte en instrucción, así que va acotado igual. */
     system: [
-      { type: 'text', text: METODOLOGIA_ENTRENADOR_IA, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: 'LO QUE SABES DE ÉL AHORA MISMO:\n' + contexto },
+      { type: 'text', text: METODOLOGIA_ENTRENADOR_IA + '\n\n' + REGLA_DATOS_AJENOS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: bloqueDeDatos('Lo que sabes de él ahora mismo', contexto) },
     ] as any,
     messages: messages.map((m: any) => ({ role: m.role, content: String(m.content ?? '') })),
   })
