@@ -92,8 +92,18 @@ export default function Login() {
             ¿No tienes cuenta?{' '}
             <Link href="/registro" className="text-orange-400 hover:text-orange-300 transition">Regístrate</Link>
           </p>
-          <p className="text-center text-sm mt-2">
-            <Link href="/reset-password" className="text-gray-500 hover:text-orange-400 transition">¿Olvidaste tu contraseña?</Link>
+          {/* El enlace a /reset-password está quitado A PROPÓSITO, no olvidado.
+              La ruta sigue existiendo y funciona: lo que no funciona es el
+              correo. Supabase los manda por un buzón compartido de pruebas que
+              apenas envía unos pocos por hora y cae en spam, así que la pantalla
+              decía «email enviado» y no llegaba nada. Un botón que miente es
+              peor que no tenerlo: la persona se queda esperando en vez de pedir
+              ayuda.
+
+              Para devolverlo basta con volver a poner el Link de antes, en
+              cuanto haya un SMTP propio configurado. */}
+          <p className="text-center text-[13px] mt-2 text-gray-500 leading-relaxed">
+            ¿No puedes entrar? Escribe a tu entrenador y te devolvemos el acceso.
           </p>
         </div>
       </div>
