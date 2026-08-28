@@ -14,6 +14,9 @@
 //      carga: un error dentro de un render puede dispararse cien veces seguidas.
 
 import { supabase } from './supabase'
+import { esDesarrollo, esRuido } from './eventos-filtros'
+
+export { esDesarrollo, esRuido }
 
 const yaVistos = new Set<string>()
 
@@ -24,6 +27,16 @@ export function registrarEvento(
 ) {
   try {
     if (typeof window === 'undefined') return
+
+    /* En desarrollo NO se manda a la base: se enseña en la consola, que es
+       donde quien programa ya está mirando. Así el registro de /admin solo
+       tiene errores que le han pasado a alguien de verdad. */
+    if (esDesarrollo()) {
+      console.warn('[evento ' + nivel + ' · no se manda en local]', mensaje, detalle ?? '')
+      return
+    }
+    if (esRuido(mensaje)) return
+
     const origen = window.location.pathname
     const huella = nivel + '|' + origen + '|' + mensaje
     if (yaVistos.has(huella)) return
