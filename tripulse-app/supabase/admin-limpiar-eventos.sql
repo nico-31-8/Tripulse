@@ -33,7 +33,29 @@ begin
   return _n;
 end $$;
 
-comment on function public.admin_limpiar_eventos is
+/* La firma va entre paréntesis a propósito. Sin ella, Postgres se queja de que
+   el nombre no es único: en esta base ya había otra `admin_limpiar_eventos` con
+   distintos argumentos que no está en el repositorio. Esa sigue ahí y no la
+   toco — no se borra a ciegas algo que no se ha visto. */
+comment on function public.admin_limpiar_eventos(bigint) is
   'Borra los eventos hasta ese id. Lo que llegue despues de mirar la lista se queda.';
 
 notify pgrst, 'reload schema';
+
+/* ============================================================
+   Qué versiones hay ahora de esta función
+   ============================================================
+   Va la última para que sea lo que enseñe el editor de Supabase. Si sale más de
+   una fila, dime cuáles: puede que la vieja sobre, pero eso se decide viéndola,
+   no borrándola por si acaso.
+
+   La que usa la app es la de `_hasta_id bigint`: PostgREST elige por el nombre
+   del argumento, así que llama a la correcta aunque haya varias. */
+select
+  p.oid::regprocedure as la_funcion,
+  pg_get_function_arguments(p.oid) as argumentos
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'admin_limpiar_eventos'
+order by 1;
