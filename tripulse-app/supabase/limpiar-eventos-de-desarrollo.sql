@@ -28,8 +28,8 @@ select
     else 'del mundo real (se queda)'
   end as procedencia,
   count(*)      as cuantos,
-  min(creado_en) as el_mas_viejo,
-  max(creado_en) as el_mas_nuevo
+  min(ts)         as el_mas_viejo,
+  max(ts)         as el_mas_nuevo
 from evento_app
 group by 1
 order by 1;
