@@ -8,6 +8,7 @@
 // aquí no se lee ninguna directamente. Esconder la ruta es cosmética; el
 // candado está en la base.
 import { useEffect, useState, useCallback } from 'react'
+import { eventosComoTexto } from '@/lib/eventos-texto'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
@@ -106,6 +107,9 @@ export default function AdminPage() {
   const [avDesde, setAvDesde] = useState('')
   const [avHasta, setAvHasta] = useState('')
   const [avGuardando, setAvGuardando] = useState(false)
+
+  const [copiadoEventos, setCopiadoEventos] = useState(false)
+  const [limpiando, setLimpiando] = useState(false)
 
   const cargarTodo = useCallback(async () => {
     const [r, c, i, e, s, ev] = await Promise.all([
@@ -319,6 +323,31 @@ export default function AdminPage() {
       _cupo: sinLimite ? null : n,
     })
     if (err) { setError(err.message); return }
+    await cargarTodo()
+  }
+
+  const copiarEventos = () => {
+    navigator.clipboard.writeText(eventosComoTexto(eventos))
+    setCopiadoEventos(true)
+    setTimeout(() => setCopiadoEventos(false), 2500)
+  }
+
+  /* Se borra hasta el id MÁS ALTO QUE HAY A LA VISTA, no todo. Si mientras
+     miras la lista entra un error nuevo, ese no lo has leído: no se va. */
+  const limpiarEventos = async () => {
+    const tope = eventos.reduce((a, e) => Math.max(a, Number(e.id) || 0), 0)
+    if (!tope) return
+    if (!confirm('¿Vaciar el registro? Se borran los ' + eventos.length + ' que ves. Lo que llegue a partir de ahora se queda.')) return
+
+    setLimpiando(true)
+    const { error: err } = await supabase.rpc('admin_limpiar_eventos', { _hasta_id: tope })
+    setLimpiando(false)
+    if (err) {
+      setError(/function|does not exist/i.test(err.message)
+        ? 'Falta correr supabase/admin-limpiar-eventos.sql.'
+        : err.message)
+      return
+    }
     await cargarTodo()
   }
 
@@ -759,9 +788,26 @@ export default function AdminPage() {
         {/* ===================== EVENTOS ===================== */}
         {pestana === 'eventos' && (
           <div className="flex flex-col gap-2">
-            <p className="text-gray-500 text-sm mb-2">
-              Fallos que la app ha ido registrando. Antes se los quedaba la consola del navegador de quien los sufría.
-            </p>
+            <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+              <p className="text-gray-500 text-sm max-w-lg">
+                Fallos que la app ha ido registrando. Solo de gente de verdad: los de
+                desarrollo se quedan en la consola y no llegan aquí.
+              </p>
+              {eventos.length > 0 && (
+                <div className="flex gap-2 flex-none">
+                  <button onClick={copiarEventos}
+                    className={'text-xs border rounded-lg px-3 py-1.5 transition ' + (copiadoEventos
+                      ? 'border-green-500/50 text-green-400'
+                      : 'border-gray-700 text-gray-400 hover:text-white hover:border-orange-500/60')}>
+                    {copiadoEventos ? '✓ copiado' : '📋 Copiar los ' + eventos.length}
+                  </button>
+                  <button onClick={limpiarEventos} disabled={limpiando}
+                    className="text-xs border border-gray-700 text-gray-500 hover:text-red-400 hover:border-red-500/50 rounded-lg px-3 py-1.5 transition disabled:opacity-50">
+                    {limpiando ? 'Vaciando…' : '🗑 Vaciar'}
+                  </button>
+                </div>
+              )}
+            </div>
             {eventos.length === 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center">
                 <p className="text-gray-500 text-sm">Nada registrado todavía.</p>
