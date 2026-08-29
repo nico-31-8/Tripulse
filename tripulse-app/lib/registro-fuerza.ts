@@ -145,10 +145,16 @@ export function volumenHoy(ej: EjercicioRegistro): number {
 }
 
 /** «3 ejercicios · 9 series» para el botón de guardar. */
+/* Se exporta porque la barra de guardar la enseña también para las sesiones
+   de resistencia, donde el resumen es un total de metros y minutos y se queda
+   en blanco cuando no hay nada escrito. Un botón apagado sobre una barra vacía
+   no dice si falta algo o si la pantalla está rota. */
+export const NADA_QUE_GUARDAR = 'Nada que guardar todavía'
+
 export function resumenRegistro(ejs: EjercicioRegistro[] | null | undefined): string {
   const cuentan = ejerciciosQueCuentan(ejs)
   const series = cuentan.reduce((a, e) => a + seriesConDatos(e).length, 0)
-  if (!cuentan.length) return 'Nada que guardar todavía'
+  if (!cuentan.length) return NADA_QUE_GUARDAR
   return cuentan.length + (cuentan.length === 1 ? ' ejercicio' : ' ejercicios')
     + ' · ' + series + (series === 1 ? ' serie' : ' series')
 }

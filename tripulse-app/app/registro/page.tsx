@@ -17,12 +17,15 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import CrearPassword from '@/components/CrearPassword'
+import { errorAlEnviar } from '@/lib/password'
 
 export default function Registro() {
   const router = useRouter()
   const [codigo, setCodigo] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [password2, setPassword2] = useState('')
   const [nombre, setNombre] = useState('')
   const [aceptoTerminos, setAceptoTerminos] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -33,6 +36,11 @@ export default function Registro() {
     e.preventDefault()
     if (!aceptoTerminos) { setMensaje('Debes aceptar la política de privacidad y los términos'); return }
     if (!codigo.trim()) { setMensaje('Necesitas un código de invitación para entrar'); return }
+    /* Se comprueba ANTES de tocar Supabase. Si la contraseña está mal escrita,
+       lo peor que puede pasar es que la cuenta se cree igualmente con la
+       equivocada: signUp no falla por eso. */
+    const malPass = errorAlEnviar(password, password2)
+    if (malPass) { setMensaje(malPass); return }
     setLoading(true)
     setMensaje('')
     setAviso('')
@@ -88,8 +96,14 @@ export default function Registro() {
           </div>
 
           <input type="text" placeholder="Tu nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-          <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-          <input type="password" placeholder="Contraseña (mín. 6)" value={password} onChange={e => setPassword(e.target.value)} minLength={6} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+          <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+
+          <CrearPassword
+            valor={password}
+            onChange={setPassword}
+            repetida={password2}
+            onRepetidaChange={setPassword2}
+          />
 
           <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
             <input type="checkbox" checked={aceptoTerminos} onChange={e => setAceptoTerminos(e.target.checked)} className="mt-0.5 accent-orange-500" required />

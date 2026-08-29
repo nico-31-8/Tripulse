@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { setAtletaActivo } from '@/lib/atletaActivo'
+import CampoPassword from '@/components/CampoPassword'
 
 export default function Login() {
   const router = useRouter()
@@ -73,15 +74,20 @@ export default function Login() {
             <div>
               <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Email</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                autoComplete="username"
                 className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition"
                 placeholder="tu@email.com" required />
             </div>
-            <div>
-              <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Contraseña</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition"
-                placeholder="••••••••" required />
-            </div>
+            <CampoPassword
+              etiqueta="Contraseña"
+              placeholder="••••••••"
+              valor={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              required
+              estiloEtiqueta="mayus"
+              redondeo="xl"
+            />
             {error && <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-xl text-sm">{error}</div>}
             <button type="submit" disabled={loading}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-xl font-bold tracking-wide transition disabled:opacity-50 mt-2">

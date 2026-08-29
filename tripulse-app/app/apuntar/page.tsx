@@ -8,7 +8,7 @@ import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import BuscadorEjercicios, { type EjercicioBib } from '@/components/BuscadorEjercicios'
 import {
-  SERIE_VACIA, seriesConDatos, ejerciciosQueCuentan, volumenHoy, resumenRegistro,
+  SERIE_VACIA, seriesConDatos, ejerciciosQueCuentan, volumenHoy, resumenRegistro, NADA_QUE_GUARDAR,
   guardarRegistroFuerza, actualizarRegistroFuerza, seMidePorTiempo, ejerciciosDesdeSesion,
   resumenDeEjercicios, type EjercicioRegistro,
 } from '@/lib/registro-fuerza'
@@ -770,13 +770,26 @@ export default function Apuntar() {
               className="text-[11.5px] text-amber-100/90 border border-amber-500/40 rounded-lg px-2 py-1.5">Parar</button>
           </div>
         )}
-        <div className="bg-gray-900/95 backdrop-blur border-t border-gray-800 px-4 py-3">
-          <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
-            <span className="text-gray-500 text-xs">
-              {esFuerza ? resumenRegistro(ejercicios) : resumenTotal(bloques)}
+        {/* El botón ocupa el ancho entero y va debajo del resumen, no al lado.
+            Antes era un botón pequeño en la esquina derecha: en el móvil, con el
+            pulgar tapando esa zona, ni se veía ni se acertaba. Es la única
+            acción de la pantalla, así que se comporta como tal.
+
+            El apagado ya no es `opacity-40` sobre naranja. Eso dejaba un
+            marrón descolorido que no parece un botón desactivado, parece un
+            botón roto — y encima con el texto ilegible. Ahora se apaga a gris,
+            que es lo que la gente lee como «esto todavía no». */}
+        <div className="bg-gray-900/95 backdrop-blur border-t border-gray-800 px-4 pt-2.5 pb-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+          <div className="max-w-2xl mx-auto flex flex-col gap-2">
+            {/* gray-400 y no gray-500: sobre este fondo el 500 se queda en
+                3,5:1 y a 12px eso no se lee de un vistazo, que es justo lo
+                único que hace falta de esta línea. */}
+            <span className="text-gray-400 text-xs text-center">
+              {esFuerza ? resumenRegistro(ejercicios) : (resumenTotal(bloques) || NADA_QUE_GUARDAR)}
             </span>
             <button onClick={guardar} disabled={guardando || cuentan.length === 0}
-              className="bg-orange-500 hover:bg-orange-600 px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-40">
+              className="w-full bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white py-4 rounded-xl text-base font-bold transition disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed">
               {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : 'Guardar'}
             </button>
           </div>

@@ -3,6 +3,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import CrearPassword from '@/components/CrearPassword'
+import { errorAlEnviar } from '@/lib/password'
 
 export default function PaginaInvitacion({ params }: { params: Promise<{ token: string }> }) {
   const router = useRouter()
@@ -12,6 +14,7 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [password2, setPassword2] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
   const [aceptoTerminos, setAceptoTerminos] = useState(false)
@@ -38,6 +41,10 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!aceptoTerminos) { setError('Debes aceptar la política de privacidad y los términos'); return }
+    /* Antes de crear nada: una contraseña mal tecleada aquí crea la cuenta
+       igual, y esta persona ya no tiene a quién pedirle otro enlace. */
+    const malPass = errorAlEnviar(password, password2)
+    if (malPass) { setError(malPass); return }
     setGuardando(true)
     setError('')
 
@@ -134,22 +141,17 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
               placeholder="email@ejemplo.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
+              autoComplete="username"
               className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
               required
             />
           </div>
-          <div>
-            <label className="text-gray-400 text-sm mb-1 block">Elige una contraseña</label>
-            <input
-              type="password"
-              placeholder="Mínimo 6 caracteres"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-              required
-              minLength={6}
-            />
-          </div>
+          <CrearPassword
+            valor={password}
+            onChange={setPassword}
+            repetida={password2}
+            onRepetidaChange={setPassword2}
+          />
 
           <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
             <input type="checkbox" checked={aceptoTerminos} onChange={e => setAceptoTerminos(e.target.checked)} className="mt-0.5 accent-orange-500" required />

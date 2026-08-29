@@ -2,6 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import CrearPassword from '@/components/CrearPassword'
+import { errorAlEnviar } from '@/lib/password'
 
 export default function NuevaPassword() {
   const router = useRouter()
@@ -13,14 +15,11 @@ export default function NuevaPassword() {
 
   const handleNuevaPassword = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden')
-      return
-    }
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres')
-      return
-    }
+    /* Las dos comprobaciones (largo y que coincidan) viven en lib/password
+       para que digan lo mismo aquí, en /registro y en /invitacion. Antes cada
+       pantalla tenía su propia versión y su propio texto. */
+    const mal = errorAlEnviar(password, confirmPassword)
+    if (mal) { setError(mal); return }
     setGuardando(true)
     setError('')
     const { error } = await supabase.auth.updateUser({ password })
@@ -47,22 +46,12 @@ export default function NuevaPassword() {
           </div>
         ) : (
           <form onSubmit={handleNuevaPassword} className="flex flex-col gap-4">
-            <input
-              type="password"
-              placeholder="Nueva contraseña"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-              required
-              minLength={6}
-            />
-            <input
-              type="password"
-              placeholder="Confirmar contraseña"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-              required
+            <CrearPassword
+              etiqueta="Nueva contraseña"
+              valor={password}
+              onChange={setPassword}
+              repetida={confirmPassword}
+              onRepetidaChange={setConfirmPassword}
             />
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <button
