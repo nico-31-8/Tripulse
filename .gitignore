@@ -1,3 +1,13 @@
+# Esta es la raíz del repositorio, no la app. La app entera vive en
+# tripulse-app/ y tiene su propio .gitignore.
+#
+# node_modules/ va SIN barra delante a propósito. El de tripulse-app dice
+# "/node_modules" y esa barra lo ancla a su carpeta: por eso el node_modules
+# que hubo aquí arriba no lo ignoraba nadie y acabaron 791 ficheros subidos
+# a git. Sin barra, ignora el de cualquier nivel.
+node_modules/
+
+.next/
 .vercel
 .env*
 
