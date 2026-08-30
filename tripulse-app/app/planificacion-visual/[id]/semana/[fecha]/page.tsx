@@ -9,6 +9,13 @@ import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
+import { devolverAlPool, chipsEnlazados, loQueSePierde } from '@/lib/devolver-al-pool'
+
+/* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
+   Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
+   compara con mayúsculas, `types.includes(...)` no encuentra nunca nada. */
+const TIPO_SESION = 'application/x-tripulse-sesion'
+const esArrastreDeSesion = (e: React.DragEvent) => e.dataTransfer.types.includes(TIPO_SESION)
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -67,6 +74,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [weekIndex, setWeekIndex] = useState<number | null>(null)
   const [dragOverDia, setDragOverDia] = useState<string | null>(null)
   const [draggingChip, setDraggingChip] = useState<string | null>(null)
+  // Qué sesión se está arrastrando ahora mismo. Sirve para que el pool se
+  // encienda solo cuando de verdad puede recibir algo.
+  const [draggingSesion, setDraggingSesion] = useState<number | null>(null)
+  const [dragOverPool, setDragOverPool] = useState(false)
   const [seleccion, setSeleccion] = useState<string[]>([])
 
   const dias = diasDeSemana(fecha)
@@ -212,13 +223,33 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setGuardando(false)
   }
 
+  /* Borrar también devuelve la unidad al pool si la sesión salió de ahí.
+     Si no, el chip se quedaría marcado como hecho apuntando a una sesión que ya
+     no existe: la unidad seguiría planificada para la semana pero no estaría ni
+     en el pool ni en ningún día. Desaparecida sin que nadie lo decidiera. */
   const borrarSesion = async (sesId: number) => {
-    if (!confirm('Mover esta sesion a la papelera?')) return
+    const enlazados = chipsEnlazados(sesZonasAll, sesId)
+    const texto = enlazados.length
+      ? 'Mover esta sesión a la papelera?\n\nSu unidad vuelve arriba, al pool de la semana.'
+      : 'Mover esta sesión a la papelera?'
+    if (!confirm(texto)) return
     await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
     setSesiones(p => p.filter(s => s.id !== sesId))
+    if (enlazados.length) {
+      await persistirZonas(sesZonasAll.map(z =>
+        z.id_sesion === sesId ? { ...z, hecho: false, id_sesion: undefined } : z))
+    }
   }
 
-  // Persiste el array de chips de zona (tras usar uno o marcarlo como hecho) en dibujo_borrador.
+  /* Persiste el array de chips de zona (tras usar uno o marcarlo como hecho) en
+     dibujo_borrador.
+
+     OJO CON EL `if (borradorId)`: sin fila de borrador esto no escribe y no se
+     queja. Es inofensivo para quien lo llama después de tocar un chip —si no
+     hay borrador tampoco hay chips—, pero no lo es para quien borre algo antes
+     de llamar. Por eso devolverSesionAlPool comprueba borradorId ANTES de
+     mandar la sesión a la papelera: si no, la sesión se iba y la unidad no
+     volvía. */
   const persistirZonas = async (nuevoArray: ChipZona[]) => {
     setSesZonasAll(nuevoArray)
     if (borradorId) await supabase.from('dibujo_borrador').update({ sesiones_zonas: nuevoArray }).eq('id', borradorId)
@@ -273,7 +304,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
     // Los chips usados se marcan como hechos: siguen visibles en el canvas de periodización
     // pero salen del pool de "por arrastrar".
-    await persistirZonas(sesZonasAll.map(z => chips.some(c => c.id === z.id) ? { ...z, hecho: true } : z))
+    //
+    // Y se quedan con el id de la sesión que acaban de formar. Ese enlace es lo
+    // único que permite deshacer esto después: sin él, devolver la sesión al
+    // pool sería adivinar qué chips la hicieron. Ver lib/devolver-al-pool.ts.
+    await persistirZonas(sesZonasAll.map(z =>
+      chips.some(c => c.id === z.id) ? { ...z, hecho: true, id_sesion: nuevaSesion.id } : z))
     await cargar()
     setGuardando(false)
   }
@@ -303,6 +339,75 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   // Deshace una unidad fusionada: sus chips vuelven a ser sueltos.
   const separar = async (grupoId: string) => {
     await persistirZonas(sesZonasAll.map(z => z.grupo === grupoId ? { ...z, grupo: undefined } : z))
+  }
+
+  /* Devolver una sesión al pool: deshace el arrastre.
+     Se llama al soltar una sesión sobre el bloque de unidades de arriba.
+
+     La sesión se va a la papelera igual que con la x, pero además la unidad
+     vuelve a estar disponible. Antes eso no pasaba y era el agujero: el chip se
+     quedaba marcado como hecho para siempre, así que la unidad desaparecía del
+     plan de la semana sin estar en ningún sitio. */
+  const devolverSesionAlPool = async (sesId: number) => {
+    const s = sesiones.find(x => x.id === sesId)
+    if (!s) return
+
+    /* Estas dos comprobaciones van ANTES de borrar nada, y ese es el motivo de
+       que existan. El pool se guarda en `dibujo_borrador`, y `persistirZonas`
+       no escribe si no hay fila: sin esta guarda, soltar aquí una sesión la
+       mandaba a la papelera y la unidad no volvía a ninguna parte. Se destruía
+       el trabajo en vez de moverlo. */
+    if (weekIndex === null) {
+      alert('Este deportista no tiene macrociclo, así que esta semana no cae en ningún plan y no hay pool al que devolverla.')
+      return
+    }
+    if (!borradorId) {
+      alert('No hay canvas de periodización para este deportista, que es donde vive el pool. Bórrala con la x si no la quieres aquí.')
+      return
+    }
+
+    // Una sesión ya hecha no se des-planifica: eso ya no es un plan, es lo que pasó.
+    if (s.estado === 'Realizada') {
+      alert('Esta sesión ya está realizada. Si quieres quitarla del calendario, bórrala con la x.')
+      return
+    }
+
+    /* Un brick sin enlace no puede volver, y hay que pararlo aquí.
+       El rescate por parecido reconstruye chips a partir de las zonas, y un
+       brick no cabe en un par zona+deporte: sus bloques y sus transiciones no
+       están en ninguna zona. Saldrían dos o tres chips de disciplina 'Brick'
+       sin bloques dentro, que además no se pueden volver a arrastrar (el
+       crearSesionDesdeUnidad de más arriba los rechaza). Devolver algo roto es
+       peor que no devolverlo. */
+    if (s.disciplina === 'Brick' && !chipsEnlazados(sesZonasAll, sesId).length) {
+      alert('Este brick no salió del pool, así que no hay bloques que devolver: un chip de zona no sabe de transiciones.\n\nBórralo con la x y móntalo de nuevo desde el Dibujo.')
+      return
+    }
+
+    // Si salió del pool, la vuelta es exacta y no hay nada que avisar. Si no
+    // (creada a mano, o colocada antes de que existiera el enlace), un chip solo
+    // sabe de zona y deporte: lo demás no cabe y se queda por el camino.
+    if (!chipsEnlazados(sesZonasAll, sesId).length) {
+      const perdido = loQueSePierde(s)
+      const aviso = 'Esta sesión no salió del pool, así que vuelve como una unidad de zona.'
+        + (perdido.length ? '\n\nSe pierde ' + perdido.join(' y ') + '.' : '')
+        + '\n\n¿Devolverla arriba?'
+      if (!confirm(aviso)) return
+    }
+
+    const zonas: string[] = s._bloques?.length
+      ? s._bloques.map((b: any) => b.zona)
+      : (s.zona_fuerza ? [s.zona_fuerza] : [])
+    // Sin zonas no hay unidad que devolver: sería crear un chip en blanco.
+    if (!zonas.length) {
+      alert('Esta sesión no tiene ninguna zona, así que no hay unidad que devolver al pool. Bórrala con la x si no la quieres.')
+      return
+    }
+
+    setSesiones(prev => prev.filter(x => x.id !== sesId))
+    await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    await persistirZonas(devolverAlPool(sesZonasAll, { id: sesId, disciplina: s.disciplina, zonas }, weekIndex))
+    await cargar()
   }
 
   // Mueve una sesión ya colocada a otro día de la misma semana (corregir el día).
@@ -403,11 +508,35 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
           </div>
         )}
 
-        {/* Unidades planificadas (zonas) — clic para seleccionar/fusionar; arrastra a un día */}
-        {unidadesPool.length > 0 && (
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-6">
+{/* Unidades planificadas (zonas) — clic para seleccionar/fusionar; arrastra a un día.
+            El bloque va y VIENE: soltar aquí una sesión del calendario la deshace
+            y devuelve su unidad al pool.
+
+            Se pinta también con el pool vacío mientras haya sesiones en la
+            semana. Si no, al colocar la última unidad el bloque desaparecía y
+            con él el sitio donde soltar para deshacer: la vuelta solo existiría
+            mientras no hiciera falta. */}
+        {(unidadesPool.length > 0 || (borradorId !== null && sesiones.length > 0)) && (
+          <div
+            onDragOver={e => { if (esArrastreDeSesion(e)) e.preventDefault() }}
+            onDragEnter={e => { if (esArrastreDeSesion(e)) { e.preventDefault(); setDragOverPool(true) } }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverPool(false) }}
+            onDrop={e => {
+              e.preventDefault()
+              setDragOverPool(false)
+              const raw = e.dataTransfer.getData('text/plain')
+              if (raw.startsWith('sesion:')) devolverSesionAlPool(Number(raw.slice(7)))
+            }}
+            className={'bg-gray-900 rounded-2xl border p-4 mb-6 transition ' +
+              (dragOverPool ? 'border-orange-400 ring-2 ring-orange-400/40'
+                : draggingSesion !== null ? 'border-orange-500/40 border-dashed'
+                : 'border-gray-800')}>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-              <p className="text-gray-400 text-sm font-medium">Unidades planificadas esta semana — arrastra a un día</p>
+              <p className="text-gray-400 text-sm font-medium">
+                {draggingSesion !== null
+                  ? '↩ Suelta aquí para devolverla al pool'
+                  : 'Unidades planificadas esta semana — arrastra a un día'}
+              </p>
               {seleccion.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 text-xs">{seleccion.length} sel.</span>
@@ -421,7 +550,19 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 </div>
               )}
             </div>
-            <p className="text-gray-600 text-xs mb-3">Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja. Arrastra una unidad a un día para programarla.</p>
+            <p className="text-gray-600 text-xs mb-3">
+              Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja. Arrastra una unidad a un día para programarla, o una sesión de vuelta aquí para deshacerla.
+            </p>
+
+            {/* Con el pool vacío el bloque sigue estando, pero tiene que decir por
+                qué: un recuadro en blanco parece un fallo de carga, no «ya está
+                todo colocado». */}
+            {unidadesPool.length === 0 && (
+              <p className="text-gray-600 text-xs border border-dashed border-gray-800 rounded-xl py-4 text-center">
+                Todo colocado. Arrastra una sesión aquí para devolverla.
+              </p>
+            )}
+
             <div className="flex flex-wrap gap-2 items-start">
               {unidadesPool.map(u => {
                 const disc = u.chips[0].disciplina
@@ -510,7 +651,20 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                   {sesiones_dia.map(s => (
                     <div key={s.id} className="group relative"
                       draggable
-                      onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData('text/plain', 'sesion:' + s.id) }}>
+                      onDragStart={e => {
+                        e.stopPropagation()
+                        setDraggingSesion(s.id)
+                        e.dataTransfer.setData('text/plain', 'sesion:' + s.id)
+                        /* Además del texto, un tipo propio. Durante el arrastre el
+                           navegador no deja LEER el contenido (solo al soltar), pero
+                           sí deja mirar los TIPOS. Es lo que permite que el pool
+                           sepa que lo que viene es una sesión y se deje soltar.
+                           Con el estado de React no bastaba: setDraggingSesion no
+                           ha llegado a aplicarse cuando salta el primer dragover. */
+                        e.dataTransfer.setData(TIPO_SESION, String(s.id))
+                      }}
+                      onDragEnd={() => { setDraggingSesion(null); setDragOverPool(false) }}
+                      style={{ opacity: draggingSesion === s.id ? 0.4 : 1 }}>
                       <button
                         onClick={() => router.push('/sesion/' + s.id)}
                         className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>

@@ -13,6 +13,10 @@ export interface ChipZona {
   zona: string
   hecho?: boolean
   grupo?: string
+  // Qué sesión se creó con este chip. Se pone al arrastrarlo a un día y es lo
+  // único que permite deshacerlo después: sin esto, devolver una sesión al pool
+  // sería adivinar qué chips la formaron. Ver lib/devolver-al-pool.ts.
+  id_sesion?: number
   // Solo en chips de brick (disciplina === 'Brick'): un brick no cabe en un par
   // zona+deporte, así que el chip se lleva sus bloques y transiciones encima.
   brick?: BrickValor

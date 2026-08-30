@@ -10,6 +10,15 @@ import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
+import {
+  anadirZona, quitarZona, cuantasDe, chipsNuevos, chipDeBrick, textoBoton, resumenSeleccion,
+} from '@/lib/chips-nuevos'
+
+/* El id de un chip. Estaba escrito a mano dentro del onClick del modal; ahora
+   se pasa a chipsNuevos(), que lo llama UNA VEZ POR CHIP. Reutilizar el mismo
+   para toda una tanda daría tres chips idénticos para React y para el enlace
+   con la sesión que se crea al arrastrarlos. */
+const nuevoIdChip = () => Math.random().toString(36).slice(2)
 import { BotonGuiaZonas, type TestsAtleta } from '@/components/GuiaZonas'
 import { diasEntre, sumarDias, aplicarDesplazamiento, aplicarDuracion } from '@/lib/desplazar'
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
@@ -163,7 +172,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [popupZona, setPopupZona] = useState<{semana:number;x:number;y:number}|null>(null)
   const [popupMeso, setPopupMeso] = useState<{ me: MesoD; x: number; y: number } | null>(null)
   const [zonaSelDisc, setZonaSelDisc] = useState('Natacion')
-  const [zonaSelZona, setZonaSelZona] = useState('Z1')
+  /* Varias zonas a la vez, en el orden en que se van marcando. Antes era una
+     sola (`zonaSelZona`) y el modal se cerraba al añadirla: una semana de seis
+     sesiones eran seis vueltas de abrir, elegir deporte, elegir zona, añadir. */
+  const [zonasSel, setZonasSel] = useState<string[]>([])
   const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza'])
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
@@ -1647,7 +1659,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       return (
                         <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
-                          onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonaSelZona(dep?.sistema_zonas === 2 ? 'AER' : 'Z1') }}>
+                          onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonasSel([]) }}>
                           {sesEsta.map(sz => (
                             <div key={sz.id}
                               className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq overflow-hidden"
@@ -1734,8 +1746,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             {['Natacion','Ciclismo','Carrera','Fuerza','Brick'].map(d => {
                               const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444',Brick:'#A855F7'}
                               const sel = zonaSelDisc === d
+                              // Cambiar de deporte vacía lo marcado: las zonas de fuerza no
+                              // valen para resistencia, así que arrastrar la selección de un
+                              // lado a otro solo puede crear chips imposibles.
                               return (
-                                <button key={d} onClick={() => { setZonaSelDisc(d); if (dep?.sistema_zonas === 2) setZonaSelZona(d === 'Fuerza' ? 'AFG' : 'AER') }}
+                                <button key={d} onClick={() => { setZonaSelDisc(d); setZonasSel([]) }}
                                   className={'py-2 rounded-lg text-xs font-medium transition border ' + (d === 'Brick' ? 'col-span-2' : '')}
                                   style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
                                   {d === 'Natacion' ? 'Natación' : d === 'Brick' ? '🔀 Brick' : d}
@@ -1761,46 +1776,85 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                                 {/* Solo con Zonas 2: la guía habla en siglas, y a un atleta
                                     de Z1–Z7 le enseñaría zonas que no está eligiendo. */}
                                 {z2 && (
-                                  <BotonGuiaZonas familia={esFuerza ? 'fuerza' : 'resistencia'} sigla={zonaSelZona || null}
+                                  <BotonGuiaZonas familia={esFuerza ? 'fuerza' : 'resistencia'} sigla={zonasSel[zonasSel.length - 1] || null}
                                     tests={tests} fcMax={dep?.fc_maxima}
                                     clase="text-[11px] text-gray-500 hover:text-orange-400 transition flex-shrink-0" texto="📚 ¿Qué es?" />
                                 )}
                               </div>
                               <div className={'grid gap-1.5 ' + (z2 ? 'grid-cols-3' : 'grid-cols-4')}>
                                 {zonaList.map(z => {
-                                  const sel = zonaSelZona === z
+                                  const n = cuantasDe(zonasSel, z)
                                   const col = COLOR_ZONA[z] || '#F97316'
                                   return (
-                                    <button key={z} onClick={() => setZonaSelZona(z)} title={z2 ? NOMBRE_ZONA(z) : ''}
-                                      className="py-2 rounded-lg text-xs font-bold transition border"
-                                      style={sel ? { backgroundColor: col + '40', borderColor: col, color: 'white' } : { backgroundColor: '#1f2937', borderColor: '#374151', color: '#9ca3af' }}>
+                                    <button key={z}
+                                      onClick={() => setZonasSel(s => anadirZona(s, z))}
+                                      /* Clic derecho quita una. Es el mismo gesto con el que ya
+                                         se borra un chip del canvas en esta página, así que no
+                                         es una tecla secreta nueva: es la de aquí. */
+                                      onContextMenu={e => { e.preventDefault(); setZonasSel(s => quitarZona(s, z)) }}
+                                      title={(z2 ? NOMBRE_ZONA(z) + ' · ' : '') + 'clic para añadir otra, clic derecho para quitar'}
+                                      className="relative py-2 rounded-lg text-xs font-bold transition border"
+                                      style={n > 0 ? { backgroundColor: col + '40', borderColor: col, color: 'white' } : { backgroundColor: '#1f2937', borderColor: '#374151', color: '#9ca3af' }}>
                                       {z}
+                                      {/* Cuántas van de esta zona. Con una no se pone: el color ya
+                                          dice que está marcada, y un «1» en cada una es ruido. */}
+                                      {n > 1 && (
+                                        <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-orange-500 text-white flex items-center justify-center" style={{ fontSize: 9 }}>
+                                          {n}
+                                        </span>
+                                      )}
                                     </button>
                                   )
                                 })}
                               </div>
+
+                              {/* El clic derecho no se ve. Sin decirlo, quien marque una de
+                                  más tiene que cerrar el modal y borrar el chip del canvas.
+                                  Y el resumen está porque con repeticiones la cuadrícula ya
+                                  no se puede sumar de un vistazo. */}
+                              {zonasSel.length > 0 ? (
+                                <div className="flex items-baseline justify-between gap-2 mt-2">
+                                  <p className="text-[11px] text-gray-400 truncate" title={resumenSeleccion(zonasSel)}>
+                                    Van: <span className="text-white">{resumenSeleccion(zonasSel)}</span>
+                                  </p>
+                                  <button onClick={() => setZonasSel([])} className="text-[11px] text-gray-600 hover:text-orange-400 transition flex-shrink-0">
+                                    limpiar
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-600 mt-2">Pulsa varias, o la misma dos veces para repetirla. Clic derecho quita una.</p>
+                              )}
                             </div>
                           )
                         })()}
                         <div className="flex gap-2 mt-1">
-                          <button onClick={() => {
-                            const esB = zonaSelDisc === 'Brick'
-                            if (esB && !brickValido(zonaSelBrick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
-                            setSesZonas(prev => [...prev, {
-                              id: Math.random().toString(36).slice(2),
-                              semana: popupZona.semana,
-                              disciplina: zonaSelDisc,
-                              // El chip enseña la zona más dura del brick, que es la que marca el día.
-                              zona: esB ? zonaPicoBrick(zonaSelBrick) : zonaSelZona,
-                              ...(esB ? { brick: zonaSelBrick } : {}),
-                            }])
-                            setZonaSelBrick(BRICK_VACIO)
-                            setPopupZona(null)
-                          }} className="flex-1 bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition">
-                            Añadir
+                          {/* El modal ya NO se cierra al añadir. Es lo que permite meter la
+                              semana entera de una sentada: marcas las de natación, añades,
+                              cambias a carrera, vuelves a añadir. La lista de abajo va
+                              creciendo para que se vea lo que llevas. */}
+                          <button
+                            disabled={zonaSelDisc !== 'Brick' && zonasSel.length === 0}
+                            onClick={() => {
+                              const esB = zonaSelDisc === 'Brick'
+                              if (esB) {
+                                if (!brickValido(zonaSelBrick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
+                                // El chip enseña la zona más dura del brick, que es la que marca el día.
+                                setSesZonas(prev => [...prev, chipDeBrick(popupZona.semana, zonaPicoBrick(zonaSelBrick), zonaSelBrick, nuevoIdChip)])
+                                setZonaSelBrick(BRICK_VACIO)
+                                return
+                              }
+                              setSesZonas(prev => [...prev, ...chipsNuevos(popupZona.semana, zonaSelDisc, zonasSel, nuevoIdChip)])
+                              /* Y se vacía lo marcado. Antes se quedaba, porque repetir la
+                                 tanda era la única forma de meter tres AER. Ahora eso se hace
+                                 pulsando AER tres veces, así que dejarlo marcado ya solo sirve
+                                 para que dos clics seguidos metan la tanda por duplicado. */
+                              setZonasSel([])
+                            }}
+                            className="flex-1 bg-orange-500 hover:bg-orange-600 py-2.5 rounded-xl text-sm font-bold text-white transition disabled:bg-gray-800 disabled:text-gray-500">
+                            {zonaSelDisc === 'Brick' ? 'Añadir' : textoBoton(zonasSel.length)}
                           </button>
                           <button onClick={() => setPopupZona(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-sm text-gray-400 transition">
-                            Cancelar
+                            Cerrar
                           </button>
                         </div>
                         {sesZonas.filter(sz => sz.semana === popupZona.semana).length > 0 && (
