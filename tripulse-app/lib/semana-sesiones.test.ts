@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   lunesDe, diasDeLaSemana, resumenDeSemana, etiquetaDeSemana, rangoLegible,
-  puedeCopiarse, tareaEsDeFuerza, esDisciplinaDeFuerza,
+  puedeCopiarse, tareaEsDeFuerza, esDisciplinaDeFuerza, vecinasDe, comoSeLlama,
   type SesionSemana, type MicroParaEtiqueta,
 } from './semana-sesiones'
 
@@ -201,5 +201,72 @@ describe('qué se puede copiar', () => {
     expect(esDisciplinaDeFuerza('Fuerza')).toBe(true)
     expect(esDisciplinaDeFuerza('Brick')).toBe(false)
     expect(esDisciplinaDeFuerza(null)).toBe(false)
+  })
+})
+
+describe('vecinasDe — las flechas del desplegable', () => {
+  const dias = diasDeLaSemana('2026-08-31', [
+    { id: 1, fecha_sesion: '2026-08-31', disciplina: 'Carrera', estado: 'Planificada', id_microciclo: 1 },
+    { id: 2, fecha_sesion: '2026-09-01', disciplina: 'Natacion', estado: 'Planificada', id_microciclo: 1 },
+    { id: 3, fecha_sesion: '2026-09-01', disciplina: 'Fuerza', estado: 'Planificada', id_microciclo: 1 },
+    { id: 4, fecha_sesion: '2026-09-03', disciplina: 'Carrera', estado: 'Planificada', id_microciclo: 1 },
+  ])
+
+  it('da la de antes y la de después', () => {
+    const v = vecinasDe(dias, 2)
+    expect(v.anterior?.id).toBe(1)
+    expect(v.siguiente?.id).toBe(3)
+  })
+
+  it('cruza de un día a otro', () => {
+    expect(vecinasDe(dias, 3).siguiente?.id).toBe(4)
+  })
+
+  it('en la primera no hay anterior', () => {
+    expect(vecinasDe(dias, 1).anterior).toBeNull()
+    expect(vecinasDe(dias, 1).siguiente?.id).toBe(2)
+  })
+
+  it('en la última no hay siguiente: la semana es el marco', () => {
+    expect(vecinasDe(dias, 4).siguiente).toBeNull()
+  })
+
+  it('con una sesión que no es de esta semana, ninguna', () => {
+    expect(vecinasDe(dias, 99)).toEqual({ anterior: null, siguiente: null })
+    expect(vecinasDe(dias, null)).toEqual({ anterior: null, siguiente: null })
+  })
+
+  /* El orden tiene que ser EL DE LA PANTALLA. diasDeLaSemana pone delante las
+     realizadas dentro de un día; si las flechas siguieran el id, «siguiente»
+     te llevaría a una tarjeta que está detrás. */
+  it('sigue el orden que se ve, no el de los ids', () => {
+    const d = diasDeLaSemana('2026-08-31', [
+      { id: 10, fecha_sesion: '2026-09-01', disciplina: 'Natacion', estado: 'Planificada', id_microciclo: 1 },
+      { id: 11, fecha_sesion: '2026-09-01', disciplina: 'Fuerza', estado: 'Realizada', id_microciclo: 1 },
+    ])
+    expect(d[1].sesiones.map(s => s.id)).toEqual([11, 10])
+    expect(vecinasDe(d, 11).siguiente?.id).toBe(10)
+  })
+
+  it('una semana vacía no revienta', () => {
+    expect(vecinasDe(diasDeLaSemana('2026-08-31', []), 1)).toEqual({ anterior: null, siguiente: null })
+  })
+})
+
+describe('comoSeLlama', () => {
+  const dias = diasDeLaSemana('2026-08-31', [
+    { id: 1, fecha_sesion: '2026-09-02', disciplina: 'Carrera', estado: 'Planificada', id_microciclo: 1 },
+  ])
+  it('dice el día y el deporte, para saber a dónde va la flecha', () => {
+    expect(comoSeLlama(dias, dias[2].sesiones[0])).toBe('X 2 · Carrera')
+  })
+  it('sin sesión, nada', () => {
+    expect(comoSeLlama(dias, null)).toBe('')
+  })
+  it('sin disciplina no deja el nombre a medias', () => {
+    const d = diasDeLaSemana('2026-08-31', [
+      { id: 9, fecha_sesion: '2026-09-02', disciplina: null, estado: null, id_microciclo: null },
+    ])
+    expect(comoSeLlama(d, d[2].sesiones[0])).toBe('X 2 · Sesión')
   })
 })

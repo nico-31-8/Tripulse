@@ -23,7 +23,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   lunesDe, diasDeLaSemana, resumenDeSemana, etiquetaDeSemana, puedeCopiarse,
-  esDisciplinaDeFuerza, esDelAtleta, type SesionSemana, type MicroParaEtiqueta,
+  esDisciplinaDeFuerza, esDelAtleta, vecinasDe, comoSeLlama,
+  type SesionSemana, type MicroParaEtiqueta,
 } from '@/lib/semana-sesiones'
 import { vistaDeTarea, zonasDeSesion } from '@/lib/tarea-vista'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
@@ -155,6 +156,16 @@ export default function PanelSemana({
   }
 
   const btn = 'text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border transition'
+  /* Las flechas de saltar de sesión. `disabled:` en vez de esconderlas en los
+     extremos: si desaparecieran, la cabecera cambiaría de ancho al llegar al
+     lunes y el título daría un salto. */
+  const flechaBtn = 'text-[15px] leading-none px-2 py-1 rounded-lg border border-gray-700 bg-white/[0.03]'
+    + ' text-gray-400 hover:text-orange-300 hover:border-orange-500/60 hover:bg-orange-500/10 transition'
+    + ' disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:border-gray-700'
+    + ' disabled:hover:bg-white/[0.03] disabled:cursor-default'
+
+  // Con qué sesiones se salta desde la que está abierta. Orden de pantalla.
+  const { anterior, siguiente } = vecinasDe(dias, abierta)
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-4">
@@ -251,7 +262,17 @@ export default function PanelSemana({
             return (
               <div className="mt-2.5 rounded-xl border border-gray-700 bg-gray-950/40 overflow-hidden">
                 <div className="flex items-center justify-between gap-3 flex-wrap px-3.5 py-2.5 border-b border-gray-800 bg-white/[0.02]">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    {/* Las flechas van pegadas al título, no en el grupo de acciones
+                        de la derecha: no hacen nada, mueven de sitio. Mezclarlas con
+                        «Copiar» —que sí escribe en el formulario— invita a pulsar la
+                        que no es. */}
+                    <button onClick={() => anterior && setAbierta(anterior.id)}
+                      disabled={!anterior}
+                      aria-label="Ver la sesión anterior de la semana"
+                      title={anterior ? 'Ir a ' + comoSeLlama(dias, anterior) : 'No hay ninguna antes en esta semana'}
+                      className={flechaBtn}>‹</button>
+
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: colorDisc(sesionAbierta.disciplina) }} />
                     <strong className="text-[13.5px] font-semibold">
                       {dia?.nombre} {dia?.num} · {sesionAbierta.disciplina}
@@ -259,6 +280,12 @@ export default function PanelSemana({
                     <span className="text-[11.5px] text-gray-500">
                       {sesionAbierta.duracion_minutos ? sesionAbierta.duracion_minutos + ' min · ' : ''}{sesionAbierta.estado}
                     </span>
+
+                    <button onClick={() => siguiente && setAbierta(siguiente.id)}
+                      disabled={!siguiente}
+                      aria-label="Ver la sesión siguiente de la semana"
+                      title={siguiente ? 'Ir a ' + comoSeLlama(dias, siguiente) : 'No hay ninguna después en esta semana'}
+                      className={flechaBtn}>›</button>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {copiables.length > 0 && (
@@ -267,9 +294,16 @@ export default function PanelSemana({
                         {copiada === 'todo' ? 'Copiadas ✓' : 'Copiar ' + (copiables.length === 1 ? 'la tarea' : 'las ' + copiables.length + ' tareas')}
                       </button>
                     )}
-                    <a href={'/sesion/' + sesionAbierta.id} target="_blank" rel="noreferrer"
-                      title="Abrir la sesión entera en otra pestaña"
-                      className={btn + ' border-transparent text-gray-500 hover:text-white hover:bg-white/5'}>Abrir ↗</a>
+                    {/* Abre AQUÍ, no en otra pestaña. Moverse por las sesiones de la
+                        semana era el motivo de todo esto, y con `target="_blank"` una
+                        tarde de montar la semana acababa en seis pestañas.
+
+                        Sigue siendo un <a> con href de verdad, así que ctrl+clic o
+                        rueda del ratón siguen abriendo pestaña para quien la quiera.
+                        Por eso la flecha pasa de ↗ (que promete pestaña nueva) a →. */}
+                    <a href={'/sesion/' + sesionAbierta.id}
+                      title="Ir a esta sesión"
+                      className={btn + ' border-transparent text-gray-400 hover:text-white hover:bg-white/5'}>Abrir →</a>
                     <button onClick={() => setAbierta(null)} aria-label="Cerrar"
                       className={btn + ' border-transparent text-gray-500 hover:text-white hover:bg-white/5'}>✕</button>
                   </div>

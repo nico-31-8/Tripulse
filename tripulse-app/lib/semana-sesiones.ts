@@ -171,3 +171,40 @@ export function puedeCopiarse(t: any, sesionEsDeFuerza: boolean): boolean {
 export function esDisciplinaDeFuerza(disciplina: string | null | undefined): boolean {
   return disciplina === 'Fuerza'
 }
+
+/**
+ * La sesión anterior y la siguiente dentro de la semana.
+ *
+ * Sirve para las flechas del desplegable: estás mirando la del martes y quieres
+ * la del miércoles sin cerrar, volver a la cuadrícula y buscarla con el ratón.
+ *
+ * EL ORDEN ES EL QUE SE VE, no el de los ids ni el de las fechas a pelo: se
+ * recorren los días de lunes a domingo y, dentro de cada uno, las sesiones tal
+ * como las dejó `diasDeLaSemana` —que pone delante las realizadas—. Si las
+ * flechas siguieran otro orden que el de la pantalla, pulsar «siguiente» te
+ * llevaría a una tarjeta que está detrás, y eso se siente como un fallo aunque
+ * el criterio sea defendible.
+ *
+ * La semana es el marco de este panel: en los extremos devuelve null y las
+ * flechas se apagan. Para cambiar de semana ya están sus propios botones.
+ */
+export function vecinasDe(
+  dias: DiaSemana[],
+  id: number | null | undefined,
+): { anterior: SesionSemana | null; siguiente: SesionSemana | null } {
+  const enOrden = dias.flatMap(d => d.sesiones)
+  const i = enOrden.findIndex(s => s.id === id)
+  if (i < 0) return { anterior: null, siguiente: null }
+  return {
+    anterior: enOrden[i - 1] ?? null,
+    siguiente: enOrden[i + 1] ?? null,
+  }
+}
+
+/** «Mié 2 · Carrera», para decir a dónde lleva una flecha antes de pulsarla. */
+export function comoSeLlama(dias: DiaSemana[], s: SesionSemana | null): string {
+  if (!s) return ''
+  const d = dias.find(x => x.sesiones.some(y => y.id === s.id))
+  const donde = d ? d.letra + ' ' + d.num : ''
+  return [donde, s.disciplina || 'Sesión'].filter(Boolean).join(' · ')
+}
