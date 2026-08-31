@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
+import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
@@ -268,8 +269,14 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                    apuntabas 8×100 a 1:38 y la pantalla ponía 2:19–2:23.
                    El mismo concepto resuelto en dos sitios, con la pantalla
                    enseñando el que no era. */
-                const ritmo = ritmoObjetivoTexto(t.p_distancia?.[0]?.ritmo_objetivo, disc)
-                  || ritmoObjetivo(t.zona_entrenamiento, disc, tests)
+                /* Se lee de las DOS tablas: un bloque por metros guarda en
+                   p_distancia y uno por tiempo en p_duracion. Hasta que se
+                   añadió la columna a la segunda, «30 min a 4:30/km» le llegaba
+                   al atleta como «30 min» y el ritmo no existía en ningún sitio. */
+                const intensidad = queEnsenar(
+                  ritmoObjetivoTexto(intensidadGuardada(t), disc),
+                  ritmoObjetivo(t.zona_entrenamiento, disc, tests),
+                )
                 // La disciplina de la tarea solo se pinta si difiere de la de la sesión:
                 // en una de natación repetirla en cada fila es ruido; en un brick es
                 // justo lo que hay que ver.
@@ -316,9 +323,21 @@ export default function BriefingSesion({ id, sesion, tareas, tests, durEstimada,
                       </span>
                       {t.comentario && <span className="text-[11.5px] text-gray-400 italic leading-snug">{t.comentario}</span>}
                     </div>
-                    {ritmo && (
-                      <span className="text-right font-mono tabular-nums text-[13.5px] font-semibold flex-shrink-0" style={{ color: zc }}>
-                        {ritmo}
+                    {intensidad.principal && (
+                      /* Lo que prescribió el entrenador arriba; debajo, en gris,
+                         lo que saldría de los tests del atleta. Solo aparece
+                         cuando dicen cosas distintas: si coinciden, repetirlo es
+                         ruido. Y con la casilla vacía sube el cálculo a la línea
+                         de arriba, porque entonces ESE es el objetivo. */
+                      <span className="text-right flex-shrink-0 flex flex-col items-end leading-tight">
+                        <span className="font-mono tabular-nums text-[13.5px] font-semibold" style={{ color: zc }}>
+                          {intensidad.principal}
+                        </span>
+                        {intensidad.gris && (
+                          <span className="font-mono tabular-nums text-[10.5px] text-gray-500" title="Lo que sale de tus tests">
+                            {intensidad.gris}
+                          </span>
+                        )}
                       </span>
                     )}
                     {video && (

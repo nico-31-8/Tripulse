@@ -210,42 +210,47 @@ describe('los segundos, en texto', () => {
 })
 
 /*
-  La casilla del «@» (intensidad propia) se escribía y se tiraba: al guardar se
-  ponía siempre lo que proponía la zona, y al reabrir la fila volvía vacía. Así
-  que escribir «4:00 /km» encima de la sugerencia no servía de nada.
+  La casilla del «@» (intensidad propia) devuelve lo guardado, tal cual.
+
+  ESTE BLOQUE FIJABA ANTES LO CONTRARIO, y merece la pena contar por qué cambió.
+  La columna guardaba dos cosas con la misma pinta: lo que escribía el
+  entrenador, o —con la casilla vacía— la sugerencia de la app guardándose sola.
+  Para distinguirlas se comparaba lo guardado con la sugerencia y, si coincidía,
+  se borraba la casilla.
+
+  El precio no se veía: prescribir a propósito el MISMO valor que proponía la
+  app era imposible. Se escribía, se guardaba, y al recargar había desaparecido.
+  Y eso es justo lo que hace un entrenador que quiere clavar un ritmo que hoy
+  coincide con el del test pero no quiere que se mueva cuando el atleta mejore.
+
+  Ya no hay nada que adivinar: solo se guarda lo escrito (`aGuardar`).
 */
 describe('intensidadDeTarea', () => {
-  const sugiere = (_z: string, _d: string) => '4:12–4:30 /km'
-
   it('devuelve lo que escribió el entrenador', () => {
     const t = { zona_entrenamiento: 'Z3', disciplina: 'Carrera', p_distancia: [{ ritmo_objetivo: '4:00 /km' }] }
-    expect(intensidadDeTarea(t, sugiere)).toBe('4:00 /km')
+    expect(intensidadDeTarea(t)).toBe('4:00 /km')
   })
 
-  it('NO devuelve la propuesta de la zona: esa ya sale de fantasma', () => {
-    const t = { zona_entrenamiento: 'Z3', disciplina: 'Carrera', p_distancia: [{ ritmo_objetivo: '4:12–4:30 /km' }] }
-    expect(intensidadDeTarea(t, sugiere)).toBe('')
-  })
-
-  it('sin resolver la zona devuelve lo guardado: mejor enseñarlo que perderlo', () => {
+  it('aunque coincida con lo que propondría la zona: escribirlo es una decisión', () => {
     const t = { zona_entrenamiento: 'Z3', disciplina: 'Carrera', p_distancia: [{ ritmo_objetivo: '4:12–4:30 /km' }] }
     expect(intensidadDeTarea(t)).toBe('4:12–4:30 /km')
   })
 
-  /* p_duracion NO tiene columna ritmo_objetivo (comprobado contra la base con
-     supabase/comprobar-ritmo-objetivo.sql). Este test decía que sí se leía de
-     ahí, y era una invención mía: lo que fija ahora es que solo cuenta
-     p_distancia, para que nadie vuelva a añadir la rama. */
-  it('solo la lee de p_distancia: p_duracion no tiene esa columna', () => {
+  /* p_duracion NO tenía esa columna, y por eso un bloque por tiempo perdía la
+     intensidad: «30 min a 4:30/km» le llegaba al deportista como «30 min». La
+     añade supabase/intensidad-en-bloques-por-tiempo.sql. Antes aquí había un
+     test fijando que NO se leyera de ahí; era correcto describir la base de
+     entonces, y ha dejado de serlo a propósito. */
+  it('también la lee de un bloque por tiempo', () => {
     const t = { zona_entrenamiento: 'Z3', disciplina: 'Carrera', p_duracion: [{ ritmo_objetivo: '180–220 W' }] }
-    expect(intensidadDeTarea(t, sugiere)).toBe('')
+    expect(intensidadDeTarea(t)).toBe('180–220 W')
   })
 
   it('sin nada guardado, vacío', () => {
-    expect(intensidadDeTarea({ p_distancia: [{ ritmo_objetivo: null }] }, sugiere)).toBe('')
-    expect(intensidadDeTarea({ p_distancia: [{}] }, sugiere)).toBe('')
-    expect(intensidadDeTarea({}, sugiere)).toBe('')
-    expect(intensidadDeTarea({ p_distancia: [{ ritmo_objetivo: '   ' }] }, sugiere)).toBe('')
+    expect(intensidadDeTarea({ p_distancia: [{ ritmo_objetivo: null }] })).toBe('')
+    expect(intensidadDeTarea({ p_distancia: [{}] })).toBe('')
+    expect(intensidadDeTarea({})).toBe('')
+    expect(intensidadDeTarea({ p_distancia: [{ ritmo_objetivo: '   ' }] })).toBe('')
   })
 
   it('al editar, la intensidad propia vuelve a la fila', () => {
@@ -253,7 +258,7 @@ describe('intensidadDeTarea', () => {
       id: 7, orden: 2, zona_entrenamiento: 'Z3', disciplina: 'Carrera',
       p_distancia: [{ metros_planeados: 5000, ritmo_objetivo: '4:00 /km' }],
     }
-    const f = filaResistenciaDesde(t, { base: BASE_R, orden: 2, copia: false, ritmoDeZona: sugiere })
+    const f = filaResistenciaDesde(t, { base: BASE_R, orden: 2, copia: false })
     expect(f.intensidadPersonalizada).toBe('4:00 /km')
     expect(f.idTarea).toBe(7)
   })
@@ -263,9 +268,18 @@ describe('intensidadDeTarea', () => {
       id: 7, orden: 2, zona_entrenamiento: 'Z3', disciplina: 'Carrera',
       p_distancia: [{ metros_planeados: 5000, ritmo_objetivo: '4:00 /km' }],
     }
-    const f = filaResistenciaDesde(t, { base: BASE_R, orden: 1, copia: true, ritmoDeZona: sugiere })
+    const f = filaResistenciaDesde(t, { base: BASE_R, orden: 1, copia: true })
     expect(f.intensidadPersonalizada).toBe('4:00 /km')
     expect(f.idTarea).toBeUndefined()
+  })
+
+  it('y una por tiempo también, que era la que se quedaba por el camino', () => {
+    const t = {
+      id: 8, orden: 1, zona_entrenamiento: 'Z2', disciplina: 'Carrera',
+      p_duracion: [{ tiempo_planeado: 1800, ritmo_objetivo: '4:30 /km' }],
+    }
+    const f = filaResistenciaDesde(t, { base: BASE_R, orden: 1, copia: false })
+    expect(f.intensidadPersonalizada).toBe('4:30 /km')
   })
 })
 

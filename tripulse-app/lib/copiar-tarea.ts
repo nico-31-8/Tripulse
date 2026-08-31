@@ -17,6 +17,7 @@
 // que la de origen no se toca — que es justo lo que se le promete al entrenador
 // en el panel.
 import { detectarMedicion } from './medicion'
+import { intensidadGuardada } from './intensidad-prescrita'
 import { mmssCorto } from './duracion-carga'
 import type { ControlTipo } from './control-esfuerzo'
 
@@ -76,34 +77,29 @@ export interface OpcionesFila {
   copia: boolean
   /** Para resolver los ids de los ejercicios de fuerza. */
   ejerciciosBiblioteca?: any[]
-  /**
-   * Lo que la ZONA propone para esa disciplina, si se sabe.
-   *
-   * Hace falta para distinguir lo que escribió el entrenador de lo que se
-   * guardó solo: la columna es la misma para los dos casos. Se pasa como
-   * función y no como valor porque depende de la zona y la disciplina de CADA
-   * tarea, y aquí se reconstruyen varias de golpe.
-   */
-  ritmoDeZona?: (zona: string, disciplina: string) => string | null | undefined
 }
 
 /**
- * Lo que debe volver a la casilla del «@».
+ * Lo que debe volver a la casilla del «@»: lo que haya guardado, tal cual.
  *
- * `ritmo_objetivo` guarda dos cosas distintas con la misma pinta: la intensidad
- * que escribió el entrenador, o —si no escribió nada— la que propone la zona.
- * La casilla solo quiere la primera: la segunda ya sale sola de fantasma. Si se
- * rellenara con las dos, la propuesta automática pasaría a parecer una decisión
- * y dejaría de actualizarse cuando cambien los tests del atleta.
+ * ANTES SE COMPARABA CON LO QUE PROPONE LA ZONA Y SE BORRABA SI COINCIDÍA.
+ * Tenía sentido mientras la columna guardaba dos cosas distintas con la misma
+ * pinta: lo que escribió el entrenador, o —con la casilla vacía— la propuesta
+ * de la app guardándose sola. Comparar era la única forma de adivinar cuál era
+ * cuál.
+ *
+ * Pero tenía un precio que no se veía: prescribir a propósito el MISMO valor
+ * que proponía la app era imposible. Se escribía, se guardaba, y al recargar
+ * había desaparecido. Y eso es justo lo que hace un entrenador cuando quiere
+ * fijar un ritmo que hoy coincide con el del test pero no quiere que se mueva
+ * cuando el atleta mejore.
+ *
+ * Ya no hace falta adivinar: desde el cambio de arriba solo se guarda lo
+ * escrito (ver `aGuardar` en lib/intensidad-prescrita.ts). Lo calculado se
+ * calcula al enseñarlo y sigue saliendo de fantasma en el placeholder.
  */
-export function intensidadDeTarea(t: any, ritmoDeZona?: OpcionesFila['ritmoDeZona']): string {
-  /* Solo p_distancia: `p_duracion` no tiene esa columna. */
-  const guardado = t?.p_distancia?.[0]?.ritmo_objetivo
-  if (guardado == null) return ''
-  const texto = String(guardado).trim()
-  if (!texto) return ''
-  const sugerido = (ritmoDeZona?.(t.zona_entrenamiento || '', t.disciplina || '') || '').trim()
-  return texto === sugerido ? '' : texto
+export function intensidadDeTarea(t: any): string {
+  return intensidadGuardada(t) || ''
 }
 
 /** Una tarea de resistencia, de vuelta a su fila. */
@@ -120,7 +116,7 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     tipoMedicion: med.tipo,
     valorMedicion: med.valor,
     comentario: t.comentario || '',
-    intensidadPersonalizada: intensidadDeTarea(t, o.ritmoDeZona),
+    intensidadPersonalizada: intensidadDeTarea(t),
     // «Técnica» no es una zona: la tarea guarda AER y `tecnica_id` aparte. Que
     // la casilla vuelva a decir «Técnica» se deduce de ahí, no de una columna
     // propia — si hubiera dos, se contradirían.

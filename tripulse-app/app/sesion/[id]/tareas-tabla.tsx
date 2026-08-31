@@ -14,6 +14,8 @@ import {
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
 import { referenciaDeZona, cargarReferencias, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
+import { aGuardar } from '@/lib/intensidad-prescrita'
+import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -97,6 +99,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 }) {
   const esFuerza = disciplinaSesion === 'Fuerza'
   const [filasR, setFilasR] = useState<FilaResistencia[]>([])
+  /* Qué fila tiene el foco en su casilla de intensidad, para enseñar ahí los
+     atajos de unidad y solo ahí. null = ninguna. */
+  const [atajosEn, setAtajosEn] = useState<number | null>(null)
   const [filasF, setFilasF] = useState<FilaFuerza[]>([])
   const [tests, setTests] = useState<any>({})
   const [fcMax, setFcMax] = useState(0)
@@ -207,7 +212,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       return
     }
     setFilasR(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev,
-      filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false, ritmoDeZona: (z, d) => getRef(z, d)?.ritmo })])
+      filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false })])
   }
 
   /* Lo que manda el panel de la semana. Cae en filas NUEVAS del formulario, no
@@ -228,7 +233,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         }))])
     } else {
       setFilasR(prev => [...prev, ...copiar.tareas.map((t, k) =>
-        filaResistenciaDesde(t, { base: nuevaFilaR(), orden: base + prev.length + k + 1, copia: true, ritmoDeZona: (z, d) => getRef(z, d)?.ritmo }))])
+        filaResistenciaDesde(t, { base: nuevaFilaR(), orden: base + prev.length + k + 1, copia: true }))])
     }
     onCopiado?.()
   }, [copiar?.token, ejerciciosBiblioteca.length])
@@ -283,6 +288,22 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const updateR = (i: number, key: string, val: any) => parcheR(i, { [key]: val } as any)
   const updateF = (i: number, key: string, val: any) => parcheF(i, { [key]: val } as any)
 
+  /* Pulsar un atajo de unidad en la fila `i`.
+     El cursor se coloca a mano DESPUÉS de que React repinte: si se pone antes,
+     el repintado escribe el value nuevo y el navegador manda el cursor al final,
+     que es justo donde no sirve —lo que quieres es teclear el número DELANTE
+     de « /km». */
+  const aplicarAtajoEn = (i: number, valorActual: string, at: AtajoIntensidad) => {
+    const r = aplicarAtajo(valorActual, at)
+    updateR(i, 'intensidadPersonalizada', r.texto)
+    requestAnimationFrame(() => {
+      const el = document.getElementById('intensidad-' + i) as HTMLInputElement | null
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(r.cursor, r.cursor)
+    })
+  }
+
   const guardarFilaR = async (i: number) => {
     const f = filasR[i]
     setLoading(true)
@@ -322,33 +343,52 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         const _ref = getRef(f.zona, f.disciplina)
         const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
         const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
-        /* Lo que el entrenador escribe en el «@» MANDA sobre lo que propone la
-           zona. Antes se guardaba siempre la propuesta y la casilla se tiraba:
-           escribir «4:00 /km» encima no servía de nada, el atleta seguía viendo
-           el rango de la zona.
+        /* SOLO SE GUARDA LO QUE EL ENTRENADOR ESCRIBE.
+           Antes era `f.intensidadPersonalizada.trim() || _ref?.ritmo || null`:
+           con la casilla vacía se guardaba la sugerencia de la app. Así la
+           columna acababa conteniendo o lo suyo o lo de la app sin forma de
+           distinguirlo, y al releerla había que adivinarlo comparándola otra
+           vez con el cálculo; si coincidían se borraba la casilla, con lo cual
+           prescribir a propósito el mismo valor que proponía la app era
+           imposible: desaparecía al recargar.
 
-           EL RITMO SE ESCRIBE EN UN SEGUNDO PASO, Y ESO NO ES UN DESCUIDO.
-           `ritmo_objetivo` está declarada `numeric` y lo que se guarda es TEXTO
-           con su unidad dentro («180–220 W», «4:12–4:30 /km»), así que la
-           escritura falla. Si fuera dentro del insert, se caería la fila entera
-           y la tarea se quedaría SIN DISTANCIA: se perdería el dato importante
-           por no poder guardar el accesorio. Separada, lo peor que pasa es que
-           no haya ritmo. Se arregla de verdad pasando la columna a texto:
-           supabase/ritmo-objetivo-a-texto.sql. */
-        const _intensidad = f.intensidadPersonalizada.trim() || _ref?.ritmo || null
+           De las cuatro filas que había en la base con ritmo, TRES eran ese
+           fantasma («< 65% VAM», «65–75% VAM», «95–105% VAM»): la propia app
+           guardándose a sí misma. Lo calculado se calcula al enseñarlo, que
+           para eso es calculado. */
+        const _intensidad = aGuardar(f.intensidadPersonalizada)
+
+        /* LA INTENSIDAD SE ESCRIBE EN UN SEGUNDO PASO, Y NO ES UN DESCUIDO.
+           Si fuera dentro del insert y la columna no estuviera, se caería la
+           fila entera y la tarea se quedaría SIN DISTANCIA NI TIEMPO: se
+           perdería el dato importante por no poder guardar el accesorio.
+           Separada, lo peor que pasa es que no haya intensidad.
+
+           Sigue haciendo falta aunque `p_distancia.ritmo_objetivo` ya sea text:
+           la de `p_duracion` la añade supabase/intensidad-en-bloques-por-tiempo.sql,
+           y hasta que se corra en cada base, esta escritura es la que puede fallar. */
+        const guardarIntensidad = async (tabla: 'p_distancia' | 'p_duracion', idFila: number) => {
+          if (!_intensidad) return
+          const { error } = await supabase.from(tabla).update({ ritmo_objetivo: _intensidad }).eq('id', idFila)
+          // No se avisa al entrenador: la tarea está guardada y esto no lo
+          // puede arreglar él. Pero tampoco se calla, que es como llegó aquí.
+          if (error) console.warn('[tripulse] ritmo_objetivo no se guardó en ' + tabla + ':', error.message)
+        }
+
         if (_tabla === 'p_distancia') {
           const { data: pd, error: errD } = await supabase.from('p_distancia')
             .insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single()
           if (errD) { alert('Error al guardar la distancia: ' + errD.message); setLoading(false); return }
-          if (pd && _intensidad) {
-            const { error: errR } = await supabase.from('p_distancia')
-              .update({ ritmo_objetivo: _intensidad }).eq('id', pd.id)
-            // No se avisa al entrenador: la tarea está guardada y esto no lo
-            // puede arreglar él. Pero tampoco se calla, que es como llegó aquí.
-            if (errR) console.warn('[tripulse] ritmo_objetivo no se guardó (¿columna numeric?):', errR.message)
-          }
+          if (pd) await guardarIntensidad('p_distancia', pd.id)
         }
-        else if (_tabla === 'p_duracion') await supabase.from('p_duracion').insert({ id_tarea: idTarea, tiempo_planeado: _valor })
+        else if (_tabla === 'p_duracion') {
+          /* Aquí estaba el agujero: se insertaba el tiempo y la intensidad se
+             tiraba. «30 min a 4:30/km» le llegaba al deportista como «30 min». */
+          const { data: pu, error: errU } = await supabase.from('p_duracion')
+            .insert({ id_tarea: idTarea, tiempo_planeado: _valor }).select().single()
+          if (errU) { alert('Error al guardar la duración: ' + errU.message); setLoading(false); return }
+          if (pu) await guardarIntensidad('p_duracion', pu.id)
+        }
         else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
       }
       await cargarDatos()
@@ -749,11 +789,36 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             si el atleta tiene hecho el test que toca (VAM, FTP o CSS):
                             sin test no se propone nada, que es lo acordado. Escribir
                             encima manda. */}
-                        <input type="text" value={f.intensidadPersonalizada} onChange={e => updateR(i, 'intensidadPersonalizada', e.target.value)}
+                        <input type="text" id={'intensidad-' + i}
+                          value={f.intensidadPersonalizada} onChange={e => updateR(i, 'intensidadPersonalizada', e.target.value)}
+                          onFocus={() => setAtajosEn(i)}
+                          onBlur={() => setAtajosEn(a => a === i ? null : a)}
                           className={campoBloque + ' flex-1 min-w-[130px]'}
                           placeholder={ref?.ritmo || 'Intensidad'}
                           title={ref?.ritmo ? 'Intensidad propia — en gris, lo que sale de sus tests' : 'Intensidad propia'} />
                       </div>
+
+                      {/* Los atajos de unidad, solo en la fila que se está escribiendo.
+                          Siempre visibles serían seis filas de botones en una sesión de
+                          seis bloques: justo el ruido que esta tabla no puede permitirse.
+                          Y aparecen en el momento en que hacen falta, que es al pinchar
+                          la casilla y encontrártela en blanco. */}
+                      {atajosEn === i && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-1">
+                          {atajosDe(f.disciplina).map(at => (
+                            <button key={at.etiqueta} type="button" title={at.ayuda}
+                              /* SIN ESTO EL BOTÓN NO FUNCIONA. Al pulsarlo, el campo
+                                 pierde el foco, `atajosEn` se pone a null y los botones
+                                 desaparecen ANTES de que el clic llegue a soltarse.
+                                 preventDefault en mousedown impide que el foco se mueva. */
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => aplicarAtajoEn(i, f.intensidadPersonalizada, at)}
+                              className="text-[11px] font-medium px-2 py-1 rounded-full border border-gray-700 bg-white/[0.03] text-gray-400 hover:text-orange-300 hover:border-orange-500/50 hover:bg-orange-500/10 transition">
+                              {at.etiqueta}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {/* El ejercicio de técnica va en una segunda línea y solo aparece
                           cuando toca, así que no le quita ancho a nada el resto del
                           tiempo. Mismo sitio que el «encadenar» de fuerza. */}

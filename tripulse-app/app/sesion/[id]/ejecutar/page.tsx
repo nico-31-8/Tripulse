@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
 import { mmss } from '@/lib/duracion-carga'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
+import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
 import { zonaResistencia, prescripcion, cargaZona, zonaClasica } from '@/lib/zonas'
@@ -539,14 +540,17 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             </div>
             {/* Ritmo / Potencia objetivo */}
             {(() => {
-              /* Solo p_distancia: `p_duracion` NO tiene columna `ritmo_objetivo`,
-                 comprobado contra la base. Leerla de ahí era código muerto que
-                 hacía creer que una tarea por tiempo podía traer ritmo guardado.
-                 Para esas, el ritmo sale del cálculo de la zona, abajo. */
-              const ritmoGuardado = tarea?.p_distancia?.[0]?.ritmo_objetivo
-              const ritmoCalculado = calcularRango(tarea?.zona_entrenamiento || '', tarea?.disciplina || sesion?.disciplina || '', tests)
-              const ritmoMostrar = ritmoGuardado || ritmoCalculado
-              if (!ritmoMostrar) return null
+              /* Se lee de las DOS tablas. El comentario que había aquí decía que
+                 `p_duracion` no tenía columna y que leerla era código muerto:
+                 era verdad y ya no lo es. Se le añadió a propósito
+                 (supabase/intensidad-en-bloques-por-tiempo.sql) porque un
+                 bloque por tiempo perdía la intensidad, y en carrera prescribir
+                 por tiempo es lo normal. */
+              const intensidad = queEnsenar(
+                intensidadGuardada(tarea),
+                calcularRango(tarea?.zona_entrenamiento || '', tarea?.disciplina || sesion?.disciplina || '', tests),
+              )
+              if (!intensidad.principal) return null
               return (
                 <div className="mt-3 bg-black/30 rounded-lg px-4 py-2 flex justify-between items-center">
                   <p className="text-xs text-gray-400">
@@ -554,7 +558,15 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                      (tarea?.disciplina || sesion?.disciplina) === 'Ciclismo' ? 'Potencia objetivo' :
                      (tarea?.disciplina || sesion?.disciplina) === 'Natacion' ? 'Ritmo obj /100m' : 'Referencia'}
                   </p>
-                  <p className="font-bold text-orange-300 text-lg">{ritmoMostrar}</p>
+                  <div className="text-right leading-tight">
+                    <p className="font-bold text-orange-300 text-lg">{intensidad.principal}</p>
+                    {/* Lo que saldría de sus tests, cuando el entrenador ha
+                        prescrito otra cosa. Sirve para traducir un «95–105% VAM»
+                        a un ritmo sin tener que salir de aquí. */}
+                    {intensidad.gris && (
+                      <p className="text-[11px] text-gray-500" title="Lo que sale de tus tests">{intensidad.gris}</p>
+                    )}
+                  </div>
                 </div>
               )
             })()}
@@ -618,11 +630,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                       <div>
                         <label className="text-gray-400 text-xs mb-1 flex justify-between">
                           <span>Ritmo / Potencia</span>
-                          {tarea?.p_distancia?.[0]?.ritmo_objetivo && (
-                            <span className="text-orange-400 font-medium">Objetivo: {tarea.p_distancia[0].ritmo_objetivo}</span>
+                          {intensidadGuardada(tarea) && (
+                            <span className="text-orange-400 font-medium">Objetivo: {intensidadGuardada(tarea)}</span>
                           )}
                         </label>
-                        <input type="text" placeholder={tarea?.p_distancia?.[0]?.ritmo_objetivo || "Ritmo real"}
+                        <input type="text" placeholder={intensidadGuardada(tarea) || "Ritmo real"}
                           value={serieData.ritmo || ''}
                           onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, ritmo: e.target.value })}
                           className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-orange-500" />
@@ -759,7 +771,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             const pu = t.p_duracion?.[0]
             const pr = t.p_repeticiones?.[0]
             const s0 = r['serie_0'] || {}
-            const ritmoObj = ritmoObjetivoTexto(pd?.ritmo_objetivo, t.disciplina || sesion?.disciplina)
+            /* De las dos tablas: un bloque por tiempo también trae intensidad. */
+            const ritmoObj = ritmoObjetivoTexto(intensidadGuardada(t), t.disciplina || sesion?.disciplina)
             const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
             const totalSeries = t.series || 1
 

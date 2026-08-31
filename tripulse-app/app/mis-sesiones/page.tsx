@@ -3,6 +3,9 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { aISO } from '@/lib/fechas'
+import { porDia, diasHasta, cuentaAtras, type CompeticionCal } from '@/lib/competiciones-calendario'
+import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
+import { intensidadesPorSesion } from '@/lib/intensidad-prescrita'
 import { vivas } from '@/lib/papelera'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
@@ -18,9 +21,44 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
    nombre corto porque se usa mucho en esta pantalla, pero apunta a la de siempre. */
 const ymd = aISO
 
+/* La competición, con la misma cara que en el calendario del entrenador.
+   El símbolo, el color y la etiqueta salen de lib/competicion-prioridad, que ya
+   los define: si el entrenador ve 🏆 Principal, el atleta tiene que ver 🏆
+   Principal y no un invento paralelo que diga otra cosa de la misma carrera. */
+function ChipCompeticion({ c, hoy, compacto = false }: { c: CompeticionCal; hoy: string; compacto?: boolean }) {
+  const def = defDe(prioridadDe(c))
+  const dias = diasHasta(c.fecha, hoy)
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 border"
+      style={{ borderColor: def.hex + '80', background: def.hex + '18' }}>
+      <span className="text-lg leading-none flex-shrink-0">{def.simbolo}</span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-sm truncate" style={{ color: def.hex }}>{c.nombre || 'Competición'}</p>
+        <p className="text-gray-400 text-[11px] truncate">
+          {def.etiqueta}
+          {c.tipo ? ' · ' + c.tipo : ''}
+          {/* La cuenta atrás es lo que «13 de septiembre» no dice: si la carrera
+              es este fin de semana o dentro de tres meses. */}
+          {dias !== null ? ' · ' + cuentaAtras(dias) : ''}
+        </p>
+        {!compacto && c.notas && <p className="text-gray-500 text-[11px] italic mt-0.5">{c.notas}</p>}
+      </div>
+    </div>
+  )
+}
+
 export default function MisSesiones() {
   const router = useRouter()
   const [sesiones, setSesiones] = useState<any[]>([])
+  /* Las competiciones del atleta. Estaban en la base y se usaban para el
+     tapering y el plan, pero aquí —donde él mira qué le toca— no salían: la
+     carrera para la que lleva meses entrenando no estaba en su calendario. */
+  const [competiciones, setCompeticiones] = useState<CompeticionCal[]>([])
+  /* Lo que le han prescrito en cada bloque, para verlo sin abrir la sesión.
+     Aquí solo lo que ESCRIBIÓ el entrenador: el cálculo a partir de sus tests
+     se enseña en la ficha y en ejecutar, que es donde se entrena. En una lista,
+     dos números por bloque serían un muro. */
+  const [intensidades, setIntensidades] = useState<Record<number, string[]>>({})
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<'lista'|'calendario'|'semana'>('lista')
   const [mesActual, setMesActual] = useState(new Date())
@@ -57,13 +95,28 @@ export default function MisSesiones() {
     /* Las del plan y las libres, en UNA consulta. Antes eran dos ramas y una
        cadena de tres saltos, con las libres colgando de un `if` que solo se
        llegaba a evaluar por casualidad después. */
-    const [ses, refs] = await Promise.all([
+    const [ses, refs, comps] = await Promise.all([
       vivas(supabase.from('sesion').select('*').eq('id_deportista', d.id)),
       cargarReferencias(supabase, d.id),
+      /* Todas, no solo las futuras: al mirar atrás en el calendario la carrera
+         del mes pasado también tiene que estar. La política `competicion_dep`
+         ya deja que el atleta lea las suyas.
+
+         `select('*')` y no la lista de columnas, igual que el calendario del
+         entrenador. `prioridad` la añade supabase/competicion-prioridad.sql y
+         puede no estar corrido: nombrándola, PostgREST tumba la consulta ENTERA
+         y el atleta se queda sin ninguna competición sin que nada avise. Con
+         `*` viene lo que haya, y prioridadDe() ya devuelve 'B' cuando falta. */
+      supabase.from('competicion').select('*').eq('id_deportista', d.id).order('fecha'),
     ])
+    setCompeticiones(comps.data || [])
     const todas = ses.data || []
     const testsDep: TestsDeportista = refs.tests
-    const durs = await estimarDuraciones(supabase, todas.map((s: any) => s.id), testsDep)
+    const [durs, ints] = await Promise.all([
+      estimarDuraciones(supabase, todas.map((s: any) => s.id), testsDep),
+      intensidadesPorSesion(supabase, todas.map((s: any) => s.id)),
+    ])
+    setIntensidades(ints)
     setSesiones(todas.map((s: any) => ({ ...s, dur_estimada: durs[s.id] })).sort((a: any, b: any) => (a.fecha_sesion < b.fecha_sesion ? -1 : 1)))
     setLoading(false)
   }
@@ -170,6 +223,10 @@ export default function MisSesiones() {
   }
 
   const hoyStr = ymd(new Date())
+  /* Índice por día, construido UNA vez. El mes son 42 casillas: filtrar el
+     array de competiciones dentro de cada una lo recorre 42 veces por render. */
+  const compsPorDia = porDia(competiciones)
+  const compsDe = (f: string) => compsPorDia[f] || []
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -201,8 +258,13 @@ export default function MisSesiones() {
             <div className="grid gap-3">
               {getDias14().map(({ fecha, fechaStr, sesiones: sesionesDia }) => {
                 const esHoy = fechaStr === hoyStr
+                const compsDia = compsDe(fechaStr)
+                /* Un día de carrera no está vacío aunque no tenga sesión: sin
+                   esto salía en gris al 40% y con la palabra «Descanso» debajo,
+                   que es justo lo contrario de lo que pasa ese día. */
+                const vacio = sesionesDia.length === 0 && compsDia.length === 0
                 return (
-                  <div key={fechaStr} className={'rounded-xl border ' + (esHoy ? 'border-orange-500 bg-gray-900' : sesionesDia.length > 0 ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-900 opacity-40')}>
+                  <div key={fechaStr} className={'rounded-xl border ' + (esHoy ? 'border-orange-500 bg-gray-900' : vacio ? 'border-gray-800 bg-gray-900 opacity-40' : 'border-gray-700 bg-gray-900')}>
                     <div className="flex items-center justify-between p-4">
                       <div className="flex items-center gap-3">
                         <div className={'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ' + (esHoy ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400')}>
@@ -213,7 +275,7 @@ export default function MisSesiones() {
                             {DIAS_SEMANA[fecha.getDay()]} {fecha.getDate()} {MESES[fecha.getMonth()]}
                             {esHoy && <span className="ml-2 text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full">Hoy</span>}
                           </p>
-                          {sesionesDia.length === 0 && <p className="text-gray-500 text-xs">Descanso</p>}
+                          {vacio && <p className="text-gray-500 text-xs">Descanso</p>}
                         </div>
                       </div>
                       {sesionesDia.length > 0 && (
@@ -224,6 +286,13 @@ export default function MisSesiones() {
                         </div>
                       )}
                     </div>
+                    {/* La competición va antes que las sesiones: ese día lo que
+                        manda es la carrera, y lo demás es el calentamiento. */}
+                    {compsDia.length > 0 && (
+                      <div className="border-t border-gray-800 px-4 pt-3 pb-1 flex flex-col gap-2">
+                        {compsDia.map((c, i) => <ChipCompeticion key={c.id ?? i} c={c} hoy={hoyStr} compacto />)}
+                      </div>
+                    )}
                     {sesionesDia.length > 0 && (
                       <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-2">
                         {sesionesDia.map(s => (
@@ -243,6 +312,14 @@ export default function MisSesiones() {
                                   ? 'RPE: ' + (s.rpe_reportado || s.rpe_estimado || '—')
                                   : 'RPE est: ' + (s.rpe_estimado || '—')}
                               </p>
+                              {/* La prescripción, sin tener que abrir la sesión.
+                                  Es lo que el entrenador escribió en el «@» de
+                                  cada bloque: «4:30 /km», «95–105% VAM». */}
+                              {intensidades[s.id]?.length > 0 && (
+                                <p className="text-orange-300/90 text-xs font-mono tabular-nums mt-1">
+                                  @ {intensidades[s.id].join(' · ')}
+                                </p>
+                              )}
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
@@ -303,19 +380,31 @@ export default function MisSesiones() {
             <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
               {getDiasSemana().map(({ fecha, fechaStr, sesiones: sesionesDia }) => {
                 const esHoy = fechaStr === hoyStr
+                const compsDia = compsDe(fechaStr)
                 const tieneSesion = sesionesDia.length > 0
+                const hayAlgo = tieneSesion || compsDia.length > 0
+                const defComp = compsDia.length ? defDe(prioridadDe(compsDia[0])) : null
                 return (
                   <div key={fechaStr}
-                    className={'flex-shrink-0 w-[calc(100%/7-8px)] min-w-[80px] rounded-xl border p-2 text-center cursor-pointer transition ' +
-                      (esHoy ? 'border-orange-500 bg-orange-950' : tieneSesion ? 'border-gray-700 bg-gray-900 hover:border-orange-500' : 'border-gray-800 bg-gray-900 opacity-50')}
-                    onClick={() => tieneSesion && setDiaModal({ fechaStr, sesiones: sesionesDia })}
+                    className={'flex-shrink-0 w-[calc(100%/7-8px)] min-w-[80px] rounded-xl border p-2 text-center transition ' +
+                      (hayAlgo ? 'cursor-pointer ' : '') +
+                      (esHoy ? 'border-orange-500 bg-orange-950' : hayAlgo ? 'border-gray-700 bg-gray-900 hover:border-orange-500' : 'border-gray-800 bg-gray-900 opacity-50')}
+                    /* Con competición también se abre: si no, el día de la carrera
+                       era el único del calendario que no se podía tocar. */
+                    style={defComp && !esHoy ? { borderColor: defComp.hex } : undefined}
+                    onClick={() => hayAlgo && setDiaModal({ fechaStr, sesiones: sesionesDia })}
                   >
                     <p className={'text-xs mb-1 ' + (esHoy ? 'text-orange-400 font-bold' : 'text-gray-500')}>
                       {DIAS_SEMANA[fecha.getDay()]}
                     </p>
-                    <p className={'text-lg font-bold mb-2 ' + (esHoy ? 'text-orange-400' : 'text-white')}>
+                    <p className={'text-lg font-bold mb-1 ' + (esHoy ? 'text-orange-400' : 'text-white')}>
                       {fecha.getDate()}
                     </p>
+                    {compsDia.length > 0 && (
+                      <p className="text-base leading-none mb-1" title={compsDia.map(c => c.nombre).join(' · ')}>
+                        {defComp!.simbolo}
+                      </p>
+                    )}
                     {tieneSesion ? (
                       <div className="flex flex-col gap-1">
                         {sesionesDia.map(s => (
@@ -323,9 +412,9 @@ export default function MisSesiones() {
                         ))}
                         <p className="text-xs text-gray-400 mt-1">{sesionesDia.length} sesión{sesionesDia.length > 1 ? 'es' : ''}</p>
                       </div>
-                    ) : (
+                    ) : compsDia.length === 0 ? (
                       <p className="text-xs text-gray-600">—</p>
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -333,8 +422,12 @@ export default function MisSesiones() {
 
             {/* Detalle de sesiones de la semana */}
             <div className="flex flex-col gap-3">
-              {getDiasSemana().filter(d => d.sesiones.length > 0).map(({ fecha, fechaStr, sesiones: sesionesDia }) => {
+              {/* Antes esto filtraba por `d.sesiones.length > 0`, así que el día de
+                  la competición se caía de la lista si no tenía sesión: la semana de
+                  la carrera se veía vacía. */}
+              {getDiasSemana().filter(d => d.sesiones.length > 0 || compsDe(d.fechaStr).length > 0).map(({ fecha, fechaStr, sesiones: sesionesDia }) => {
                 const esHoy = fechaStr === hoyStr
+                const compsDia = compsDe(fechaStr)
                 return (
                   <div key={fechaStr} className={'rounded-xl border bg-gray-900 ' + (esHoy ? 'border-orange-500' : 'border-gray-800')}>
                     <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
@@ -343,6 +436,11 @@ export default function MisSesiones() {
                       </span>
                       {esHoy && <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full">Hoy</span>}
                     </div>
+                    {compsDia.length > 0 && (
+                      <div className="px-4 pt-3 flex flex-col gap-2">
+                        {compsDia.map((c, i) => <ChipCompeticion key={c.id ?? i} c={c} hoy={hoyStr} compacto />)}
+                      </div>
+                    )}
                     <div className="px-4 py-3 flex flex-col gap-2">
                       {sesionesDia.map(s => (
                         <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
@@ -351,6 +449,9 @@ export default function MisSesiones() {
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
                               <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
+                              {intensidades[s.id]?.length > 0 && (
+                                <p className="text-orange-300/90 text-xs font-mono tabular-nums">@ {intensidades[s.id].join(' · ')}</p>
+                              )}
                               {s.notas_entrenador && <p className="text-gray-400 text-xs italic">"{s.notas_entrenador}"</p>}
                             </div>
                           </div>
@@ -364,7 +465,7 @@ export default function MisSesiones() {
                   </div>
                 )
               })}
-              {getDiasSemana().every(d => d.sesiones.length === 0) && (
+              {getDiasSemana().every(d => d.sesiones.length === 0 && compsDe(d.fechaStr).length === 0) && (
                 <div className="text-center py-12 text-gray-500">
                   <p className="text-3xl mb-3">😴</p>
                   <p>Semana de descanso</p>
@@ -389,15 +490,26 @@ export default function MisSesiones() {
               {getDiasCalendario().map((dia, i) => {
                 if (!dia) return <div key={i} />
                 const esHoy = dia.fechaStr === hoyStr
+                const compsDia = compsDe(dia.fechaStr)
                 const tieneSesion = dia.sesiones.length > 0
+                const hayAlgo = tieneSesion || compsDia.length > 0
+                const defComp = compsDia.length ? defDe(prioridadDe(compsDia[0])) : null
                 return (
                   <div key={dia.fechaStr}
-                    onClick={() => tieneSesion && setDiaModal({ fechaStr: dia.fechaStr, sesiones: dia.sesiones })}
-                    className={'rounded-xl p-1.5 min-h-14 transition ' +
-                      (esHoy ? 'bg-orange-500/20 border border-orange-500' :
-                       tieneSesion ? 'bg-gray-800 hover:bg-gray-700 cursor-pointer border border-transparent hover:border-orange-500' :
-                       'bg-gray-900 border border-transparent')}>
+                    onClick={() => hayAlgo && setDiaModal({ fechaStr: dia.fechaStr, sesiones: dia.sesiones })}
+                    title={compsDia.map(c => c.nombre).join(' · ') || undefined}
+                    /* El borde de color marca el día de carrera en la cuadrícula
+                       del mes, que es donde se busca «¿cuándo era?». */
+                    style={defComp && !esHoy ? { borderColor: defComp.hex, background: defComp.hex + '18' } : undefined}
+                    className={'rounded-xl p-1.5 min-h-14 transition border ' +
+                      (esHoy ? 'bg-orange-500/20 border-orange-500' :
+                       defComp ? 'cursor-pointer hover:brightness-125' :
+                       tieneSesion ? 'bg-gray-800 hover:bg-gray-700 cursor-pointer border-transparent hover:border-orange-500' :
+                       'bg-gray-900 border-transparent')}>
                     <p className={'text-xs font-medium mb-1 ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{dia.fecha.getDate()}</p>
+                    {compsDia.length > 0 && (
+                      <p className="text-center text-sm leading-none mb-0.5">{defComp!.simbolo}</p>
+                    )}
                     <div className="flex flex-col gap-0.5">
                       {dia.sesiones.map((s: any) => (
                         <div key={s.id} className={'w-full h-1.5 rounded-full ' + colorDisciplina(s.disciplina)} />
@@ -439,13 +551,21 @@ export default function MisSesiones() {
                     return `${DIAS_SEMANA_COMPLETO[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]}`
                   })()}
                 </p>
-                <p className="text-gray-400 text-xs">{diaModal.sesiones.length} sesión{diaModal.sesiones.length > 1 ? 'es' : ''} planificada{diaModal.sesiones.length > 1 ? 's' : ''}</p>
+                <p className="text-gray-400 text-xs">
+                  {diaModal.sesiones.length === 0
+                    ? 'Sin sesiones planificadas'
+                    : diaModal.sesiones.length + ' sesión' + (diaModal.sesiones.length > 1 ? 'es planificadas' : ' planificada')}
+                </p>
               </div>
               <button onClick={() => setDiaModal(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
 
             {/* Sesiones */}
             <div className="px-5 py-4 flex flex-col gap-3 max-h-96 overflow-y-auto">
+              {/* Aquí sí van las notas de la carrera: es el único sitio con espacio
+                  para leerlas, y suelen ser la hora de salida o dónde se recoge el
+                  dorsal. Por eso este ChipCompeticion no va en modo compacto. */}
+              {compsDe(diaModal.fechaStr).map((c, i) => <ChipCompeticion key={c.id ?? i} c={c} hoy={hoyStr} />)}
               {diaModal.sesiones.map(s => (
                 <div key={s.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
                   <div className="flex justify-between items-start mb-3">
