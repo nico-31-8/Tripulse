@@ -6,6 +6,7 @@
 //
 // Requiere supabase/plantilla-sesion.sql.
 import { cargaZona } from './zonas'
+import { usuarioActual } from './sesion'
 import type { BloqueP } from './plantillas'
 
 export interface PlantillaPropia {
@@ -72,8 +73,20 @@ export async function guardarPropia(
   supabase: any,
   p: { nombre: string; disciplina: string; objetivo?: string | null; bloques: BloqueP[] },
 ): Promise<string | null> {
-  const { data: sesion } = await supabase.auth.getUser()
-  const uid = sesion?.user?.id
+  /* Por `usuarioActual()` y no por `supabase.auth.getUser()` directo.
+     supabase-js serializa esa llamada con un candado del navegador que además
+     es COMPARTIDO ENTRE PESTAÑAS, y cuando alguien tarda, el siguiente se lo
+     roba: al que lo tenía le revienta la promesa con un AbortError («Lock
+     broken by another request with the 'steal' option»). lib/sesion.ts existe
+     justo para que toda la app pregunte una sola vez, y esta llamada se había
+     quedado fuera. Es la única que quedaba.
+
+     Sí, el `supabase` que llega por parámetro se sigue usando para la consulta
+     y este no. No es un descuido: el parámetro es el cliente de DATOS, y quién
+     ha entrado no se pregunta por ahí sino por la caché compartida, que es
+     precisamente lo que evita el candado. */
+  const user = await usuarioActual()
+  const uid = user?.id
   if (!uid) return 'No se ha podido identificar al entrenador. Vuelve a iniciar sesión.'
   if (!p.bloques.length) return 'La sesión no tiene bloques con zona y volumen que guardar.'
 

@@ -22,6 +22,30 @@ describe('dónde estoy corriendo', () => {
   it('da igual cómo esté escrito', () => {
     expect(esDesarrollo('LOCALHOST')).toBe(true)
   })
+
+  /* Probar en el móvil se hace por la IP del portátil, no por localhost. Sin
+     esto, cada rato mirando la app en el teléfono devolvía al registro el mismo
+     ruido de Fast Refresh que se filtró en agosto. */
+  it('la IP de la red local también es desarrollo', () => {
+    expect(esDesarrollo('192.168.1.40')).toBe(true)
+    expect(esDesarrollo('10.0.0.5')).toBe(true)
+    expect(esDesarrollo('172.16.3.9')).toBe(true)
+    expect(esDesarrollo('172.31.255.255')).toBe(true)
+    expect(esDesarrollo('169.254.1.1')).toBe(true)
+  })
+
+  it('pero una IP pública NO lo es, aunque se le parezca', () => {
+    // 172.15 y 172.32 quedan fuera del rango privado, que es 172.16–172.31.
+    expect(esDesarrollo('172.15.0.1')).toBe(false)
+    expect(esDesarrollo('172.32.0.1')).toBe(false)
+    // Y 11.x no es 10.x.
+    expect(esDesarrollo('11.0.0.5')).toBe(false)
+    expect(esDesarrollo('8.8.8.8')).toBe(false)
+  })
+
+  it('no se cuela un dominio que empiece por una IP privada', () => {
+    expect(esDesarrollo('192.168.1.40.atacante.com')).toBe(false)
+  })
 })
 
 describe('el ruido que no es de nadie', () => {
