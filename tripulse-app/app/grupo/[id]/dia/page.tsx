@@ -83,7 +83,16 @@ export default function HojaDelDia({ params }: { params: Promise<{ id: string }>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center gap-4 border-b border-gray-800">
+        {/* La puerta al reloj común. Solo con alguien a quien cronometrar:
+            dirigir un día sin sesiones no es dirigir nada. */}
+        {(bloques?.length || 0) > 0 && (
+          <button onClick={() => router.push('/grupo/' + id + '/dirigir')}
+            title="Cronometrar al grupo a pie de pista"
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-orange-500/45 bg-orange-500/12 text-orange-300 hover:bg-orange-500/20 transition">
+            ⏱ Dirigir
+          </button>
+        )}
         <button onClick={() => router.push('/grupo/' + id)} className="text-gray-400 hover:text-white text-sm transition">← {grupo.nombre}</button>
       </nav>
 

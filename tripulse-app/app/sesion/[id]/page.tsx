@@ -10,6 +10,7 @@ import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
 import PanelSemana from '@/components/PanelSemana'
+import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
 import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
 import { cargaZona } from '@/lib/zonas'
@@ -178,6 +179,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }
   const [duracionManualInput, setDuracionManualInput] = useState('')
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
+  // Su wellness, para «cómo amaneció después de esta sesión».
+  const [wellness, setWellness] = useState<any[]>([])
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
   const [mostrarNutricion, setMostrarNutricion] = useState(false)
@@ -313,7 +316,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setDeportistaId(depId)
 
     // ---- Ronda 2: todo lo demás, a la vez ----
-    const [pf, mesos, micros, mismoDia, refs, an] = await Promise.all([
+    const [pf, mesos, micros, mismoDia, refs, an, well] = await Promise.all([
       user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depId),
       supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depId),
@@ -331,6 +334,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
          pasó — el mismo Z4 daba dos ritmos según por dónde entrases. */
       cargarReferencias(supabase, depId),
       supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
+      /* Su wellness, para poder decir cómo amaneció DESPUÉS de esta sesión.
+         Se piden 60 registros y no solo el día siguiente porque hacen falta dos
+         cosas distintas: el registro de después, y su historial para saber qué
+         es normal en él. Un «fatiga 4» suelto no dice nada; dice mucho si su
+         media es 2,5. */
+      supabase.from('wellness').select('*').eq('id_deportista', depId)
+        .order('fecha', { ascending: false }).limit(60),
     ])
 
     setEsDeportista((pf as any).data?.rol === 'deportista')
@@ -346,6 +356,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setDiasHastaComp(diasHastaCompeticion(
       ses.fecha_sesion, microsDelPlan(ses.id_microciclo, listaMesos, listaMicros)))
     setOtraSesionHoy(hayOtraSesionEseDia(mismoDia.data || [], Number(id)))
+    setWellness(well.data || [])
   }
 
   const borrarTarea = async (tareaId: number) => {
@@ -664,7 +675,16 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-end items-center border-b border-gray-800">
+      <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-end items-center gap-4 border-b border-gray-800">
+        {/* La puerta al modo de pie de pista. Solo tiene sentido con bloques ya
+            montados: dirigir una sesión vacía no es dirigir nada. */}
+        {tareas.length > 0 && (
+          <button onClick={() => router.push('/sesion/' + id + '/dirigir')}
+            title="Apuntar tiempos y notas mientras entrena, a pie de pista"
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-orange-500/45 bg-orange-500/12 text-orange-300 hover:bg-orange-500/20 transition">
+            ⏱ Dirigir
+          </button>
+        )}
         <button onClick={() => router.push('/planificacion-visual/' + deportistaId + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">← Calendario</button>
       </nav>
       {/* La ficha de sesión usa 1560px. A 1024 la tabla de tareas salía toda a 12px y
@@ -919,6 +939,16 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           ? 'flex flex-col gap-4 min-[1700px]:grid min-[1700px]:grid-cols-[1fr_20rem] min-[1700px]:items-start'
           : ''}>
         <div className="min-w-0">
+
+        {/* Qué le costó esta sesión, en el wellness del día siguiente. Va ANTES
+            del panel de la semana porque es sobre ESTA sesión; la semana es
+            contexto de alrededor. Se pinta solo si hay registros después, así
+            que en una sesión futura no aparece. */}
+        {!esDeportista && sesion.fecha_sesion && (
+          <div className="mb-3.5">
+            <ComoAmanecio fechaSesion={sesion.fecha_sesion} registros={wellness} />
+          </div>
+        )}
 
         {vistaTabla && deportistaId && !esDeportista && sesion.fecha_sesion && (
           <PanelSemana
