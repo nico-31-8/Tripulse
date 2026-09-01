@@ -2,12 +2,15 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO } from '@/lib/fechas'
+import { hoyISO, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { analizarWellness, type MetricaAnalisis } from '@/lib/wellness-analisis'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
+import { vivas } from '@/lib/papelera'
+import { type SesionCruce } from '@/lib/wellness-sesiones'
+import CruceWellness from '@/components/CruceWellness'
 
 // Color de la flecha de tendencia según si el cambio es favorable para esa métrica.
 function flechaColor(m: MetricaAnalisis): string {
@@ -69,6 +72,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [noExiste, setNoExiste] = useState(false)
   const [esDeportista, setEsDeportista] = useState(false)
   const [registros, setRegistros] = useState<any[]>([])
+  // Sus sesiones, para cruzarlas con el wellness en la gráfica de abajo.
+  const [sesiones, setSesiones] = useState<SesionCruce[]>([])
   // Con ?registrar=1 el formulario se abre solo. Lo usa el aviso del panel del
   // deportista: si el botón dice "Registrar", tiene que registrar, no dejarte en
   // la puerta buscando dónde se hace.
@@ -111,19 +116,32 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
 
   const cargarDatos = async () => {
     const user = await usuarioActual()
-    // Cuatro consultas independientes: el rol de quien mira, el deportista y sus
-    // dos historiales. Iban en serie.
-    const [perfil, dep, reg, pesos] = await Promise.all([
+    // Cinco consultas independientes: el rol de quien mira, el deportista, sus
+    // dos historiales y sus sesiones. Iban en serie.
+    const [perfil, dep, reg, pesos, ses] = await Promise.all([
       user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('deportista').select('*').eq('id', id).maybeSingle(),
       supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30),
       supabase.from('registro_peso').select('*').eq('id_deportista', id).order('fecha', { ascending: true }).limit(60),
+      /* Sus entrenamientos, para que pueda ver por qué amaneció como amaneció.
+         Antes esto solo lo veía el entrenador: el atleta tenía su wellness y sus
+         sesiones en pantallas distintas y sin relación, así que rellenaba un
+         cuestionario que no le devolvía nada.
+
+         Se piden 40 días para los 30 de wellness: los 3 anteriores al primero
+         son los que lo explican, y sobra margen porque la consulta es barata. */
+      vivas(supabase.from('sesion')
+        .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado')
+        .eq('id_deportista', id))
+        .gte('fecha_sesion', sumarDias(hoyISO(), -40))
+        .order('fecha_sesion'),
     ])
     setEsDeportista((perfil as any).data?.rol === 'deportista')
     setDeportista(dep.data)
     if (!dep.data) { setNoExiste(true); return }
     setRegistros(reg.data || [])
     setRegistrosPeso(pesos.data || [])
+    setSesiones((ses.data || []) as SesionCruce[])
   }
 
   const preview = scoreWellness({ calidad_sueno: calidadSueno, fatiga, estres, dolor_muscular: dolorMuscular, animo, motivacion })
@@ -382,6 +400,17 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                   ))}
                 </LineChart>
               </ResponsiveContainer>
+
+              {/* Lo mismo que ve su entrenador, y por el mismo motivo: entender
+                  por qué amaneció así. Hasta ahora el atleta tenía su wellness y
+                  sus sesiones en pantallas distintas y sin relación, o sea que
+                  rellenaba un cuestionario que no le devolvía nada — y eso es lo
+                  que hace que se deje de rellenar.
+
+                  `reverse()` porque los registros llegan del más nuevo al más
+                  viejo y la gráfica los pinta al revés: la banda tiene que ir en
+                  el orden de la gráfica o las columnas no caen bajo su día. */}
+              <CruceWellness registros={registros.slice().reverse()} sesiones={sesiones} tu margenEje={34} />
             </div>
           </div>
         )}

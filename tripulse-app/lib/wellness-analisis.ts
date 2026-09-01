@@ -53,7 +53,9 @@ const CFG: { key: string; label: string; unidad: string; mejor: 'alto' | 'bajo';
   { key: 'fc_reposo', label: 'FC reposo', unidad: 'ppm', mejor: 'bajo', peso: 2 },
 ]
 
-const nums = (arr: RegistroWellness[], key: string): number[] =>
+// El tipo va suelto porque ya leía con `as any` por dentro: pedir el registro
+// completo solo obligaba a quien llama a rellenar huecos que no tiene.
+const nums = (arr: { [k: string]: any }[], key: string): number[] =>
   arr.map(r => (r as any)[key]).filter(v => v != null && !isNaN(Number(v))).map(Number)
 const media = (a: number[]): number | null => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null)
 const desv = (a: number[], m: number): number => (a.length > 1 ? Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)) : 0)
@@ -160,3 +162,83 @@ function fraseMetrica(c: { key: string; label: string; unidad: string; mejor: 'a
     default: return `${c.label}: fuera de tu rango habitual (${v}${c.unidad}).`
   }
 }
+
+// ============================================================
+// Un día suelto, comparado con lo normal de ese atleta
+// ============================================================
+// `analizarWellness` mira la última semana contra el periodo anterior: sirve
+// para «¿cómo va?». Esto es otra pregunta: «el miércoles, ¿cómo amaneció?».
+//
+// VIVE AQUÍ Y NO EN OTRO FICHERO A PROPÓSITO. Reutiliza CFG —la dirección de
+// cada métrica, sus umbrales absolutos— y la misma regla de umbralDelta. Con
+// una copia en otro sitio acabaríamos teniendo dos ideas distintas de qué es
+// «fatiga alta» para el mismo atleta, y esta app ya ha pagado ese precio.
+
+export interface MetricaDia {
+  key: string
+  label: string
+  unidad: string
+  valor: number
+  /** Su normal, si hay historial suficiente. */
+  base: number | null
+  mejor: 'alto' | 'bajo'
+  /** Cómo cae ese día respecto a su normal. */
+  respecto: 'peor' | 'mejor' | 'igual'
+  /** Fuera de su rango normal, o pasado un umbral absoluto. */
+  fuera: boolean
+}
+
+/**
+ * Cómo fue UN día para ese atleta, comparado con su historial.
+ *
+ * `historial` son sus otros registros. El propio día se excluye aunque venga
+ * dentro: si no, se estaría comparando consigo mismo y un día malo tiraría de
+ * su propia referencia hacia abajo, haciéndolo parecer menos malo.
+ */
+/* El tipo va suelto a propósito. `RegistroWellness` exige las siete métricas, y
+   aquí cada una se comprueba antes de usarla —un registro viejo puede no tener
+   HRV, y uno recién insertado llega tal cual lo devuelve Supabase—. Exigir el
+   tipo completo obligaría a quien llama a inventarse ceros para rellenarlo, que
+   es justo lo que no se quiere: un cero no es «sin dato». */
+type RegistroSuelto = { fecha: string; [k: string]: any }
+
+export function compararDia(
+  registro: RegistroSuelto | null | undefined,
+  historial: RegistroSuelto[],
+): MetricaDia[] {
+  if (!registro) return []
+  const otros = (historial || []).filter(r => r.fecha !== registro.fecha)
+  const salida: MetricaDia[] = []
+
+  for (const c of CFG) {
+    const v = (registro as any)[c.key]
+    if (v == null || isNaN(Number(v))) continue
+    const valor = Number(v)
+
+    const baseVals = nums(otros, c.key)
+    const baseM = baseVals.length >= 5 ? media(baseVals) : null
+    const baseSd = baseM != null ? desv(baseVals, baseM) : 0
+    const umbralDelta = Math.max(baseSd, c.unidad === '/7' ? 0.6 : c.key === 'hrv' ? 3 : c.key === 'fc_reposo' ? 2 : c.key === 'horas_sueno' ? 0.5 : 1)
+
+    let respecto: 'peor' | 'mejor' | 'igual' = 'igual'
+    let fuera = false
+    if (baseM != null) {
+      const arriba = valor > baseM + umbralDelta
+      const abajo = valor < baseM - umbralDelta
+      if (arriba) respecto = c.mejor === 'bajo' ? 'peor' : 'mejor'
+      if (abajo) respecto = c.mejor === 'bajo' ? 'mejor' : 'peor'
+      fuera = respecto === 'peor'
+    }
+    if (c.absHigh != null && valor >= c.absHigh && c.mejor === 'bajo') { fuera = true; respecto = 'peor' }
+    if (c.absLow != null && valor < c.absLow && c.mejor === 'alto') { fuera = true; respecto = 'peor' }
+
+    salida.push({
+      key: c.key, label: c.label, unidad: c.unidad, valor: r1(valor),
+      base: baseM != null ? r1(baseM) : null, mejor: c.mejor, respecto, fuera,
+    })
+  }
+  return salida
+}
+
+/** Las que salieron mal ese día. Es lo que se enseña cuando no cabe todo. */
+export const loQueFueMal = (m: MetricaDia[]): MetricaDia[] => m.filter(x => x.fuera)

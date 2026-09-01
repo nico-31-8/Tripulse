@@ -10,6 +10,9 @@ import { analizarWellness } from '@/lib/wellness-analisis'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { vivas } from '@/lib/papelera'
+import { DIAS_VENTANA, type SesionCruce } from '@/lib/wellness-sesiones'
+import CruceWellness from '@/components/CruceWellness'
 
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
@@ -37,6 +40,9 @@ export default function WellnessEntrenador() {
   const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
+  /* Las sesiones del mismo rango que la gráfica. Esta pantalla solo miraba
+     `wellness`, así que enseñaba CÓMO va el atleta y nunca POR QUÉ. */
+  const [sesiones, setSesiones] = useState<SesionCruce[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [registros, setRegistros] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,8 +108,23 @@ export default function WellnessEntrenador() {
     if (!custom) {
       query = query.gte('fecha', sumarDias(hoyISO(), -dias))
     }
-    const { data } = await query
+
+    /* Las sesiones del mismo tramo, para poder decir qué había detrás de un pico.
+       EL RANGO EMPIEZA TRES DÍAS ANTES que el del wellness, y no es un descuido:
+       lo que explica el primer registro que se ve son los entrenamientos de los
+       días anteriores, que caen fuera de la ventana pintada. Sin ese margen, el
+       día de la izquierda saldría siempre como si no hubiera entrenado nada. */
+    const desdeSes = sumarDias(custom && desde ? desde : sumarDias(hoyISO(), -dias), -DIAS_VENTANA)
+    let qSes = vivas(supabase.from('sesion')
+      .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado')
+      .eq('id_deportista', depId))
+      .gte('fecha_sesion', desdeSes)
+      .order('fecha_sesion')
+    if (custom && hasta) qSes = qSes.lte('fecha_sesion', hasta)
+
+    const [{ data }, { data: ses }] = await Promise.all([query, qSes])
     setRegistros(data || [])
+    setSesiones((ses || []) as SesionCruce[])
   }
 
   const verDetalle = async (dep: any) => {
@@ -122,6 +143,7 @@ export default function WellnessEntrenador() {
 
   // Las gráficas pintan BIENESTAR (invertido), no el malestar guardado.
   const datos = registros.map(r => ({ ...r, fecha: r.fecha.slice(5), bienestar: bienestar(r.score_wellness) }))
+
 
   // Lo que el asistente ve de esta pantalla (ver lib/contexto-modulo). Con un atleta
   // abierto, sus números; sin él, quién del equipo necesita atención.
@@ -432,6 +454,11 @@ export default function WellnessEntrenador() {
                           </LineChart>
                         </ResponsiveContainer>
                       )}
+
+                      {/* El cruce con lo entrenado vive en un componente: lo usan esta
+                          pantalla y la del propio atleta, y son la misma pregunta hecha
+                          por dos personas distintas. */}
+                      <CruceWellness registros={registros} sesiones={sesiones} />
                     </div>
 
                   </div>
