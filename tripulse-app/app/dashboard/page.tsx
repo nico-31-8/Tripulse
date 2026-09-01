@@ -12,6 +12,7 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
+import HoyEntrenas from '@/components/HoyEntrenas'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
@@ -220,6 +221,15 @@ export default function Dashboard() {
           <div className="min-h-[74vh] flex flex-col items-center justify-center text-center">
             <p className="fade-up text-sm font-medium text-orange-400/90 mb-2">Hola, {perfil?.nombre} 👋</p>
             <h2 className="fade-up text-3xl sm:text-[34px] font-bold tracking-tight mb-2" style={{ animationDelay: '60ms' }}>¿Con quién trabajamos hoy?</h2>
+
+            {/* Y la app lo contesta ella, que hasta ahora la pregunta era retórica.
+                Va AQUÍ, antes de la parrilla de caras: a las siete de la mañana no
+                estás eligiendo a nadie, vas a dirigir lo que toca. Si hoy no
+                entrena nadie no se pinta nada y la entrada queda como estaba. */}
+            <div className="fade-up w-full max-w-lg mb-8 text-left" style={{ animationDelay: '90ms' }}>
+              <HoyEntrenas deportistas={deportistas} />
+            </div>
+
             <p className="fade-up text-gray-500 text-sm mb-10" style={{ animationDelay: '110ms' }}>Elige un deportista para abrir su panel.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8 w-full max-w-lg">
               {deportistas.map((d, i) => {
