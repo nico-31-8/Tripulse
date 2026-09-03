@@ -2,11 +2,13 @@
 // ============================================================
 // La pantalla de novedades
 // ============================================================
-// Solo pinta. El fichero lo lee el componente de servidor y el troceado vive en
-// `lib/novedades`, que es donde se puede probar.
-import { useEffect, useState } from 'react'
+// SOLO PINTA. Quién puede verlo lo decide /api/novedades antes de mandar el
+// texto, y el troceado vive en `lib/novedades`, que es donde se puede probar.
+//
+// Este componente no comprueba nada a propósito: si comprobase también aquí
+// habría dos sitios decidiendo lo mismo, y el día que uno cambie el otro se
+// queda diciendo otra cosa.
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { trozos, ultimaFecha, type Novedades, type Bloque } from '@/lib/novedades'
 
 /** Una línea con su negrita y su código, sin inyectar HTML en ningún momento. */
@@ -47,23 +49,6 @@ function Cuerpo({ bloques }: { bloques: Bloque[] }) {
 
 export default function VistaNovedades({ novedades }: { novedades: Novedades }) {
   const router = useRouter()
-  const [listo, setListo] = useState(false)
-
-  /* Cualquiera que haya entrado puede verla, entrenador o deportista: es lo que
-     ha cambiado en la aplicación que los dos usan. Pero no se enseña sin
-     sesión, como el resto. */
-  useEffect(() => {
-    let cancelado = false
-    ;(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (cancelado) return
-      if (!session?.user) { router.replace('/login'); return }
-      setListo(true)
-    })()
-    return () => { cancelado = true }
-  }, [router])
-
-  if (!listo) return null
 
   const ultima = ultimaFecha(novedades)
   const vacio = novedades.entradas.length === 0

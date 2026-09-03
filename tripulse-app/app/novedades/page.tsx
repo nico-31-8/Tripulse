@@ -1,36 +1,60 @@
+'use client'
 // ============================================================
 // Novedades — qué ha cambiado en la aplicación
 // ============================================================
-//
-// ES UN COMPONENTE DE SERVIDOR, y es el primero de la aplicación. Lo es porque
-// necesita LEER UN FICHERO del proyecto —`NOVEDADES.md`— y eso en el navegador
-// no existe. Se lee aquí, en el servidor, y se le pasa el texto ya troceado al
-// componente que lo pinta.
-//
-// POR QUÉ NO SE COPIA EL TEXTO A UN FICHERO DE DATOS. Porque entonces habría
-// dos versiones: la que tú lees para presentar la aplicación y la que ven tus
-// entrenadores dentro. Se separarían la primera semana que alguien edite una y
-// no la otra. Una sola fuente.
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import { parseNovedades } from '@/lib/novedades'
+// El texto NO se lee aquí: se pide a /api/novedades, que comprueba quién
+// pregunta antes de mandarlo. Ver el comentario de esa ruta: leerlo en el
+// servidor y esconderlo al pintar no era restringir nada.
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { parseNovedades, type Novedades } from '@/lib/novedades'
 import VistaNovedades from '@/components/VistaNovedades'
+import Cargando from '@/components/Cargando'
 
-export const metadata = { title: 'Novedades · TRIPULSE' }
+export default function PaginaNovedades() {
+  const router = useRouter()
+  const [novedades, setNovedades] = useState<Novedades | null>(null)
+  const [fuera, setFuera] = useState(false)
+  const [error, setError] = useState('')
 
-/* Se vuelve a leer en cada carga en vez de quedarse fijo en el build: así, si
-   algún día el fichero se edita sin desplegar, la pantalla lo refleja. Es un
-   fichero pequeño y local; leerlo no cuesta nada. */
-export const dynamic = 'force-dynamic'
+  useEffect(() => {
+    let cancelado = false
+    ;(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) { router.replace('/login'); return }
 
-export default async function PaginaNovedades() {
-  let md = ''
-  try {
-    md = await readFile(join(process.cwd(), 'NOVEDADES.md'), 'utf8')
-  } catch {
-    /* Si el fichero no está donde se espera —otra raíz en el servidor, un
-       despliegue que no lo copió— la pantalla lo dice en vez de quedarse en
-       blanco. Un hueco mudo se lee como «no hay novedades», que sería falso. */
+      const r = await fetch('/api/novedades', {
+        headers: { Authorization: 'Bearer ' + session.access_token },
+      })
+      if (cancelado) return
+
+      if (r.status === 403) { setFuera(true); return }
+      if (!r.ok) { setError('No se han podido cargar las novedades.'); return }
+
+      const { md } = await r.json()
+      if (!cancelado) setNovedades(parseNovedades(md || ''))
+    })().catch(() => { if (!cancelado) setError('No se han podido cargar las novedades.') })
+    return () => { cancelado = true }
+  }, [router])
+
+  if (fuera || error) {
+    return (
+      <div className="min-h-screen bg-[#080b10] text-white flex items-center justify-center px-6">
+        <div className="text-center max-w-sm">
+          <p className="text-gray-300">
+            {fuera ? 'Esta pantalla todavía no está disponible.' : error}
+          </p>
+          <button onClick={() => router.push('/dashboard')}
+            className="mt-5 text-orange-400 hover:text-orange-300 text-sm transition">
+            ← Volver al panel
+          </button>
+        </div>
+      </div>
+    )
   }
-  return <VistaNovedades novedades={parseNovedades(md)} />
+
+  if (!novedades) return <Cargando />
+
+  return <VistaNovedades novedades={novedades} />
 }

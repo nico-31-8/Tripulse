@@ -207,11 +207,17 @@ export default function Dashboard() {
             </button>
           )}
           {/* Qué ha cambiado en la aplicación. Sale de NOVEDADES.md, el mismo
-              fichero que se actualiza en cada despliegue. */}
-          <button onClick={() => router.push('/novedades')}
-            className="text-gray-500 hover:text-white text-sm transition">
-            Novedades
-          </button>
+              fichero que se actualiza en cada despliegue.
+
+              De momento solo para plataforma. Esconder el enlace es cosmética:
+              el candado de verdad está en /api/novedades, que no manda el texto
+              a quien no puede verlo. */}
+          {esPlataforma && (
+            <button onClick={() => router.push('/novedades')}
+              className="text-gray-500 hover:text-white text-sm transition">
+              Novedades
+            </button>
+          )}
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-500 hover:text-white text-sm transition">Cerrar sesión</button>
         </div>

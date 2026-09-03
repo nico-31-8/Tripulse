@@ -17,8 +17,10 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 ### Esta pantalla
 
 Hay una página de **Novedades** dentro de la aplicación, en el enlace de arriba
-del panel. Enseña esto mismo que estás leyendo, así que tus entrenadores pueden
-ver qué ha cambiado sin que se lo cuentes uno a uno.
+del panel. Enseña esto mismo que estás leyendo.
+
+De momento solo la ven las cuentas de plataforma. Cuando quieras abrirla a los
+entrenadores es quitar una condición.
 
 ### La batería de tests, entera
 
