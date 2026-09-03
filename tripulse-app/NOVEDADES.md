@@ -14,6 +14,21 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 3 de septiembre de 2026
 
+### Retocar la semana antes de volcarla
+
+El planificador generaba una semana y solo daba dos salidas: **te vale entera, o
+vuelves a generarla** con otros mandos a ver si sale mejor. Y casi nunca es eso:
+es «está bien, pero el jueves no puedo» o «hora y media de rodillo es demasiado
+esta semana».
+
+Ahora cada sesión tiene un **Cambiar**: moverla de día, cambiarle los minutos o
+quitarla de la semana. Lo que tocas queda marcado, y antes de volcar te dice qué
+cambiaste respecto a lo que propuso el generador y cuánto tiempo queda en total.
+
+No se puede cambiar la plantilla de la sesión: elegir otro entrenamiento es
+volver a decidir qué se hace, y para eso está volver a generar con el catálogo
+entero delante.
+
 ### Elegir la semana en el planificador
 
 Antes había una casilla de fecha y por defecto el lunes que viene. Para

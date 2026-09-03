@@ -19,6 +19,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { proximoLunes, hoyISO } from '@/lib/fechas'
 import { contextoDeSemanas, avisoDe, porDefecto, type SemanaCandidata } from '@/lib/semanas-a-planificar'
+import { MIN_MINUTOS, MAX_MINUTOS, moverA, cambiarDuracion, quitar, resumenEdicion, textoResumen, type RellenoEditable } from '@/lib/editar-semana'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -26,7 +27,7 @@ import { cargaZona } from '@/lib/zonas'
 import { construirContextoTexto } from '@/lib/asistente'
 import { IA_PLANIFICADOR } from '@/lib/flags'
 import { formaDeSemana, ETIQUETA_BLOQUE, type EntradaSemana, type FormaSemana, type NivelAtleta } from '@/lib/plan-semana'
-import { colocarSemana, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
+import { colocarSemana, DIAS, type DiaDisponible, type DiaSemana } from '@/lib/plan-colocacion'
 import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
 import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
 import CadenaMesociclo from '@/components/CadenaMesociclo'
@@ -133,6 +134,20 @@ export default function Planificador() {
      La marcada por defecto solo se mueve MIENTRAS EL ENTRENADOR NO HAYA
      ELEGIDO. Si recalculase siempre, elegir una semana y que la pantalla te la
      cambiara de debajo sería peor que no ofrecer nada. */
+  /* Retocar la semana antes de volcarla. `original` es lo que salió del
+     generador y no se toca: sin ese «antes» no se puede decir qué cambió. */
+  const [editando, setEditando] = useState<number | null>(null)
+  const [original, setOriginal] = useState<RellenoEditable[] | null>(null)
+
+  const editar = (relleno: RellenoEditable[]) => {
+    setSemana(s => (s ? { ...s, relleno } : s))
+    /* Volcar es un paso confirmado: si se cambia la semana después de haber
+       pulsado, la confirmación ya no es de esto. */
+    setConfirmando(false)
+  }
+
+  const resumen = semana && original ? resumenEdicion(original, semana.relleno as RellenoEditable[]) : null
+
   const [tocada, setTocada] = useState(false)
   useEffect(() => {
     if (!dep) { setCandidatas([]); return }
@@ -161,7 +176,8 @@ export default function Planificador() {
   function generar() {
     if (!forma) return
     const s = rellenarSemana({ forma, colocada: colocarSemana(forma, diasParaColocar()), nivel, fase })
-    setSemana(s); setRevision(null); setInfoIA(null); setOrigen('reglas'); setVolcado(null); setPaso(2)
+    setSemana(s); setOriginal(s.relleno as RellenoEditable[]); setEditando(null)
+    setRevision(null); setInfoIA(null); setOrigen('reglas'); setVolcado(null); setPaso(2)
   }
 
   /**
@@ -187,14 +203,15 @@ export default function Planificador() {
       const j = await r.json()
       if (j?.generada && Array.isArray(j.relleno) && j.relleno.length) {
         setSemana({ relleno: j.relleno, sinLlenar: [], avisos: j.avisos || [] })
+        setOriginal(j.relleno as RellenoEditable[]); setEditando(null)
         setOrigen('ia')
         setInfoIA({ intentos: j.intentos, razonamiento: j.razonamiento || '' })
       } else {
-        setSemana(deLasReglas); setOrigen('reglas')
+        setSemana(deLasReglas); setOriginal(deLasReglas.relleno as RellenoEditable[]); setOrigen('reglas')
         setInfoIA({ intentos: j?.intentos ?? 0, razonamiento: '', motivo: j?.motivo || j?.error || 'No se pudo generar.' })
       }
     } catch (e: any) {
-      setSemana(deLasReglas); setOrigen('reglas')
+      setSemana(deLasReglas); setOriginal(deLasReglas.relleno as RellenoEditable[]); setOrigen('reglas')
       setInfoIA({ intentos: 0, razonamiento: '', motivo: 'No se pudo contactar con el asistente: ' + (e?.message || '') })
     } finally { setGenerando(false); setPaso(2) }
   }
@@ -212,7 +229,7 @@ export default function Planificador() {
       })
       const j = await r.json()
       if (!r.ok) { setRevision({ aplicados: [], rechazados: [], nota: '', motivo: j?.error || 'No se pudo revisar.' }); return }
-      if (j.semana) setSemana(j.semana)
+      if (j.semana) { setSemana(j.semana); setOriginal(j.semana.relleno as RellenoEditable[]); setEditando(null) }
       setRevision({ aplicados: j.aplicados || [], rechazados: j.rechazados || [], nota: j.nota || '', motivo: j.revisada ? undefined : j.motivo })
     } catch (e: any) {
       setRevision({ aplicados: [], rechazados: [], nota: '', motivo: 'No se pudo contactar con el asistente: ' + (e?.message || '') })
@@ -456,21 +473,71 @@ export default function Planificador() {
                   <div key={dia} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
                     <p className="text-[11px] uppercase tracking-widest text-gray-500 font-bold px-3.5 pt-3 pb-2">{dia}</p>
                     <div className="flex flex-col gap-2 px-3.5 pb-3.5">
-                      {sesiones.map((r: any, k: number) => (
-                        <div key={k} className="rounded-lg border border-gray-800 bg-gray-950/60 p-3"
+                      {sesiones.map((r: any) => {
+                        /* El índice en la lista de VERDAD, no en la del día:
+                           las tarjetas se pintan agrupadas por día, así que la
+                           `k` de este bucle no vale para editar nada. Editar
+                           por esa `k` cambiaría la sesión equivocada en cuanto
+                           un día tenga dos. */
+                        const i = semana.relleno.indexOf(r)
+                        const abierta = editando === i
+                        return (
+                        <div key={i} className={'rounded-lg border bg-gray-950/60 p-3 ' +
+                          (abierta ? 'border-orange-500/50' : 'border-gray-800')}
                           style={{ borderLeftWidth: 3, borderLeftColor: cargaZona(r.zona).color }}>
                           <div className="flex items-baseline gap-2">
                             <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded leading-none flex-none"
                               style={{ background: cargaZona(r.zona).color, color: '#0a0b0f' }}>{r.zona}</span>
                             <span className="text-[13px] font-semibold leading-tight">{r.nombre}</span>
+                            {r.editado && (
+                              <span className="text-[9px] text-orange-400 font-semibold uppercase tracking-wider flex-none"
+                                title="La has cambiado tú">tocada</span>
+                            )}
                           </div>
                           <p className="text-[11.5px] text-gray-500 mt-1 tabular-nums">
                             {ETIQUETA_BLOQUE[r.hueco.bloque as keyof typeof ETIQUETA_BLOQUE]} · {r.minutos}′
                             {r.hueco.larga && ' · larga'}{r.hueco.calidad && ' · calidad'}{r.hueco.brick && ' · brick'}
                           </p>
                           <p className="text-[11.5px] text-gray-400 mt-1.5 leading-relaxed">{r.motivo}</p>
+
+                          {/* ── Retocarla antes de volcar ──
+                              Antes solo había dos salidas: te vale la semana
+                              entera, o vuelves a generarla. Y casi nunca es
+                              eso: es «está bien, pero el jueves no puedo». */}
+                          {!abierta ? (
+                            <button onClick={() => setEditando(i)}
+                              className="mt-2 text-[11px] text-gray-500 hover:text-orange-400 transition">
+                              Cambiar
+                            </button>
+                          ) : (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-800 flex flex-col gap-2">
+                              <label className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] text-gray-500">Día</span>
+                                <select value={r.dia}
+                                  onChange={e => editar(moverA(semana.relleno as any, i, e.target.value as any))}
+                                  className="bg-gray-800 text-white text-[11.5px] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-orange-500">
+                                  {DIAS.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                              </label>
+                              <label className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] text-gray-500">Minutos</span>
+                                <input type="number" inputMode="numeric" defaultValue={r.minutos}
+                                  min={MIN_MINUTOS} max={MAX_MINUTOS}
+                                  onBlur={e => editar(cambiarDuracion(semana.relleno as any, i, e.target.value))}
+                                  className="bg-gray-800 text-white text-[11.5px] px-2 py-1 rounded w-20 outline-none focus:ring-1 focus:ring-orange-500 tabular-nums" />
+                              </label>
+                              <div className="flex items-center justify-between gap-2 pt-0.5">
+                                <button onClick={() => { editar(quitar(semana.relleno as any, i)); setEditando(null) }}
+                                  className="text-[11px] text-red-400/80 hover:text-red-300 transition">
+                                  Quitar de la semana
+                                </button>
+                                <button onClick={() => setEditando(null)}
+                                  className="text-[11px] text-gray-400 hover:text-white transition">Listo</button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 ))}
@@ -620,6 +687,22 @@ export default function Planificador() {
                   Del {lunes} al {domingoDe(lunes)}
                   {semana.relleno.length ? ` · ${semana.relleno.length} sesiones` : ''}
                 </p>
+
+                {/* Lo que va al calendario ya no es lo que propuso el generador.
+                    Quien pulsa tiene que saberlo: un plan corregido a mano y uno
+                    que salió así no son lo mismo aunque se vean igual. */}
+                {resumen && textoResumen(resumen) && (
+                  <p className="text-[12px] text-orange-300/85 bg-orange-500/[0.07] border border-orange-500/20 rounded-lg px-3 py-2 mb-3">
+                    Has retocado la semana generada — {textoResumen(resumen)}
+                  </p>
+                )}
+
+                {semana.relleno.length === 0 && (
+                  <p className="text-[12px] text-yellow-300/85 bg-yellow-900/15 border border-yellow-700/25 rounded-lg px-3 py-2 mb-3">
+                    Has quitado todas las sesiones: no hay nada que volcar. Vuelve a generar la semana
+                    o recupera alguna.
+                  </p>
+                )}
 
                 {/* Volcar sobre una semana que ya tiene sesiones la duplica, y eso
                     hay que saberlo antes de pulsar, no después. */}
