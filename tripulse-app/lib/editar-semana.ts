@@ -75,6 +75,52 @@ export function cambiarDuracion(lista: RellenoEditable[], i: number, minutos: un
   return lista.map((r, k) => (k === i ? { ...r, minutos: m, editado: true } : r))
 }
 
+/**
+ * Las otras sesiones que valen para ese mismo hueco.
+ *
+ * Son las del catálogo con SU misma disciplina y SU misma zona. Ahí es donde
+ * está la diferencia entre continua y por series: en ciclismo AEI el catálogo
+ * ofrece «Intervalos al FTP», «FTP continuo» y «Over-unders», y en carrera AEM
+ * hay continuo medio, continuo variable e interválico largo.
+ *
+ * NO se ofrecen las de otra zona. Cambiar de zona no es cambiar la forma de la
+ * sesión, es cambiar lo que entrena: el reparto de intensidades de la semana
+ * lo decidió el generador contando zonas, y sacar una de Z4 para meter otra de
+ * Z2 rompería ese reparto sin que nada avisara. Para eso está volver a generar.
+ */
+export function alternativasDe(
+  r: RellenoEditable,
+  plantillasDe: (d: string) => any[],
+  opcionesDe: (p: any) => any[],
+): { clave: string; nombre: string }[] {
+  const disciplina = r?.hueco?.bloque
+  if (!disciplina || disciplina === 'Fuerza' || !r.zona) return []
+  return (plantillasDe(disciplina) || [])
+    .filter((p: any) => p.zona === r.zona)
+    .flatMap((p: any) => (opcionesDe(p) || []).map((o: any) => ({
+      clave: o.clave,
+      nombre: o.esBase ? p.nombre : p.nombre + ' · ' + o.nombre,
+    })))
+}
+
+/**
+ * Cambia la sesión por otra del mismo hueco.
+ *
+ * El MOTIVO se reescribe, y no es un detalle. El que había explicaba por qué la
+ * eligió el generador —«es la que más tiempo lleva sin usarse»— y en cuanto la
+ * cambias eso deja de ser cierto. Un motivo que miente es peor que ninguno: el
+ * entrenador lo lee dentro de dos semanas y se cree la razón.
+ */
+export function cambiarSesion(
+  lista: RellenoEditable[], i: number, clave: string, nombre: string,
+): RellenoEditable[] {
+  if (!lista[i] || !clave) return lista
+  if (lista[i].clave === clave) return lista
+  return lista.map((r, k) => (k === i
+    ? { ...r, clave, nombre, motivo: 'La has elegido tú en vez de la que propuso el generador.', editado: true }
+    : r))
+}
+
 /** Quita una sesión de la semana. */
 export function quitar(lista: RellenoEditable[], i: number): RellenoEditable[] {
   if (!lista[i]) return lista

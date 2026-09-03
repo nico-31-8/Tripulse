@@ -19,7 +19,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { proximoLunes, hoyISO } from '@/lib/fechas'
 import { contextoDeSemanas, avisoDe, porDefecto, type SemanaCandidata } from '@/lib/semanas-a-planificar'
-import { MIN_MINUTOS, MAX_MINUTOS, moverA, cambiarDuracion, quitar, resumenEdicion, textoResumen, type RellenoEditable } from '@/lib/editar-semana'
+import { MIN_MINUTOS, MAX_MINUTOS, moverA, cambiarDuracion, quitar, alternativasDe, cambiarSesion, resumenEdicion, textoResumen, type RellenoEditable } from '@/lib/editar-semana'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -32,7 +32,7 @@ import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan
 import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
 import CadenaMesociclo from '@/components/CadenaMesociclo'
 import PlanificarMesociclo from '@/components/PlanificarMesociclo'
-import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
+import { aplicarBloques, bloquesPorClave, plantillasDe, opcionesDe } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis } from '@/lib/anamnesis-datos'
 
@@ -511,6 +511,27 @@ export default function Planificador() {
                             </button>
                           ) : (
                             <div className="mt-2.5 pt-2.5 border-t border-gray-800 flex flex-col gap-2">
+                              {/* Aquí está el continua-o-series: las otras sesiones
+                                  del catálogo para esa misma disciplina y esa misma
+                                  zona. No las de otra zona — eso cambiaría lo que
+                                  entrena, no la forma. */}
+                              {(() => {
+                                const alt = alternativasDe(r, plantillasDe, opcionesDe)
+                                if (alt.length < 2) return null
+                                return (
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[11px] text-gray-500">Sesión</span>
+                                    <select value={r.clave}
+                                      onChange={e => {
+                                        const el = alt.find(a => a.clave === e.target.value)
+                                        if (el) editar(cambiarSesion(semana.relleno as any, i, el.clave, el.nombre))
+                                      }}
+                                      className="bg-gray-800 text-white text-[11.5px] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-orange-500">
+                                      {alt.map(a => <option key={a.clave} value={a.clave}>{a.nombre}</option>)}
+                                    </select>
+                                  </label>
+                                )
+                              })()}
                               <label className="flex items-center justify-between gap-2">
                                 <span className="text-[11px] text-gray-500">Día</span>
                                 <select value={r.dia}

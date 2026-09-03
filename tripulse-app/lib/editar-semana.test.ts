@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   MIN_MINUTOS, MAX_MINUTOS, acotarMinutos,
   moverA, cambiarDuracion, quitar, minutosTotales, resumenEdicion, textoResumen, enHoras,
+  alternativasDe, cambiarSesion,
   type RellenoEditable,
 } from './editar-semana'
 import { DIAS } from './plan-colocacion'
+import { plantillasDe, opcionesDe, resolverClave } from './plantillas'
 
 const s = (dia: string, minutos: number, nombre = 'x'): RellenoEditable => ({
   dia: dia as any, minutos, nombre, zona: 'AEL', clave: 'c', nivel: 'intermedio',
@@ -160,5 +162,79 @@ describe('las horas', () => {
     expect(enHoras(60)).toBe('1 h')
     expect(enHoras(0)).toBe('0 h')
     expect(enHoras(-90)).toBe('-1,5 h')
+  })
+})
+
+describe('cambiar continua por series', () => {
+  const bici = (zona: string): RellenoEditable => ({
+    dia: 'Martes' as any, minutos: 75, nombre: 'Intervalos al FTP', zona,
+    clave: 'cic-aei', nivel: 'intermedio', motivo: 'la que más tiempo lleva sin usarse',
+    hueco: { bloque: 'Ciclismo' } as any,
+  })
+
+  it('ofrece las del MISMO hueco: misma disciplina y misma zona', () => {
+    /* Aquí está la diferencia entre continua y por series: en ciclismo AEI el
+       catálogo tiene «Intervalos al FTP», «FTP continuo» y «Over-unders». */
+    const alt = alternativasDe(bici('AEI'), plantillasDe, opcionesDe)
+    expect(alt.length).toBeGreaterThan(1)
+    const nombres = alt.map(a => a.nombre).join(' ')
+    expect(nombres).toContain('continuo')
+    expect(nombres).toContain('Over-unders')
+  })
+
+  it('NO ofrece las de otra zona', () => {
+    /* Cambiar de zona no es cambiar la forma de la sesión, es cambiar lo que
+       entrena. El reparto de intensidades lo decidió el generador contando
+       zonas: sacar una de Z4 para meter otra de Z2 lo rompería en silencio. */
+    const alt = alternativasDe(bici('AEI'), plantillasDe, opcionesDe)
+    const deOtras = alternativasDe(bici('AER'), plantillasDe, opcionesDe)
+    expect(alt.map(a => a.clave)).not.toEqual(expect.arrayContaining(deOtras.map(a => a.clave)))
+  })
+
+  it('la fuerza no tiene alternativas: no sale del mismo catálogo', () => {
+    const f = { ...bici('AEI'), hueco: { bloque: 'Fuerza' } as any }
+    expect(alternativasDe(f, plantillasDe, opcionesDe)).toEqual([])
+  })
+
+  it('sin zona o sin hueco, ninguna, en vez de reventar', () => {
+    expect(alternativasDe({ ...bici('AEI'), zona: '' }, plantillasDe, opcionesDe)).toEqual([])
+    expect(alternativasDe({ ...bici('AEI'), hueco: undefined } as any, plantillasDe, opcionesDe)).toEqual([])
+  })
+
+  it('cambiarla actualiza clave y nombre, y la marca', () => {
+    const lista = [bici('AEI')]
+    const r = cambiarSesion(lista, 0, 'cic-aei/over-unders', 'Intervalos al FTP · Over-unders')
+    expect(r[0].clave).toBe('cic-aei/over-unders')
+    expect(r[0].nombre).toContain('Over-unders')
+    expect(r[0].editado).toBe(true)
+  })
+
+  it('REESCRIBE el motivo, que si no mentiría', () => {
+    /* El que había explicaba por qué la eligió el generador. En cuanto la
+       cambias eso deja de ser cierto, y el entrenador lo lee dentro de dos
+       semanas y se cree la razón. */
+    const lista = [bici('AEI')]
+    const r = cambiarSesion(lista, 0, 'cic-aei/ftp-continuo', 'FTP continuo')
+    expect(r[0].motivo).not.toContain('sin usarse')
+    expect(r[0].motivo).toContain('elegido tú')
+  })
+
+  it('la que ya está puesta no cuenta como cambio', () => {
+    const lista = [bici('AEI')]
+    expect(cambiarSesion(lista, 0, 'cic-aei', 'Intervalos al FTP')).toBe(lista)
+  })
+
+  it('sin clave o con índice malo, no toca nada', () => {
+    const lista = [bici('AEI')]
+    expect(cambiarSesion(lista, 0, '', 'x')).toBe(lista)
+    expect(cambiarSesion(lista, 9, 'otra', 'x')).toBe(lista)
+  })
+
+  it('las claves que ofrece son claves de verdad del catálogo', () => {
+    /* Si ofreciera una clave inventada, el volcado crearía la sesión sin
+       bloques: en el calendario saldría una sesión vacía. */
+    for (const a of alternativasDe(bici('AEI'), plantillasDe, opcionesDe)) {
+      expect(resolverClave(a.clave), a.clave).toBeTruthy()
+    }
   })
 })

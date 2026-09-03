@@ -25,9 +25,14 @@ Ahora cada sesión tiene un **Cambiar**: moverla de día, cambiarle los minutos 
 quitarla de la semana. Lo que tocas queda marcado, y antes de volcar te dice qué
 cambiaste respecto a lo que propuso el generador y cuánto tiempo queda en total.
 
-No se puede cambiar la plantilla de la sesión: elegir otro entrenamiento es
-volver a decidir qué se hace, y para eso está volver a generar con el catálogo
-entero delante.
+Y también puedes **cambiar la sesión por otra**: donde el generador puso
+intervalos al FTP puedes poner FTP continuo, o cambiar un continuo medio por un
+interválico largo. Se ofrecen las del catálogo que son de su misma disciplina y
+su misma zona, que es donde está la diferencia entre continua y por series.
+
+No se ofrecen las de otra zona: eso no cambiaría la forma de la sesión sino lo
+que entrena, y el reparto de intensidades de la semana lo decidió el generador
+contando zonas.
 
 ### Elegir la semana en el planificador
 
