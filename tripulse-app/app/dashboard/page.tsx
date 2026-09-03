@@ -206,6 +206,12 @@ export default function Dashboard() {
               <span className="text-base leading-none">🛠</span>Plataforma
             </button>
           )}
+          {/* Qué ha cambiado en la aplicación. Sale de NOVEDADES.md, el mismo
+              fichero que se actualiza en cada despliegue. */}
+          <button onClick={() => router.push('/novedades')}
+            className="text-gray-500 hover:text-white text-sm transition">
+            Novedades
+          </button>
           <span className="text-gray-400 text-sm">{perfil?.nombre}</span>
           <button onClick={cerrarSesion} className="text-gray-500 hover:text-white text-sm transition">Cerrar sesión</button>
         </div>
