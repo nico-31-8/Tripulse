@@ -17,7 +17,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { proximoLunes } from '@/lib/fechas'
+import { proximoLunes, hoyISO } from '@/lib/fechas'
+import { contextoDeSemanas, avisoDe, porDefecto, type SemanaCandidata } from '@/lib/semanas-a-planificar'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -88,6 +89,8 @@ export default function Planificador() {
   // El volcado. Por defecto el lunes que viene: nadie planifica la semana que ya
   // está empezada.
   const [lunes, setLunes] = useState(proximoLunes())
+  // Las semanas que se ofrecen, con lo que se sabe de cada una.
+  const [candidatas, setCandidatas] = useState<SemanaCandidata[]>([])
   const [yaHay, setYaHay] = useState<number | null>(null)
   const [confirmando, setConfirmando] = useState(false)
   const [volcando, setVolcando] = useState(false)
@@ -122,6 +125,27 @@ export default function Planificador() {
     })
     setDisponibilidad([...porDia].map(([d2, minutos]) => ({ dia: d2 as DiaSemana, minutos })))
   }
+
+  /* Las semanas que se pueden elegir, con su contexto. Se recargan al cambiar
+     de atleta —el bloque y las competiciones son suyos— y después de volcar,
+     porque entonces esa semana ya tiene sesiones y hay que decirlo.
+
+     La marcada por defecto solo se mueve MIENTRAS EL ENTRENADOR NO HAYA
+     ELEGIDO. Si recalculase siempre, elegir una semana y que la pantalla te la
+     cambiara de debajo sería peor que no ofrecer nada. */
+  const [tocada, setTocada] = useState(false)
+  useEffect(() => {
+    if (!dep) { setCandidatas([]); return }
+    let vivo = true
+    contextoDeSemanas(supabase, dep.id, hoyISO())
+      .then(cs => {
+        if (!vivo) return
+        setCandidatas(cs)
+        if (!tocada) setLunes(porDefecto(cs))
+      })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [dep, volcado])
 
   const entrada = (): EntradaSemana => ({
     horasSemana: horas, diasSemana: dias, distancia, fase, nivel,
@@ -538,16 +562,64 @@ export default function Planificador() {
                   </div>
                 </div>
               ) : (<>
-                <div className="flex flex-wrap items-end gap-4 mb-3">
-                  <Campo label="Semana (lunes)">
-                    <input type="date" value={lunes} onChange={e => { setLunes(e.target.value); setConfirmando(false) }}
-                      className={selectCls} />
-                  </Campo>
-                  <p className="text-[12px] text-gray-500 pb-2">
-                    Del {lunes} al {domingoDe(lunes)}
-                    {semana.relleno.length ? ` · ${semana.relleno.length} sesiones` : ''}
-                  </p>
+                {/* ELEGIR LA SEMANA MIRÁNDOLA, NO RECORDÁNDOLA.
+                    Aquí había una casilla de fecha pelada: había que saber que
+                    el valor tiene que ser un LUNES —un miércoles dejaba la
+                    semana torcida— y abrir un calendario a buscarla. Y una vez
+                    elegida no se sabía nada de ella: si era de carga o de
+                    descarga, de qué bloque, si había una competición dentro, si
+                    ya tenía sesiones puestas.
+
+                    O sea que la decisión más importante de la pantalla se
+                    tomaba a ciegas. Ahora las semanas se ofrecen con lo que se
+                    sabe de cada una, y las fechas se construyen: no se puede
+                    elegir un miércoles. */}
+                <p className="text-[12px] font-semibold tracking-wider uppercase text-gray-500 mb-2">
+                  Para qué semana
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 mb-4">
+                  {candidatas.map(s => {
+                    const elegida = s.lunes === lunes
+                    const aviso = avisoDe(s)
+                    const compite = s.competiciones.length > 0
+                    return (
+                      <button key={s.lunes}
+                        onClick={() => { setLunes(s.lunes); setTocada(true); setConfirmando(false) }}
+                        className={'text-left rounded-xl border p-3 transition ' + (elegida
+                          ? 'border-orange-500/60 bg-orange-500/10'
+                          : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className={'text-[13.5px] font-semibold ' + (elegida ? 'text-orange-400' : 'text-gray-200')}>
+                            {s.cuando}
+                          </span>
+                          <span className="text-[11px] text-gray-500">{s.rango}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                          {s.tipo && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/[0.07] text-gray-400">
+                              {s.tipo}
+                            </span>
+                          )}
+                          {s.ua != null && <span className="text-[11px] text-gray-500 tabular-nums">{s.ua} UA</span>}
+                          {s.bloque && <span className="text-[11px] text-gray-600 truncate">{s.bloque}</span>}
+                        </div>
+
+                        {aviso && (
+                          <p className={'text-[11px] mt-1.5 leading-snug ' +
+                            (compite ? 'text-orange-300/90' : s.sesiones > 0 ? 'text-yellow-300/80' : 'text-gray-500')}>
+                            {aviso}
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
+
+                <p className="text-[12px] text-gray-500 mb-3">
+                  Del {lunes} al {domingoDe(lunes)}
+                  {semana.relleno.length ? ` · ${semana.relleno.length} sesiones` : ''}
+                </p>
 
                 {/* Volcar sobre una semana que ya tiene sesiones la duplica, y eso
                     hay que saberlo antes de pulsar, no después. */}

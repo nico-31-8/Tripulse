@@ -14,6 +14,22 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 3 de septiembre de 2026
 
+### Elegir la semana en el planificador
+
+Antes había una casilla de fecha y por defecto el lunes que viene. Para
+planificar otra semana tenías que saber que el valor debía ser un **lunes** —un
+miércoles dejaba la semana torcida— y buscarla en un calendario. Y una vez
+elegida no sabías nada de ella.
+
+Ahora el planificador te ofrece **las seis semanas siguientes**, empezando por
+la actual, y cada una te dice lo que es: si es de carga o de descarga, cuántas
+UA le dibujaste, a qué bloque pertenece, **si hay competición dentro** y si ya
+tiene sesiones puestas.
+
+Viene marcada la primera que esté libre. Si la semana en curso ya va por el
+viernes, salta a la siguiente; y si una ya tiene sesiones, también, porque
+planificar encima duplicaría.
+
 ### Esta pantalla
 
 Hay una página de **Novedades** dentro de la aplicación, en el enlace de arriba
