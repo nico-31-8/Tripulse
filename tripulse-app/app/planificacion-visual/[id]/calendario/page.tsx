@@ -117,7 +117,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [vista, setVista] = useState<'calendario'|'semanas'>('calendario')
   const [capaCalendario, setCapaCalendario] = useState<'mesos'|'semanas'>('mesos')
   const [mesInicio, setMesInicio] = useState(() => { const hoy = new Date(); return { año: hoy.getFullYear(), mes: hoy.getMonth() } })
-  const [vistaDetalle, setVistaDetalle] = useState<'multi'|'mes'>('multi')
+  /* SE ENTRA POR EL MES, no por varios meses.
+     Arrancaba en «multi» y lo primero que veías eran seis meses de golpe: útil
+     para mirar la temporada, pero no es a lo que se entra. A lo que se entra es
+     a ver qué toca, y eso se ve en un mes con sus días. Las otras vistas están
+     a un toque en la barra de arriba. */
+  const [vistaDetalle, setVistaDetalle] = useState<'multi'|'mes'>('mes')
   const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|'competicion'|'verCompeticion'|'bloquear'|'verBloqueo'|'pegarSemana'|null>(null)
   const [sesionEditando, setSesionEditando] = useState<any>(null)
   const [fechaSel, setFechaSel] = useState('')

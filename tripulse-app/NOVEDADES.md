@@ -14,6 +14,15 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 3 de septiembre de 2026
 
+### El calendario abre por el mes
+
+Antes entrabas y lo primero que veías eran **seis meses de golpe**. Eso sirve
+para mirar la temporada, pero no es a lo que se entra: se entra a ver qué toca,
+y eso se ve en un mes con sus días.
+
+Ahora abre en el mes actual. Las otras vistas —Meso, Semanas y Lista— siguen a
+un toque en la barra de arriba.
+
 ### Retocar la semana antes de volcarla
 
 El planificador generaba una semana y solo daba dos salidas: **te vale entera, o
