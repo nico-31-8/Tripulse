@@ -16,6 +16,8 @@
 // El % de zona es el punto medio del rango de ZONAS_CLASICAS (lib/zonas.ts).
 // Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
 import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS, pctMedioClasica } from './zonas'
+import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
+import type { Sexo } from './tests-campo'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
 //
@@ -54,6 +56,25 @@ export interface TestsDeportista {
   vam?: number | null   // km/h (carrera)
   css?: number | null   // m/s  (natación)
   ftp?: number | null   // W    (ciclismo)
+  /** Para elegir el ritmo de referencia cuando falta el test. */
+  sexo?: Sexo
+}
+
+/**
+ * Qué hacer cuando falta el test que hace falta para pasar de metros a minutos.
+ *
+ * VA APAGADO POR DEFECTO, Y NO ES POR TIMIDEZ. Esta función la llaman dieciséis
+ * pantallas, incluidas las del deportista y el cálculo de nutrición. Encenderla
+ * de golpe en todas haría aparecer duraciones donde antes no había ninguna, y
+ * eso se decide pantalla por pantalla mirando qué se hace con el número.
+ */
+export interface OpcionesDuracion {
+  /**
+   * Si falta el test, estimar con un ritmo de referencia de la población en vez
+   * de descartar la tarea. Lo que salga viene marcado en `usoReferencia`, y
+   * quien lo enseñe TIENE que decir que es aproximado.
+   */
+  conReferencia?: boolean
 }
 
 export interface ResultadoDuracion {
@@ -62,6 +83,11 @@ export interface ResultadoDuracion {
   estimable: boolean        // false si no hay ninguna tarea estimable
   avisoCiclismo: boolean    // hay tareas de ciclismo por distancia (no estimables)
   faltanTests: boolean      // hay tareas por distancia sin el test necesario
+  /**
+   * Alguna tarea se estimó con un ritmo de la población, no con el test de esta
+   * persona. El número sirve para ver la forma, no para comparar.
+   */
+  usoReferencia: boolean
 }
 
 // ------------------------------------------------------------
@@ -117,22 +143,36 @@ function velNatacion(zona: string | null | undefined, css: number): number | nul
 }
 
 // Tiempo de trabajo de UNA serie de la tarea, en segundos. null si no es estimable.
-function segTrabajoPorSerie(t: TareaDuracion, tests: TestsDeportista): number | null {
+function segTrabajoPorSerie(
+  t: TareaDuracion, tests: TestsDeportista, conReferencia: boolean,
+): { seg: number; referencia: boolean } | null {
   const dur = t.p_duracion?.[0]?.tiempo_planeado
-  if (dur != null && dur > 0) return dur
+  if (dur != null && dur > 0) return { seg: dur, referencia: false }
 
   const metros = t.p_distancia?.[0]?.metros_planeados
   if (metros != null && metros > 0) {
     const disc = t.disciplina
-    if (disc === 'Carrera' && tests.vam) {
-      const velMs = velCarrera(t.zona_entrenamiento, tests.vam)
-      return velMs ? metros / velMs : null
+
+    if (disc === 'Carrera') {
+      /* Con test, su VAM. Sin test y con permiso, la de la población: es una
+         suposición, pero el cero de antes era una afirmación falsa. */
+      const vam = tests.vam || (conReferencia ? vamDeReferencia(tests.sexo) : null)
+      if (!vam) return null
+      const velMs = velCarrera(t.zona_entrenamiento, vam)
+      return velMs ? { seg: metros / velMs, referencia: !tests.vam } : null
     }
-    if (disc === 'Natacion' && tests.css) {
-      const velMs = velNatacion(t.zona_entrenamiento, tests.css)
-      return velMs ? metros / velMs : null
+
+    if (disc === 'Natacion') {
+      const css = tests.css || (conReferencia ? cssDeReferencia(tests.sexo) : null)
+      if (!css) return null
+      const velMs = velNatacion(t.zona_entrenamiento, css)
+      return velMs ? { seg: metros / velMs, referencia: !tests.css } : null
     }
-    // Ciclismo por distancia o falta el test → no estimable
+
+    /* El ciclismo por distancia sigue sin estimarse, y a propósito: la
+       velocidad en bici depende del desnivel, del viento y de si va en grupo
+       mucho más que del FTP. Suponer una media aquí no sería aproximar, sería
+       inventar. */
     return null
   }
   return null
@@ -141,11 +181,14 @@ function segTrabajoPorSerie(t: TareaDuracion, tests: TestsDeportista): number | 
 export function calcularDuracionEstimada(
   tareas: TareaDuracion[],
   tests: TestsDeportista,
+  opciones: OpcionesDuracion = {},
 ): ResultadoDuracion {
   let segundos = 0
   let algunaEstimada = false
   let avisoCiclismo = false
   let faltanTests = false
+  let usoReferencia = false
+  const conReferencia = opciones.conReferencia === true
   let ejerciciosFuerza = 0   // nº de tareas de fuerza estimadas (para transiciones)
 
   for (const t of tareas) {
@@ -167,11 +210,14 @@ export function calcularDuracionEstimada(
       continue
     }
 
-    const trabajoSerie = segTrabajoPorSerie(t, tests)
+    const trabajoSerie = segTrabajoPorSerie(t, tests, conReferencia)
     if (trabajoSerie != null) {
       const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
-      segundos += trabajoSerie * series + descanso
+      segundos += trabajoSerie.seg * series + descanso
       algunaEstimada = true
+      /* Se estimó, pero con un ritmo que no es suyo: sigue haciendo falta el
+         test y hay que decirlo donde se enseñe el número. */
+      if (trabajoSerie.referencia) { usoReferencia = true; faltanTests = true }
     } else {
       // No estimable: distinguir el porqué para el aviso
       const metros = t.p_distancia?.[0]?.metros_planeados
@@ -192,5 +238,6 @@ export function calcularDuracionEstimada(
     estimable: algunaEstimada,
     avisoCiclismo,
     faltanTests,
+    usoReferencia,
   }
 }

@@ -9,7 +9,7 @@ import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
-import { devolverAlPool, chipsEnlazados, loQueSePierde } from '@/lib/devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip } from '@/lib/devolver-al-pool'
 
 /* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
    Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
@@ -223,22 +223,30 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setGuardando(false)
   }
 
-  /* Borrar también devuelve la unidad al pool si la sesión salió de ahí.
-     Si no, el chip se quedaría marcado como hecho apuntando a una sesión que ya
-     no existe: la unidad seguiría planificada para la semana pero no estaría ni
-     en el pool ni en ningún día. Desaparecida sin que nadie lo decidiera. */
+  /* BORRAR SE LLEVA LA UNIDAD. Antes la devolvía al pool, o sea exactamente lo
+     mismo que arrastrar la sesión arriba — que es el gesto que la cabecera de
+     esta pantalla anuncia para deshacerla. Con los dos haciendo lo mismo, no
+     había forma de quitar de en medio algo planificado por error: la unidad
+     volvía siempre al pool y reaparecía en el dibujo.
+
+     Ahora son dos cosas distintas:
+       · arrastrar arriba .... deshacer. La unidad vuelve al pool para otro día.
+       · la equis ............ borrar. La sesión y su unidad se van.
+
+     La sesión va a la PAPELERA, no se destruye, así que esto se puede
+     deshacer desde ahí. La unidad del dibujo sí desaparece, y por eso el aviso
+     lo dice y ofrece el otro gesto. */
   const borrarSesion = async (sesId: number) => {
     const enlazados = chipsEnlazados(sesZonasAll, sesId)
     const texto = enlazados.length
-      ? 'Mover esta sesión a la papelera?\n\nSu unidad vuelve arriba, al pool de la semana.'
+      ? 'Mover esta sesión a la papelera?\n\n' +
+        'Su unidad también se quita del dibujo. Si solo quieres desprogramarla, ' +
+        'arrástrala arriba al pool en vez de borrarla.'
       : 'Mover esta sesión a la papelera?'
     if (!confirm(texto)) return
     await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
     setSesiones(p => p.filter(s => s.id !== sesId))
-    if (enlazados.length) {
-      await persistirZonas(sesZonasAll.map(z =>
-        z.id_sesion === sesId ? { ...z, hecho: false, id_sesion: undefined } : z))
-    }
+    if (enlazados.length) await persistirZonas(borrarConSuChip(sesZonasAll, sesId))
   }
 
   /* Persiste el array de chips de zona (tras usar uno o marcarlo como hecho) en

@@ -245,7 +245,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     if (!sesionesProg.length) { setDuraciones({}); return }
     let vivo = true
-    estimarDuraciones(supabase, sesionesProg.map((s: any) => s.id), testsRef.current)
+    /* CON REFERENCIA, y esta pantalla es la primera que lo enciende.
+       Sin esto, un atleta sin tests hechos veía semanas enteras de carrera
+       dibujadas como una barra vacía: sin VAM no se pueden pasar los metros a
+       minutos, y la tarea se caía de la cuenta en silencio. Ahora se estima con
+       el ritmo medio de la población y la barra lo dice. */
+    estimarDuraciones(supabase, sesionesProg.map((s: any) => s.id), testsRef.current,
+      { conReferencia: true })
       .then(d => { if (vivo) setDuraciones(d) })
       .catch(() => {})
     return () => { vivo = false }
@@ -263,7 +269,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
       ])
-      const t = { vam: tCarr.data?.[0]?.vam, css: tNat.data?.[0]?.css, ftp: tCic.data?.[0]?.ftp }
+      /* El sexo entra aquí porque de él sale el ritmo de referencia cuando al
+         atleta le faltan los tests. Sin él se usa el punto medio de los dos. */
+      const t = {
+        vam: tCarr.data?.[0]?.vam, css: tNat.data?.[0]?.css, ftp: tCic.data?.[0]?.ftp,
+        sexo: depData?.sexo,
+      }
       setTests(t)
       // En una ref además del estado: `cargarExistente` corre justo después y
       // necesita los tests para estimar duraciones. Leerlos del estado ahí sería
@@ -394,6 +405,39 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
          ellas borraría lo dibujado. */
       const bz = borr.data
 
+      /* ── LOS CHIPS SE PONEN AL DÍA CON EL CALENDARIO ──────────
+         El dibujo y el calendario eran dos documentos distintos que solo se
+         hablaban al pulsar «Rehacer desde el calendario». Así que: una sesión
+         creada en la vista semana no aparecía aquí, y una sesión BORRADA dejaba
+         su chip para siempre. El lienzo enseñaba una semana que ya no existía.
+
+         La fusión respeta lo dibujado y aún no bajado —de eso no hay rastro en
+         ninguna tabla— y reconstruye el resto desde las sesiones de verdad.
+
+         SOLO SI LAS CONSULTAS HAN IDO BIEN. Si fallan y las tratamos como
+         «vacío», la fusión se llevaría por delante todos los chips ya
+         programados. Es exactamente lo que pasó una vez con el autoguardado, y
+         no hay histórico del que recuperarlos. Ante la duda, se deja el
+         borrador tal cual: quedarse desfasado es un incordio; borrar el dibujo
+         de un atleta no se deshace. */
+      const totalSemanas = bz?.total_semanas || totalW
+      let chipsCalendario: ChipZona[] | null = null
+      if (!sesQ.error && sesQ.data) {
+        const idsSes = sesQ.data.map((s: any) => s.id)
+        const zonasQ = idsSes.length
+          ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento').in('id_sesion', idsSes)
+          : { data: [], error: null }
+        if (!zonasQ.error) {
+          chipsCalendario = chipsDeSesiones(sesQ.data.map((s: any) => ({
+            id: s.id,
+            fecha_sesion: String(s.fecha_sesion).slice(0, 10),
+            disciplina: s.disciplina,
+            zonas: (zonasQ.data || []).filter((t: any) => t.id_sesion === s.id)
+              .map((t: any) => t.zona_entrenamiento),
+          })), fi, totalSemanas)
+        }
+      }
+
       // Desde aquí, todos los setState seguidos y sin ningún await en medio.
       setFechaInicio(fi)
       setTotalSem(bz?.total_semanas || totalW)
@@ -402,7 +446,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       else if (mesosD.length) setMesos(mesosD)
       if (bz?.semanas?.length) setSems(bz.semanas)
       else if (semsD) setSems(semsD)
-      if (bz?.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
+      if (chipsCalendario) setSesZonas(fusionarChips(bz?.sesiones_zonas || [], chipsCalendario))
+      else if (bz?.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
       setSesionesProg(sesQ.data || [])
       setModoEdicion(true)
 
@@ -943,7 +988,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   const uaPorSemana = sems.map(s => {
     const fechaSem = semFecha(fechaInicio, s.i)
-    if (!fechaSem) return { plan: s.ua || 0, prog: 0, real: 0 }
+    if (!fechaSem) return { plan: s.ua || 0, prog: 0, real: 0, sesiones: 0, sinContenido: 0, conReferencia: 0, enBici: 0 }
     const lunes = new Date(fechaSem + 'T12:00:00')
     const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6)
     const sessSem = sesionesProg.filter(se => {
@@ -958,8 +1003,42 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     const prog = sessSem.reduce((a, se) => a + cargaPlanificada(se, duraciones[se.id]), 0)
     const real = sessSem.filter(se => se.rpe_reportado)
       .reduce((a, se) => a + cargaReal(se, duraciones[se.id]), 0)
-    return { plan: s.ua || 0, prog, real }
+
+    /* POR QUÉ ESA BARRA ES LA QUE ES.
+       Una semana a cero puede ser tres cosas muy distintas —no hay sesiones, las
+       hay pero vacías, o las hay y no se saben medir— y hasta ahora las tres se
+       dibujaban igual: un hueco, que se lee como descanso. */
+    const sinContenido = sessSem.filter(se =>
+      !se.duracion_real && !se.duracion_minutos && !duraciones[se.id]?.estimable).length
+    const conReferencia = sessSem.filter(se => duraciones[se.id]?.usoReferencia).length
+    const enBici = sessSem.filter(se => duraciones[se.id]?.avisoCiclismo).length
+    return { plan: s.ua || 0, prog, real, sesiones: sessSem.length, sinContenido, conReferencia, enBici }
   })
+
+  /**
+   * Qué le pasa a la barra de una semana, en una frase, o null si está bien.
+   *
+   * El orden importa: primero lo que se puede arreglar prescribiendo, después lo
+   * que se arregla haciendo un test, y al final lo que no tiene arreglo.
+   */
+  const porQueLaBarra = (u: (typeof uaPorSemana)[number]): string | null => {
+    if (u.sesiones === 0) return null   // Sin sesiones, el hueco es la verdad.
+    const partes: string[] = []
+    if (u.sinContenido > 0) {
+      partes.push(u.sinContenido === u.sesiones
+        ? 'Las ' + u.sesiones + ' sesiones están sin contenido: no hay nada que contar.'
+        : u.sinContenido + ' de ' + u.sesiones + ' sesiones están sin contenido.')
+    }
+    if (u.conReferencia > 0) {
+      partes.push(u.conReferencia + (u.conReferencia === 1 ? ' sesión estimada' : ' sesiones estimadas') +
+        ' con un ritmo de referencia: le faltan tests.')
+    }
+    if (u.enBici > 0) {
+      partes.push(u.enBici + (u.enBici === 1 ? ' sesión de bici' : ' sesiones de bici') +
+        ' por distancia, que no se puede estimar. Ponles el tiempo.')
+    }
+    return partes.length ? partes.join(' ') : null
+  }
 
   const allMaxUA = Math.max(200,
     ...(capas.has('plan') ? sems.map(s => s.ua || 0) : [0]),
@@ -1466,6 +1545,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             style={{ bottom: 36, left: '11%', right: '11%', height: prgH + 'px', backgroundColor: '#3B82F6', opacity: 0.28 }} />
                         )}
 
+                        {/* POR QUÉ ESA BARRA ES LA QUE ES.
+                            Un punto ámbar encima de la semana cuando la barra no
+                            cuenta todo lo que hay dentro. Sin esto, una semana
+                            de nueve sesiones vacías y una semana de descanso se
+                            ven exactamente igual: un hueco. */}
+                        {capas.has('prog') && porQueLaBarra(entry) && (
+                          <div className="absolute pointer-events-none"
+                            style={{ bottom: 36 + Math.max(prgH, planH) + 5, left: 0, right: 0 }}>
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mx-auto" />
+                          </div>
+                        )}
+
                         {/* Boton flotante en hover */}
                         {hoveredWeek === s.i && capas.has('plan') && popupBarra !== s.i && (
                           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
@@ -1475,6 +1566,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               style={{ fontSize: 10 }}>
                               S{s.i + 1} {s.ua ? '· ' + s.ua + ' UA' : ''}
                             </button>
+                          </div>
+                        )}
+
+                        {/* La explicación, al pasar por encima. Va con la capa
+                            «Programado» porque es esa barra la que se queda
+                            corta, y no la del plan dibujado. */}
+                        {hoveredWeek === s.i && capas.has('prog') && porQueLaBarra(entry) && (
+                          <div className="absolute z-50 pointer-events-none"
+                            style={{ bottom: 36 + Math.max(prgH, planH) + 16, left: '50%', transform: 'translateX(-50%)', width: 210 }}>
+                            <div className="bg-amber-950 border border-amber-700/60 text-amber-200 rounded-lg px-2.5 py-2 shadow-xl leading-snug"
+                              style={{ fontSize: 10.5 }}>
+                              <span className="font-semibold text-amber-300">
+                                {entry.prog > 0 ? 'Esta barra se queda corta. ' : 'Esta semana no está vacía. '}
+                              </span>
+                              {porQueLaBarra(entry)}
+                            </div>
                           </div>
                         )}
 

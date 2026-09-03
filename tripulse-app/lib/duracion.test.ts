@@ -104,3 +104,87 @@ describe('medirDuracion', () => {
     expect(medirDuracion(tras(30), T0, 45)).toEqual({ minutos: null, medidos: 0, fiable: false })
   })
 })
+
+describe('el ritmo de referencia cuando falta el test', () => {
+  const mil = (disc: string) => ([{
+    disciplina: disc, series: 1, zona_entrenamiento: 'Z2',
+    p_distancia: [{ metros_planeados: 1000 }],
+  }])
+
+  it('APAGADO por defecto: nada cambia para las dieciséis pantallas que ya lo usan', () => {
+    /* Este es el test que protege el resto de la app. Si el día de mañana
+       alguien invierte el valor por defecto, aquí salta: aparecerían duraciones
+       en la pantalla del deportista y en el cálculo de nutrición sin que nadie
+       lo haya decidido. */
+    const r = calcularDuracionEstimada(mil('Carrera'), {})
+    expect(r.estimable).toBe(false)
+    expect(r.minutos).toBe(0)
+    expect(r.usoReferencia).toBe(false)
+    expect(r.faltanTests).toBe(true)
+  })
+
+  it('encendido, estima y lo confiesa', () => {
+    const r = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Hombre' }, { conReferencia: true })
+    expect(r.estimable).toBe(true)
+    expect(r.minutos).toBeGreaterThan(0)
+    expect(r.usoReferencia).toBe(true)
+    /* Sigue marcando que faltan tests: la estimación no sustituye al test, solo
+       evita el cero. */
+    expect(r.faltanTests).toBe(true)
+  })
+
+  it('con el test de la persona NO se marca como referencia', () => {
+    const r = calcularDuracionEstimada(mil('Carrera'), { vam: 15 }, { conReferencia: true })
+    expect(r.usoReferencia).toBe(false)
+    expect(r.faltanTests).toBe(false)
+  })
+
+  it('el test de la persona MANDA sobre la referencia', () => {
+    /* Si la referencia pisara al test, un atleta con VAM medida vería sus
+       duraciones calculadas con la media de la población. */
+    const suyo = calcularDuracionEstimada(mil('Carrera'), { vam: 20 }, { conReferencia: true })
+    const ref = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Hombre' }, { conReferencia: true })
+    expect(suyo.segundos).toBeLessThan(ref.segundos)
+  })
+
+  it('un kilómetro en Z2 sale en un tiempo de persona, no de coche ni de tortuga', () => {
+    /* Guarda de cordura sobre la unidad: si la VAM se metiera en m/s en vez de
+       km/h, o el CSS al revés, aquí saldría algo absurdo y nada más fallaría. */
+    const r = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Hombre' }, { conReferencia: true })
+    expect(r.minutos).toBeGreaterThan(4)
+    expect(r.minutos).toBeLessThan(12)
+  })
+
+  it('natación también, y con su unidad', () => {
+    const r = calcularDuracionEstimada(mil('Natacion'), { sexo: 'Mujer' }, { conReferencia: true })
+    expect(r.usoReferencia).toBe(true)
+    /* Mil metros nadando: entre un cuarto de hora y una hora larga. */
+    expect(r.minutos).toBeGreaterThan(14)
+    expect(r.minutos).toBeLessThan(70)
+  })
+
+  it('el CICLISMO por distancia sigue sin estimarse, ni con el interruptor', () => {
+    /* Y es a propósito: en bici la velocidad depende del desnivel, del viento y
+       de si va en grupo mucho más que del FTP. Suponer una media no sería
+       aproximar, sería inventar. */
+    const r = calcularDuracionEstimada(mil('Ciclismo'), { ftp: 250 }, { conReferencia: true })
+    expect(r.estimable).toBe(false)
+    expect(r.usoReferencia).toBe(false)
+    expect(r.avisoCiclismo).toBe(true)
+  })
+
+  it('sin sexo declarado también estima', () => {
+    /* «Prefiero no decirlo» no puede dejar al atleta sin gráfica. */
+    const r = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Prefiero no decirlo' }, { conReferencia: true })
+    expect(r.estimable).toBe(true)
+    expect(r.usoReferencia).toBe(true)
+  })
+
+  it('la fuerza nunca usa referencia: no la necesita', () => {
+    const r = calcularDuracionEstimada([{
+      disciplina: 'Fuerza', series: 3, ejercicios: [{ repeticiones: 10 }],
+    }], {}, { conReferencia: true })
+    expect(r.estimable).toBe(true)
+    expect(r.usoReferencia).toBe(false)
+  })
+})

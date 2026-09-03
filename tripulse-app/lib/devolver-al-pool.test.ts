@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { devolverAlPool, chipsEnlazados, loQueSePierde } from './devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde , borrarConSuChip} from './devolver-al-pool'
 import type { ChipZona } from './chips'
 
 const chip = (o: Partial<ChipZona> & { id: string }): ChipZona =>
@@ -114,5 +114,47 @@ describe('loQueSePierde', () => {
   })
   it('no se pierde nada en una sesión pelada', () => {
     expect(loQueSePierde({})).toEqual([])
+  })
+})
+
+describe('borrar de verdad se lleva su unidad', () => {
+  const chip = (id: string, idSesion?: number) =>
+    ({ id, semana: 1, disciplina: 'Carrera', zona: 'AEL', hecho: !!idSesion, id_sesion: idSesion })
+
+  it('el chip de esa sesión se va', () => {
+    /* Antes la equis devolvía la unidad al pool, igual que arrastrarla arriba.
+       Así no había forma de quitar de en medio algo planificado por error:
+       volvía siempre. */
+    const antes = [chip('a', 7), chip('b', 8)]
+    expect(borrarConSuChip(antes, 7).map(c => c.id)).toEqual(['b'])
+  })
+
+  it('una sesión compleja se lleva TODOS sus chips', () => {
+    const antes = [chip('a', 7), chip('b', 7), chip('c', 9)]
+    expect(borrarConSuChip(antes, 7).map(c => c.id)).toEqual(['c'])
+  })
+
+  it('lo que está sin programar no se toca', () => {
+    /* Esos no los ha tocado nadie y no están en ninguna otra tabla. */
+    const antes = [chip('suelto'), chip('a', 7)]
+    expect(borrarConSuChip(antes, 7).map(c => c.id)).toEqual(['suelto'])
+  })
+
+  it('borrar una sesión sin chip enlazado no rompe nada', () => {
+    /* Una sesión creada a mano en el calendario no vino de ningún chip. */
+    const antes = [chip('a', 7)]
+    expect(borrarConSuChip(antes, 99)).toEqual(antes)
+    expect(borrarConSuChip([], 7)).toEqual([])
+  })
+
+  it('borrar y devolver al pool son lo CONTRARIO', () => {
+    /* Este test existe para que no vuelvan a confundirse: uno conserva la
+       unidad arriba y el otro se la lleva. */
+    const antes = [chip('a', 7)]
+    const borrado = borrarConSuChip(antes, 7)
+    const devuelto = devolverAlPool(antes, { id: 7, disciplina: 'Carrera', zonas: ['AEL'] }, 1)
+    expect(borrado).toHaveLength(0)
+    expect(devuelto).toHaveLength(1)
+    expect(devuelto[0].hecho).toBe(false)
   })
 })

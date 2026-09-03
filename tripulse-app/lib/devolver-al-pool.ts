@@ -99,3 +99,22 @@ export function devolverAlPool(chips: ChipZona[], sesion: SesionQueVuelve, seman
 
   return [...salida, ...nuevos]
 }
+
+/**
+ * Los chips que se van CON la sesión cuando se borra de verdad.
+ *
+ * BORRAR Y DEVOLVER AL POOL SON DOS COSAS, y la pantalla ya tenía dos gestos
+ * para ellas: arrastrar la sesión arriba la deshace —la unidad vuelve al pool—
+ * y la equis la borra. Lo que pasaba es que las dos hacían lo mismo: la equis
+ * también devolvía la unidad arriba, así que no había forma de quitar de en
+ * medio algo planificado por error. Volvía siempre.
+ *
+ * Aquí la unidad se va con su sesión. Si lo que quieres es conservarla para
+ * otro día, el gesto es el otro.
+ *
+ * Los chips que NO son de esta sesión se quedan intactos, incluidos los que
+ * estén sin programar: esos no los ha tocado nadie.
+ */
+export function borrarConSuChip(chips: ChipZona[], idSesion: number): ChipZona[] {
+  return (chips || []).filter(z => z.id_sesion !== idSesion)
+}

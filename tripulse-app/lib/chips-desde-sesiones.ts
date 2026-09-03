@@ -63,6 +63,12 @@ export function chipsDeSesiones(
       disciplina: s.disciplina || '',
       zona,
       hecho: true,
+      /* Y TAMBIÉN EN SU CAMPO, no solo dentro del id. `devolver-al-pool` busca
+         por `id_sesion`, así que sin esto un chip reconstruido se quedaba sin
+         poder devolverse: al borrar su sesión no había forma de saber cuál era
+         suyo. El dato estaba ahí —en el id— pero en un sitio donde nadie lo
+         miraba. */
+      id_sesion: s.id,
     })
   }
   return out.sort((a, b) => a.semana - b.semana || a.disciplina.localeCompare(b.disciplina))

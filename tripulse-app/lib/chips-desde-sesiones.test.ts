@@ -96,3 +96,80 @@ describe('fusionar con lo que ya había', () => {
     expect(fusionarChips([], nuevos)).toEqual(nuevos)
   })
 })
+
+describe('el chip reconstruido se puede devolver al pool', () => {
+  const ses = (id: number, fecha: string, disc: string, zonas: string[]) =>
+    ({ id, fecha_sesion: fecha, disciplina: disc, zonas })
+
+  it('lleva el id de la sesión EN SU CAMPO, no solo dentro del id', () => {
+    /* ESTO FALTABA. `devolver-al-pool` busca por `id_sesion`, así que un chip
+       reconstruido no se podía devolver: al borrar su sesión no había forma de
+       saber cuál era el suyo. El dato estaba en el id —'ses-42'— pero en un
+       sitio donde nadie lo miraba. */
+    const [c] = chipsDeSesiones([ses(42, '2026-08-18', 'Carrera', ['AEL'])], '2026-08-17', 4)
+    expect(c.id_sesion).toBe(42)
+    expect(c.id).toBe('ses-42')
+  })
+
+  it('todos los reconstruidos lo llevan', () => {
+    const cs = chipsDeSesiones([
+      ses(1, '2026-08-18', 'Carrera', ['AEL']),
+      ses(2, '2026-08-19', 'Fuerza', ['FMH']),
+      ses(3, '2026-08-25', 'Natacion', ['AER']),
+    ], '2026-08-17', 4)
+    expect(cs).toHaveLength(3)
+    for (const c of cs) expect(c.id_sesion, c.id).toBeTruthy()
+  })
+})
+
+describe('poner los chips al día con el calendario', () => {
+  const dibujado = (id: string, semana: number, zona: string) =>
+    ({ id, semana, disciplina: 'Carrera', zona })
+
+  it('una sesión NUEVA en el calendario aparece como chip', () => {
+    const nuevos = chipsDeSesiones(
+      [{ id: 7, fecha_sesion: '2026-08-19', disciplina: 'Carrera', zonas: ['PAE'] }],
+      '2026-08-17', 4)
+    const fusion = fusionarChips([], nuevos)
+    expect(fusion).toHaveLength(1)
+    expect(fusion[0].zona).toBe('PAE')
+  })
+
+  it('una sesión BORRADA se lleva su chip', () => {
+    /* Antes el chip se quedaba para siempre: el lienzo enseñaba una semana que
+       ya no existía en el calendario. */
+    const antes = [{ ...dibujado('ses-7', 1, 'PAE'), hecho: true, id_sesion: 7 }]
+    const fusion = fusionarChips(antes, chipsDeSesiones([], '2026-08-17', 4))
+    expect(fusion).toEqual([])
+  })
+
+  it('pero lo DIBUJADO y aún no bajado se respeta', () => {
+    /* De esos no hay rastro en ninguna tabla: barrerlos sería cambiar un
+       agujero por otro. */
+    const antes = [
+      dibujado('mano-1', 2, 'AEL'),                                        // sin bajar
+      { ...dibujado('ses-7', 1, 'PAE'), hecho: true, id_sesion: 7 },       // ya bajado
+    ]
+    const fusion = fusionarChips(antes, chipsDeSesiones([], '2026-08-17', 4))
+    expect(fusion.map(c => c.id)).toEqual(['mano-1'])
+  })
+
+  it('hacerlo dos veces da lo mismo: no se duplica nada', () => {
+    /* La página lo hace en CADA carga, así que abrir el dibujo diez veces no
+       puede dejar diez chips por sesión. */
+    const ses = [{ id: 7, fecha_sesion: '2026-08-19', disciplina: 'Carrera', zonas: ['PAE'] }]
+    const una = fusionarChips([], chipsDeSesiones(ses, '2026-08-17', 4))
+    const dos = fusionarChips(una, chipsDeSesiones(ses, '2026-08-17', 4))
+    expect(dos).toEqual(una)
+  })
+
+  it('una sesión movida de semana cambia de columna, no se clona', () => {
+    const antes = fusionarChips([], chipsDeSesiones(
+      [{ id: 7, fecha_sesion: '2026-08-19', disciplina: 'Carrera', zonas: ['PAE'] }], '2026-08-17', 4))
+    expect(antes[0].semana).toBe(0)
+    const despues = fusionarChips(antes, chipsDeSesiones(
+      [{ id: 7, fecha_sesion: '2026-08-26', disciplina: 'Carrera', zonas: ['PAE'] }], '2026-08-17', 4))
+    expect(despues).toHaveLength(1)
+    expect(despues[0].semana).toBe(1)
+  })
+})

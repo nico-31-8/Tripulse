@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos, mmss, mmssCorto } from './duracion-carga'
+import {
+  estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos,
+  minutosPlanificados, cargaPlanificada, cargaReal, mmss, mmssCorto,
+} from './duracion-carga'
 import type { ResultadoDuracion } from './duracion'
 
 const est = (minutos: number, estimable = true): ResultadoDuracion =>
-  ({ segundos: minutos * 60, minutos, estimable, avisoCiclismo: false, faltanTests: false })
+  ({ segundos: minutos * 60, minutos, estimable, avisoCiclismo: false, faltanTests: false, usoReferencia: false })
 
 // Este módulo decide qué minutos ve el entrenador en toda la app (volumen, carga,
 // calendario). Lo que hay que blindar es la PRECEDENCIA: lo que el atleta midió de
@@ -170,7 +173,7 @@ describe('estimarDuraciones — carga en lote', () => {
 // una sesión sin duración manual valía 0 UA y no sumaba a CTL/ATL/TSB.
 describe('minutosCarga', () => {
   const estim = (minutos: number): ResultadoDuracion =>
-    ({ segundos: minutos * 60, minutos, estimable: true, avisoCiclismo: false, faltanTests: false })
+    ({ segundos: minutos * 60, minutos, estimable: true, avisoCiclismo: false, faltanTests: false, usoReferencia: false })
 
   it('lo que duró de verdad manda sobre todo lo demás', () => {
     expect(minutosCarga({ duracion_real: 52, duracion_minutos: 45 }, estim(90))).toBe(52)
@@ -195,7 +198,7 @@ describe('minutosCarga', () => {
     expect(minutosCarga({ duracion_real: null, duracion_minutos: 60 })).toBe(60)
   })
   it('una estimación no estimable no cuenta', () => {
-    const noEst: ResultadoDuracion = { segundos: 0, minutos: 0, estimable: false, avisoCiclismo: false, faltanTests: true }
+    const noEst: ResultadoDuracion = { segundos: 0, minutos: 0, estimable: false, avisoCiclismo: false, faltanTests: true, usoReferencia: false }
     expect(minutosCarga({ duracion_real: null, duracion_minutos: null }, noEst)).toBe(0)
   })
   it('ceros y negativos no se cuelan como valor válido', () => {
@@ -205,7 +208,7 @@ describe('minutosCarga', () => {
 })
 
 describe('origenMinutos — de dónde salió el número', () => {
-  const estim = (m: number): ResultadoDuracion => ({ segundos: m*60, minutos: m, estimable: true, avisoCiclismo: false, faltanTests: false })
+  const estim = (m: number): ResultadoDuracion => ({ segundos: m*60, minutos: m, estimable: true, avisoCiclismo: false, faltanTests: false, usoReferencia: false })
   it('distingue las tres procedencias', () => {
     expect(origenMinutos({ duracion_real: 52, duracion_minutos: 45 })).toBe('real')
     expect(origenMinutos({ duracion_real: null, duracion_minutos: 45 })).toBe('manual')
@@ -241,5 +244,54 @@ describe('mmss y mmssCorto son distintas a propósito', () => {
   it('solo se diferencian en el minuto exacto', () => {
     for (const seg of [45, 90, 185, 3599]) expect(mmss(seg)).toBe(mmssCorto(seg))
     for (const seg of [60, 120, 600]) expect(mmss(seg)).not.toBe(mmssCorto(seg))
+  })
+})
+
+describe('«Programado» mide lo que se mandó, no lo que costó', () => {
+  it('IGNORA la duración real, aunque exista', () => {
+    /* ESTE ES EL FALLO QUE HACÍA ILEGIBLE LA GRÁFICA DEL DIBUJO. Antes esto
+       devolvía 8 x 158 = 1264, porque `minutosCarga` prefiere lo cronometrado.
+       Así, una semana pasada se dibujaba con lo que COSTÓ y la siguiente con lo
+       que se piensa hacer, las dos en la misma barra y la misma escala. */
+    const s = { rpe_estimado: 8, duracion_real: 158, duracion_minutos: null }
+    expect(cargaPlanificada(s, est(40))).toBe(8 * 40)
+  })
+
+  it('la duración a mano manda sobre la estimación', () => {
+    /* Lo que el entrenador escribió ES lo que mandó. */
+    const s = { rpe_estimado: 6, duracion_minutos: 75, duracion_real: 200 }
+    expect(cargaPlanificada(s, est(40))).toBe(6 * 75)
+  })
+
+  it('sin nada a mano, la estimación', () => {
+    expect(cargaPlanificada({ rpe_estimado: 5 }, est(30))).toBe(150)
+  })
+
+  it('sin minutos de ninguna clase, cero', () => {
+    expect(cargaPlanificada({ rpe_estimado: 9 })).toBe(0)
+  })
+
+  it('«Realizado» SÍ usa la duración real: es su trabajo', () => {
+    /* Las dos capas tienen que seguir siendo distintas. Si esta también
+       ignorase lo cronometrado, no quedaría ninguna que dijera lo que pasó. */
+    const s = { rpe_estimado: 8, rpe_reportado: 9, duracion_real: 158 }
+    expect(cargaReal(s, est(40))).toBe(9 * 158)
+  })
+
+  it('la misma sesión da distinto en cada capa, y eso es lo correcto', () => {
+    const s = { rpe_estimado: 5, rpe_reportado: 8, duracion_real: 120 }
+    const mandado = cargaPlanificada(s, est(60))
+    const costado = cargaReal(s, est(60))
+    expect(mandado).toBe(5 * 60)    // lo que se pidió
+    expect(costado).toBe(8 * 120)   // lo que salió
+    expect(mandado).not.toBe(costado)
+  })
+
+  it('minutosPlanificados y minutosCarga solo se diferencian en la real', () => {
+    const sinReal = { duracion_minutos: 45 }
+    expect(minutosPlanificados(sinReal, est(30))).toBe(minutosCarga(sinReal, est(30)))
+    const conReal = { duracion_minutos: 45, duracion_real: 90 }
+    expect(minutosPlanificados(conReal, est(30))).toBe(45)
+    expect(minutosCarga(conReal, est(30))).toBe(90)
   })
 })

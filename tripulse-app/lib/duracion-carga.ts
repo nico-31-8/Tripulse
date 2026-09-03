@@ -2,12 +2,17 @@
 // Reúne tareas + parámetros (distancia/duración/ejercicios) de todas las
 // sesiones de una vez y calcula la estimación de cada una con el helper puro.
 
-import { calcularDuracionEstimada, type TestsDeportista, type ResultadoDuracion } from './duracion'
+import {
+  calcularDuracionEstimada,
+  type TestsDeportista, type ResultadoDuracion, type OpcionesDuracion,
+} from './duracion'
 
 export async function estimarDuraciones(
   supabase: any,
   sesionIds: number[],
   tests: TestsDeportista,
+  /** Ver `OpcionesDuracion`. Apagado por defecto: se enciende donde se ha revisado. */
+  opciones: OpcionesDuracion = {},
 ): Promise<Record<number, ResultadoDuracion>> {
   const out: Record<number, ResultadoDuracion> = {}
   if (!sesionIds.length) return out
@@ -39,7 +44,7 @@ export async function estimarDuraciones(
       p_duracion: (durs || []).filter((d: any) => d.id_tarea === t.id),
       ejercicios: (ejs || []).filter((e: any) => e.id_tarea === t.id),
     }))
-    out[sid] = calcularDuracionEstimada(tareasDur, tests)
+    out[sid] = calcularDuracionEstimada(tareasDur, tests, opciones)
   }
   return out
 }
@@ -141,15 +146,44 @@ type SesionCarga = {
 }
 
 /**
- * Lo que el entrenador MANDÓ: RPE estimado × minutos.
+ * Los minutos que se MANDARON: los de a mano si los hay, y si no la estimación.
  *
- * Para la capa «programado», que es lo que hay puesto en el calendario, se haya
- * hecho o no. No mira `rpe_reportado` a propósito: si el atleta lo hizo más duro
- * de lo previsto, eso es «realizado», no lo que se le pidió.
+ * NO MIRA `duracion_real`, Y ESA ES TODA LA GRACIA. `minutosCarga` sí la mira,
+ * porque para saber lo que costó una sesión lo que manda es lo que pasó. Pero
+ * para saber lo que se PIDIÓ, lo que pasó es justo lo que sobra.
+ */
+export function minutosPlanificados(
+  sesion: { duracion_minutos?: number | null } | null | undefined,
+  est?: ResultadoDuracion,
+): number {
+  if (!sesion) return 0
+  if (sesion.duracion_minutos && sesion.duracion_minutos > 0) return sesion.duracion_minutos
+  if (est?.estimable && est.minutos > 0) return est.minutos
+  return 0
+}
+
+/**
+ * Lo que el entrenador MANDÓ: RPE estimado × minutos planificados.
+ *
+ * ESTO ESTABA MAL Y HACÍA QUE LA GRÁFICA NO SE PUDIERA LEER. Evitaba el
+ * `rpe_reportado` a propósito —bien— pero se quedaba con `duracion_real` a
+ * través de `minutosCarga`. O sea que la capa «Programado» de una semana ya
+ * entrenada era *RPE planificado × minutos reales*: ni una cosa ni la otra.
+ *
+ * La consecuencia se veía en el dibujo. Una semana pasada se dibujaba con lo
+ * que COSTÓ y la siguiente con lo que se piensa hacer, las dos con la misma
+ * barra, el mismo color y la misma escala. Un bloque podía parecer que baja de
+ * carga cuando lo único que pasaba es que aún no se había entrenado.
+ *
+ * Un caso real: una sesión de 10 km cerrada con 158 minutos —que son 15:48 el
+ * kilómetro, o sea que se dejó la pantalla abierta— inflaba la barra de
+ * «Programado» de su semana como si eso se hubiera prescrito.
+ *
+ * Para lo que pasó de verdad está `cargaReal`, que es la capa «Realizado».
  */
 export function cargaPlanificada(s: SesionCarga | null | undefined, est?: ResultadoDuracion): number {
   if (!s) return 0
-  return (s.rpe_estimado || RPE_POR_DEFECTO) * minutosCarga(s, est)
+  return (s.rpe_estimado || RPE_POR_DEFECTO) * minutosPlanificados(s, est)
 }
 
 /**
