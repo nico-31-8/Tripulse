@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, ritmoDeVam, ritmoDeCss } from './tests-formulas'
+import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, pamDeRampa, FACTOR_FTP_RAMPA, ritmoDeVam, ritmoDeCss } from './tests-formulas'
 
 describe('vamDeMontreal', () => {
   it('el escalón completo cuenta entero', () => {
@@ -42,13 +42,37 @@ describe('cssDeDosDistancias', () => {
   })
 })
 
-describe('ftpDeRampa', () => {
+describe('pamDeRampa — el último escalón', () => {
   it('el escalón completo cuenta entero', () => {
-    expect(ftpDeRampa({ potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 60, durEscalones: 60 })).toBe(300)
+    expect(pamDeRampa({ potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 60, durEscalones: 60 })).toBe(300)
   })
 
   it('a mitad del escalón, la mitad del incremento', () => {
-    expect(ftpDeRampa({ potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 30, durEscalones: 60 })).toBe(290)
+    expect(pamDeRampa({ potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 30, durEscalones: 60 })).toBe(290)
+  })
+
+  it('sin datos, null', () => {
+    expect(pamDeRampa({ potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: '', durEscalones: 60 })).toBeNull()
+  })
+})
+
+/* ESTE BLOQUE EXISTE PORQUE LA FUNCIÓN DEVOLVÍA LA PAM Y SE GUARDABA COMO FTP.
+   El 0,75 no se aplicaba en ninguna parte del código, así que el FTP de todos
+   los ciclistas era un tercio más alto — y las zonas salen de ahí. */
+describe('ftpDeRampa — es el 75 % de la PAM', () => {
+  it('300 W de PAM son 225 de FTP, no 300', () => {
+    const e = { potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 60, durEscalones: 60 }
+    expect(pamDeRampa(e)).toBe(300)
+    expect(ftpDeRampa(e)).toBe(225)
+  })
+
+  it('siempre es menor que la PAM', () => {
+    const e = { potenciaPico: 300, incrementoPot: 20, tiempoNoCompletado: 30, durEscalones: 60 }
+    expect(ftpDeRampa(e)!).toBeLessThan(pamDeRampa(e)!)
+  })
+
+  it('el factor es el de la batería de tests', () => {
+    expect(FACTOR_FTP_RAMPA).toBe(0.75)
   })
 
   it('sin datos, null', () => {

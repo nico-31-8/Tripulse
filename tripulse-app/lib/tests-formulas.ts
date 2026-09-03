@@ -72,11 +72,43 @@ export interface FtpEntrada {
   durEscalones: number | string
 }
 
-/** FTP en vatios, por el mismo criterio de proporción que la VAM. */
-export function ftpDeRampa(e: FtpEntrada): number | null {
+/** Cuánto factor del pico de la rampa es el FTP. Batería de tests, §2. */
+export const FACTOR_FTP_RAMPA = 0.75
+
+/**
+ * PAM en vatios: la potencia del último escalón, contado en proporción.
+ *
+ * Quien se baja a los diez segundos no ha hecho ese escalón y quien lo aguanta
+ * entero sí, así que se pondera. Es el mismo criterio que la VAM de Montreal.
+ */
+export function pamDeRampa(e: FtpEntrada): number | null {
   if (!hay(e.potenciaPico, e.incrementoPot, e.tiempoNoCompletado, e.durEscalones)) return null
   const w = (n(e.potenciaPico) - n(e.incrementoPot)) + n(e.incrementoPot) * n(e.tiempoNoCompletado) / n(e.durEscalones)
   return Number.isFinite(w) ? Math.round(w) : null
+}
+
+/**
+ * FTP en vatios: el 75 % de la PAM.
+ *
+ * ESTO ESTABA MAL Y DURANTE MUCHO TIEMPO. La función devolvía la PAM y se
+ * guardaba tal cual en `test3_ciclismo.ftp`: el factor 0,75 no se aplicaba en
+ * ninguna parte del código. O sea que el FTP de todos los ciclistas era un
+ * tercio más alto del que les correspondía.
+ *
+ * Y de ahí salen las zonas —en /zonas/[id] la Z2 es el 55-75 % del FTP, la Z3
+ * el 75-90 %—, así que a un ciclista al que se le mandaba «Z3» se le estaba
+ * mandando bastante por encima de Z3. No rompía nada y no avisaba nadie: el
+ * número simplemente mentía.
+ *
+ * Que la tabla tuviera `potencia_pico` y `ftp` como columnas separadas ya decía
+ * que la intención era guardar dos cosas distintas; se guardaba la misma.
+ *
+ * FUENTE: la batería de tests del proyecto, §2 Ciclismo — «FTP = último min ×
+ * 0,75 · PAM = último min».
+ */
+export function ftpDeRampa(e: FtpEntrada): number | null {
+  const pam = pamDeRampa(e)
+  return pam == null ? null : Math.round(pam * FACTOR_FTP_RAMPA)
 }
 
 // ------------------------------------------------------------

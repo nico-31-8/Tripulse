@@ -3,15 +3,69 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
-import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
+import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, pamDeRampa, ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tablaIntensidades } from '@/lib/zonas'
 import { calcularObjetivos, idsConPacing } from '@/lib/pacing'
 import { pruebaPorId } from '@/lib/pruebas'
+import TestDeCampo from '@/components/TestDeCampo'
+import InstrumentosTest from '@/components/InstrumentosTest'
+import { contextosDe } from '@/lib/dirigir-tests'
+import { herramientasDe } from '@/lib/herramientas-test'
+import { CATALOGO, type Contexto, type Disciplina } from '@/lib/catalogo-tests'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
+
+/* Las pestañas. «triatlon» es nueva y no tiene test clásico detrás: existe
+   porque el brick y el decoupling son de la batería y no son de un deporte
+   suelto. Todo lo que hay bajo esa pestaña sale del catálogo. */
+const TABS = ['carrera', 'natacion', 'ciclismo', 'fuerza', 'triatlon'] as const
+const ETIQUETA_TAB: Record<string, string> = {
+  carrera: '🏃 Carrera', natacion: '🏊 Natacion', ciclismo: '🚴 Ciclismo',
+  fuerza: '🏋️ Fuerza', triatlon: '🔀 Triatlón',
+}
+const TITULO_TAB: Record<string, string> = {
+  carrera: 'Carrera', natacion: 'Natación', ciclismo: 'Ciclismo',
+  fuerza: 'Fuerza', triatlon: 'Triatlón',
+}
+/** De la pestaña a la disciplina del catálogo de tests de campo. */
+const DISCIPLINA_TAB: Record<string, Disciplina> = {
+  carrera: 'Carrera', natacion: 'Natación', ciclismo: 'Ciclismo',
+  fuerza: 'Fuerza', triatlon: 'Triatlón',
+}
+
+/**
+ * Los tests CLÁSICOS de cada pestaña.
+ *
+ * No están en el catálogo a propósito —tienen tabla propia y de ellos salen las
+ * zonas— así que para poder enseñarlos junto a los de la batería hay que
+ * nombrarlos aquí. `tipo` es a qué formulario de los de siempre corresponden.
+ */
+interface TestClasico {
+  id: string
+  nombre: string
+  tipo: 'aerobico' | 'sprint' | 'fuerza'
+  /** De este test salen las zonas de su disciplina. */
+  zonas?: boolean
+}
+const CLASICOS_TAB: Record<string, TestClasico[]> = {
+  carrera: [
+    { id: 'montreal', nombre: 'Montreal', tipo: 'aerobico', zonas: true },
+    { id: 'sprint-carrera', nombre: 'Sprint (MSS)', tipo: 'sprint' },
+  ],
+  natacion: [
+    { id: 'css', nombre: 'CSS (400 + 200)', tipo: 'aerobico', zonas: true },
+    { id: 'sprint-natacion', nombre: 'Sprint (V25/V50)', tipo: 'sprint' },
+  ],
+  ciclismo: [
+    { id: 'rampa', nombre: 'Rampa', tipo: 'aerobico', zonas: true },
+    { id: 'sprint-ciclismo', nombre: 'Sprint (MPP)', tipo: 'sprint' },
+  ],
+  fuerza: [{ id: 'rm', nombre: '1RM', tipo: 'fuerza' }],
+  triatlon: [],
+}
 
 // Protocolos combinados (sprint + aeróbico en una sesión). Orden: anaeróbico primero.
 const PROTOCOLO_COMBINADO: Record<string, { titulo: string; pasos: string[]; nota: string }> = {
@@ -159,7 +213,13 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const [tests3, setTests3] = useState<any[]>([])
   const [testsFuerza, setTestsFuerza] = useState<any[]>([])
   const [testsLibres, setTestsLibres] = useState<any[]>([])
+  // El peso y el sexo, que los tests de campo necesitan para la potencia del
+  // salto y para el nivel de referencia. Se piden con el mismo helper que la
+  // pantalla de grupo para no tener dos formas de sacar el último pesaje.
+  const [contexto, setContexto] = useState<Contexto>({})
   const [tab, setTab] = useState('carrera')
+  // Qué test de la pestaña está abierto. Puede ser un clásico o uno de la batería.
+  const [testSel, setTestSel] = useState<string | null>(null)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [mostrarFormLibre, setMostrarFormLibre] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -220,6 +280,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setTests3(t3.data || [])
     setTestsFuerza(tf.data || [])
     setTestsLibres(tl.data || [])
+    const ctxs = await contextosDe(supabase, [Number(id)])
+    setContexto(ctxs[Number(id)] ?? {})
   }
 
   /* Las tres fórmulas viven en lib/tests-formulas: el test de GRUPO usa las
@@ -236,6 +298,75 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     tiempoGrande, tiempoPequeno,
   })
   const calcularFTP = () => ftpDeRampa({ potenciaPico, incrementoPot, tiempoNoCompletado, durEscalones })
+  /* La PAM es el último escalón; el FTP es su 75 %. Se enseñan las dos porque
+     son cosas distintas y la tabla ya tenía columna para cada una. */
+  const calcularPAM = () => pamDeRampa({ potenciaPico, incrementoPot, tiempoNoCompletado, durEscalones })
+
+  /* ── El puente de los instrumentos ────────────────────────
+     Los descriptores de `herramientas-test` nombran las casillas por su clave.
+     Los formularios clásicos de esta página no guardan un objeto de valores:
+     cada casilla tiene su propio useState desde que se escribieron. Así que
+     aquí se traduce de una cosa a la otra.
+
+     Es fea, pero es la parte fea MÁS PEQUEÑA: la alternativa era reescribir los
+     cinco formularios a un objeto de valores, y son los que escriben en las
+     tablas de las que salen las zonas. No se tocan sin necesidad. */
+  const SETTERS: Record<string, (v: string) => void> = {
+    velUltimo: setVelUltimo, durTotal: setDurTotal,
+    tiempoAguantado: setTiempoAguantado, incrementoVel: setIncrementoVel,
+    tiempoGrande: setTiempoGrande, tiempoPequeno: setTiempoPequeno,
+    potenciaPico: setPotenciaPico, tiempoNoCompletado: setTiempoNoCompletado,
+    durEscalones: setDurEscalones, incrementoPot: setIncrementoPot,
+    sprintTiempo: setSprintTiempo, t25: setT25, t50: setT50,
+  }
+  const VALORES: Record<string, string> = {
+    velUltimo, durTotal, tiempoAguantado, incrementoVel,
+    tiempoGrande, tiempoPequeno,
+    potenciaPico, tiempoNoCompletado, durEscalones, incrementoPot,
+    sprintTiempo, t25, t50,
+  }
+  const ponCampo = (clave: string, valor: string) => SETTERS[clave]?.(valor)
+
+  /* ── Los tests de esta pestaña, clásicos y de batería en la misma fila ──
+     El entrenador no distingue «clásico» de «de la batería» —eso es fontanería
+     de dónde se guarda cada uno— y no tiene por qué. Lo que sí distingue es
+     cuál marca las zonas, y eso sí se dice. */
+  const testsDelTab = [
+    ...(CLASICOS_TAB[tab] ?? []).map(c => ({
+      id: c.id, nombre: c.nombre, zonas: !!c.zonas,
+      conCrono: herramientasDe(c.id).length > 0,
+      clasico: c as TestClasico,
+    })),
+    ...CATALOGO.filter(t => t.disciplina === DISCIPLINA_TAB[tab]).map(t => ({
+      id: t.clave, nombre: t.nombre, zonas: false,
+      conCrono: herramientasDe(t.clave).length > 0,
+      clasico: null,
+    })),
+  ]
+
+  const elegirTest = (t: (typeof testsDelTab)[number]) => {
+    // Volver a pulsar el mismo lo cierra: es lo que sustituye al «Cancelar» que
+    // tenía el botón de «+ Nuevo test».
+    if (testSel === t.id) { setTestSel(null); setMostrarForm(false); return }
+    setTestSel(t.id)
+    if (t.clasico) { setTestTipo(t.clasico.tipo === 'fuerza' ? 'aerobico' : t.clasico.tipo); setMostrarForm(true) }
+    else setMostrarForm(false)
+  }
+
+  /* ── De qué test salen ahora sus zonas ──
+     La distinción que le importa al entrenador no es «clásico o de batería»
+     —eso es fontanería— sino QUÉ TEST MANDA sobre los ritmos del atleta. Con
+     `origen` puesto, además, se puede decir de cuál salió. */
+  const ANCLA_TAB: Record<string, { filas: any[]; col: string; nombre: string; unidad: string }> = {
+    carrera: { filas: tests1, col: 'vam', nombre: 'VAM', unidad: 'km/h' },
+    natacion: { filas: tests2, col: 'css', nombre: 'CSS', unidad: 'm/s' },
+    ciclismo: { filas: tests3, col: 'ftp', nombre: 'FTP', unidad: 'W' },
+  }
+  const anclaDef = ANCLA_TAB[tab]
+  const anclaFila = anclaDef?.filas.find(f => f[anclaDef.col] != null) ?? null
+
+  /** El test de la batería que toca abrir, o null si el elegido es clásico. */
+  const claveBateria = testsDelTab.find(t => t.id === testSel && !t.clasico)?.id ?? null
 
   const calcularRM = () => {
     if (!pesoKg || !reps) return null
@@ -438,31 +569,77 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         <div className="lg:col-span-3 min-w-0">
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          {['carrera','natacion','ciclismo','fuerza'].map(t => (
-            <button key={t} onClick={() => { setTab(t); setMostrarForm(false) }}
+          {TABS.map(t => (
+            <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null) }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-              {t === 'carrera' ? '🏃 Carrera' : t === 'natacion' ? '🏊 Natacion' : t === 'ciclismo' ? '🚴 Ciclismo' : '🏋️ Fuerza'}
+              {ETIQUETA_TAB[t]}
             </button>
           ))}
         </div>
 
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h3 className="text-xl font-bold">{tab === 'carrera' ? 'Carrera' : tab === 'natacion' ? 'Natación' : tab === 'ciclismo' ? 'Ciclismo' : 'Fuerza'}</h3>
-            {tab !== 'fuerza' && (
-              <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
-                <button onClick={() => { setTestTipo('aerobico'); setMostrarForm(false) }} className={'text-xs px-3 py-1.5 rounded-md transition ' + (testTipo === 'aerobico' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>🫀 Aeróbico</button>
-                <button onClick={() => { setTestTipo('sprint'); setMostrarForm(false) }} className={'text-xs px-3 py-1.5 rounded-md transition ' + (testTipo === 'sprint' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>⚡ Sprint</button>
-              </div>
+          <h3 className="text-xl font-bold">{TITULO_TAB[tab]}</h3>
+          {tab !== 'fuerza' && tab !== 'triatlon' && (
+            <button onClick={() => setMostrarProtocolo(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition">🔬 Protocolo</button>
+          )}
+        </div>
+
+        {/* ===== DE AQUÍ SALEN SUS ZONAS =====
+            Va lo primero porque es el número del que cuelga todo lo demás: los
+            ritmos, las potencias y las intensidades que se le prescriben. */}
+        {anclaDef && (
+          <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/[0.07] px-4 py-3 flex items-center gap-4 flex-wrap">
+            {anclaFila ? (
+              <>
+                <span className="font-mono tabular-nums text-2xl font-bold text-blue-400 leading-none">
+                  {anclaFila[anclaDef.col]} <span className="text-sm font-normal">{anclaDef.unidad}</span>
+                </span>
+                <span className="text-[12.5px] text-gray-400 flex-1 min-w-[220px]">
+                  <b className="text-gray-100">De aquí salen sus zonas de {TITULO_TAB[tab].toLowerCase()}.</b>{' '}
+                  Es el {anclaDef.nombre} que usa toda la app para calcular sus ritmos.
+                  <span className="block text-[11px] text-gray-500 mt-0.5">
+                    {anclaFila.origen
+                      ? testsDelTab.find(t => t.id === anclaFila.origen)?.nombre ?? anclaFila.origen
+                      : CLASICOS_TAB[tab]?.find(c => c.zonas)?.nombre ?? 'Test clásico'}
+                    {anclaFila.fecha ? ' · ' + anclaFila.fecha : ''}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <span className="text-[12.5px] text-gray-400">
+                Todavía no tiene <b className="text-gray-100">{anclaDef.nombre}</b>: sus zonas de{' '}
+                {TITULO_TAB[tab].toLowerCase()} no se pueden calcular hasta que haga uno de los tests
+                marcados <span className="text-blue-400 font-semibold">ZONAS</span>.
+              </span>
             )}
           </div>
-          <div className="flex gap-2">
-            {tab !== 'fuerza' && (
-              <button onClick={() => setMostrarProtocolo(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition">🔬 Protocolo</button>
-            )}
-            <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
-              {mostrarForm ? 'Cancelar' : '+ Nuevo test'}
-            </button>
+        )}
+
+        {/* ===== TODOS LOS TESTS DE LA DISCIPLINA, A LA VISTA =====
+            Antes esto eran dos subpestañas —«Aeróbico» y «Sprint»— más un botón
+            «+ Nuevo test», y el resto de la batería vivía plegado al fondo. Con
+            ocho tests de carrera eso ya no daba: había que saberse de memoria
+            cuál estaba detrás de qué botón.
+
+            Ahora se ven todos con su nombre y se pulsa el que toca. El punto
+            naranja dice cuáles se pueden dirigir en vivo con cronómetro. */}
+        <div className="mb-4">
+          <p className="text-[10.5px] font-semibold tracking-widest uppercase text-gray-500 mb-2">
+            Tests de {TITULO_TAB[tab].toLowerCase()} <span className="text-orange-400">{testsDelTab.length}</span>
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {testsDelTab.map(t => (
+              <button key={t.id} onClick={() => elegirTest(t)}
+                className={'px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border ' +
+                  (testSel === t.id
+                    ? 'bg-orange-500/15 border-orange-500/45 text-orange-400 font-semibold'
+                    : 'bg-white/[0.035] border-white/[0.075] text-gray-400 hover:text-white hover:bg-white/[0.075]')}>
+                <span className={'w-1.5 h-1.5 rounded-full ' +
+                  (testSel === t.id ? 'bg-current' : t.conCrono ? 'bg-orange-500' : 'bg-gray-600')} />
+                {t.nombre}
+                {t.zonas && <span className="text-[9.5px] text-blue-400 font-semibold">ZONAS</span>}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -475,10 +652,17 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {tab === 'ciclismo' && <GraficaEvolucion datos={tests3} dataKey="ftp" color="#facc15" unidad="W" label="FTP" />}
         {tab === 'fuerza' && <GraficaFuerza datos={testsFuerza} />}
 
+        {/* La ficha del test de la batería que esté elegido arriba. */}
+        {claveBateria && (
+          <TestDeCampo idDeportista={Number(id)} disciplina={DISCIPLINA_TAB[tab]}
+            clave={claveBateria} contexto={contexto} onGuardado={cargarDatos} />
+        )}
+
         {/* FORMULARIOS */}
         {mostrarForm && testTipo === 'aerobico' && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test incremental de carrera</h4>
+            <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} />
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <input type="number" step="0.1" placeholder="Velocidad ultimo escalon (km/h)" value={velUltimo} onChange={e => setVelUltimo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Duracion total del escalon (segundos)" value={durTotal} onChange={e => setDurTotal(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
@@ -492,6 +676,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {mostrarForm && testTipo === 'aerobico' && tab === 'natacion' && (
           <form onSubmit={guardarTest2} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test CSS natacion</h4>
+            <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} />
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <div className="grid grid-cols-2 gap-4">
               <input type="number" placeholder="Distancia grande (m)" value={distGrande} onChange={e => setDistGrande(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
@@ -509,13 +694,14 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {mostrarForm && testTipo === 'aerobico' && tab === 'ciclismo' && (
           <form onSubmit={guardarTest3} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test FTP ciclismo</h4>
+            <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} />
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <input type="number" placeholder="Potencia pico (vatios)" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Duracion de los escalones (segundos)" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Tiempo aguantado escalon completado (seg)" value={tiempoCompletado} onChange={e => setTiempoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Tiempo aguantado escalon no completado (seg)" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <input type="number" placeholder="Incremento de potencia por escalon (vatios)" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            {calcularFTP() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">FTP calculado: </span><span className="text-orange-400 font-bold">{calcularFTP()} W</span></div>}
+            {calcularFTP() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm flex gap-4 flex-wrap"><span><span className="text-gray-400">PAM: </span><span className="text-orange-400 font-bold">{calcularPAM()} W</span></span><span><span className="text-gray-400">FTP (75 %): </span><span className="text-orange-400 font-bold">{calcularFTP()} W</span></span></div>}
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
           </form>
         )}
@@ -524,6 +710,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {mostrarForm && testTipo === 'sprint' && tab === 'carrera' && (
           <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test de sprint — Velocidad máxima (MSS)</h4>
+            <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} />
             <p className="text-gray-400 text-sm">Sprint lanzado de 30–40m a máxima velocidad (con 10–20m previos de lanzamiento). Introduce la distancia cronometrada y el tiempo.</p>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -549,6 +736,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {mostrarForm && testTipo === 'sprint' && tab === 'natacion' && (
           <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test de sprint — Velocidades máximas (V25/V50)</h4>
+            <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} />
             <p className="text-gray-400 text-sm">Sprints máximos de 25m y 50m (con recuperación completa entre ellos). Introduce los tiempos.</p>
             <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -660,7 +848,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             <h3 className="text-[15px] font-bold">Otros tests</h3>
             <button onClick={() => setMostrarFormLibre(!mostrarFormLibre)} className="bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition flex-shrink-0">{mostrarFormLibre ? 'Cancelar' : '+ Añadir'}</button>
           </div>
-          <p className="text-[11px] text-gray-500 mb-3">Ajenos al catálogo de la app</p>
+          <p className="text-[11px] text-gray-500 mb-3">Los de la batería y los que apuntes a mano</p>
           {mostrarFormLibre && (
             <form onSubmit={guardarTestLibre} className="rounded-xl p-3 mb-3 border border-white/[0.07] bg-white/[0.02] flex flex-col gap-2.5">
               <input type="text" placeholder="Nombre (ej: Cooper, Ruffier)" value={nombreLibre} onChange={e => setNombreLibre(e.target.value)} className="bg-white/[0.05] border border-white/[0.075] text-white text-[12.5px] px-3 py-2 rounded-lg outline-none focus:border-orange-500/50" required />
@@ -672,7 +860,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             </form>
           )}
           {testsLibres.length === 0 ?
-            <p className="text-center py-8 text-gray-500 text-[12.5px]">Ningún test externo todavía.</p> :
+            <p className="text-center py-8 text-gray-500 text-[12.5px]">Todavía ninguno.</p> :
             <div className="flex flex-col">{testsLibres.map(t => (
               <div key={t.id} className="py-2.5 border-b border-gray-800/60 last:border-0">
                 <div className="flex justify-between items-start gap-2">
@@ -768,9 +956,18 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                     {calcularVAM() && calcularMSS() && <span className="text-blue-400 font-medium">ASR: {Math.round((calcularMSS()! - calcularVAM()!) * 10) / 10} km/h</span>}
                   </>)}
                   {tab === 'ciclismo' && (<>
+                    {calcularPAM() && <span className="text-gray-400">PAM: <b className="text-orange-400">{calcularPAM()} W</b></span>}
                     {calcularFTP() && <span className="text-gray-400">FTP: <b className="text-orange-400">{calcularFTP()} W</b></span>}
                     {mppSprint && <span className="text-gray-400">MPP: <b className="text-orange-400">{mppSprint} W</b></span>}
-                    {calcularFTP() && mppSprint && <span className="text-blue-400 font-medium">APR: {Number(mppSprint) - calcularFTP()!} W</span>}
+                    {/* La reserva anaeróbica se mide contra la PAM, no contra el
+                        FTP — es el equivalente en vatios del ASR de carrera, que
+                        ahí arriba va contra la VAM y no contra el umbral.
+
+                        Esto DABA BIEN POR ACCIDENTE: restaba `calcularFTP()`,
+                        que devolvía la PAM porque a la rampa le faltaba el
+                        0,75. Al arreglar el FTP, esta línea se habría quedado
+                        restando lo que no es sin que nada avisara. */}
+                    {calcularPAM() && mppSprint && <span className="text-blue-400 font-medium">APR: {Number(mppSprint) - calcularPAM()!} W</span>}
                   </>)}
                   {tab === 'natacion' && (<>
                     {calcularCSS() && <span className="text-gray-400">CSS: <b className="text-orange-400">{calcularCSS()} m/s</b></span>}

@@ -42,9 +42,17 @@ describe('resultadoDe', () => {
     expect(resultadoDe('natacion',
       { distanciaGrande: '400', distanciaPequena: '200' },
       { tiempoGrande: '300', tiempoPequeno: '140' })).toBe(1.25)
+    /* 290 W es la PAM (el último escalón, contado en proporción). El FTP es su
+       75 %: 217,5 → 218.
+
+       ESTE TEST DECÍA 290 Y ERA EL ERROR PUESTO POR ESCRITO. La rampa guardaba
+       la PAM en la columna `ftp` porque el 0,75 no se aplicaba en ningún sitio,
+       así que el FTP de todos los ciclistas iba un tercio alto — y las zonas
+       salen de ahí. Lo destapó comparar la app con la batería de tests del
+       proyecto, que lo dice en una línea: «FTP = último min × 0,75». */
     expect(resultadoDe('ciclismo',
       { incrementoPot: '20', durEscalones: '60' },
-      { potenciaPico: '300', tiempoNoCompletado: '30' })).toBe(290)
+      { potenciaPico: '300', tiempoNoCompletado: '30' })).toBe(218)
   })
 })
 

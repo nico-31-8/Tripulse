@@ -32,7 +32,21 @@ export default function TestsPage() {
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-2">Tests</h2>
-        <p className="text-gray-400 mb-8">Selecciona un deportista para ver o añadir sus tests</p>
+        <p className="text-gray-400 mb-6">Selecciona un deportista para ver o añadir sus tests</p>
+
+        {/* La entrada a la batería de campo. Va aquí arriba y no escondida en la
+            ficha de un atleta porque el entrenador que va a testar todavía no ha
+            elegido a quién: muchas veces son varios a la vez. */}
+        <button onClick={() => router.push('/tests/dirigir')}
+          className="w-full mb-8 bg-gray-900 hover:border-orange-500 border border-gray-800 rounded-xl p-5 flex items-center justify-between gap-4 text-left transition">
+          <div>
+            <h3 className="font-bold">Dirigir tests</h3>
+            <p className="text-gray-500 text-sm mt-0.5">
+              Los 17 tests de la batería a pie de pista: metes lo que mides y el resultado sale solo. A uno o a varios.
+            </p>
+          </div>
+          <span className="text-orange-400 text-xl shrink-0">→</span>
+        </button>
         {deportistas.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-5xl mb-4">🏋️</div>
