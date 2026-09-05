@@ -20,6 +20,10 @@ import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
   filasGuardadas, textoParte, hayQueContarlo,
 } from '@/lib/guardar-varias-tareas'
+import {
+  leer as leerDefectos, fijar as fijarDefecto, guardar as guardarDefectos,
+  paraFilaResistencia, paraFilaFuerza, cuantosFijados,
+} from '@/lib/valores-por-defecto'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -82,7 +86,7 @@ export const ZONA_DE_TECNICA = 'AER'
    forma en un sitio y quien la construye en otro es como empiezan a divergir. */
 export type { FilaResistencia, FilaFuerza }
 
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian, copiar, onCopiado }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian, copiar, onCopiado, defectosIniciales }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
@@ -100,6 +104,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // lista de tareas se quedaba congelada desde que cargó la página: la gráfica de
   // carga y "Guardar como plantilla" se perdían todo lo añadido aquí.
   onTareasCambian?: () => void
+  /* Con qué nace cada fila nueva (`sesion.valores_por_defecto`). Llega en bruto
+     desde el padre, que ya pide la sesión con `select('*')`: así la columna
+     aparece sola en cuanto exista, sin nombrarla en ninguna consulta — nombrar
+     una columna que todavía no está tumbaría la consulta ENTERA. */
+  defectosIniciales?: unknown
 }) {
   const esFuerza = disciplinaSesion === 'Fuerza'
   const [filasR, setFilasR] = useState<FilaResistencia[]>([])
@@ -118,6 +127,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
   // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
   const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
+  /* Con qué nace cada fila nueva. Se lee UNA vez al montar: cambiarlo después
+     no puede rehacer lo que ya está en pantalla —esa es la regla de que solo
+     mira hacia adelante— y releerlo del padre en cada render lo desharía. */
+  const [defectos, setDefectos] = useState(() => leerDefectos(defectosIniciales))
+  const [avisoDefectos, setAvisoDefectos] = useState('')
+
   // Arrastrar filas para reordenarlas (mismo criterio que la vista Formulario).
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [sobreIdx, setSobreIdx] = useState<number | null>(null)
@@ -254,6 +269,24 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const getRef = (codigo: string | null | undefined, disciplina: string) =>
     referenciaDeZona(codigo, disciplina, tests, fcMax)
 
+  /* Cambiar un valor de la franja. Se guarda en la sesión al vuelo: no hay
+     botón de guardar porque no hay nada que revisar —o está fijado o no—, y un
+     «¿guardar los valores por defecto?» sería un paso de más en la pantalla
+     donde más pasos sobran.
+
+     La zona de la sesión NO se toca desde aquí: vive en sus columnas y la leen
+     el mesociclo, el calendario y la vista de semana. La de la franja es el
+     respaldo para las sesiones «complejas», que no tienen zona propia. */
+  const cambiarDefecto = async (tabla: 'resistencia' | 'fuerza', campo: string, valor: string) => {
+    const nuevos = fijarDefecto(defectos, tabla, campo, valor)
+    setDefectos(nuevos)
+    const err = await guardarDefectos(supabase, sesionId, nuevos)
+    setAvisoDefectos(err ? 'No se pudo guardar: valdrá solo mientras no recargues.' : '')
+  }
+
+  const zonaDeLaSesionR = modoResistencia === 'simple' ? (zonaResSesion || '') : ''
+  const zonaDeLaSesionF = modoFuerza === 'compleja' ? '' : (zonaFuerza || '')
+
   const nuevaFilaR = (): FilaResistencia => ({
     orden: filasR.length + tareasGuardadas.length + 1,
     // En un brick, 'Brick' NO es un deporte: cada bloque tiene el suyo, así que se
@@ -261,11 +294,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     // deporte real — ver lib/atribucion).
     // Si la sesión es de resistencia "simple", la tarea nace ya con la zona de la
     // sesión puesta (se puede cambiar a mano).
-    zona: modoResistencia === 'simple' ? (zonaResSesion || '') : '',
+    zona: zonaDeLaSesionR,
     disciplina: disciplinaSesion === 'Brick' ? '' : (disciplinaSesion || ''),
     series: '', descanso: '', tipoMedicion: '', valorMedicion: '',
     intensidadPersonalizada: '', comentario: '',
     esTecnica: false, tecnicaId: '',
+    /* Encima de todo lo anterior, lo que esté fijado en la franja. Va al final
+       a propósito: `paraFilaResistencia` devuelve SOLO los campos fijados, así
+       que lo que no se fija no aparece aquí y la fila conserva lo de siempre. */
+    ...paraFilaResistencia(defectos, { zonaSesion: zonaDeLaSesionR, disciplinaSesion }),
   })
 
   const nuevaFilaF = (): FilaFuerza => ({
@@ -277,6 +314,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
     grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
     zonaFuerzaTarea: '',
+    // El ejercicio NO se predetermina: repetirlo en toda la sesión no tiene
+    // sentido. El grupo muscular sí, y ya deja el buscador acotado.
+    ...paraFilaFuerza(defectos, { zonaSesion: zonaDeLaSesionF }),
   })
 
   // Cambian varias casillas de una fila a la vez. Antes esto se hacía llamando dos
@@ -612,6 +652,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   const chipCls = 'text-[11px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 whitespace-nowrap'
 
+  /* Un campo de la franja se pinta en naranja cuando tiene valor, igual que ya
+     hace la unidad en la fila: así se ve de un vistazo qué está fijado y qué se
+     va a elegir abajo, sin leer etiqueta por etiqueta. */
+  const campoDefecto = (valor: string | undefined) =>
+    'bg-gray-950/60 text-sm rounded-lg px-2.5 py-1.5 outline-none border transition ' +
+    (valor
+      ? 'border-orange-500/50 bg-orange-500/15 text-orange-200'
+      : 'border-gray-700 text-gray-300 focus:ring-1 focus:ring-orange-500')
+
+  /** Cada campo de la franja con su rótulo encima. */
+  const rotulado = (etiqueta: string, campo: React.ReactNode) => (
+    <label key={etiqueta} className="flex flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{etiqueta}</span>
+      {campo}
+    </label>
+  )
+
+  const defFijados = cuantosFijados(esFuerza ? defectos.fuerza : defectos.resistencia)
+
   const nombreDeBiblioteca = (id: any) =>
     ejerciciosBiblioteca.find((e: any) => e.id === Number(id))?.nombre || '—'
 
@@ -778,6 +837,149 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* CON QUÉ NACE CADA FILA NUEVA.
+          Seis bloques de carrera en metros eran seis veces el mismo desplegable,
+          y la unidad nace siempre en «und.»: sin elegirla no se guarda el
+          volumen. Aquí se fija una vez.
+
+          Solo mira hacia adelante: cambiar algo NO toca ninguna fila ya puesta.
+          Y lo que se deje sin fijar sale en la fila como hasta ahora — esta
+          franja adelanta trabajo, no quita ni un control de abajo. */}
+      {!esDeportista && (
+        <div className="mb-3 rounded-xl border border-gray-700 bg-gray-900/70 px-3 py-2.5">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-orange-300">
+              Por defecto en esta sesión
+            </span>
+            <span className="text-[11px] text-gray-500">
+              {defFijados > 0
+                ? 'Solo afecta a las filas que añadas a partir de ahora'
+                : 'Lo que dejes sin fijar sale en la fila como hasta ahora'}
+            </span>
+          </div>
+
+          <div className="flex gap-2 flex-wrap items-end">
+            {esFuerza ? (
+              <>
+                {rotulado('Grupo muscular',
+                  <select value={defectos.fuerza.grupoMuscular || ''} className={campoDefecto(defectos.fuerza.grupoMuscular)}
+                    onChange={e => cambiarDefecto('fuerza', 'grupoMuscular', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
+                  </select>)}
+                {rotulado('Tipo de serie',
+                  <select value={defectos.fuerza.tipoSerie || ''} className={campoDefecto(defectos.fuerza.tipoSerie)}
+                    onChange={e => cambiarDefecto('fuerza', 'tipoSerie', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Superserie">Superserie</option>
+                    <option value="Drop set">Drop set</option>
+                    <option value="Complex">Complex</option>
+                    <option value="Isométrico">Isométrico</option>
+                  </select>)}
+                {rotulado('Medida',
+                  <select value={defectos.fuerza.medida || ''} className={campoDefecto(defectos.fuerza.medida)}
+                    onChange={e => cambiarDefecto('fuerza', 'medida', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    <option value="reps">Reps</option>
+                    <option value="tiempo">Tiempo</option>
+                  </select>)}
+                {rotulado('Control',
+                  <select value={defectos.fuerza.control || ''} className={campoDefecto(defectos.fuerza.control)}
+                    onChange={e => cambiarDefecto('fuerza', 'control', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    {CONTROLES.map(c => <option key={c.id} value={c.id}>{c.corto}</option>)}
+                  </select>)}
+                {/* El número del control: el «2» de «RIR 2». Es el equivalente de
+                    la intensidad en resistencia, y una sesión entera a RIR 2 es
+                    de lo más corriente. */}
+                {rotulado('Valor',
+                  <input type="text" value={defectos.fuerza.controlValor || ''}
+                    placeholder={controlDe(defectos.fuerza.control as ControlTipo)?.ph || '2'}
+                    title="El número del control en cada fila nueva"
+                    className={campoDefecto(defectos.fuerza.controlValor) + ' w-[64px]'}
+                    onChange={e => cambiarDefecto('fuerza', 'controlValor', e.target.value)} />)}
+                {/* La cualidad solo cuando la sesión no tiene una propia: en
+                    «simple» la manda `sesion.zona_fuerza`, que es de la sesión y
+                    no un valor por defecto. */}
+                {modoFuerza === 'compleja' && rotulado('Cualidad',
+                  <select value={defectos.fuerza.zona || ''} className={campoDefecto(defectos.fuerza.zona)}
+                    onChange={e => cambiarDefecto('fuerza', 'zona', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    {ZONAS_FUERZA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
+                  </select>)}
+                {rotulado('Series',
+                  <input type="text" value={defectos.fuerza.series || ''} placeholder="—"
+                    className={campoDefecto(defectos.fuerza.series) + ' w-[64px]'}
+                    onChange={e => cambiarDefecto('fuerza', 'series', e.target.value)} />)}
+                {rotulado('Descanso',
+                  <input type="text" value={defectos.fuerza.descanso || ''} placeholder="—"
+                    className={campoDefecto(defectos.fuerza.descanso) + ' w-[80px]'}
+                    onChange={e => cambiarDefecto('fuerza', 'descanso', e.target.value)} />)}
+              </>
+            ) : (
+              <>
+                {modoResistencia !== 'simple' && rotulado('Zona',
+                  <select value={defectos.resistencia.zona || ''} className={campoDefecto(defectos.resistencia.zona)}
+                    onChange={e => cambiarDefecto('resistencia', 'zona', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    {sistema === 2
+                      ? FACTORES_RESISTENCIA.map(factor => (
+                          <optgroup key={factor} label={factor}>
+                            {ZONAS_RESISTENCIA.filter(z => z.factor === factor).map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                          </optgroup>
+                        ))
+                      : ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
+                  </select>)}
+                {/* La disciplina solo en un brick: en las demás la de la sesión ya
+                    manda y ofrecer otra sería contradecirla. */}
+                {disciplinaSesion === 'Brick' && rotulado('Disciplina',
+                  <select value={defectos.resistencia.disciplina || ''} className={campoDefecto(defectos.resistencia.disciplina)}
+                    onChange={e => cambiarDefecto('resistencia', 'disciplina', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
+                  </select>)}
+                {rotulado('Unidad',
+                  <select value={defectos.resistencia.unidad || ''} className={campoDefecto(defectos.resistencia.unidad)}
+                    onChange={e => cambiarDefecto('resistencia', 'unidad', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    <optgroup label="Distancia">
+                      <option value="m">m</option>
+                      <option value="km">km</option>
+                    </optgroup>
+                    <optgroup label="Tiempo">
+                      <option value="seg">seg</option>
+                      <option value="min">min</option>
+                      <option value="mmss">mm:ss</option>
+                    </optgroup>
+                  </select>)}
+                {rotulado('Series',
+                  <input type="text" value={defectos.resistencia.series || ''} placeholder="—"
+                    className={campoDefecto(defectos.resistencia.series) + ' w-[64px]'}
+                    onChange={e => cambiarDefecto('resistencia', 'series', e.target.value)} />)}
+                {rotulado('Descanso',
+                  <input type="text" value={defectos.resistencia.descanso || ''} placeholder="—"
+                    className={campoDefecto(defectos.resistencia.descanso) + ' w-[80px]'}
+                    onChange={e => cambiarDefecto('resistencia', 'descanso', e.target.value)} />)}
+                {/* En una sesión de una sola zona los bloques van todos a la misma
+                    intensidad: escribirla seis veces es el trabajo que esta franja
+                    quita. Lo que se teclea aquí SE GUARDA en cada fila; la
+                    sugerencia de la zona sigue siendo el texto de fondo de la
+                    casilla, no un valor (ver lib/intensidad-prescrita). */}
+                {rotulado('Intensidad',
+                  <input type="text" value={defectos.resistencia.intensidad || ''}
+                    placeholder="4:30 /km · 140-150 ppm"
+                    title="Se escribe en el «@» de cada fila nueva"
+                    className={campoDefecto(defectos.resistencia.intensidad) + ' w-[180px]'}
+                    onChange={e => cambiarDefecto('resistencia', 'intensidad', e.target.value)} />)}
+              </>
+            )}
+          </div>
+
+          {avisoDefectos && <p className="mt-2 text-[11px] text-amber-400">{avisoDefectos}</p>}
         </div>
       )}
 

@@ -12,7 +12,40 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ---
 
-## 4 de septiembre de 2026
+## 5 de septiembre de 2026
+
+### Fijar con qué nace cada tarea
+
+Montar una sesión de seis bloques de carrera en metros era elegir **seis veces**
+la misma unidad, el mismo descanso y la misma intensidad. Y la unidad nacía
+siempre en «und.»: sin ponerla, el volumen del bloque no se guarda.
+
+Encima de las tareas hay ahora una franja, **«Por defecto en esta sesión»**,
+donde lo fijas una vez.
+
+- **En resistencia:** unidad, series, descanso e intensidad. Y la disciplina, en
+  los bricks —que es donde hace falta, porque ahí cada bloque lleva su deporte.
+- **En fuerza:** grupo muscular, tipo de serie, reps o tiempo, el control
+  (RIR, RPE, %1RM…) y su número, series y descanso.
+
+Cuatro reglas, y las cuatro importan:
+
+1. **Viven en esa sesión.** Se guardan con ella; mañana los reencuentras, y otra
+   sesión empieza con los suyos.
+2. **Solo hacia adelante.** Cambiar un valor no toca ninguna fila que ya esté
+   puesta. Pisarte lo escrito para «ponerlo al día» sería peor que no tenerlo.
+3. **No es un candado.** Cada fila se sigue cambiando a mano; el bloque que se
+   sale de la norma se edita como siempre.
+4. **Lo que no fijes sale como hasta ahora.** La franja no quita ni un control de
+   la fila: adelanta trabajo, no obliga a nada.
+
+El ejercicio de fuerza no se predetermina —repetirlo en toda la sesión no tiene
+sentido—, pero sí su grupo muscular, que ya deja el buscador acotado.
+
+La zona tampoco está en la franja cuando la sesión ya tiene la suya: esa zona no
+es un valor por defecto, es un dato de la sesión que leen el mesociclo, el
+calendario y la vista de semana. En las sesiones «complejas», que no tienen zona
+propia, sí puedes fijar con cuál nacen las filas.
 
 ### Guardar todas las tareas de una vez
 
