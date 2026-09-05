@@ -14,6 +14,19 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 5 de septiembre de 2026
 
+### La intensidad que prescribes ya se ve
+
+Escribías «140-150 ppm» en un bloque, lo guardabas, y **desaparecía de la
+pantalla**. La columna se llama «Referencia / Intensidad» pero solo enseñaba la
+referencia de la zona, así que para comprobar lo que habías mandado había que
+volver a abrir la tarea para editarla.
+
+Pasaba en las dos vistas del editor, en la de Tabla y en la de Formulario. Ahora
+lo prescrito va arriba y destacado —es la orden— y la referencia de la zona
+queda debajo, apagada, que es el contexto. El mismo reparto que ve el atleta.
+
+Si no prescribiste nada, no cambia nada: sigue saliendo solo la referencia.
+
 ### Fijar con qué nace cada tarea
 
 Montar una sesión de seis bloques de carrera en metros era elegir **seis veces**

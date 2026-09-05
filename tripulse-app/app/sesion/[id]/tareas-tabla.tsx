@@ -13,8 +13,8 @@ import {
   segAMmss, filaResistenciaDesde, filaFuerzaDesde, avisaOtraDisciplina,
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
-import { referenciaDeZona, cargarReferencias, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
-import { aGuardar, intensidadSinSitio } from '@/lib/intensidad-prescrita'
+import { referenciaDeZona, cargarReferencias, ritmoObjetivoTexto, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
+import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
@@ -814,12 +814,34 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
                         <td className="py-2 px-2 text-blue-400 font-medium">{mostrarValorGuardado(t)}</td>
                         <td className="py-2 px-2 text-orange-400 font-medium">{mostrarTotal(t)}</td>
+                        {/* LA COLUMNA SE LLAMA «Referencia / Intensidad» Y SOLO
+                            ENSEÑABA LA REFERENCIA. Lo que el entrenador prescribe
+                            en el «@» no salía en ninguna parte de esta tabla: para
+                            verlo había que abrir la fila a editar, así que después
+                            de guardar no había forma de comprobar lo que habías
+                            mandado.
+                            Va arriba y en blanco porque es LA ORDEN; la referencia
+                            de la zona queda debajo, apagada, que es contexto. Mismo
+                            reparto que ve el atleta en su briefing. */}
                         <td className="py-2 px-2 text-xs">
-                          {ref?.porcentaje && <p className="text-orange-400">{ref.porcentaje}</p>}
-                          {ref?.ritmo && <p className="text-blue-400">{ref.ritmo}</p>}
-                          {ref?.fc && <p className="text-gray-400">{ref.fc}</p>}
-                          {ref?.rpe && <p className="text-gray-500">{ref.rpe}</p>}
-                          {!ref && <span className="text-gray-600">—</span>}
+                          {(() => {
+                            const prescrita = ritmoObjetivoTexto(intensidadGuardada(t), t.disciplina)
+                            return (
+                              <>
+                                {prescrita && (
+                                  <p className="text-white font-semibold pb-1 mb-1 border-b border-white/10"
+                                    title={'Lo que prescribiste · ' + queSeMide(prescrita, t.disciplina).toLowerCase()}>
+                                    {prescrita}
+                                  </p>
+                                )}
+                                {ref?.porcentaje && <p className="text-orange-400">{ref.porcentaje}</p>}
+                                {ref?.ritmo && <p className="text-blue-400">{ref.ritmo}</p>}
+                                {ref?.fc && <p className="text-gray-400">{ref.fc}</p>}
+                                {ref?.rpe && <p className="text-gray-500">{ref.rpe}</p>}
+                                {!ref && !prescrita && <span className="text-gray-600">—</span>}
+                              </>
+                            )
+                          })()}
                         </td>
                         <td className="py-2 px-2 text-gray-400 text-xs">{t.comentario || '—'}</td>
                         {!esDeportista && (

@@ -1251,6 +1251,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                         </div>
                         <p className="text-gray-300 text-sm">{t.series ? t.series+' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
                         {mostrarMedicion(t) && <p className="text-blue-400 text-sm font-medium">{mostrarMedicion(t)}</p>}
+                        {/* La intensidad prescrita tampoco salía aquí. La tarjeta
+                            enseñaba zona, series, descanso y medición, y lo que
+                            habías mandado —«140-150 ppm»— solo se veía volviendo a
+                            abrir la tarea para editarla. */}
+                        {intensidadGuardada(t) && (
+                          <p className="text-white text-sm font-semibold" title="Lo que prescribiste">
+                            @ {intensidadGuardada(t)}
+                          </p>
+                        )}
                         {t.comentario && <p className="text-gray-400 text-sm mt-1">{t.comentario}</p>}
                         {t.rpe_reportado && <p className="text-green-400 text-xs mt-2">✓ RPE: {t.rpe_reportado}/10 · Sensacion: {t.sensacion_tecnica}/5</p>}
                       </div>
