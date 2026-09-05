@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { intensidadGuardada, queEnsenar, aGuardar, intensidadesPorSesion } from './intensidad-prescrita'
+import { intensidadGuardada, queEnsenar, aGuardar, intensidadesPorSesion, queSeMide, intensidadSinSitio } from './intensidad-prescrita'
 
 /* Mismo apaño que en duracion-carga.test: como supabase llega por parámetro,
    la función se puede probar entera sin conexión. `order` está porque la
@@ -137,5 +137,102 @@ describe('intensidadesPorSesion', () => {
       p_distancia: [{ id_tarea: 1, ritmo_objetivo: '  ' }],
     }), [10])
     expect(out).toEqual({})
+  })
+})
+
+describe('cómo se titula lo que se enseña', () => {
+  it('lo pregunta al valor, no a la disciplina: pulso prescrito en carrera es PULSO', () => {
+    // El fallo original: la caja se titulaba «Ritmo objetivo» y dentro ponía
+    // «140-150 ppm», con un «Ritmo real» al lado pidiendo un ritmo.
+    expect(queSeMide('140-150 ppm', 'Carrera')).toBe('Pulso')
+    expect(queSeMide('130-145 ppm', 'Ciclismo')).toBe('Pulso')
+  })
+
+  it('reconoce las formas de escribir el pulso', () => {
+    expect(queSeMide('148 bpm', 'Carrera')).toBe('Pulso')
+    expect(queSeMide('pulsaciones 140-150', 'Carrera')).toBe('Pulso')
+    expect(queSeMide('FC 140-150', 'Carrera')).toBe('Pulso')
+  })
+
+  it('vatios', () => {
+    expect(queSeMide('180-220 W', 'Ciclismo')).toBe('Potencia')
+    expect(queSeMide('200 vatios', 'Ciclismo')).toBe('Potencia')
+  })
+
+  it('ritmo, con la unidad que sea', () => {
+    expect(queSeMide('4:30 /km', 'Carrera')).toBe('Ritmo')
+    expect(queSeMide('1:38 /100m', 'Natacion')).toBe('Ritmo')
+    expect(queSeMide('68 /400m', 'Carrera')).toBe('Ritmo')
+    expect(queSeMide('ritmo de 10K', 'Carrera')).toBe('Ritmo')
+  })
+
+  it('RPE es esfuerzo, no ritmo', () => {
+    expect(queSeMide('RPE 6-7', 'Carrera')).toBe('Esfuerzo')
+  })
+
+  it('un porcentaje no es ninguna de las anteriores: es intensidad', () => {
+    // «95–105% VAM» no es un ritmo: es un porcentaje de uno.
+    expect(queSeMide('95–105% VAM', 'Carrera')).toBe('Intensidad')
+    expect(queSeMide('88-94% FTP', 'Ciclismo')).toBe('Intensidad')
+  })
+
+  it('sin nada escrito manda la disciplina: eso que se enseña es el cálculo de sus tests', () => {
+    expect(queSeMide('', 'Carrera')).toBe('Ritmo')
+    expect(queSeMide(null, 'Ciclismo')).toBe('Potencia')
+    expect(queSeMide(null, 'Natación')).toBe('Ritmo')
+    expect(queSeMide(null, 'Brick')).toBe('Intensidad')
+    expect(queSeMide(null, null)).toBe('Intensidad')
+  })
+
+  it('texto libre que no dice la unidad cae en la disciplina, no en un rótulo inventado', () => {
+    expect(queSeMide('los 400 fuertes', 'Carrera')).toBe('Ritmo')
+  })
+})
+
+describe('la forma en que llega la medición', () => {
+  it('lista, que es como la piden casi todas las pantallas', () => {
+    expect(intensidadGuardada({ p_distancia: [{ ritmo_objetivo: '4:30 /km' }] })).toBe('4:30 /km')
+  })
+
+  it('objeto suelto: PostgREST devuelve una cosa u otra según vea la relación', () => {
+    // Con `[0]` a secas esto daba undefined y la tarea se quedaba sin
+    // intensidad sin que nada fallara.
+    expect(intensidadGuardada({ p_distancia: { ritmo_objetivo: '140-150 ppm' } })).toBe('140-150 ppm')
+    expect(intensidadGuardada({ p_duracion: { ritmo_objetivo: '180-220 W' } })).toBe('180-220 W')
+  })
+
+  it('lista vacía o relación ausente no revientan', () => {
+    expect(intensidadGuardada({ p_distancia: [], p_duracion: [] })).toBeNull()
+    expect(intensidadGuardada({})).toBeNull()
+    expect(intensidadGuardada(null)).toBeNull()
+  })
+
+  it('un bloque por tiempo cuenta igual que uno por distancia', () => {
+    expect(intensidadGuardada({ p_distancia: [], p_duracion: [{ ritmo_objetivo: '130-145 ppm' }] }))
+      .toBe('130-145 ppm')
+  })
+})
+
+describe('cuando lo escrito no tiene dónde guardarse', () => {
+  it('en distancia y en tiempo cabe: no hay aviso', () => {
+    expect(intensidadSinSitio('p_distancia', '4:30 /km')).toBeNull()
+    expect(intensidadSinSitio('p_duracion', '140-150 ppm')).toBeNull()
+  })
+
+  it('en repeticiones NO cabe, y se dice en vez de tragárselo', () => {
+    const a = intensidadSinSitio('p_repeticiones', '140-150 ppm')
+    expect(a).toBeTruthy()
+    expect(a).toContain('repeticiones')
+  })
+
+  it('sin unidad todavía tampoco, y el aviso dice qué hacer', () => {
+    const a = intensidadSinSitio(null, '140-150 ppm')
+    expect(a).toContain('unidad')
+  })
+
+  it('sin nada escrito no molesta: el aviso es por lo tecleado, no por la unidad', () => {
+    expect(intensidadSinSitio('p_repeticiones', '')).toBeNull()
+    expect(intensidadSinSitio(null, null)).toBeNull()
+    expect(intensidadSinSitio(null, '   ')).toBeNull()
   })
 })

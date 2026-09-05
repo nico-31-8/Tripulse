@@ -12,6 +12,80 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ---
 
+## 4 de septiembre de 2026
+
+### Guardar todas las tareas de una vez
+
+Montar una sesión de fuerza era añadir una fila, guardarla, esperar a que la
+pantalla se recargara entera, añadir la siguiente. Cinco ejercicios, cinco veces.
+
+Ahora, a partir de la segunda fila, aparece encima un botón que **las guarda
+todas de golpe**. El botón de cada fila se queda donde estaba: si solo quieres
+meter una, la metes y ya.
+
+El número que lleva escrito es el de las filas **listas**, no el de filas. Con
+cinco puestas y dos a medias dice «Guardar las 3», y al lado te avisa de que
+las otras dos se quedan. Si alguna no entra, se queda en su sitio con lo que
+habías escrito y se te dice cuál y por qué — nada de dar cinco por guardadas
+cuando entraron tres.
+
+### La intensidad dejó de titularse mal
+
+Cuando prescribes por **pulsaciones**, al atleta le salía:
+
+> **Ritmo objetivo** — 140-150 ppm
+
+y al lado una casilla «Ritmo real» pidiéndole un ritmo. El número era correcto;
+el título, no. El rótulo lo elegía el deporte, así que en carrera siempre ponía
+«ritmo» y en bici siempre «potencia», dijera lo que dijera dentro.
+
+Ahora el título sale de **lo que has escrito**: Pulso, Potencia, Ritmo, Esfuerzo.
+Y la casilla donde el atleta apunta lo que hizo se titula igual, que antes ponía
+«Ritmo / Potencia» y se dejaba fuera el pulso — con el que se prescribe media
+base aeróbica.
+
+### Prescribir intensidad en bloques por tiempo
+
+En la vista de **Formulario** la casilla de intensidad solo salía en bloques por
+metros o kilómetros. Si prescribías por minutos —que es lo normal en bici y muy
+común en carrera— no tenías dónde escribirla: solo veías la referencia de la
+zona en un recuadro que no se podía tocar. Y aunque la hubieras escrito, no se
+guardaba.
+
+Ya sale en cualquier bloque que se pueda medir, se llama **«Intensidad
+objetivo»** porque no siempre es un ritmo, y se guarda.
+
+De paso, esa vista **guardaba la sugerencia de la app** cuando dejabas la casilla
+en blanco, como si la hubieras escrito tú. Era el fallo que se corrigió en la
+vista de Tabla el 30 de agosto y que aquí se había quedado sin corregir. Ahora
+se guarda solo lo que escribes; lo que calcula la app se calcula al enseñarlo.
+
+### Siempre hay una referencia, aunque no tenga tests
+
+Si el atleta **no tiene hecho el test** de esa disciplina, no se le podía traducir
+la zona a un ritmo — y entonces no veía **nada**: abría un rodaje de 40 minutos
+sin ninguna referencia de a cuánto ir.
+
+Ahora, si no hay ritmo, se le dan sus **pulsaciones** de esa zona (calculadas
+desde su FC máxima); y si tampoco se sabe, el **RPE**, que no necesita ningún
+test. Se le dice de dónde sale cada uno, para que sepa que le falta el test.
+
+Esto importa más de lo que parece: las sesiones que crea el **planificador** y las
+que salen de **plantillas** no llevan intensidad escrita, así que hasta ahora
+dependían por completo de que el atleta tuviera el test.
+
+### Dos avisos donde antes había silencio
+
+- **En «Mis análisis» faltaban los bloques por tiempo.** Enseñaba el objetivo de
+  los bloques por distancia y de los otros no, cuando en las demás pantallas sí
+  aparecían.
+- **La intensidad en un bloque de repeticiones se perdía.** La casilla la
+  aceptaba, la tarea se guardaba y la intensidad no llegaba a ninguna parte:
+  ahí no hay dónde guardarla. Ahora te lo dice antes de guardar y te propone qué
+  hacer, en vez de tragárselo.
+
+---
+
 ## 3 de septiembre de 2026
 
 ### El calendario abre por el mes

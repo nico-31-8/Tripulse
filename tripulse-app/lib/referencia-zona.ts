@@ -118,6 +118,58 @@ export function referenciaDeZona(
   return refClasica(ZONAS_UI.find(z => 'Z' + z.num === codigo), disciplina, tests, fcMax)
 }
 
+// ------------------------------------------------------------
+// Qué se le dice al atleta cuando NO hay intensidad escrita
+// ------------------------------------------------------------
+
+export interface ObjetivoZona {
+  texto: string
+  /** De dónde sale, para poder decírselo sin mentir. */
+  de: 'tests' | 'fc' | 'esfuerzo'
+}
+
+/**
+ * El objetivo de una zona para este atleta, con lo que haya.
+ *
+ * EL AGUJERO QUE TAPA. Cuando el entrenador no escribe intensidad —que es lo
+ * normal: el volcado del planificador y las plantillas nunca la escriben— la
+ * pantalla enseña el ritmo calculado desde sus tests. Sin ese test, `ritmo` es
+ * null y la caja entera no se pintaba: el atleta abría un rodaje de 40 minutos
+ * y no veía NINGUNA referencia de a cuánto ir.
+ *
+ * Y no hacía falta: la zona sigue significando algo sin tests.
+ *
+ *   · ritmo/vatios — si tiene el test que toca. Es lo mejor y va primero.
+ *   · pulsaciones  — si se le conoce la FC máxima. Sigue siendo un número que
+ *                    puede mirar en el reloj mientras entrena.
+ *   · RPE          — no necesita nada, y es una escala que ya usa al reportar.
+ *
+ * El PORCENTAJE queda fuera a propósito. «75–85% VAM» es un porcentaje de un
+ * número que no tiene —si lo tuviera, habría ritmo—; y en Zonas 2 es «AER ·
+ * 0,75», que es jerga del sistema, no una instrucción. Enseñar algo que no se
+ * puede ejecutar es ruido con aspecto de dato.
+ */
+export function objetivoDeZona(
+  codigo: string | null | undefined,
+  disciplina: string,
+  tests: Tests,
+  fcMax: number,
+): ObjetivoZona | null {
+  const ref = referenciaDeZona(codigo, disciplina, tests, fcMax)
+  if (!ref) return null
+  if (ref.ritmo) return { texto: ref.ritmo, de: 'tests' }
+  if (ref.fc) return { texto: ref.fc, de: 'fc' }
+  if (ref.rpe) return { texto: ref.rpe, de: 'esfuerzo' }
+  return null
+}
+
+/** De dónde sale ese número, para el `title` de la línea en gris. */
+export function deDondeSale(de: ObjetivoZona['de']): string {
+  if (de === 'tests') return 'Lo que sale de tus tests'
+  if (de === 'fc') return 'De tu frecuencia cardiaca máxima: aún no tienes el test de esta disciplina'
+  return 'El esfuerzo de esta zona: aún no tienes el test de esta disciplina'
+}
+
 /**
  * Los datos del atleta que hacen falta para traducir zonas.
  *

@@ -4,11 +4,11 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
 import { mmss } from '@/lib/duracion-carga'
-import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
-import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
+import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
+import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
-import { zonaResistencia, prescripcion, cargaZona, zonaClasica } from '@/lib/zonas'
+import { cargaZona } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 
@@ -40,34 +40,14 @@ function claseZona(zona: string): string {
   return COLOR_ZONA[zona] || COLOR_ZONA['Z' + cargaZona(zona).nivel] || 'bg-gray-900 border-gray-700'
 }
 
-// Los tres rangos del sistema clásico salían de tres tablas escritas aquí. La de
-// VAM se había separado de la de la ficha de sesión y prescribía otro ritmo para
-// la misma zona. Ahora las tres vienen de ZONAS_CLASICAS (lib/zonas.ts).
-function calcularRango(zona: string, disciplina: string, tests: any): string {
-  if (!zona || !disciplina || !tests) return ''
-  // Zonas 2 (resistencia): el catálogo da el rango real de ritmo/vatios/CSS.
-  const zr = zonaResistencia(zona)
-  if (zr) { const p = prescripcion(zr, disciplina, tests); return p && p !== '—' ? p : '' }
-  // Sistema clásico Z1–Z7.
-  const zc = zonaClasica(zona)
-  if (!zc) return ''
-  if (disciplina === 'Carrera' && tests.vam) {
-    const [p1, p2] = zc.vamPct
-    const v1 = tests.vam * p1 / 100, v2 = tests.vam * p2 / 100
-    const fmt = (v: number) => { const s = 3600/v; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
-    return fmt(v2) + '–' + fmt(v1) + ' /km'
-  }
-  if (disciplina === 'Ciclismo' && tests.ftp) {
-    const [p1, p2] = zc.ftpPct
-    return Math.round(tests.ftp*p1/100) + '–' + Math.round(tests.ftp*p2/100) + ' W'
-  }
-  if ((disciplina === 'Natacion' || disciplina === 'Natación') && tests.css) {
-    const [p1, p2] = zc.cssPct
-    const fmt = (p: number) => { const s = 100/(tests.css * p / 100); return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0') }
-    return fmt(p2) + '–' + fmt(p1) + ' /100m'
-  }
-  return ''
-}
+/* Aquí vivía `calcularRango`, con las tres tablas del sistema clásico copiadas
+   dentro. Era la cuarta copia de la misma traducción y ya había divergido una
+   vez: la de VAM se separó de la de la ficha de sesión y el mismo Z4 prescribía
+   dos ritmos según por dónde entrases.
+   Ahora lo hace `objetivoDeZona` (lib/referencia-zona), que además tiene lo que
+   a esta le faltaba: sin el test, devolvía cadena vacía y la caja del objetivo
+   no se pintaba — el atleta abría un rodaje de 40 minutos sin ninguna
+   referencia de a cuánto ir. */
 export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id } = use(params)
@@ -88,6 +68,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, any[]>>({})
   const [guardando, setGuardando] = useState(false)
   const [tests, setTests] = useState<any>(null)
+  const [fcMax, setFcMax] = useState(0)
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
@@ -141,7 +122,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
      * móvil y mala cobertura. Es donde más se nota. */
     const depIdLocal: number | null = ses?.id_deportista ?? null
 
-    const [mesos, micros, mismoDia, t1, t2, t3, an, tar] = await Promise.all([
+    const [mesos, micros, mismoDia, t1, t2, t3, an, dep, tar] = await Promise.all([
       depIdLocal ? supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       /* Por deportista y fecha, no por los microciclos del plan: así cuenta
@@ -152,6 +133,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       depIdLocal ? supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
+      /* Su FC máxima. Es el respaldo cuando no tiene el test de la disciplina:
+         sin ella el objetivo baja a RPE, que también sirve, pero unas
+         pulsaciones son un número que puede mirar en el reloj. */
+      depIdLocal ? supabase.from('deportista').select('fc_maxima').eq('id', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden'),
     ])
 
@@ -159,6 +144,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       // Los ritmos objetivo por zona: salen siempre que haya test, planificada o libre.
       setTests({ vam: (t1.data as any)?.[0]?.vam || null, css: (t2.data as any)?.[0]?.css || null, ftp: (t3.data as any)?.[0]?.ftp || null })
       setPesoDeportista((an.data as any)?.peso || null)
+      setFcMax(Number((dep.data as any)?.fc_maxima) || 0)
 
       // Contexto de recuperación, ya sin consultas: lógica pura sobre las listas.
       const listaMesos = (mesos.data || []) as any[]
@@ -546,17 +532,21 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                  (supabase/intensidad-en-bloques-por-tiempo.sql) porque un
                  bloque por tiempo perdía la intensidad, y en carrera prescribir
                  por tiempo es lo normal. */
-              const intensidad = queEnsenar(
-                intensidadGuardada(tarea),
-                calcularRango(tarea?.zona_entrenamiento || '', tarea?.disciplina || sesion?.disciplina || '', tests),
+              const calc = objetivoDeZona(
+                tarea?.zona_entrenamiento,
+                tarea?.disciplina || sesion?.disciplina || '',
+                tests || {},
+                fcMax,
               )
+              const intensidad = queEnsenar(intensidadGuardada(tarea), calc?.texto)
               if (!intensidad.principal) return null
               return (
                 <div className="mt-3 bg-black/30 rounded-lg px-4 py-2 flex justify-between items-center">
+                  {/* El título sale de lo que pone, no de la disciplina. Iba por
+                      disciplina y por eso mentía: «Ritmo objetivo» encima de un
+                      «140-150 ppm». Ver queSeMide en lib/intensidad-prescrita. */}
                   <p className="text-xs text-gray-400">
-                    {(tarea?.disciplina || sesion?.disciplina) === 'Carrera' ? 'Ritmo objetivo' :
-                     (tarea?.disciplina || sesion?.disciplina) === 'Ciclismo' ? 'Potencia objetivo' :
-                     (tarea?.disciplina || sesion?.disciplina) === 'Natacion' ? 'Ritmo obj /100m' : 'Referencia'}
+                    {queSeMide(intensidad.principal, tarea?.disciplina || sesion?.disciplina)} objetivo
                   </p>
                   <div className="text-right leading-tight">
                     <p className="font-bold text-orange-300 text-lg">{intensidad.principal}</p>
@@ -564,7 +554,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                         prescrito otra cosa. Sirve para traducir un «95–105% VAM»
                         a un ritmo sin tener que salir de aquí. */}
                     {intensidad.gris && (
-                      <p className="text-[11px] text-gray-500" title="Lo que sale de tus tests">{intensidad.gris}</p>
+                      <p className="text-[11px] text-gray-500" title={deDondeSale(calc?.de || 'tests')}>{intensidad.gris}</p>
                     )}
                   </div>
                 </div>
@@ -628,13 +618,16 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                         </div>
                       )}
                       <div>
+                        {/* «Ritmo / Potencia» dejaba fuera el pulso, que es con lo
+                            que se prescribe media base aeróbica. Se pide lo que se
+                            mandó. */}
                         <label className="text-gray-400 text-xs mb-1 flex justify-between">
-                          <span>Ritmo / Potencia</span>
+                          <span>{queSeMide(intensidadGuardada(tarea), tarea?.disciplina || sesion?.disciplina)}</span>
                           {intensidadGuardada(tarea) && (
                             <span className="text-orange-400 font-medium">Objetivo: {intensidadGuardada(tarea)}</span>
                           )}
                         </label>
-                        <input type="text" placeholder={intensidadGuardada(tarea) || "Ritmo real"}
+                        <input type="text" placeholder={intensidadGuardada(tarea) || 'Lo que hiciste'}
                           value={serieData.ritmo || ''}
                           onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, ritmo: e.target.value })}
                           className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-orange-500" />
@@ -773,6 +766,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             const s0 = r['serie_0'] || {}
             /* De las dos tablas: un bloque por tiempo también trae intensidad. */
             const ritmoObj = ritmoObjetivoTexto(intensidadGuardada(t), t.disciplina || sesion?.disciplina)
+            // El par de cajas —objetivo y real— se titulan con lo que se mandó,
+            // no con la disciplina: si el objetivo era el pulso, «Ritmo real»
+            // pedía otra cosa distinta de la prescrita.
+            const medida = queSeMide(ritmoObj, t.disciplina || sesion?.disciplina)
             const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
             const totalSeries = t.series || 1
 
@@ -802,11 +799,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                   {ritmoObj && (
                     <>
                       <div className="bg-orange-950 border border-orange-800 rounded-lg p-2 text-center">
-                        <p className="text-orange-400 text-xs">Ritmo objetivo</p>
+                        <p className="text-orange-400 text-xs">{medida} objetivo</p>
                         <p className="font-bold text-sm text-white">{ritmoObj}</p>
                       </div>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
-                        <p className="text-gray-500 text-xs">Ritmo real</p>
+                        <p className="text-gray-500 text-xs">{medida} real</p>
                         <p className={'font-bold text-sm ' + (s0.ritmo ? 'text-green-400' : 'text-gray-500')}>{s0.ritmo || '—'}</p>
                       </div>
                     </>

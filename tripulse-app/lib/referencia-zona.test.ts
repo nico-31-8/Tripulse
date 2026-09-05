@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ritmoObjetivoTexto } from './referencia-zona'
+import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale } from './referencia-zona'
 
 /*
   El fallo que motiva estos tests: `ritmo_objetivo` se guarda como TEXTO con la
@@ -44,5 +44,60 @@ describe('ritmoObjetivoTexto', () => {
     expect(ritmoObjetivoTexto('')).toBeNull()
     expect(ritmoObjetivoTexto('   ')).toBeNull()
     expect(ritmoObjetivoTexto(0)).toBeNull()
+  })
+})
+
+describe('el objetivo de una zona cuando el atleta no tiene tests', () => {
+  const CON_VAM = { vam: 15, css: null, ftp: null }
+  const SIN_NADA = { vam: null, css: null, ftp: null }
+
+  it('con el test que toca, manda el ritmo', () => {
+    const o = objetivoDeZona('Z2', 'Carrera', CON_VAM, 190)
+    expect(o?.de).toBe('tests')
+    expect(o?.texto).toContain('/km')
+  })
+
+  it('SIN test pero con FC máxima, las pulsaciones: sigue siendo un número que mira en el reloj', () => {
+    const o = objetivoDeZona('Z2', 'Carrera', SIN_NADA, 190)
+    expect(o?.de).toBe('fc')
+    expect(o?.texto).toContain('ppm')
+  })
+
+  it('sin test y sin FC máxima, el RPE: no necesita nada y ya lo usa al reportar', () => {
+    const o = objetivoDeZona('Z2', 'Carrera', SIN_NADA, 0)
+    expect(o?.de).toBe('esfuerzo')
+    expect(o?.texto).toMatch(/^RPE /)
+  })
+
+  it('NUNCA vuelve vacío por no tener tests: ese era el agujero', () => {
+    // Antes, sin test la caja entera no se pintaba y el atleta abría un rodaje
+    // de 40 minutos sin ninguna referencia de a cuánto ir.
+    for (const d of ['Carrera', 'Ciclismo', 'Natacion']) {
+      for (const z of ['Z1', 'Z2', 'Z4', 'Z5']) {
+        const o = objetivoDeZona(z, d, SIN_NADA, 0)
+        expect(o, d + ' ' + z).not.toBeNull()
+        expect(o!.texto.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('el porcentaje se queda fuera: es un porcentaje de un número que no tiene', () => {
+    const o = objetivoDeZona('Z2', 'Carrera', SIN_NADA, 0)
+    expect(o?.texto).not.toContain('% VAM')
+  })
+
+  it('una zona que no existe no inventa nada', () => {
+    expect(objetivoDeZona('ZX', 'Carrera', CON_VAM, 190)).toBeNull()
+    expect(objetivoDeZona('', 'Carrera', CON_VAM, 190)).toBeNull()
+    expect(objetivoDeZona(null, 'Carrera', CON_VAM, 190)).toBeNull()
+  })
+
+  it('la explicación dice la verdad sobre de dónde salió', () => {
+    expect(deDondeSale('tests')).toContain('tests')
+    expect(deDondeSale('fc')).toContain('frecuencia cardiaca')
+    expect(deDondeSale('esfuerzo')).toContain('esfuerzo')
+    // Las dos de respaldo avisan de que le falta el test.
+    expect(deDondeSale('fc')).toContain('test')
+    expect(deDondeSale('esfuerzo')).toContain('test')
   })
 })

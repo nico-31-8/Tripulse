@@ -7,6 +7,7 @@ import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
+import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
 
 function secAMinSeg(seg: number): string {
@@ -247,14 +248,22 @@ export default function MisAnalisis() {
                           </div>
                         )}
 
-                        {/* Ritmo objetivo. Se guarda como TEXTO con su unidad dentro
-                            («180–220 W»); pasarlo por un m:ss daba «NaN:NaN /km». */}
+                        {/* La intensidad prescrita. Se guarda como TEXTO con su unidad
+                            dentro («180–220 W»); pasarlo por un m:ss daba «NaN:NaN /km».
+
+                            Se lee de las DOS tablas. Esta pantalla miraba solo
+                            `p_distancia`, así que un bloque prescrito por minutos
+                            enseñaba su objetivo en las otras tres pantallas del
+                            atleta y aquí no. Y el título sale de lo que pone, no de
+                            la disciplina: «Ritmo objetivo» sobre «140-150 ppm» era
+                            el rótulo contradiciendo al dato. */}
                         {(() => {
-                          const ritmo = ritmoObjetivoTexto(pd?.ritmo_objetivo, t.disciplina)
+                          const bruto = intensidadGuardada(t)
+                          const ritmo = ritmoObjetivoTexto(bruto, t.disciplina)
                           if (!ritmo) return null
                           return (
                             <div className="bg-orange-950 border border-orange-800 rounded-lg p-3 mb-2">
-                              <p className="text-orange-400 text-xs mb-1">Ritmo objetivo</p>
+                              <p className="text-orange-400 text-xs mb-1">{queSeMide(ritmo, t.disciplina)} objetivo</p>
                               <p className="font-bold text-white">{ritmo}</p>
                             </div>
                           )

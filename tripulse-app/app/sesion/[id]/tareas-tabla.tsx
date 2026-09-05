@@ -14,8 +14,12 @@ import {
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
 import { referenciaDeZona, cargarReferencias, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
-import { aGuardar } from '@/lib/intensidad-prescrita'
+import { aGuardar, intensidadSinSitio } from '@/lib/intensidad-prescrita'
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
+import {
+  estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
+  filasGuardadas, textoParte, hayQueContarlo,
+} from '@/lib/guardar-varias-tareas'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -304,93 +308,118 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     })
   }
 
+  /* ESCRIBIR UNA FILA, SIN TOCAR LA PANTALLA: no avisa, no recarga y no quita la
+     fila. De eso se encarga quien llama, porque guardar una y guardar cinco de
+     golpe necesitan cosas distintas —cinco recargas seguidas son cinco viajes
+     para acabar en el mismo sitio, y cinco alertas encadenadas son insufribles—.
+     La alternativa era escribir esto dos veces, y dos caminos que guardan lo
+     mismo acaban diciendo cosas distintas: es el fallo que este proyecto lleva
+     persiguiendo. Devuelve el error en vez de gritarlo. */
+  const escribirFilaR = async (f: FilaResistencia, orden: number): Promise<{ error?: string; creada?: boolean }> => {
+    /* ANTES DE ESCRIBIR NADA. Si lo tecleado en el «@» no cabe en ninguna tabla
+       —reps, o sin unidad todavía— se dice y no se toca la base. Se perdía en
+       silencio, y el entrenador se enteraba, si acaso, cuando el atleta abría la
+       sesión y no había objetivo. Va aquí arriba y no junto a la medición porque
+       para entonces la fila de `tarea` ya estaría creada: avisar después dejaría
+       una tarea a medias por un aviso. */
+    const sinSitio = intensidadSinSitio(
+      tablaMedicion(f.tipoMedicion as UnidadMedicion),
+      aGuardar(f.intensidadPersonalizada),
+    )
+    if (sinSitio) return { error: sinSitio }
+
+    const campos = {
+      zona_entrenamiento: f.zona || null,
+      disciplina: f.disciplina,
+      series: f.series ? Number(f.series) : null,
+      descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+      comentario: f.comentario || null,
+      // La zona que se guarda es AER, no «técnica»: eso es lo que hace que el
+      // trabajo técnico cuente como el volumen suave que realmente es.
+      tecnica_id: f.tecnicaId ? Number(f.tecnicaId) : null,
+    }
+    let idTarea = f.idTarea ?? null
+    if (idTarea) {
+      const { error } = await supabase.from('tarea').update(campos).eq('id', idTarea)
+      if (error) return { error: 'Error al guardar tarea: ' + error.message }
+      // La medición vive en TRES tablas y una tarea solo puede tener una. Al
+      // editar se limpian las tres antes de escribir: si solo se tocara la
+      // nueva, cambiar de metros a minutos dejaría las dos, y el volumen se
+      // contaría por partida doble sin que nada se queje.
+      await supabase.from('p_distancia').delete().eq('id_tarea', idTarea)
+      await supabase.from('p_duracion').delete().eq('id_tarea', idTarea)
+      await supabase.from('p_repeticiones').delete().eq('id_tarea', idTarea)
+    } else {
+      const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
+        id_sesion: sesionId, ...campos,
+        // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
+        // se ordenaban distinto (ver lib/tareas-orden).
+        orden,
+      }).select().single()
+      if (errTarea) return { error: 'Error al guardar tarea: ' + errTarea.message }
+      idTarea = tarea?.id ?? null
+    }
+    if (idTarea) {
+      const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
+      const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
+      /* SOLO SE GUARDA LO QUE EL ENTRENADOR ESCRIBE.
+         Antes era `f.intensidadPersonalizada.trim() || _ref?.ritmo || null`:
+         con la casilla vacía se guardaba la sugerencia de la app. Así la
+         columna acababa conteniendo o lo suyo o lo de la app sin forma de
+         distinguirlo, y al releerla había que adivinarlo comparándola otra
+         vez con el cálculo; si coincidían se borraba la casilla, con lo cual
+         prescribir a propósito el mismo valor que proponía la app era
+         imposible: desaparecía al recargar. (`_ref` se calculaba aquí solo
+         para eso; ya no hace falta y se ha ido con ella.)
+
+         De las cuatro filas que había en la base con ritmo, TRES eran ese
+         fantasma («< 65% VAM», «65–75% VAM», «95–105% VAM»): la propia app
+         guardándose a sí misma. Lo calculado se calcula al enseñarlo, que
+         para eso es calculado. */
+      const _intensidad = aGuardar(f.intensidadPersonalizada)
+
+      /* LA INTENSIDAD SE ESCRIBE EN UN SEGUNDO PASO, Y NO ES UN DESCUIDO.
+         Si fuera dentro del insert y la columna no estuviera, se caería la
+         fila entera y la tarea se quedaría SIN DISTANCIA NI TIEMPO: se
+         perdería el dato importante por no poder guardar el accesorio.
+         Separada, lo peor que pasa es que no haya intensidad.
+
+         Sigue haciendo falta aunque `p_distancia.ritmo_objetivo` ya sea text:
+         la de `p_duracion` la añade supabase/intensidad-en-bloques-por-tiempo.sql,
+         y hasta que se corra en cada base, esta escritura es la que puede fallar. */
+      const guardarIntensidad = async (tabla: 'p_distancia' | 'p_duracion', idFila: number) => {
+        if (!_intensidad) return
+        const { error } = await supabase.from(tabla).update({ ritmo_objetivo: _intensidad }).eq('id', idFila)
+        // No se avisa al entrenador: la tarea está guardada y esto no lo
+        // puede arreglar él. Pero tampoco se calla, que es como llegó aquí.
+        if (error) console.warn('[tripulse] ritmo_objetivo no se guardó en ' + tabla + ':', error.message)
+      }
+
+      if (_tabla === 'p_distancia') {
+        const { data: pd, error: errD } = await supabase.from('p_distancia')
+          .insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single()
+        if (errD) return { error: 'Error al guardar la distancia: ' + errD.message }
+        if (pd) await guardarIntensidad('p_distancia', pd.id)
+      }
+      else if (_tabla === 'p_duracion') {
+        /* Aquí estaba el agujero: se insertaba el tiempo y la intensidad se
+           tiraba. «30 min a 4:30/km» le llegaba al deportista como «30 min». */
+        const { data: pu, error: errU } = await supabase.from('p_duracion')
+          .insert({ id_tarea: idTarea, tiempo_planeado: _valor }).select().single()
+        if (errU) return { error: 'Error al guardar la duración: ' + errU.message }
+        if (pu) await guardarIntensidad('p_duracion', pu.id)
+      }
+      else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
+    }
+    // Editar conserva el sitio de la tarea: no gasta número de orden.
+    return { creada: !f.idTarea }
+  }
+
   const guardarFilaR = async (i: number) => {
-    const f = filasR[i]
     setLoading(true)
     try {
-      const campos = {
-        zona_entrenamiento: f.zona || null,
-        disciplina: f.disciplina,
-        series: f.series ? Number(f.series) : null,
-        descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
-        comentario: f.comentario || null,
-        // La zona que se guarda es AER, no «técnica»: eso es lo que hace que el
-        // trabajo técnico cuente como el volumen suave que realmente es.
-        tecnica_id: f.tecnicaId ? Number(f.tecnicaId) : null,
-      }
-      let idTarea = f.idTarea ?? null
-      if (idTarea) {
-        const { error } = await supabase.from('tarea').update(campos).eq('id', idTarea)
-        if (error) { alert('Error al guardar tarea: ' + error.message); setLoading(false); return }
-        // La medición vive en TRES tablas y una tarea solo puede tener una. Al
-        // editar se limpian las tres antes de escribir: si solo se tocara la
-        // nueva, cambiar de metros a minutos dejaría las dos, y el volumen se
-        // contaría por partida doble sin que nada se queje.
-        await supabase.from('p_distancia').delete().eq('id_tarea', idTarea)
-        await supabase.from('p_duracion').delete().eq('id_tarea', idTarea)
-        await supabase.from('p_repeticiones').delete().eq('id_tarea', idTarea)
-      } else {
-        const { data: tarea, error: errTarea } = await supabase.from('tarea').insert({
-          id_sesion: sesionId, ...campos,
-          // Sin esto las tareas creadas aquí quedaban con orden nulo → las dos vistas
-          // se ordenaban distinto (ver lib/tareas-orden).
-          orden: tareasGuardadas.length + i + 1,
-        }).select().single()
-        if (errTarea) { alert('Error al guardar tarea: ' + errTarea.message); setLoading(false); return }
-        idTarea = tarea?.id ?? null
-      }
-      if (idTarea) {
-        const _ref = getRef(f.zona, f.disciplina)
-        const _tabla = tablaMedicion(f.tipoMedicion as UnidadMedicion)
-        const _valor = valorCanonico(f.tipoMedicion as UnidadMedicion, f.valorMedicion)
-        /* SOLO SE GUARDA LO QUE EL ENTRENADOR ESCRIBE.
-           Antes era `f.intensidadPersonalizada.trim() || _ref?.ritmo || null`:
-           con la casilla vacía se guardaba la sugerencia de la app. Así la
-           columna acababa conteniendo o lo suyo o lo de la app sin forma de
-           distinguirlo, y al releerla había que adivinarlo comparándola otra
-           vez con el cálculo; si coincidían se borraba la casilla, con lo cual
-           prescribir a propósito el mismo valor que proponía la app era
-           imposible: desaparecía al recargar.
-
-           De las cuatro filas que había en la base con ritmo, TRES eran ese
-           fantasma («< 65% VAM», «65–75% VAM», «95–105% VAM»): la propia app
-           guardándose a sí misma. Lo calculado se calcula al enseñarlo, que
-           para eso es calculado. */
-        const _intensidad = aGuardar(f.intensidadPersonalizada)
-
-        /* LA INTENSIDAD SE ESCRIBE EN UN SEGUNDO PASO, Y NO ES UN DESCUIDO.
-           Si fuera dentro del insert y la columna no estuviera, se caería la
-           fila entera y la tarea se quedaría SIN DISTANCIA NI TIEMPO: se
-           perdería el dato importante por no poder guardar el accesorio.
-           Separada, lo peor que pasa es que no haya intensidad.
-
-           Sigue haciendo falta aunque `p_distancia.ritmo_objetivo` ya sea text:
-           la de `p_duracion` la añade supabase/intensidad-en-bloques-por-tiempo.sql,
-           y hasta que se corra en cada base, esta escritura es la que puede fallar. */
-        const guardarIntensidad = async (tabla: 'p_distancia' | 'p_duracion', idFila: number) => {
-          if (!_intensidad) return
-          const { error } = await supabase.from(tabla).update({ ritmo_objetivo: _intensidad }).eq('id', idFila)
-          // No se avisa al entrenador: la tarea está guardada y esto no lo
-          // puede arreglar él. Pero tampoco se calla, que es como llegó aquí.
-          if (error) console.warn('[tripulse] ritmo_objetivo no se guardó en ' + tabla + ':', error.message)
-        }
-
-        if (_tabla === 'p_distancia') {
-          const { data: pd, error: errD } = await supabase.from('p_distancia')
-            .insert({ id_tarea: idTarea, metros_planeados: _valor }).select().single()
-          if (errD) { alert('Error al guardar la distancia: ' + errD.message); setLoading(false); return }
-          if (pd) await guardarIntensidad('p_distancia', pd.id)
-        }
-        else if (_tabla === 'p_duracion') {
-          /* Aquí estaba el agujero: se insertaba el tiempo y la intensidad se
-             tiraba. «30 min a 4:30/km» le llegaba al deportista como «30 min». */
-          const { data: pu, error: errU } = await supabase.from('p_duracion')
-            .insert({ id_tarea: idTarea, tiempo_planeado: _valor }).select().single()
-          if (errU) { alert('Error al guardar la duración: ' + errU.message); setLoading(false); return }
-          if (pu) await guardarIntensidad('p_duracion', pu.id)
-        }
-        else if (_tabla === 'p_repeticiones') await supabase.from('p_repeticiones').insert({ id_tarea: idTarea, repeticiones_planteadas: _valor })
-      }
+      const r = await escribirFilaR(filasR[i], tareasGuardadas.length + i + 1)
+      if (r.error) { alert(r.error); setLoading(false); return }
       await cargarDatos()
       setFilasR(prev => prev.filter((_, idx) => idx !== i))
       onTareasCambian?.()
@@ -400,15 +429,13 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(false)
   }
 
-  const guardarFilaF = async (i: number) => {
-    const f = filasF[i]
+  /* Igual que `escribirFilaR`: escribe y calla. Ver el comentario de allí. */
+  const escribirFilaF = async (f: FilaFuerza, orden: number): Promise<{ error?: string; creada?: boolean }> => {
     // Crear exige ejercicio. EDITAR no: las tareas de fuerza que vienen de una
     // plantilla o del planificador llevan el ejercicio en el comentario y no
     // tienen fila en `ejercicios`, y antes esas sí se podían editar. Exigirlo
     // aquí sería quitar algo que ya se podía hacer.
-    if (!f.ejercicioSelId && !f.idTarea) return
-    setLoading(true)
-    try {
+    if (!f.ejercicioSelId && !f.idTarea) return { error: 'Elige el ejercicio' }
     const ejBib = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
     // `medida` manda: antes esto lo decidía el tipo de serie, así que un paseo del
     // granjero de 40 s había que declararlo «Isométrico» para que se guardara como
@@ -427,7 +454,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     let tarea: any = null
     if (f.idTarea) {
       const { error } = await supabase.from('tarea').update(campos).eq('id', f.idTarea)
-      if (error) { alert('Error al guardar ejercicio: ' + error.message); setLoading(false); return }
+      if (error) return { error: 'Error al guardar ejercicio: ' + error.message }
       // El ejercicio y la medición se reescriben enteros, pero SOLO si hay
       // ejercicio con el que reescribirlos. Es más simple y más fiable que
       // parchear campo a campo: cambiar de reps a tiempo mueve el dato de
@@ -442,10 +469,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       tarea = { id: f.idTarea }
     } else {
       const { data, error: errTarea } = await supabase.from('tarea').insert({
-        id_sesion: sesionId, ...campos,
-        orden: tareasGuardadas.length + i + 1,
+        id_sesion: sesionId, ...campos, orden,
       }).select().single()
-      if (errTarea) { alert('Error al guardar ejercicio: ' + errTarea.message); setLoading(false); return }
+      if (errTarea) return { error: 'Error al guardar ejercicio: ' + errTarea.message }
       tarea = data
     }
     if (tarea && ejBib) {
@@ -488,7 +514,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       /* Este insert no miraba su error. Si fallaba, la tarea se guardaba y el
          EJERCICIO se perdía sin decir nada — y una tarea de fuerza sin ejercicio
          no es nada. Se avisa. */
-      if (errEj) { alert('Error al guardar el ejercicio: ' + errEj.message); setLoading(false); return }
+      if (errEj) return { error: 'Error al guardar el ejercicio: ' + errEj.message }
       // Una tarea tiene UNA medición: o segundos o repeticiones, nunca las dos.
       if (esTiempo) {
         if (segundos > 0) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: segundos })
@@ -496,14 +522,68 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
       }
     }
-    await cargarDatos()
-    setFilasF(prev => prev.filter((_, idx) => idx !== i))
-    onTareasCambian?.()
+    // Editar conserva el sitio de la tarea: no gasta número de orden.
+    return { creada: !f.idTarea }
+  }
+
+  const guardarFilaF = async (i: number) => {
+    // El botón está deshabilitado en este caso; la guarda se queda por si acaso,
+    // y callada como estaba: aquí no hay nada que contarle a nadie.
+    if (!filasF[i]?.ejercicioSelId && !filasF[i]?.idTarea) return
+    setLoading(true)
+    try {
+      const r = await escribirFilaF(filasF[i], tareasGuardadas.length + i + 1)
+      if (r.error) { alert(r.error); setLoading(false); return }
+      await cargarDatos()
+      setFilasF(prev => prev.filter((_, idx) => idx !== i))
+      onTareasCambian?.()
     } catch (e: any) {
       alert('Error inesperado: ' + e.message)
     }
     setLoading(false)
   }
+
+  /* GUARDAR TODAS LAS FILAS DE UNA VEZ.
+     Cinco ejercicios eran cinco botones, y entre uno y otro la pantalla recargaba
+     la sesión entera. Esto los escribe seguidos y recarga UNA vez al final.
+
+     No es todo-o-nada —Supabase desde el navegador no da transacciones—, así que
+     lo que entra, entra, y lo que no se queda en su fila para reintentarlo. Las
+     filas a medias ni se intentan, pero se cuentan en el parte: guardar cinco y
+     decir cinco cuando solo entraron tres es la única forma de que el entrenador
+     cierre la sesión creyéndola montada. */
+  const guardarTodas = async () => {
+    setLoading(true)
+    const yaHay = tareasGuardadas.length
+    if (esFuerza) {
+      const filas = filasF
+      const p = await guardarEnOrden(filas, yaHay, estadoFuerza, escribirFilaF)
+      if (p.guardadas.length) {
+        const fuera = new Set(filasGuardadas(filas, p))
+        await cargarDatos()
+        setFilasF(prev => prev.filter(f => !fuera.has(f)))
+        onTareasCambian?.()
+      }
+      if (hayQueContarlo(p)) alert(textoParte(p))
+    } else {
+      const filas = filasR
+      const p = await guardarEnOrden(filas, yaHay, estadoResistencia, escribirFilaR)
+      if (p.guardadas.length) {
+        const fuera = new Set(filasGuardadas(filas, p))
+        await cargarDatos()
+        setFilasR(prev => prev.filter(f => !fuera.has(f)))
+        onTareasCambian?.()
+      }
+      if (hayQueContarlo(p)) alert(textoParte(p))
+    }
+    setLoading(false)
+  }
+
+  // Cuántas guardaría el botón ahora mismo. Es el número que lleva escrito: si
+  // dijera «las 5» con dos a medias, mentiría antes incluso de pulsarlo.
+  const listasParaGuardar = esFuerza
+    ? cuantasListas(filasF, estadoFuerza)
+    : cuantasListas(filasR, estadoResistencia)
 
   // Los campos suben de 12px/24px de alto a 14px/36px: a la medida vieja había que
   // apuntar para acertar y costaba leer de un vistazo, con media pantalla vacía a
@@ -698,6 +778,28 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* GUARDARLAS TODAS.
+          Aparece a partir de la segunda fila: con una sola, el botón de su fila
+          ya hace exactamente esto y dos botones para lo mismo solo confunden.
+          El número es el de las que están listas, no el de filas: prometer «las
+          5» con dos a medias sería mentir antes de pulsarlo. */}
+      {!esDeportista && (esFuerza ? filasF.length : filasR.length) > 1 && (
+        <div className="mb-3 flex items-center gap-3 flex-wrap">
+          <button onClick={guardarTodas} disabled={loading || listasParaGuardar === 0}
+            title={listasParaGuardar === 0
+              ? 'Ninguna fila está lista todavía'
+              : 'Guardar de una vez, en este orden'}
+            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-40 flex items-center gap-2">
+            <span>✓</span> {loading ? 'Guardando…' : 'Guardar ' + (listasParaGuardar === 1 ? 'la fila' : 'las ' + listasParaGuardar)}
+          </button>
+          {(esFuerza ? filasF.length : filasR.length) > listasParaGuardar && (
+            <span className="text-xs text-gray-500">
+              {(esFuerza ? filasF.length : filasR.length) - listasParaGuardar} sin terminar; esas se quedan
+            </span>
+          )}
         </div>
       )}
 

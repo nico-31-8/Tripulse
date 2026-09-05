@@ -35,6 +35,7 @@ import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
+import { intensidadGuardada, aGuardar } from '@/lib/intensidad-prescrita'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import {
   posicionEnPlan, diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia,
@@ -85,6 +86,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [abreNutricion, setAbreNutricion] = useState(false)
   const [abreNotas, setAbreNotas] = useState(false)
   const [sistemaZonas, setSistemaZonas] = useState(1)
+  // Ya venía en cargarReferencias y se tiraba. El briefing la necesita: es el
+  // respaldo del objetivo cuando al atleta le falta el test de la disciplina.
+  const [fcMaxima, setFcMaxima] = useState(0)
   const [esDeportista, setEsDeportista] = useState(false)
   // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
   // (aplicarlas reescribe las tareas). Fuerza y Brick no tienen: la fuerza va por
@@ -345,6 +349,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
     setEsDeportista((pf as any).data?.rol === 'deportista')
     setSistemaZonas(refs.sistema)
+    setFcMaxima(refs.fcMax || 0)
     setNombreDeportista(refs.nombre)
     setTestsData({ vam: refs.tests.vam ?? null, css: refs.tests.css ?? null, ftp: refs.tests.ftp ?? null })
     setPesoDeportista(an.data?.peso || null)
@@ -409,7 +414,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       setTiempo(med.tipo === 'seg' || med.tipo === 'min' || med.tipo === 'mmss' ? med.valor : '')
       setTiempoDisplay(med.tipo === 'mmss' ? med.valor : '')
       setRepeticiones(med.tipo === 'reps' ? med.valor : '')
-      setRitmoManual(t.p_distancia?.[0]?.ritmo_objetivo || '')
+      // De las DOS tablas: leyendo solo p_distancia, abrir para editar un bloque
+      // por tiempo traía la casilla vacía, y al guardar se borraba lo que había.
+      setRitmoManual(intensidadGuardada(t) || '')
       setTecnicaId(t.tecnica_id ? String(t.tecnica_id) : '')
       if (!drillsTecnica.length) catalogoTecnica().then(setDrillsTecnica)
     }
@@ -538,18 +545,36 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
        se caía: la tarea quedaba SIN DISTANCIA, en silencio, y solo a los atletas
        que tienen el test hecho (sin test no hay ritmo sugerido y el insert
        pasaba). Ver supabase/ritmo-objetivo-a-texto.sql. */
+    /* SOLO SE GUARDA LO QUE SE ESCRIBE. Aquí seguía la regla vieja
+       —`ritmoManual || ritmoSugerido`—, que con la casilla vacía guardaba la
+       sugerencia de la app: la columna acababa conteniendo o lo del entrenador
+       o lo de la app sin forma de distinguirlo. La tabla ya se corrigió el 30 de
+       agosto y esta vista se quedó atrás, que es cómo dos pantallas del mismo
+       editor acaban guardando cosas distintas. */
+    const _ritmo = aGuardar(ritmoManual)
+    /* El mismo segundo paso que en la tabla: si fuera dentro del insert y la
+       columna fallara, se caería la fila entera y la tarea quedaría sin
+       distancia ni tiempo. Separado, lo peor que pasa es que no haya ritmo. */
+    const _guardarRitmo = async (tablaR: 'p_distancia' | 'p_duracion', idFila: number) => {
+      if (!_ritmo) return
+      const { error } = await supabase.from(tablaR).update({ ritmo_objetivo: _ritmo }).eq('id', idFila)
+      if (error) console.warn('[tripulse] ritmo_objetivo no se guardó en ' + tablaR + ':', error.message)
+    }
     if (_tabla === 'p_distancia' && tarea) {
       const { data: pdNueva, error: errPd } = await supabase.from('p_distancia')
         .insert({ id_tarea: tarea.id, metros_planeados: _valorC }).select().single()
       if (errPd) { setError('Error al guardar la distancia: ' + errPd.message); setLoading(false); return }
-      const _ritmo = ritmoManual || ritmoSugerido || null
-      if (pdNueva && _ritmo) {
-        const { error: errRitmo } = await supabase.from('p_distancia')
-          .update({ ritmo_objetivo: _ritmo }).eq('id', pdNueva.id)
-        if (errRitmo) console.warn('[tripulse] ritmo_objetivo no se guardó (¿columna numeric?):', errRitmo.message)
-      }
+      if (pdNueva) await _guardarRitmo('p_distancia', pdNueva.id)
     }
-    else if (_tabla === 'p_duracion' && tarea) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: _valorC })
+    else if (_tabla === 'p_duracion' && tarea) {
+      /* Antes se insertaba el tiempo y la intensidad se tiraba: «30 min a
+         140-150 ppm» le llegaba al atleta como «30 min». Ni siquiera había
+         dónde escribirla —la casilla solo salía en bloques por distancia—. */
+      const { data: puNueva, error: errPu } = await supabase.from('p_duracion')
+        .insert({ id_tarea: tarea.id, tiempo_planeado: _valorC }).select().single()
+      if (errPu) { setError('Error al guardar la duración: ' + errPu.message); setLoading(false); return }
+      if (puNueva) await _guardarRitmo('p_duracion', puNueva.id)
+    }
     else if (_tabla === 'p_repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valorC })
     if (tareaEditandoId) await cargarDatos()
     else setTareas(prev => [...prev, {
@@ -666,6 +691,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         sesion={sesion}
         tareas={tareas}
         tests={testsData}
+        fcMax={fcMaxima}
         durEstimada={durEstimada}
         recup={recup}
         onCambio={cargarDatos}
@@ -1120,23 +1146,25 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   <option value="reps">Repeticiones</option>
                 </select>
                 {(tipoMedicion === 'm' || tipoMedicion === 'km') && <input type="number" placeholder={tipoMedicion === 'km' ? 'Kilómetros' : 'Metros'} value={metros} onChange={e => setMetros(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
-                {(tipoMedicion === 'm' || tipoMedicion === 'km') && (
+                {/* LA INTENSIDAD, EN CUALQUIER BLOQUE QUE SE PUEDA MEDIR.
+                    Esta casilla solo salía en bloques por metros o km. Prescribir
+                    por tiempo es lo normal en bici y muy común en carrera, y ahí
+                    el entrenador no tenía dónde escribirla: solo veía la
+                    referencia de la zona en un recuadro que no se podía tocar.
+                    Con reps no aparece porque `p_repeticiones` no tiene dónde
+                    guardarla, y una casilla que se traga lo que escribes es peor
+                    que no tenerla. */}
+                {tablaMedicion(tipoMedicion as UnidadMedicion) !== null && tipoMedicion !== 'reps' && (
                   <div>
                     <label className="text-gray-400 text-xs mb-1 block">
-                      Ritmo objetivo
+                      Intensidad objetivo
                       {ritmoSugerido && <span className="ml-2 text-orange-400">Sugerido: {ritmoSugerido}</span>}
                     </label>
                     <input type="text"
-                      placeholder={ritmoSugerido || 'Ej: 4:30 min/km'}
+                      placeholder={ritmoSugerido || 'Ej: 4:30 /km · 140-150 ppm · 180-220 W'}
                       value={ritmoManual}
                       onChange={e => setRitmoManual(e.target.value)}
                       className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
-                  </div>
-                )}
-                {(tipoMedicion === 'seg' || tipoMedicion === 'min' || tipoMedicion === 'mmss') && zona && disciplina && ritmoSugerido && (
-                  <div className="bg-gray-800 rounded-lg px-4 py-3 flex justify-between items-center">
-                    <span className="text-gray-400 text-sm">Referencia {zona}</span>
-                    <span className="text-orange-400 font-bold">{ritmoSugerido}</span>
                   </div>
                 )}
                 {(tipoMedicion === 'seg' || tipoMedicion === 'min') && <input type="number" placeholder={tipoMedicion === 'min' ? 'Minutos' : 'Segundos'} value={tiempo} onChange={e => setTiempo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}

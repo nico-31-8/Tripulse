@@ -39,10 +39,23 @@ const limpio = (s: string | null | undefined): string => String(s ?? '').trim()
  * y quien lee no tiene por qué saber cuál le tocó.
  */
 export function intensidadGuardada(tarea: any): string | null {
-  const dist = limpio(tarea?.p_distancia?.[0]?.ritmo_objetivo)
+  const dist = limpio(una(tarea?.p_distancia)?.ritmo_objetivo)
   if (dist) return dist
-  const dur = limpio(tarea?.p_duracion?.[0]?.ritmo_objetivo)
+  const dur = limpio(una(tarea?.p_duracion)?.ritmo_objetivo)
   return dur || null
+}
+
+/**
+ * La fila de medición, venga como venga.
+ *
+ * PostgREST devuelve una LISTA o un OBJETO según cómo vea la relación, y no
+ * todas las pantallas la piden igual. Con `[0]` a secas, la forma objeto daba
+ * `undefined` y la tarea se quedaba sin intensidad sin que nada fallara. Es la
+ * misma comprobación que ya hacía a mano `/mis-analisis`.
+ */
+function una(rel: any): any {
+  if (!rel) return null
+  return Array.isArray(rel) ? rel[0] ?? null : rel
 }
 
 /**
@@ -67,6 +80,78 @@ export function queEnsenar(guardada: string | null | undefined, calculada: strin
 /** Lo que se guarda en la base: solo lo que se escribió, nunca lo calculado. */
 export function aGuardar(escrito: string | null | undefined): string | null {
   return limpio(escrito) || null
+}
+
+/**
+ * Si lo escrito en el «@» tiene dónde guardarse. Devuelve el aviso, o null.
+ *
+ * La intensidad vive en `ritmo_objetivo`, y esa columna solo existe en
+ * `p_distancia` y `p_duracion`. Un bloque medido en repeticiones —o al que
+ * todavía no se le ha puesto unidad— no tiene dónde meterla, así que se perdía
+ * al guardar: la casilla aceptaba el texto, la tarea se creaba, y la intensidad
+ * no llegaba a ninguna parte. Nadie se enteraba hasta que el atleta abría la
+ * sesión y no estaba.
+ *
+ * No se calla y no se inventa un segundo hogar para el dato (el comentario de la
+ * tarea era la tentación, y eso es exactamente cómo el mismo concepto acaba en
+ * dos sitios diciendo cosas distintas). Se avisa y el entrenador decide.
+ */
+export function intensidadSinSitio(
+  tabla: string | null | undefined,
+  intensidad: string | null | undefined,
+): string | null {
+  if (!limpio(intensidad)) return null
+  if (tabla === 'p_distancia' || tabla === 'p_duracion') return null
+  if (tabla === 'p_repeticiones') {
+    return 'Has escrito una intensidad, pero un bloque medido en repeticiones no tiene dónde guardarla. Cámbialo a metros o a tiempo, o borra la intensidad.'
+  }
+  return 'Has escrito una intensidad, pero al bloque le falta la unidad. Elige metros o tiempo, o borra la intensidad.'
+}
+
+// ------------------------------------------------------------
+// Cómo se TITULA lo que se le enseña
+// ------------------------------------------------------------
+
+export type Medida = 'Ritmo' | 'Pulso' | 'Potencia' | 'Esfuerzo' | 'Intensidad'
+
+/**
+ * Qué está midiendo esta intensidad, leído de lo que pone.
+ *
+ * EL RÓTULO LO DECIDÍA LA DISCIPLINA, Y POR ESO MENTÍA. En la pantalla de
+ * ejecución, un bloque de carrera titulaba su caja «Ritmo objetivo» pasara lo
+ * que pasara dentro: al atleta con «140-150 ppm» prescrito le salía
+ *
+ *     Ritmo objetivo
+ *     140-150 ppm
+ *
+ * y al lado una casilla «Ritmo real» pidiéndole un ritmo cuando el objetivo era
+ * el pulso. El número era correcto; el título, no. Y ahí es donde nace el fallo
+ * de siempre: la pantalla afirmando una cosa distinta de la que guarda el dato.
+ *
+ * El campo «@» es texto libre CON LA UNIDAD DENTRO —«4:30 /km», «180–220 W»,
+ * «140-150 ppm», «RPE 6–7»—, así que el propio valor sabe lo que es. Se le
+ * pregunta a él.
+ *
+ * La disciplina se queda como último recurso: cuando el entrenador no escribió
+ * nada, lo que se enseña es el cálculo de los tests, y ese sí es siempre el
+ * ritmo o los vatios del deporte.
+ */
+export function queSeMide(valor: string | null | undefined, disciplina?: string | null): Medida {
+  const v = limpio(valor)
+
+  if (v) {
+    if (/\b(ppm|bpm|lpm|puls\w*|fc\b|fcm)/i.test(v)) return 'Pulso'
+    if (/\b(w|vatios|watts?)\b/i.test(v)) return 'Potencia'
+    if (/\b(rpe|esfuerzo)\b/i.test(v)) return 'Esfuerzo'
+    // La barra del ritmo: «/km», «/100m», «/400». Y «ritmo de 10K», que lo dice.
+    if (/\/\s*\d*\s*[a-z]|ritmo/i.test(v)) return 'Ritmo'
+    if (v.includes('%')) return 'Intensidad'
+  }
+
+  const d = String(disciplina || '')
+  if (d === 'Ciclismo') return 'Potencia'
+  if (d === 'Carrera' || d.startsWith('Nat')) return 'Ritmo'
+  return 'Intensidad'
 }
 
 /**
