@@ -14,6 +14,20 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 5 de septiembre de 2026
 
+### Duplicar una tarea
+
+Cuando el bloque siguiente se parece al anterior —mismas series, misma zona,
+otro ritmo— había que escribirlo entero otra vez.
+
+Cada tarea guardada tiene ahora un **📋** al lado del lápiz. Baja una copia
+abajo, como fila sin guardar, para que le cambies lo que sea antes de darle a ✓.
+Se lleva todo: zona, disciplina, series, medición, intensidad, descanso y notas;
+y en fuerza, el ejercicio con su tipo de serie y sus encadenados.
+
+La original se queda donde estaba. Al **editar** desaparece de arriba mientras la
+tocas, porque verla en dos sitios con valores distintos confunde; al **duplicar**
+no, porque son dos tareas y las dos existen.
+
 ### La intensidad que prescribes ya se ve
 
 Escribías «140-150 ppm» en un bloque, lo guardabas, y **desaparecía de la

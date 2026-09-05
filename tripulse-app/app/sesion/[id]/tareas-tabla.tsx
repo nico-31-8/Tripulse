@@ -234,6 +234,32 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       filaResistenciaDesde(t, { base: nuevaFilaR(), orden: t.orden ?? prev.length + 1, copia: false })])
   }
 
+  /**
+   * Duplicar una tarea de esta sesión.
+   *
+   * Es la MISMA conversión que editar y que copiar del panel de la semana, con
+   * `copia: true`: sin `idTarea`, guardar hace INSERT en vez de UPDATE, así que
+   * la de origen no se toca. Escribir un tercer mapeo a mano habría sido el
+   * tercer sitio donde una tarea se convierte en fila, y el primero en divergir.
+   *
+   * Cae en una fila NUEVA sin guardar, no directamente en la base: se duplica
+   * para hacer «una parecida», así que lo normal es tocarle algo antes. Y la de
+   * origen SIGUE VISIBLE arriba —al contrario que al editar— porque aquí no hay
+   * ninguna ambigüedad: son dos tareas distintas.
+   */
+  const duplicarTarea = (t: any) => {
+    if (esFuerza) {
+      setFilasF(prev => [...prev, filaFuerzaDesde(t, {
+        base: nuevaFilaF(), orden: tareasGuardadas.length + prev.length + 1,
+        copia: true, ejerciciosBiblioteca,
+      })])
+      return
+    }
+    setFilasR(prev => [...prev, filaResistenciaDesde(t, {
+      base: nuevaFilaR(), orden: tareasGuardadas.length + prev.length + 1, copia: true,
+    })])
+  }
+
   /* Lo que manda el panel de la semana. Cae en filas NUEVAS del formulario, no
      en la base: una tarea de otra semana casi nunca vale tal cual, así que se
      revisa y se le da a ✓, igual que a cualquier tarea escrita a mano. */
@@ -790,8 +816,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
-                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
+                              <button onClick={() => abrirEditarTarea(t)} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => duplicarTarea(t)} title="Duplicar: baja una copia abajo para retocarla" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
+                              <button onClick={() => borrarTarea(t.id)} title="Borrar" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
                             </div>
                           </td>
                         )}
@@ -847,8 +874,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
-                              <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
+                              <button onClick={() => abrirEditarTarea(t)} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => duplicarTarea(t)} title="Duplicar: baja una copia abajo para retocarla" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
+                              <button onClick={() => borrarTarea(t.id)} title="Borrar" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
                             </div>
                           </td>
                         )}
