@@ -2,13 +2,15 @@
 
 Qué ha cambiado en la aplicación, por días, contado para quien la usa.
 
-**Para qué es esto.** Para poder decir «esto es nuevo desde la última vez que la
-viste» cuando presentas la aplicación, sin tener que acordarte. Está escrito
-para un entrenador, no para un programador: aquí no hay nombres de ficheros ni
-de funciones. Lo técnico vive en el historial de git.
+**Para qué es esto.** Para que sepas qué es nuevo desde la última vez que
+entraste, y sobre todo **qué ha cambiado de lo que ya usabas**. Cuando algo se
+corrige, los números que ve tu atleta pueden moverse de un día para otro: aquí
+se dice cuál, cuánto y por qué.
 
-**Cómo se mantiene.** Se añade una entrada CADA VEZ que se despliega algo, el
-mismo día, antes de que se olvide. Lo nuevo va arriba.
+Está escrito para entrenadores, no para programadores: aquí no hay nombres de
+ficheros ni de funciones.
+
+Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
@@ -255,13 +257,11 @@ representa a una sesión con varios bloques, y el orden de intensidad que usa el
 planificador.
 
 Ese nivel se sacaba de una escalera con huecos, y **AEL caía dentro de uno**: el
-rodaje aeróbico de toda la vida contaba como **recuperación**. Ya estaba
-detectado —hay dos sitios del código con un apaño local para esquivarlo— pero
-nunca se había arreglado en el origen.
+rodaje aeróbico de toda la vida contaba como **recuperación**.
 
-Arreglado. Afecta a 68 tareas de 6 atletas. **La carga no cambia**: sale del
-esfuerzo, no del nivel. Lo que cambia es que un rodaje ya se dibuja y se ordena
-como lo que es.
+Arreglado. **Si has prescrito AEL, esto te afecta**, y hacia atrás: sus barras
+suben un peldaño y las sesiones de rodaje dejan de ordenarse como recuperación.
+**La carga no cambia**, que sale del esfuerzo y no del nivel.
 
 ---
 
@@ -370,7 +370,7 @@ objetivo»** porque no siempre es un ritmo, y se guarda.
 
 De paso, esa vista **guardaba la sugerencia de la app** cuando dejabas la casilla
 en blanco, como si la hubieras escrito tú. Era el fallo que se corrigió en la
-vista de Tabla el 30 de agosto y que aquí se había quedado sin corregir. Ahora
+vista de Tabla y que aquí se había quedado sin corregir. Ahora
 se guarda solo lo que escribes; lo que calcula la app se calcula al enseñarlo.
 
 ### Siempre hay una referencia, aunque no tenga tests
@@ -451,8 +451,8 @@ planificar encima duplicaría.
 Hay una página de **Novedades** dentro de la aplicación, en el enlace de arriba
 del panel. Enseña esto mismo que estás leyendo.
 
-De momento solo la ven las cuentas de plataforma. Cuando quieras abrirla a los
-entrenadores es quitar una condición.
+Al principio solo la veían las cuentas de plataforma, mientras se probaba.
+Desde el 9 de septiembre la ve cualquier entrenador.
 
 ### La batería de tests, entera
 
@@ -574,11 +574,9 @@ la curva de forma de tres atletas.
 
 ## Antes del 17 de agosto
 
-El historial completo está en git (276 commits desde el 22 de abril de 2026).
-Los bloques grandes de esa etapa fueron el módulo de bricks y transiciones, las
-plantillas de sesión, los grupos de entrenamiento, el sistema de zonas y sus
-correcciones, el asistente de IA del entrenador, el acceso por invitación con el
-panel de administración, y la analítica de wellness y carga.
+De esa etapa, que va desde abril de 2026, los bloques grandes fueron: el módulo
+de bricks y transiciones, las plantillas de sesión, los grupos de entrenamiento,
+el sistema de zonas y sus correcciones, el asistente de IA del entrenador, el
+acceso por invitación, y la analítica de wellness y carga.
 
-Si hace falta detallar alguno para una presentación concreta, se puede
-reconstruir del historial.
+No están detallados uno a uno porque este registro empezó a llevarse en agosto.
