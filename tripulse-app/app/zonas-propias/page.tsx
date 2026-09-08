@@ -7,6 +7,15 @@
 // tabla que no lee nadie más y no toca ninguna pantalla existente. Borrar la
 // carpeta y la tabla lo deshace entero.
 //
+// DE QUÉ NÚMERO ES EL PORCENTAJE. Una zona puede colgar de la referencia de la
+// app -la VAM, el FTP, el CSS- o de una referencia del propio entrenador: un
+// resultado de un test suyo. El caso que lo pide es un 6×100 del que sale «1:13
+// el 100»: no es un CSS, no se le parece, y aun así es de donde ese entrenador
+// quiere colgar las zonas de ese nadador.
+//
+// Y EL PORCENTAJE TIENE SENTIDO, no es una multiplicación: el 95 % de 1:13 es
+// más LENTO. Eso lo resuelve lib/referencia-propia, en un solo sitio.
+//
 // LO QUE FALTA PARA QUE SIRVAN DE VERDAD. Estas zonas todavía NO salen en el
 // desplegable del editor de sesión. Eso es lo siguiente, y es lo primero de
 // todo esto que sí toca una pantalla que se usa a diario, así que se hace
@@ -28,8 +37,20 @@ import {
   type ZonaEntrenador,
 } from '@/lib/zonas-entrenador'
 import { ZONAS_RESISTENCIA } from '@/lib/zonas'
+import { leerDefinicion } from '@/lib/test-definicion'
+import {
+  opcionesDeRef, buscarOpcion, valorDe, tramoDe, leerValor,
+  type TestConMediciones,
+} from '@/lib/referencia-propia'
+import { MESES_CORTOS } from '@/lib/fechas'
 
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
+
+/** «2026-09-01» → «1 sep». Sin Date: partir la cadena no tiene zona horaria. */
+const fechaCorta = (iso: string): string => {
+  const p = String(iso || '').split('-')
+  return p.length === 3 ? Number(p[2]) + ' ' + (MESES_CORTOS[Number(p[1]) - 1] ?? '') : String(iso || '')
+}
 
 /** km/h → «4:30 /km». Solo tiene sentido con una velocidad. */
 const aRitmo = (kmh: number) => {
@@ -37,6 +58,9 @@ const aRitmo = (kmh: number) => {
   const s = Math.round(3600 / kmh)
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' /km'
 }
+
+interface FilaDefinicion { id: number; nombre: string; deporte: string }
+interface FilaMedicion { id_definicion: number; fecha: string; datos: Record<string, unknown> | null }
 
 export default function ZonasPropiasPage() {
   const router = useRouter()
@@ -54,6 +78,13 @@ export default function ZonasPropiasPage() {
      FTP y los de una de carrera de la VAM. Guardarlas juntas y usar «la
      referencia» daria vatios donde toca un ritmo. */
   const [refs, setRefs] = useState<{ vam: number; ftp: number; css: number }>({ vam: 0, ftp: 0, css: 0 })
+  /* Los tests del entrenador con las mediciones DEL ATLETA ELEGIDO. Se recargan
+     al cambiar de atleta, como las otras referencias.
+     NULL MIENTRAS NO HAN LLEGADO, y no una lista vacía: con una lista vacía,
+     entre que se pintan las zonas y responde la consulta, cada zona colgada de
+     una referencia propia se marcaría en rojo un instante como si su referencia
+     hubiera desaparecido. */
+  const [tests, setTests] = useState<TestConMediciones[] | null>(null)
 
   useEffect(() => { arrancar() }, [])
 
@@ -68,19 +99,45 @@ export default function ZonasPropiasPage() {
     ])
     setZonas(leerZonas(zs))
     setDeportistas(deps || [])
-    if ((deps || []).length && depActivo == null) elegirDeportista(deps![0].id)
+    /* Se ESPERA a tener sus referencias antes de quitar el «Cargando…». Si no,
+       las zonas colgadas de una referencia propia se pintan un instante como
+       «le falta el test», que es mentira y encima asusta. */
+    if ((deps || []).length && depActivo == null) await elegirDeportista(deps![0].id)
     setCargando(false)
   }
 
-  /** La VAM del atleta: es la referencia con la que los % se vuelven ritmos. */
+  /** Las referencias del atleta: las de la app y las de los tests propios. */
   const elegirDeportista = async (id: number) => {
     setDepActivo(id)
-    const r = await cargarReferencias(supabase, id)
+    const user = await usuarioActual()
+    const [r, { data: defs }] = await Promise.all([
+      cargarReferencias(supabase, id),
+      user
+        ? supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false)
+        : Promise.resolve({ data: [] as FilaDefinicion[] }),
+    ])
     setRefs({
       vam: Number(r.tests?.vam) || 0,
       ftp: Number(r.tests?.ftp) || 0,
       css: Number(r.tests?.css) || 0,
     })
+
+    const filas: FilaDefinicion[] = defs || []
+    const ids = filas.map(d => d.id)
+    /* Todas las mediciones de ese atleta en UNA consulta, no una por test. */
+    const { data: meds } = ids.length
+      ? await supabase.from('test_medicion').select('id_definicion, fecha, datos')
+          .eq('id_deportista', id).in('id_definicion', ids)
+      : { data: [] as FilaMedicion[] }
+    const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
+    for (const m of (meds || []) as FilaMedicion[]) {
+      (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
+    }
+
+    setTests(filas.map(d => ({
+      id: d.id, nombre: d.nombre, deporte: d.deporte,
+      def: leerDefinicion(d), mediciones: porTest[d.id] || [],
+    })))
   }
 
   const decir = (tipo: 'ok' | 'mal', texto: string) => {
@@ -101,7 +158,49 @@ export default function ZonasPropiasPage() {
   const comoSeLee = (deporte: string, v: number): string =>
     deporte === 'Ciclismo' ? Math.round(v) + ' W' : aRitmo(v)
 
+  /** Cómo se llama la referencia que la app trae para ese deporte. */
+  const refApp = (deporte: string): string =>
+    deporte === 'Ciclismo' ? 'FTP' : (deporte || '').startsWith('Nat') ? 'CSS' : 'VAM'
+
+  /** Las referencias propias que puede usar una zona de ese deporte. */
+  const opciones = (deporte: string) => (tests ? opcionesDeRef(tests, deporte) : [])
+
+  /**
+   * Lo que le sale a este atleta en esa zona, venga de donde venga el %.
+   *
+   * SE ORDENA POR EL NÚMERO QUE SE ENSEÑA, no por el porcentaje. Es una sola
+   * regla que vale para los tres casos: en vatios el % bajo da el número bajo,
+   * y en un ritmo lo da alto. Antes había un caso especial para el ciclismo
+   * escrito dos veces; esto lo sustituye.
+   */
+  const saleDe = (z: ZonaEntrenador): { texto: string; nota: string | null } | null => {
+    if (z.ref) {
+      const o = buscarOpcion(opciones(z.deporte), z.ref)
+      if (!o) return null
+      const v = valorDe(o.test, z.ref.indice)
+      if (!v) return null
+      const t = tramoDe(v, z.pctMin, z.pctMax)
+      if (!t) return null
+      const [a, b] = [t.desde, t.hasta].sort((p, q) => p - q)
+      return {
+        texto: leerValor(a, '') + ' – ' + leerValor(b, v.unidad),
+        nota: o.etiqueta + ' = ' + leerValor(v.valor, v.unidad) + ' · ' + fechaCorta(v.fecha),
+      }
+    }
+    const rango = rangoDe(z, refDe(z.deporte))
+    if (!rango) return null
+    const [a, b] = [rango.min, rango.max]
+      .map(n => ({ n, txt: comoSeLee(z.deporte, n) }))
+      .sort((p, q) => (z.deporte === 'Ciclismo' ? p.n - q.n : q.n - p.n))
+    return { texto: a.txt + ' – ' + b.txt, nota: null }
+  }
+
   /** Cambia entre un rango y un número suelto, sin perder lo escrito. */
+  /* La referencia se comprueba AQUÍ y no dentro de usables(): es donde están
+     los tests cargados y donde el entrenador puede arreglarlo. */
+  const pegaDeZona = (z: ZonaEntrenador, i: number) =>
+    motivoNoUsable(z, i, zonas, tests ? opciones(z.deporte).map(o => o.ref) : undefined)
+
   const alternarRpe = (i: number) => parche(i, {
     rpeMax: zonas[i].rpeMax == null ? Math.min(10, (Number(zonas[i].rpeMin) || 0) + 1) : null,
   })
@@ -122,7 +221,7 @@ export default function ZonasPropiasPage() {
 
   const guardar = async () => {
     if (!userId) return
-    const malas = zonas.filter((z, i) => motivoNoUsable(z, i, zonas) !== null)
+    const malas = zonas.filter((z, i) => pegaDeZona(z, i) !== null)
     if (malas.length) { decir('mal', 'Hay ' + malas.length + ' zona(s) sin terminar. Míralas en rojo.'); return }
     setGuardando(true)
     /* Se manda todo de una: son pocas filas y así el orden queda consistente.
@@ -148,7 +247,7 @@ export default function ZonasPropiasPage() {
 
   if (cargando) return <main className="min-h-screen bg-gray-950 text-gray-500 grid place-items-center">Cargando…</main>
 
-  const listas = usables(zonas)
+  const listas = zonas.filter((z, i) => pegaDeZona(z, i) === null)
   const sinTerminar = zonas.length - listas.length
 
   return (
@@ -170,7 +269,10 @@ export default function ZonasPropiasPage() {
           <p className="text-gray-400 text-sm max-w-2xl">
             Tuyas, además de las que trae la aplicación. <b className="text-gray-300">No las sustituyen</b>:
             la idea es que en una misma sesión puedas poner un bloque en AEL y el siguiente en una
-            zona que te inventaste tú.
+            zona que te inventaste tú. El porcentaje de cada zona puede ser de la referencia de la
+            aplicación <span className="text-gray-500">(su VAM, su FTP, su CSS)</span> o de
+            <b className="text-gray-300"> una referencia tuya</b>: cualquier resultado de un test que
+            te hayas creado.
           </p>
         </div>
 
@@ -196,9 +298,10 @@ export default function ZonasPropiasPage() {
           )}
 
           {zonas.map((z, i) => {
-            const pega = motivoNoUsable(z, i, zonas)
+            const pega = pegaDeZona(z, i)
             const f = fichaDe(z)
-            const rango = rangoDe(z, refDe(z.deporte))
+            const sale = saleDe(z)
+            const ops = opciones(z.deporte)
             return (
               <div key={i}
                 className={'grid gap-2 items-center rounded-xl border p-2.5 mb-2 ' +
@@ -206,8 +309,10 @@ export default function ZonasPropiasPage() {
                 style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
                 <div className="grid gap-2 items-center"
                   style={{ gridTemplateColumns: '104px 86px minmax(110px,1.3fr) 146px 164px minmax(120px,1fr) 28px' }}>
+                  {/* Cambiar de deporte suelta la referencia: una zona de bici
+                      colgada de un número de natación no significa nada. */}
                   <select className={campo} value={z.deporte}
-                    onChange={e => parche(i, { deporte: e.target.value })}>
+                    onChange={e => parche(i, { deporte: e.target.value, ref: null })}>
                     {DEPORTES_ZONA.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -246,10 +351,38 @@ export default function ZonasPropiasPage() {
                       ? <span className="text-red-300">⚠ {pega}</span>
                       : <>
                           <span className="text-gray-400">RPE <b className="text-white">{nEs(f.rpe!)}</b> · nivel <b className="text-white">{f.nivel}</b></span>
-                          {rango && <div className="text-gray-500">{comoSeLee(z.deporte, z.deporte === 'Ciclismo' ? rango.min : rango.max)} – {comoSeLee(z.deporte, z.deporte === 'Ciclismo' ? rango.max : rango.min)}</div>}
+                          {sale && <div className="text-gray-500">{sale.texto}</div>}
                         </>}
                   </div>
                   <button onClick={() => quitar(i)} className="text-gray-600 hover:text-red-400 px-1">×</button>
+                </div>
+
+                {/* DE QUÉ NÚMERO ES ESE PORCENTAJE. En su propia línea y no en
+                    la rejilla de arriba: casi siempre se deja como está, pero
+                    cuando se cambia, cambia el significado de la zona entera. */}
+                <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                  <span className="text-gray-500 text-[10px] uppercase tracking-wider shrink-0">El % es de</span>
+                  <select
+                    className={campo + ' text-[12px]'} style={{ maxWidth: 260 }}
+                    value={z.ref ? z.ref.idDefinicion + ':' + z.ref.indice : ''}
+                    onChange={e => {
+                      const v = e.target.value
+                      if (!v) { parche(i, { ref: null }); return }
+                      const [d, n] = v.split(':')
+                      parche(i, { ref: { idDefinicion: Number(d), indice: Number(n) } })
+                    }}>
+                    <option value="">Su {refApp(z.deporte)} — la referencia de la app</option>
+                    {ops.map(o => (
+                      <option key={o.ref.idDefinicion + ':' + o.ref.indice}
+                        value={o.ref.idDefinicion + ':' + o.ref.indice}>{o.etiqueta}</option>
+                    ))}
+                  </select>
+                  {sale?.nota && <span className="text-gray-600 text-[11px] truncate">{sale.nota}</span>}
+                  {!ops.length && (
+                    <span className="text-gray-700 text-[11px]">
+                      (no tienes tests de {z.deporte.toLowerCase()} con referencias)
+                    </span>
+                  )}
                 </div>
               </div>
             )
@@ -271,7 +404,7 @@ export default function ZonasPropiasPage() {
           <div className="flex justify-between items-start gap-3 flex-wrap mb-3">
             <div>
               <p className="font-bold text-[15px]">Cómo le quedan a un atleta</p>
-              <p className="text-gray-500 text-xs">Cada zona usa la referencia de SU deporte: la VAM en carrera, el FTP en bici, el CSS en natación. Sin ese test no hay número que enseñar.</p>
+              <p className="text-gray-500 text-xs">Cada zona usa la referencia que le pusiste: la de la app —VAM, FTP, CSS— o una tuya. Debajo de cada número pone de dónde sale y de qué día.</p>
             </div>
             <div style={{ minWidth: 180 }}>
               <label className={lab}>Deportista</label>
@@ -296,7 +429,7 @@ export default function ZonasPropiasPage() {
                 </thead>
                 <tbody>
                   {listas.map(z => {
-                    const f = fichaDe(z), rango = rangoDe(z, refDe(z.deporte))
+                    const f = fichaDe(z), sale = saleDe(z)
                     return (
                       <tr key={z.sigla} className="border-b border-gray-800/70">
                         <td className="py-2 px-2">
@@ -304,10 +437,20 @@ export default function ZonasPropiasPage() {
                           <span className="text-gray-500 text-xs"> {z.nombre}</span>
                         </td>
                         <td className="py-2 px-2 text-gray-500 text-xs">{z.deporte}</td>
-                        <td className="py-2 px-2 text-gray-500 tabular-nums">{z.pctMin}–{z.pctMax} %</td>
-                        <td className="py-2 px-2 tabular-nums">{rango
-                          ? comoSeLee(z.deporte, z.deporte === 'Ciclismo' ? rango.min : rango.max) + ' – ' + comoSeLee(z.deporte, z.deporte === 'Ciclismo' ? rango.max : rango.min)
-                          : <span className="text-amber-300/70 text-xs">le falta el test</span>}</td>
+                        <td className="py-2 px-2 text-gray-500 tabular-nums">
+                          {z.pctMin}–{z.pctMax} %
+                          {z.ref && <div className="text-violet-300/60 text-[10.5px]">◈ tuya</div>}
+                        </td>
+                        <td className="py-2 px-2 tabular-nums">
+                          {sale
+                            ? <>
+                                {sale.texto}
+                                {/* De dónde sale y DE QUÉ DÍA. Sin la fecha, un
+                                    número de julio se lee como el de hoy. */}
+                                <div className="text-gray-600 text-[10.5px]">{sale.nota ?? 'su ' + refApp(z.deporte)}</div>
+                              </>
+                            : <span className="text-amber-300/70 text-xs">le falta el test</span>}
+                        </td>
                         <td className="py-2 px-2 tabular-nums text-gray-400">{textoRpe(z)}</td>
                         <td className="py-2 px-2 tabular-nums font-semibold">{f.nivel}</td>
                       </tr>

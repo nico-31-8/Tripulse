@@ -12,6 +12,87 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ---
 
+## 8 de septiembre de 2026
+
+### Tus zonas pueden colgar de tu propia referencia
+
+Hasta ahora el porcentaje de una zona tuya era siempre de lo que la aplicación
+llama la referencia de ese deporte: la VAM en carrera, el FTP en bici, el CSS en
+natación. Y eso dejaba fuera el caso más normal.
+
+Pasas un 6×100 y de ahí sacas que a tu nadador le interesa **1:13 el 100**. Ese
+número no es un CSS, no se le parece y no tiene por qué. Pero es de donde tú
+quieres colgar sus zonas.
+
+Ahora, en **Zonas propias**, cada zona lleva debajo una línea que dice *«El % es
+de»*. Puedes dejar la de la aplicación o elegir cualquier resultado de un test
+que te hayas creado. Debajo del número que le sale al atleta pone de dónde
+salió y **de qué día**.
+
+**Solo del mismo deporte.** Una zona de natación no puede colgar de un número
+que sacó corriendo: daría un ritmo de piscina salido de una velocidad de
+asfalto. Si le cambias el deporte a una zona, suelta la referencia.
+
+**Siempre la última medición**, nunca una congelada a mano. Vuelves a pasar el
+test y sus zonas se mueven solas. Y si corriges la fórmula, se corrige el
+historial entero, como ya pasaba con las gráficas.
+
+### «Hitos» ahora se llaman referencias, y son más cosas
+
+El nombre viejo daba a entender que solo valían los cuatro conceptos de
+fisiología. **Una marca tuya también es una referencia**: la mecánica es la
+misma, tomar un tanto por ciento de un número. Al crear un test, el desplegable
+las agrupa así.
+
+Lo que sí sigue siendo aparte —y más estrecho— es **ocupar la casilla de la
+aplicación**. Eso es lo de la novedad de abajo, y ahí las reglas no cambian: solo
+cabe lo que mide esa misma magnitud. La diferencia es que ahora, cuando un
+resultado no cabe ahí, no se lee como un fallo: se te dice que es una referencia
+tuya y que le cuelgues zonas.
+
+### El 95 % de 1:13 es más lento, no más rápido
+
+Es la clase de fallo que no revienta nada y te cambia los entrenamientos. Un
+porcentaje es del esfuerzo: en una unidad de tiempo, bajar el porcentaje sube el
+número. La aplicación lo tiene en cuenta.
+
+Como la unidad la escribes tú a mano, debajo de la casilla **Unidad** verás lo
+que ha deducido: *«↓ menos es mejor»* o *«↑ más es mejor»*. Si no acierta, le
+das y lo cambias. De ahí salen también las flechas de las gráficas, así que las
+dos cosas dicen siempre lo mismo.
+
+---
+
+### Un test tuyo ya puede fijar las zonas de un atleta
+
+Era el eslabón que faltaba. Hasta ahora te creabas un test, declarabas que un
+resultado es un VO₂máx… y ese número se quedaba en su pantalla: las zonas del
+atleta seguían saliendo del test de la aplicación.
+
+Ahora, en **Herramientas → Tests propios → Pasar a un atleta**, debajo de los
+datos aparece un recuadro azul: *«Usar VAM como su VAM — 16 km/h»*. Le das y ese
+número pasa a ser su referencia, la misma que usa la ficha, el editor de sesión
+y el dibujo. No hay nada que copiar a mano.
+
+**Fijar y guardar la medición son dos botones distintos, a propósito.** Guardar
+deja constancia de lo que hizo; fijar le cambia los ritmos de las próximas
+semanas. Un test puede salir mal —venía tocado, la pista mojada— y que eso
+reescriba sus zonas en silencio sería lo peor que podría hacer esta pantalla.
+
+**No todos los hitos pueden fijar, y la pantalla te lo dice al crear el test.**
+La aplicación guarda una referencia por deporte y cada una es una magnitud
+concreta: en carrera la VAM (que es un VO₂máx), en bici el FTP y en natación el
+CSS (que son umbrales). Así que un «umbral» de carrera no cabe: metido en la VAM
+bajaría todas sus zonas sin que nada fallara. Te sale el aviso justo debajo del
+desplegable, al crearlo, y no meses después.
+
+Lo mismo con la unidad: si escribes una que no se reconoce, no se te ofrece el
+botón. En carrera valen km/h y m/s; en bici, W; en natación, m/s, km/h o
+segundos por 100 (estos últimos se dan la vuelta solos, que a más segundos menos
+velocidad).
+
+---
+
 ## 6 de septiembre de 2026
 
 ### Crear tus propias zonas — en pruebas

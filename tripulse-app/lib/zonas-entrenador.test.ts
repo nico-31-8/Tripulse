@@ -7,7 +7,7 @@ import {
 import { cargaZona } from './zonas'
 
 const z = (extra: Partial<ZonaEntrenador> = {}): ZonaEntrenador => ({
-  deporte: 'Carrera', sigla: 'TMP', nombre: 'Tempo largo', pctMin: 82, pctMax: 88,
+  deporte: 'Carrera', sigla: 'TMP', nombre: 'Tempo largo', pctMin: 82, pctMax: 88, ref: null,
   rpeMin: 5, rpeMax: 6, color: '#a78bfa', orden: 0, ...extra,
 })
 
@@ -222,6 +222,68 @@ describe('ida y vuelta con la base', () => {
     expect(vuelta.rpeMin).toBe(5)
     expect(vuelta.rpeMax).toBe(6)
     expect(fichaDe(vuelta).nivel).toBe(3)
+  })
+
+  it('una referencia propia va y vuelve entera', () => {
+    const fila = paraGuardar(z({ ref: { idDefinicion: 7, indice: 1 } }), 'u1')
+    expect(fila.ref_definicion).toBe(7)
+    expect(fila.ref_indice).toBe(1)
+    expect(leerZonas([fila])[0].ref).toEqual({ idDefinicion: 7, indice: 1 })
+  })
+
+  it('EL RESULTADO 0 NO SE PIERDE POR SER CERO', () => {
+    // El primer resultado de un test tiene índice 0, que es falsy. Con un
+    // `|| null` de más, todas las zonas colgadas del primer resultado
+    // volverían apuntando a la referencia de la app, sin avisar.
+    const fila = paraGuardar(z({ ref: { idDefinicion: 7, indice: 0 } }), 'u1')
+    expect(fila.ref_indice).toBe(0)
+    expect(leerZonas([fila])[0].ref).toEqual({ idDefinicion: 7, indice: 0 })
+  })
+
+  it('sin referencia propia, las dos columnas van nulas', () => {
+    const fila = paraGuardar(z(), 'u1')
+    expect(fila.ref_definicion).toBeNull()
+    expect(fila.ref_indice).toBeNull()
+    expect(leerZonas([fila])[0].ref).toBeNull()
+  })
+
+  it('media referencia no cuenta como referencia', () => {
+    // Un test sin decir qué resultado apuntaría al primero por accidente.
+    expect(leerZonas([{ sigla: 'A', ref_definicion: 7 }])[0].ref).toBeNull()
+    expect(leerZonas([{ sigla: 'A', ref_indice: 1 }])[0].ref).toBeNull()
+    // Y un nulo explícito tampoco: Number(null) es 0, que es un índice válido.
+    expect(leerZonas([{ sigla: 'A', ref_definicion: 7, ref_indice: null }])[0].ref).toBeNull()
+  })
+
+  it('las zonas de antes de que esto existiera siguen significando lo mismo', () => {
+    // Ninguna fila vieja tiene esas columnas: todas cuelgan de la de la app.
+    expect(leerZonas(filas).every(x => x.ref === null)).toBe(true)
+  })
+})
+
+describe('una zona colgada de una referencia propia', () => {
+  const REF = { idDefinicion: 7, indice: 0 }
+  const conRef = z({ ref: REF })
+
+  it('vale si esa referencia está entre las suyas', () => {
+    expect(motivoNoUsable(conRef, 0, [conRef], [REF])).toBeNull()
+  })
+
+  it('NO VALE SI LA REFERENCIA YA NO ESTÁ', () => {
+    /* Pasa de dos formas: archivando el test, o cambiándole el deporte a la
+       zona después de elegirla. Las dos dejan un porcentaje sin nada detrás. */
+    expect(motivoNoUsable(conRef, 0, [conRef], [])).toContain('referencia')
+    expect(motivoNoUsable(conRef, 0, [conRef], [{ idDefinicion: 7, indice: 1 }])).toContain('referencia')
+  })
+
+  it('sin la lista no se comprueba, y es a propósito', () => {
+    // Quien resuelve una sigla a mitad de una sesión no tiene los tests
+    // cargados ni debería. La comprobación vive donde se editan.
+    expect(motivoNoUsable(conRef, 0, [conRef])).toBeNull()
+  })
+
+  it('una zona de la app no se ve afectada por la lista', () => {
+    expect(motivoNoUsable(z(), 0, [z()], [])).toBeNull()
   })
 })
 

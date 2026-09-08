@@ -21,6 +21,7 @@
 // persiguiendo.
 
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, nivelDeRpe } from './zonas'
+import { mismaRef, type RefPropia } from './referencia-propia'
 
 export interface ZonaEntrenador {
   id?: number
@@ -32,9 +33,21 @@ export interface ZonaEntrenador {
   deporte: string
   sigla: string
   nombre: string
-  /** El rango, en % de la referencia del atleta (su VAM, su FTP, su CSS). */
+  /** El rango, en % de la referencia — la de la app o la propia, ver `ref`. */
   pctMin: number
   pctMax: number
+  /*
+   * DE QUÉ NÚMERO ES ESE PORCENTAJE.
+   *
+   * `null` = la referencia de la app para su deporte: la VAM, el FTP, el CSS.
+   * Es lo que hacían todas antes de que esto existiera, y por eso es el valor
+   * por defecto: las zonas ya guardadas siguen significando lo mismo.
+   *
+   * Si no, un resultado de un test propio. Un 1:13 el 100 sacado de un 6×100 no
+   * es un CSS ni se le parece, y aun así es una referencia perfectamente buena
+   * para colgarle zonas.
+   */
+  ref: RefPropia | null
   rpeMin: number | null
   /** `null` = un número suelto en vez de un rango. Lo elige el entrenador. */
   rpeMax: number | null
@@ -49,7 +62,7 @@ export const COLORES_ZONA = [
 export const DEPORTES_ZONA = ['Carrera', 'Ciclismo', 'Natacion']
 
 export const ZONA_NUEVA = (orden: number, deporte = 'Carrera'): ZonaEntrenador => ({
-  deporte, sigla: '', nombre: '', pctMin: 70, pctMax: 80,
+  deporte, sigla: '', nombre: '', pctMin: 70, pctMax: 80, ref: null,
   rpeMin: null, rpeMax: null, color: COLORES_ZONA[orden % COLORES_ZONA.length], orden,
 })
 
@@ -110,6 +123,14 @@ export function motivoNoUsable(
   z: ZonaEntrenador,
   indice: number,
   todas: ZonaEntrenador[],
+  /*
+   * Las referencias propias que valen PARA ESTE DEPORTE, si quien llama las
+   * sabe. Sin ellas la referencia no se comprueba, y eso es a propósito: quien
+   * resuelve una sigla a mitad de una sesión no tiene los tests cargados ni
+   * debería. La comprobación vive donde se editan, que es donde se puede
+   * arreglar.
+   */
+  refsValidas?: RefPropia[],
 ): string | null {
   const s = txt(z.sigla)
   if (!s) return 'Ponle una sigla'
@@ -135,11 +156,18 @@ export function motivoNoUsable(
   if (!Number.isFinite(pMin) || !Number.isFinite(pMax) || pMin <= 0 || pMax <= 0) return 'Faltan los porcentajes'
   if (pMax < pMin) return 'El porcentaje de arriba no puede ser menor que el de abajo'
 
+  /* Se puede quedar apuntando a la nada de dos formas: archivando el test, o
+     cambiándole el deporte a la zona después de elegirla. Las dos dejarían un
+     porcentaje sin nada detrás. */
+  if (z.ref && refsValidas && !refsValidas.some(r => mismaRef(r, z.ref))) {
+    return 'Su referencia ya no existe o es de otro deporte'
+  }
+
   return null
 }
 
-export const esUsable = (z: ZonaEntrenador, i: number, todas: ZonaEntrenador[]): boolean =>
-  motivoNoUsable(z, i, todas) === null
+export const esUsable = (z: ZonaEntrenador, i: number, todas: ZonaEntrenador[], refsValidas?: RefPropia[]): boolean =>
+  motivoNoUsable(z, i, todas, refsValidas) === null
 
 /** Las que se pueden ofrecer en un desplegable. */
 export const usables = (todas: ZonaEntrenador[], deporte?: string): ZonaEntrenador[] => {
@@ -267,6 +295,13 @@ export function leerZonas(filas: any[] | null | undefined): ZonaEntrenador[] {
     rpeMax: numOn(f?.rpe_max),
     color: txt(f?.color) || COLORES_ZONA[i % COLORES_ZONA.length],
     orden: Number(f?.orden) ?? i,
+    /* Las dos columnas van juntas o no van: media referencia -un test sin
+       decir qué resultado- apuntaría al primero por accidente. Y ojo con el
+       nulo: Number(null) es 0, que es un índice válido, así que hay que
+       descartarlo a mano antes de mirar si es entero. */
+    ref: Number(f?.ref_definicion) > 0 && f?.ref_indice != null && Number.isInteger(Number(f.ref_indice))
+      ? { idDefinicion: Number(f.ref_definicion), indice: Number(f.ref_indice) }
+      : null,
   })).sort((a, b) => a.orden - b.orden)
 }
 
@@ -283,6 +318,8 @@ export function paraGuardar(z: ZonaEntrenador, idEntrenador: string) {
     rpe_max: numOn(z.rpeMax),
     color: txt(z.color) || COLORES_ZONA[0],
     orden: Number(z.orden) || 0,
+    ref_definicion: z.ref?.idDefinicion ?? null,
+    ref_indice: z.ref ? z.ref.indice : null,
   }
 }
 

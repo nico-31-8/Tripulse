@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   ANCLAS, tipoDeAncla, leerDefinicion, leerFormula, calcularResultados,
-  pegasDe, sePuedeGuardar, pegaDe, seriesDe, menosEsMejor, hitosDe,
-  TEST_VACIO, type DefinicionTest,
+  pegasDe, sePuedeGuardar, pegaDe, seriesDe, menosEsMejor, esInverso, referenciasDe,
+  TEST_VACIO, type DefinicionTest, type ResultadoTest,
 } from './test-definicion'
 import type { Bloque } from './formula'
 
@@ -28,21 +28,55 @@ const COOPER: DefinicionTest = {
 }
 
 describe('las anclas', () => {
-  it('cada una sabe de qué tipo es', () => {
-    expect(tipoDeAncla('vo2max')).toBe('hito')
-    expect(tipoDeAncla('umbral')).toBe('hito')
-    expect(tipoDeAncla('especifica')).toBe('especifica')
+  it('todo lo que no es seguimiento es una referencia', () => {
+    expect(tipoDeAncla('vo2max')).toBe('referencia')
+    expect(tipoDeAncla('umbral')).toBe('referencia')
     expect(tipoDeAncla('nada')).toBe('seguimiento')
   })
 
+  it('UNA MARCA SUYA TAMBIÉN ES UNA REFERENCIA', () => {
+    /* Es el cambio de concepto: un 1:13 el 100 no es un hito fisiológico y aun
+       así se le pueden colgar zonas. Lo único que no puede es ser la referencia
+       de la app, y eso lo decide lib/ancla-propia, no este tipo. */
+    expect(tipoDeAncla('especifica')).toBe('referencia')
+  })
+
   it('una que no existe cae en seguimiento, que es lo inofensivo', () => {
-    // Nunca en «hito»: eso la dejaría gobernando las zonas de alguien.
+    // Nunca en referencia: eso la dejaría gobernando las zonas de alguien.
     expect(tipoDeAncla('inventada')).toBe('seguimiento')
     expect(tipoDeAncla('')).toBe('seguimiento')
   })
 
-  it('solo los hitos pueden gobernar zonas', () => {
-    expect(hitosDe(COOPER).map(h => h.resultado.nombre)).toEqual(['VAM', 'vUAn'])
+  it('las referencias de un test son las que no son seguimiento', () => {
+    expect(referenciasDe(COOPER).map(h => h.resultado.nombre)).toEqual(['VAM', 'vUAn'])
+  })
+})
+
+describe('hacia dónde va la unidad', () => {
+  const r = (extra: Partial<ResultadoTest> = {}): ResultadoTest =>
+    ({ nombre: 'VAM', unidad: 'km/h', ancla: 'vo2max', formula: [], graf: true, ...extra })
+
+  it('sin decir nada, lo decide la unidad', () => {
+    expect(esInverso(r())).toBe(false)
+    expect(esInverso(r({ nombre: 'ritmo100', unidad: 's/100m' }))).toBe(true)
+  })
+
+  it('LO QUE DIGA EL ENTRENADOR MANDA SOBRE LA CORAZONADA', () => {
+    /* La unidad es texto libre. Si escribe «pts» para unos puntos donde menos
+       es mejor, ninguna expresión regular lo va a acertar, y de esto dependen
+       la flecha de la gráfica y hacia dónde va el % de sus zonas. */
+    expect(esInverso(r({ unidad: 'pts', inverso: true }))).toBe(true)
+    expect(esInverso(r({ nombre: 'ritmo', unidad: 'min/km', inverso: false }))).toBe(false)
+  })
+
+  it('se guarda solo si se dijo, para no congelar la corazonada', () => {
+    const guardado = leerDefinicion({
+      nombre: 'T', deporte: 'Carrera', campos: [],
+      resultados: [{ nombre: 'a', unidad: 'pts', ancla: 'nada', formula: [], inverso: true },
+                   { nombre: 'b', unidad: 'km/h', ancla: 'nada', formula: [] }],
+    })
+    expect(guardado.resultados[0].inverso).toBe(true)
+    expect('inverso' in guardado.resultados[1]).toBe(false)
   })
 })
 

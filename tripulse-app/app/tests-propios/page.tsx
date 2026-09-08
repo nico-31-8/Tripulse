@@ -21,11 +21,13 @@ import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
-  ANCLAS, tipoDeAncla, leerDefinicion, calcularResultados, pegasDe, pegaDe,
-  sePuedeGuardar, seriesDe, hitosDe, TEST_VACIO,
-  type Ancla, type DefinicionTest, type Medicion, type SerieResultado,
+  ANCLAS, ANCLAS_REFERENCIA, tipoDeAncla, esInverso, leerDefinicion, calcularResultados, pegasDe, pegaDe,
+  sePuedeGuardar, seriesDe, referenciasDe, TEST_VACIO,
+  type Ancla, type DefinicionTest, type Medicion, type ResultadoTest, type SerieResultado,
 } from '@/lib/test-definicion'
 import { renombrarEn, dependencias, type Bloque } from '@/lib/formula'
+import { puedeFijar, propuestaPropia, origenDe } from '@/lib/ancla-propia'
+import { fijarZonas } from '@/lib/zonas-desde-test'
 
 const SIGNO: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', '(': '(', ')': ')' }
 const OPS = ['+', '-', '*', '/', '^', '(', ')']
@@ -220,11 +222,14 @@ export default function TestsPropiosPage() {
   const btnSec = 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition'
   const tarjeta = 'bg-gray-900 border border-gray-800 rounded-2xl p-5'
 
-  const chipAncla = (a: Ancla) => {
-    const t = tipoDeAncla(a)
-    if (t === 'hito') return <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-300">⚓ {ANCLAS[a].nombre}</span>
-    if (t === 'especifica') return <span className="text-[11px] px-2 py-0.5 rounded bg-violet-500/12 border border-violet-400/40 text-violet-300 font-semibold">◈ Específica</span>
-    return <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-gray-700 text-gray-400">◦ Seguimiento</span>
+  /* Verde = además puede ocupar la casilla de la app. Violeta = es una
+     referencia tuya igual de buena, solo que sus zonas las cuelgas tú. */
+  const chipAncla = (a: Ancla, deporte: string) => {
+    if (tipoDeAncla(a) === 'seguimiento') return null
+    const puede = puedeFijar(deporte, { nombre: '', unidad: '', ancla: a, formula: [], graf: false }).destino
+    return puede
+      ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-300">⚓ {ANCLAS[a].nombre}</span>
+      : <span className="text-[11px] px-2 py-0.5 rounded bg-violet-500/12 border border-violet-400/40 text-violet-300 font-semibold">◈ Referencia tuya</span>
   }
 
   if (cargando) return <main className="min-h-screen bg-gray-950 text-gray-500 grid place-items-center">Cargando…</main>
@@ -277,7 +282,7 @@ export default function TestsPropiosPage() {
             ) : (
               <div className="flex flex-col gap-3">
                 {tests.map(t => {
-                  const hitos = hitosDe(t.def)
+                  const referencias = referenciasDe(t.def)
                   return (
                     <div key={t.id} className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4 flex justify-between items-center gap-4 flex-wrap">
                       <div className="min-w-0">
@@ -290,7 +295,7 @@ export default function TestsPropiosPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap justify-end">
-                        {hitos.map(h => <span key={h.indice}>{chipAncla(h.resultado.ancla)}</span>)}
+                        {referencias.map(h => <span key={h.indice}>{chipAncla(h.resultado.ancla, t.deporte)}</span>)}
                         <button onClick={() => abrirAtleta(t)} className={btnSec}>Pasar a un atleta</button>
                         <button onClick={() => abrirEditor(t)} title="Editar"
                           className="text-gray-500 hover:text-orange-400 px-2 py-1 rounded transition">✏️</button>
@@ -385,12 +390,32 @@ export default function TestsPropiosPage() {
                         <label className={lab}>Unidad</label>
                         <input className={campo} value={r.unidad} placeholder="km/h"
                           onChange={e => parcheR(i, { unidad: e.target.value })} />
+                        {/* Se enseña lo que la app ha deducido de la unidad, y se
+                            puede corregir. De esto dependen la flecha de la
+                            gráfica y hacia dónde va el % de una zona colgada de
+                            aquí: el 95 % de 1:13 es más lento, no más rápido. */}
+                        <button onClick={() => parcheR(i, { inverso: !esInverso(r) })}
+                          title="Hacia dónde va la mejora en esta unidad. Cámbialo si no acierta."
+                          className="text-[10.5px] text-gray-500 hover:text-gray-300 mt-1 transition">
+                          {esInverso(r) ? '↓ menos es mejor' : '↑ más es mejor'}
+                        </button>
                       </div>
                       <div className="flex-1 min-w-[220px]">
                         <label className={lab}>¿Para qué sirve?</label>
+                        {/* Agrupado, porque el grupo ES el concepto: todo lo de
+                            arriba es un número del que se pueden colgar zonas,
+                            sea un umbral o una marca suya. */}
                         <select className={campo} value={r.ancla} onChange={e => parcheR(i, { ancla: e.target.value })}>
-                          {(Object.keys(ANCLAS) as Ancla[]).map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
+                          <optgroup label="Referencias — se les pueden colgar zonas">
+                            {ANCLAS_REFERENCIA.map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
+                          </optgroup>
+                          <optgroup label="Lo demás">
+                            <option value="nada">{ANCLAS.nada.etiqueta}</option>
+                          </optgroup>
                         </select>
+                        {/* Se dice AQUÍ, al crearlo, y no meses después cuando el
+                            entrenador vaya a fijar zonas y descubra que no puede. */}
+                        <Cabe deporte={def.deporte} r={r} />
                       </div>
                       <label className="flex items-center gap-2 text-gray-400 text-xs pt-6 cursor-pointer select-none">
                         <input type="checkbox" checked={r.graf} className="accent-orange-500"
@@ -504,6 +529,11 @@ export default function TestsPropiosPage() {
               <Sale def={testActivo.def} datos={entrada} />
             </div>
 
+            {depActivo && (
+              <FijarConEsto def={testActivo.def} idDefinicion={testActivo.id} idDeportista={depActivo}
+                datos={entrada} fecha={fecha} avisar={decir} />
+            )}
+
             <Graficas def={testActivo.def} mediciones={mediciones} />
             <Historial def={testActivo.def} mediciones={mediciones} />
           </div>
@@ -516,6 +546,129 @@ export default function TestsPropiosPage() {
 // ============================================================
 // Trozos de pantalla
 // ============================================================
+
+/**
+ * Qué va a poder hacer este resultado, dicho al crearlo y no meses después.
+ *
+ * SON DOS COSAS DISTINTAS y la línea tiene que dejarlo claro: colgarle TUS
+ * zonas lo puede hacer cualquier referencia; ocupar la casilla de la app -la
+ * VAM, el FTP, el CSS- solo la que mida esa misma magnitud.
+ */
+function Cabe({ deporte, r }: { deporte: string; r: ResultadoTest }) {
+  if (tipoDeAncla(r.ancla) === 'seguimiento') return null
+  const v = puedeFijar(deporte, r)
+  return v.destino
+    ? <p className="text-green-300/80 text-[11px] mt-1.5 leading-snug">⚓ Podrás colgarle zonas y además fijar su {v.destino.nombre}.</p>
+    : <p className="text-violet-300/75 text-[11px] mt-1.5 leading-snug">
+        ◈ Podrás colgarle zonas propias. <span className="text-gray-500">{v.motivo}</span>
+      </p>
+}
+
+/**
+ * Que un resultado propio ocupe la casilla de la app: su VAM, su FTP, su CSS.
+ *
+ * ES EL CAMINO ESTRECHO, no el único. Una referencia que no cabe aquí no es una
+ * referencia peor: es que sus zonas las cuelga el entrenador en Zonas propias,
+ * y eso no pasa por esta pantalla ni tiene estas restricciones.
+ *
+ * FIJAR ES UNA ACCIÓN APARTE DE GUARDAR LA MEDICIÓN, igual que en los tests de
+ * serie: guardar deja constancia de lo que hizo el atleta; fijar cambia los
+ * ritmos que va a entrenar las próximas semanas. Un test puede salir mal —venía
+ * tocado, la pista mojada— y que eso reescriba sus zonas en silencio sería el
+ * peor fallo posible de esta pantalla.
+ *
+ * Y ESCRIBE EN LAS TABLAS DE SIEMPRE, no en una suya. Es todo el sentido de
+ * esto: el número tiene que llegar a donde ya miran las zonas, la ficha y el
+ * editor de sesión. Es lo único de `/tests-propios` que sale de su carpeta, y
+ * lo hace añadiendo filas, no cambiando nada.
+ */
+function FijarConEsto({ def, idDefinicion, idDeportista, datos, fecha, avisar }: {
+  def: DefinicionTest
+  idDefinicion: number
+  idDeportista: number
+  datos: Record<string, string>
+  fecha: string
+  avisar: (tipo: 'ok' | 'mal', texto: string) => void
+}) {
+  const [ocupado, setOcupado] = useState<number | null>(null)
+  const referencias = referenciasDe(def)
+  if (!referencias.length) return null
+
+  /* Separadas, y cada grupo con el peso que le toca. Las que pueden ocupar la
+     casilla de la app llevan un botón que cambia los ritmos del atleta: eso
+     merece su recuadro. Las demás son igual de válidas pero no hay nada que
+     pulsar aquí, así que van en una línea y no en tres tarjetas repitiendo lo
+     mismo. El porqué de cada una ya se dijo al crear el test. */
+  const conCasilla = referencias.filter(h => puedeFijar(def.deporte, h.resultado).destino)
+  const soloTuyas = referencias.filter(h => !puedeFijar(def.deporte, h.resultado).destino)
+
+  const fijar = async (indice: number) => {
+    const p = propuestaPropia(def, indice, datos)
+    if (!p) return
+    setOcupado(indice)
+    const r = await fijarZonas(supabase, idDeportista, fecha, p, origenDe(idDefinicion))
+    setOcupado(null)
+    if (r.error) { avisar('mal', r.error); return }
+    avisar('ok', p.destino.nombre + ' fijado en ' + p.texto + '. Sus zonas de ' +
+      def.deporte.toLowerCase() + ' ya salen de aquí.' +
+      (r.sinOrigen ? ' (No ha quedado apuntado de qué test salió.)' : ''))
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {soloTuyas.length > 0 && (
+        /* Ni «no se puede» ni un aviso en ámbar: son referencias suyas
+           perfectamente buenas y lo único que cambia es de dónde cuelgan sus
+           zonas. Escrito como un fallo, el entrenador dejaría de usarlas. */
+        <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-4 py-3 text-[12.5px] leading-snug">
+          <span className="text-violet-300">◈ </span>
+          {soloTuyas.map((h, k) => (
+            <span key={h.indice} title={puedeFijar(def.deporte, h.resultado).motivo ?? ''}>
+              {k > 0 && ', '}
+              <span className="font-mono text-violet-300">{h.resultado.nombre}</span>
+            </span>
+          ))}
+          <span className="text-gray-400">
+            {soloTuyas.length === 1 ? ' es una referencia tuya' : ' son referencias tuyas'}.
+            Cuélgales zonas en <span className="text-gray-300">Herramientas → Zonas propias</span>.
+          </span>
+        </div>
+      )}
+
+      {conCasilla.map(h => {
+        const v = puedeFijar(def.deporte, h.resultado)
+        const p = propuestaPropia(def, h.indice, datos)
+        return (
+          <div key={h.indice} className="rounded-xl border border-blue-900/50 bg-blue-950/25 p-4 flex flex-col gap-2.5">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <span className="text-sm text-gray-300">
+                Usar <span className="font-mono text-gray-400">{h.resultado.nombre}</span> como su{' '}
+                <span className="font-semibold text-blue-300">{v.destino!.nombre}</span>
+                <span className="text-gray-500"> (estimado)</span>
+              </span>
+              {p && <span className="text-blue-300 font-bold tabular-nums">{p.texto}</span>}
+            </div>
+            {p ? (
+              <>
+                <button onClick={() => fijar(h.indice)} disabled={ocupado !== null}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-semibold transition">
+                  {ocupado === h.indice ? 'Guardando…' : 'Fijar sus zonas de ' + def.deporte.toLowerCase()}
+                </button>
+                <p className="text-gray-500 text-[11px] leading-snug">
+                  Cambia los ritmos que va a entrenar. Guardar la medición no hace esto solo.
+                </p>
+              </>
+            ) : (
+              <p className="text-gray-500 text-xs leading-snug">
+                Rellena los datos de arriba y sale el número que se guardaría.
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function Paleta({ etiqueta, vacio, children }: { etiqueta: string; vacio?: string; children: React.ReactNode }) {
   const hay = Array.isArray(children) ? children.length > 0 : !!children

@@ -3,14 +3,19 @@
 // ============================================================
 //
 // QUÉ ES UN TEST AQUÍ. Unos campos que se rellenan al pasarlo y uno o varios
-// resultados que salen de ellos. Cada resultado declara PARA QUÉ SIRVE, y esa
-// declaración es la que decide todo lo demás:
+// resultados que salen de ellos. Cada resultado declara PARA QUÉ SIRVE:
 //
-//   ⚓ hito        — un punto de la fisiología (VO₂máx, umbral, velocidad
-//                    máxima). Puede gobernar las zonas del atleta él solo.
-//   ◈ específica  — una marca (mejor 800, ritmo de 10k). NO genera zonas, y no
-//                    debe: al mandar la tarea se dice «al 95 % de esto».
-//   ◦ seguimiento — ni una cosa ni otra. Está para verlo avanzar en su gráfica.
+//   ⚓ referencia  — un número del que se pueden colgar zonas. Da igual que sea
+//                    un punto de la fisiología (VO₂máx, umbral) o una marca
+//                    suya (1:13 el 100, mejor 800): la mecánica es la misma,
+//                    tomar un tanto por ciento de él.
+//   ◦ seguimiento — no. Está para verlo avanzar en su gráfica y nada más.
+//
+// LO QUE **NO** DECIDE ESTA DECLARACIÓN es si ese número puede ser la
+// referencia de LA APP -la VAM, el FTP, el CSS-. Eso es otra pregunta, mucho
+// más estrecha, y la contesta lib/ancla-propia: solo cabe si mide la misma
+// magnitud que la columna. Un 1:13 el 100 es una referencia perfectamente
+// válida para colgarle zonas propias y a la vez NO es un CSS.
 //
 // LAS MEDICIONES GUARDAN LOS CAMPOS EN BRUTO, NUNCA LOS RESULTADOS. Si mañana
 // se corrige una fórmula, el historial entero se corrige solo. Guardando los
@@ -25,7 +30,7 @@ import {
 } from './formula'
 
 export type Ancla = 'vo2max' | 'umbral' | 'umbral_aer' | 'sprint' | 'especifica' | 'nada'
-export type TipoAncla = 'hito' | 'especifica' | 'seguimiento'
+export type TipoAncla = 'referencia' | 'seguimiento'
 
 export interface InfoAncla {
   /** Lo que se lee en el desplegable. */
@@ -36,13 +41,23 @@ export interface InfoAncla {
 }
 
 export const ANCLAS: Record<Ancla, InfoAncla> = {
-  vo2max:     { etiqueta: 'VO₂máx — VAM, PAM, vVO₂máx',              tipo: 'hito',        nombre: 'VO₂máx' },
-  umbral:     { etiqueta: 'Umbral — FTP, CSS, VT2, LT2',             tipo: 'hito',        nombre: 'umbral' },
-  umbral_aer: { etiqueta: 'Umbral aeróbico — VT1, LT1',              tipo: 'hito',        nombre: 'umbral aeróbico' },
-  sprint:     { etiqueta: 'Velocidad máxima — MSS, MPP',             tipo: 'hito',        nombre: 'velocidad máxima' },
-  especifica: { etiqueta: 'Marca de referencia (mejor 800, 10k…)',   tipo: 'especifica',  nombre: 'referencia específica' },
-  nada:       { etiqueta: 'Solo seguimiento',                        tipo: 'seguimiento', nombre: 'seguimiento' },
+  vo2max:     { etiqueta: 'VO₂máx — VAM, PAM, vVO₂máx',                tipo: 'referencia',  nombre: 'VO₂máx' },
+  umbral:     { etiqueta: 'Umbral — FTP, CSS, VT2, LT2',               tipo: 'referencia',  nombre: 'umbral' },
+  umbral_aer: { etiqueta: 'Umbral aeróbico — VT1, LT1',                tipo: 'referencia',  nombre: 'umbral aeróbico' },
+  sprint:     { etiqueta: 'Velocidad máxima — MSS, MPP',               tipo: 'referencia',  nombre: 'velocidad máxima' },
+  especifica: { etiqueta: 'Una marca tuya (1:13 el 100, mejor 800…)',  tipo: 'referencia',  nombre: 'marca' },
+  nada:       { etiqueta: 'Solo seguimiento',                          tipo: 'seguimiento', nombre: 'seguimiento' },
 }
+
+/**
+ * Las que se ofrecen como referencia, en el orden del desplegable.
+ *
+ * La marca va CON las demás y no aparte: separarlas fue el error de encuadre
+ * del que salió todo esto. Lo único que la distingue es que nunca podrá ser la
+ * referencia de la app, y de eso ya se encarga otro fichero.
+ */
+export const ANCLAS_REFERENCIA: Ancla[] =
+  (Object.keys(ANCLAS) as Ancla[]).filter(a => ANCLAS[a].tipo === 'referencia')
 
 export const esAncla = (a: string): a is Ancla => a in ANCLAS
 export const tipoDeAncla = (a: string): TipoAncla => (esAncla(a) ? ANCLAS[a].tipo : 'seguimiento')
@@ -59,6 +74,17 @@ export interface ResultadoTest {
   formula: Bloque[]
   /** Si sale en las gráficas de evolución. */
   graf: boolean
+  /**
+   * Si en esta unidad BAJAR es mejorar.
+   *
+   * `undefined` = lo decide la unidad (ver `menosEsMejor`). Se puede fijar a
+   * mano porque de esto dependen dos cosas que mienten en silencio si se
+   * equivocan: el color de la flecha en la gráfica, y hacia dónde va el
+   * porcentaje de una zona colgada de aquí -el 95 % de 1:13 es más LENTO, no
+   * más rápido-. La unidad la escribe el entrenador en texto libre, así que
+   * adivinarla siempre no es una opción.
+   */
+  inverso?: boolean
 }
 
 export interface DefinicionTest {
@@ -105,6 +131,7 @@ export function leerDefinicion(bruto: unknown): DefinicionTest {
         ancla: esAncla(txt(r?.ancla)) ? txt(r?.ancla) as Ancla : 'nada',
         formula: leerFormula(r?.formula),
         graf: r?.graf !== false,
+        ...(typeof r?.inverso === 'boolean' ? { inverso: r.inverso } : {}),
       })).filter((r: ResultadoTest) => r.nombre)
     : []
 
@@ -273,6 +300,17 @@ export function menosEsMejor(nombre: string, unidad: string): boolean {
 }
 
 /**
+ * Lo mismo, pero respetando lo que haya dicho el entrenador.
+ *
+ * ES EL ÚNICO SITIO DONDE SE DECIDE ESTO. La gráfica y el porcentaje de una
+ * zona colgada de este resultado tienen que estar de acuerdo: si la flecha dice
+ * que mejoró y el porcentaje va al revés, uno de los dos miente y no hay forma
+ * de saber cuál.
+ */
+export const esInverso = (r: ResultadoTest): boolean =>
+  typeof r.inverso === 'boolean' ? r.inverso : menosEsMejor(r.nombre, r.unidad)
+
+/**
  * Las series para pintar, una por resultado marcado con gráfica.
  *
  * UNA GRÁFICA POR RESULTADO, y no todas en la misma: la VAM va en km/h y el
@@ -295,14 +333,14 @@ export function seriesDe(def: DefinicionTest, mediciones: Medicion[]): SerieResu
     if (puntos.length >= 2) {
       const ult = puntos[puntos.length - 1].valor, prev = puntos[puntos.length - 2].valor
       delta = ult - prev
-      mejora = delta === 0 ? null : (menosEsMejor(r.nombre, r.unidad) ? delta < 0 : delta > 0)
+      mejora = delta === 0 ? null : (esInverso(r) ? delta < 0 : delta > 0)
     }
     return { nombre: r.nombre, unidad: r.unidad, puntos, delta, mejora }
   }).filter((_, i) => def.resultados[i].graf)
 }
 
-/** Los resultados que pueden gobernar las zonas: solo los hitos. */
-export const hitosDe = (def: DefinicionTest): { indice: number; resultado: ResultadoTest }[] =>
+/** Los resultados de los que se pueden colgar zonas. */
+export const referenciasDe = (def: DefinicionTest): { indice: number; resultado: ResultadoTest }[] =>
   (def.resultados || [])
     .map((resultado, indice) => ({ indice, resultado }))
-    .filter(x => tipoDeAncla(x.resultado.ancla) === 'hito')
+    .filter(x => tipoDeAncla(x.resultado.ancla) === 'referencia')
