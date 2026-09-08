@@ -377,14 +377,52 @@ export function tablaIntensidades(
 // El RPE sale del propio catálogo (punto medio del rango); el "nivel" 1–7
 // es la zona clásica equivalente por RPE. Nada inventado: RPE-anclado.
 // ------------------------------------------------------------
-const RPE_CLASICO = [2.5, 4.5, 6.5, 7.5, 8.5, 9.5, 10]
+/**
+ * Los rangos de RPE de las siete zonas clásicas. Son los mismos que ZONAS_UI de
+ * lib/referencia-zona; se repiten aquí porque importarlos daría una dependencia
+ * circular, y por eso hay un test que comprueba que no se separen.
+ */
+export const RPE_ZONA_CLASICA: [number, number][] =
+  [[2, 3], [4, 5], [6, 7], [7, 8], [8, 9], [9, 10], [10, 10]]
+
+const RPE_CLASICO = RPE_ZONA_CLASICA.map(([a, b]) => (a + b) / 2)
 const COLOR_CLASICO = ['#94a3b8', '#34d399', '#a3e635', '#fbbf24', '#fb923c', '#f87171', '#c084fc']
 const NOMBRE_CLASICO = ['Recuperación', 'Aeróbica', 'Tempo', 'Umbral', 'VO₂máx', 'Anaeróbica', 'Neuromuscular']
 
-function nivelDeRpe(rpe: number): number {
-  let best = 0, bestD = Infinity
-  RPE_CLASICO.forEach((r, i) => { const d = Math.abs(r - rpe); if (d < bestD) { bestD = d; best = i } })
-  return best + 1
+/**
+ * El nivel 1–7 al que equivale un RPE.
+ *
+ * CÓMO SE HACÍA Y POR QUÉ ESTABA MAL. Se cogía el punto medio más cercano de
+ * [2,5 · 4,5 · 6,5 · 7,5 · 8,5 · 9,5 · 10]. Esos puntos NO están repartidos:
+ * abajo saltan de 2 en 2 y arriba de 1 en 1. Entre Z2 (RPE 4–5) y Z3 (RPE 6–7)
+ * queda un hueco que no cubre nadie, y lo que cae dentro se va hacia abajo.
+ *
+ * Y ya había mordido. AEL —«Aeróbico lipolítico», el rodaje de toda la vida—
+ * tiene RPE 3–4, punto medio 3,5, que caía justo en el hueco entre Z1 y Z2 y
+ * empataba: ganaba Z1, así que el rodaje contaba como RECUPERACIÓN. En
+ * lib/duracion.ts hay un comentario de aquel día diciendo que AEL «acababa
+ * estimándose al 60 % de VAM (el de AER) en vez de al 70 %», y allí se rodeó
+ * esta función en vez de arreglarla. El resto de la app siguió recibiendo el
+ * nivel comprimido.
+ *
+ * CÓMO SE HACE AHORA. Por el TECHO de cada zona, no por su punto medio: la
+ * primera cuyo tope llegue a ese RPE. Sin huecos y sin empates, y la regla se
+ * dice en una frase — un RPE por encima del techo de una zona ya no es esa zona.
+ *
+ * De los RPE de 1 a 10 solo cambian dos, que son justo los dos huecos: 3,5
+ * (de 1 a 2) y 5,5 (de 2 a 3). Todo lo demás sale idéntico.
+ */
+export function nivelDeRpe(rpe: number): number {
+  const ultimo = RPE_ZONA_CLASICA.length - 1
+  /* El último peldaño va de 10 a 10: no tiene techo por el que entrar, así que
+     se comprueba por su SUELO y antes que nadie. Sin esto, un RPE de 10 cabría
+     en el techo de Z6 y el sprint bajaría un nivel — el mismo error por el
+     otro lado. */
+  if (rpe >= RPE_ZONA_CLASICA[ultimo][0]) return ultimo + 1
+  for (let i = 0; i < ultimo; i++) {
+    if (rpe <= RPE_ZONA_CLASICA[i][1]) return i + 1
+  }
+  return ultimo
 }
 
 export interface CargaZona {

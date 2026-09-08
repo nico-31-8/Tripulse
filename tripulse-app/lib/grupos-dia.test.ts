@@ -9,10 +9,11 @@ const MIEMBROS = [
 ]
 
 const refs = new Map<number, ReferenciasDeUno>([
-  [1, { tests: { vam: 18, css: 1.4, ftp: 280 }, fcMax: 190, sistema: 2, nombre: 'Ana' }],
-  [2, { tests: { vam: 15, css: 1.1, ftp: 210 }, fcMax: 185, sistema: 2, nombre: 'Bea' }],
+  // Ana es la única con FC de reposo: sus pulsaciones salen por Karvonen.
+  [1, { tests: { vam: 18, css: 1.4, ftp: 280 }, fcMax: 190, fcReposo: 52, sistema: 2, nombre: 'Ana' }],
+  [2, { tests: { vam: 15, css: 1.1, ftp: 210 }, fcMax: 185, fcReposo: 0, sistema: 2, nombre: 'Bea' }],
   // Caro no tiene ningún test.
-  [3, { tests: { vam: null, css: null, ftp: null }, fcMax: 180, sistema: 2, nombre: 'Caro' }],
+  [3, { tests: { vam: null, css: null, ftp: null }, fcMax: 180, fcReposo: 0, sistema: 2, nombre: 'Caro' }],
 ])
 
 const tarea = (orden: number, zona: string) => ({ orden, zona_entrenamiento: zona })
@@ -38,20 +39,20 @@ describe('zonasDe', () => {
 
 describe('leFaltaElTest', () => {
   it('mira el test que toca según el deporte', () => {
-    const soloVam = { tests: { vam: 18, css: null, ftp: null }, fcMax: 0, sistema: 2, nombre: 'x' }
+    const soloVam = { tests: { vam: 18, css: null, ftp: null }, fcMax: 0, fcReposo: 0, sistema: 2, nombre: 'x' }
     expect(leFaltaElTest('Carrera', soloVam)).toBe(false)
     expect(leFaltaElTest('Natacion', soloVam)).toBe(true)
     expect(leFaltaElTest('Ciclismo', soloVam)).toBe(true)
   })
 
   it('«Natación» con tilde cuenta igual que sin ella', () => {
-    const soloCss = { tests: { vam: null, css: 1.2, ftp: null }, fcMax: 0, sistema: 2, nombre: 'x' }
+    const soloCss = { tests: { vam: null, css: 1.2, ftp: null }, fcMax: 0, fcReposo: 0, sistema: 2, nombre: 'x' }
     expect(leFaltaElTest('Natación', soloCss)).toBe(false)
     expect(leFaltaElTest('Natacion', soloCss)).toBe(false)
   })
 
   it('a la fuerza no le falta ningún test: no se traduce a un ritmo', () => {
-    const nada = { tests: { vam: null, css: null, ftp: null }, fcMax: 0, sistema: 2, nombre: 'x' }
+    const nada = { tests: { vam: null, css: null, ftp: null }, fcMax: 0, fcReposo: 0, sistema: 2, nombre: 'x' }
     expect(leFaltaElTest('Fuerza', nada)).toBe(false)
   })
 

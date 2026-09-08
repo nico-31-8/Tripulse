@@ -21,12 +21,14 @@ interface Props {
   disciplina: string
   tests: Tests
   fcMax: number
+  /** Su FC de reposo. Con ella las pulsaciones salen por Karvonen. */
+  fcReposo?: number
   /** 2 = siglas (AER, AEL…). Cualquier otro = las siete clásicas (Z1…Z7). */
   sistema: number
 }
 
 export default function BloquesResistencia({
-  bloques, onCambiar, onQuitar, disciplina, tests, fcMax, sistema,
+  bloques, onCambiar, onQuitar, disciplina, tests, fcMax, fcReposo = 0, sistema,
 }: Props) {
   const zonas = sistema === 2
     ? ZONAS_RESISTENCIA.map(z => ({ v: z.sigla, et: z.sigla + ' · ' + z.nombre }))
@@ -39,7 +41,7 @@ export default function BloquesResistencia({
   return (
     <>
       {bloques.map((b, i) => {
-        const ref = referenciaDeZona(b.zona, disciplina, tests, fcMax)
+        const ref = referenciaDeZona(b.zona, disciplina, tests, fcMax, fcReposo)
         const porTiempo = b.unidad === 'min'
 
         return (

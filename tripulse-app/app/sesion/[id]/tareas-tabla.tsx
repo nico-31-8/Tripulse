@@ -118,6 +118,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [filasF, setFilasF] = useState<FilaFuerza[]>([])
   const [tests, setTests] = useState<any>({})
   const [fcMax, setFcMax] = useState(0)
+  // Su FC de reposo: con ella las pulsaciones salen por Karvonen (ver
+  // lib/frecuencia-cardiaca), y sin ella como siempre.
+  const [fcReposo, setFcReposo] = useState(0)
   const [sistema, setSistema] = useState(1)
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
@@ -170,6 +173,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     ])
 
     setFcMax(refs.fcMax)
+    setFcReposo(refs.fcReposo)
     setSistema(refs.sistema)
     setTests({ ...refs.tests, fuerza: [] })
     setEjerciciosBiblioteca(ejBib.data || [])
@@ -293,7 +297,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      que la copia local de la tabla de %VAM iba desplazada 5–10 puntos y el mismo
      Z4 daba dos ritmos distintos según por dónde entrases. */
   const getRef = (codigo: string | null | undefined, disciplina: string) =>
-    referenciaDeZona(codigo, disciplina, tests, fcMax)
+    referenciaDeZona(codigo, disciplina, tests, fcMax, fcReposo)
 
   /* Cambiar un valor de la franja. Se guarda en la sesión al vuelo: no hay
      botón de guardar porque no hay nada que revisar —o está fijado o no—, y un

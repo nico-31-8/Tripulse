@@ -18,7 +18,7 @@ import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
- import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
+import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
 import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
@@ -62,12 +62,14 @@ interface Props {
   tests: { vam?: number | null; ftp?: number | null; css?: number | null } | null
   /** Su FC máxima: el respaldo del objetivo cuando le falta el test. */
   fcMax?: number
+  /** Su FC de reposo. Con ella, esas pulsaciones salen por Karvonen. */
+  fcReposo?: number
   durEstimada: ResultadoDuracion
   recup: any
   onCambio: () => Promise<void> | void
 }
 
-export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, durEstimada, recup, onCambio }: Props) {
+export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, fcReposo = 0, durEstimada, recup, onCambio }: Props) {
   const router = useRouter()
   const esBrick = sesion?.disciplina === 'Brick'
 
@@ -280,7 +282,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, d
                    vacía y la línea entera desaparecía: el atleta no veía a
                    cuánto ir, ni un número ni un esfuerzo. `objetivoDeZona` baja
                    a pulsaciones y de ahí a RPE antes que quedarse callado. */
-                const calc = objetivoDeZona(t.zona_entrenamiento, disc, tests || {}, fcMax)
+                const calc = objetivoDeZona(t.zona_entrenamiento, disc, tests || {}, fcMax, fcReposo)
                 const intensidad = queEnsenar(
                   ritmoObjetivoTexto(intensidadGuardada(t), disc),
                   calc?.texto,

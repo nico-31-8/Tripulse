@@ -59,10 +59,13 @@ export function bloquesDesdeTareas(tareas: any[]): BloqueP[] {
 
 // La zona pico: la más dura de la sesión. Es la que representa la plantilla.
 //
-// OJO: cargaZona() comprime las 9 zonas en 7 niveles (AER y AEL empatan; PLA y
-// CALA también), así que en un empate gana la primera. Es lo mismo que hace el
-// resto de la app (/volumen, sicat-zonas), así que aquí se mantiene el criterio
-// por coherencia.
+// OJO: cargaZona() comprime las 9 zonas en 7 niveles, así que puede haber
+// empates y en un empate gana la primera. Es lo mismo que hace el resto de la
+// app (/volumen, sicat-zonas), así que aquí se mantiene el criterio.
+//
+// AER y AEL YA NO EMPATAN: AEL era nivel 1 —contaba como recuperación— por un
+// hueco en la escalera de niveles, y eso se arregló (ver nivelDeRpe en
+// lib/zonas). Los que siguen empatando son PLA y CALA, los dos a RPE 9–10.
 export function zonaPico(bloques: BloqueP[]): string {
   if (!bloques.length) return 'AEL'
   return bloques.reduce((mejor, b) =>

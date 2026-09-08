@@ -89,6 +89,7 @@ export default function Apuntar() {
   const [bloques, setBloques] = useState<BloqueRegistro[]>([])
   const [tests, setTests] = useState<Tests>(SIN_TESTS)
   const [fcMax, setFcMax] = useState(0)
+  const [fcReposo, setFcReposo] = useState(0)
   const [sistema, setSistema] = useState(1)
   const [historial, setHistorial] = useState<Record<string, Historial>>({})
 
@@ -161,6 +162,7 @@ export default function Apuntar() {
     await resumirSesiones(lista.data || [])
     setTests(refs.tests)
     setFcMax(refs.fcMax)
+    setFcReposo(refs.fcReposo)
     setSistema(refs.sistema)
 
     const params = new URLSearchParams(window.location.search)
@@ -554,7 +556,7 @@ export default function Apuntar() {
           <>
             <BloquesResistencia
               bloques={bloques} onCambiar={cambiarBloque} onQuitar={quitarBloque}
-              disciplina={disciplina} tests={tests} fcMax={fcMax} sistema={sistema}
+              disciplina={disciplina} tests={tests} fcMax={fcMax} fcReposo={fcReposo} sistema={sistema}
             />
             <button onClick={anadirBloque}
               className="w-full border border-dashed border-gray-700 hover:border-orange-500/60 text-gray-400 hover:text-white rounded-2xl py-4 text-[13.5px] transition">

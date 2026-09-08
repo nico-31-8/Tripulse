@@ -12,6 +12,56 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ---
 
+## 6 de septiembre de 2026
+
+### Las pulsaciones de cada zona, mejor calculadas
+
+Hasta ahora la FC de una zona se sacaba de dos maneras distintas según el sistema
+de zonas que tuviera puesto el atleta. Con las siglas (AER, AEL…) se aplicaba el
+porcentaje sobre su FC máxima. Con las Z1–Z7 se **fabricaba un umbral** al 85 % de
+su máxima y se aplicaban porcentajes sobre ese invento — un 0,85 que no estaba
+explicado en ninguna parte.
+
+Ahora las dos pasan por el mismo sitio, y con un método mejor cuando se puede:
+
+- **Si se le conoce la FC de reposo, se usa la frecuencia de reserva** (Karvonen),
+  que es lo que recomienda la bibliografía: tiene en cuenta que dos atletas con la
+  misma máxima y distinto reposo no están al mismo esfuerzo con las mismas
+  pulsaciones. Hoy le aplica a 3 atletas, los tres porque registran su reposo en
+  el wellness.
+- **Si no, se calcula como siempre**, sobre la máxima.
+
+Para un atleta corriente el número apenas se mueve, y eso es lo correcto. Donde
+cambia de verdad es en quien se sale de lo típico: alguien muy entrenado, con 45
+pulsaciones en reposo, puede tener **8 pulsaciones de diferencia** en su zona
+base — y antes se le mandaba de más.
+
+La FC de reposo se saca de su **wellness**, no de la anamnesis: uno se rellena
+cada mañana y el otro una sola vez al empezar. Y se coge la mediana de los
+últimos días, no la media, para que una mañana con fiebre no le mueva las zonas.
+
+Dos detalles que verás: la **Z1 ya enseña pulsaciones** («< 121 ppm»), que antes
+se quedaba en blanco; y las zonas de un solo extremo se leen mejor — AER pasa de
+«133 ppm» a «**menos de** 133 ppm».
+
+### El rodaje suave ya no cuenta como recuperación
+
+Cada zona lleva por dentro un nivel del 1 al 7, la equivalencia con las zonas
+clásicas. De ahí salen la altura de la barra en el gráfico de la sesión, qué zona
+representa a una sesión con varios bloques, y el orden de intensidad que usa el
+planificador.
+
+Ese nivel se sacaba de una escalera con huecos, y **AEL caía dentro de uno**: el
+rodaje aeróbico de toda la vida contaba como **recuperación**. Ya estaba
+detectado —hay dos sitios del código con un apaño local para esquivarlo— pero
+nunca se había arreglado en el origen.
+
+Arreglado. Afecta a 68 tareas de 6 atletas. **La carga no cambia**: sale del
+esfuerzo, no del nivel. Lo que cambia es que un rodaje ya se dibuja y se ordena
+como lo que es.
+
+---
+
 ## 5 de septiembre de 2026
 
 ### Duplicar una tarea

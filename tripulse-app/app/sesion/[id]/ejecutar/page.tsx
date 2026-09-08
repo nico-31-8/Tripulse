@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
 import { mmss } from '@/lib/duracion-carga'
-import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
+import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
@@ -69,6 +69,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [guardando, setGuardando] = useState(false)
   const [tests, setTests] = useState<any>(null)
   const [fcMax, setFcMax] = useState(0)
+  const [fcReposo, setFcReposo] = useState(0)
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
@@ -122,29 +123,27 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
      * móvil y mala cobertura. Es donde más se nota. */
     const depIdLocal: number | null = ses?.id_deportista ?? null
 
-    const [mesos, micros, mismoDia, t1, t2, t3, an, dep, tar] = await Promise.all([
+    const [mesos, micros, mismoDia, an, dep, tar] = await Promise.all([
       depIdLocal ? supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       /* Por deportista y fecha, no por los microciclos del plan: así cuenta
          también la sesión que el atleta se haya añadido él ese día. */
       depIdLocal ? supabase.from('sesion').select('id, estado').eq('id_deportista', depIdLocal)
         .eq('fecha_sesion', ses.fecha_sesion).or('eliminada.is.null,eliminada.eq.false') : Promise.resolve({ data: [] }),
-      depIdLocal ? supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
-      depIdLocal ? supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
-      depIdLocal ? supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', depIdLocal).order('fecha', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
-      /* Su FC máxima. Es el respaldo cuando no tiene el test de la disciplina:
-         sin ella el objetivo baja a RPE, que también sirve, pero unas
-         pulsaciones son un número que puede mirar en el reloj. */
-      depIdLocal ? supabase.from('deportista').select('fc_maxima').eq('id', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
+      /* Sus tests y sus dos frecuencias, de una vez. Aquí había TRES consultas
+         sueltas que hacían justo esto; cargarReferencias ya las trae, y en esta
+         pantalla —el atleta entrenando, con el móvil— tres viajes menos se notan. */
+      depIdLocal ? cargarReferencias(supabase, depIdLocal) : Promise.resolve(null),
       supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden'),
     ])
 
     if (depIdLocal) {
       // Los ritmos objetivo por zona: salen siempre que haya test, planificada o libre.
-      setTests({ vam: (t1.data as any)?.[0]?.vam || null, css: (t2.data as any)?.[0]?.css || null, ftp: (t3.data as any)?.[0]?.ftp || null })
+      setTests(dep?.tests || {})
       setPesoDeportista((an.data as any)?.peso || null)
-      setFcMax(Number((dep.data as any)?.fc_maxima) || 0)
+      setFcMax(dep?.fcMax || 0)
+      setFcReposo(dep?.fcReposo || 0)
 
       // Contexto de recuperación, ya sin consultas: lógica pura sobre las listas.
       const listaMesos = (mesos.data || []) as any[]
@@ -537,6 +536,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 tarea?.disciplina || sesion?.disciplina || '',
                 tests || {},
                 fcMax,
+                fcReposo,
               )
               const intensidad = queEnsenar(intensidadGuardada(tarea), calc?.texto)
               if (!intensidad.principal) return null

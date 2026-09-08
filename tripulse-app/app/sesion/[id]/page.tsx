@@ -89,6 +89,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   // Ya venía en cargarReferencias y se tiraba. El briefing la necesita: es el
   // respaldo del objetivo cuando al atleta le falta el test de la disciplina.
   const [fcMaxima, setFcMaxima] = useState(0)
+  const [fcReposo, setFcReposo] = useState(0)
   const [esDeportista, setEsDeportista] = useState(false)
   // Plantillas: solo las monta el entrenador, y solo mientras la sesión no esté hecha
   // (aplicarlas reescribe las tareas). Fuerza y Brick no tienen: la fuerza va por
@@ -350,6 +351,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setEsDeportista((pf as any).data?.rol === 'deportista')
     setSistemaZonas(refs.sistema)
     setFcMaxima(refs.fcMax || 0)
+    setFcReposo(refs.fcReposo || 0)
     setNombreDeportista(refs.nombre)
     setTestsData({ vam: refs.tests.vam ?? null, css: refs.tests.css ?? null, ftp: refs.tests.ftp ?? null })
     setPesoDeportista(an.data?.peso || null)
@@ -692,6 +694,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         tareas={tareas}
         tests={testsData}
         fcMax={fcMaxima}
+        fcReposo={fcReposo}
         durEstimada={durEstimada}
         recup={recup}
         onCambio={cargarDatos}

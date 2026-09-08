@@ -111,7 +111,7 @@ export function hojaDelDia(
       estado: s.estado ?? null,
       sinTest: leFaltaElTest(disc, ref),
       porZona: zonas.map(z => {
-        const r = ref ? referenciaDeZona(z, disc, ref.tests, ref.fcMax) : null
+        const r = ref ? referenciaDeZona(z, disc, ref.tests, ref.fcMax, ref.fcReposo) : null
         return { zona: z, ritmo: r?.ritmo ?? null, fc: r?.fc ?? null, rpe: r?.rpe ?? '' }
       }),
     }

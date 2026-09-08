@@ -70,7 +70,7 @@ export interface VistaTarea {
  * zona y su volumen— y poner «AEM» a secas de titular no dice nada que no diga
  * ya la línea de debajo.
  */
-export function vistaDeTarea(t: any, tests: Tests, fcMax: number): VistaTarea {
+export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: number = 0): VistaTarea {
   const ej = t?.ejercicios?.[0]
   const esFuerza = !!ej
   const zona = t?.zona_entrenamiento || ''
@@ -105,7 +105,7 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number): VistaTarea {
      la previa engaña — parece un rodaje flojo cuando es trabajo técnico, que es
      otra cosa a la hora de decidir qué le pones al día siguiente. */
   const esTecnica = !!t?.tecnica_id
-  const ref = referenciaDeZona(zona, disciplina, tests, fcMax)
+  const ref = referenciaDeZona(zona, disciplina, tests, fcMax, fcReposo)
   const campos: CampoTarea[] = [
     { k: 'Series', v: t?.series != null ? String(t.series) : '1' },
     { k: 'Por serie', v: valorPorSerie(t) },

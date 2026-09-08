@@ -11,6 +11,7 @@
 // por dónde entrases. Se arregló apuntando a ZONAS_CLASICAS de lib/zonas; este
 // fichero es el siguiente paso: que la traducción entera viva en un sitio.
 import { ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from './zonas'
+import { bandaFC, fcReposoDe, type DatosFC, type MetodoFC } from './frecuencia-cardiaca'
 
 export interface Tests {
   vam?: number | null
@@ -21,6 +22,8 @@ export interface Tests {
 export interface Referencia {
   /** «150–170 ppm», si se sabe la FC máxima. */
   fc: string | null
+  /** De dónde salió esa FC: de su reserva (Karvonen) o de la máxima a secas. */
+  metodoFC?: MetodoFC | null
   /** «RPE 4–6». */
   rpe: string
   /** El porcentaje o la sigla + factor. */
@@ -46,12 +49,12 @@ export const ZONAS_UI = [
 ]
 
 /** Referencia de una zona del sistema Zonas 2 (siglas: AER, AEL, PAE…). */
-function refZona2(z: ZonaResistencia, disciplina: string, tests: Tests, fcMax: number): Referencia {
-  const fc = (z.fcMin || z.fcMax) && fcMax > 0
-    ? `${z.fcMin ? Math.round(fcMax * z.fcMin / 100) : ''}${z.fcMin && z.fcMax ? '–' : ''}${z.fcMax ? Math.round(fcMax * z.fcMax / 100) : ''} ppm`
-    : null
+function refZona2(z: ZonaResistencia, disciplina: string, tests: Tests, d: DatosFC): Referencia {
+  // Sus porcentajes ya vienen en % de la FCmáx.
+  const banda = bandaFC(z.fcMin, z.fcMax, 'fcmax', d)
   return {
-    fc,
+    fc: banda?.texto ?? null,
+    metodoFC: banda?.metodo ?? null,
     rpe: 'RPE ' + z.rpeMin + (z.rpeMax !== z.rpeMin ? '–' + z.rpeMax : ''),
     porcentaje: z.sigla + ' · ' + z.factor,
     ritmo: prescripcion(z, disciplina, tests),
@@ -59,13 +62,14 @@ function refZona2(z: ZonaResistencia, disciplina: string, tests: Tests, fcMax: n
 }
 
 /** Referencia de una zona del sistema clásico (Z1…Z7). */
-function refClasica(zona: any, disciplina: string, tests: Tests, fcMax: number): Referencia | null {
+function refClasica(zona: any, disciplina: string, tests: Tests, d: DatosFC): Referencia | null {
   if (!zona) return null
   const ref = ZONAS_CLASICAS[zona.num]
-  const fcUmbral = fcMax ? fcMax * 0.85 : 0
-  const fcMin = fcUmbral > 0 && zona.pct[0] > 0 ? Math.round(fcUmbral * zona.pct[0] / 100) : null
-  const fcTope = fcUmbral > 0 && zona.pct[1] > 0 ? Math.round(fcUmbral * zona.pct[1] / 100) : null
-  const fc = fcMin && fcTope ? fcMin + '–' + fcTope + ' ppm' : null
+  /* Los porcentajes de las clásicas van «sobre el umbral», no sobre la FCmáx.
+     La conversión —y ese 0,85 que antes aparecía suelto aquí— vive ahora en
+     lib/frecuencia-cardiaca, que es también quien decide si toca Karvonen. */
+  const banda = bandaFC(zona.pct[0], zona.pct[1], 'umbral', d)
+  const fc = banda?.texto ?? null
   const rpe = 'RPE ' + zona.rpe[0] + '–' + zona.rpe[1]
   let ritmo: string | null = null
   let porcentaje: string | null = null
@@ -96,7 +100,7 @@ function refClasica(zona: any, disciplina: string, tests: Tests, fcMax: number):
     }
   }
 
-  return { fc, rpe, porcentaje, ritmo }
+  return { fc, metodoFC: banda?.metodo ?? null, rpe, porcentaje, ritmo }
 }
 
 /**
@@ -111,11 +115,15 @@ export function referenciaDeZona(
   disciplina: string,
   tests: Tests,
   fcMax: number,
+  /* Opcional a propósito: sin ella se calcula como siempre, así que las
+     pantallas que todavía no la pasan siguen dando lo mismo que ayer. */
+  fcReposo: number = 0,
 ): Referencia | null {
   if (!codigo) return null
+  const d: DatosFC = { fcMax, fcReposo }
   const z2 = zonaResistencia(codigo)
-  if (z2) return refZona2(z2, disciplina, tests, fcMax)
-  return refClasica(ZONAS_UI.find(z => 'Z' + z.num === codigo), disciplina, tests, fcMax)
+  if (z2) return refZona2(z2, disciplina, tests, d)
+  return refClasica(ZONAS_UI.find(z => 'Z' + z.num === codigo), disciplina, tests, d)
 }
 
 // ------------------------------------------------------------
@@ -154,8 +162,9 @@ export function objetivoDeZona(
   disciplina: string,
   tests: Tests,
   fcMax: number,
+  fcReposo: number = 0,
 ): ObjetivoZona | null {
-  const ref = referenciaDeZona(codigo, disciplina, tests, fcMax)
+  const ref = referenciaDeZona(codigo, disciplina, tests, fcMax, fcReposo)
   if (!ref) return null
   if (ref.ritmo) return { texto: ref.ritmo, de: 'tests' }
   if (ref.fc) return { texto: ref.fc, de: 'fc' }
@@ -177,9 +186,9 @@ export function deDondeSale(de: ObjetivoZona['de']): string {
  * reciente de cada una.
  */
 export async function cargarReferencias(sb: any, idDeportista: number): Promise<{
-  tests: Tests; fcMax: number; sistema: number; nombre: string | null
+  tests: Tests; fcMax: number; fcReposo: number; sistema: number; nombre: string | null
 }> {
-  const [{ data: dep }, { data: t1 }, { data: t2 }, { data: t3 }] = await Promise.all([
+  const [{ data: dep }, { data: t1 }, { data: t2 }, { data: t3 }, { data: well }, { data: anam }] = await Promise.all([
     // El nombre viaja aquí porque quien pide las referencias suele necesitarlo
     // en la misma cabecera, y era una quinta consulta a la misma fila.
     sb.from('deportista').select('fc_maxima, sistema_zonas, nombre').eq('id', idDeportista).maybeSingle(),
@@ -189,10 +198,18 @@ export async function cargarReferencias(sb: any, idDeportista: number): Promise<
       .eq('id_deportista', idDeportista).order('fecha', { ascending: false }).limit(1),
     sb.from('test3_ciclismo').select('ftp').not('ftp', 'is', null)
       .eq('id_deportista', idDeportista).order('fecha', { ascending: false }).limit(1),
+    /* La FC de reposo, para poder usar Karvonen. El wellness es de cada mañana
+       y la anamnesis de una sola vez, así que se piden los dos y manda el
+       primero (ver fcReposoDe). Son dos viajes más, pero van en el mismo
+       Promise.all: no encadenan. */
+    sb.from('wellness').select('fc_reposo').eq('id_deportista', idDeportista)
+      .not('fc_reposo', 'is', null).order('fecha', { ascending: false }).limit(30),
+    sb.from('anamnesis').select('fc_reposo').eq('id_deportista', idDeportista).maybeSingle(),
   ])
   return {
     tests: { vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp },
     fcMax: dep?.fc_maxima || 0,
+    fcReposo: fcReposoDe(well, anam),
     sistema: dep?.sistema_zonas || 1,
     nombre: dep?.nombre || null,
   }
@@ -240,6 +257,7 @@ export function ritmoObjetivoTexto(valor: unknown, disciplina?: string | null): 
 export interface ReferenciasDeUno {
   tests: Tests
   fcMax: number
+  fcReposo: number
   sistema: number
   nombre: string | null
 }
@@ -263,7 +281,7 @@ export async function cargarReferenciasDeVarios(
   const salida = new Map<number, ReferenciasDeUno>()
   if (!limpios.length) return salida
 
-  const [deps, t1, t2, t3] = await Promise.all([
+  const [deps, t1, t2, t3, well, anam] = await Promise.all([
     sb.from('deportista').select('id, fc_maxima, sistema_zonas, nombre').in('id', limpios),
     sb.from('test1_carrera').select('id_deportista, vam').not('vam', 'is', null)
       .in('id_deportista', limpios).order('fecha', { ascending: false }),
@@ -271,6 +289,12 @@ export async function cargarReferenciasDeVarios(
       .in('id_deportista', limpios).order('fecha', { ascending: false }),
     sb.from('test3_ciclismo').select('id_deportista, ftp').not('ftp', 'is', null)
       .in('id_deportista', limpios).order('fecha', { ascending: false }),
+    /* Mismo criterio que en cargarReferencias, pero para todos de una vez: sin
+       esto habría que pedir el wellness por cabeza y volveríamos al N+1 que
+       este fichero existe para evitar. */
+    sb.from('wellness').select('id_deportista, fc_reposo').not('fc_reposo', 'is', null)
+      .in('id_deportista', limpios).order('fecha', { ascending: false }),
+    sb.from('anamnesis').select('id_deportista, fc_reposo').in('id_deportista', limpios),
   ])
 
   // El primero que aparece de cada uno es el más reciente: la consulta viene
@@ -287,11 +311,23 @@ export async function cargarReferenciasDeVarios(
   const css = primero(t2?.data, 'css')
   const ftp = primero(t3?.data, 'ftp')
 
+  /* El reposo necesita TODAS las mediciones de cada uno, no la primera: la
+     mediana de varias mañanas aguanta un mal día y una sola no. */
+  const wellDe = new Map<number, { fc_reposo?: number | null }[]>()
+  for (const f of well?.data || []) {
+    const k = Number(f.id_deportista)
+    if (!wellDe.has(k)) wellDe.set(k, [])
+    wellDe.get(k)!.push(f)
+  }
+  const anamDe = new Map<number, any>()
+  for (const f of anam?.data || []) anamDe.set(Number(f.id_deportista), f)
+
   for (const d of deps?.data || []) {
     const k = Number(d.id)
     salida.set(k, {
       tests: { vam: vam.get(k) ?? null, css: css.get(k) ?? null, ftp: ftp.get(k) ?? null },
       fcMax: d.fc_maxima || 0,
+      fcReposo: fcReposoDe(wellDe.get(k), anamDe.get(k)),
       sistema: d.sistema_zonas || 1,
       nombre: d.nombre || null,
     })

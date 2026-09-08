@@ -126,8 +126,15 @@ function numZona(zona?: string | null): number {
 
 // Velocidad de CARRERA de una zona, en m/s. Si la zona es una sigla del catálogo
 // Zonas 2, su % sale del propio catálogo; si es una Z1–Z7 clásica, del mapa de
-// niveles. NO se pasa por cargaZona() para las siglas: comprime 9 zonas en 7 y AEL
-// acababa estimándose al 60% de VAM (el de AER) en vez de al 70%.
+// niveles.
+//
+// NO se pasa por cargaZona() para las siglas, y sigue sin pasarse aunque el
+// motivo original ya no exista. Aquel motivo era que la escalera de niveles
+// tenía un hueco y AEL «acababa estimándose al 60% de VAM (el de AER) en vez de
+// al 70%»; eso se arregló en nivelDeRpe (lib/zonas). Pero el rodeo se queda,
+// porque el % del catálogo es MÁS FINO que el mapa de 7 niveles: son 9 zonas con
+// su porcentaje propio, y comprimirlas para volver a expandirlas perdería
+// precisión aunque ya no mintiera.
 function velCarrera(zona: string | null | undefined, vam: number): number | null {
   const pct = pctVamZona(zona) ?? PCT_ZONA[numZona(zona)]?.vam ?? PCT_ZONA[2].vam
   const velMs = (vam * pct / 100) / 3.6
