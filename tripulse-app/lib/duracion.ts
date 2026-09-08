@@ -15,7 +15,8 @@
 //
 // El % de zona es el punto medio del rango de ZONAS_CLASICAS (lib/zonas.ts).
 // Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
-import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS, pctMedioClasica } from './zonas'
+import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS, pctMedioClasica, type CopiaZona } from './zonas'
+import { leerCopia } from './prescripcion-zona'
 import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import type { Sexo } from './tests-campo'
 
@@ -46,6 +47,8 @@ export interface TareaDuracion {
   series?: number | null
   descanso_segundos?: number | null
   zona_entrenamiento?: string | null
+  /** La copia congelada, si la tarea se prescribió con una zona propia. */
+  zona_copia?: unknown
   p_distancia?: { metros_planeados?: number | null }[] | null
   p_duracion?: { tiempo_planeado?: number | null }[] | null
   p_repeticiones?: { repeticiones_planteadas?: number | null }[] | null
@@ -120,8 +123,11 @@ export function medirDuracion(
 }
 
 // Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
-function numZona(zona?: string | null): number {
-  return cargaZona(zona).nivel
+//
+// CON LA COPIA, una zona propia da SU nivel y no el del respaldo. Sin ella,
+// exactamente lo mismo que antes.
+function numZona(zona?: string | null, copia?: CopiaZona | null): number {
+  return cargaZona(zona, copia).nivel
 }
 
 // Velocidad de CARRERA de una zona, en m/s. Si la zona es una sigla del catálogo
@@ -135,17 +141,17 @@ function numZona(zona?: string | null): number {
 // porque el % del catálogo es MÁS FINO que el mapa de 7 niveles: son 9 zonas con
 // su porcentaje propio, y comprimirlas para volver a expandirlas perdería
 // precisión aunque ya no mintiera.
-function velCarrera(zona: string | null | undefined, vam: number): number | null {
-  const pct = pctVamZona(zona) ?? PCT_ZONA[numZona(zona)]?.vam ?? PCT_ZONA[2].vam
+function velCarrera(zona: string | null | undefined, vam: number, copia?: CopiaZona | null): number | null {
+  const pct = pctVamZona(zona) ?? PCT_ZONA[numZona(zona, copia)]?.vam ?? PCT_ZONA[2].vam
   const velMs = (vam * pct / 100) / 3.6
   return velMs > 0 ? velMs : null
 }
 
 // Velocidad de NATACIÓN de una zona, en m/s. Para las siglas se usa el desfase real
 // en segundos sobre el CSS; para las Z1–Z7 clásicas, el mapa de niveles.
-function velNatacion(zona: string | null | undefined, css: number): number | null {
+function velNatacion(zona: string | null | undefined, css: number, copia?: CopiaZona | null): number | null {
   if (zonaResistencia(zona)) return velNatacionZona(zona, css)
-  const velMs = css * (PCT_ZONA[numZona(zona)]?.css ?? PCT_ZONA[2].css) / 100
+  const velMs = css * (PCT_ZONA[numZona(zona, copia)]?.css ?? PCT_ZONA[2].css) / 100
   return velMs > 0 ? velMs : null
 }
 
@@ -165,14 +171,14 @@ function segTrabajoPorSerie(
          suposición, pero el cero de antes era una afirmación falsa. */
       const vam = tests.vam || (conReferencia ? vamDeReferencia(tests.sexo) : null)
       if (!vam) return null
-      const velMs = velCarrera(t.zona_entrenamiento, vam)
+      const velMs = velCarrera(t.zona_entrenamiento, vam, leerCopia(t.zona_copia))
       return velMs ? { seg: metros / velMs, referencia: !tests.vam } : null
     }
 
     if (disc === 'Natacion') {
       const css = tests.css || (conReferencia ? cssDeReferencia(tests.sexo) : null)
       if (!css) return null
-      const velMs = velNatacion(t.zona_entrenamiento, css)
+      const velMs = velNatacion(t.zona_entrenamiento, css, leerCopia(t.zona_copia))
       return velMs ? { seg: metros / velMs, referencia: !tests.css } : null
     }
 

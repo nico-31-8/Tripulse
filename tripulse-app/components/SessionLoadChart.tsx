@@ -1,6 +1,7 @@
 'use client'
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { cargaZona } from '@/lib/zonas'
+import { cargaDeTarea } from '@/lib/prescripcion-zona'
 
 // Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
 function parseZonaNum(str: string): number {
@@ -84,7 +85,8 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
   const chartH = H - PT - PB
 
   const bars = tareas.map(t => {
-    const carga = cargaZona(t.zona_entrenamiento || '')
+    /* Con la copia, una zona propia pesa lo suyo. Sin ella, igual que antes. */
+    const carga = cargaDeTarea(t)
     return {
       t,
       carga,

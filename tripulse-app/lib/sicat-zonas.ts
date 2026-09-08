@@ -8,7 +8,7 @@
 // ============================================================
 import { supabase } from './supabase'
 import { sumarDias } from './fechas'
-import { cargaZona } from './zonas'
+import { tareaPico } from './prescripcion-zona'
 import { getMicrosDeportista, DISCIPLINAS_SICAT, type DisciplinaSicat } from './sicat'
 
 export type Confianza = 'alta' | 'media' | 'baja'
@@ -88,7 +88,7 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
 
   const [tareasQ, wellQ] = await Promise.all([
     supabase.from('tarea')
-      .select('id_sesion, zona_entrenamiento, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden'),
+      .select('id_sesion, zona_entrenamiento, zona_copia, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden'),
     supabase.from('wellness').select('fecha, dolor_muscular, hrv')
       .eq('id_deportista', dep.id).gte('fecha', desde).lte('fecha', hasta),
   ])
@@ -138,7 +138,9 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
     }
 
     // Sesión normal: una celda, con la zona pico (comportamiento de siempre).
-    const zonaPico = zonas.reduce((best, z) => (cargaZona(z).nivel > cargaZona(best).nivel ? z : best), zonas[0])
+    /* Sobre las tareas, que llevan la copia: reduciendo sobre las siglas, una
+       zona propia se colaba entre las suaves y su coste iba a la celda equivocada. */
+    const zonaPico = tareaPico(bloquesPorSesion[s.id])?.zona_entrenamiento ?? zonas[0]
     const coste = costeCon(s.rpe_reportado ?? null)
     if (coste == null) continue
     ;(acc[`${s.disciplina}|${zonaPico}`] ||= []).push(coste)
@@ -177,12 +179,10 @@ export function factorSicatZona(disciplina: string, zona: string, res: SicatZona
 export async function attachZonaPico(sesiones: any[]): Promise<any[]> {
   const ids = sesiones.map(s => s.id).filter(Boolean)
   if (!ids.length) return sesiones.map(s => ({ ...s, zonaPico: null }))
-  const { data: tareas } = await supabase.from('tarea').select('id_sesion, zona_entrenamiento').in('id_sesion', ids)
-  const porSes: Record<number, string[]> = {}
-  ;(tareas || []).forEach((t: any) => { if (t.zona_entrenamiento) (porSes[t.id_sesion] ||= []).push(t.zona_entrenamiento) })
-  return sesiones.map(s => {
-    const zs = porSes[s.id]
-    const zonaPico = zs && zs.length ? zs.reduce((b, z) => (cargaZona(z).nivel > cargaZona(b).nivel ? z : b), zs[0]) : null
-    return { ...s, zonaPico }
-  })
+  const { data: tareas } = await supabase.from('tarea').select('id_sesion, zona_entrenamiento, zona_copia').in('id_sesion', ids)
+  /* Se guardan las TAREAS enteras, no sus siglas: la copia congelada viaja
+     con ellas y es lo único que sabe lo que pesa una zona propia. */
+  const porSes: Record<number, { zona_entrenamiento?: string | null; zona_copia?: unknown }[]> = {}
+  ;(tareas || []).forEach((t: any) => { if (t.zona_entrenamiento) (porSes[t.id_sesion] ||= []).push(t) })
+  return sesiones.map(s => ({ ...s, zonaPico: tareaPico(porSes[s.id])?.zona_entrenamiento ?? null }))
 }

@@ -425,7 +425,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       if (!sesQ.error && sesQ.data) {
         const idsSes = sesQ.data.map((s: any) => s.id)
         const zonasQ = idsSes.length
-          ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento').in('id_sesion', idsSes)
+          ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento, zona_copia').in('id_sesion', idsSes)
           : { data: [], error: null }
         if (!zonasQ.error) {
           chipsCalendario = chipsDeSesiones(sesQ.data.map((s: any) => ({
@@ -943,7 +943,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     })
     if (!sessSem.length) { setDetalleSem({ sesiones: [], tareas: [], distancias: [], duraciones: [], ejercicios: [] }); setLoadingDetalle(false); return }
     const sesIds = sessSem.map((s: any) => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, disciplina, series').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, disciplina, series').in('id_sesion', sesIds)
     const tareaIds = (tareas || []).map((t: any) => t.id)
     const [{ data: dists }, { data: durs }, { data: ejers }] = await Promise.all([
       tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },

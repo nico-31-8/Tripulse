@@ -417,7 +417,7 @@ const VIVAS = FILTRO_VIVAS
     .slice(0, 6)
   const agIds = agSes.map(s => s.id)
   const { data: agTareas } = agIds.length
-    ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento, orden').in('id_sesion', agIds).order('orden')
+    ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento, zona_copia, orden').in('id_sesion', agIds).order('orden')
     : { data: [] }
   const estimAg = agIds.length ? await estimarDuraciones(supabase, agIds, tests) : {}
   const agenda = agSes.map(s => {

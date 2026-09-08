@@ -25,6 +25,17 @@ export interface FilaResistencia {
   orden: number
   zona: string
   disciplina: string
+  /*
+   * DE QUÉ NÚMERO CUELGA ESTA TAREA, y con qué tramo de la zona.
+   *
+   * Solo en Zonas 2. Vacío = como siempre: la zona se resuelve contra el
+   * catálogo con la referencia que la app da a ese deporte. Las tareas de antes
+   * de esto y las de un atleta en clásico llegan aquí sin nada, y siguen
+   * significando exactamente lo mismo.
+   */
+  ref?: string
+  pctMin?: number | null
+  pctMax?: number | null
   series: string
   descanso: string
   tipoMedicion: string
@@ -111,6 +122,14 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     orden: o.orden,
     zona: t.zona_entrenamiento || '',
     disciplina: t.disciplina || '',
+    /* La copia congelada vuelve a la fila para poder EDITARLA sin perderla. Al
+       duplicar viaja igual: una tarea copiada tiene que salir con la misma
+       intensidad que la original, no con la que hoy tenga esa zona. */
+    ...(t.zona_copia ? {
+      ref: String(t.zona_copia.refId || ''),
+      pctMin: Number.isFinite(Number(t.zona_copia.pctMin)) ? Number(t.zona_copia.pctMin) : null,
+      pctMax: Number.isFinite(Number(t.zona_copia.pctMax)) ? Number(t.zona_copia.pctMax) : null,
+    } : {}),
     series: t.series != null ? String(t.series) : '',
     descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',
     tipoMedicion: med.tipo,

@@ -23,7 +23,8 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { miembrosDe, type MiembroGrupo } from '@/lib/grupos'
-import { cargaZona } from '@/lib/zonas'
+
+import { cargaDeTarea } from '@/lib/prescripcion-zona'
 import { reloj, relojCorto } from '@/lib/dirigir-sesion'
 import {
   estadoGrupoInicial, darSalida, marcar, desmarcar, siguienteSerie, pararGrupo,
@@ -84,7 +85,7 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
     const sesIds = (ses || []).map((s: any) => s.id)
     const { data: tareas } = sesIds.length
       ? await supabase.from('tarea')
-        .select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos, p_distancia(*), p_duracion(*)')
+        .select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, p_distancia(*), p_duracion(*)')
         .in('id_sesion', sesIds).order('orden')
       : { data: [] as any[] }
 
@@ -148,7 +149,7 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
   if (noExiste) return <Cargando volverA="/comunidad" noExiste />
 
   const ms = msComun(e, ahora)
-  const zc = cargaZona(tarea?.zona_entrenamiento).color
+  const zc = cargaDeTarea(tarea).color
   const h = horquilla(e, e.serie)
 
   return (

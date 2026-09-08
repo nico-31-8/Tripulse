@@ -22,7 +22,8 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { fechaLargaCompleta } from '@/lib/fechas'
-import { cargaZona } from '@/lib/zonas'
+
+import { cargaDeTarea } from '@/lib/prescripcion-zona'
 import Cargando from '@/components/Cargando'
 import {
   estadoInicial, pulsar, parar, msDeSerie, msDeDescanso, descansoPasado,
@@ -222,7 +223,7 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
         {tareas.map(t => {
           const e = relojes[t.id]
           if (!e) return null
-          const zc = cargaZona(t.zona_entrenamiento).color
+          const zc = cargaDeTarea(t).color
           const prescrito = t.descanso_segundos as number | null
           const ej = t.ejercicios?.[0]
 

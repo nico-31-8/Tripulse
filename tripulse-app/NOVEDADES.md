@@ -12,6 +12,80 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ---
 
+## 9 de septiembre de 2026
+
+### Ya puedes prescribir con tus zonas
+
+Es el paso que faltaba. Hasta ahora te creabas tus tests y tus zonas y se
+quedaban en su pantalla; ahora se mandan en una tarea.
+
+En la ficha de sesión, la casilla de zona pasa a ser una cadena de tres:
+
+**Deporte → Referencia → Zona**, y detrás el porcentaje.
+
+El deporte va primero porque es lo que decide qué referencias tiene ese atleta.
+La referencia es **de qué número cuelga esa tarea**: la de la aplicación —su VAM,
+su FTP, su CSS— o una tuya, el resultado de un test que te hayas creado. Y la
+zona solo ofrece las que cuelgan de esa referencia.
+
+**Tarea por tarea.** En la misma sesión, el primer bloque puede ir de su VAM y el
+segundo de tu Ritmo100.
+
+**Si solo hay una referencia, se elige sola.** Un atleta sin tests propios de
+carrera solo tiene su VAM: desplegar para elegir lo único que hay era un clic de
+más en cada tarea.
+
+### El porcentaje se afina, no se pisa
+
+AEL es 65–75 % y ahí se queda. Puedes mandar un 70–70 exacto o un 68–72, pero si
+escribes un 60 se te vuelve a 65. Un AEL fuera de su rango no es un AEL, y su RPE
+y su nivel —de los que salen la carga y la altura de la barra del dibujo— dirían
+una cosa mientras el ritmo mandado dice otra.
+
+En natación con el CSS los recuadros piden **segundos**, no porcentaje: las zonas
+de natación de la aplicación son un desfase («CSS +10 a +20 s»), no un tanto por
+ciento.
+
+### Sin test también se prescribe
+
+Un atleta nuevo no tiene ningún test, y aun así hay que poder mandarle un AEL. La
+referencia sale marcada **«sin test»** y debajo pone que no hay ritmo que enseñar,
+pero la zona se elige igual. Lo que no se hace es inventar un número.
+
+### Se congela lo que mandaste
+
+Cada tarea se guarda con una copia de la zona: su sigla, su nombre, su color, su
+RPE, su nivel, **el porcentaje que mandaste** y de qué referencia salió.
+
+Eso significa que **cambiar o borrar una zona mañana no reescribe lo de hoy**. Lo
+que se mandó en marzo se mandó con lo que la zona valía en marzo. Y un atleta que
+cambie de entrenador conserva su historial.
+
+Lo que NO se congela es el ritmo: ese depende de sus tests y se calcula al
+enseñarlo, para que un test nuevo mueva los ritmos sin tocar la prescripción.
+
+### El atleta ve el ritmo que le mandaste
+
+Su sesión calcula el objetivo **con la referencia con la que se prescribió**, no
+con la que la aplicación da por defecto a ese deporte. Si le mandas el 88–94 % de
+su Ritmo100, ve 1:21–1:26. Y si le mandas un AEL afinado al 70 exacto, ve el ritmo
+del 70 y no el del 65–75.
+
+Tú y él miráis la misma tarea y veis el mismo número. Suena obvio; era la parte
+más fácil de romper.
+
+### Y cuenta bien en todas partes
+
+La carga, la curva de forma, el volumen, la duración estimada, la nutrición, el
+SICAT, el mesociclo y el dibujo ya saben lo que pesa una zona tuya. Antes un tempo
+propio habría contado como aeróbico suave en todas ellas, sin que nada fallara.
+
+**Solo para atletas en Zonas 2.** Uno en el sistema clásico Z1–Z7 sigue
+exactamente como estaba: elige su número y no hay referencia que elegir. Y los que
+des de alta a partir de ahora empiezan en Zonas 2.
+
+---
+
 ## 8 de septiembre de 2026
 
 ### Tus zonas pueden colgar de tu propia referencia

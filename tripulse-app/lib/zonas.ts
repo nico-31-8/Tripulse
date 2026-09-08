@@ -279,9 +279,34 @@ export function prescripcion(z: ZonaResistencia, disciplina: string, tests: { va
 
 // Offset numérico de natación por zona: segundos por 100 m respecto al CSS
 // (negativo = más rápido que CSS). Derivado del texto del catálogo.
-const CSS_OFFSET: Record<string, [number | null, number | null]> = {
+export const CSS_OFFSET: Record<string, [number | null, number | null]> = {
   AER: [20, null], AEL: [10, 20], AEM: [4, 8], AEI: [-3, 3],
   PAE: [-8, -4], CLA: [-15, -8], PLA: [null, null], CALA: [null, null], PALA: [null, null],
+}
+
+/**
+ * El rango de una zona del catálogo para una referencia concreta.
+ *
+ * SE PREGUNTA AQUÍ Y NO SE COPIA LA TABLA. Los tres deportes no dicen lo
+ * mismo: AEL es 65–75 % de la VAM, 56–75 % del FTP y «CSS +10 a +20 s». El
+ * tercero ni siquiera es un porcentaje. Repetir eso en otro fichero es cómo el
+ * mismo AEL acaba valiendo dos cosas distintas según quién pregunte.
+ *
+ * `null` en un extremo es «sin límite por ese lado», no cero.
+ */
+export function rangoDeZona(
+  sigla: string | null | undefined,
+  ancla: 'vam' | 'ftp' | 'css',
+): [number | null, number | null] | null {
+  const z = zonaResistencia(sigla)
+  if (!z) return null
+  /* Los dos extremos a null significan que esa zona NO SE PRESCRIBE con esta
+     referencia, no que no tenga límites: PLA en natación es «series ≤25 m a
+     velocidad máxima» y CALA/PALA no tienen tramo de FTP. Devolver [null,null]
+     las dejaría ofrecerse con un rango vacío, que es peor que no ofrecerlas. */
+  const [min, max] = ancla === 'css' ? (CSS_OFFSET[z.sigla] ?? [null, null])
+    : ancla === 'vam' ? [z.vamMin, z.vamMax] : [z.ftpMin, z.ftpMax]
+  return min === null && max === null ? null : [min, max]
 }
 
 // Segundos → "m:ss"

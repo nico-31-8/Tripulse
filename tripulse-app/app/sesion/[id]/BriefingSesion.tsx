@@ -15,7 +15,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
-import { ritmoObjetivo, cargaZona } from '@/lib/zonas'
+
+import { cargaDeTarea, objetivoDeCopia, cuelgaDeTestPropio, leerCopia, leerIdPropia } from '@/lib/prescripcion-zona'
+import { leerDefinicion } from '@/lib/test-definicion'
+import type { TestConMediciones } from '@/lib/referencia-propia'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
@@ -74,10 +77,41 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   const esBrick = sesion?.disciplina === 'Brick'
 
   // Registro sin el modo entreno (la salida que antes se llamaba «Ver sesión completa»)
+  /* Los tests del entrenador, para poder calcular el ritmo de una tarea que
+     cuelga de una referencia suya. Se piden SOLO si alguna tarea los necesita:
+     la mayoría de las sesiones no llevan ninguna, y serían dos consultas por
+     apertura para nada. El atleta puede leerlos —los suyos y la definición del
+     test— desde que se abrieron los permisos de lectura. */
+  const [testsPropios, setTestsPropios] = useState<TestConMediciones[]>([])
+
   const [registrando, setRegistrando] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const intervalRef = useRef<any>(null)
   const [mostrarPost, setMostrarPost] = useState(false)
+
+  useEffect(() => {
+    const hacenFalta = (tareas || []).some(cuelgaDeTestPropio)
+    if (!hacenFalta) { setTestsPropios([]); return }
+    let vivo = true
+    ;(async () => {
+      const ids = [...new Set((tareas || []).map(t => leerIdPropia(leerCopia(t.zona_copia)?.refId || '')?.idDefinicion)
+        .filter((x): x is number => !!x))]
+      if (!ids.length) return
+      const [{ data: defs }, { data: meds }] = await Promise.all([
+        supabase.from('test_definicion').select('*').in('id', ids),
+        supabase.from('test_medicion').select('id_definicion, fecha, datos')
+          .eq('id_deportista', sesion.id_deportista).in('id_definicion', ids),
+      ])
+      if (!vivo) return
+      const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
+      for (const m of meds || []) (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
+      setTestsPropios((defs || []).map((d: { id: number; nombre: string; deporte: string }) => ({
+        id: d.id, nombre: d.nombre, deporte: d.deporte,
+        def: leerDefinicion(d), mediciones: porTest[d.id] || [],
+      })))
+    })()
+    return () => { vivo = false }
+  }, [tareas, sesion.id_deportista])
   const [guardando, setGuardando] = useState(false)
 
   // Cuestionario post-sesión
@@ -265,7 +299,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
             </span>
             <div className="flex flex-col gap-2 mt-2.5">
               {tareas.map(t => {
-                const zc = cargaZona(t.zona_entrenamiento).color
+                const zc = cargaDeTarea(t).color
                 const disc = t.disciplina || sesion.disciplina
                 /* El ritmo GUARDADO manda sobre el calculado.
                    Antes solo se calculaba a partir de la zona y los tests, así
@@ -282,7 +316,15 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                    vacía y la línea entera desaparecía: el atleta no veía a
                    cuánto ir, ni un número ni un esfuerzo. `objetivoDeZona` baja
                    a pulsaciones y de ahí a RPE antes que quedarse callado. */
-                const calc = objetivoDeZona(t.zona_entrenamiento, disc, tests || {}, fcMax, fcReposo)
+                /* EL RITMO SALE DE LA REFERENCIA CON LA QUE SE MANDÓ. Si la tarea
+                   cuelga de un test del entrenador —o de un AEL afinado al 70—,
+                   calcularlo con la referencia que la app da por defecto al
+                   deporte le enseñaría al atleta un número distinto del que ve su
+                   entrenador en la misma tarea. Sin copia, el camino de siempre. */
+                const propio = objetivoDeCopia(leerCopia(t.zona_copia), disc, tests, testsPropios)
+                const calc = propio
+                  ? { texto: propio }
+                  : objetivoDeZona(t.zona_entrenamiento, disc, tests || {}, fcMax, fcReposo)
                 const intensidad = queEnsenar(
                   ritmoObjetivoTexto(intensidadGuardada(t), disc),
                   calc?.texto,
@@ -344,7 +386,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                           {intensidad.principal}
                         </span>
                         {intensidad.gris && (
-                          <span className="font-mono tabular-nums text-[10.5px] text-gray-500" title={deDondeSale(calc?.de || 'tests')}>
+                          <span className="font-mono tabular-nums text-[10.5px] text-gray-500" title={propio ? 'De la referencia con la que se prescribió' : deDondeSale('de' in (calc || {}) ? (calc as { de: 'tests' | 'fc' | 'esfuerzo' }).de : 'tests')}>
                             {intensidad.gris}
                           </span>
                         )}

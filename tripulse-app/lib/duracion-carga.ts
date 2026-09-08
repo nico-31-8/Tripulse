@@ -19,7 +19,7 @@ export async function estimarDuraciones(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos')
+    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos')
     .in('id_sesion', sesionIds)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 

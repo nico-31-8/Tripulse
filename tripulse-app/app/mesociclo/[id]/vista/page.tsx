@@ -1,12 +1,13 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
 import { hoyISO, semanasEntre, sumarSemanas, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
+import { cargaDeTarea } from '@/lib/prescripcion-zona'
 
 // Colores por tipo de mesociclo (hex, para estilos inline)
 const C_MESO: Record<string, string> = {
@@ -99,7 +100,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     // ---- Ronda 4: sus bloques ----
     if (ses?.length) {
       const { data: tar } = await supabase.from('tarea')
-        .select('id, id_sesion, zona_entrenamiento').in('id_sesion', ses.map((x: any) => x.id))
+        .select('id, id_sesion, zona_entrenamiento, zona_copia').in('id_sesion', ses.map((x: any) => x.id))
       setTareas(tar || [])
     }
   }
@@ -123,6 +124,30 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   const copiarSesion = (s: any) => { setClipboard(s); setSelSes(null) }
 
   // Reclasifica la sesión: pone todas sus tareas (y zona_fuerza si es Fuerza) en la zona elegida.
+  /**
+   * Qué vale cada sigla, mirando las tareas que la usan.
+   *
+   * SIN ESTO, UNA ZONA PROPIA SE PINTA GRIS Y AL FINAL DE LA LISTA. La sigla
+   * suelta no está en el catálogo, así que su color, su nombre y su nivel
+   * salen del respaldo: un tempo del entrenador aparecería como «Zona
+   * desconocida» y ordenado entre las suaves. La copia congelada viaja con la
+   * tarea, y de ahí sale lo bueno.
+   *
+   * Lo que no tiene tarea detrás —la zona de fuerza de la sesión, o las del
+   * modelo que aún no se han programado— sigue resolviéndose por catálogo,
+   * que es lo correcto: esas SON del catálogo.
+   */
+  const infoDeSigla = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof cargaZona>>()
+    for (const t of tareas) {
+      const sigla = t.zona_entrenamiento
+      if (sigla && !m.has(sigla)) m.set(sigla, cargaDeTarea(t))
+    }
+    return m
+  }, [tareas])
+
+  const infoZona = (sigla: string) => infoDeSigla.get(sigla) ?? cargaZona(sigla)
+
   const cambiarZona = async (sesId: number, sigla: string) => {
     const s = sesiones.find(x => x.id === sesId)
     const esFuerza = s?.disciplina === 'Fuerza'
@@ -299,7 +324,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                                   if (editMode) { setSelSes(s.id); setSelPos({ x: e.clientX, y: e.clientY }); return }
                                   router.push('/sesion/' + s.id)
                                 }}
-                                title={zs.length ? zs.map(z => cargaZona(z).nombre).join(', ') : undefined}
+                                title={zs.length ? zs.map(z => infoZona(z).nombre).join(', ') : undefined}
                                 className={'rounded px-1.5 py-1 text-white transition ' + (editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer hover:brightness-125')}
                                 style={{ backgroundColor: (C_DISC[s.disciplina] || '#6b7280') + (s.estado === 'Realizada' ? 'ff' : '55'), borderLeft: '2px solid ' + (C_DISC[s.disciplina] || '#6b7280'), boxShadow: isSel ? '0 0 0 2px #fb923c' : undefined }}>
                                 <div className="flex items-center gap-1">
@@ -309,7 +334,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                                 </div>
                                 {zs.length > 0 && (
                                   <div className="flex flex-wrap gap-0.5 mt-0.5">
-                                    {zs.map((z, i) => { const zi = cargaZona(z); return (
+                                    {zs.map((z, i) => { const zi = infoZona(z); return (
                                       <span key={i} className="rounded px-1 font-bold leading-none" style={{ fontSize: 8, color: zi.color, backgroundColor: 'rgba(0,0,0,0.35)' }}>{z}</span>
                                     )})}
                                   </div>
@@ -374,7 +399,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
               unis.forEach(u => { counts[u.zona] = (counts[u.zona] || 0) + 1 })
               const setZ = modelZonas(zonaTab)
               const extra = Object.keys(counts).filter(z => !setZ.includes(z))
-              const rows = [...setZ, ...extra].map(z => ({ zona: z, count: counts[z] || 0, info: cargaZona(z) })).sort((a, b) => a.info.nivel - b.info.nivel)
+              const rows = [...setZ, ...extra].map(z => ({ zona: z, count: counts[z] || 0, info: infoZona(z) })).sort((a, b) => a.info.nivel - b.info.nivel)
               return (
                 <>
                   <p className="text-gray-500 text-xs mb-3">

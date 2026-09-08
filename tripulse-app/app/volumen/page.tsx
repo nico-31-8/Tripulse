@@ -14,6 +14,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { tareaPico, cargaDeTarea } from '@/lib/prescripcion-zona'
 import { cargaZona } from '@/lib/zonas'
 import { expandirEnBloques } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -230,7 +231,7 @@ export default function VolumenPage() {
     setAdherenciaSem(adh)
 
     const sesIds = sesiones.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos').in('id_sesion', sesIds)
     const tareaIds = tareas?.map(t => t.id) || []
 
     // Los tres tipos de parámetro no dependen unos de otros: van juntos.
@@ -325,12 +326,18 @@ export default function VolumenPage() {
         if (s.disciplina === 'Ciclismo') ciclismo = (s.duracion_minutos || 0) * 0.3
         if (s.disciplina === 'Carrera') carrera = (s.duracion_minutos || 0) * 0.2
       }
-      const zs = tareasSes.map((t: any) => t.zona_entrenamiento).filter(Boolean)
-      const zonaPico = zs.length ? zs.reduce((b: string, z: string) => (cargaZona(z).nivel > cargaZona(b).nivel ? z : b), zs[0]) : null
+      /* Sobre las TAREAS y no sobre sus siglas: una sigla suelta no sabe lo
+         que pesa, y una zona propia se colaría entre las suaves. */
+      const pico = tareaPico(tareasSes)
+      const zonaPico = pico?.zona_entrenamiento ?? null
+      /* El color viaja con la sigla. Sacarlo del catalogo al pintarlo dejaria
+         gris una zona propia, que si esta en el catalogo de nadie. */
+      const zonaPicoColor = pico ? cargaDeTarea(pico).color : null
       return {
         fecha: s.fecha_sesion,
         disciplina: s.disciplina,
         zonaPico,
+        zonaPicoColor,
         Natacion: Math.round(natacion),
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
@@ -1183,7 +1190,7 @@ export default function VolumenPage() {
                             <div key={i} className="flex items-center gap-2.5 py-2 border-t border-white/[0.05] first:border-t-0 text-[12px]">
                               <i className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: (DISCS.find(d => d.key === s.disciplina) || { color: '#6b7280' }).color }} />
                               <span className="text-gray-200">{s.disciplina}</span>
-                              {s.zonaPico && <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: cargaZona(s.zonaPico).color + '26', color: cargaZona(s.zonaPico).color }}>{s.zonaPico}</span>}
+                              {s.zonaPico && <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: (s.zonaPicoColor || cargaZona(s.zonaPico).color) + '26', color: s.zonaPicoColor || cargaZona(s.zonaPico).color }}>{s.zonaPico}</span>}
                               <span className="ml-auto text-gray-500 text-[11px]">{s.duracion ? fmtMinutos(s.duracion) : '—'}{s.rpe ? ' · RPE ' + s.rpe : ''}</span>
                             </div>
                           ))}

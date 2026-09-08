@@ -7,7 +7,8 @@ import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
-import { cargaZona } from '@/lib/zonas'
+
+import { cargaDeTarea } from '@/lib/prescripcion-zona'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import OnboardingDeportista from '@/components/OnboardingDeportista'
 import { altaCompleta } from '@/lib/anamnesis-datos'
@@ -116,7 +117,7 @@ export default function DashboardDeportista() {
 
       const idsHoy = sesHoy.map(s => s.id)
       if (idsHoy.length) {
-        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, series, disciplina, orden').in('id_sesion', idsHoy).order('orden')
+        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden').in('id_sesion', idsHoy).order('orden')
         const tarIds = (tar || []).map((t: any) => t.id)
         const [pd, pdur] = await Promise.all([
           tarIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tarIds) : { data: [] },
@@ -285,7 +286,7 @@ export default function DashboardDeportista() {
                   {steps.length > 0 && (
                     <div className="flex flex-col gap-1.5 mb-3">
                       {steps.map((t: any) => {
-                        const zi = t.zona_entrenamiento ? cargaZona(t.zona_entrenamiento) : null
+                        const zi = t.zona_entrenamiento ? cargaDeTarea(t) : null
                         return (
                           <div key={t.id} className="flex items-center gap-2 text-sm bg-gray-800/50 rounded-lg px-2.5 py-1.5">
                             <span className="text-gray-200 font-medium">{stepTexto(t)}</span>

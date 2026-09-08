@@ -14,6 +14,14 @@ import {
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
 import { referenciaDeZona, cargarReferencias, ritmoObjetivoTexto, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
+import { leerDefinicion } from '@/lib/test-definicion'
+import { usuarioActual } from '@/lib/sesion'
+import { leerZonas, type ZonaEntrenador } from '@/lib/zonas-entrenador'
+import type { TestConMediciones } from '@/lib/referencia-propia'
+import {
+  referenciasDe, buscarReferencia, zonasDe, buscarZona, rangoInicial, acotar,
+  tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
+} from '@/lib/prescripcion-zona'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
@@ -122,6 +130,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // lib/frecuencia-cardiaca), y sin ella como siempre.
   const [fcReposo, setFcReposo] = useState(0)
   const [sistema, setSistema] = useState(1)
+  /* Los tests y las zonas del entrenador, para poder ofrecer sus referencias.
+     Solo se piden si el atleta está en Zonas 2: en clásico no hay nada que
+     elegir y serían dos consultas por cada apertura de sesión para nada. */
+  const [testsPropios, setTestsPropios] = useState<TestConMediciones[]>([])
+  const [zonasMias, setZonasMias] = useState<ZonaEntrenador[]>([])
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
   // Aquí vivía el estado del modal de edición (zona, series, descanso, comentario,
@@ -198,6 +211,38 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     } else {
       setTareasGuardadas([])
     }
+
+    /* SOLO EN ZONAS 2. En clásico no hay referencia que elegir, así que pedir
+       los tests del entrenador serían dos consultas por apertura para nada. Va
+       al final y sin bloquear: si tardan, la sesión ya está en pantalla y lo
+       único que falta de momento son las referencias propias del desplegable. */
+    if (refs.sistema === 2) cargarLoDelEntrenador()
+  }
+
+  /** Los tests y las zonas del entrenador de este atleta. */
+  const cargarLoDelEntrenador = async () => {
+    const user = await usuarioActual()
+    if (!user) return
+    const [{ data: defs }, { data: zs }] = await Promise.all([
+      supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false),
+      supabase.from('zona_entrenador').select('*').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
+    ])
+    setZonasMias(leerZonas(zs))
+
+    const ids = (defs || []).map((d: { id: number }) => d.id)
+    /* Las mediciones de ESTE atleta en una consulta, no una por test. */
+    const { data: meds } = ids.length
+      ? await supabase.from('test_medicion').select('id_definicion, fecha, datos')
+          .eq('id_deportista', deportistaId).in('id_definicion', ids)
+      : { data: [] as { id_definicion: number; fecha: string; datos: Record<string, unknown> | null }[] }
+
+    const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
+    for (const m of meds || []) (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
+
+    setTestsPropios((defs || []).map((d: { id: number; nombre: string; deporte: string }) => ({
+      id: d.id, nombre: d.nombre, deporte: d.deporte,
+      def: leerDefinicion(d), mediciones: porTest[d.id] || [],
+    })))
   }
 
   const borrarTarea = async (tareaId: number) => {
@@ -299,6 +344,103 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const getRef = (codigo: string | null | undefined, disciplina: string) =>
     referenciaDeZona(codigo, disciplina, tests, fcMax, fcReposo)
 
+  /* ---------- la cadena referencia → zona → % ----------
+     Solo vive en Zonas 2. En clásico estas funciones devuelven listas vacías y
+     la fila se pinta como siempre. */
+
+  /** «entre 65 y 75 %», «hasta 65 %», «CSS +10 a +20 s». */
+  const textoRango = (z: ZonaOfrecida, seg: boolean): string => {
+    const u = seg ? ' s' : ' %'
+    const [lo, hi] = z.rango
+    if (lo === null && hi === null) return ''
+    if (lo === null) return 'hasta ' + hi + u
+    if (hi === null) return 'desde ' + lo + u
+    return 'entre ' + lo + ' y ' + hi + u
+  }
+
+  /* Las flechas de un input numérico ocupan ~16 px por dentro: con tres
+     dígitos, el último se quedaba fuera y «120» se leía «12». */
+  const SIN_FLECHAS = ' [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none' +
+    ' [&::-webkit-outer-spin-button]:appearance-none'
+
+  const refsDeFila = (f: FilaResistencia): Referencia[] =>
+    sistema === 2 && f.disciplina ? referenciasDe(f.disciplina, tests, testsPropios) : []
+
+  const refDeFila = (f: FilaResistencia): Referencia | null =>
+    buscarReferencia(refsDeFila(f), f.ref)
+
+  const zonasDeFila = (f: FilaResistencia): ZonaOfrecida[] =>
+    zonasDe(refDeFila(f), zonasMias)
+
+  const zonaDeFila = (f: FilaResistencia): ZonaOfrecida | null =>
+    buscarZona(zonasDeFila(f), f.zona)
+
+  /**
+   * El objetivo de una fila, venga de donde venga.
+   *
+   * Con referencia elegida se calcula con ELLA; sin ella, por el camino de
+   * siempre. Así una tarea de antes de todo esto, o la de un atleta en clásico,
+   * sigue enseñando exactamente el mismo número.
+   */
+  const objetivoDeFila = (f: FilaResistencia): string => {
+    const r = refDeFila(f)
+    if (!r) return getRef(f.zona, f.disciplina)?.ritmo || ''
+    return textoTramo(tramoDe(r, f.pctMin ?? null, f.pctMax ?? null))
+  }
+
+  /**
+   * El objetivo de una tarea ya guardada, desde la copia que lleva encima.
+   *
+   * ESTA TABLA VIVE EN LA MISMA PANTALLA QUE EL EDITOR, así que si aquí se
+   * calculara con la referencia que la app da por defecto al deporte y abajo
+   * con la que se eligió, la misma tarea enseñaría dos ritmos distintos con un
+   * palmo de diferencia. Es el fallo que perseguimos, y de los peores: nada
+   * falla, y el número de arriba es el que el entrenador se cree.
+   */
+  const objetivoGuardado = (t: { zona_copia?: unknown; zona_entrenamiento?: string | null; disciplina?: string | null }): string => {
+    const c = leerCopia(t.zona_copia)
+    const disciplina = t.disciplina || ''
+    if (!c) return getRef(t.zona_entrenamiento, disciplina)?.ritmo || ''
+    /* El MISMO cálculo que hace el briefing del atleta. Vive en la librería
+       justo para que no puedan discrepar: si cada uno lo hiciera por su
+       cuenta, los dos mirarían la misma tarea con dos ritmos distintos. */
+    return objetivoDeCopia(c, disciplina, tests, testsPropios)
+  }
+
+  /** Al cambiar de deporte se suelta lo que colgaba de él. */
+  const cambiarDisciplina = (i: number, disciplina: string) => {
+    if (sistema !== 2) { updateR(i, 'disciplina', disciplina); return }
+    /* SI SOLO HAY UNA REFERENCIA, se elige sola: desplegar para elegir lo único
+       que hay es un clic de más en cada tarea de cada sesión. */
+    const posibles = disciplina ? referenciasDe(disciplina, tests, testsPropios) : []
+    parcheR(i, {
+      disciplina,
+      ref: posibles.length === 1 ? posibles[0].id : '',
+      zona: '', pctMin: null, pctMax: null,
+    })
+  }
+
+  const cambiarRef = (i: number, ref: string) =>
+    parcheR(i, { ref, zona: '', pctMin: null, pctMax: null })
+
+  /** Elegir zona trae su rango entero: es lo que se manda si no se afina. */
+  const cambiarZonaDe = (i: number, f: FilaResistencia, sigla: string) => {
+    const z = buscarZona(zonasDe(refDeFila(f), zonasMias), sigla)
+    const ini = rangoInicial(z)
+    parcheR(i, { esTecnica: false, tecnicaId: '', zona: sigla, pctMin: ini?.[0] ?? null, pctMax: ini?.[1] ?? null })
+  }
+
+  /* Se acota AL SOLTAR y no en cada tecla: acotando mientras escribes, el «7»
+     de camino al «70» se convertiría en 65 delante de tus narices. */
+  const soltarPct = (i: number, f: FilaResistencia, cual: 'pctMin' | 'pctMax') => {
+    const z = zonaDeFila(f)
+    if (!z) return
+    const v = acotar(f[cual] ?? null, z.rango)
+    const otro = cual === 'pctMin' ? f.pctMax ?? null : f.pctMin ?? null
+    const cruza = v !== null && otro !== null && (cual === 'pctMin' ? v > otro : v < otro)
+    parcheR(i, cruza ? { pctMin: v, pctMax: v } : { [cual]: v })
+  }
+
   /* Cambiar un valor de la franja. Se guarda en la sesión al vuelo: no hay
      botón de guardar porque no hay nada que revisar —o está fijado o no—, y un
      «¿guardar los valores por defecto?» sería un paso de más en la pantalla
@@ -317,7 +459,13 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const zonaDeLaSesionR = modoResistencia === 'simple' ? (zonaResSesion || '') : ''
   const zonaDeLaSesionF = modoFuerza === 'compleja' ? '' : (zonaFuerza || '')
 
-  const nuevaFilaR = (): FilaResistencia => ({
+  /** El deporte con el que nacen las filas: el de la sesión, o el de la franja. */
+  const disciplinaPorDefecto = (): string =>
+    disciplinaSesion === 'Brick'
+      ? (defectos.resistencia.disciplina || '')
+      : (disciplinaSesion || defectos.resistencia.disciplina || '')
+
+  const nuevaFilaR = (): FilaResistencia => filaConRango({
     orden: filasR.length + tareasGuardadas.length + 1,
     // En un brick, 'Brick' NO es un deporte: cada bloque tiene el suyo, así que se
     // deja vacío para que se elija (si no, el volumen del bloque no iría a ningún
@@ -334,6 +482,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
        que lo que no se fija no aparece aquí y la fila conserva lo de siempre. */
     ...paraFilaResistencia(defectos, { zonaSesion: zonaDeLaSesionR, disciplinaSesion }),
   })
+
+  /**
+   * Si la fila nace con referencia y zona, también nace con su tramo.
+   *
+   * El % NO se guarda en la franja: sale del rango de la zona, y quien lo sabe
+   * es esta pantalla, que tiene cargadas las del entrenador. Fijarlo también
+   * allí sería el mismo dato en dos sitios pudiendo discrepar — y en cuanto
+   * discrepen, el que manda deja de estar claro.
+   */
+  const filaConRango = (f: FilaResistencia): FilaResistencia => {
+    if (sistema !== 2 || !f.ref || !f.zona) return f
+    const ini = rangoInicial(zonaDeFila(f))
+    return ini ? { ...f, pctMin: ini[0], pctMax: ini[1] } : f
+  }
 
   const nuevaFilaF = (): FilaFuerza => ({
     orden: filasF.length + tareasGuardadas.length + 1,
@@ -398,8 +560,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     )
     if (sinSitio) return { error: sinSitio }
 
+    /* LA COPIA SE CONGELA AQUÍ, al guardar, y no se recalcula al leer.
+
+       Es lo que hace que borrar o cambiar una zona mañana no reescriba lo que
+       se mandó hoy, que un atleta que cambia de entrenador conserve su
+       historial, y que el % afinado siga siendo el que mandaste aunque la zona
+       se ensanche. Lo que NO entra es el ritmo: ese depende de sus tests y se
+       calcula al enseñarlo, para que un test nuevo mueva los ritmos sin tocar
+       la prescripción.
+
+       Sin referencia elegida va a null, que significa «resuélvela por
+       catálogo»: exactamente lo que hacían las 450 tareas de antes de esto y
+       lo que siguen haciendo las de un atleta en clásico. */
+    const copia = sistema === 2 && !f.esTecnica
+      ? copiaPrescrita(refDeFila(f), zonaDeFila(f), f.pctMin ?? null, f.pctMax ?? null)
+      : null
+
     const campos = {
       zona_entrenamiento: f.zona || null,
+      zona_copia: copia,
       disciplina: f.disciplina,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
@@ -768,6 +947,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 // índice es el que usa el reordenado por arrastre.
                 if (editandose.has(t.id)) return null
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
+                const objetivoT = objetivoGuardado(t)
                 return (
                   <tr key={t.id}
                     draggable={!esDeportista}
@@ -866,7 +1046,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                   </p>
                                 )}
                                 {ref?.porcentaje && <p className="text-orange-400">{ref.porcentaje}</p>}
-                                {ref?.ritmo && <p className="text-blue-400">{ref.ritmo}</p>}
+                                {/* El ritmo sale de la referencia que se MANDÓ, no de la
+                                    que la app da por defecto a ese deporte. */}
+                                {objetivoT && <p className="text-blue-400">{objetivoT}</p>}
                                 {ref?.fc && <p className="text-gray-400">{ref.fc}</p>}
                                 {ref?.rpe && <p className="text-gray-500">{ref.rpe}</p>}
                                 {!ref && !prescrita && <span className="text-gray-600">—</span>}
@@ -992,9 +1174,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     manda y ofrecer otra sería contradecirla. */}
                 {disciplinaSesion === 'Brick' && rotulado('Disciplina',
                   <select value={defectos.resistencia.disciplina || ''} className={campoDefecto(defectos.resistencia.disciplina)}
-                    onChange={e => cambiarDefecto('resistencia', 'disciplina', e.target.value)}>
+                    onChange={e => {
+                      /* Suelta la referencia fijada: la de un deporte no
+                         significa nada en otro. */
+                      if (defectos.resistencia.ref) cambiarDefecto('resistencia', 'ref', '')
+                      cambiarDefecto('resistencia', 'disciplina', e.target.value)
+                    }}>
                     <option value="">Sin fijar</option>
                     <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
+                  </select>)}
+                {/* La referencia por defecto. Solo en Zonas 2 y solo cuando ya se
+                    sabe de qué deporte van a ser las filas: sin deporte no hay
+                    referencias que ofrecer. */}
+                {sistema === 2 && disciplinaPorDefecto() && rotulado('Referencia',
+                  <select value={defectos.resistencia.ref || ''} className={campoDefecto(defectos.resistencia.ref) + ' max-w-[220px]'}
+                    onChange={e => cambiarDefecto('resistencia', 'ref', e.target.value)}>
+                    <option value="">Sin fijar</option>
+                    {referenciasDe(disciplinaPorDefecto(), tests, testsPropios).map(r => (
+                      <option key={r.id} value={r.id}>{r.etiqueta}{r.medida ? '' : ' · sin test'}</option>
+                    ))}
                   </select>)}
                 {rotulado('Unidad',
                   <select value={defectos.resistencia.unidad || ''} className={campoDefecto(defectos.resistencia.unidad)}
@@ -1070,50 +1268,153 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                   que ir columna por columna para saber qué has mandado. */}
               <tr className="text-gray-400 text-[11px] uppercase tracking-wide border-b border-gray-700">
                 <th className="text-left py-2 px-1.5 w-9">#</th>
-                <th className="text-left py-2 px-1.5 w-[300px]">Zona · disciplina</th>
-                <th className="text-left py-2 px-1.5 min-w-[430px]">Prescripción</th>
-                <th className="text-left py-2 px-1.5 w-[104px]">Descanso</th>
-                <th className="text-left py-2 px-1.5 min-w-[210px]">Ref. de la zona</th>
-                <th className="text-left py-2 px-1.5 min-w-[180px]">Notas</th>
+                {/* La cadena son cuatro controles donde antes había dos: con los
+                    300 px de siempre, «PLA · Potencia lactácida» se cortaba y los
+                    números salían a medias. La tabla ya desplaza en horizontal,
+                    así que el sitio está — solo había que pedirlo. */}
+                {/* EN ZONAS 2 DESAPARECE «REF. DE LA ZONA», y no por hacer sitio:
+                    es que la cadena ya dice todo lo que había ahí. La zona y su
+                    tramo están en el primer bloque, el ritmo sale de fantasma en
+                    el «@», y las pulsaciones y el RPE bajan a la línea de debajo.
+                    Mantenerla sería enseñar dos veces lo mismo a un palmo, que es
+                    como acaban discrepando. Y de paso la fila entra sin cortarse. */}
+                <th className={'text-left py-2 px-1.5 ' + (sistema === 2 ? 'w-[430px]' : 'w-[300px]')}>
+                  {sistema === 2 ? 'Deporte · referencia · zona' : 'Zona · disciplina'}
+                </th>
+                <th className="text-left py-2 px-1.5 min-w-[400px]">Prescripción</th>
+                <th className="text-left py-2 px-1.5 w-[100px]">Descanso</th>
+                {sistema !== 2 && <th className="text-left py-2 px-1.5 min-w-[210px]">Ref. de la zona</th>}
+                <th className="text-left py-2 px-1.5 min-w-[150px]">Notas</th>
                 <th className="py-2 px-1.5 w-[78px]"></th>
               </tr>
             </thead>
             <tbody>
               {filasR.map((f, i) => {
                 const ref = getRef(f.zona, f.disciplina)
+                /* El objetivo que sale de fantasma en el «@». Con una referencia
+                   propia elegida lo calcula ELLA; sin ella, el de siempre. */
+                const objetivo = objetivoDeFila(f) || ref?.ritmo || ''
                 return (
                   <React.Fragment key={i}>
                   <tr className="border-b border-gray-800">
                     <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
-                    {/* Zona y disciplina en horizontal, no apiladas: apiladas hacen la
-                        fila de dos pisos y descolocan la alineación de todo lo demás. */}
+                    {/* EN ZONAS 2 EL DEPORTE VA PRIMERO, y no por maquetación: es lo
+                        que decide qué referencias tiene este atleta, así que sin él no
+                        hay nada que ofrecer. En clásico la celda se queda exactamente
+                        como estaba — ahí no hay referencia que elegir. */}
                     <td className="py-1.5 px-1.5">
-                      <div className="flex gap-1.5">
-                        {/* «Técnica» vive aquí porque es donde va la mano, pero no es
-                            una zona: al elegirla la fila guarda AER. Lo que se ve se
-                            calcula del estado, no se guarda por duplicado. */}
-                        <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
-                          onChange={e => parcheR(i, e.target.value === VALOR_TECNICA
-                            ? { esTecnica: true, zona: ZONA_DE_TECNICA }
-                            : { esTecnica: false, tecnicaId: '', zona: e.target.value })}
-                          className={campoBase + ' flex-1 min-w-[150px]'}>
-                          <option value="">Zona</option>
-                          <optgroup label="Sin intensidad">
-                            <option value={VALOR_TECNICA}>Técnica</option>
-                          </optgroup>
-                          {sistema === 2
-                            ? FACTORES_RESISTENCIA.map(factor => (
-                                <optgroup key={factor} label={factor}>
-                                  {ZONAS_RESISTENCIA.filter(z => z.factor === factor).map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                      {sistema === 2 ? (() => {
+                        const refOfr = refDeFila(f)
+                        const zonasOfr = zonasDeFila(f)
+                        const zOfr = zonaDeFila(f)
+                        const seg = refOfr?.modo === 'seg'
+                        const propias = zonasOfr.filter(z => z.origen === 'propia')
+                        return (
+                          <div className="flex flex-col gap-1.5 w-[414px] max-w-full">
+                            <div className="flex gap-1.5">
+                              <select value={f.disciplina} onChange={e => cambiarDisciplina(i, e.target.value)}
+                                className={campoBase + ' flex-none w-[118px]'}>
+                                <option value="">Deporte</option>
+                                <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
+                              </select>
+                              <select value={f.ref || ''} onChange={e => cambiarRef(i, e.target.value)}
+                                disabled={!f.disciplina} title="De qué número cuelga esta tarea"
+                                className={campoBase + ' flex-1 min-w-0 disabled:opacity-40'}>
+                                <option value="">Referencia</option>
+                                {/* «sin test» va en la propia etiqueta: la referencia se
+                                    ofrece igual —de ella cuelgan las zonas— pero conviene
+                                    saber por qué luego no sale ningún ritmo. */}
+                                {refsDeFila(f).map(r => (
+                                  <option key={r.id} value={r.id}>{r.etiqueta}{r.medida ? '' : ' · sin test'}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex gap-1.5 items-center">
+                              <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
+                                onChange={e => e.target.value === VALOR_TECNICA
+                                  ? parcheR(i, { esTecnica: true, zona: ZONA_DE_TECNICA })
+                                  : cambiarZonaDe(i, f, e.target.value)}
+                                disabled={!f.ref}
+                                className={campoBase + ' flex-1 min-w-0 disabled:opacity-40'}>
+                                <option value="">Zona</option>
+                                <optgroup label="Sin intensidad">
+                                  <option value={VALOR_TECNICA}>Técnica</option>
                                 </optgroup>
-                              ))
-                            : ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
-                        </select>
-                        <select value={f.disciplina} onChange={e => updateR(i, 'disciplina', e.target.value)} className={campoBase + ' flex-none w-[124px]'}>
-                          <option value="">Deporte</option>
-                          <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
-                        </select>
-                      </div>
+                                {refOfr?.tipo === 'app'
+                                  ? FACTORES_RESISTENCIA.map(factor => {
+                                      const dentro = zonasOfr.filter(z =>
+                                        ZONAS_RESISTENCIA.find(x => x.sigla === z.sigla)?.factor === factor)
+                                      return dentro.length === 0 ? null : (
+                                        <optgroup key={factor} label={factor}>
+                                          {dentro.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                                        </optgroup>
+                                      )
+                                    })
+                                  : propias.length > 0 && (
+                                      <optgroup label="Tuyas">
+                                        {propias.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                                      </optgroup>
+                                    )}
+                              </select>
+                              {/* El tramo se AFINA dentro de la zona, no se pisa: un AEL
+                                  al 60 % no es un AEL, y su RPE y su nivel —de los que
+                                  salen la carga y la altura de la barra del dibujo—
+                                  dirían una cosa mientras el ritmo mandado dice otra. */}
+                              <div className={'flex items-center gap-1 flex-none ' + (zOfr ? '' : 'opacity-40')}>
+                                <input type="number" value={f.pctMin ?? ''} disabled={!zOfr}
+                                  onChange={e => updateR(i, 'pctMin', e.target.value === '' ? null : Number(e.target.value))}
+                                  onBlur={() => soltarPct(i, f, 'pctMin')}
+                                  title={zOfr ? textoRango(zOfr, seg) : ''}
+                                  /* Sin las flechitas del navegador: se comían el tercer
+                                     dígito y «120» se leía «12». */
+                                  className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
+                                <span className="text-gray-600 text-xs">–</span>
+                                <input type="number" value={f.pctMax ?? ''} disabled={!zOfr}
+                                  onChange={e => updateR(i, 'pctMax', e.target.value === '' ? null : Number(e.target.value))}
+                                  onBlur={() => soltarPct(i, f, 'pctMax')}
+                                  title={zOfr ? textoRango(zOfr, seg) : ''}
+                                  className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
+                                <span className="text-gray-500 text-xs w-3">{seg ? 's' : '%'}</span>
+                              </div>
+                            </div>
+                            {zOfr && (
+                              <span className="text-[10.5px] text-gray-600 leading-none">
+                                {textoRango(zOfr, seg)}
+                                {/* Lo que antes vivía en «Ref. de la zona». Las
+                                    pulsaciones y el RPE no salen de la referencia
+                                    elegida sino de la zona, así que siguen valiendo
+                                    aunque el atleta no tenga el test hecho. */}
+                                {ref?.fc && ' · ' + ref.fc}
+                                {ref?.rpe && ' · ' + ref.rpe}
+                                {refOfr && !refOfr.medida && ' · sin su test no hay ritmo'}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })() : (
+                        /* Zona y disciplina en horizontal, no apiladas: apiladas hacen la
+                           fila de dos pisos y descolocan la alineación de todo lo demás. */
+                        <div className="flex gap-1.5">
+                          {/* «Técnica» vive aquí porque es donde va la mano, pero no es
+                              una zona: al elegirla la fila guarda AER. Lo que se ve se
+                              calcula del estado, no se guarda por duplicado. */}
+                          <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
+                            onChange={e => parcheR(i, e.target.value === VALOR_TECNICA
+                              ? { esTecnica: true, zona: ZONA_DE_TECNICA }
+                              : { esTecnica: false, tecnicaId: '', zona: e.target.value })}
+                            className={campoBase + ' flex-1 min-w-[150px]'}>
+                            <option value="">Zona</option>
+                            <optgroup label="Sin intensidad">
+                              <option value={VALOR_TECNICA}>Técnica</option>
+                            </optgroup>
+                            {ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
+                          </select>
+                          <select value={f.disciplina} onChange={e => updateR(i, 'disciplina', e.target.value)} className={campoBase + ' flex-none w-[124px]'}>
+                            <option value="">Deporte</option>
+                            <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
+                          </select>
+                        </div>
+                      )}
                     </td>
                     {/* LA PRESCRIPCIÓN, EN UN BLOQUE — igual que en fuerza.
                         La unidad va DENTRO, pegada al número que modifica. Aquí es un
@@ -1152,7 +1453,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           onFocus={() => setAtajosEn(i)}
                           onBlur={() => setAtajosEn(a => a === i ? null : a)}
                           className={campoBloque + ' flex-1 min-w-[130px]'}
-                          placeholder={ref?.ritmo || 'Intensidad'}
+                          placeholder={objetivo || 'Intensidad'}
                           title={ref?.ritmo ? 'Intensidad propia — en gris, lo que sale de sus tests' : 'Intensidad propia'} />
                       </div>
 
@@ -1203,18 +1504,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       })()}
                     </td>
                     <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateR(i, 'descanso', e.target.value)} className={inputCls} placeholder="1:30" /></td>
-                    {/* La referencia en chips y no en cuatro líneas de colores: así deja
+                    {/* EN ZONAS 2 ESTA COLUMNA YA NO EXISTE: la cadena de la izquierda
+                        dice la zona y su tramo, el «@» propone el ritmo y las
+                        pulsaciones y el RPE bajaron a la línea de debajo del bloque.
+                        Repetirlo aquí a un palmo es como acaban discrepando.
+                        En clásico se queda: allí no hay cadena que lo cuente.
+                        La referencia en chips y no en cuatro líneas de colores: así deja
                         de ser el elemento más alto de la fila y de marcar la altura de
                         todos los demás. */}
-                    <td className="py-1.5 px-1.5">
-                      <div className="flex flex-wrap gap-1">
-                        {ref?.porcentaje && <span className={chipCls + ' text-orange-300'}>{ref.porcentaje}</span>}
-                        {ref?.ritmo && <span className={chipCls + ' text-blue-400'}>{ref.ritmo}</span>}
-                        {ref?.fc && <span className={chipCls + ' text-gray-400'}>{ref.fc}</span>}
-                        {ref?.rpe && <span className={chipCls + ' text-gray-500'}>{ref.rpe}</span>}
-                        {!ref && <span className="text-gray-600 text-xs">—</span>}
-                      </div>
-                    </td>
+                    {sistema !== 2 && (
+                      <td className="py-1.5 px-1.5">
+                        <div className="flex flex-wrap gap-1">
+                          {ref?.porcentaje && <span className={chipCls + ' text-orange-300'}>{ref.porcentaje}</span>}
+                          {objetivo && <span className={chipCls + ' text-blue-400'}>{objetivo}</span>}
+                          {ref?.fc && <span className={chipCls + ' text-gray-400'}>{ref.fc}</span>}
+                          {ref?.rpe && <span className={chipCls + ' text-gray-500'}>{ref.rpe}</span>}
+                          {!ref && <span className="text-gray-600 text-xs">—</span>}
+                        </div>
+                      </td>
+                    )}
                     <td className="py-1.5 px-1.5"><input type="text" value={f.comentario} onChange={e => updateR(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                     <td className="py-1.5 px-1.5">
                       <div className="flex gap-1">
@@ -1240,7 +1548,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                   {avisaOtraDisciplina(f, disciplinaSesion) && (
                     <tr className="border-b border-gray-800">
                       <td></td>
-                      <td colSpan={6} className="pt-0 pb-2 px-1.5">
+                      {/* Una columna menos en Zonas 2: si el colSpan no lo sigue,
+                          el aviso empuja la fila y descoloca la rejilla entera. */}
+                      <td colSpan={sistema === 2 ? 5 : 6} className="pt-0 pb-2 px-1.5">
                         <p className="text-[11.5px] text-amber-300 bg-amber-500/[0.08] border border-amber-500/25 rounded-lg px-2.5 py-1.5">
                           Es de {f.disciplina} y esta sesión es de {disciplinaSesion}: la referencia de la
                           derecha está en las unidades de {f.disciplina}. Cambia el deporte o repasa la

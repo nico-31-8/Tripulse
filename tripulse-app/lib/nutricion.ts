@@ -2,7 +2,7 @@
 // y el peso del deportista. Basado en AIS Sports Supplement Framework, ISSN position
 // stands (cafeína, proteína) y guías ACSM/ISSN de carbohidrato durante el ejercicio —
 // ver ia/deporte/wiki/topics/*.md.
-import { cargaZona } from './zonas'
+import { cargaDeTarea } from './prescripcion-zona'
 import { calcularDuracionEstimada, TareaDuracion, TestsDeportista } from './duracion'
 
 export interface SugerenciaNutricion {
@@ -31,7 +31,7 @@ const AYUNO_MAX_MIN = 90
 const AYUNO_MAX_NIVEL = 3   // nivel 1-7 equivalente (AER/AEL/AEM o Z1-Z3)
 
 function maxNivelZona(tareas: TareaDuracion[]): number {
-  return tareas.reduce((max, t) => Math.max(max, cargaZona(t.zona_entrenamiento).nivel), 0)
+  return tareas.reduce((max, t) => Math.max(max, cargaDeTarea(t).nivel), 0)
 }
 
 export function sugerirNutricion(

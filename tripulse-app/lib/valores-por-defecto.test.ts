@@ -198,3 +198,35 @@ describe('la intensidad, que es lo que más se repite en una sesión de una zona
     expect('controlTipo' in paraFilaFuerza(v, {})).toBe(false)
   })
 })
+
+describe('la referencia por defecto', () => {
+  it('se pasa a la fila nueva', () => {
+    const v = { resistencia: { ref: 'propia:2:0' }, fuerza: {} }
+    expect(paraFilaResistencia(v).ref).toBe('propia:2:0')
+  })
+
+  it('sin fijar, la fila no la lleva y sale como siempre', () => {
+    expect('ref' in paraFilaResistencia({ resistencia: {}, fuerza: {} })).toBe(false)
+    expect('ref' in paraFilaResistencia(null)).toBe(false)
+  })
+
+  it('EL PORCENTAJE NO VIENE DE AQUÍ', () => {
+    /* Sale del rango de la zona, y quien lo sabe es la pantalla, que tiene
+       cargadas las zonas del entrenador. Fijarlo también en la franja sería el
+       mismo dato en dos sitios pudiendo discrepar. */
+    const v = { resistencia: { ref: 'app:vam', zona: 'AEL' }, fuerza: {} }
+    const f = paraFilaResistencia(v)
+    expect('pctMin' in f).toBe(false)
+    expect('pctMax' in f).toBe(false)
+  })
+
+  it('cuenta como un valor fijado más', () => {
+    expect(cuantosFijados({ ref: 'app:vam' })).toBe(1)
+    expect(cuantosFijados({ ref: '', unidad: 'm' })).toBe(1)
+  })
+
+  it('se puede desfijar, y entonces desaparece', () => {
+    const v = fijar({ resistencia: { ref: 'app:vam' }, fuerza: {} }, 'resistencia', 'ref', '')
+    expect('ref' in v.resistencia).toBe(false)
+  })
+})

@@ -16,7 +16,7 @@
 // de la misma sesión con números distintos.
 import { calcularDuracionEstimada } from './duracion'
 import type { TestsDeportista, ResultadoDuracion } from './duracion'
-import { cargaZona } from './zonas'
+import { cargaDeTarea } from './prescripcion-zona'
 
 export interface TareaCruda {
   id: number
@@ -100,8 +100,16 @@ export function conVolumen(
        el martes es una tirada suave o unas series: hasta que se añadieron, el
        calendario solo decía el deporte y el volumen, y en una semana entera eso
        se lee todo igual. */
-    const zonas = [...new Set(suyas.map(t => t.zona_entrenamiento).filter(Boolean))]
-      .sort((a, b) => cargaZona(b as string).nivel - cargaZona(a as string).nivel) as string[]
+    /* SE ORDENA POR LA TAREA, NO POR LA SIGLA. Una zona propia solo sabe lo
+       que pesa mirando su copia, y la copia va en la tarea: ordenando por el
+       texto suelto, un tempo del entrenador se colaría entre las suaves. */
+    const nivelDeSigla = new Map<string, number>()
+    for (const t of suyas) {
+      const sigla = t.zona_entrenamiento
+      if (sigla && !nivelDeSigla.has(sigla)) nivelDeSigla.set(sigla, cargaDeTarea(t).nivel)
+    }
+    const zonas = [...nivelDeSigla.keys()]
+      .sort((a, b) => (nivelDeSigla.get(b) || 0) - (nivelDeSigla.get(a) || 0))
 
     return {
       ...s,

@@ -720,7 +720,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           apretada con media pantalla vacía a los lados. Antes esto era solo para
           fuerza porque la de resistencia era más estrecha; ahora las dos llevan la
           prescripción agrupada y piden lo mismo (medido: 1392px la de resistencia). */}
-      <div className="mx-auto px-6 py-6 flex flex-col gap-3.5 max-w-[1560px]">
+      {/* EL TOPE SUBE DE 1560 A 1900. Los 1560 se pusieron para que el panel de
+          plantillas no se saliera de la página, y esa razón sigue en pie: el
+          panel entra en la rejilla a partir de 1700 y a 1900 le sobra sitio
+          (1fr + 20rem deja ~1530 a las tareas). Lo que arregla es la pantalla
+          ancha con el panel cerrado: la fila de tarea necesita ~1480 px desde
+          que lleva la cadena, y con 1560 menos el padding se quedaba corta por
+          poco y la tabla scrolleaba dentro de su tarjeta mientras al lado
+          sobraban 500 px de fondo vacío. */}
+      <div className="mx-auto px-6 py-6 flex flex-col gap-3.5 max-w-[1900px]">
 
         {/* Cabecera-tira: de quién es, cuándo cae y en qué punto del plan. Antes ocupaba
             media pantalla y no decía ni el nombre del deportista. */}

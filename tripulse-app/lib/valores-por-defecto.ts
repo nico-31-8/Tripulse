@@ -36,6 +36,15 @@
 export interface DefectoResistencia {
   zona?: string
   disciplina?: string
+  /**
+   * De qué número cuelgan las tareas de esta sesión, por defecto.
+   *
+   * SOLO TIENE SENTIDO JUNTO A SU DEPORTE: las referencias de un atleta son
+   * las de un deporte concreto, así que una fijada aquí solo vale mientras
+   * las filas nazcan con ese deporte. Cambiar el deporte de la franja la
+   * suelta — dejarla puesta apuntaría a un número de otra disciplina.
+   */
+  ref?: string
   unidad?: string
   series?: string
   descanso?: string
@@ -179,6 +188,11 @@ export function paraFilaResistencia(
     : (limpio(ctx.disciplinaSesion) || limpio(d.disciplina))
   if (disc) out.disciplina = disc
 
+  /* La referencia se pasa TAL CUAL. El porcentaje no viene de aquí: sale del
+     rango de la zona, y quien lo sabe es la pantalla, que es la que tiene
+     cargadas las zonas del entrenador. Guardar aquí un % sería el mismo dato
+     en dos sitios pudiendo discrepar. */
+  if (limpio(d.ref)) out.ref = limpio(d.ref)
   if (limpio(d.unidad)) out.tipoMedicion = limpio(d.unidad)
   if (limpio(d.series)) out.series = limpio(d.series)
   if (limpio(d.descanso)) out.descanso = limpio(d.descanso)
