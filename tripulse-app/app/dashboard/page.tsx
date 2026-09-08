@@ -535,6 +535,7 @@ export default function Dashboard() {
                            no toca nada de lo demás. Quitar esta línea lo saca de la
                            vista sin dejar nada roto. */
                         { ic: '🧪', l: 'Tests propios', s: 'En pruebas', c: '#a78bfa', h: '/tests-propios' },
+                        { ic: '🎚', l: 'Zonas propias', s: 'En pruebas', c: '#a78bfa', h: '/zonas-propias' },
                       ].map(t => (
                         <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
                           <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>

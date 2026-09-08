@@ -14,6 +14,30 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 6 de septiembre de 2026
 
+### Crear tus propias zonas — en pruebas
+
+En **Herramientas → Zonas propias**. Le pones sigla, nombre, el deporte, el rango
+de porcentaje y su RPE, y ves qué le sale a cada uno de tus atletas: un ritmo en
+carrera, vatios en bici, según su test.
+
+**No sustituyen a las de la aplicación: se suman.** La idea es que en una misma
+sesión puedas poner un bloque en AEL y el siguiente en una zona tuya. Hay abajo
+una sesión de ejemplo donde se mezclan y se ve sumar la carga.
+
+Dos cosas que la pantalla no te deja hacer, y conviene saber por qué:
+
+- **No puedes llamarla como una de la aplicación** (AEL, PAE, Z2…). Si pudieras,
+  la tuya no se usaría nunca: al buscarla se encontraría antes la de serie, y tú
+  no verías ningún error.
+- **El RPE es obligatorio.** De él salen la carga (RPE × minutos) y el nivel del
+  1 al 7, que decide la altura de la barra del dibujo y qué zona representa a una
+  sesión de varios bloques. Una zona sin RPE no calcularía mal: es que no
+  existiría para media aplicación.
+
+**Todavía no se puede prescribir con ellas.** No salen en el desplegable de una
+tarea: aquí se crean y se comprueban. Conectarlas al editor de sesión es el paso
+siguiente y se hace aparte, porque toca pantallas que usas a diario.
+
 ### Crear tus propios tests — en pruebas
 
 En **Herramientas → Tests propios** hay una pantalla nueva donde puedes montarte

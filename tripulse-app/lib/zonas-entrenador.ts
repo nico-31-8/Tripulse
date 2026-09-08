@@ -1,0 +1,301 @@
+// ============================================================
+// TRIPULSE — Las zonas que se crea el entrenador
+// ============================================================
+//
+// NO SUSTITUYEN A LAS DE LA APP: SE SUMAN. En la misma sesión puede haber un
+// bloque en AEL y el siguiente en una zona propia. Por eso lo primero que hace
+// este fichero es resolver una sigla contra las DOS bibliotecas, y por eso una
+// sigla propia no puede llamarse como una de la app.
+//
+// EL RPE ES OBLIGATORIO, Y NO ES UN CAPRICHO. De él salen dos cosas:
+//   · la carga  — RPE × minutos
+//   · el nivel 1–7, y con él la altura de la barra del dibujo, la duración
+//     estimada y qué zona representa a una sesión de varios bloques.
+// Una zona sin RPE no es que calcule mal la carga: es que no existe para media
+// aplicación. Así que sin RPE no se ofrece.
+//
+// EL RESPALDO NO FINGE. Hoy `cargaZona()` devuelve nivel 2 y RPE 4,5 —los de
+// Z2— cuando no reconoce una sigla, sin decir nada. Aquí no: lo que no se
+// reconoce vuelve marcado como desconocido, y quien llama decide. Un tempo
+// contado como aeróbico suave en silencio es el fallo que este proyecto lleva
+// persiguiendo.
+
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, nivelDeRpe } from './zonas'
+
+export interface ZonaEntrenador {
+  id?: number
+  /* EL DEPORTE IMPORTA, y mucho: los % de la zona son de UNA referencia -la
+     VAM, el FTP o el CSS- y esas no son intercambiables. Las zonas de la app
+     ya llevan porcentajes distintos por deporte (AEL es 65-75 % de VAM pero
+     56-75 % de FTP). Sin esto, un «Tempo largo» al 82-88 % daria un ritmo
+     razonable corriendo y unos vatios equivocados en bici, sin avisar. */
+  deporte: string
+  sigla: string
+  nombre: string
+  /** El rango, en % de la referencia del atleta (su VAM, su FTP, su CSS). */
+  pctMin: number
+  pctMax: number
+  rpeMin: number | null
+  /** `null` = un número suelto en vez de un rango. Lo elige el entrenador. */
+  rpeMax: number | null
+  color: string
+  orden: number
+}
+
+export const COLORES_ZONA = [
+  '#a78bfa', '#f472b6', '#67e8f9', '#fbbf24', '#4ade80', '#fb923c', '#94a3b8',
+]
+
+export const DEPORTES_ZONA = ['Carrera', 'Ciclismo', 'Natacion']
+
+export const ZONA_NUEVA = (orden: number, deporte = 'Carrera'): ZonaEntrenador => ({
+  deporte, sigla: '', nombre: '', pctMin: 70, pctMax: 80,
+  rpeMin: null, rpeMax: null, color: COLORES_ZONA[orden % COLORES_ZONA.length], orden,
+})
+
+const txt = (v: unknown): string => String(v ?? '').trim()
+const numOn = (v: unknown): number | null => {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Todas las siglas que la app ya usa: resistencia, fuerza y las clásicas. */
+export function siglasDeLaApp(): string[] {
+  return [
+    ...ZONAS_RESISTENCIA.map(z => z.sigla),
+    ...ZONAS_FUERZA.map(z => z.sigla),
+    ...Array.from({ length: 7 }, (_, i) => 'Z' + (i + 1)),
+  ]
+}
+
+// ------------------------------------------------------------
+// Qué produce una zona
+// ------------------------------------------------------------
+
+export interface FichaZona {
+  /** El RPE representativo: el punto medio del rango. */
+  rpe: number | null
+  /** El 1–7 equivalente. Null si no hay RPE, porque ahí no se inventa nada. */
+  nivel: number | null
+}
+
+export function fichaDe(z: ZonaEntrenador | null | undefined): FichaZona {
+  const min = numOn(z?.rpeMin)
+  if (min === null) return { rpe: null, nivel: null }
+  const max = numOn(z?.rpeMax)
+  const rpe = max !== null ? (min + max) / 2 : min
+  return { rpe, nivel: nivelDeRpe(rpe) }
+}
+
+/** «RPE 5–6» o «RPE 4», según lo que eligiera el entrenador. */
+export const textoRpe = (z: ZonaEntrenador): string => {
+  const min = numOn(z.rpeMin)
+  if (min === null) return '—'
+  const max = numOn(z.rpeMax)
+  return max !== null && max !== min ? 'RPE ' + min + '–' + max : 'RPE ' + min
+}
+
+// ------------------------------------------------------------
+// Validar
+// ------------------------------------------------------------
+
+/**
+ * Por qué una zona no se puede usar todavía. `null` si está lista.
+ *
+ * LA SIGLA QUE CHOCA CON UNA DE LA APP NO SE USARÍA NUNCA: la resolución mira
+ * primero las de serie, así que la propia quedaría inalcanzable — la eliges en
+ * el desplegable y se guarda la otra, sin error y sin aviso.
+ */
+export function motivoNoUsable(
+  z: ZonaEntrenador,
+  indice: number,
+  todas: ZonaEntrenador[],
+): string | null {
+  const s = txt(z.sigla)
+  if (!s) return 'Ponle una sigla'
+  if (/\s/.test(s)) return 'Sin espacios'
+  if (s.length > 8) return 'Muy larga: máximo 8 letras'
+  if (siglasDeLaApp().some(x => x.toUpperCase() === s.toUpperCase())) return 'Ya es una zona de la app'
+  /* Repetida SOLO dentro del mismo deporte: «TMP» de carrera y «TMP» de bici
+     son dos zonas distintas con la misma etiqueta, y el indice unico de la
+     tabla dice lo mismo. */
+  if ((todas || []).some((x, k) => k !== indice
+      && txt(x.deporte) === txt(z.deporte)
+      && txt(x.sigla).toUpperCase() === s.toUpperCase())) return 'Repetida en este deporte'
+  if (!txt(z.deporte)) return 'Elige el deporte'
+  if (!txt(z.nombre)) return 'Ponle un nombre'
+
+  const min = numOn(z.rpeMin)
+  if (min === null) return 'Sin RPE no calcula carga ni tiene nivel'
+  if (min > 10) return 'El RPE va de 1 a 10'
+  const max = numOn(z.rpeMax)
+  if (max !== null && (max > 10 || max < min)) return 'El RPE de arriba no puede ser menor que el de abajo'
+
+  const pMin = Number(z.pctMin), pMax = Number(z.pctMax)
+  if (!Number.isFinite(pMin) || !Number.isFinite(pMax) || pMin <= 0 || pMax <= 0) return 'Faltan los porcentajes'
+  if (pMax < pMin) return 'El porcentaje de arriba no puede ser menor que el de abajo'
+
+  return null
+}
+
+export const esUsable = (z: ZonaEntrenador, i: number, todas: ZonaEntrenador[]): boolean =>
+  motivoNoUsable(z, i, todas) === null
+
+/** Las que se pueden ofrecer en un desplegable. */
+export const usables = (todas: ZonaEntrenador[], deporte?: string): ZonaEntrenador[] => {
+  const dep = txt(deporte)
+  return (todas || []).filter((z, i) => esUsable(z, i, todas) && (!dep || txt(z.deporte) === dep))
+}
+
+// ------------------------------------------------------------
+// Resolver una sigla
+// ------------------------------------------------------------
+
+export type Origen = 'app' | 'mia' | 'copia' | 'desconocida'
+
+export interface ZonaResuelta {
+  sigla: string
+  nombre: string
+  color: string
+  rpe: number
+  nivel: number
+  origen: Origen
+}
+
+/**
+ * Busca una sigla en las dos bibliotecas. `null` si no está en ninguna.
+ *
+ * Primero las de la app y después las del entrenador, y ese orden es el motivo
+ * de que una sigla propia no pueda llamarse como una de serie: si pudiera,
+ * quedaría enterrada para siempre.
+ */
+export function buscar(sigla: string, mias: ZonaEntrenador[], deporte?: string): ZonaResuelta | null {
+  const s = txt(sigla)
+  if (!s) return null
+
+  const app = ZONAS_RESISTENCIA.find(z => z.sigla === s) || ZONAS_FUERZA.find(z => z.sigla === s)
+  if (app) {
+    const rpe = (app.rpeMin + app.rpeMax) / 2
+    return { sigla: s, nombre: app.nombre, color: app.color, rpe, nivel: nivelDeRpe(rpe), origen: 'app' }
+  }
+
+  /* LA SIGLA SOLA NO IDENTIFICA UNA ZONA PROPIA: su clave es sigla + deporte.
+     Con el deporte se filtra; sin el, solo vale si no hay ambiguedad. Devolver
+     «la primera» cuando hay dos seria elegir a cara o cruz entre unos vatios y
+     un ritmo. */
+  const dep = txt(deporte)
+  const candidatas = (mias || [])
+    .map((z, i) => ({ z, i }))
+    .filter(({ z, i }) => txt(z.sigla).toUpperCase() === s.toUpperCase()
+      && (!dep || txt(z.deporte) === dep)
+      && esUsable(z, i, mias))
+  if (candidatas.length !== 1) return null
+
+  const z = candidatas[0].z, f = fichaDe(z)
+  return { sigla: txt(z.sigla), nombre: z.nombre, color: z.color, rpe: f.rpe!, nivel: f.nivel!, origen: 'mia' }
+}
+
+/** La copia que se congela en la tarea al prescribir. */
+export interface CopiaZona {
+  sigla: string
+  nombre: string
+  color: string
+  rpe: number
+  nivel: number
+}
+
+export function copiaDe(sigla: string, mias: ZonaEntrenador[], deporte?: string): CopiaZona | null {
+  const z = buscar(sigla, mias, deporte)
+  return z ? { sigla: z.sigla, nombre: z.nombre, color: z.color, rpe: z.rpe, nivel: z.nivel } : null
+}
+
+/**
+ * Con qué se pinta y se cuenta un bloque ya guardado.
+ *
+ * LA COPIA MANDA, y es la decisión que sostiene todo lo demás:
+ *
+ *   · Borrar una zona no reescribe el pasado. Sin la copia, borrar «TMP»
+ *     mandaría al respaldo TODAS las sesiones que ya la usaban, hacia atrás y
+ *     sin avisar.
+ *   · Cambiarle el % tampoco: lo que se mandó en marzo se mandó con lo que la
+ *     zona valía en marzo.
+ *   · Un atleta que cambia de entrenador conserva su historial aunque el nuevo
+ *     no tenga esas zonas.
+ *
+ * Es el mismo criterio que la app ya usa con los ejercicios de fuerza: el
+ * nombre se congela en la prescripción y el vídeo se resuelve en vivo por id.
+ * Lo que decidió el entrenador se congela; lo que depende del atleta —el ritmo,
+ * que sale de sus tests— se calcula al enseñarlo.
+ */
+export function resolverBloque(
+  sigla: string,
+  copia: CopiaZona | null | undefined,
+  mias: ZonaEntrenador[],
+  deporte?: string,
+): ZonaResuelta {
+  if (copia && txt(copia.sigla)) {
+    return { ...copia, origen: 'copia' }
+  }
+  const viva = buscar(sigla, mias, deporte)
+  if (viva) return viva
+  /* NO se finge un Z2. Quien llame decide qué hacer con una zona que ya no
+     existe, pero se entera de que no existe. */
+  return {
+    sigla: txt(sigla), nombre: 'Zona desconocida', color: '#6b7280',
+    rpe: 0, nivel: 0, origen: 'desconocida',
+  }
+}
+
+/** La carga de un bloque: RPE × minutos, igual que en el resto de la app. */
+export const cargaDe = (z: ZonaResuelta, minutos: number): number =>
+  Math.round((z.rpe || 0) * (Number(minutos) || 0))
+
+// ------------------------------------------------------------
+// Ida y vuelta con la base
+// ------------------------------------------------------------
+
+/** Rehace las zonas desde las filas de `zona_entrenador`. */
+export function leerZonas(filas: any[] | null | undefined): ZonaEntrenador[] {
+  return (filas || []).map((f, i) => ({
+    id: f?.id,
+    deporte: txt(f?.deporte) || 'Carrera',
+    sigla: txt(f?.sigla),
+    nombre: txt(f?.nombre),
+    pctMin: Number(f?.pct_min) || 0,
+    pctMax: Number(f?.pct_max) || 0,
+    rpeMin: numOn(f?.rpe_min),
+    rpeMax: numOn(f?.rpe_max),
+    color: txt(f?.color) || COLORES_ZONA[i % COLORES_ZONA.length],
+    orden: Number(f?.orden) ?? i,
+  })).sort((a, b) => a.orden - b.orden)
+}
+
+/** La fila que se escribe. La sigla se guarda en mayúsculas, siempre. */
+export function paraGuardar(z: ZonaEntrenador, idEntrenador: string) {
+  return {
+    id_entrenador: idEntrenador,
+    deporte: txt(z.deporte) || 'Carrera',
+    sigla: txt(z.sigla).toUpperCase(),
+    nombre: txt(z.nombre),
+    pct_min: Number(z.pctMin),
+    pct_max: Number(z.pctMax),
+    rpe_min: numOn(z.rpeMin),
+    rpe_max: numOn(z.rpeMax),
+    color: txt(z.color) || COLORES_ZONA[0],
+    orden: Number(z.orden) || 0,
+  }
+}
+
+/**
+ * El rango de ritmo de una zona para un atleta, en km/h.
+ *
+ * Se devuelven los dos números y no un texto: cómo se enseñe —km/h, min/km,
+ * vatios— depende del deporte, y eso ya lo sabe hacer quien pinta.
+ */
+export function rangoDe(z: ZonaEntrenador, referencia: number): { min: number; max: number } | null {
+  const ref = Number(referencia)
+  if (!Number.isFinite(ref) || ref <= 0) return null
+  const a = Number(z.pctMin), b = Number(z.pctMax)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  return { min: ref * a / 100, max: ref * b / 100 }
+}
