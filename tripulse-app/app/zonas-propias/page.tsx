@@ -101,26 +101,36 @@ export default function ZonasPropiasPage() {
     setDeportistas(deps || [])
     /* Se ESPERA a tener sus referencias antes de quitar el «Cargando…». Si no,
        las zonas colgadas de una referencia propia se pintan un instante como
-       «le falta el test», que es mentira y encima asusta. */
-    if ((deps || []).length && depActivo == null) await elegirDeportista(deps![0].id)
+       «le falta el test», que es mentira y encima asusta.
+
+       Y SE RECARGAN LOS TESTS AUNQUE YA HUBIERA UN ATLETA ELEGIDO. Antes esto
+       solo pasaba la primera vez, así que después de guardar unas zonas la
+       lista de referencias se quedaba con la foto de al abrir la pantalla: te
+       ibas a crear un test, volvías, y el desplegable seguía vacío sin que nada
+       fallara. */
+    const dep = depActivo ?? (deps || [])[0]?.id ?? null
+    if (dep != null) await elegirDeportista(dep)
     setCargando(false)
   }
 
   /** Las referencias del atleta: las de la app y las de los tests propios. */
   const elegirDeportista = async (id: number) => {
     setDepActivo(id)
-    const user = await usuarioActual()
-    const [r, { data: defs }] = await Promise.all([
-      cargarReferencias(supabase, id),
-      user
-        ? supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false)
-        : Promise.resolve({ data: [] as FilaDefinicion[] }),
-    ])
+    const r = await cargarReferencias(supabase, id)
     setRefs({
       vam: Number(r.tests?.vam) || 0,
       ftp: Number(r.tests?.ftp) || 0,
       css: Number(r.tests?.css) || 0,
     })
+    await recargarTests(id)
+  }
+
+  /** Los tests del entrenador con las mediciones de ese atleta. */
+  const recargarTests = async (id: number) => {
+    const user = await usuarioActual()
+    const { data: defs } = user
+      ? await supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false)
+      : { data: [] as FilaDefinicion[] }
 
     const filas: FilaDefinicion[] = defs || []
     const ids = filas.map(d => d.id)
@@ -139,6 +149,17 @@ export default function ZonasPropiasPage() {
       def: leerDefinicion(d), mediciones: porTest[d.id] || [],
     })))
   }
+
+  /* Al volver a esta pestaña se vuelven a pedir los tests. El camino normal es
+     justo ese: te vas a Tests propios, marcas un resultado como referencia y
+     vuelves. Sin esto, el desplegable te enseña la lista de hace diez minutos y
+     no hay forma de saber que está vieja. */
+  useEffect(() => {
+    if (depActivo == null) return
+    const alVolver = () => { if (document.visibilityState === 'visible') recargarTests(depActivo) }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
+  }, [depActivo])
 
   const decir = (tipo: 'ok' | 'mal', texto: string) => {
     setAviso({ tipo, texto })

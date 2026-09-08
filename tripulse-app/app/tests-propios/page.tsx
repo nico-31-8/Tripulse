@@ -555,7 +555,18 @@ export default function TestsPropiosPage() {
  * VAM, el FTP, el CSS- solo la que mida esa misma magnitud.
  */
 function Cabe({ deporte, r }: { deporte: string; r: ResultadoTest }) {
-  if (tipoDeAncla(r.ancla) === 'seguimiento') return null
+  /* EL CASO POR DEFECTO TAMBIÉN SE EXPLICA. «Solo seguimiento» es lo que sale
+     sin tocar nada, así que el camino más normal -creas un resultado y no bajas
+     el desplegable- daba algo que no sirve para colgar zonas sin decirlo en
+     ninguna parte: te enterabas en la otra pantalla, al encontrar el hueco
+     vacío. Callarse aquí era callarse justo donde había que hablar. */
+  if (tipoDeAncla(r.ancla) === 'seguimiento') {
+    return (
+      <p className="text-gray-500 text-[11px] mt-1.5 leading-snug">
+        ◦ Solo para su gráfica. Para colgarle zonas, márcalo como referencia.
+      </p>
+    )
+  }
   const v = puedeFijar(deporte, r)
   return v.destino
     ? <p className="text-green-300/80 text-[11px] mt-1.5 leading-snug">⚓ Podrás colgarle zonas y además fijar su {v.destino.nombre}.</p>
