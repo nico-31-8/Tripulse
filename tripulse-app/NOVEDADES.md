@@ -14,6 +14,30 @@ mismo día, antes de que se olvide. Lo nuevo va arriba.
 
 ## 6 de septiembre de 2026
 
+### Crear tus propios tests — en pruebas
+
+En **Herramientas → Tests propios** hay una pantalla nueva donde puedes montarte
+un test que la aplicación no trae. Defines qué datos se rellenan al pasarlo y
+qué sale de ellos.
+
+Un test puede sacar **varios resultados**, y unos pueden apoyarse en otros. De un
+test de 12 minutos salen la VAM (los metros entre 200), el ritmo (60 entre la
+VAM) y un umbral estimado (la VAM por 0,85): toca la primera fórmula y las otras
+dos se mueven detrás. También puedes tener resultados sueltos, que no le hacen
+falta a nadie más y están ahí para verlos avanzar en su gráfica.
+
+Cada resultado dice **para qué sirve**, y eso es lo que decide todo lo demás: si
+es un hito fisiológico (VO₂máx, umbral, velocidad máxima), una marca de
+referencia, o solo seguimiento.
+
+Se lo pasas a un atleta, guardas la medición del día, y abajo salen las gráficas
+de cómo va con el tiempo — una por resultado, porque la VAM va en km/h y el
+ritmo en minutos por kilómetro y mezclarlas en un eje no compararía nada.
+
+**Está en pruebas y vive aparte.** No toca la pantalla de tests que ya usas ni
+nada de lo demás: si no convence, se quita y todo queda como está. Todavía no
+puede gobernar las zonas de un atleta; eso viene después.
+
 ### Las pulsaciones de cada zona, mejor calculadas
 
 Hasta ahora la FC de una zona se sacaba de dos maneras distintas según el sistema

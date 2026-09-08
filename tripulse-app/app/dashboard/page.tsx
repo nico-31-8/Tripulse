@@ -530,6 +530,11 @@ export default function Dashboard() {
                         { ic: '🗑', l: 'Papelera', s: (metricas?.general?.papelera || 0) > 0 ? metricas!.general.papelera + ' en papelera' : 'Vacía', c: '#6b7280', h: '/papelera' },
                         { ic: '🤖', l: 'Asistente IA', s: 'Copiloto', c: '#f97316', h: '/asistente' },
                         { ic: '🤝', l: 'Comunidad', s: 'Conecta', c: '#22c55e', h: '/comunidad' },
+                        /* Tests propios. Va aquí y no entre las fichas de arriba a
+                           propósito: está en pruebas, vive en su propia pantalla y
+                           no toca nada de lo demás. Quitar esta línea lo saca de la
+                           vista sin dejar nada roto. */
+                        { ic: '🧪', l: 'Tests propios', s: 'En pruebas', c: '#a78bfa', h: '/tests-propios' },
                       ].map(t => (
                         <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
                           <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>
