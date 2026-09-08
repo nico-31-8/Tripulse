@@ -43,7 +43,9 @@ export default function PaginaNovedades() {
       <div className="min-h-screen bg-[#080b10] text-white flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
           <p className="text-gray-300">
-            {fuera ? 'Esta pantalla todavía no está disponible.' : error}
+            {/* El 403 ya no significa «aún no está lista»: ahora solo lo recibe
+                un deportista, y a él hay que decirle lo que pasa de verdad. */}
+            {fuera ? 'Las novedades cuentan lo que cambia para el entrenador. Tu entrenador te contará lo que te afecte.' : error}
           </p>
           <button onClick={() => router.push('/dashboard')}
             className="mt-5 text-orange-400 hover:text-orange-300 text-sm transition">

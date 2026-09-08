@@ -11,11 +11,21 @@
 // Aquí el candado está antes de que el texto salga: si quien pregunta no es de
 // plataforma, no se le manda nada.
 //
-// QUIÉN PUEDE. Se pregunta a `soy_plataforma()`, que ya existe y decide contra
-// la tabla `plataforma_admin`. No se compara ningún correo escrito en el
-// código: un correo a fuego se queda viejo el día que cambie, no se puede
-// añadir a nadie sin desplegar, y encima quedaría en el repositorio. Dar de
-// alta a otra persona es meter una fila en esa tabla.
+// QUIÉN PUEDE: CUALQUIER ENTRENADOR. Estuvo limitado a plataforma mientras
+// esto se probaba, pero el fichero se escribe PARA un entrenador y hay
+// entradas que otros necesitan leer tanto como quien las escribió: cuando se
+// corrigió el FTP del test de rampa, las zonas de ciclismo de TODOS bajaron un
+// 25 % de un día para otro. Guardarse esa explicación no protege nada; solo
+// deja al resto sin saber por qué a su atleta le cambiaron los vatios.
+//
+// NO SE ABRE AL DEPORTISTA, y no es un descuido: está escrito en el idioma del
+// que prescribe —«ya puedes prescribir con tus zonas»— y a quien entrena le
+// diría poco y le confundiría bastante. El día que haya novedades escritas
+// para él, serán otro texto y no este.
+//
+// El rol se pregunta a la base con el token de quien pregunta, igual que ya
+// hace /api/asistente. No se compara ningún correo escrito en el código: uno a
+// fuego se queda viejo el día que cambie y encima queda en el repositorio.
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { createClient } from '@supabase/supabase-js'
@@ -35,8 +45,8 @@ export async function GET(req: Request) {
 
   /* La comprobación la hace la base con el token de quien pregunta, no nosotros
      con un dato que nos hayan mandado. */
-  const { data: puede } = await sb.rpc('soy_plataforma')
-  if (!puede) return json({ error: 'Todavía no disponible.' }, 403)
+  const { data: perfil } = await sb.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+  if (perfil?.rol !== 'entrenador') return json({ error: 'Las novedades son para entrenadores.' }, 403)
 
   try {
     const md = await readFile(join(process.cwd(), 'NOVEDADES.md'), 'utf8')
