@@ -12,7 +12,7 @@
 //
 // Regla que no se toca: la IA NUNCA escribe en la base de datos. Propone; la app
 // escribe cuando el entrenador da el último clic.
-import { ZONAS_RESISTENCIA, ZONAS_FUERZA, cargaZona } from './zonas'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, cargaZona, esSupuesta } from './zonas'
 
 export interface BloquePropuesto {
   zona: string
@@ -93,9 +93,12 @@ export function avisosPropuesta(p: PropuestaSesion): string[] {
   const avisos: string[] = []
   if (!p.bloques.length) avisos.push('La propuesta no tiene bloques.')
 
-  // `cargaZona` cae a un valor por defecto con siglas que no conoce, así que no
-  // sirve para detectarlas: hay que mirar los catálogos directamente.
-  const desconocidas = p.bloques.filter(b => !ZONAS_RESISTENCIA.some(z => z.sigla === b.zona) && !ZONAS_FUERZA.some(z => z.sigla === b.zona))
+  /* Se lo pregunta a cargaZona, que ahora dice cuándo está suponiendo. Antes se
+     miraban los dos catálogos aquí a mano, porque cargaZona callaba — y esa
+     copia se saltaba Z1…Z7, así que un Z3 perfectamente válido salía avisado
+     como «zona que la app no reconoce». Tercera vez que la misma pregunta se
+     contestaba en un sitio distinto. */
+  const desconocidas = p.bloques.filter(b => esSupuesta(cargaZona(b.zona)))
   if (desconocidas.length) avisos.push('Zonas que la app no reconoce: ' + desconocidas.map(b => b.zona).join(', ') + '.')
 
   const sinVolumen = p.bloques.filter(b => !b.minutos && !b.metros)

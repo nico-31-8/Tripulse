@@ -425,28 +425,90 @@ export function nivelDeRpe(rpe: number): number {
   return ultimo
 }
 
+/**
+ * La copia de una zona que se congela en la tarea al prescribir.
+ *
+ * VIVE AQUÍ, en el fichero de abajo, y no con las zonas del entrenador. Es lo
+ * que permite que cargaZona() sepa resolver una zona propia sin que este
+ * fichero -del que cuelga media aplicación- tenga que saber nada de tests, de
+ * porcentajes ni de referencias: la copia trae la respuesta ya hecha.
+ */
+export interface CopiaZona {
+  sigla: string
+  nombre: string
+  color: string
+  rpe: number
+  nivel: number
+}
+
+/**
+ * De dónde salió la respuesta.
+ *
+ *   · clasica  — Z1…Z7
+ *   · app      — una sigla del catálogo (AEL, PAE, FMH…)
+ *   · copia    — la copia congelada en la tarea: una zona del entrenador
+ *   · supuesta — NO SE RECONOCIÓ NADA. Los números son un respaldo, no un dato.
+ */
+export type OrigenCarga = 'clasica' | 'app' | 'copia' | 'supuesta'
+
 export interface CargaZona {
+  origen: OrigenCarga
   nivel: number   // 1–7, zona clásica equivalente por RPE (altura de barra, ritmo, %)
   rpe: number     // RPE representativo (para UA)
   color: string   // color de la zona (real de Zonas 2, o clásico)
   nombre: string  // nombre de la zona
 }
 
-// Intensidad representativa de una zona. Acepta 'Z1'…'Z7' o siglas Zonas 2.
-export function cargaZona(sigla: string | null | undefined): CargaZona {
-  const fallback: CargaZona = { nivel: 2, rpe: RPE_CLASICO[1], color: COLOR_CLASICO[1], nombre: NOMBRE_CLASICO[1] }
-  if (!sigla) return fallback
+/**
+ * Intensidad representativa de una zona. Acepta 'Z1'…'Z7', las siglas del
+ * catálogo y —con la copia— cualquier zona que se haya inventado el entrenador.
+ *
+ * ESTA ES LA ÚNICA PUERTA, y que lo sea es el arreglo. Antes solo conocía las
+ * zonas de la app y, ante cualquier otra, devolvía nivel 2 y RPE 4,5 —los de
+ * Z2— SIN DECIR NADA. La llaman unas treinta pantallas: un tempo propio habría
+ * contado como aeróbico suave en la carga, en la curva de forma y en la altura
+ * de la barra del dibujo, y nadie se habría enterado.
+ *
+ * EL RESPALDO SIGUE DANDO UN NÚMERO, y no cero, a propósito. Casi todo lo que
+ * llama aquí multiplica —RPE × minutos—, y un cero borraría de la semana una
+ * sesión que sí se hizo: eso es otra mentira, y peor, porque se confunde con
+ * descanso. Lo que cambia es que ahora viene MARCADO como «supuesta», así que
+ * quien pinta puede decirlo y quien suma puede excluirlo.
+ */
+export function cargaZona(sigla: string | null | undefined, copia?: CopiaZona | null): CargaZona {
+  /* La copia manda sobre todo lo demás, incluso sobre el catálogo: si se
+     prescribió con una zona concreta, es esa la que se hizo. */
+  if (copia && String(copia.sigla ?? '').trim()) {
+    return {
+      origen: 'copia', nivel: Number(copia.nivel) || 0, rpe: Number(copia.rpe) || 0,
+      color: copia.color, nombre: copia.nombre,
+    }
+  }
+
+  const supuesta: CargaZona = {
+    origen: 'supuesta', nivel: 2, rpe: RPE_CLASICO[1],
+    color: '#6b7280', nombre: 'Zona desconocida',
+  }
+  if (!sigla) return supuesta
   const mz = sigla.match(/^[Zz]\s*(\d)/)
   if (mz) {
-    const n = Math.min(Math.max(parseInt(mz[1]), 1), 7)
-    return { nivel: n, rpe: RPE_CLASICO[n - 1], color: COLOR_CLASICO[n - 1], nombre: NOMBRE_CLASICO[n - 1] }
+    /* SOLO DEL 1 AL 7. Antes esto acotaba: un «Z9» salía como Z7, o sea el
+       bloque más duro que existe, sin decir nada. Y un «Z9» no lo escribe un
+       entrenador, lo escribe el asistente cuando se equivoca — que es justo
+       cuando hay que enterarse. Fuera de rango vuelve como supuesta. */
+    const n = parseInt(mz[1])
+    if (!(n >= 1 && n <= 7)) return supuesta
+    return { origen: 'clasica', nivel: n, rpe: RPE_CLASICO[n - 1], color: COLOR_CLASICO[n - 1], nombre: NOMBRE_CLASICO[n - 1] }
   }
   const zr = zonaResistencia(sigla)
-  if (zr) { const rpe = (zr.rpeMin + zr.rpeMax) / 2; return { nivel: nivelDeRpe(rpe), rpe, color: zr.color, nombre: zr.nombre } }
+  if (zr) { const rpe = (zr.rpeMin + zr.rpeMax) / 2; return { origen: 'app', nivel: nivelDeRpe(rpe), rpe, color: zr.color, nombre: zr.nombre } }
   const zf = zonaFuerza(sigla)
-  if (zf) { const rpe = (zf.rpeMin + zf.rpeMax) / 2; return { nivel: nivelDeRpe(rpe), rpe, color: zf.color, nombre: zf.nombre } }
-  return fallback
+  if (zf) { const rpe = (zf.rpeMin + zf.rpeMax) / 2; return { origen: 'app', nivel: nivelDeRpe(rpe), rpe, color: zf.color, nombre: zf.nombre } }
+  return supuesta
 }
+
+/** Si esos números son un dato o un respaldo. */
+export const esSupuesta = (c: CargaZona): boolean => c.origen === 'supuesta'
 
 // ------------------------------------------------------------
 // Ritmo objetivo de una tarea

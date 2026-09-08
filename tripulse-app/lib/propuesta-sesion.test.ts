@@ -59,6 +59,15 @@ describe('avisosPropuesta — la red de seguridad', () => {
   it('detecta zonas que la app no conoce', () => {
     const p = prop({ bloques: [{ zona: 'Z9', minutos: 30 }] })
     expect(avisosPropuesta(p).join(' ')).toMatch(/no reconoce/i)
+    expect(avisosPropuesta(prop({ bloques: [{ zona: 'TMP', minutos: 30 }] })).join(' ')).toMatch(/no reconoce/i)
+  })
+
+  it('UN Z3 NO ES UNA ZONA DESCONOCIDA', () => {
+    /* Lo era: esta comprobación miraba los dos catálogos a mano —porque
+       cargaZona no sabía avisar— y esa copia se saltaba Z1…Z7. El asistente
+       proponía un Z3 perfectamente válido y salía avisado como zona rara. */
+    const p = prop({ bloques: [{ zona: 'Z3', minutos: 30 }] })
+    expect(avisosPropuesta(p).join(' ')).not.toMatch(/no reconoce/i)
   })
   it('detecta bloques sin minutos ni metros', () => {
     const p = prop({ bloques: [{ zona: 'AEM', series: 4 }] })

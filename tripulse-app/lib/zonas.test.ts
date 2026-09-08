@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   zonaResistencia, prescripcion, pctVamZona, velNatacionZona, ritmoObjetivo,
-  tablaIntensidades, cargaZona, ZONAS_RESISTENCIA,
+  tablaIntensidades, cargaZona, esSupuesta, ZONAS_RESISTENCIA, ZONAS_FUERZA,
 } from './zonas'
 
 describe('zonaResistencia', () => {
@@ -84,6 +84,86 @@ describe('cargaZona', () => {
   })
   it('sigla desconocida cae al fallback (nivel 2)', () => {
     expect(cargaZona('???').nivel).toBe(2)
+  })
+
+  it('UN Z9 NO ES UN Z7', () => {
+    /* Antes se acotaba al rango: un «Z9» salía como Z7, el bloque más duro que
+       existe, sin decir nada. Y un Z9 no lo escribe un entrenador —lo escribe
+       el asistente cuando se equivoca—, que es justo cuando hay que enterarse. */
+    expect(cargaZona('Z9').origen).toBe('supuesta')
+    expect(cargaZona('Z0').origen).toBe('supuesta')
+    expect(cargaZona('Z7').nivel).toBe(7)
+    expect(cargaZona('Z1').nivel).toBe(1)
+  })
+
+  it('la z minúscula y con espacio siguen valiendo', () => {
+    // Hay una tarea guardada con «z6»: si dejara de resolverse, esa sesión
+    // cambiaría de carga sin que nadie hubiera tocado nada.
+    expect(cargaZona('z6').nivel).toBe(6)
+    expect(cargaZona('Z 4').nivel).toBe(4)
+  })
+
+  it('DICE DE DÓNDE SALE CADA RESPUESTA', () => {
+    expect(cargaZona('Z3').origen).toBe('clasica')
+    expect(cargaZona('AEM').origen).toBe('app')
+    expect(cargaZona('FMH').origen).toBe('app')
+    expect(cargaZona('???').origen).toBe('supuesta')
+    expect(cargaZona(null).origen).toBe('supuesta')
+  })
+
+  it('EL RESPALDO VIENE MARCADO — es el arreglo entero', () => {
+    /* El número no cambia: sigue siendo nivel 2 y RPE 4,5, porque casi todo lo
+       que llama aquí multiplica y un cero borraría de la semana una sesión que
+       sí se hizo. Lo que cambia es que ya no se puede confundir con un dato. */
+    const c = cargaZona('TMP')
+    expect(esSupuesta(c)).toBe(true)
+    expect(c.rpe).toBe(4.5)
+    expect(c.nombre).toBe('Zona desconocida')
+    expect(esSupuesta(cargaZona('AEL'))).toBe(false)
+  })
+
+  it('CON LA COPIA, UNA ZONA PROPIA SE RESUELVE BIEN', () => {
+    /* Es lo que hace que las treinta pantallas que llaman aquí dejen de mentir
+       con un tempo del entrenador: no tienen que aprender nada de zonas
+       propias, la respuesta viaja con la tarea. */
+    const copia = { sigla: 'TMP', nombre: 'Tempo largo', color: '#a78bfa', rpe: 6.5, nivel: 3 }
+    const c = cargaZona('TMP', copia)
+    expect(c.origen).toBe('copia')
+    expect(c.rpe).toBe(6.5)
+    expect(c.nivel).toBe(3)
+    expect(c.nombre).toBe('Tempo largo')
+    expect(esSupuesta(c)).toBe(false)
+  })
+
+  it('LA COPIA MANDA TAMBIÉN SOBRE EL CATÁLOGO', () => {
+    /* Lo que se mandó en marzo se mandó con lo que la zona valía en marzo.
+       Si el catálogo pudiera pisarla, cambiar una zona reescribiría el pasado. */
+    const copia = { sigla: 'AEL', nombre: 'Mi AEL', color: '#fff', rpe: 9, nivel: 6 }
+    expect(cargaZona('AEL', copia).rpe).toBe(9)
+  })
+
+  it('una copia vacía no es una copia', () => {
+    const c = cargaZona('AEL', { sigla: '  ', nombre: '', color: '', rpe: 0, nivel: 0 })
+    expect(c.origen).toBe('app')
+  })
+
+  it('SIN COPIA, TODAS SIGUEN DANDO EXACTAMENTE LO MISMO', () => {
+    /* GUARDIÁN. De estos números cuelgan la carga (RPE × minutos), la curva de
+       forma, la altura de las barras del dibujo y la duración estimada de todas
+       las sesiones YA GUARDADAS. Si una sola se mueve, se mueve el historial
+       entero de todos los atletas, hacia atrás y sin avisar. Están escritos uno
+       a uno a propósito: una fórmula aquí no vigilaría nada, se limitaría a
+       repetir el cambio. */
+    const foto = [...ZONAS_RESISTENCIA.map(z => z.sigla), ...ZONAS_FUERZA.map(z => z.sigla),
+                  'Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7']
+      .map(s => s + ':' + cargaZona(s).nivel + '/' + cargaZona(s).rpe)
+    expect(foto).toEqual([
+      'AER:1/2', 'AEL:2/3.5', 'AEM:2/5', 'AEI:3/6.5', 'PAE:4/7.5',
+      'CLA:5/8.5', 'PLA:6/9.5', 'CALA:6/9.5', 'PALA:7/10',
+      'AFG:3/5.5', 'FMI:5/9', 'FMH:4/8', 'FEC:4/8', 'FEA:5/9',
+      'RFMIX1:4/8', 'RFLA:5/9', 'RFMIX2:4/7.5', 'RFAE:3/6', 'FLEX:1/2',
+      'Z1:1/2.5', 'Z2:2/4.5', 'Z3:3/6.5', 'Z4:4/7.5', 'Z5:5/8.5', 'Z6:6/9.5', 'Z7:7/10',
+    ])
   })
 })
 

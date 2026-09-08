@@ -159,17 +159,39 @@ describe('la copia congelada', () => {
     expect(resolverBloque('TMP', null, MIAS).origen).toBe('mia')
   })
 
-  it('SIN COPIA Y SIN ZONA, SE DICE QUE NO SE RECONOCE — no se finge un Z2', () => {
-    /* Es lo que hace hoy cargaZona(): devuelve nivel 2 y RPE 4,5 sin avisar, y
-       un tempo acaba contando como aeróbico suave en la carga, en la curva de
-       forma y en el dibujo. Aquí vuelve marcado. */
+  it('SIN COPIA Y SIN ZONA, VUELVE MARCADA — que es lo que antes no pasaba', () => {
+    /* Lo que se arregló no es el número, es el silencio. cargaZona() devolvía
+       nivel 2 y RPE 4,5 sin decir nada, y un tempo propio acababa contando como
+       aeróbico suave en la carga, en la curva de forma y en el dibujo. */
     const r = resolverBloque('BORRADA', null, MIAS)
     expect(r.origen).toBe('desconocida')
-    expect(r.rpe).toBe(0)
-    expect(r.nivel).toBe(0)
-    expect(cargaDe(r, 30)).toBe(0)
-    // Y para que se vea la diferencia con lo de hoy:
-    expect(cargaZona('BORRADA').rpe).toBe(4.5)
+    expect(r.nombre).toBe('Zona desconocida')
+  })
+
+  it('EL RESPALDO DA NÚMERO, y no cero, a propósito', () => {
+    /* Las dos cosas serían suposiciones. La diferencia es que un cero borra de
+       la semana una sesión que sí se hizo, y eso se confunde con descanso. Se
+       da el número, se marca de dónde viene, y quien suma decide. */
+    const r = resolverBloque('BORRADA', null, MIAS)
+    expect(r.rpe).toBe(4.5)
+    expect(cargaDe(r, 30)).toBe(135)
+  })
+
+  it('Y SALE DEL MISMO SITIO QUE cargaZona, para que no puedan discrepar', () => {
+    const r = resolverBloque('BORRADA', null, MIAS)
+    const c = cargaZona('BORRADA')
+    expect(c.origen).toBe('supuesta')
+    expect([r.rpe, r.nivel, r.nombre]).toEqual([c.rpe, c.nivel, c.nombre])
+  })
+
+  it('UN Z3 YA NO ES UNA ZONA DESCONOCIDA', () => {
+    /* Lo era: esta resolución miraba los dos catálogos a mano y se saltaba
+       Z1…Z7, así que una sesión que mezclara un Z3 con una zona propia marcaba
+       el Z3 como desconocido. Salió al unificar las dos funciones. */
+    const r = resolverBloque('Z3', null, MIAS)
+    expect(r.origen).toBe('app')
+    expect(r.nivel).toBe(3)
+    expect(r.rpe).toBe(cargaZona('Z3').rpe)
   })
 
   it('una copia vacía no cuenta como copia', () => {

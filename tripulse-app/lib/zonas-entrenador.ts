@@ -20,7 +20,7 @@
 // contado como aeróbico suave en silencio es el fallo que este proyecto lleva
 // persiguiendo.
 
-import { ZONAS_RESISTENCIA, ZONAS_FUERZA, nivelDeRpe } from './zonas'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, nivelDeRpe, cargaZona, type CopiaZona } from './zonas'
 import { mismaRef, type RefPropia } from './referencia-propia'
 
 export interface ZonaEntrenador {
@@ -201,10 +201,13 @@ export function buscar(sigla: string, mias: ZonaEntrenador[], deporte?: string):
   const s = txt(sigla)
   if (!s) return null
 
-  const app = ZONAS_RESISTENCIA.find(z => z.sigla === s) || ZONAS_FUERZA.find(z => z.sigla === s)
-  if (app) {
-    const rpe = (app.rpeMin + app.rpeMax) / 2
-    return { sigla: s, nombre: app.nombre, color: app.color, rpe, nivel: nivelDeRpe(rpe), origen: 'app' }
+  /* LA PARTE DE LA APP SE DELEGA EN cargaZona. Antes se resolvía aquí a mano,
+     mirando solo los dos catálogos, y eso dejaba fuera Z1…Z7: una sesión que
+     mezclara un Z3 con una zona propia marcaba el Z3 como DESCONOCIDO. El mismo
+     concepto contestado en dos sitios, otra vez. Ahora hay uno. */
+  const c = cargaZona(s)
+  if (c.origen !== 'supuesta') {
+    return { sigla: s, nombre: c.nombre, color: c.color, rpe: c.rpe, nivel: c.nivel, origen: 'app' }
   }
 
   /* LA SIGLA SOLA NO IDENTIFICA UNA ZONA PROPIA: su clave es sigla + deporte.
@@ -223,14 +226,9 @@ export function buscar(sigla: string, mias: ZonaEntrenador[], deporte?: string):
   return { sigla: txt(z.sigla), nombre: z.nombre, color: z.color, rpe: f.rpe!, nivel: f.nivel!, origen: 'mia' }
 }
 
-/** La copia que se congela en la tarea al prescribir. */
-export interface CopiaZona {
-  sigla: string
-  nombre: string
-  color: string
-  rpe: number
-  nivel: number
-}
+/* La copia congelada vive en lib/zonas, que es de donde la lee cargaZona. Se
+   reexporta para no obligar a nadie a saber en cuál de los dos ficheros está. */
+export type { CopiaZona }
 
 export function copiaDe(sigla: string, mias: ZonaEntrenador[], deporte?: string): CopiaZona | null {
   const z = buscar(sigla, mias, deporte)
@@ -266,11 +264,17 @@ export function resolverBloque(
   }
   const viva = buscar(sigla, mias, deporte)
   if (viva) return viva
-  /* NO se finge un Z2. Quien llame decide qué hacer con una zona que ya no
-     existe, pero se entera de que no existe. */
+
+  /* NO SE FINGE QUE SE CONOCE, pero tampoco se devuelve un cero. Las dos cosas
+     son suposiciones; la diferencia es que un cero borraría de la semana una
+     sesión que sí se hizo, y eso se confunde con descanso. Se da el mismo
+     número que cargaZona -y del mismo sitio, para que no puedan discrepar- y se
+     marca «desconocida» para que quien pinte lo diga y quien sume pueda
+     excluirlo. */
+  const c = cargaZona(sigla)
   return {
-    sigla: txt(sigla), nombre: 'Zona desconocida', color: '#6b7280',
-    rpe: 0, nivel: 0, origen: 'desconocida',
+    sigla: txt(sigla), nombre: c.nombre, color: c.color,
+    rpe: c.rpe, nivel: c.nivel, origen: 'desconocida',
   }
 }
 
