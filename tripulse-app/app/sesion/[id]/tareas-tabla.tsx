@@ -432,13 +432,27 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   /* Se acota AL SOLTAR y no en cada tecla: acotando mientras escribes, el «7»
      de camino al «70» se convertiría en 65 delante de tus narices. */
-  const soltarPct = (i: number, f: FilaResistencia, cual: 'pctMin' | 'pctMax') => {
-    const z = zonaDeFila(f)
-    if (!z) return
-    const v = acotar(f[cual] ?? null, z.rango)
-    const otro = cual === 'pctMin' ? f.pctMax ?? null : f.pctMin ?? null
-    const cruza = v !== null && otro !== null && (cual === 'pctMin' ? v > otro : v < otro)
-    parcheR(i, cruza ? { pctMin: v, pctMax: v } : { [cual]: v })
+  const soltarPct = (i: number, cual: 'pctMin' | 'pctMax') => {
+    /* SE LEE DEL ESTADO VIVO, no de la fila que capturó este render.
+
+       Antes recibía la `f` del cierre y acotaba sobre ella. React agrupa las
+       actualizaciones, así que entre el onChange que escribe el número y el
+       blur que lo acota puede no haber repintado todavía: se acotaba el valor
+       ANTERIOR y el nuevo se quedaba tal cual. El resultado era que escribías
+       un 60 en una zona de 88–94 y ahí se quedaba, sin que nada fallara.
+
+       Salió pinchándolo en el navegador. Los tests de `acotar` pasaban y
+       siguen pasando: la cuenta estaba bien, lo que estaba mal era de dónde
+       venía el número. */
+    setFilasR(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      const z = zonaDeFila(f)
+      if (!z) return f
+      const v = acotar(f[cual] ?? null, z.rango)
+      const otro = cual === 'pctMin' ? f.pctMax ?? null : f.pctMin ?? null
+      const cruza = v !== null && otro !== null && (cual === 'pctMin' ? v > otro : v < otro)
+      return cruza ? { ...f, pctMin: v, pctMax: v } : { ...f, [cual]: v }
+    }))
   }
 
   /* Cambiar un valor de la franja. Se guarda en la sesión al vuelo: no hay
@@ -1363,7 +1377,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                               <div className={'flex items-center gap-1 flex-none ' + (zOfr ? '' : 'opacity-40')}>
                                 <input type="number" value={f.pctMin ?? ''} disabled={!zOfr}
                                   onChange={e => updateR(i, 'pctMin', e.target.value === '' ? null : Number(e.target.value))}
-                                  onBlur={() => soltarPct(i, f, 'pctMin')}
+                                  onBlur={() => soltarPct(i, 'pctMin')}
                                   title={zOfr ? textoRango(zOfr, seg) : ''}
                                   /* Sin las flechitas del navegador: se comían el tercer
                                      dígito y «120» se leía «12». */
@@ -1371,7 +1385,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                 <span className="text-gray-600 text-xs">–</span>
                                 <input type="number" value={f.pctMax ?? ''} disabled={!zOfr}
                                   onChange={e => updateR(i, 'pctMax', e.target.value === '' ? null : Number(e.target.value))}
-                                  onBlur={() => soltarPct(i, f, 'pctMax')}
+                                  onBlur={() => soltarPct(i, 'pctMax')}
                                   title={zOfr ? textoRango(zOfr, seg) : ''}
                                   className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
                                 <span className="text-gray-500 text-xs w-3">{seg ? 's' : '%'}</span>
