@@ -31,12 +31,8 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargarReferencias } from '@/lib/referencia-zona'
-import {
-  fichaDe, textoRpe, motivoNoUsable, usables, leerZonas, paraGuardar,
-  rangoDe, cargaDe, buscar, ZONA_NUEVA, COLORES_ZONA, DEPORTES_ZONA,
-  type ZonaEntrenador,
-} from '@/lib/zonas-entrenador'
-import { ZONAS_RESISTENCIA } from '@/lib/zonas'
+import { fichaDe, textoRpe, motivoNoUsable, leerZonas, paraGuardar, rangoDe, ZONA_NUEVA, COLORES_ZONA, DEPORTES_ZONA, type ZonaEntrenador } from '@/lib/zonas-entrenador'
+
 import { leerDefinicion } from '@/lib/test-definicion'
 import {
   opcionesDeRef, buscarOpcion, valorDe, tramoDe, leerValor,
@@ -168,6 +164,56 @@ export default function ZonasPropiasPage() {
 
   const parche = (i: number, cambios: Partial<ZonaEntrenador>) =>
     setZonas(zs => zs.map((z, k) => k === i ? { ...z, ...cambios } : z))
+
+  /* Qué deportes están plegados. TODOS ABIERTOS AL ENTRAR, y se pliega lo que
+     estorbe: al revés, un entrenador con zonas creadas abriría la pantalla y
+     no vería ninguna, que es peor problema que verlas todas. */
+  const [plegado, setPlegado] = useState<Record<string, boolean>>({})
+  const plegar = (d: string) => setPlegado(p => ({ ...p, [d]: !p[d] }))
+
+  /** Una zona nueva ya en su sitio: el deporte y la referencia del grupo. */
+  const anadirEn = (deporte: string, ref: ZonaEntrenador['ref']) =>
+    setZonas(zs => [...zs, { ...ZONA_NUEVA(zs.length, deporte), ref }])
+
+  /**
+   * Las zonas por deporte y, dentro, por la referencia de la que cuelgan.
+   *
+   * SE CONSERVA EL ÍNDICE ORIGINAL en cada fila, y no es un detalle: editar,
+   * borrar y validar una zona van por su posición en la lista. Agrupando sin
+   * llevárselo, tocar una fila editaría otra.
+   */
+  const agrupado = () => {
+    const conIndice = zonas.map((z, i) => ({ z, i }))
+    /* SE AGRUPA POR LOS DEPORTES QUE HAY, no por la lista de los tres. Si una
+       zona tuviera un deporte fuera de esa lista, agrupando solo por ella se
+       quedaría fuera de la pantalla: invisible, pero guardada y contando. Un
+       dato que existe y no se ve es peor que uno que falta. */
+    const deportes = [...DEPORTES_ZONA]
+    for (const { z } of conIndice) if (z.deporte && !deportes.includes(z.deporte)) deportes.push(z.deporte)
+
+    return deportes.map(deporte => {
+      const suyas = conIndice.filter(x => x.z.deporte === deporte)
+      const grupos: { clave: string; etiqueta: string; nota: string; ref: ZonaEntrenador['ref']; filas: typeof suyas }[] = []
+      for (const x of suyas) {
+        const clave = x.z.ref ? x.z.ref.idDefinicion + ':' + x.z.ref.indice : ''
+        let g = grupos.find(y => y.clave === clave)
+        if (!g) {
+          const o = x.z.ref ? buscarOpcion(opciones(deporte), x.z.ref) : null
+          g = {
+            clave, ref: x.z.ref, filas: [],
+            etiqueta: x.z.ref ? (o?.etiqueta ?? 'una referencia que ya no existe') : 'su ' + refApp(deporte),
+            nota: '',
+          }
+          grupos.push(g)
+        }
+        g.filas.push(x)
+      }
+      /* La nota —«= 76 s/100 · 8 sep»— se dice UNA VEZ por grupo. Repetirla en
+         cada fila es lo que hacía que veinte zonas parecieran un amasijo. */
+      for (const g of grupos) g.nota = saleDe(g.filas[0].z)?.nota ?? ''
+      return { deporte, grupos, cuantas: suyas.length }
+    }).filter(d => d.cuantas > 0)
+  }
 
   const anadir = () => setZonas(zs => [...zs, ZONA_NUEVA(zs.length, zs[zs.length - 1]?.deporte)])
 
@@ -306,11 +352,6 @@ export default function ZonasPropiasPage() {
 
         {/* ---- el editor ---- */}
         <div className={tarjeta}>
-          <div className="hidden md:grid gap-2 mb-2 text-gray-500 text-[10px] uppercase tracking-wider"
-            style={{ gridTemplateColumns: '104px 86px minmax(110px,1.3fr) 146px 164px minmax(120px,1fr) 28px' }}>
-            <span>Deporte</span><span>Sigla</span><span>Nombre</span><span>% de su referencia</span>
-            <span>RPE</span><span>Sale de ahí</span><span />
-          </div>
 
           {zonas.length === 0 && (
             <p className="text-gray-600 text-sm italic py-3">
@@ -318,97 +359,160 @@ export default function ZonasPropiasPage() {
             </p>
           )}
 
-          {zonas.map((z, i) => {
-            const pega = pegaDeZona(z, i)
-            const f = fichaDe(z)
-            const sale = saleDe(z)
-            const ops = opciones(z.deporte)
-            return (
-              <div key={i}
-                className={'grid gap-2 items-center rounded-xl border p-2.5 mb-2 ' +
-                  (pega ? 'border-red-500/40 bg-red-500/[0.04]' : 'border-gray-800 bg-[#161f2e]')}
-                style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
-                <div className="grid gap-2 items-center"
-                  style={{ gridTemplateColumns: '104px 86px minmax(110px,1.3fr) 146px 164px minmax(120px,1fr) 28px' }}>
-                  {/* Cambiar de deporte suelta la referencia: una zona de bici
-                      colgada de un número de natación no significa nada. */}
-                  <select className={campo} value={z.deporte}
-                    onChange={e => parche(i, { deporte: e.target.value, ref: null })}>
-                    {DEPORTES_ZONA.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <button title="Cambiar color" onClick={() => parche(i, {
-                      color: COLORES_ZONA[(COLORES_ZONA.indexOf(z.color) + 1) % COLORES_ZONA.length],
-                    })} className="w-3 h-3 rounded shrink-0 border border-white/20" style={{ background: z.color }} />
-                    <input className={(pega ? campoMal : campo) + ' font-mono uppercase'} value={z.sigla}
-                      maxLength={8} placeholder="TMP"
-                      onChange={e => parche(i, { sigla: e.target.value.toUpperCase() })} />
-                  </div>
-                  <input className={campo} value={z.nombre} placeholder="Tempo largo"
-                    onChange={e => parche(i, { nombre: e.target.value })} />
-                  <div className="flex gap-1 items-center">
-                    <input className={campo} type="number" value={z.pctMin}
-                      onChange={e => parche(i, { pctMin: Number(e.target.value) })} />
-                    <span className="text-gray-600 text-xs shrink-0">–</span>
-                    <input className={campo} type="number" value={z.pctMax}
-                      onChange={e => parche(i, { pctMax: Number(e.target.value) })} />
-                    <span className="text-gray-600 text-xs shrink-0">%</span>
-                  </div>
-                  <div className="flex gap-1 items-center">
-                    <input className={campo} type="number" step="0.5" placeholder="obligatorio"
-                      value={z.rpeMin ?? ''} onChange={e => parche(i, { rpeMin: e.target.value === '' ? null : Number(e.target.value) })} />
-                    {z.rpeMax != null && (<>
-                      <span className="text-gray-600 text-xs shrink-0">–</span>
-                      <input className={campo} type="number" step="0.5" value={z.rpeMax}
-                        onChange={e => parche(i, { rpeMax: e.target.value === '' ? null : Number(e.target.value) })} />
-                    </>)}
-                    <button onClick={() => alternarRpe(i)} className="shrink-0 bg-gray-800 border border-gray-700 text-gray-400 hover:text-white rounded-md text-[10.5px] px-1.5 py-1"
-                      title={z.rpeMax == null ? 'Pasar a un rango' : 'Pasar a un número suelto'}>
-                      {z.rpeMax == null ? 'nº' : '↔'}
-                    </button>
-                  </div>
-                  <div className="text-[11.5px] leading-snug tabular-nums">
-                    {pega
-                      ? <span className="text-red-300">⚠ {pega}</span>
-                      : <>
-                          <span className="text-gray-400">RPE <b className="text-white">{nEs(f.rpe!)}</b> · nivel <b className="text-white">{f.nivel}</b></span>
-                          {sale && <div className="text-gray-500">{sale.texto}</div>}
-                        </>}
-                  </div>
-                  <button onClick={() => quitar(i)} className="text-gray-600 hover:text-red-400 px-1">×</button>
-                </div>
+          {/* AGRUPADO POR DEPORTE Y, DENTRO, POR REFERENCIA.
 
-                {/* DE QUÉ NÚMERO ES ESE PORCENTAJE. En su propia línea y no en
-                    la rejilla de arriba: casi siempre se deja como está, pero
-                    cuando se cambia, cambia el significado de la zona entera. */}
-                <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                  <span className="text-gray-500 text-[10px] uppercase tracking-wider shrink-0">El % es de</span>
-                  <select
-                    className={campo + ' text-[12px]'} style={{ maxWidth: 260 }}
-                    value={z.ref ? z.ref.idDefinicion + ':' + z.ref.indice : ''}
-                    onChange={e => {
-                      const v = e.target.value
-                      if (!v) { parche(i, { ref: null }); return }
-                      const [d, n] = v.split(':')
-                      parche(i, { ref: { idDefinicion: Number(d), indice: Number(n) } })
-                    }}>
-                    <option value="">Su {refApp(z.deporte)} — la referencia de la app</option>
-                    {ops.map(o => (
-                      <option key={o.ref.idDefinicion + ':' + o.ref.indice}
-                        value={o.ref.idDefinicion + ':' + o.ref.indice}>{o.etiqueta}</option>
+              Con tres deportes, varias referencias por deporte y una escalera de
+              zonas colgando de cada una, una lista plana son treinta filas que se
+              leen todas igual — y con «6x100 · Ritmo100 = 76 s/100 · 8 sep»
+              repetido idéntico debajo de cada una.
+
+              Así la referencia se dice UNA VEZ, como cabecera de las zonas que
+              cuelgan de ella, y cada deporte se pliega cuando no lo estás
+              tocando. */}
+          {agrupado().map(d => {
+            const cerrado = !!plegado[d.deporte]
+            return (
+              <div key={d.deporte} className="mb-3 rounded-xl border border-gray-800 overflow-hidden">
+                <button onClick={() => plegar(d.deporte)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] transition text-left">
+                  <span className={'text-gray-500 text-xs transition-transform ' + (cerrado ? '' : 'rotate-90')}>▶</span>
+                  <span className="font-semibold text-[13.5px]">{d.deporte}</span>
+                  <span className="text-gray-600 text-[11.5px]">{d.cuantas} {d.cuantas === 1 ? 'zona' : 'zonas'}</span>
+                  {/* Plegado, las siglas siguen viéndose: es lo que te dice si lo
+                      que buscas está ahí dentro sin tener que abrirlo. */}
+                  <span className="flex gap-1 flex-wrap ml-auto">
+                    {d.grupos.flatMap(g => g.filas).map(({ z, i }) => (
+                      <span key={i} className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
+                        style={{ color: z.color, background: z.color + '1f' }}>{z.sigla || '—'}</span>
                     ))}
-                  </select>
-                  {sale?.nota && <span className="text-gray-600 text-[11px] truncate">{sale.nota}</span>}
-                  {!ops.length && (
-                    <span className="text-gray-700 text-[11px]">
-                      (no tienes tests de {z.deporte.toLowerCase()} con referencias)
-                    </span>
-                  )}
-                </div>
+                  </span>
+                </button>
+
+                {!cerrado && (
+                  <div className="p-2.5">
+                    {d.grupos.map(g => (
+                      <div key={g.clave} className="mb-3 last:mb-0">
+                        <div className="flex items-baseline gap-2 flex-wrap mb-1.5 pl-0.5">
+                          <span className="text-gray-500 text-[10px] uppercase tracking-wider">El % es de</span>
+                          <span className={'text-[12.5px] ' + (g.ref ? 'text-violet-300' : 'text-gray-300')}>
+                            {g.ref ? '◈ ' : ''}{g.etiqueta}
+                          </span>
+                          {g.nota && <span className="text-gray-600 text-[11px]">{g.nota}</span>}
+                        </div>
+
+                        {/* Los rótulos, dentro del grupo: es donde cuadran con las
+                            filas. Uno solo arriba del todo dejó de alinear en cuanto
+                            las filas pasaron a vivir dentro de dos niveles. */}
+                        <div className="hidden md:grid gap-2 mb-1 px-2.5 text-gray-600 text-[9.5px] uppercase tracking-wider"
+                          style={{ gridTemplateColumns: '86px minmax(110px,1.3fr) 146px 164px minmax(120px,1fr) 28px' }}>
+                          <span>Sigla</span><span>Nombre</span><span>% de la referencia</span>
+                          <span>RPE</span><span>Le sale</span><span />
+                        </div>
+
+                        {g.filas.map(({ z, i }) => {
+                          const pega = pegaDeZona(z, i)
+                          const f = fichaDe(z)
+                          const sale = saleDe(z)
+                          const ops = opciones(z.deporte)
+                          return (
+                            <div key={i}
+                              className={'grid gap-2 items-center rounded-xl border p-2.5 mb-2 ' +
+                                (pega ? 'border-red-500/40 bg-red-500/[0.04]' : 'border-gray-800 bg-[#161f2e]')}
+                              style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+                              <div className="grid gap-2 items-center"
+                                style={{ gridTemplateColumns: '86px minmax(110px,1.3fr) 146px 164px minmax(120px,1fr) 28px' }}>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <button title="Cambiar color" onClick={() => parche(i, {
+                                    color: COLORES_ZONA[(COLORES_ZONA.indexOf(z.color) + 1) % COLORES_ZONA.length],
+                                  })} className="w-3 h-3 rounded shrink-0 border border-white/20" style={{ background: z.color }} />
+                                  <input className={(pega ? campoMal : campo) + ' font-mono uppercase'} value={z.sigla}
+                                    maxLength={8} placeholder="TMP"
+                                    onChange={e => parche(i, { sigla: e.target.value.toUpperCase() })} />
+                                </div>
+                                <input className={campo} value={z.nombre} placeholder="Tempo largo"
+                                  onChange={e => parche(i, { nombre: e.target.value })} />
+                                <div className="flex gap-1 items-center">
+                                  <input className={campo} type="number" value={z.pctMin}
+                                    onChange={e => parche(i, { pctMin: Number(e.target.value) })} />
+                                  <span className="text-gray-600 text-xs shrink-0">–</span>
+                                  <input className={campo} type="number" value={z.pctMax}
+                                    onChange={e => parche(i, { pctMax: Number(e.target.value) })} />
+                                  <span className="text-gray-600 text-xs shrink-0">%</span>
+                                </div>
+                                <div className="flex gap-1 items-center">
+                                  <input className={campo} type="number" step="0.5" placeholder="obligatorio"
+                                    value={z.rpeMin ?? ''} onChange={e => parche(i, { rpeMin: e.target.value === '' ? null : Number(e.target.value) })} />
+                                  {z.rpeMax != null && (<>
+                                    <span className="text-gray-600 text-xs shrink-0">–</span>
+                                    <input className={campo} type="number" step="0.5" value={z.rpeMax}
+                                      onChange={e => parche(i, { rpeMax: e.target.value === '' ? null : Number(e.target.value) })} />
+                                  </>)}
+                                  <button onClick={() => alternarRpe(i)} className="shrink-0 bg-gray-800 border border-gray-700 text-gray-400 hover:text-white rounded-md text-[10.5px] px-1.5 py-1"
+                                    title={z.rpeMax == null ? 'Pasar a un rango' : 'Pasar a un número suelto'}>
+                                    {z.rpeMax == null ? 'nº' : '↔'}
+                                  </button>
+                                </div>
+                                <div className="text-[11.5px] leading-snug tabular-nums">
+                                  {pega
+                                    ? <span className="text-red-300">⚠ {pega}</span>
+                                    : <>
+                                        <span className="text-gray-400">RPE <b className="text-white">{nEs(f.rpe!)}</b> · nivel <b className="text-white">{f.nivel}</b></span>
+                                        {sale && <div className="text-gray-500">{sale.texto}</div>}
+                                      </>}
+                                </div>
+                                <button onClick={() => quitar(i)} className="text-gray-600 hover:text-red-400 px-1">×</button>
+                              </div>
+
+                              {/* MOVERLA DE SITIO. El deporte y la referencia ya los
+                                  dice el grupo, así que aquí no informan: son los dos
+                                  controles con los que se cambia de grupo, y por eso
+                                  siguen estando. Apagados hasta que se tocan. */}
+                              <details className="group">
+                                <summary className="text-gray-600 hover:text-gray-400 text-[11px] cursor-pointer select-none list-none">
+                                  ⇄ Mover a otro deporte o referencia
+                                </summary>
+                                <div className="flex items-center gap-2 flex-wrap pt-2">
+                                  <select className={campo + ' text-[12px]'} style={{ maxWidth: 130 }} value={z.deporte}
+                                    onChange={e => parche(i, { deporte: e.target.value, ref: null })}>
+                                    {DEPORTES_ZONA.map(dd => <option key={dd} value={dd}>{dd}</option>)}
+                                  </select>
+                                  <select
+                                    className={campo + ' text-[12px]'} style={{ maxWidth: 260 }}
+                                    value={z.ref ? z.ref.idDefinicion + ':' + z.ref.indice : ''}
+                                    onChange={e => {
+                                      const v = e.target.value
+                                      if (!v) { parche(i, { ref: null }); return }
+                                      const [dd, nn] = v.split(':')
+                                      parche(i, { ref: { idDefinicion: Number(dd), indice: Number(nn) } })
+                                    }}>
+                                    <option value="">Su {refApp(z.deporte)} — la referencia de la app</option>
+                                    {ops.map(o => (
+                                      <option key={o.ref.idDefinicion + ':' + o.ref.indice}
+                                        value={o.ref.idDefinicion + ':' + o.ref.indice}>{o.etiqueta}</option>
+                                    ))}
+                                  </select>
+                                  {!ops.length && (
+                                    <span className="text-gray-700 text-[11px]">
+                                      (no tienes tests de {z.deporte.toLowerCase()} con referencias)
+                                    </span>
+                                  )}
+                                </div>
+                              </details>
+                            </div>
+                          )
+                        })}
+
+                        <button onClick={() => anadirEn(d.deporte, g.ref)}
+                          className="text-gray-500 hover:text-orange-400 text-[11.5px] transition pl-0.5">
+                          + Añadir zona a esta referencia
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}
-
           <div className="flex items-center gap-3 flex-wrap mt-3">
             <button onClick={anadir} className={btnSec}>+ Añadir zona</button>
             <button onClick={guardar} disabled={guardando || zonas.length === 0} className={btn}>
@@ -483,94 +587,18 @@ export default function ZonasPropiasPage() {
           )}
         </div>
 
-        {/* ---- mezcladas con las de la app ---- */}
-        {listas.length > 0 && <Mezcla mias={zonas} />}
-
+        {/* Aquí vivían una sesión de mentira que mezclaba zonas de las dos
+            bibliotecas y un recuadro de «lo que falta». Los dos prometían un paso
+            siguiente —poder prescribir con estas zonas— que ya está hecho, así que
+            el segundo había pasado de ser una advertencia a ser mentira. Lo que
+            enseña para qué sirven ahora es el editor de sesión, con datos de
+            verdad; una maqueta al lado solo compite con él. */}
         <div className="bg-gray-900/60 border border-gray-800 rounded-2xl px-5 py-4 text-[12.5px] text-gray-400 leading-relaxed">
-          <b className="text-gray-300">Lo que falta.</b> Estas zonas todavía <b>no salen en el desplegable
-          de una tarea</b>: aquí se crean y se comprueba qué le salen a cada atleta, pero prescribir con
-          ellas es el paso siguiente. Es el primero de todo esto que toca una pantalla que usas a diario,
-          así que se hace aparte y hablándolo antes.
+          <b className="text-gray-300">Ya se prescriben.</b> Estas zonas salen en el desplegable de una
+          tarea, junto a las de la aplicación: en la ficha de sesión eliges el deporte, la referencia y
+          la zona. Aquí las creas y compruebas qué ritmos le salen a cada atleta.
         </div>
       </div>
     </main>
-  )
-}
-
-/**
- * Una sesión de mentira con zonas de las dos bibliotecas.
- *
- * Está aquí porque es lo único que enseña de verdad para qué sirve todo esto:
- * un bloque en AEL y el siguiente en una zona tuya, sumando a la misma carga.
- */
-function Mezcla({ mias }: { mias: ZonaEntrenador[] }) {
-  /* Una sesion es de UN deporte, asi que el desplegable solo ofrece las de ese
-     deporte — igual que hara el editor de verdad. */
-  const [deporte, setDeporte] = useState('Carrera')
-  const listas = usables(mias, deporte)
-  const [bloques, setBloques] = useState<{ zona: string; min: number }[]>([
-    { zona: 'AEL', min: 30 },
-    { zona: listas[0]?.sigla ?? 'AEM', min: 20 },
-  ])
-
-  const campo = 'bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 w-full'
-  let total = 0
-
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-      <p className="font-bold text-[15px] mb-0.5">Mezcladas en una sesión</p>
-      <div className="flex justify-between items-end gap-3 flex-wrap mb-4">
-        <p className="text-gray-500 text-xs max-w-md">
-          Un bloque de la app y otro tuyo, sumando a la misma carga. Es lo que se podrá hacer en el
-          editor cuando demos el paso siguiente.
-        </p>
-        <select className={campo + ' max-w-[150px]'} value={deporte} onChange={e => setDeporte(e.target.value)}>
-          {DEPORTES_ZONA.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
-      </div>
-
-      {bloques.map((b, i) => {
-        const r = buscar(b.zona, mias, deporte)
-        const carga = r ? cargaDe(r, b.min) : 0
-        total += carga
-        return (
-          <div key={i} className="grid gap-2 items-center mb-2"
-            style={{ gridTemplateColumns: 'minmax(150px,1.6fr) 88px 56px 52px 70px 26px' }}>
-            <select className={campo} value={b.zona}
-              onChange={e => setBloques(bs => bs.map((x, k) => k === i ? { ...x, zona: e.target.value } : x))}>
-              {/* Las de la app valen en los tres deportes: su porcentaje ya esta
-                  definido por deporte dentro del catalogo. Las mias no, y por eso
-                  esas si van filtradas. */}
-              <optgroup label="De la app">
-                {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
-              </optgroup>
-              {listas.length > 0 && (
-                <optgroup label="Mías">
-                  {listas.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
-                </optgroup>
-              )}
-            </select>
-            <input className={campo} type="number" value={b.min}
-              onChange={e => setBloques(bs => bs.map((x, k) => k === i ? { ...x, min: Number(e.target.value) } : x))} />
-            <span className="text-gray-300 text-xs tabular-nums">{r ? nEs(r.rpe) : '—'}</span>
-            <span className="text-gray-300 text-xs tabular-nums flex items-center gap-1.5">
-              {r && <span className="w-2.5 h-2.5 rounded-sm" style={{ background: r.color }} />}{r?.nivel ?? '—'}
-            </span>
-            <span className="text-white text-xs font-bold tabular-nums">{carga}</span>
-            <button onClick={() => setBloques(bs => bs.filter((_, k) => k !== i))}
-              className="text-gray-600 hover:text-red-400">×</button>
-          </div>
-        )
-      })}
-
-      <div className="flex justify-between items-baseline mt-3 pt-3 border-t border-gray-700">
-        <button onClick={() => setBloques(bs => [...bs, { zona: 'AER', min: 10 }])}
-          className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-xs px-3 py-1.5 rounded-lg transition">
-          + Bloque
-        </button>
-        <span className="text-gray-400 text-xs">Carga de la sesión
-          <b className="text-orange-400 text-xl ml-2 tabular-nums">{total} UA</b></span>
-      </div>
-    </div>
   )
 }

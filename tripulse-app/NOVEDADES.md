@@ -16,6 +16,26 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 9 de septiembre de 2026
 
+### Zonas propias, ordenadas por deporte
+
+Con tres deportes, varias referencias en cada uno y una escalera de zonas
+colgando de cada referencia, la pantalla era una lista plana de veinte o treinta
+filas que se leían todas igual.
+
+Ahora **cada deporte es una sección que se pliega**, y dentro las zonas van
+agrupadas por la referencia de la que cuelgan. Esa referencia se dice **una sola
+vez**, como cabecera del grupo, en vez de repetirse idéntica debajo de cada zona.
+
+Plegado, las siglas se siguen viendo con su color en la cabecera: es lo que te
+dice si lo que buscas está ahí dentro sin abrirlo. Al entrar está todo abierto.
+
+Y el **+ Añadir zona** va por grupo: la zona nace ya con su deporte y su
+referencia puestos, que es de lo que más se repite al montar una escalera.
+
+Para mover una zona a otro deporte o a otra referencia, cada fila tiene un
+**⇄ Mover**. Está plegado porque el grupo ya dice ambas cosas: ahí no informan,
+solo sirven para cambiarlas.
+
 ### Ya puedes prescribir con tus zonas
 
 Es el paso que faltaba. Hasta ahora te creabas tus tests y tus zonas y se
