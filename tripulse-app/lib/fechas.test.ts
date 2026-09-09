@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  soloDia, fechaValida, aISO, sumarDias, diasEntre, sumarSemanas, semanasEntre,
+  soloDia, fechaValida, aISO, sumarDias, diasEntre, sumarSemanas, semanasEntre, semanaQueContiene,
   indiceDia, lunesDe, proximoLunes, fechaLarga, fechaLargaCompleta, rangoLegible, calcularEdad,
 } from './fechas'
 
@@ -162,5 +162,49 @@ describe('«hoy» es local y el resto es UTC', () => {
   it('la aritmética da igual desde dónde se mire', () => {
     expect(sumarDias('2026-08-19', 1)).toBe('2026-08-20')
     expect(lunesDe('2026-08-23')).toBe('2026-08-17')
+  })
+})
+
+describe('semanaQueContiene', () => {
+  const INICIO = '2026-08-17' // lunes
+
+  it('el propio lunes de inicio es la semana 0', () => {
+    expect(semanaQueContiene(INICIO, '2026-08-17')).toBe(0)
+  })
+
+  it('cualquier día de esa primera semana sigue siendo la 0', () => {
+    for (const d of ['2026-08-18', '2026-08-20', '2026-08-22', '2026-08-23']) {
+      expect(semanaQueContiene(INICIO, d)).toBe(0)
+    }
+  })
+
+  it('el lunes siguiente ya es la semana 1', () => {
+    expect(semanaQueContiene(INICIO, '2026-08-24')).toBe(1)
+  })
+
+  /* EL CASO QUE LO MOTIVA. Una carrera el domingo 13 de septiembre está en la
+     semana que empezó el lunes 7 (la 3). Son 27 días, y redondear 27/7 da 4:
+     con `semanasEntre` la carrera aparecía una semana más tarde de la real. */
+  it('una fecha de la segunda mitad de la semana NO se va a la siguiente', () => {
+    expect(semanaQueContiene(INICIO, '2026-09-13')).toBe(3)
+    expect(semanasEntre(INICIO, '2026-09-13')).toBe(4)
+  })
+
+  it('de lunes a domingo, los siete días dan la misma semana', () => {
+    const dias = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13']
+    expect(dias.map(d => semanaQueContiene(INICIO, d))).toEqual([3, 3, 3, 3, 3, 3, 3])
+  })
+
+  it('coincide con semanasEntre cuando la fecha cae en lunes', () => {
+    for (let i = 0; i < 12; i++) {
+      const lunes = sumarSemanas(INICIO, i)
+      expect(semanaQueContiene(INICIO, lunes)).toBe(semanasEntre(INICIO, lunes))
+    }
+  })
+
+  it('antes del inicio da negativo, no cero', () => {
+    expect(semanaQueContiene(INICIO, '2026-08-16')).toBe(-1)
+    expect(semanaQueContiene(INICIO, '2026-08-10')).toBe(-1)
+    expect(semanaQueContiene(INICIO, '2026-08-09')).toBe(-2)
   })
 })

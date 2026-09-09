@@ -16,6 +16,126 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 9 de septiembre de 2026
 
+### La pantalla de la semana ya enseña la competición
+
+Al abrir una semana para repartirle las sesiones no se veía que hubiera
+carrera: esa pantalla **no sabía que las competiciones existían**. Se colocaban
+siete días sin ver que el domingo había una.
+
+Ahora salen en dos sitios, y los dos hacen falta:
+
+- **Un aviso arriba del todo**, antes de la carga y de las unidades: nombre,
+  qué día cae, su prioridad y **lo que pide de descarga** (10–21 días si es
+  principal, 5–7 si es secundaria, nada si es de entrenamiento). Va arriba
+  porque es lo que decide cómo se reparte TODA la semana: con una principal el
+  domingo, el lunes ya estás en tapering, y eso no se ve mirando el domingo.
+- **El día, pintado de su color** (🏆 amarillo, 🥈 azul, 🎽 gris) con el nombre
+  de la carrera bajo el número.
+
+«Hoy» se sigue marcando en el borde de la tarjeta, así que no se pierde aunque
+hoy sea el día de la carrera.
+
+### Entrar a colocar las sesiones de una semana ya no depende de la barra
+
+**Esto era un fallo con cara de incomodidad.** Para abrir una semana y colocarle
+las sesiones había que pinchar la barra naranja de la carga, esperar al
+desplegable y darle a «+ Añadir sesiones». Y el desplegable **solo salía si la
+semana ya tenía UA**: a una semana sin carga no se podía entrar de ninguna
+manera. Había que ponerle carga primero para que te dejara meterle sesiones,
+que es justo al revés de como se planifica. En un plan de doce semanas con
+cinco dibujadas, siete no tenían puerta.
+
+Ahora hay **una fila propia debajo de los chips**, con una celda por semana:
+dice cuántas sesiones tiene ya (`✎ 6`) o **`+ sesiones`** si está vacía, y al
+pincharla abre esa semana. Siempre visible, sin pasar por la barra.
+
+No es una fila nueva: es la que ya estaba ahí contando los chips de cada semana
+sin hacer nada al pincharla. Está pegada a las sesiones, que es de lo que va esa
+pantalla, y no a la carga, que es otra cosa.
+
+De paso, el desplegable de la barra ya no exige que la semana tenga UA. Antes,
+al pasar el ratón por una semana vacía salía un botón flotante con su número que
+al pulsarlo no hacía nada, porque lo que abría no llegaba a existir.
+
+### La barra de carga se agarra por toda la columna
+
+Para subirle las UA a una semana había que arrastrar la barra naranja, y la
+barra medía lo que valía la semana: en una semana sin UA eran **tres píxeles**
+de alto. Acertarle era el trabajo.
+
+Ahora **se agarra en cualquier punto de la columna**, de arriba abajo, y el
+cursor cambia a la flecha de arriba-abajo al pasar por encima para que se note
+dónde. Al pasar el ratón aparece además un tirador en el borde alto de la
+barra. Los botones de abajo —el número y la x de borrar— siguen siendo suyos y
+no quedan tapados.
+
+Con la zona de agarre grande hacía falta algo más: **un umbral**. La barra mide
+180 píxeles y representa el pico del plan, así que en un plan de 4.000 UA cada
+píxel son 22, y como el valor va de 25 en 25, **mover el ratón un solo píxel ya
+cambiaba la semana**. Antes daba igual, porque rozar una raya de tres píxeles
+sin querer era imposible. Ahora hay que mover cuatro píxeles antes de que el
+número se mueva: por debajo de eso es un clic, no un arrastre.
+
+Por lo mismo, **soltar después de arrastrar ya no abre el desplegable**. El
+navegador manda el clic igual al soltar, y saltaba cada vez que terminabas de
+mover una barra.
+
+### Las competiciones ya se ven en la planificación visual
+
+**Esto era un fallo, y de los que no avisan.** El lienzo sabía pintar la
+bandera de una carrera, pero solo se enteraba de que existían **después de
+crear o borrar una desde esa misma pantalla**. Al abrirlo, la lista arrancaba
+vacía y se quedaba vacía: una competición metida desde el calendario no
+aparecía ahí jamás. Nada fallaba, simplemente no estaba.
+
+Ahora se cargan al abrir, y además se ven de verdad:
+
+- Una **banda arriba del todo** con el nombre y la fecha de cada carrera,
+  colocada sobre su semana. Si dos caen juntas, se reparten en varias filas en
+  vez de pisarse; la de la última semana se pega al borde en vez de salirse.
+- Una **columna de color** en su semana, del color de la prioridad (🏆
+  principal, 🥈 secundaria, 🎽 de entrenamiento), que baja por el macro, el
+  meso y la fila de semanas. Ahí se para: cruzando el lienzo entero, con cinco
+  carreras el dibujo quedaba a rayas y las columnas competían con las barras
+  de carga, que es lo que hay que mirar.
+- Un **aviso de las que se quedan fuera**, abajo, junto a la lista. Es el que
+  más falta hacía: una carrera posterior al final del plan significa que la
+  temporada se acaba antes que el objetivo para el que se hizo, y mirando el
+  dibujo no había forma de enterarse.
+
+### Corregido: las carreras salían una semana más tarde de la real
+
+**Esto movía un número que ya estabas viendo.** «¿En qué semana del plan cae
+esta carrera?» se contestaba en cuatro sitios —la medalla de la fila de
+semanas, el panel de la derecha, el PDF y el aviso al crear la competición— y
+tres de ellos **redondeaban**: cualquier carrera de jueves en adelante se
+contaba en la semana siguiente.
+
+Una carrera el domingo 13 de septiembre, con el plan empezado el 17 de agosto,
+son 27 días: redondeando salen 4 semanas, pero el domingo 13 pertenece a la
+semana que empezó el lunes 7, que es la 4ª (S4), no la 5ª. El panel decía
+«Semana 5» y la medalla se pintaba en la S4. La medalla tenía razón.
+
+Peor todavía al crearlas: al pinchar una semana para meter una carrera, la app
+proponía **el domingo** de esa semana — y acto seguido te decía que caía en la
+siguiente.
+
+Ahora los cuatro preguntan lo mismo y contestan lo mismo. **Si tenías carreras
+de jueves a domingo, la semana que la app te decía era una de más**: mira que
+el tapering que hayas montado cuente desde la semana correcta.
+
+### Cada semana dice de cuándo es
+
+La fila de microciclos ponía «S1, S2, S3…» y todas se leían igual: para saber
+de qué fecha hablabas había que contar semanas con el dedo desde el principio.
+Ahora pone **«S9 · 29 jun»**. También se marca en gris **la semana en la que
+estamos hoy**.
+
+De paso, las fechas del lienzo estaban escritas de dos formas —«29 jun» arriba
+y «29/6» abajo—. Se queda una sola, con el mes en letra: así no hay que
+pararse a pensar si el 6 es junio o el día.
+
+
 ### Zonas propias, ordenadas por deporte
 
 Con tres deportes, varias referencias en cada uno y una escalera de zonas

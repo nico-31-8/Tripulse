@@ -75,9 +75,33 @@ export function sumarSemanas(iso: string, semanas: number): string {
   return sumarDias(iso, semanas * 7)
 }
 
-/** Semanas enteras entre dos fechas. Redondea, así que el desfase horario da igual. */
+/**
+ * Semanas enteras entre dos fechas. Redondea, así que el desfase horario da igual.
+ *
+ * SIRVE PARA FECHAS QUE CAEN EN LUNES: el inicio de un macrociclo, de un
+ * mesociclo, de un microciclo. Para saber en qué semana cae una fecha
+ * cualquiera —una competición, por ejemplo— es `semanaQueContiene`, que no es
+ * lo mismo y no da lo mismo.
+ */
 export function semanasEntre(desde: string, hasta: string): number {
   return Math.round(diasEntre(desde, hasta) / 7)
+}
+
+/**
+ * En qué semana del plan cae esta fecha. 0 = la primera.
+ *
+ * NO ES `semanasEntre`. Aquella REDONDEA, y con una fecha cualquiera redondear
+ * miente: una carrera el domingo 13 de septiembre pertenece a la semana que
+ * empezó el lunes 7, pero son 27 días desde el inicio y `Math.round(27/7)` la
+ * manda a la semana siguiente. De jueves en adelante, todas se iban una semana.
+ *
+ * Se notaba: en el lienzo de periodización la medalla salía sobre una semana y
+ * la etiqueta de esa misma carrera sobre la de al lado, porque cada una
+ * preguntaba por su cuenta. Truncar es lo que quiere decir «la semana que la
+ * contiene».
+ */
+export function semanaQueContiene(inicio: string, fecha: string): number {
+  return Math.floor(diasEntre(inicio, fecha) / 7)
 }
 
 /** 0 = lunes … 6 = domingo. La semana de la app empieza en lunes. */

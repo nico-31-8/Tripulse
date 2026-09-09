@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { seriesPorGrupo, totalSeries as sumaSeries } from '@/lib/series-por-grupo'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { semanasEntre } from '@/lib/fechas'
+import { semanasEntre, semanaQueContiene, hoyISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
@@ -26,6 +26,8 @@ import type { ResultadoDuracion } from '@/lib/duracion'
 import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
 import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
+import { colocarBanda, filasBanda, columnasPorSemana } from '@/lib/banda-competiciones'
+import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -91,10 +93,24 @@ function mesoOpts(tipo: string): string[] {
   if (tipo === 'Ondulatoria') return ['Carga alta', 'Carga media', 'Recuperación']
   return ['Acumulación', 'Transmutación', 'Realización', 'Recuperación']
 }
+const MESES_SEM = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+/**
+ * «29 jun» — el lunes de la semana `i` contando desde `fi`.
+ *
+ * ES EL UNICO FORMATEADOR DE FECHAS DE SEMANA de esta pantalla, a proposito.
+ * Daba «29/6» y al poner la fecha tambien en la fila MICRO estuve a punto de
+ * dejar dos: el mismo lunes escrito «29 jun» arriba y «29/6» abajo. Con el mes
+ * en letra no hay que pararse a pensar si el 6 es junio o el dia.
+ */
 function semLabel(fi: string, i: number): string {
   if (!fi) return 'S' + (i + 1)
-  try { const d = new Date(fi + 'T12:00:00'); d.setDate(d.getDate() + i * 7); return d.getDate() + '/' + (d.getMonth() + 1) } catch { return 'S' + (i + 1) }
+  try {
+    const d = new Date(fi + 'T12:00:00')
+    d.setDate(d.getDate() + i * 7)
+    return d.getDate() + ' ' + MESES_SEM[d.getMonth()]
+  } catch { return 'S' + (i + 1) }
 }
+
 function semFecha(fi: string, i: number): string {
   if (!fi) return ''
   try { const d = new Date(fi + 'T12:00:00'); d.setDate(d.getDate() + i * 7); return d.toISOString().split('T')[0] } catch { return '' }
@@ -257,6 +273,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     return () => { vivo = false }
   }, [sesionesProg])
 
+  const recargarComps = async () => {
+    const { data } = await supabase.from('competicion')
+      .select('*').eq('id_deportista', Number(id)).order('fecha')
+    setCompsReales((data || []).map((c: any) => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
+  }
+
   // Carga inicial — detecta si hay ciclos existentes
   useEffect(() => {
     const init = async () => {
@@ -280,6 +302,20 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       // necesita los tests para estimar duraciones. Leerlos del estado ahí sería
       // leerlos antes de que React lo haya aplicado.
       testsRef.current = t
+
+      /* LAS COMPETICIONES SE PIDEN AL ABRIR, siempre.
+
+         Antes solo se recargaban DESPUES de crear o borrar una desde esta
+         misma pantalla, asi que al entrar la lista arrancaba vacia y se
+         quedaba vacia: el codigo que pinta la bandera existia y funcionaba,
+         pero nunca tenia nada que pintar. Una carrera creada desde el
+         calendario no aparecia aqui jamas.
+
+         Va en el efecto de montaje y no dentro de `cargarExistente` porque
+         aquella solo corre con ?editar=1, y al lienzo se llega por tres
+         caminos (plan nuevo, elegir uno, y editar). */
+      recargarComps()
+
       const { data: macs } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
       if (macs && macs.length > 0) {
         setMacrosExistentes(macs)
@@ -626,8 +662,17 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     if (dragWk === null) return
     const onMove = (e: MouseEvent) => {
-      const dy = dragY0 - e.clientY
-      setSems(prev => prev.map(s => s.i === dragWk ? { ...s, ua: Math.max(0, Math.round((dragUA0 + dy * dragMaxUA0 / UA_H) / 25) * 25) } : s))
+      /* La cuenta y su umbral viven en `lib/arrastre-carga.ts`, con pruebas.
+
+         EL UMBRAL NO ES UN ADORNO. La barra mide 180 px y representa el pico
+         del plan: en un plan de 4.000 UA cada pixel son 22, y como el valor se
+         redondea a 25, mover el raton UN pixel ya cambiaba la semana. Antes
+         daba igual porque la barra tenia tres pixeles y acertarle sin querer
+         era imposible; con la zona de agarre grande, sin umbral cada clic
+         seria un cambio silencioso de 25 UA. */
+      const ua = uaArrastrada(dragY0 - e.clientY, { uaInicial: dragUA0, maxUA: dragMaxUA0, altoPx: UA_H })
+      if (ua === null) return
+      setSems(prev => prev.map(s => s.i === dragWk ? { ...s, ua } : s))
     }
     const onUp = () => setDragWk(null)
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
@@ -656,18 +701,48 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setMesos(p => [...p, { id: uid(), macroId: mMacId, si: fIni, sf, nombre: fNom.trim(), tipo: fTipo, intensidad: fInt }]); setModal(null)
   }
 
-  const recargarComps = async () => {
-    const { data } = await supabase.from('competicion')
-      .select('*').eq('id_deportista', Number(id)).order('fecha')
-    setCompsReales((data || []).map((c: any) => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
+  /**
+   * En qué semana del lienzo cae cada competición. -1 si queda fuera.
+   *
+   * ES LA UNICA CUENTA. Esto se preguntaba en cuatro sitios —la medalla de la
+   * fila de semanas, el panel de la derecha, el PDF y el aviso al crearla— y
+   * tres de ellos usaban `semanasEntre`, que REDONDEA: una carrera de jueves
+   * en adelante salía una semana más tarde de la real. Se veía en el dibujo,
+   * con la medalla sobre una semana y el nombre de esa misma carrera sobre la
+   * de al lado. Ahora todos preguntan aquí.
+   *
+   * LAS DE FUERA SE CUENTAN A PROPOSITO. Una carrera que cae despues del
+   * final del plan es justo lo que hay que ver: quiere decir que la
+   * temporada se acaba antes que el objetivo para el que se hizo, y sin
+   * enseñarlo no hay forma de enterarse mirando el dibujo.
+   */
+  const semanaDeComp = (fecha: string): number => {
+    if (!fechaInicio || !fecha) return -1
+    const n = semanaQueContiene(fechaInicio, fecha)
+    return n >= 0 && n < totalSem ? n : -1
   }
+
+  const compsDentro = compsReales
+    .map(c => ({ c, wi: semanaDeComp(c.fecha), nombre: String(c.nombre || '') }))
+    .filter(x => x.wi >= 0)
+
+  const compsFuera = compsReales.filter(c => semanaDeComp(c.fecha) < 0)
+
+  /* La colocacion de las etiquetas (filas y borde derecho) vive en
+     `lib/banda-competiciones.ts`, con sus pruebas: si dos se pisan no falla
+     nada, solo queda una encima de otra y se lee mal la fecha. */
+  const anchoTotal = Math.max(totalSem * semanaW + LABEL_W, 600)
+  const bandaComps = colocarBanda(compsDentro, { semanaW, labelW: LABEL_W, anchoTotal })
+  const bandaFilas = filasBanda(bandaComps)
+  const columnasComp = columnasPorSemana(compsDentro, x => prioridadDe(x.c))
+
+  /** La semana del lienzo en la que estamos hoy, o -1 si el plan no ha empezado o ya acabo. */
+  const semanaDeHoy = fechaInicio ? semanaDeComp(hoyISO()) : -1
 
   /** La competicion que cae en esa semana del lienzo, si la hay. */
   const compDeSemana = (wi: number) => {
     if (!fechaInicio) return null
-    const ini = semFecha(fechaInicio, wi)
-    const fin = semFecha(fechaInicio, wi + 1)
-    return compsReales.find(c => c.fecha >= ini && c.fecha < fin) || null
+    return compsReales.find(c => semanaQueContiene(fechaInicio, c.fecha) === wi) || null
   }
 
   const guardarCompReal = async (taper: boolean) => {
@@ -1154,7 +1229,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(200, 200, 210)
       if (compsReales.length === 0) pdf.text('Sin competiciones.', margin, y)
       else for (const c of compsReales) {
-        const wi = fechaInicio ? semanasEntre(fechaInicio, c.fecha) : null
+        const wi = fechaInicio ? semanaQueContiene(fechaInicio, c.fecha) : null
         const sem = wi != null && wi >= 0 ? 'S' + (wi + 1) + '   ·   ' : ''
         pdf.text(`${sem}${c.nombre}   ·   ${c.fecha}   ·   ${defDe(prioridadDe(c)).etiqueta}`, margin, y); y += 6
       }
@@ -1353,7 +1428,46 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto bg-gray-950">
-              <div ref={contentRef} style={{ width: Math.max(totalSem * semanaW + LABEL_W, 600) + 'px' }} className="select-none pb-4 bg-gray-950">
+              <div ref={contentRef} style={{ width: anchoTotal + 'px' }} className="relative select-none pb-4 bg-gray-950">
+
+
+                {/* LA CABECERA: carreras, macro, meso y semanas.
+
+                    Van juntas en un envoltorio porque la marca vertical de las
+                    competiciones se pinta encima de LAS CUATRO y de ninguna mas.
+                    Asi el alto de la marca sale solo: si alguna fila cambia de
+                    altura, la linea la sigue sin que haya que tocar un numero. */}
+                <div className="relative">
+
+                {/* COMPETICIONES — encima de todo, que es hacia donde apunta el plan.
+
+                    Antes solo habia un emoji minusculo pegado al «S9», y para saber
+                    QUE carrera era habia que pasar el raton por encima. Aqui se lee
+                    el nombre y la fecha sin buscarlos. */}
+                {bandaComps.length > 0 && (
+                  <div className="relative bg-gray-950" style={{ height: 6 + bandaFilas * 27 }}>
+                    <div className="absolute left-0 top-0 bottom-0 w-14 flex items-start pl-2 pt-1.5 z-20 pointer-events-none bg-gray-950">
+                      {/* Menos separacion entre letras que en MACRO/MESO/MICRO: son cinco
+                          letras y esta tiene ocho, y con la misma no cabe en los 56 px. */}
+                      <span className="text-gray-600 font-bold tracking-wide" style={{ fontSize: 8 }}>CARRERAS</span>
+                    </div>
+                    {bandaComps.map(({ item: { c }, left, fila }) => {
+                      const d = defDe(prioridadDe(c))
+                      return (
+                        <div key={c.id} className="absolute flex items-center gap-1 px-1.5 rounded-md whitespace-nowrap z-10"
+                          style={{
+                            left, top: 3 + fila * 27, height: 24,
+                            backgroundColor: d.hex + '22', border: '1px solid ' + d.hex + '66',
+                          }}
+                          title={c.nombre + ' · ' + d.etiqueta + ' · ' + c.fecha}>
+                          <span style={{ fontSize: 11 }}>{d.simbolo}</span>
+                          <span className="font-semibold" style={{ fontSize: 10, color: d.hex }}>{c.nombre}</span>
+                          <span style={{ fontSize: 9, color: d.hex, opacity: 0.75 }}>{semLabel(c.fecha, 0)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* MACRO */}
                 <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 52 }}
@@ -1493,8 +1607,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-gray-800/40 transition"
                         style={{ left: LABEL_W + s.i * semanaW, width: semanaW, outline: semSelIdx === s.i && capas.has('prog') ? '2px solid #3B82F6' : 'none' }}
                         onClick={() => capas.has('prog') ? cargarDetalleSemana(s.i) : toggleTipo(s.i)}>
+                        {/* LA SEMANA DICE DE CUANDO ES. Antes eran «S1, S2, S3…»
+                            y todas se leian igual: para saber de que fecha
+                            hablabas habia que contar semanas con el dedo desde el
+                            principio. La cuenta ya estaba escrita en el fichero,
+                            solo que no se usaba en esta fila. */}
                         <div className="flex items-center gap-1">
                           <span className="text-gray-500 text-xs">S{s.i + 1}</span>
+                          {fechaInicio && (
+                            <span className="text-gray-600" style={{ fontSize: 9.5 }}>· {semLabel(fechaInicio, s.i)}</span>
+                          )}
                           {(() => { const c = compDeSemana(s.i); return c
                             ? <span className="text-sm leading-none" title={c.nombre + ' · ' + defDe(prioridadDe(c)).etiqueta}>{defDe(prioridadDe(c)).simbolo}</span>
                             : null })()}
@@ -1506,6 +1628,36 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       </div>
                     )
                   })}
+                </div>
+
+                {/* LA MARCA DE LA SEMANA: la de una carrera, y la de hoy.
+
+                    LLEGA HASTA AQUI Y NO MAS ABAJO. Antes cruzaba el lienzo entero,
+                    y con cinco carreras el dibujo quedaba a rayas: las columnas
+                    competian con las barras de carga y con los chips de zonas, que
+                    es lo que de verdad hay que mirar. Bajando solo hasta la fila de
+                    semanas se sigue viendo de un golpe en que semana cae la carrera
+                    —que era el motivo de la linea— sin ensuciar el resto.
+
+                    Va POR ENCIMA de las filas pero sin capturar el raton, asi que se
+                    puede seguir pintando y arrastrando debajo con normalidad. Encima
+                    y no debajo porque varias filas llevan fondo opaco y la taparian. */}
+                <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 5 }}>
+                  {semanaDeHoy >= 0 && (
+                    <div className="absolute top-0 bottom-0"
+                      style={{ left: LABEL_W + semanaDeHoy * semanaW, width: semanaW, background: 'rgba(255,255,255,0.05)' }} />
+                  )}
+                  {columnasComp.map(({ wi, comp }) => {
+                    const d = defDe(prioridadDe(comp.c))
+                    return (
+                      <div key={wi} className="absolute top-0 bottom-0"
+                        style={{
+                          left: LABEL_W + wi * semanaW, width: semanaW,
+                          background: d.hex + '12', borderLeft: '2px solid ' + d.hex + 'aa',
+                        }} />
+                    )
+                  })}
+                </div>
                 </div>
 
                 {/* UA BARS */}
@@ -1586,14 +1738,20 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         )}
 
                         {/* Popup barra */}
-                        {popupBarra === s.i && capas.has('plan') && s.ua && (
+                        {/* SIN `&& s.ua`. Lo llevaba, y era lo que dejaba fuera a las
+                            semanas vacias: al pasar el raton por una salia el boton
+                            flotante «S9», lo pulsabas y no aparecia nada, porque el
+                            desplegable que abre no llegaba a existir. */}
+                        {popupBarra === s.i && capas.has('plan') && (
                           <div className="absolute z-50 bg-gray-800 border border-orange-500/50 rounded-xl shadow-xl p-3 pointer-events-auto"
                             style={{ bottom: planH + 50, left: '50%', transform: 'translateX(-50%)', minWidth: 160 }}>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-white text-xs font-bold">S{s.i + 1} — {semLabel(fechaInicio, s.i)}</span>
                               <button onClick={e => { e.stopPropagation(); setPopupBarra(null) }} className="text-gray-500 hover:text-white text-sm leading-none ml-2">x</button>
                             </div>
-                            <p className="text-orange-400 text-xs font-bold mb-1">{s.ua} UA planificadas</p>
+                            {s.ua
+                              ? <p className="text-orange-400 text-xs font-bold mb-1">{s.ua} UA planificadas</p>
+                              : <p className="text-gray-500 text-xs font-bold mb-1">Sin carga planificada</p>}
                             <p className="text-gray-500 text-xs mb-3">{s.tipo}</p>
                             <button
                               onClick={e => {
@@ -1612,14 +1770,61 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           <div className="absolute text-xs font-bold pointer-events-none z-10" style={{ bottom: planH + 40, color: barColor, fontSize: 10 }}>{s.ua}</div>
                         )}
 
-                        {/* Barra plan — arrastrable */}
+                        {/* LA ZONA DE AGARRE: la columna entera, no solo la barra.
+
+                            La barra medía `Math.max(planH, 3)` de alto y un 68 % de
+                            ancho: en una semana sin UA eran TRES PIXELES, y en una
+                            semana floja unos pocos mas. Para subirle la carga a la
+                            semana habia que acertarle a esa raya.
+
+                            Ahora se agarra en cualquier punto de la columna, desde
+                            arriba hasta justo encima de los controles de abajo. La
+                            barra sigue siendo la que se ve; esto es solo por donde
+                            se coge. El cursor de redimensionar cubre toda la columna,
+                            asi que la zona es invisible pero no es un secreto: se
+                            nota al pasar el raton por encima.
+
+                            Termina en `bottom: 36` porque ahi empiezan el numero y
+                            la x de borrar, que son botones de verdad y no deben
+                            quedar tapados. */}
                         {capas.has('plan') && (
-                          <div className="rounded-t z-10"
-                            style={{ width: '68%', height: Math.max(planH, 3) + 'px', backgroundColor: barColor, opacity: isDragging ? 1 : (s.ua ? 0.85 : 0.12), marginBottom: 36, transition: isDragging ? 'none' : 'height 0.08s', cursor: canDrag ? 'ns-resize' : 'default' }}
+                          <div className="absolute"
+                            style={{
+                              top: 0, bottom: 36, left: 0, right: 0, zIndex: 5,
+                              cursor: canDrag ? 'ns-resize' : 'default',
+                            }}
                             onMouseDown={e => { if (!canDrag) return; e.preventDefault(); setDragWk(s.i); setDragY0(e.clientY); setDragUA0(s.ua || 0); setDragMaxUA0(allMaxUA); setEditWk(null) }}
                             onDoubleClick={() => { if (canDrag) { setEditWk(s.i); setEditVal(s.ua?.toString() || '') } }}
-                            onClick={e => { if (!isDragging && canDrag && s.ua) { e.stopPropagation(); setPopupBarra(popupBarra === s.i ? null : s.i); setPanelTab('plan') } }}
-                            title="Arrastra hacia arriba para cambiar UA · Clic para opciones" />
+                            onClick={e => {
+                              /* SOLTAR NO ES PINCHAR. El navegador manda el clic
+                                 despues de soltar aunque hayas arrastrado, y con la
+                                 zona de agarre grande eso abria el desplegable cada
+                                 vez que terminabas de mover una barra. Se distingue
+                                 por lo mismo que el arrastre: si el raton se movio
+                                 mas que el umbral, no era un clic. */
+                              if (Math.abs(dragY0 - e.clientY) >= UMBRAL_ARRASTRE) return
+                              if (!canDrag) return
+                              e.stopPropagation()
+                              setPopupBarra(popupBarra === s.i ? null : s.i); setPanelTab('plan')
+                            }}
+                            title="Arrastra arriba o abajo para cambiar las UA · Doble clic para escribirlas · Clic para opciones" />
+                        )}
+
+                        {/* Barra plan */}
+                        {capas.has('plan') && (
+                          <div className="rounded-t z-10 pointer-events-none"
+                            style={{ width: '68%', height: Math.max(planH, 3) + 'px', backgroundColor: barColor, opacity: isDragging ? 1 : (s.ua ? 0.85 : 0.12), marginBottom: 36, transition: isDragging ? 'none' : 'height 0.08s' }} />
+                        )}
+
+                        {/* El tirador. Aparece al pasar por encima, en el borde alto
+                            de la barra: es lo que dice «de aqui se tira», que el
+                            cursor solo lo insinua. */}
+                        {capas.has('plan') && canDrag && (hoveredWeek === s.i || isDragging) && (
+                          <div className="absolute rounded-full pointer-events-none"
+                            style={{
+                              bottom: 36 + Math.max(planH, 3) - 1, left: '12%', right: '12%', height: 3,
+                              backgroundColor: barColor, opacity: isDragging ? 1 : 0.9, zIndex: 11,
+                            }} />
                         )}
 
                         {/* Spacer si plan no visible */}
@@ -1788,15 +1993,43 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   </div>
                     )
                   })()}
-                  {/* Totales por semana */}
-                  <div className="relative border-t border-gray-800/50" style={{ height: 18 }}>
-                    <div className="absolute left-0 top-0 bottom-0 w-14 bg-gray-950" />
+                  {/* LA PUERTA A LA SEMANA. Una por semana, siempre visible.
+
+                      ANTES SOLO SE ENTRABA POR LA BARRA NARANJA, y no siempre: el
+                      desplegable que llevaba a «+ Añadir sesiones» pedía
+                      `popupBarra === s.i && capas.has('plan') && s.ua`, o sea que a
+                      una semana SIN UA no se podia entrar de ninguna manera. Habia
+                      que ponerle carga a la semana para que te dejara meterle
+                      sesiones, que es justo al reves de como se planifica.
+
+                      Va aqui y no en una fila nueva porque esta ya existia —contaba
+                      los chips de cada semana y no hacia nada al pincharla— y esta
+                      pegada a las sesiones, que es de lo que va esa pantalla, y no a
+                      la carga, que es otra cosa. */}
+                  <div className="relative border-t border-gray-800/50" style={{ height: 26 }}>
+                    <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center pl-2 z-20 bg-gray-950">
+                      <span className="text-gray-600 font-bold tracking-wide" style={{ fontSize: 8 }}>SEMANA</span>
+                    </div>
                     {sems.map(s => {
                       const n = sesZonas.filter(sz => sz.semana === s.i).length
                       return (
-                        <div key={s.i} className="absolute top-0 flex items-center justify-center" style={{ left: LABEL_W + s.i * semanaW, width: semanaW, height: 18 }}>
-                          {n > 0 && <span className="text-gray-500 font-medium" style={{ fontSize: 9 }}>{n}</span>}
-                        </div>
+                        <button key={s.i}
+                          onClick={() => { const f = semFecha(fechaInicio, s.i); if (f) router.push('/planificacion-visual/' + id + '/semana/' + f) }}
+                          disabled={!fechaInicio}
+                          title={'Abrir la semana ' + (s.i + 1) + ' para colocar sus sesiones' + (n ? ' (' + n + ' ya puestas)' : '')}
+                          className="absolute top-0 flex items-center justify-center gap-1 border-r border-gray-800/30 text-gray-500 hover:text-orange-400 hover:bg-orange-500/10 transition disabled:opacity-40 disabled:hover:bg-transparent"
+                          style={{ left: LABEL_W + s.i * semanaW, width: semanaW, height: 26 }}>
+                          {n > 0 ? (
+                            <>
+                              <span style={{ fontSize: 10 }}>✎</span>
+                              <span className="font-semibold" style={{ fontSize: 10 }}>{n}</span>
+                            </>
+                          ) : (
+                            /* La semana vacia es la que mas necesita que se le note la
+                               puerta: es a la que hay que entrar a poner algo. */
+                            <span className="text-gray-700" style={{ fontSize: 9.5 }}>+ sesiones</span>
+                          )}
+                        </button>
                       )
                     })}
                   </div>
@@ -1996,6 +2229,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     </div>
                   ))}
                 </div>
+
               </div>
             </div>
 
@@ -2127,6 +2361,24 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </span>
               ))}
               {compsReales.length === 0 && <span className="text-gray-700 text-xs">Sin competiciones todavia</span>}
+
+              {/* LA CARRERA QUE SE QUEDA FUERA DEL LIENZO.
+
+                  Es el aviso que mas falta hace y el que no se veia por ningun
+                  lado: una competicion posterior al final del plan significa que
+                  la temporada se acaba antes que el objetivo para el que se hizo,
+                  y mirando el dibujo no habia forma de enterarse. Se dice aqui,
+                  al lado de las que si entran, para que la comparacion sea directa. */}
+              {compsFuera.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 flex-shrink-0 border border-amber-600/40 bg-amber-500/10"
+                  title={compsFuera.map(c => c.nombre + ' (' + c.fecha + ')').join(' · ')}>
+                  <span className="text-[11px]">⚠</span>
+                  <span className="text-[11px] text-amber-300">
+                    {compsFuera.length === 1 ? compsFuera[0].nombre + ' cae fuera del lienzo' : compsFuera.length + ' competiciones caen fuera del lienzo'}
+                  </span>
+                  <span className="text-[10px] text-amber-500/70">alarga el plan para verlas</span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -2223,7 +2475,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <div>
                       <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Competiciones</p>
                       {compsReales.map(c => {
-                        const wi = fechaInicio ? semanasEntre(fechaInicio, c.fecha) : -1
+                        const wi = fechaInicio ? semanaQueContiene(fechaInicio, c.fecha) : -1
                         const d = defDe(prioridadDe(c))
                         return (
                           <div key={c.id} className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
@@ -2469,12 +2721,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <input type="date" value={fCompFecha}
                   onChange={e => {
                     setFCompFecha(e.target.value)
-                    const wi = fechaInicio && e.target.value ? semanasEntre(fechaInicio, e.target.value) : 0
+                    const wi = fechaInicio && e.target.value ? semanaQueContiene(fechaInicio, e.target.value) : 0
                     setMIdx(wi); setTaperSug([wi - 1, wi - 2].filter(x => x >= 0))
                   }}
                   className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 w-full" />
                 {fechaInicio && fCompFecha && (
-                  <p className="text-gray-500 text-xs mt-1">Cae en la semana {semanasEntre(fechaInicio, fCompFecha) + 1} del lienzo.</p>
+                  <p className="text-gray-500 text-xs mt-1">Cae en la semana {semanaQueContiene(fechaInicio, fCompFecha) + 1} del lienzo.</p>
                 )}
               </div>
 

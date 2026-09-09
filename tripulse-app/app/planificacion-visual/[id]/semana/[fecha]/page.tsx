@@ -6,6 +6,7 @@ import { semanasEntre, sumarDias, hoyISO, soloDia } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
+import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
@@ -70,6 +71,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [uaProg, setUaProg] = useState(0)
   const [uaReal, setUaReal] = useState(0)
   const [sesZonasAll, setSesZonasAll] = useState<ChipZona[]>([])
+  const [comps, setComps] = useState<{ id: number; nombre: string; fecha: string; prioridad?: string | null }[]>([])
   const [borradorId, setBorradorId] = useState<number | null>(null)
   const [weekIndex, setWeekIndex] = useState<number | null>(null)
   const [dragOverDia, setDragOverDia] = useState<string | null>(null)
@@ -115,13 +117,17 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const domingo = sumarDias(fecha, 6)
 
     // ---- Ronda 1: todo lo que depende solo del deportista y la fecha ----
-    const [dep, macs, micros, ses, borrador] = await Promise.all([
+    const [dep, macs, micros, ses, borrador, compsQ] = await Promise.all([
       supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
       supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', depId).order('fecha_inicio'),
       supabase.from('microciclo').select('*').eq('id_deportista', depId),
       vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)
         .gte('fecha_sesion', fecha).lte('fecha_sesion', domingo)).order('fecha_sesion'),
       supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', depId).maybeSingle(),
+      /* LAS COMPETICIONES DE LA SEMANA. Esta pantalla no sabia que existian: se
+         planificaban siete dias sin ver que el domingo habia carrera. */
+      supabase.from('competicion').select('id, nombre, fecha, prioridad').eq('id_deportista', depId)
+        .gte('fecha', fecha).lte('fecha', domingo).order('fecha'),
     ])
 
     setDep(dep.data)
@@ -129,6 +135,8 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setMicrociclo((micros.data || []).find((m: any) => soloDia(m.fecha_inicio) === fecha) || null)
     setBorradorId(borrador.data?.id ?? null)
     setSesZonasAll(borrador.data?.sesiones_zonas || [])
+    /* La fecha se recorta como en el lienzo: segun de donde venga puede traer hora. */
+    setComps((compsQ.data || []).map(c => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
 
     const sesiones_cargadas = (ses.data || []) as any[]
     setSesiones(sesiones_cargadas)
@@ -475,6 +483,33 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
           )}
         </div>
 
+        {/* LA CARRERA DE ESTA SEMANA, antes que nada.
+
+            Va arriba y no solo en su dia porque es lo que decide como se reparte
+            TODA la semana: con una principal el lunes ya estas en tapering, y eso
+            no se ve mirando el domingo. Por eso sale tambien lo que pide de
+            descarga, que es el dato que cambia lo que pongas los dias de antes. */}
+        {comps.length > 0 && (
+          <div className="flex flex-col gap-2 mb-6">
+            {comps.map(c => {
+              const d = defDe(prioridadDe(c))
+              const i = dias.findIndex(x => x.fecha === c.fecha)
+              return (
+                <div key={c.id} className="rounded-2xl p-4 flex items-center gap-3 flex-wrap"
+                  style={{ background: d.hex + '14', border: '1px solid ' + d.hex + '55' }}>
+                  <span className="text-2xl leading-none">{d.simbolo}</span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-[15px]" style={{ color: d.hex }}>{c.nombre}</p>
+                    <p className="text-gray-400 text-xs mt-0.5">
+                      {i >= 0 ? dias[i].dia + ' ' + dias[i].dayNum : c.fecha} · {d.etiqueta} · {d.taperTexto}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Barra UA planificada vs programada */}
         {microciclo && (
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-6">
@@ -630,6 +665,8 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
           {dias.map(({ fecha: fechaDia, dia, diaCorto, dayNum }) => {
             const sesiones_dia = sesiones.filter(s => s.fecha_sesion === fechaDia)
             const esHoy = fechaDia === hoy
+            const compDia = comps.find(c => c.fecha === fechaDia)
+            const dPrio = compDia ? defDe(prioridadDe(compDia)) : null
             return (
               <div key={fechaDia}
                 onDragOver={e => { e.preventDefault() }}
@@ -647,11 +684,24 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                   crearSesionDesdeUnidad(unidad, fechaDia)
                 }}
                 className={'rounded-2xl border flex flex-col overflow-hidden transition ' +
-                (dragOverDia === fechaDia ? 'border-orange-400 ring-2 ring-orange-400/40' : esHoy ? 'border-orange-500' : 'border-gray-800')}>
-                {/* Header dia */}
-                <div className={'px-3 py-2.5 border-b ' + (esHoy ? 'bg-orange-500/20 border-orange-500/30' : 'bg-gray-900 border-gray-800')}>
-                  <p className={'text-xs font-medium ' + (esHoy ? 'text-orange-400' : 'text-gray-400')}>{diaCorto}</p>
-                  <p className={'text-lg font-bold ' + (esHoy ? 'text-orange-300' : 'text-white')}>{dayNum}</p>
+                (dragOverDia === fechaDia ? 'border-orange-400 ring-2 ring-orange-400/40' : esHoy ? 'border-orange-500' : 'border-gray-800')}
+                style={dPrio && dragOverDia !== fechaDia && !esHoy ? { borderColor: dPrio.hex + '88' } : undefined}>
+                {/* Header dia. EL DIA DE CARRERA SE PINTA DE SU COLOR: es lo
+                    primero que hay que ver al repartir la semana. «Hoy» sigue
+                    marcandose en el borde de la tarjeta, asi que no se pierde
+                    aunque hoy sea el dia de la carrera. */}
+                <div className={'px-3 py-2.5 border-b ' + (dPrio ? '' : esHoy ? 'bg-orange-500/20 border-orange-500/30' : 'bg-gray-900 border-gray-800')}
+                  style={dPrio ? { background: dPrio.hex + '26', borderColor: dPrio.hex + '4d' } : undefined}>
+                  <p className={'text-xs font-medium ' + (dPrio ? '' : esHoy ? 'text-orange-400' : 'text-gray-400')}
+                    style={dPrio ? { color: dPrio.hex } : undefined}>{diaCorto}</p>
+                  <p className={'text-lg font-bold ' + (dPrio ? '' : esHoy ? 'text-orange-300' : 'text-white')}
+                    style={dPrio ? { color: dPrio.hex } : undefined}>{dayNum}</p>
+                  {compDia && dPrio && (
+                    <p className="flex items-center gap-1 mt-1 leading-tight" style={{ fontSize: 10.5 }}>
+                      <span>{dPrio.simbolo}</span>
+                      <span className="font-semibold truncate" style={{ color: dPrio.hex }}>{compDia.nombre}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Sesiones del dia */}
