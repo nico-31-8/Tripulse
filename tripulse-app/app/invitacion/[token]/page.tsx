@@ -9,7 +9,7 @@ import { errorAlEnviar } from '@/lib/password'
 export default function PaginaInvitacion({ params }: { params: Promise<{ token: string }> }) {
   const router = useRouter()
   const { token } = use(params)
-  const [invitacion, setInvitacion] = useState<any>(null)
+  const [invitacion, setInvitacion] = useState<{ nombre_deportista: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
@@ -21,17 +21,19 @@ export default function PaginaInvitacion({ params }: { params: Promise<{ token: 
 
   useEffect(() => {
     const cargar = async () => {
+      /* Por la función y no por la tabla. Para que esta página pudiera leer la
+         tabla sin sesión, su política dejaba ver TODAS las invitaciones sin
+         usar, con su token: con la clave pública se sacaba la lista y se podía
+         usar el enlace de otro. La función solo contesta a quien ya trae el
+         token, y solo con el nombre. */
       const { data } = await supabase
-        .from('invitacion_deportista')
-        .select('*')
-        .eq('token', token)
-        .eq('usado', false)
+        .rpc('invitacion_por_token', { p_token: token })
         .maybeSingle()
 
       if (!data) {
         setError('Este enlace no es válido o ya ha sido usado.')
       } else {
-        setInvitacion(data)
+        setInvitacion(data as { nombre_deportista: string | null })
       }
       setLoading(false)
     }

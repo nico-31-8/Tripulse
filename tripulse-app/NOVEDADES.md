@@ -16,6 +16,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 10 de septiembre de 2026
 
+### Seguridad: enlaces de invitación y lo que se veía sin cuenta
+
+Hemos cerrado un hueco en los **enlaces de invitación** que mandas a tus
+atletas. Alguien con conocimientos técnicos podía sacar la lista de los enlaces
+sin usar y quedarse con la ficha de un atleta antes que él. No hay señales de
+que haya pasado: los cuatro enlaces usados son de atletas que conoces.
+
+Lo que cambia para ti:
+
+- **Dos enlaces antiguos, de mayo, quedan anulados** (Yago Rivera y Martiño
+  Rama). Nunca se usaron. Si alguno todavía tiene que entrar, genérale uno nuevo
+  desde su ficha: los de ahora son mucho más seguros.
+- Los enlaces que generes a partir de hoy funcionan igual que siempre.
+
+Además, lo que la aplicación hace por dentro ya no se puede usar sin iniciar
+sesión, y el directorio de perfiles de Comunidad solo lo ven quienes tienen
+cuenta. Para ti y tus atletas no cambia nada de lo que veis.
+
 ### Más marcas de reloj: llega COROS
 
 La tarjeta **Reloj** del perfil de tus deportistas ya no es solo de Polar. Ahora
