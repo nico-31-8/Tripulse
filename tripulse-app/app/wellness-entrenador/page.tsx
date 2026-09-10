@@ -358,7 +358,7 @@ export default function WellnessEntrenador() {
                             <div key={r.id} className="flex justify-between items-center gap-3 py-2.5 border-b border-gray-800/60 last:border-0">
                               <div className="min-w-0">
                                 <p className="text-[12.5px] font-medium text-gray-200">{r.fecha}</p>
-                                <p className="text-gray-500 text-[11px] truncate">Sueño {r.horas_sueno}h · Fatiga {r.fatiga}/7 · Estrés {r.estres}/7{r.hrv ? ' · HRV ' + r.hrv : ''}</p>
+                                <p className="text-gray-500 text-[11px] truncate">Sueño {r.horas_sueno}h{r.sueno_del_reloj ? ' ⌚' : ''} · Fatiga {r.fatiga}/7 · Estrés {r.estres}/7{r.hrv ? ' · HRV ' + r.hrv : ''}{r.hrv_noche != null ? ' · ⌚ HRV noche ' + r.hrv_noche : ''}</p>
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <p className="font-bold text-[15px] leading-none" style={{ color: col }}>{b}</p>
@@ -399,12 +399,13 @@ export default function WellnessEntrenador() {
                       </ResponsiveContainer>
                     </div>
 
-                    {/* HRV / FC reposo */}
-                    {registros.some(r => r.hrv || r.fc_reposo) && (
+                    {/* HRV / FC. Las de la noche (del reloj) van en líneas propias y a
+                        trazos: son otra medida que las de la mañana y no se unen con ellas. */}
+                    {registros.some(r => r.hrv || r.fc_reposo || r.hrv_noche != null || r.fc_noche != null) && (
                       <div className="tp-card p-4">
                         <div className="flex justify-between items-baseline mb-3">
                           <p className="text-[13px] font-semibold">Datos objetivos</p>
-                          <span className="text-[11px] text-gray-500">HRV (ms) · FC reposo (ppm)</span>
+                          <span className="text-[11px] text-gray-500">HRV (ms) · FC (ppm){registros.some(r => r.hrv_noche != null || r.fc_noche != null) ? ' · ⌚ a trazos, del reloj' : ''}</span>
                         </div>
                         <ResponsiveContainer width="100%" height={200}>
                           <LineChart data={datos}>
@@ -415,6 +416,8 @@ export default function WellnessEntrenador() {
                             <Legend wrapperStyle={{ fontSize: 11, color: '#7f8a99' }} />
                             {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.2} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
                             {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.2} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
+                            {registros.some(r => r.hrv_noche != null) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="HRV noche ⌚ (ms)" connectNulls />}
+                            {registros.some(r => r.fc_noche != null) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name="FC noche ⌚ (ppm)" connectNulls />}
                           </LineChart>
                         </ResponsiveContainer>
                       </div>

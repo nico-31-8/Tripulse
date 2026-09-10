@@ -160,6 +160,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [editSexo, setEditSexo] = useState('')
   const [editFcMaxima, setEditFcMaxima] = useState('')
   const [editHrvBasal, setEditHrvBasal] = useState('')
+  /* La casilla: este atleta se mide la HRV al despertar (con banda y app). */
+  const [editHrvMatutina, setEditHrvMatutina] = useState(false)
+  /* Su reloj: si está conectado y cuál es la última noche que ha llegado. */
+  const [reloj, setReloj] = useState<{ proveedor: string; ultimaNoche: string | null } | null>(null)
   const [editTecNatacion, setEditTecNatacion] = useState('')
   const [editTecCiclismo, setEditTecCiclismo] = useState('')
   const [editTecCarrera, setEditTecCarrera] = useState('')
@@ -219,6 +223,15 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
     const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
     setUltimoWellness(w?.[0] || null)
+
+    /* El reloj: el entrenador ve SI está conectado y lo que ha llegado. El
+       token no lo ve nunca: vive cifrado y ninguna consulta de aquí lo toca. */
+    const [rc, rn] = await Promise.all([
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id).maybeSingle(),
+      supabase.from('reloj_medicion').select('fecha').eq('id_deportista', id).eq('tipo', 'sueno')
+        .order('fecha', { ascending: false }).limit(1),
+    ])
+    setReloj(rc.data ? { proveedor: String(rc.data.proveedor), ultimaNoche: rn.data?.[0]?.fecha ?? null } : null)
 
     const { data: eco } = await supabase.from('puntuacion_eco').select('*').eq('id_deportista', id).order('fecha_calculo', { ascending: false }).limit(3)
     setEcoScores(eco || [])
@@ -281,6 +294,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     setEditSexo(deportista.sexo || '')
     setEditFcMaxima(deportista.fc_maxima || '')
     setEditHrvBasal(deportista.hrv_basal || '')
+    setEditHrvMatutina(!!deportista.hrv_matutina)
     setEditTecNatacion(deportista.tec_natacion || '')
     setEditTecCiclismo(deportista.tec_ciclismo || '')
     setEditTecCarrera(deportista.tec_carrera || '')
@@ -297,6 +311,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       sexo: editSexo || null,
       fc_maxima: editFcMaxima ? Number(editFcMaxima) : null,
       hrv_basal: editHrvBasal ? Number(editHrvBasal) : null,
+      hrv_matutina: editHrvMatutina,
       experiencia_previa: editExperiencia || null,
       tec_natacion: editTecNatacion ? Number(editTecNatacion) : null,
       tec_ciclismo: editTecCiclismo ? Number(editTecCiclismo) : null,
@@ -388,10 +403,13 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               { k: 'HRV basal', v: deportista.hrv_basal || '—', u: deportista.hrv_basal ? 'ms' : '' },
               { k: 'Sistema de zonas', v: (deportista.sistema_zonas || 1) === 2 ? 'Zonas 2' : 'Clásico', u: '', chico: true },
               { k: 'Valoración técnica', v: diasTecnica != null ? 'Hace ' + diasTecnica + ' d' : 'Sin registrar', u: '', chico: true },
+              { k: 'Reloj', v: reloj ? '⌚ ' + reloj.proveedor.charAt(0).toUpperCase() + reloj.proveedor.slice(1) : 'Sin conectar', u: '', chico: true,
+                sub: !reloj ? undefined : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
             ].map(s => (
               <div key={s.k} className="px-6 py-3.5 border-r border-white/[0.075] last:border-r-0">
                 <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>
                 <p className={'font-bold mt-1.5 tabular-nums tracking-tight ' + (s.chico ? 'text-[15px]' : 'text-[19px]')}>{s.v}{s.u && <span className="text-[10.5px] text-gray-500 font-normal ml-0.5">{s.u}</span>}</p>
+                {s.sub && <p className="text-[11px] text-gray-500 mt-0.5">{s.sub}</p>}
               </div>
             ))}
           </div>
@@ -577,8 +595,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                             { k: 'Estrés', v: ultimoWellness.estres + '/7' },
                             { k: 'Ánimo', v: ultimoWellness.animo + '/7' },
                             { k: 'Motivación', v: ultimoWellness.motivacion + '/7' },
-                            { k: 'Sueño', v: ultimoWellness.horas_sueno + 'h' },
-                            { k: 'HRV', v: ultimoWellness.hrv ? ultimoWellness.hrv + ' ms' : '—' },
+                            { k: 'Sueño', v: (ultimoWellness.horas_sueno != null ? String(ultimoWellness.horas_sueno).replace('.', ',') + 'h' : '—') + (ultimoWellness.sueno_del_reloj ? ' ⌚' : '') },
+                            /* La de la mañana si la hay; si no, la nocturna del reloj, marcada:
+                               son medidas distintas y el entrenador tiene que saber cuál ve. */
+                            { k: ultimoWellness.hrv ? 'HRV' : ultimoWellness.hrv_noche != null ? 'HRV noche ⌚' : 'HRV', v: ultimoWellness.hrv ? ultimoWellness.hrv + ' ms' : ultimoWellness.hrv_noche != null ? ultimoWellness.hrv_noche + ' ms' : '—' },
                           ].map(({ k, v }) => (
                             <div key={k} className="rounded-[10px] border border-white/[0.055] bg-white/[0.02] px-2 py-1.5">
                               <p className="text-[9.5px] text-gray-500">{k}</p>
@@ -1031,6 +1051,22 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 <input type="number" value={editHrvBasal} onChange={e => setEditHrvBasal(e.target.value)}
                   className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="ej: 65" />
               </div>
+              {/* LA CASILLA. Sin ella, con Polar conectado el formulario de
+                  wellness deja de pedir la HRV y la FC: le llegan del reloj, de
+                  noche. Marcada, se las sigue pidiendo además, porque la medida
+                  de la mañana es otra y va en su propia serie. */}
+              <label className="col-span-2 flex items-start gap-3 bg-gray-800 rounded-xl p-4 cursor-pointer border border-transparent hover:border-sky-900 transition">
+                <input type="checkbox" checked={editHrvMatutina} onChange={e => setEditHrvMatutina(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-sky-500 shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium text-white">Mide la HRV por la mañana</span>
+                  <span className="block text-xs text-gray-400 leading-relaxed mt-1">
+                    Márcala si hace el ritual de medirse al despertar, con banda y una app. Con Polar conectado,
+                    el formulario le seguirá pidiendo esa medición además de la nocturna. Si solo copia la que
+                    le enseña el reloj, déjala sin marcar.
+                  </span>
+                </span>
+              </label>
               <div className="col-span-2">
                 <p className="text-gray-400 text-xs uppercase tracking-wide mb-3 mt-2 border-t border-gray-700 pt-3">Valoración técnica (1–5)</p>
                 <div className="grid grid-cols-3 gap-3">

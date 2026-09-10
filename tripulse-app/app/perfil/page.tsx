@@ -2,9 +2,10 @@
 import { useRouter } from 'next/navigation'
 import Sugerencias from '@/components/Sugerencias'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
+import RelojPerfil from '@/components/RelojPerfil'
 import { usuarioActual } from '@/lib/sesion'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
@@ -202,7 +203,10 @@ export default function PerfilPage() {
     const tablas: [string, string][] = perfil.rol === 'deportista'
       ? ['perfiles','deportista','wellness','test1_carrera','test2_natacion','test3_ciclismo',
          'test_fuerza','tests_libres','anamnesis','disponibilidad','competicion','registro_peso',
-         'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes'].map(t => [t, '*'] as [string, string])
+         'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes',
+         /* Lo que llega del reloj también es suyo. De la conexión sale el estado,
+            nunca el token: ese vive cifrado aparte y no lo lee ningún navegador. */
+         'reloj_conexion','reloj_medicion'].map(t => [t, '*'] as [string, string])
       : [['perfiles','*'],
          ['deportista','id, nombre, created_at'],
          ['macrociclo','*'], ['mesociclo','*'], ['microciclo','*'],
@@ -282,7 +286,12 @@ export default function PerfilPage() {
         </div>
 
         {esDeportista ? (
-          <SeccionEntrenador perfil={perfil} entrenador={entrenador} onDesvincularse={() => { setEntrenador(null) }} />
+          <>
+            <SeccionEntrenador perfil={perfil} entrenador={entrenador} onDesvincularse={() => { setEntrenador(null) }} />
+            {/* Suspense porque la tarjeta lee ?reloj= de la dirección (la vuelta
+                de Polar), y Next exige esa frontera para usar useSearchParams. */}
+            <Suspense fallback={null}><RelojPerfil /></Suspense>
+          </>
         ) : (
           <>
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">

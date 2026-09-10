@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO, sumarDias } from '@/lib/fechas'
 import Cargando from '@/components/Cargando'
@@ -11,6 +11,8 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import { vivas } from '@/lib/papelera'
 import { type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
+import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, type NocheReloj } from '@/lib/noches-reloj'
+import { llamarReloj } from '@/lib/relojes-cliente'
 
 // Color de la flecha de tendencia según si el cambio es favorable para esa métrica.
 function flechaColor(m: MetricaAnalisis): string {
@@ -97,7 +99,10 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
      wellness, y al entrenador le salía que no lo había registrado hoy. */
   const [fecha, setFecha] = useState(hoyISO())
   const [calidadSueno, setCalidadSueno] = useState(4)
-  const [horasSueno, setHorasSueno] = useState(7)
+  /* SIN MARCAR AL EMPEZAR. Arrancaba en 7 y se guardaba aunque no se tocara:
+     15 de los 87 registros decían exactamente 7 h y no hay forma de saber
+     cuáles eran de verdad. Ahora hay que moverla para poder guardar. */
+  const [horasSueno, setHorasSueno] = useState<number | null>(null)
   const [fatiga, setFatiga] = useState(4)
   const [estres, setEstres] = useState(4)
   const [dolorMuscular, setDolorMuscular] = useState(4)
@@ -105,6 +110,12 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [motivacion, setMotivacion] = useState(4)
   const [hrv, setHrv] = useState('')
   const [fcReposo, setFcReposo] = useState('')
+  /* Lo del reloj. `noches` va por fecha de despertarse, la misma del wellness. */
+  const [conectado, setConectado] = useState(false)
+  const [noches, setNoches] = useState<Record<string, NocheReloj>>({})
+  const [buscandoNoche, setBuscandoNoche] = useState(false)
+  const [corrigiendo, setCorrigiendo] = useState(false)
+  const nocheTraidaRef = useRef(false)
   const [malestarGeneral, setMalestarGeneral] = useState(4)
   const [registrosPeso, setRegistrosPeso] = useState<any[]>([])
   const [mostrarFormPeso, setMostrarFormPeso] = useState(false)
@@ -118,7 +129,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     const user = await usuarioActual()
     // Cinco consultas independientes: el rol de quien mira, el deportista, sus
     // dos historiales y sus sesiones. Iban en serie.
-    const [perfil, dep, reg, pesos, ses] = await Promise.all([
+    const [perfil, dep, reg, pesos, ses, conQ, medQ] = await Promise.all([
       user ? supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('deportista').select('*').eq('id', id).maybeSingle(),
       supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(30),
@@ -135,6 +146,10 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
         .eq('id_deportista', id))
         .gte('fecha_sesion', sumarDias(hoyISO(), -40))
         .order('fecha_sesion'),
+      /* El reloj: si está conectado, y sus noches de las últimas semanas. */
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id).eq('proveedor', 'polar').maybeSingle(),
+      supabase.from('reloj_medicion').select('tipo, fecha, datos').eq('id_deportista', id)
+        .in('tipo', ['sueno', 'recarga']).gte('fecha', sumarDias(hoyISO(), -45)),
     ])
     setEsDeportista((perfil as any).data?.rol === 'deportista')
     setDeportista(dep.data)
@@ -142,32 +157,71 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     setRegistros(reg.data || [])
     setRegistrosPeso(pesos.data || [])
     setSesiones((ses.data || []) as SesionCruce[])
+    const tieneReloj = !!conQ.data
+    const lasNoches = nochesPorFecha(medQ.data as { tipo: string; fecha: string; datos: Record<string, unknown> }[])
+    setConectado(tieneReloj)
+    setNoches(lasNoches)
+
+    /* Si es el propio atleta, tiene Polar y la noche de hoy no está, se trae
+       una vez al entrar: es cuando va a rellenar. El entrenador no puede
+       pedirla —el permiso es del atleta—, así que él ve lo que haya. */
+    const esElAtleta = (perfil as { data: { rol?: string } | null }).data?.rol === 'deportista'
+    if (esElAtleta && tieneReloj && !lasNoches[hoyISO()]?.dormido_min && !nocheTraidaRef.current) {
+      nocheTraidaRef.current = true
+      await traerNoche()
+    }
+  }
+
+  /** Pide a Polar lo último y relee las noches. Lo usa también «Volver a mirar». */
+  const traerNoche = async () => {
+    setBuscandoNoche(true)
+    await llamarReloj('/api/relojes/polar/sincronizar')
+    const { data } = await supabase.from('reloj_medicion').select('tipo, fecha, datos').eq('id_deportista', id)
+      .in('tipo', ['sueno', 'recarga']).gte('fecha', sumarDias(hoyISO(), -45))
+    setNoches(nochesPorFecha(data as { tipo: string; fecha: string; datos: Record<string, unknown> }[]))
+    setBuscandoNoche(false)
   }
 
   const preview = scoreWellness({ calidad_sueno: calidadSueno, fatiga, estres, dolor_muscular: dolorMuscular, animo, motivacion })
+
+  /* QUÉ PREGUNTA EL FORMULARIO HOY. La regla vive en lib/noches-reloj, con
+     pruebas: pregunta lo que falta, no lo que el atleta tenga en casa. */
+  const noche = noches[fecha] || null
+  const q = quePreguntar({ conectado, noche, mideManana: !!deportista?.hrv_matutina, corrigiendo })
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    if (q.horas && horasSueno == null) {
+      setError('Mueve la barra de las horas de sueño: todavía no has dicho cuánto dormiste.')
+      setLoading(false)
+      return
+    }
     const score = scoreWellness({ calidad_sueno: calidadSueno, fatiga, estres, dolor_muscular: dolorMuscular, animo, motivacion })
+    /* Lo objetivo sale de lo que se preguntó: lo del reloj a sus columnas,
+       lo tecleado a las suyas, y nada que el formulario no haya enseñado. */
+    const obj = objetivosAGuardar({ q, noche, horasMano: horasSueno, hrvMano: hrv, fcMano: fcReposo })
     const { error } = await supabase.from('wellness').insert({
       id_deportista: Number(id),
       fecha,
       calidad_sueno: calidadSueno,
-      horas_sueno: horasSueno,
+      horas_sueno: obj.horas_sueno,
+      sueno_del_reloj: obj.sueno_del_reloj,
       fatiga,
       estres,
       dolor_muscular: dolorMuscular,
       animo,
       motivacion,
-      hrv: hrv ? Number(hrv) : null,
-      fc_reposo: fcReposo ? Number(fcReposo) : null,
+      hrv: obj.hrv,
+      fc_reposo: obj.fc_reposo,
+      hrv_noche: obj.hrv_noche,
+      fc_noche: obj.fc_noche,
       malestar_general: malestarGeneral,
       score_wellness: score
     })
     if (error) setError('Error: ' + error.message)
-    else { setMostrarForm(false); cargarDatos() }
+    else { setMostrarForm(false); setHorasSueno(null); setCorrigiendo(false); setHrv(''); setFcReposo(''); cargarDatos() }
     setLoading(false)
   }
 
@@ -188,6 +242,30 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   }
 
   if (!deportista) return <Cargando noExiste={noExiste} />
+
+  /* EL DESLIZADOR DE HORAS, en un solo sitio y pintado en uno de dos: con
+     reloj va justo debajo de lo que trae Polar (es lo que corrige); sin reloj,
+     después de la calidad del sueño, como estuvo siempre. */
+  const bloqueHoras = q.horas ? (
+      <div className="bg-gray-800 rounded-xl p-4">
+        <div className="flex justify-between items-center mb-2">
+          <label className="text-white font-medium text-sm">Horas de sueño</label>
+          {horasSueno == null
+            ? <span className="text-gray-500 font-bold text-sm">Sin marcar</span>
+            : <span className="text-orange-400 font-bold text-lg">{String(horasSueno).replace('.', ',')}h</span>}
+        </div>
+        {/* Pinchar sin arrastrar también marca: si durmió justo lo que
+            enseña la barra, no tiene que moverla para ir y volver. Con
+            pointerup y no con click: pinchar el tirador empieza un arrastre
+            y Chrome no siempre lo remata con un click. */}
+        <input type="range" min={3} max={12} step={0.5} value={horasSueno ?? 7.5}
+          onChange={e => setHorasSueno(Number(e.target.value))}
+          onPointerUp={e => { if (horasSueno == null) setHorasSueno(Number(e.currentTarget.value)) }}
+          onKeyUp={e => { if (horasSueno == null) setHorasSueno(Number(e.currentTarget.value)) }}
+          className={'w-full ' + (horasSueno == null ? 'accent-gray-500 opacity-60' : 'accent-orange-500')} />
+        <div className="flex justify-between text-gray-500 text-xs mt-1"><span>3h</span><span>12h</span></div>
+      </div>
+  ) : null
 
   const analisis = analizarWellness(registros)
 
@@ -276,17 +354,63 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
           <form onSubmit={guardar} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <div>
               <label className="text-gray-400 text-sm mb-1 block">Fecha</label>
-              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required />
+              <input type="date" value={fecha} onChange={e => { setFecha(e.target.value); setCorrigiendo(false) }} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required />
             </div>
-            <EmojiSelector campo="calidad_sueno" value={calidadSueno} onChange={setCalidadSueno} />
-            <div className="bg-gray-800 rounded-xl p-4">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-white font-medium text-sm">Horas de sueno</label>
-                <span className="text-orange-400 font-bold text-lg">{horasSueno}h</span>
+            {/* LO QUE YA TRAE EL RELOJ. Solo si la noche de ese día ha llegado. */}
+            {q.franjaReloj && noche && (
+              <div className="rounded-xl p-4 border border-emerald-900/70 bg-emerald-950/30">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="text-emerald-300 font-semibold text-sm">⌚ De tu Polar, esa noche</p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300">Lo pone el reloj</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-gray-900/70 rounded-lg py-2.5">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">Sueño</p>
+                    <p className="font-bold text-lg tabular-nums">{textoHoras(noche.dormido_min)}</p>
+                  </div>
+                  <div className="bg-gray-900/70 rounded-lg py-2.5" title="RMSSD medio de 4 h de sueño">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">HRV noche</p>
+                    <p className="font-bold text-lg tabular-nums">{noche.rmssd_ms ?? '—'}{noche.rmssd_ms != null && <span className="text-xs text-gray-500 font-normal"> ms</span>}</p>
+                  </div>
+                  <div className="bg-gray-900/70 rounded-lg py-2.5" title="FC media de esas 4 h de sueño">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">FC noche</p>
+                    <p className="font-bold text-lg tabular-nums">{noche.fc_media != null ? Math.round(noche.fc_media) : '—'}{noche.fc_media != null && <span className="text-xs text-gray-500 font-normal"> ppm</span>}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => { setCorrigiendo(c => !c); setHorasSueno(null) }}
+                  className="text-emerald-400/80 hover:text-emerald-300 text-xs underline mt-2.5">
+                  {corrigiendo ? 'Dejar las horas del reloj' : '¿No dormiste eso? Corregir las horas'}
+                </button>
               </div>
-              <input type="range" min={3} max={12} step={0.5} value={horasSueno} onChange={e => setHorasSueno(Number(e.target.value))} className="w-full accent-orange-500" />
-              <div className="flex justify-between text-gray-500 text-xs mt-1"><span>3h</span><span>12h</span></div>
-            </div>
+            )}
+
+            {/* CON RELOJ PERO SIN LA NOCHE: no durmió con él o no lo ha sincronizado. */}
+            {q.modo === 'noche_pendiente' && (
+              <div className="rounded-xl p-4 border border-amber-900/70 bg-amber-950/30">
+                <p className="text-amber-200 font-semibold text-sm mb-1">⌚ Todavía no ha llegado tu noche de Polar</p>
+                <p className="text-amber-100/70 text-xs leading-relaxed">
+                  {esDeportista
+                    ? 'Sincroniza el reloj con la app de Polar y vuelve a mirar. Si no dormiste con él, apunta las horas aquí abajo.'
+                    : 'Solo el atleta puede pedirla a Polar, desde su propio formulario. Mientras tanto, las horas se apuntan a mano.'}
+                </p>
+                {esDeportista && (
+                  <button type="button" onClick={traerNoche} disabled={buscandoNoche}
+                    className="mt-3 bg-gray-900/70 hover:bg-gray-900 border border-amber-900/70 text-amber-200 text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                    {buscandoNoche ? 'Mirando…' : '⟳ Volver a mirar'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {conectado && bloqueHoras}
+
+            {/* Se pregunta siempre, con reloj o sin él: es una opinión. La nota de
+                sueño de Polar no la sustituye —cambiaría en silencio lo que
+                significa el bienestar de todo el histórico. */}
+            <EmojiSelector campo="calidad_sueno" value={calidadSueno} onChange={setCalidadSueno} />
+            {/* Sin reloj, las horas van donde siempre: después de la calidad. A
+                quien rellena esto cada mañana no se le cambia el orden. */}
+            {!conectado && bloqueHoras}
             <EmojiSelector campo="fatiga" value={fatiga} onChange={setFatiga} />
             <EmojiSelector campo="estres" value={estres} onChange={setEstres} />
             <EmojiSelector campo="dolor_muscular" value={dolorMuscular} onChange={setDolorMuscular} />
@@ -294,25 +418,44 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             <EmojiSelector campo="motivacion" value={motivacion} onChange={setMotivacion} />
             <EmojiSelector campo="malestar_general" value={malestarGeneral} onChange={setMalestarGeneral} />
 
-            {/* Objetivos bloc */}
-            <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
-              <p className="text-white font-medium text-sm mb-1">Datos objetivos del reloj</p>
-              <div>
-                <label className="text-gray-400 text-xs mb-1 block">HRV matutina (ms) — opcional</label>
-                <input type="number" placeholder="Ej: 52" value={hrv} onChange={e => setHrv(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+            {/* HRV Y FC TECLEADAS. Sin reloj, como siempre. Con reloj, solo si el
+                entrenador ha marcado que este atleta se mide al despertar: esa
+                medida es otra que la de la noche y va en su propia serie. */}
+            {q.manana && (
+              <div className={'bg-gray-800 rounded-xl p-4 flex flex-col gap-3 ' + (conectado ? 'border border-sky-900/60' : '')}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-white font-medium text-sm">{conectado ? 'Tu medición de la mañana' : 'Datos objetivos'}</p>
+                  {conectado && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-950 text-sky-300">La ha pedido tu entrenador</span>}
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">{conectado ? 'HRV al despertar (ms)' : 'HRV (ms) — opcional'}</label>
+                  <input type="number" placeholder="Ej: 52" value={hrv} onChange={e => setHrv(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">{conectado ? 'FC al despertar (ppm)' : 'FC en reposo (ppm) — opcional'}</label>
+                  <input type="number" placeholder="Ej: 48" value={fcReposo} onChange={e => setFcReposo(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+                  {!conectado && <p className="text-gray-600 text-xs mt-1">Una FC en reposo elevada de forma sostenida puede indicar sobreentrenamiento</p>}
+                  {conectado && <p className="text-gray-600 text-xs mt-1">Va en su propia línea. La de la noche la sigue poniendo el reloj.</p>}
+                </div>
               </div>
-              <div>
-                <label className="text-gray-400 text-xs mb-1 block">FC en reposo (ppm) — opcional</label>
-                <input type="number" placeholder="Ej: 48" value={fcReposo} onChange={e => setFcReposo(e.target.value)} className="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
-                <p className="text-gray-600 text-xs mt-1">Una FC en reposo elevada de forma sostenida puede indicar sobreentrenamiento</p>
-              </div>
-            </div>
+            )}
+            {q.modo === 'noche_pendiente' && !q.manana && (
+              <p className="text-gray-500 text-xs leading-relaxed border-l-2 border-gray-700 pl-3">
+                La HRV y la FC de esta noche se quedan sin dato. Mejor un hueco que un número
+                tecleado de otra medida: el reloj la mide de noche durante cuatro horas, y lo que
+                se escribe a mano es otra cosa.
+              </p>
+            )}
 
             <div className="bg-gray-800 rounded-xl p-4 text-center">
               <p className="text-gray-400 text-sm mb-1">Bienestar estimado</p>
               <p className="text-3xl font-bold" style={{ color: colorBienestar(100 - preview) }}>{100 - preview}<span className="text-gray-500 text-base font-normal">/100</span></p>
               <p className="text-sm" style={{ color: colorBienestar(100 - preview) }}>{estadoBienestar(100 - preview)}</p>
             </div>
+            {/* EL AVISO, TAMBIÉN AQUÍ. El de arriba queda fuera de la pantalla cuando
+                se pulsa guardar al final del formulario: en el móvil parecía que el
+                botón no hacía nada. */}
+            {error && <p role="alert" className="text-red-300 text-sm bg-red-950/60 border border-red-900 rounded-lg px-3 py-2">{error}</p>}
             <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">
               {loading ? 'Guardando...' : 'Guardar registro'}
             </button>
@@ -341,22 +484,27 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
               </ResponsiveContainer>
             </div>
 
-            {/* HRV + FC reposo juntas */}
-            {registros.some(r => r.hrv || r.fc_reposo) && (
+            {/* HRV + FC. Las de la noche (reloj) van en líneas propias y a trazos:
+                son otra medida que las de la mañana y no se unen con ellas. */}
+            {registros.some(r => r.hrv || r.fc_reposo || r.hrv_noche || r.fc_noche) && (
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-                <p className="text-sm font-medium text-blue-400 mb-3">Datos objetivos — HRV y FC en reposo</p>
-                <div className="flex gap-4 mb-2 text-xs">
+                <p className="text-sm font-medium text-blue-400 mb-3">Datos objetivos — HRV y FC</p>
+                <div className="flex gap-4 mb-2 text-xs flex-wrap">
                   {registros.some(r => r.hrv) && <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block"></span> HRV (ms)</span>}
                   {registros.some(r => r.fc_reposo) && <span className="flex items-center gap-1 text-rose-400"><span className="w-3 h-0.5 bg-rose-400 inline-block"></span> FC reposo (ppm)</span>}
+                  {registros.some(r => r.hrv_noche) && <span className="flex items-center gap-1 text-sky-300"><span className="w-3 border-t border-dashed border-sky-300 inline-block"></span> ⌚ HRV noche (ms)</span>}
+                  {registros.some(r => r.fc_noche) && <span className="flex items-center gap-1 text-pink-300"><span className="w-3 border-t border-dashed border-pink-300 inline-block"></span> ⌚ FC noche (ppm)</span>}
                 </div>
                 <ResponsiveContainer width="100%" height={180}>
-                  <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv || null, fc_reposo: r.fc_reposo || null }))}>
+                  <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv || null, fc_reposo: r.fc_reposo || null, hrv_noche: r.hrv_noche ?? null, fc_noche: r.fc_noche ?? null }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="fecha" stroke="#9ca3af" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
                     {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
                     {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.5} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
+                    {registros.some(r => r.hrv_noche) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="HRV noche (ms)" connectNulls />}
+                    {registros.some(r => r.fc_noche) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name="FC noche (ppm)" connectNulls />}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -424,10 +572,12 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="font-medium">{r.fecha}</p>
-                    <p className="text-gray-400 text-sm">Sueno: {r.horas_sueno}h · Fatiga: {r.fatiga}/7 · Estres: {r.estres}/7</p>
-                    <div className="flex gap-3 mt-1">
+                    <p className="text-gray-400 text-sm">Sueño: {r.horas_sueno != null ? String(r.horas_sueno).replace('.', ',') + 'h' : '—'}{r.sueno_del_reloj ? ' ⌚' : ''} · Fatiga: {r.fatiga}/7 · Estrés: {r.estres}/7</p>
+                    <div className="flex gap-3 mt-1 flex-wrap">
                       {r.hrv && <p className="text-blue-400 text-sm">HRV: {r.hrv} ms</p>}
                       {r.fc_reposo && <p className="text-rose-400 text-sm">FC reposo: {r.fc_reposo} ppm</p>}
+                      {r.hrv_noche != null && <p className="text-sky-300 text-sm">⌚ HRV noche: {r.hrv_noche} ms</p>}
+                      {r.fc_noche != null && <p className="text-pink-300 text-sm">⌚ FC noche: {r.fc_noche} ppm</p>}
                     </div>
                   </div>
                   <div className="text-right">

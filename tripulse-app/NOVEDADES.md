@@ -14,6 +14,61 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 10 de septiembre de 2026
+
+### Tus deportistas ya pueden conectar su Polar
+
+En su perfil tienen una tarjeta nueva, **Reloj**, con el botón **Conectar Polar**.
+Les lleva a Polar, dan permiso y vuelven. Desde ese momento TRIPULSE trae su
+**sueño, su HRV nocturna y los entrenos que suban**, y tú lo ves.
+
+Tres cosas que conviene saber, porque si no parecen fallos:
+
+- **Después de conectar, tienen que aceptar los consentimientos obligatorios en
+  account.polar.com.** Sin eso Polar no deja leer nada, aunque la app diga
+  «conectado». Si pasa, se lo decimos con esas palabras.
+- **Los entrenos solo llegan si se suben a Polar Flow después de conectar.** Las
+  noches sí traen las de las últimas cuatro semanas.
+- **La conexión dura un año** y Polar no la renueva sola: ese día habrá que
+  desconectar y volver a conectar. Se avisa un mes antes.
+
+Llega lo que acabe en su cuenta de Polar, lo mida lo que lo mida: una banda de
+pecho Polar emparejada a un reloj Polar cuenta. Una banda Polar emparejada a un
+Garmin, no: esa sesión vive en Garmin.
+
+En la ficha de cada atleta, entre las constantes, una celda nueva dice si tiene
+reloj conectado y si ha llegado su noche de hoy.
+
+### El wellness pregunta lo que falta, no lo que el atleta tenga
+
+Con Polar conectado, el formulario de la mañana **deja de pedir las horas de
+sueño, la HRV y la FC**: las pone el reloj, y el atleta las ve arriba en una
+franja. Pasa de diez preguntas a siete. Si esa noche no durmió con el reloj o no
+lo sincronizó, las horas vuelven a preguntarse, solo ese día.
+
+**Lo que no cambia:** la calidad del sueño, la fatiga, el estrés, el dolor, el
+ánimo, la motivación y el malestar se preguntan siempre. El reloj no sabe cómo
+se encuentra. Y **el bienestar se sigue calculando igual para todos**, porque sale
+solo de esas preguntas: un atleta con reloj y otro sin él siguen siendo
+comparables.
+
+**Por qué la HRV del reloj va aparte.** Polar la mide de noche, durante cuatro
+horas de sueño; la que se apunta a mano es la de la mañana. A la misma persona le
+dan números distintos. Si se mezclaran, el día que un atleta conecta el reloj su
+semana saldría «fuera de su normal» sin haber cambiado nada. Por eso en las
+gráficas la del reloj va en su propia línea, a trazos. Y por eso **no toca ni tus
+zonas de pulso ni SICAT**, que siguen usando la FC y la HRV de la mañana.
+
+**Si alguno de tus atletas hace el ritual de medirse la HRV al despertar** (banda
+y app), márcalo en su ficha: «Editar datos» → **Mide la HRV por la mañana**. Con
+eso el formulario le sigue pidiendo esa medida además de la del reloj. Por
+defecto está sin marcar.
+
+**Y un arreglo para todos, con reloj o sin él:** las horas de sueño empezaban en
+7 y se guardaban aunque el atleta no tocara la barra. De los 87 registros que
+hay, 15 dicen exactamente 7 horas, y no hay forma de saber cuáles son de verdad.
+Ahora la barra empieza sin marcar y hay que moverla (o pincharla) para guardar.
+
 ## 9 de septiembre de 2026
 
 ### La pantalla de la semana ya enseña la competición

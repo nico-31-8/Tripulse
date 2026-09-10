@@ -15,6 +15,12 @@ export interface RegistroWellness {
   malestar_general?: number
   hrv?: number | null
   fc_reposo?: number | null
+  /** HRV nocturna del reloj: RMSSD de 4 h de sueño. NO es la de `hrv`. */
+  hrv_noche?: number | null
+  /** FC media de esas 4 h de sueño. NO es la de `fc_reposo`. */
+  fc_noche?: number | null
+  /** Las horas de sueño las puso el reloj y el atleta no las corrigió. */
+  sueno_del_reloj?: boolean | null
   score_wellness?: number
 }
 
@@ -51,7 +57,48 @@ const CFG: { key: string; label: string; unidad: string; mejor: 'alto' | 'bajo';
   { key: 'motivacion', label: 'Motivación', unidad: '/7', mejor: 'alto', absLow: 3, peso: 1 },
   { key: 'hrv', label: 'HRV', unidad: 'ms', mejor: 'alto', peso: 2 },
   { key: 'fc_reposo', label: 'FC reposo', unidad: 'ppm', mejor: 'bajo', peso: 2 },
+  /* LO DEL RELOJ, EN SUS PROPIAS SERIES. La HRV nocturna de Polar es el RMSSD
+     de cuatro horas de sueño y la de `hrv` es la que se mide al despertar: a la
+     misma persona le dan números distintos. Si compartieran serie, el día que
+     un atleta conecta el reloj su semana saldría «fuera de su normal» sin que
+     hubiera cambiado nada. Separadas, cada una se compara solo consigo misma.
+
+     Las horas de sueño del reloj tampoco son las tecleadas: el reloj cuenta el
+     sueño real, sin las interrupciones, y quien las escribe suele contar el
+     tiempo en la cama. Van aparte por la misma razón.
+
+     Un atleta con reloj pesa lo mismo que uno sin él: hrv_noche y fc_noche
+     sustituyen a hrv y fc_reposo, que deja de rellenar. Solo si además mide por
+     la mañana (lo marca el entrenador) tiene las cuatro. */
+  { key: 'horas_sueno_reloj', label: 'Sueño (reloj)', unidad: 'h', mejor: 'alto', absLow: 7, peso: 1.5 },
+  { key: 'hrv_noche', label: 'HRV nocturna', unidad: 'ms', mejor: 'alto', peso: 2 },
+  { key: 'fc_noche', label: 'FC nocturna', unidad: 'ppm', mejor: 'bajo', peso: 2 },
 ]
+
+/**
+ * Lo mínimo que tiene que moverse una métrica para contar como «fuera de su
+ * normal», aunque su desviación sea más pequeña.
+ *
+ * EN UN SOLO SITIO. Estaba escrito dos veces —en el análisis de la semana y en
+ * el de un día suelto— y el día que alguien cambiara uno, las dos pantallas
+ * dirían cosas distintas del mismo dato.
+ */
+const UMBRAL_MIN: Record<string, number> = {
+  hrv: 3, hrv_noche: 3, fc_reposo: 2, fc_noche: 2, horas_sueno: 0.5, horas_sueno_reloj: 0.5,
+}
+const umbralMin = (c: { key: string; unidad: string }): number =>
+  UMBRAL_MIN[c.key] ?? (c.unidad === '/7' ? 0.6 : 1)
+
+/**
+ * Las horas de sueño a su serie: las del reloj, sin tocar, pasan a
+ * `horas_sueno_reloj`; las escritas a mano se quedan en `horas_sueno`.
+ * Devuelve copias: el registro de quien llama no se toca.
+ */
+export function separarFuentes<T extends object>(r: T): T & { horas_sueno_reloj?: number | null } {
+  const x = r as { sueno_del_reloj?: unknown; horas_sueno?: number | null }
+  if (!r || !x.sueno_del_reloj) return r as T & { horas_sueno_reloj?: number | null }
+  return { ...r, horas_sueno_reloj: x.horas_sueno ?? null, horas_sueno: null } as T & { horas_sueno_reloj?: number | null }
+}
 
 // El tipo va suelto porque ya leía con `as any` por dentro: pedir el registro
 // completo solo obligaba a quien llama a rellenar huecos que no tiene.
@@ -62,7 +109,7 @@ const desv = (a: number[], m: number): number => (a.length > 1 ? Math.sqrt(a.red
 const r1 = (n: number) => Math.round(n * 10) / 10
 
 export function analizarWellness(registros: RegistroWellness[]): AnalisisWellness {
-  const asc = [...registros].sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+  const asc = registros.map(separarFuentes).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
   const n = asc.length
   const recientes = asc.slice(-7)
   const base = n > 7 ? asc.slice(0, n - 7) : []      // periodo anterior a la última semana
@@ -89,7 +136,7 @@ export function analizarWellness(registros: RegistroWellness[]): AnalisisWellnes
 
     // ¿fuera del rango normal? Con base fiable usamos media ± DE; si no, umbrales absolutos.
     let fuera = false, severidad = 0 // 0 nada, 1 ámbar, 2 rojo
-    const umbralDelta = Math.max(baseSd, c.unidad === '/7' ? 0.6 : c.key === 'hrv' ? 3 : c.key === 'fc_reposo' ? 2 : c.key === 'horas_sueno' ? 0.5 : 1)
+    const umbralDelta = Math.max(baseSd, umbralMin(c))
     if (baseM != null) {
       const z = baseSd > 0 ? (rec - baseM) / baseSd : 0
       if (c.mejor === 'bajo' && rec > baseM + umbralDelta) { fuera = true; severidad = z > 2 ? 2 : 1 }
@@ -108,12 +155,13 @@ export function analizarWellness(registros: RegistroWellness[]): AnalisisWellnes
       conclusiones.push({ tipo: severidad === 2 ? 'rojo' : 'ambar', texto: fraseMetrica(c, rec, baseM, recientes) })
     } else if (baseM != null) {
       // Positivos destacables
-      if (c.key === 'hrv' && rec > baseM + Math.max(baseSd, 3)) conclusiones.push({ tipo: 'positivo', texto: `HRV por encima de tu base (${r1(rec)} vs ${r1(baseM)} ms): buena adaptación/recuperación.` })
+      if ((c.key === 'hrv' || c.key === 'hrv_noche') && rec > baseM + Math.max(baseSd, 3)) conclusiones.push({ tipo: 'positivo', texto: `${c.label} por encima de tu base (${r1(rec)} vs ${r1(baseM)} ms): buena adaptación/recuperación.` })
     }
   }
 
   // Sueño: nº de noches < 7h en la semana
-  const nochesCortas = nums(recientes, 'horas_sueno').filter(h => h < 7).length
+  const nochesCortas = recientes.map(r => r.horas_sueno ?? r.horas_sueno_reloj)
+    .filter(h => h != null && !isNaN(Number(h)) && Number(h) < 7).length
   if (nochesCortas >= 3) conclusiones.push({ tipo: nochesCortas >= 5 ? 'rojo' : 'ambar', texto: `${nochesCortas} de ${recientes.length} noches por debajo de 7h esta semana.` })
 
   // Ánimo + motivación altos y estables → positivo mental
@@ -122,8 +170,8 @@ export function analizarWellness(registros: RegistroWellness[]): AnalisisWellnes
     conclusiones.push({ tipo: 'positivo', texto: 'Ánimo y motivación altos y estables: buena disposición mental.' })
 
   // Sin datos objetivos → recordatorio
-  const hayObjetivos = recientes.some(r => r.hrv != null || r.fc_reposo != null)
-  if (!hayObjetivos) conclusiones.push({ tipo: 'info', texto: 'Sin HRV ni FC en reposo: el análisis se basa en lo subjetivo. Añadirlos (del reloj) sube mucho la fiabilidad.' })
+  const hayObjetivos = recientes.some(r => r.hrv != null || r.fc_reposo != null || r.hrv_noche != null || r.fc_noche != null)
+  if (!hayObjetivos) conclusiones.push({ tipo: 'info', texto: 'Sin HRV ni FC: el análisis se basa en lo subjetivo. Añadirlas —a mano o conectando un reloj— sube mucho la fiabilidad.' })
 
   if (!baselineFiable) conclusiones.push({ tipo: 'info', texto: `Con ${n} registros el análisis usa umbrales generales; a partir de ~2 semanas se ajusta a TU línea base.` })
 
@@ -153,6 +201,9 @@ function fraseMetrica(c: { key: string; label: string; unidad: string; mejor: 'a
     case 'hrv': return `HRV media ${v} ms${b ? `, ${Math.round((1 - rec / (baseM || rec)) * 100)}% por debajo de tu base (${b})` : ''}: posible fatiga/estrés fisiológico.`
     case 'fc_reposo': return `FC en reposo ${v} ppm${b ? `, +${r1(rec - (baseM || rec))} sobre tu base (${b})` : ''}: vigila recuperación/carga.`
     case 'horas_sueno': return `Sueño medio ${v} h/noche esta semana${b ? ` (tu base ${b} h)` : ''}: por debajo de lo recomendable.`
+    case 'horas_sueno_reloj': return `Sueño real medio ${v} h/noche según el reloj${b ? ` (tu base ${b} h)` : ''}: por debajo de lo recomendable.`
+    case 'hrv_noche': return `HRV nocturna media ${v} ms${b ? `, ${Math.round((1 - rec / (baseM || rec)) * 100)}% por debajo de tu base (${b})` : ''}: posible fatiga/estrés fisiológico.`
+    case 'fc_noche': return `FC nocturna ${v} ppm${b ? `, +${r1(rec - (baseM || rec))} sobre tu base (${b})` : ''}: vigila recuperación/carga.`
     case 'fatiga': return `Fatiga elevada (${v}/7)${b ? ` frente a tu base ${b}` : ''}: recuperación por completar.`
     case 'dolor_muscular': return `Dolor muscular alto (${v}/7)${b ? ` sobre tu base ${b}` : ''}: recuperación incompleta.`
     case 'estres': return `Estrés elevado (${v}/7): puede frenar la recuperación y la adaptación.`
@@ -207,18 +258,19 @@ export function compararDia(
   historial: RegistroSuelto[],
 ): MetricaDia[] {
   if (!registro) return []
-  const otros = (historial || []).filter(r => r.fecha !== registro.fecha)
+  const este = separarFuentes(registro)
+  const otros = (historial || []).filter(r => r.fecha !== este.fecha).map(separarFuentes)
   const salida: MetricaDia[] = []
 
   for (const c of CFG) {
-    const v = (registro as any)[c.key]
+    const v = este[c.key]
     if (v == null || isNaN(Number(v))) continue
     const valor = Number(v)
 
     const baseVals = nums(otros, c.key)
     const baseM = baseVals.length >= 5 ? media(baseVals) : null
     const baseSd = baseM != null ? desv(baseVals, baseM) : 0
-    const umbralDelta = Math.max(baseSd, c.unidad === '/7' ? 0.6 : c.key === 'hrv' ? 3 : c.key === 'fc_reposo' ? 2 : c.key === 'horas_sueno' ? 0.5 : 1)
+    const umbralDelta = Math.max(baseSd, umbralMin(c))
 
     let respecto: 'peor' | 'mejor' | 'igual' = 'igual'
     let fuera = false
