@@ -16,6 +16,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 10 de septiembre de 2026
 
+### Más marcas de reloj: llega COROS
+
+La tarjeta **Reloj** del perfil de tus deportistas ya no es solo de Polar. Ahora
+tiene un botón **Conectar un reloj** que despliega las marcas que hay; al elegir
+una salen sus pasos.
+
+- **Polar**: igual que hasta ahora.
+- **COROS**: nuevo. La conexión funciona, pero todavía **no trae datos**. COROS
+  no publica cómo son sus respuestas: el primer atleta que lo conecte nos las
+  enseñará, y con eso terminamos de leerlas. Mientras tanto, a ese atleta el
+  wellness le pregunta todo como siempre, y en su ficha verás «conectado; sus
+  datos, en preparación».
+- **Garmin**: sale apagado, como «próximamente».
+
+Cada atleta tiene un solo reloj conectado a la vez. Para cambiar de marca,
+desconecta el que tiene y conecta el otro. Lo que ya llegó del primero se queda
+en su historial, pero no se mezcla con lo del nuevo.
+
 ### Tus deportistas ya pueden conectar su Polar
 
 En su perfil tienen una tarjeta nueva, **Reloj**, con el botón **Conectar Polar**.

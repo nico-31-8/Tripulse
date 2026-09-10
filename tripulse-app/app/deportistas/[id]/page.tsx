@@ -11,6 +11,8 @@ import Adherencia from '@/components/Adherencia'
 import { minutosCarga, cargaReal } from '@/lib/duracion-carga'
 import { cargaActual, estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
+import { delProveedor } from '@/lib/noches-reloj'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -227,11 +229,14 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     /* El reloj: el entrenador ve SI está conectado y lo que ha llegado. El
        token no lo ve nunca: vive cifrado y ninguna consulta de aquí lo toca. */
     const [rc, rn] = await Promise.all([
-      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id).maybeSingle(),
-      supabase.from('reloj_medicion').select('fecha').eq('id_deportista', id).eq('tipo', 'sueno')
-        .order('fecha', { ascending: false }).limit(1),
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id)
+        .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('reloj_medicion').select('fecha, proveedor').eq('id_deportista', id).eq('tipo', 'sueno')
+        .order('fecha', { ascending: false }).limit(20),
     ])
-    setReloj(rc.data ? { proveedor: String(rc.data.proveedor), ultimaNoche: rn.data?.[0]?.fecha ?? null } : null)
+    /* La última noche, del reloj de ahora: si antes tuvo otro, las suyas no cuentan. */
+    const prov = rc.data ? String(rc.data.proveedor) : ''
+    setReloj(prov ? { proveedor: prov, ultimaNoche: delProveedor(rn.data, prov)[0]?.fecha ?? null } : null)
 
     const { data: eco } = await supabase.from('puntuacion_eco').select('*').eq('id_deportista', id).order('fecha_calculo', { ascending: false }).limit(3)
     setEcoScores(eco || [])
@@ -403,8 +408,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               { k: 'HRV basal', v: deportista.hrv_basal || '—', u: deportista.hrv_basal ? 'ms' : '' },
               { k: 'Sistema de zonas', v: (deportista.sistema_zonas || 1) === 2 ? 'Zonas 2' : 'Clásico', u: '', chico: true },
               { k: 'Valoración técnica', v: diasTecnica != null ? 'Hace ' + diasTecnica + ' d' : 'Sin registrar', u: '', chico: true },
-              { k: 'Reloj', v: reloj ? '⌚ ' + reloj.proveedor.charAt(0).toUpperCase() + reloj.proveedor.slice(1) : 'Sin conectar', u: '', chico: true,
-                sub: !reloj ? 'lo conecta el atleta en su perfil' : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
+              { k: 'Reloj', v: reloj ? '⌚ ' + nombreReloj(reloj.proveedor) : 'Sin conectar', u: '', chico: true,
+                sub: !reloj ? 'lo conecta el atleta en su perfil'
+                  : !datosListos(reloj.proveedor) ? 'conectado; sus datos, en preparación'
+                    : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
             ].map(s => (
               <div key={s.k} className="px-6 py-3.5 border-r border-white/[0.075] last:border-r-0">
                 <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>

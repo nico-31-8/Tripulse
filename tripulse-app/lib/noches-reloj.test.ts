@@ -1,8 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import {
-  nochesPorFecha, horasDeMinutos, textoHoras, quePreguntar, objetivosAGuardar, numeroDePreguntas,
+  nochesPorFecha, horasDeMinutos, textoHoras, quePreguntar, objetivosAGuardar, numeroDePreguntas, delProveedor,
   type NocheReloj,
 } from './noches-reloj'
+
+describe('delProveedor', () => {
+  const filas = [
+    { proveedor: 'polar', tipo: 'sueno', fecha: '2026-09-01', datos: { dormido_min: 420 } },
+    { proveedor: 'coros', tipo: 'sueno', fecha: '2026-09-02', datos: { dormido_min: 400 } },
+  ]
+
+  it('se queda solo con las de la marca conectada', () => {
+    expect(delProveedor(filas, 'coros').map(f => f.fecha)).toEqual(['2026-09-02'])
+  })
+
+  it('las noches del reloj anterior no cuentan como las de hoy', () => {
+    const n = nochesPorFecha(delProveedor(filas, 'coros'))
+    expect(n['2026-09-01']).toBeUndefined()
+    expect(n['2026-09-02']?.dormido_min).toBe(400)
+  })
+
+  it('sin marca o sin filas, nada', () => {
+    expect(delProveedor(filas, '')).toEqual([])
+    expect(delProveedor(null, 'polar')).toEqual([])
+  })
+})
 
 const NOCHE: NocheReloj = { dormido_min: 432, rmssd_ms: 48, fc_media: 52 }
 

@@ -85,9 +85,9 @@ revoke insert, update, delete, truncate, references, trigger on public.reloj_con
 revoke insert, update, delete, truncate, references, trigger on public.reloj_medicion from authenticated;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    El secreto se borra del almacén cuando se borra su fila.
-   ------------------------------------------------------------
+   ============================================================
    Por el camino que sea: desconectar, o borrar al deportista en cascada.
    Sin esto, cada desconexión dejaría un token vivo huérfano en el Vault. */
 create or replace function public.reloj_borrar_secreto()
@@ -102,9 +102,9 @@ create trigger reloj_token_borra_secreto
   for each row execute function public.reloj_borrar_secreto();
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    1. Empezar: el deportista pide conectar
-   ------------------------------------------------------------
+   ============================================================
    Solo el propio atleta: el permiso lo da el dueño de la cuenta de Polar, y
    el entrenador no la tiene. Devuelve un estado aleatorio de un solo uso. */
 create or replace function public.reloj_iniciar(p_proveedor text)
@@ -135,9 +135,9 @@ begin
 end $$;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    2. Completar: vuelve Polar con el token
-   ------------------------------------------------------------
+   ============================================================
    La llama la ruta de vuelta, que no tiene sesión. El estado se CONSUME aquí:
    si no existe, ha caducado o ya se usó, no se guarda nada. */
 create or replace function public.reloj_completar(
@@ -189,9 +189,9 @@ begin
 end $$;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    3. Leer el token propio, para sincronizar
-   ------------------------------------------------------------
+   ============================================================
    Solo el del propio deportista. El entrenador no llega aquí. */
 create or replace function public.reloj_token_propio(p_proveedor text)
 returns table (id_externo text, access_token text, caduca_en timestamptz)
@@ -209,9 +209,9 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    4. Guardar lo que ha llegado
-   ------------------------------------------------------------
+   ============================================================
    Sobre el deportista de quien llama, nunca sobre uno que venga en los datos.
    Lo repetido se actualiza en vez de duplicarse. */
 create or replace function public.reloj_guardar(p_proveedor text, p_mediciones jsonb, p_error text)
@@ -258,9 +258,9 @@ begin
 end $$;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    5. Desconectar
-   ------------------------------------------------------------
+   ============================================================
    Borra la conexión; el token cae en cascada y el disparador borra su
    secreto del almacén. Lo ya recibido se queda: es parte de su historial,
    igual que el wellness que escribió a mano. */
@@ -272,9 +272,9 @@ returns void language sql volatile security definer set search_path = public as 
 $$;
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    Quién puede llamar a qué
-   ------------------------------------------------------------
+   ============================================================
    Se quita a PUBLIC Y a anon/authenticated por separado: Postgres da EXECUTE
    a PUBLIC, y Supabase además se lo da directamente a los dos roles. */
 revoke execute on function public.reloj_borrar_secreto() from public, anon, authenticated;

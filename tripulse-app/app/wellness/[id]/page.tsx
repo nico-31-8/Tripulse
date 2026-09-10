@@ -11,8 +11,9 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import { vivas } from '@/lib/papelera'
 import { type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
-import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, type NocheReloj } from '@/lib/noches-reloj'
+import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, type NocheReloj } from '@/lib/noches-reloj'
 import { llamarReloj } from '@/lib/relojes-cliente'
+import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 
 // Color de la flecha de tendencia según si el cambio es favorable para esa métrica.
 function flechaColor(m: MetricaAnalisis): string {
@@ -110,8 +111,12 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   const [motivacion, setMotivacion] = useState(4)
   const [hrv, setHrv] = useState('')
   const [fcReposo, setFcReposo] = useState('')
-  /* Lo del reloj. `noches` va por fecha de despertarse, la misma del wellness. */
+  /* Lo del reloj. `noches` va por fecha de despertarse, la misma del wellness.
+     `conectado` es «hay un reloj cuyos datos ya valen aquí»: uno de una marca
+     en pruebas (COROS, de momento) cuenta como si no hubiera, y el formulario
+     lo pregunta todo como siempre. */
   const [conectado, setConectado] = useState(false)
+  const [proveedor, setProveedor] = useState('')
   const [noches, setNoches] = useState<Record<string, NocheReloj>>({})
   const [buscandoNoche, setBuscandoNoche] = useState(false)
   const [corrigiendo, setCorrigiendo] = useState(false)
@@ -147,8 +152,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
         .gte('fecha_sesion', sumarDias(hoyISO(), -40))
         .order('fecha_sesion'),
       /* El reloj: si está conectado, y sus noches de las últimas semanas. */
-      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id).eq('proveedor', 'polar').maybeSingle(),
-      supabase.from('reloj_medicion').select('tipo, fecha, datos').eq('id_deportista', id)
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id)
+        .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('reloj_medicion').select('proveedor, tipo, fecha, datos').eq('id_deportista', id)
         .in('tipo', ['sueno', 'recarga']).gte('fecha', sumarDias(hoyISO(), -45)),
     ])
     setEsDeportista((perfil as any).data?.rol === 'deportista')
@@ -157,28 +163,33 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
     setRegistros(reg.data || [])
     setRegistrosPeso(pesos.data || [])
     setSesiones((ses.data || []) as SesionCruce[])
-    const tieneReloj = !!conQ.data
-    const lasNoches = nochesPorFecha(medQ.data as { tipo: string; fecha: string; datos: Record<string, unknown> }[])
+    const prov = conQ.data ? String(conQ.data.proveedor) : ''
+    const tieneReloj = datosListos(prov)
+    /* Solo las noches de la marca conectada: si antes tuvo otra, sus noches
+       viejas no pueden hacerse pasar por las de este reloj. */
+    const lasNoches = tieneReloj ? nochesPorFecha(delProveedor(medQ.data, prov)) : {}
+    setProveedor(prov)
     setConectado(tieneReloj)
     setNoches(lasNoches)
 
-    /* Si es el propio atleta, tiene Polar y la noche de hoy no está, se trae
+    /* Si es el propio atleta, tiene reloj y la noche de hoy no está, se trae
        una vez al entrar: es cuando va a rellenar. El entrenador no puede
        pedirla —el permiso es del atleta—, así que él ve lo que haya. */
     const esElAtleta = (perfil as { data: { rol?: string } | null }).data?.rol === 'deportista'
     if (esElAtleta && tieneReloj && !lasNoches[hoyISO()]?.dormido_min && !nocheTraidaRef.current) {
       nocheTraidaRef.current = true
-      await traerNoche()
+      await traerNoche(prov)
     }
   }
 
-  /** Pide a Polar lo último y relee las noches. Lo usa también «Volver a mirar». */
-  const traerNoche = async () => {
+  /** Pide al reloj lo último y relee las noches. Lo usa también «Volver a mirar». */
+  const traerNoche = async (prov: string = proveedor) => {
+    if (!prov) return
     setBuscandoNoche(true)
-    await llamarReloj('/api/relojes/polar/sincronizar')
-    const { data } = await supabase.from('reloj_medicion').select('tipo, fecha, datos').eq('id_deportista', id)
-      .in('tipo', ['sueno', 'recarga']).gte('fecha', sumarDias(hoyISO(), -45))
-    setNoches(nochesPorFecha(data as { tipo: string; fecha: string; datos: Record<string, unknown> }[]))
+    await llamarReloj('/api/relojes/' + prov + '/sincronizar')
+    const { data } = await supabase.from('reloj_medicion').select('proveedor, tipo, fecha, datos').eq('id_deportista', id)
+      .eq('proveedor', prov).in('tipo', ['sueno', 'recarga']).gte('fecha', sumarDias(hoyISO(), -45))
+    setNoches(nochesPorFecha(delProveedor(data, prov)))
     setBuscandoNoche(false)
   }
 
@@ -244,7 +255,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   if (!deportista) return <Cargando noExiste={noExiste} />
 
   /* EL DESLIZADOR DE HORAS, en un solo sitio y pintado en uno de dos: con
-     reloj va justo debajo de lo que trae Polar (es lo que corrige); sin reloj,
+     reloj va justo debajo de lo que trae el reloj (es lo que corrige); sin reloj,
      después de la calidad del sueño, como estuvo siempre. */
   const bloqueHoras = q.horas ? (
       <div className="bg-gray-800 rounded-xl p-4">
@@ -360,7 +371,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             {q.franjaReloj && noche && (
               <div className="rounded-xl p-4 border border-emerald-900/70 bg-emerald-950/30">
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <p className="text-emerald-300 font-semibold text-sm">⌚ De tu Polar, esa noche</p>
+                  <p className="text-emerald-300 font-semibold text-sm">⌚ De tu {nombreReloj(proveedor)}, esa noche</p>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300">Lo pone el reloj</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
@@ -387,14 +398,14 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             {/* CON RELOJ PERO SIN LA NOCHE: no durmió con él o no lo ha sincronizado. */}
             {q.modo === 'noche_pendiente' && (
               <div className="rounded-xl p-4 border border-amber-900/70 bg-amber-950/30">
-                <p className="text-amber-200 font-semibold text-sm mb-1">⌚ Todavía no ha llegado tu noche de Polar</p>
+                <p className="text-amber-200 font-semibold text-sm mb-1">⌚ Todavía no ha llegado tu noche de {nombreReloj(proveedor)}</p>
                 <p className="text-amber-100/70 text-xs leading-relaxed">
                   {esDeportista
-                    ? 'Sincroniza el reloj con la app de Polar y vuelve a mirar. Si no dormiste con él, apunta las horas aquí abajo.'
-                    : 'Solo el atleta puede pedirla a Polar, desde su propio formulario. Mientras tanto, las horas se apuntan a mano.'}
+                    ? 'Sincroniza el reloj con la app de ' + nombreReloj(proveedor) + ' y vuelve a mirar. Si no dormiste con él, apunta las horas aquí abajo.'
+                    : 'Solo el atleta puede pedirla a ' + nombreReloj(proveedor) + ', desde su propio formulario. Mientras tanto, las horas se apuntan a mano.'}
                 </p>
                 {esDeportista && (
-                  <button type="button" onClick={traerNoche} disabled={buscandoNoche}
+                  <button type="button" onClick={() => traerNoche()} disabled={buscandoNoche}
                     className="mt-3 bg-gray-900/70 hover:bg-gray-900 border border-amber-900/70 text-amber-200 text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
                     {buscandoNoche ? 'Mirando…' : '⟳ Volver a mirar'}
                   </button>

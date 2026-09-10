@@ -205,8 +205,9 @@ export default function PerfilPage() {
          'test_fuerza','tests_libres','anamnesis','disponibilidad','competicion','registro_peso',
          'macrociclo','mesociclo','microciclo','sesion','tarea','mensajes',
          /* Lo que llega del reloj también es suyo. De la conexión sale el estado,
-            nunca el token: ese vive cifrado aparte y no lo lee ningún navegador. */
-         'reloj_conexion','reloj_medicion'].map(t => [t, '*'] as [string, string])
+            nunca el token: ese vive cifrado aparte y no lo lee ningún navegador.
+            Y lo que un reloj en pruebas contestó tal cual (reloj_crudo). */
+         'reloj_conexion','reloj_medicion','reloj_crudo'].map(t => [t, '*'] as [string, string])
       : [['perfiles','*'],
          ['deportista','id, nombre, created_at'],
          ['macrociclo','*'], ['mesociclo','*'], ['microciclo','*'],

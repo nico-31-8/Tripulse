@@ -42,7 +42,16 @@ export function nochesPorFecha(
 }
 
 /** Horas con dos decimales a partir de los minutos del reloj (432 → 7,2). Nunca un cero. */
-export const horasDeMinutos = (min: number | null | undefined): number | null =>
+/**
+ * Las filas de una sola marca. Si el atleta tuvo antes otro reloj, sus noches
+ * se quedan en la base; pero no pueden hacerse pasar por las del de ahora, que
+ * es el que dice «esta noche ha llegado» o «todavía no».
+ */
+export function delProveedor<T extends { proveedor?: unknown }>(filas: T[] | null | undefined, proveedor: string): T[] {
+  return proveedor ? (filas || []).filter(f => f?.proveedor === proveedor) : []
+}
+
+export const horasDeMinutos =(min: number | null | undefined): number | null =>
   typeof min === 'number' && Number.isFinite(min) && min > 0 ? Math.round((min / 60) * 100) / 100 : null
 
 /** «7 h 12», para enseñar. */
