@@ -32,6 +32,22 @@ const DIA = (f: string) =>
   new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
 
 
+/* LO QUE LLEGA, Y CON QUÉ APARATO. Se enseña antes de conectar (para que
+   nadie espere lo que no va a llegar) y otra vez en «¿No llega nada?».
+
+   La regla que lo explica todo: manda DÓNDE SE GRABA la sesión, no la marca
+   del sensor. Llega lo que acabe en su cuenta de Polar Flow. */
+function QueLlega() {
+  return (
+    <ul className="flex flex-col gap-2 text-xs text-gray-400 leading-relaxed">
+      <li><strong className="text-gray-200">Con un reloj o pulsera Polar con el que duermes:</strong> tu sueño y tu HRV cada noche, y tus entrenos. Al conectar llegan las noches de las últimas cuatro semanas.</li>
+      <li><strong className="text-gray-200">Con una banda de pecho o de brazo Polar:</strong> tus entrenos, si los grabas con un reloj Polar o con la app de Polar. La de brazo puede grabar sola y pasarlos al móvil después. El sueño y la HRV no: con la banda no se duerme.</li>
+      <li><strong className="text-gray-200">Si tu banda Polar va con un Garmin u otra marca,</strong> esas sesiones se guardan en esa marca y no llegan aquí.</li>
+      <li><strong className="text-gray-200">Los entrenos, solo los que subas a Polar Flow después de conectar.</strong> Los de antes no.</li>
+    </ul>
+  )
+}
+
 /* `ahora` llega de fuera y no se lee aquí: leer el reloj mientras se pinta
    da un resultado distinto en cada repintado. */
 function hace(iso: string | null, ahora: number): string {
@@ -166,15 +182,38 @@ export default function RelojPerfil() {
             Conecta tu cuenta de Polar y TRIPULSE traerá tu sueño, tu HRV nocturna y los entrenos
             que subas. Tu entrenador lo verá para ajustar tu plan, y tú tendrás menos que apuntar.
           </p>
+
+          {/* LOS PASOS, NUMERADOS PORQUE LO SON: van en este orden y el 3 es el
+              que se salta todo el mundo. Sin él, la app dice «conectado» y no
+              llega nada, sin ningún error a la vista. */}
+          <ol className="flex flex-col gap-2.5 mb-5">
+            {[
+              ['Ten a mano tu cuenta de Polar Flow.', 'La misma con la que entras en la app de Polar donde ves tus entrenos.'],
+              ['Pulsa «Conectar Polar».', 'Te lleva a Polar: entras y das permiso. Después vuelves aquí solo.'],
+              ['Acepta los consentimientos en account.polar.com.', 'Es el paso que se olvida: sin él Polar no deja leer nada, aunque aquí salga «conectado».'],
+              ['Sincroniza tu reloj con la app de Polar, como siempre.', 'Lo que no esté en Polar Flow no nos llega.'],
+            ].map(([t, d], i) => (
+              <li key={i} className="flex gap-3">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-gray-800 border border-gray-700 text-orange-400 text-xs font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
+                <span className="text-sm leading-snug">
+                  <span className="text-gray-200 font-medium">{t}</span>
+                  <span className="block text-gray-500 text-xs mt-0.5">{d}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+
           <button onClick={conectar} disabled={!!ocupado}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-medium transition disabled:opacity-50">
             {ocupado === 'conectar' ? 'Abriendo Polar…' : 'Conectar Polar'}
           </button>
-          <p className="text-gray-500 text-xs mt-3 leading-relaxed">
-            Te llevará a Polar para que des permiso. <strong className="text-gray-300">Después, entra en
-            account.polar.com y acepta los consentimientos obligatorios</strong>: sin ellos Polar no deja
-            leer nada, aunque aquí salga como conectado.
-          </p>
+
+          <details className="mt-4 group">
+            <summary className="text-gray-400 hover:text-gray-200 text-xs cursor-pointer select-none">
+              ¿Qué llega, y con qué aparatos?
+            </summary>
+            <div className="mt-3"><QueLlega /></div>
+          </details>
         </>
       ) : (
         <>
@@ -188,6 +227,21 @@ export default function RelojPerfil() {
               {con.ultimo_error}
             </p>
           )}
+          {/* ¿NO LLEGA NADA? Lo que hay que revisar, en el orden en que suele
+              fallar. Plegado: si todo llega, estorba. */}
+          <details className="mt-3">
+            <summary className="text-gray-400 hover:text-gray-200 text-xs cursor-pointer select-none">
+              ¿No llega nada?
+            </summary>
+            <ol className="mt-3 flex flex-col gap-2 text-xs text-gray-400 leading-relaxed list-decimal pl-4">
+              <li><strong className="text-gray-200">Acepta los consentimientos en account.polar.com.</strong> Sin ellos Polar no deja leer nada.</li>
+              <li><strong className="text-gray-200">Sincroniza el reloj con la app de Polar.</strong> Lo que no esté en Polar Flow no nos llega.</li>
+              <li><strong className="text-gray-200">Pulsa «Sincronizar ahora»</strong> aquí abajo.</li>
+            </ol>
+            <p className="text-gray-500 text-xs mt-3 mb-2">Y lo que es normal que no llegue:</p>
+            <QueLlega />
+          </details>
+
           {caducaPronto && (
             <p className="text-xs text-amber-300 mt-2">
               La conexión caduca el {new Date(con.caduca_en!).toLocaleDateString('es-ES')}. Polar no la renueva sola:

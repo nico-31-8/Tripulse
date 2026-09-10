@@ -404,7 +404,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               { k: 'Sistema de zonas', v: (deportista.sistema_zonas || 1) === 2 ? 'Zonas 2' : 'Clásico', u: '', chico: true },
               { k: 'Valoración técnica', v: diasTecnica != null ? 'Hace ' + diasTecnica + ' d' : 'Sin registrar', u: '', chico: true },
               { k: 'Reloj', v: reloj ? '⌚ ' + reloj.proveedor.charAt(0).toUpperCase() + reloj.proveedor.slice(1) : 'Sin conectar', u: '', chico: true,
-                sub: !reloj ? undefined : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
+                sub: !reloj ? 'lo conecta el atleta en su perfil' : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
             ].map(s => (
               <div key={s.k} className="px-6 py-3.5 border-r border-white/[0.075] last:border-r-0">
                 <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>

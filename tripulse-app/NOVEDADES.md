@@ -39,6 +39,11 @@ Garmin, no: esa sesión vive en Garmin.
 En la ficha de cada atleta, entre las constantes, una celda nueva dice si tiene
 reloj conectado y si ha llegado su noche de hoy.
 
+No hace falta que se lo expliques tú: su tarjeta le enseña los cuatro pasos y qué
+llega con cada aparato (reloj, banda de pecho, banda de brazo), y si algo no llega,
+un «¿No llega nada?» con lo que tiene que revisar. En tu ficha, «Sin conectar» ya
+dice dónde lo conecta.
+
 ### El wellness pregunta lo que falta, no lo que el atleta tenga
 
 Con Polar conectado, el formulario de la mañana **deja de pedir las horas de
