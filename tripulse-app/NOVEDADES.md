@@ -14,6 +14,19 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 11 de septiembre de 2026
+
+### Seguridad: el navegador ya solo habla con quien tiene que hablar
+
+TRIPULSE le dice ahora al navegador con qué sitios puede comunicarse: la propia
+aplicación, la base de datos, el registro de errores y los vídeos de YouTube.
+Si algún día alguien consiguiera colar código en una página, no podría mandar
+los datos de tus atletas a ningún otro sitio.
+
+Para ti no cambia nada: lo hemos probado pantalla por pantalla antes de
+activarlo. Si alguna vez algo deja de cargar (una imagen, un vídeo), dínoslo:
+nos llega un aviso, pero tu descripción ayuda a encontrarlo antes.
+
 ## 10 de septiembre de 2026
 
 ### Seguridad: enlaces de invitación y lo que se veía sin cuenta

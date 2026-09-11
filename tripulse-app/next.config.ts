@@ -11,10 +11,8 @@ import { withSentryConfig } from "@sentry/nextjs";
    · La URL completa de la app viajaba como referrer a cualquier enlace externo,
      y aquí las URLs llevan ids de deportista y de sesión.
 
-   NO ESTÁ LA CONTENT-SECURITY-POLICY, y es a propósito. Es la que de verdad
-   protege, pero puesta a ciegas rompe media app: Sentry, Supabase, las fuentes
-   y los gráficos cargan cosas que habría que enumerar una a una. Esa merece su
-   propio rato midiendo qué pide cada pantalla, no una línea copiada. */
+   La Content-Security-Policy, que es la que de verdad protege, va aparte justo
+   debajo: puesta a ciegas rompe media app, y tiene su propia historia. */
 /* ============================================================
    La Content-Security-Policy
    ============================================================
@@ -23,12 +21,20 @@ import { withSentryConfig } from "@sentry/nextjs";
    como acotar el daño si alguna vez lo hubiera: aunque colaran un script, solo
    podría hablar con Supabase y Sentry, no mandarse los datos a otro sitio.
 
-   VA EN MODO INFORME (Report-Only) DE MOMENTO.
-   El navegador comprueba la política y avisa en la consola de lo que habría
-   bloqueado, pero no bloquea nada. Una CSP mal ajustada rompe la app entera y
-   además de una forma difícil de diagnosticar: las cosas simplemente dejan de
-   cargar. Primero se mira qué se queja, y cuando esté limpia se cambia el
-   nombre de la cabecera a la de verdad.
+   BLOQUEA EN PRODUCCIÓN DESDE EL 11/09/2026. Estuvo dos semanas en modo
+   informe (avisa pero no bloquea). Antes de activarla se recorrieron 34
+   pantallas del entrenador en producción —lienzo, vídeos de YouTube, chat en
+   tiempo real incluidos— con un escuchador de `securitypolicyviolation`:
+   cero avisos. OJO si hay que repetirlo: la herramienta que lee la consola NO
+   enseña estos avisos; el escuchador sí.
+
+   En desarrollo sigue en modo informe: el servidor de pruebas y sus
+   herramientas cargan cosas que en producción no existen.
+
+   Lo que bloquee se manda a Sentry (report-uri, abajo). Una CSP que rompe
+   algo lo rompe en silencio —las cosas dejan de cargar y ya—, así que sin ese
+   aviso nadie se enteraría. Si aparece ahí algo legítimo, se añade su sitio a
+   la directiva que diga el aviso.
 
    SIGUE 'unsafe-inline' EN LOS SCRIPTS, Y HAY QUE SABERLO.
    Next mete scripts en línea para hidratar la página. Quitarlo exige nonces,
@@ -38,6 +44,17 @@ import { withSentryConfig } from "@sentry/nextjs";
    que sí aporta es todo lo demás de esta lista. */
 const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const SUPABASE_WS = SUPABASE.replace(/^https:/, 'wss:')
+
+/* Dónde avisa el navegador de lo que bloquea: el buzón de seguridad de Sentry.
+   Sale del mismo DSN de instrumentation-client.ts, que es público (viaja en el
+   navegador de todos). Los avisos salen en Sentry como incidencias «CSP». */
+const INFORMES_CSP =
+  'https://o4511786618322944.ingest.de.sentry.io/api/4511786635296848/security/?sentry_key=b0cfeb61b855b7a7e23d53749c3b0611'
+
+/* Bloquea solo en producción y solo si sabe dónde está Supabase: sin esa
+   variable, connect-src dejaría fuera la base de datos y la app entera se
+   quedaría en blanco. Mejor seguir avisando que tumbarla. */
+const CSP_BLOQUEA = process.env.NODE_ENV === 'production' && SUPABASE.startsWith('https://')
 
 const CSP = [
   "default-src 'self'",
@@ -66,12 +83,11 @@ const CSP = [
   /* Un formulario de la app solo puede enviarse a la app. Si colaran uno, no
      podría mandar lo escrito a otro servidor. */
   "form-action 'self'",
+  `report-uri ${INFORMES_CSP}`,
 ].join('; ')
 
 const CABECERAS = [
-  /* Cuando lleve un tiempo sin quejarse, esta clave pasa a
-     'Content-Security-Policy' a secas y empieza a bloquear de verdad. */
-  { key: 'Content-Security-Policy-Report-Only', value: CSP },
+  { key: CSP_BLOQUEA ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only', value: CSP },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
