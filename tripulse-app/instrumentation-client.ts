@@ -1,9 +1,10 @@
 // Inicialización de Sentry en el NAVEGADOR (Next.js carga este fichero en el cliente).
 import * as Sentry from '@sentry/nextjs'
+import { MUESTREO_TRAZAS } from '@/lib/sentry-muestreo'
 
 Sentry.init({
   dsn: 'https://b0cfeb61b855b7a7e23d53749c3b0611@o4511786618322944.ingest.de.sentry.io/4511786635296848',
-  tracesSampleRate: 1.0,
+  tracesSampleRate: MUESTREO_TRAZAS,
   sendDefaultPii: false,
   // Ruido benigno del lock de auth de Supabase (Web Locks API) al navegar entre páginas.
   // No es un bug ni afecta al usuario; se descarta para no ensuciar Sentry ni gastar cuota.

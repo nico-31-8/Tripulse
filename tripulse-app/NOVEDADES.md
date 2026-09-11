@@ -27,6 +27,9 @@ Para ti no cambia nada: lo hemos probado pantalla por pantalla antes de
 activarlo. Si alguna vez algo deja de cargar (una imagen, un vídeo), dínoslo:
 nos llega un aviso, pero tu descripción ayuda a encontrarlo antes.
 
+Por dentro, además, la velocidad de la aplicación se mide en una de cada diez
+visitas y no en todas. Los errores se siguen registrando todos.
+
 ## 10 de septiembre de 2026
 
 ### Seguridad: enlaces de invitación y lo que se veía sin cuenta
