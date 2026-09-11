@@ -20,14 +20,52 @@ export function moverItem<T>(arr: T[], from: number, to: number): T[] {
   return copia
 }
 
-// Persiste el nuevo orden: `orden` = posición (1..N) de cada tarea en la lista.
-// Solo escribe las que cambian, para no lanzar updates de más.
-export async function persistirOrden(
+/**
+ * La lista con `orden` = su posición (1..N). Es lo que hay que dejar en pantalla
+ * después de reordenar: si la pantalla se queda con los números de antes, el
+ * siguiente arrastre compara contra números que ya no son los de la base.
+ */
+export function renumerar<T extends { orden?: number | null }>(lista: T[]): T[] {
+  return lista.map((t, i) => (t.orden === i + 1 ? t : { ...t, orden: i + 1 }))
+}
+
+/**
+ * El número de orden más alto de la sesión, para colocar una tarea nueva DETRÁS
+ * con `ultimoOrden(tareas) + 1`.
+ *
+ * No vale «cuántas hay»: si se borró una del medio (1, 2, 4), habría tres y la
+ * nueva sería otra 4, empatada con la que ya existe. Las tareas viejas sin orden
+ * cuentan por su sitio, que es el final.
+ */
+export function ultimoOrden(tareas: { orden?: number | null }[]): number {
+  return tareas.reduce((max, t) => Math.max(max, t.orden ?? 0), tareas.length)
+}
+
+/* Los guardados de orden van EN FILA, uno detrás de otro. Dos arrastres
+   seguidos lanzan dos tandas de escrituras; si fueran a la vez, una fila de la
+   primera podría llegar después que la de la segunda y dejar la sesión con una
+   mezcla de los dos órdenes. */
+let cola: Promise<unknown> = Promise.resolve()
+
+/**
+ * Escribe `orden` = posición (1..N) de TODAS las tareas de la lista.
+ *
+ * Antes solo escribía las que «cambiaban» comparando con el `orden` que tenía la
+ * pantalla, y la pantalla no se actualizaba después de guardar. Al segundo
+ * arrastre comparaba contra números viejos: mover una tarea y devolverla a su
+ * sitio no escribía nada y la sesión se quedaba como tras el primer movimiento.
+ * Una sesión tiene pocas tareas; escribirlas todas cuesta nada y no depende de
+ * lo que crea saber la pantalla.
+ */
+export function persistirOrden(
   supabase: any,
-  tareasEnOrden: { id: number; orden?: number | null }[],
-): Promise<void> {
-  const cambios = tareasEnOrden
-    .map((t, i) => ({ id: t.id, nuevo: i + 1, actual: t.orden }))
-    .filter(c => c.actual !== c.nuevo)
-  await Promise.all(cambios.map(c => supabase.from('tarea').update({ orden: c.nuevo }).eq('id', c.id)))
+  tareasEnOrden: { id: number }[],
+): Promise<{ ok: boolean }> {
+  const filas = tareasEnOrden.map((t, i) => ({ id: t.id, orden: i + 1 }))
+  const tanda = cola.then(async () => {
+    const res = await Promise.all(filas.map(f => supabase.from('tarea').update({ orden: f.orden }).eq('id', f.id)))
+    return { ok: res.every((r: { error?: unknown } | undefined) => !r?.error) }
+  })
+  cola = tanda.catch(() => null)
+  return tanda.catch(() => ({ ok: false }))
 }

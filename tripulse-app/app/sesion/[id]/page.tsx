@@ -12,7 +12,7 @@ import PanelPlantillas from '@/components/PanelPlantillas'
 import PanelSemana from '@/components/PanelSemana'
 import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
-import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
+import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
 import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
@@ -177,10 +177,18 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const [sobreIdx, setSobreIdx] = useState<number | null>(null)
 
   const reordenarTareas = async (from: number, to: number) => {
-    const nuevo = moverItem(tareas, from, to)
-    if (nuevo === tareas) return
-    setTareas(nuevo)   // optimista: se ve al instante, se persiste detrás
-    await persistirOrden(supabase, nuevo)
+    const movida = moverItem(tareas, from, to)
+    if (movida === tareas) return
+    /* Optimista: se ve al instante y se guarda detrás. Con los números ya
+       puestos al día: si la pantalla se quedaba con los de antes, el siguiente
+       arrastre comparaba contra ellos y dejaba de guardar (ver lib/tareas-orden). */
+    const nuevo = renumerar(movida)
+    setTareas(nuevo)
+    const { ok } = await persistirOrden(supabase, nuevo)
+    if (!ok) {
+      alert('No se ha podido guardar el nuevo orden. Vuelvo a enseñar el que hay guardado.')
+      cargarDatos()
+    }
   }
   const [duracionManualInput, setDuracionManualInput] = useState('')
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
@@ -444,7 +452,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     if (!ejercicioSel && !tareaEditandoId) return
     setLoading(true)
     setError('')
-    const orden = tareas.length + 1
+    const orden = ultimoOrden(tareas) + 1
     const campos = {
       disciplina: 'Fuerza',
       series: seriesFuerza ? Number(seriesFuerza) : null,
@@ -510,7 +518,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     e.preventDefault()
     setLoading(true)
     setError('')
-    const orden = tareas.length + 1
+    const orden = ultimoOrden(tareas) + 1
     const campos = {
       zona_entrenamiento: zona,
       disciplina: disciplina || null,
@@ -835,7 +843,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   <span className="text-gray-500 text-[11.5px]">Cada tarea elige su cualidad</span>
                 )}
                 {!esDeportista && (
-                  <BotonMovilidad idSesion={Number(id)} ordenBase={tareas.length} onHecho={cargarDatos} />
+                  <BotonMovilidad idSesion={Number(id)} ordenBase={ultimoOrden(tareas)} onHecho={cargarDatos} />
                 )}
               </div>
             )}
@@ -1289,6 +1297,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             sesionId={Number(id)}
             disciplina={sesion.disciplina}
             nTareas={tareas.length}
+            ordenBase={ultimoOrden(tareas)}
             refrescar={refrescarPropias}
             onAplicada={async () => { await cargarDatos(); setRecargaTareas(n => n + 1) }}
           />

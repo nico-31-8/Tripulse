@@ -32,11 +32,14 @@ interface Props {
   sesionId: number
   disciplina: string
   nTareas: number          // cuántas tareas tiene ya la sesión
+  /** El orden de la última tarea (lib/tareas-orden: ultimoOrden). Añadir detrás
+      de «cuántas hay» empataba con una existente si se había borrado alguna. */
+  ordenBase?: number
   onAplicada: () => void
   refrescar?: number       // cambia al guardar una plantilla nueva → recarga las propias
 }
 
-export default function PanelPlantillas({ sesionId, disciplina, nTareas, onAplicada, refrescar = 0 }: Props) {
+export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBase, onAplicada, refrescar = 0 }: Props) {
   const [pestana, setPestana] = useState<Pestana>('tipo')
   const [abierta, setAbierta] = useState<string | null>(null)
   // Clave de la variante elegida dentro de la plantilla abierta. Se olvida al
@@ -76,7 +79,7 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, onAplic
       }
     }
 
-    const err = await aplicarBloques(supabase, sesionId, disciplina, bloques, reemplazar ? 0 : nTareas)
+    const err = await aplicarBloques(supabase, sesionId, disciplina, bloques, reemplazar ? 0 : (ordenBase ?? nTareas))
     if (err) { alert('No se ha podido aplicar la plantilla.\n\n' + err); setAplicando(false); return }
 
     setAplicando(false)

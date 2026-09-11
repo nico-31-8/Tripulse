@@ -3,7 +3,7 @@ import React from 'react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { textoEncadenado } from '@/lib/tarea-vista'
-import { ordenarTareasQuery, moverItem, persistirOrden } from '@/lib/tareas-orden'
+import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
@@ -154,10 +154,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const [sobreIdx, setSobreIdx] = useState<number | null>(null)
 
   const reordenarTareas = async (from: number, to: number) => {
-    const nuevo = moverItem(tareasGuardadas, from, to)
-    if (nuevo === tareasGuardadas) return
+    const movida = moverItem(tareasGuardadas, from, to)
+    if (movida === tareasGuardadas) return
+    // Con los números al día: ver el mismo sitio en la vista Formulario (page.tsx).
+    const nuevo = renumerar(movida)
     setTareasGuardadas(nuevo)
-    await persistirOrden(supabase, nuevo)
+    const { ok } = await persistirOrden(supabase, nuevo)
+    if (!ok) {
+      alert('No se ha podido guardar el nuevo orden. Vuelvo a enseñar el que hay guardado.')
+      await cargarDatos()
+    }
     onTareasCambian?.()
   }
 
@@ -681,7 +687,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const guardarFilaR = async (i: number) => {
     setLoading(true)
     try {
-      const r = await escribirFilaR(filasR[i], tareasGuardadas.length + i + 1)
+      /* Detrás de la última guardada. Antes era «cuántas hay + su fila»: guardar
+         la segunda fila antes que la primera, o con una tarea borrada en medio,
+         daba dos tareas con el mismo número y salían en cualquier orden. */
+      const r = await escribirFilaR(filasR[i], ultimoOrden(tareasGuardadas) + 1)
       if (r.error) { alert(r.error); setLoading(false); return }
       await cargarDatos()
       setFilasR(prev => prev.filter((_, idx) => idx !== i))
@@ -795,7 +804,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     if (!filasF[i]?.ejercicioSelId && !filasF[i]?.idTarea) return
     setLoading(true)
     try {
-      const r = await escribirFilaF(filasF[i], tareasGuardadas.length + i + 1)
+      const r = await escribirFilaF(filasF[i], ultimoOrden(tareasGuardadas) + 1)   // ver guardarFilaR
       if (r.error) { alert(r.error); setLoading(false); return }
       await cargarDatos()
       setFilasF(prev => prev.filter((_, idx) => idx !== i))
@@ -817,7 +826,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      cierre la sesión creyéndola montada. */
   const guardarTodas = async () => {
     setLoading(true)
-    const yaHay = tareasGuardadas.length
+    const yaHay = ultimoOrden(tareasGuardadas)
     if (esFuerza) {
       const filas = filasF
       const p = await guardarEnOrden(filas, yaHay, estadoFuerza, escribirFilaF)

@@ -16,6 +16,21 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 11 de septiembre de 2026
 
+### Reordenar tareas: ahora se guarda siempre
+
+Al arrastrar las tareas de una sesión para cambiarlas de orden, a veces no se
+guardaba lo último que hacías. Pasaba sobre todo al ir colocándolas mientras
+las creabas: si movías una tarea y luego la devolvías a su sitio, al volver a
+la sesión aparecía como tras el primer movimiento. Ya no: lo que ves al soltar
+es lo que queda guardado, en la vista de fichas y en la de tabla.
+
+También podía pasar que una tarea nueva saliera en un sitio raro si antes
+habías borrado otra del medio de la sesión. Ahora las nuevas van siempre al
+final.
+
+Si alguna sesión se te quedó con las tareas en otro orden, basta con
+arrastrarlas otra vez: ahora se quedan donde las pongas.
+
 ### Seguridad: el navegador ya solo habla con quien tiene que hablar
 
 TRIPULSE le dice ahora al navegador con qué sitios puede comunicarse: la propia
