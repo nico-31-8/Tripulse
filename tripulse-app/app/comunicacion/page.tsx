@@ -60,6 +60,7 @@ export default function ComunicacionPage() {
        añadía un entrenamiento por su cuenta y dejaba una nota, esa nota no le
        llegaba al entrenador — que es exactamente lo contrario de para lo que
        está esta pantalla. */
+    let fbRecien: typeof feedback = []
     if (deportistas.length) {
       const depIds = deportistas.map((d: any) => d.id)
       const { data: sesiones } = await vivas(supabase.from('sesion')
@@ -81,16 +82,39 @@ export default function ComunicacionPage() {
         if (!x) return null
         return { tareaId: t.id, sesionId: x.id, fecha: x.fecha_sesion, disciplina: x.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId: x.id_deportista }
       }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
-      setFeedback(fb as any[])
+      fbRecien = fb as any[]
+      setFeedback(fbRecien)
     }
     setLoading(false)
+
+    /* ?dep=ID: viene del aviso del panel principal y abre esa conversación. Se
+       lee de la dirección a mano (sin useSearchParams, que obligaría a envolver
+       la página en Suspense) y se limpia para que recargar no la reabra. */
+    const pedido = Number(new URLSearchParams(window.location.search).get('dep'))
+    if (pedido && deportistas.some(d => d.id === pedido)) {
+      router.replace('/comunicacion', { scroll: false })
+      abrir(pedido, fbRecien)
+    }
   }
 
-  const abrir = async (depId: number) => {
+  /* `fbActual`: quien llama desde `cargar` pasa la lista recién leída, porque
+     el estado `feedback` todavía no se ha actualizado en ese momento. */
+  const abrir = async (depId: number, fbActual: typeof feedback = feedback) => {
     setActiveId(depId); setMobileOpen(true); setReply(null)
     // Marcar como leídos los mensajes del deportista.
     await supabase.from('mensajes').update({ leido: true }).eq('id_deportista', depId).eq('autor', 'deportista').eq('leido', false)
     setMensajes(prev => prev.map(m => (m.id_deportista === depId && m.autor === 'deportista') ? { ...m, leido: true } : m))
+
+    /* Y sus comentarios de sesión, igual que los mensajes: abrir su
+       conversación es revisarlos. Antes solo se marcaban al pulsar «Responder»
+       en cada uno, así que el aviso del panel principal seguía diciendo «15 sin
+       revisar» después de haberlos leído todos. Siguen en el hilo para
+       responderlos; solo dejan de contar como pendientes. */
+    const ids = fbActual.filter(f => f.depId === depId && !f.leido).map(f => f.tareaId)
+    if (ids.length) {
+      await supabase.from('tarea').update({ comentario_leido: true }).in('id', ids)
+      setFeedback(prev => prev.map(f => ids.includes(f.tareaId) ? { ...f, leido: true } : f))
+    }
   }
 
   const enviar = async () => {

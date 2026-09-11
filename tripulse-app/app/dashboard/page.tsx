@@ -14,6 +14,8 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
+import AvisoComunicacion from '@/components/AvisoComunicacion'
+import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -43,6 +45,8 @@ export default function Dashboard() {
   // Acceso al panel de plataforma. Solo aparece para nuestras cuentas; esconderlo
   // es cosmética, el candado está en cada función SQL de /admin.
   const [esPlataforma, setEsPlataforma] = useState(false)
+  // Mensajes y comentarios de sesión sin revisar, de todos sus atletas.
+  const [porRevisar, setPorRevisar] = useState<Pendientes>(SIN_PENDIENTES)
 
   useEffect(() => {
     const init = async () => {
@@ -56,6 +60,9 @@ export default function Dashboard() {
       setDeportistas(deps || [])
       // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
       const depIds = (deps || []).map((d: any) => d.id)
+      /* Lo que tiene sin revisar en Comunicación. Sin await: es un aviso, no
+         puede retrasar ni tumbar el panel si falla. */
+      cargarPendientes(supabase, user.id, depIds).then(setPorRevisar).catch(() => {})
       if (depIds.length) {
         const { data: macros } = await supabase.from('macrociclo').select('id').in('id_deportista', depIds).limit(1)
         setTienePlan(!!macros?.length)
@@ -69,6 +76,20 @@ export default function Dashboard() {
     }
     init()
   }, [])
+
+  /* Al volver a la pestaña se vuelve a mirar, como mucho una vez por minuto: el
+     panel se queda abierto horas y los mensajes llegan mientras tanto. */
+  useEffect(() => {
+    if (!userId || !deportistas.length) return
+    let ultimo = Date.now()
+    const alVolver = () => {
+      if (Date.now() - ultimo < 60_000) return
+      ultimo = Date.now()
+      cargarPendientes(supabase, userId, deportistas.map(d => d.id)).then(setPorRevisar).catch(() => {})
+    }
+    window.addEventListener('focus', alVolver)
+    return () => window.removeEventListener('focus', alVolver)
+  }, [userId, deportistas])
 
   const seleccionar = async (dep: any) => {
     setSwitcherOpen(false)
@@ -143,7 +164,9 @@ export default function Dashboard() {
   // Avisos "Necesita tu atención" = wellness sin registrar + mensajes sin leer + sugerencias del atleta.
   const notifs: { color: string; texto: string; sub?: string; add?: string }[] = activo ? [
     ...(readiness && !wellHoy.hoy ? [{ color: '#eab308', texto: 'Wellness sin registrar hoy', sub: 'Recuérdale que lo rellene' }] : []),
-    ...((metricas?.general?.comunicacion || 0) > 0 ? [{ color: '#ec4899', texto: metricas!.general.comunicacion + ' mensajes sin leer', sub: 'de ' + (activo.nombre?.split(' ')[0] || 'tu deportista') }] : []),
+    /* Lo mismo que cuenta el aviso de arriba —mensajes y comentarios de sesión—,
+       para que los dos números no puedan decir cosas distintas. */
+    ...(totalDe(porRevisar, activo.id) > 0 ? [{ color: '#ec4899', texto: textoPendientes({ porAtleta: {}, ...porRevisar.porAtleta[activo.id] }) + ' sin revisar', sub: 'de ' + (activo.nombre?.split(' ')[0] || 'tu deportista') }] : []),
     ...sugerencias.map(s => ({ color: '#3b82f6', texto: s, add: s })),
   ] : []
 
@@ -230,6 +253,8 @@ export default function Dashboard() {
         ) : !activo ? (
           /* ===== ENTRADA: elegir deportista ===== */
           <div className="min-h-[74vh] flex flex-col items-center justify-center text-center">
+            {/* Lo primero que se ve al entrar: si alguien te ha escrito. */}
+            <AvisoComunicacion pendientes={porRevisar} deportistas={deportistas} className="fade-up max-w-lg mb-8" />
             <p className="fade-up text-sm font-medium text-orange-400/90 mb-2">Hola, {perfil?.nombre} 👋</p>
             <h2 className="fade-up text-3xl sm:text-[34px] font-bold tracking-tight mb-2" style={{ animationDelay: '60ms' }}>¿Con quién trabajamos hoy?</h2>
 
@@ -245,6 +270,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8 w-full max-w-lg">
               {deportistas.map((d, i) => {
                 const [c1, c2] = grad(d.nombre)
+                const sinRevisar = totalDe(porRevisar, d.id)
                 return (
                   <button key={d.id} onClick={() => seleccionar(d)}
                     className="fade-up group flex flex-col items-center gap-3.5 rounded-2xl py-4 transition-transform duration-300 ease-out hover:-translate-y-1.5 focus-visible:outline-none"
@@ -253,6 +279,10 @@ export default function Dashboard() {
                       style={{ background: 'linear-gradient(145deg, ' + c1 + ', ' + c2 + ')', boxShadow: '0 12px 30px -6px ' + c1 + '66' }}>
                       {inicial(d.nombre)}
                       <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ borderRadius: 'inherit', boxShadow: 'inset 0 0 0 2px #ffffff40' }} />
+                      {sinRevisar > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[24px] h-6 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold grid place-items-center tabular-nums ring-[3px] ring-gray-950"
+                          title={sinRevisar + ' sin revisar en Comunicación'}>{sinRevisar}</span>
+                      )}
                     </span>
                     <span className="font-semibold text-[15px] text-gray-400 group-hover:text-white transition-colors duration-200">{d.nombre}</span>
                   </button>
@@ -269,6 +299,10 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* De todos sus atletas, no solo del que tiene abierto: si le escribe
+                otro mientras trabaja con este, tiene que enterarse aquí. */}
+            <AvisoComunicacion pendientes={porRevisar} deportistas={deportistas} className="mb-6" />
+
             {/* ===== Cabecera: nombre + selector de deportista ===== */}
             <div className="flex items-center justify-between gap-4 mb-7">
               <div className="relative">
@@ -310,6 +344,10 @@ export default function Dashboard() {
                             <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
                               style={{ background: 'linear-gradient(145deg, ' + g1 + ', ' + g2 + ')' }}>{inicial(d.nombre)}</span>
                             <span className={'flex-1 text-sm truncate ' + (sel ? 'text-white font-semibold' : 'text-gray-300')}>{d.nombre}</span>
+                            {totalDe(porRevisar, d.id) > 0 && (
+                              <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-orange-500 text-white text-[11px] font-bold grid place-items-center tabular-nums"
+                                title="Sin revisar en Comunicación">{totalDe(porRevisar, d.id)}</span>
+                            )}
                             {sel && <span className="text-orange-400 text-xs flex-shrink-0">●</span>}
                           </button>
                         )
