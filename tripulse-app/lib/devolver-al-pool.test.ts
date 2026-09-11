@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { devolverAlPool, chipsEnlazados, loQueSePierde , borrarConSuChip} from './devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde , borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from './devolver-al-pool'
 import type { ChipZona } from './chips'
 
 const chip = (o: Partial<ChipZona> & { id: string }): ChipZona =>
@@ -156,5 +156,39 @@ describe('borrar de verdad se lleva su unidad', () => {
     expect(borrado).toHaveLength(0)
     expect(devuelto).toHaveLength(1)
     expect(devuelto[0].hecho).toBe(false)
+  })
+})
+
+describe('borrar unidades del pool (el botón Eliminar de la semana)', () => {
+  const chips = [
+    chip({ id: 'a' }),
+    chip({ id: 'b', zona: 'PAE' }),
+    chip({ id: 'c', hecho: true, id_sesion: 7 }),
+    chip({ id: 'd', semana: 3 }),
+  ]
+
+  it('se van las elegidas y el resto se queda', () => {
+    expect(borrarDelPool(chips, ['a', 'b']).map(c => c.id)).toEqual(['c', 'd'])
+  })
+
+  it('NUNCA el chip de una sesión ya colocada, aunque llegue en la lista', () => {
+    /* Quitarlo dejaría la sesión en el calendario sin su chip. Esas se borran
+       con la x de su tarjeta, que se lleva el chip con ella. */
+    expect(borrarDelPool(chips, ['c']).map(c => c.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('sin nada elegido, no toca nada', () => {
+    expect(borrarDelPool(chips, [])).toEqual(chips)
+  })
+
+  it('una sesión compleja se va entera, solo la de esa semana y sin colocar', () => {
+    const conGrupo = [
+      chip({ id: 'x1', grupo: 'g1' }),
+      chip({ id: 'x2', grupo: 'g1', zona: 'PAE' }),
+      chip({ id: 'x3', grupo: 'g1', semana: 2 }),                     // mismo grupo, otra semana
+      chip({ id: 'x4', grupo: 'g1', hecho: true, id_sesion: 9 }),     // ya colocada
+      chip({ id: 'y1', grupo: 'g2' }),
+    ]
+    expect(borrarUnidadDelPool(conGrupo, 'g1', 0).map(c => c.id)).toEqual(['x3', 'x4', 'y1'])
   })
 })

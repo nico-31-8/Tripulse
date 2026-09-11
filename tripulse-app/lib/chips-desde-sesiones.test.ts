@@ -1,6 +1,43 @@
 import { describe, it, expect } from 'vitest'
-import { chipsDeSesiones, fusionarChips, semanaDe, zonaPicoDe } from './chips-desde-sesiones'
+import { chipsDeSesiones, fusionarChips, semanaDe, zonaPicoDe, zonasDeSesion } from './chips-desde-sesiones'
 import type { ChipZona } from './chips'
+
+describe('las zonas de una sesión, estén donde estén', () => {
+  it('primero las de sus tareas', () => {
+    expect(zonasDeSesion({ disciplina: 'Carrera', zona_resistencia: 'AER' }, ['AEL', 'PAE'])).toEqual(['AEL', 'PAE'])
+  })
+
+  /* EL FALLO. Una sesión «simple» creada en el calendario guarda la zona en la
+     propia sesión y no tiene tareas: el lienzo solo miraba las tareas y no la
+     veía. */
+  it('sin tareas con zona, la de la propia sesión: fuerza', () => {
+    expect(zonasDeSesion({ disciplina: 'Fuerza', zona_fuerza: 'FMH' }, [])).toEqual(['FMH'])
+  })
+
+  it('sin tareas con zona, la de la propia sesión: resistencia', () => {
+    expect(zonasDeSesion({ disciplina: 'Carrera', zona_resistencia: 'AEL' }, [null, ''])).toEqual(['AEL'])
+    expect(zonasDeSesion({ disciplina: 'Natacion', zona_resistencia: 'Z2' })).toEqual(['Z2'])
+  })
+
+  it('cada disciplina mira primero su campo, y si no, el otro', () => {
+    expect(zonasDeSesion({ disciplina: 'Fuerza', zona_fuerza: 'FMH', zona_resistencia: 'AER' })).toEqual(['FMH'])
+    expect(zonasDeSesion({ disciplina: 'Carrera', zona_fuerza: 'FMH', zona_resistencia: 'AER' })).toEqual(['AER'])
+    expect(zonasDeSesion({ disciplina: 'Carrera', zona_fuerza: 'FMH' })).toEqual(['FMH'])
+  })
+
+  it('sin zona en ningún sitio, ninguna', () => {
+    expect(zonasDeSesion({ disciplina: 'Carrera' }, [])).toEqual([])
+    expect(zonasDeSesion({ disciplina: 'Fuerza', zona_fuerza: '  ' }, [null])).toEqual([])
+  })
+
+  it('una sesión con la zona en la propia sesión da su chip', () => {
+    const cs = chipsDeSesiones([
+      { id: 1, fecha_sesion: '2026-08-18', disciplina: 'Fuerza', zonas: [], zona_fuerza: 'FMH' },
+      { id: 2, fecha_sesion: '2026-08-19', disciplina: 'Carrera', zonas: [], zona_resistencia: 'AEL' },
+    ], '2026-08-17', 4)
+    expect(cs.map(c => [c.disciplina, c.zona, !!c.sinZona])).toEqual([['Carrera', 'AEL', false], ['Fuerza', 'FMH', false]])
+  })
+})
 
 const INICIO = '2026-08-17'   // un lunes
 
@@ -61,13 +98,28 @@ describe('reconstruir los chips', () => {
     expect(new Set(a.map(c => c.id)).size).toBe(a.length)
   })
 
-  it('se salta las que no tienen zona y las de fuera del lienzo', () => {
+  it('se salta las de fuera del lienzo', () => {
     const chips = chipsDeSesiones([
-      { id: 9, fecha_sesion: '2026-08-18', disciplina: 'Carrera', zonas: [] },
       { id: 10, fecha_sesion: '2026-07-01', disciplina: 'Carrera', zonas: ['AEL'] },
       { id: 11, fecha_sesion: '2027-01-01', disciplina: 'Carrera', zonas: ['AEL'] },
     ], INICIO, 12)
     expect(chips).toEqual([])
+  })
+
+  /* ANTES SE SALTABAN, y la semana del lienzo parecía más vacía de lo que
+     estaba. Ahora dan un chip gris que dice que falta la zona. */
+  it('la que no tiene zona en ningún sitio da un chip «sin zona», con su disciplina', () => {
+    const [c] = chipsDeSesiones([{ id: 9, fecha_sesion: '2026-08-18', disciplina: 'Fuerza', zonas: [] }], INICIO, 12)
+    expect(c.sinZona).toBe(true)
+    expect(c.zona).toBe('')
+    expect(c.disciplina).toBe('Fuerza')
+    expect(c.hecho).toBe(true)
+    expect(c.id_sesion).toBe(9)
+  })
+
+  it('la que tiene zona no lleva la marca', () => {
+    const [c] = chipsDeSesiones([{ id: 1, fecha_sesion: '2026-08-18', disciplina: 'Carrera', zonas: ['AEL'] }], INICIO, 12)
+    expect(c.sinZona).toBeUndefined()
   })
 
   it('sin fecha de inicio no inventa nada', () => {

@@ -16,6 +16,57 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 11 de septiembre de 2026
 
+### Aviso de mensajes en el panel principal
+
+Si tus atletas te han escrito, ahora lo ves nada más entrar. Arriba del panel
+principal sale un aviso con **cuántos mensajes y comentarios de sesión tienes
+sin revisar** y de quién: «Tienes 2 mensajes y 3 comentarios de sesión sin
+revisar · Bruno 4 · Marta 1». Cuenta los de todos tus atletas, no solo del que
+tengas abierto.
+
+- **Revisar →** te lleva a Comunicación. Si solo hay un atleta con cosas
+  pendientes, abre directamente su conversación. Pulsando el nombre de un
+  atleta, abres la suya.
+- En la pantalla de entrada, cada atleta con cosas pendientes lleva **un número
+  naranja** en su tarjeta, y también en el desplegable para cambiar de atleta.
+- Si dejas el panel abierto, se vuelve a mirar cuando vuelves a la pestaña.
+
+**Un cambio en Comunicación:** al abrir la conversación de un atleta, sus
+comentarios de sesión se dan por leídos, igual que sus mensajes. Antes solo
+dejaban de contar al pulsar «Responder» en cada uno, y el aviso habría seguido
+diciendo que los tenías pendientes aunque ya los hubieras leído. Siguen en la
+conversación para responderlos cuando quieras.
+
+### El calendario, el dibujo y la semana ya enseñan las mismas sesiones
+
+Una sesión creada en el calendario en modo «simple» guarda su zona en la propia
+sesión, sin tareas, y el dibujo de periodización solo miraba la zona de las
+tareas. Resultado: esas sesiones no salían como chip en el dibujo, y las de
+fuerza que colocabas desde la semana desaparecían del dibujo la siguiente vez
+que lo abrías. Además, en la pantalla de la semana, las de carrera, bici o
+natación creadas en el calendario salían «sin zona» aunque la tenían.
+
+Ahora las tres pantallas leen la zona igual: la de las tareas y, si no hay, la
+de la sesión. Crees la sesión donde la crees, sale en las tres.
+
+**Las sesiones que no tienen zona en ningún sitio** salen en el dibujo como un
+chip **gris, con el borde a trazos y «sin zona»**, para que veas que ese día hay
+algo y que le falta la zona. Debajo va la disciplina en su color: roja si es de
+fuerza, y el color de carrera, bici o natación si es de resistencia. Si pulsas
+el chip, te lleva a la sesión para ponérsela. También salen así las que añade el
+propio atleta sin zona (las que llevan 🙋 en la semana).
+
+### Eliminar unidades desde la semana
+
+En la pantalla de la semana, arriba, en «Unidades planificadas esta semana»,
+ahora puedes **borrar** además de fusionar. Pincha las unidades que quieras
+quitar y pulsa **🗑 Eliminar**. Las sesiones complejas tienen su propia papelera,
+al lado del ⊗ que las separa. Antes de borrar te pregunta, porque se borran de
+la semana **y también del dibujo de periodización**.
+
+Solo borra lo que está sin colocar. Una sesión que ya está en un día se sigue
+borrando con la x de su tarjeta.
+
 ### Reordenar tareas: ahora se guarda siempre
 
 Al arrastrar las tareas de una sesión para cambiarlas de orden, a veces no se

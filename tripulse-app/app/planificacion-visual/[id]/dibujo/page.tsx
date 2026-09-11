@@ -41,6 +41,12 @@ const COLOR_ZONA: Record<string, string> = {
   ...Object.fromEntries(ZONAS_RESISTENCIA.map(z => [z.sigla, z.color])),
   ...Object.fromEntries(ZONAS_FUERZA.map(z => [z.sigla, z.color])),
 }
+/* El color de cada disciplina, el mismo del filtro de abajo. Lo usan los chips
+   «sin zona»: sin zona no hay color de zona, y es la disciplina la que dice si
+   la sesión es de fuerza o de resistencia. */
+const COLOR_DISC_CHIP: Record<string, string> = {
+  Natacion: '#3B82F6', Natación: '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#F97316',
+}
 // Nombre completo de una zona (para tooltip), busca en resistencia y fuerza.
 const NOMBRE_ZONA = (sigla: string): string =>
   ZONAS_RESISTENCIA.find(z => z.sigla === sigla)?.nombre ||
@@ -387,7 +393,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setCargandoDatos(true)
     try {
       const depId = Number(id)
-      const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, id_microciclo'
+      /* zona_fuerza / zona_resistencia: la zona de las sesiones «simples», que
+         no tienen tareas. Sin ellas no daban chip (ver zonasDeSesion). */
+      const selProg = 'id, disciplina, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, id_microciclo, zona_fuerza, zona_resistencia'
 
       const [macs, mesosQ, microsQ, sesQ, borr] = await Promise.all([
         supabase.from('macrociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
@@ -470,6 +478,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             disciplina: s.disciplina,
             zonas: (zonasQ.data || []).filter((t: any) => t.id_sesion === s.id)
               .map((t: any) => t.zona_entrenamiento),
+            zona_fuerza: s.zona_fuerza,
+            zona_resistencia: s.zona_resistencia,
           })), fi, totalSemanas)
         }
       }
@@ -530,6 +540,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         fecha_sesion: String(s.fecha_sesion).slice(0, 10),
         disciplina: s.disciplina,
         zonas: (tareas || []).filter((t: any) => t.id_sesion === s.id).map((t: any) => t.zona_entrenamiento),
+        zona_fuerza: s.zona_fuerza,
+        zona_resistencia: s.zona_resistencia,
       })), fechaInicio, totalSem)
 
       const fusion = fusionarChips(sesZonas, nuevos)
@@ -538,9 +550,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       // no puede depender de que no se cierre la pestaña en los próximos 1,5 s.
       await guardarBorrador(macros, mesos, sems, fechaInicio, totalSem, fusion)
 
-      const sinZona = ses.length - nuevos.length
+      const sinZona = nuevos.filter(c => c.sinZona).length
+      const fuera = ses.length - nuevos.length
       alert('Recuperados ' + nuevos.length + ' chips de sesiones ya programadas.' +
-        (sinZona > 0 ? '\n\n' + sinZona + ' sesiones no han dado chip: o no tienen zona en sus tareas, o caen fuera de las semanas del lienzo.' : ''))
+        (sinZona > 0 ? '\n\n' + sinZona + (sinZona === 1 ? ' está en gris: no tiene zona.' : ' están en gris: no tienen zona.') + ' Púlsalos para ponérsela.' : '') +
+        (fuera > 0 ? '\n\n' + fuera + ' sesiones caen fuera de las semanas del lienzo y no salen.' : ''))
     } catch (e: any) {
       alert('No se han podido rehacer: ' + e.message)
     }
@@ -1972,7 +1986,28 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
                           onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonasSel([]) }}>
-                          {sesEsta.map(sz => (
+                          {sesEsta.map(sz => (sz.sinZona || !sz.zona) ? (
+                            /* UNA SESIÓN DEL CALENDARIO SIN ZONA. En gris y con el
+                               borde a trazos, para que se vea que está y que le
+                               falta algo. La disciplina, en su color: así se
+                               distingue de un vistazo si es de fuerza o de
+                               resistencia. Pulsarla lleva a la sesión a ponérsela. */
+                            <div key={sz.id}
+                              className="flex-shrink-0 flex flex-col items-center justify-center rounded border border-dashed relative overflow-hidden hover:border-orange-400 transition"
+                              style={{ width: semanaW - 6, height: chipH, backgroundColor: '#6b728026', borderColor: '#9ca3af', lineHeight: 1 }}
+                              title={'Sesión de ' + (sz.disciplina === 'Fuerza' ? 'fuerza' : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
+                              onClick={e => { e.stopPropagation(); if (sz.id_sesion) router.push('/sesion/' + sz.id_sesion) }}
+                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
+                              {showDisc ? (
+                                <>
+                                  <span style={{ fontSize: 8, fontWeight: 600, color: '#d1d5db' }}>sin zona</span>
+                                  <span style={{ fontSize: 7, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
+                                </>
+                              ) : (
+                                <span style={{ fontSize: 8, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{(DISC_LABEL[sz.disciplina] || sz.disciplina) + ' ?'}</span>
+                              )}
+                            </div>
+                          ) : (
                             <div key={sz.id}
                               className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq overflow-hidden"
                               style={{ width: semanaW - 6, height: chipH, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
@@ -2204,11 +2239,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               {sesZonas.filter(sz => sz.semana === popupZona.semana).map(sz => {
                                 const CZ = COLOR_ZONA
                                 const DL: Record<string,string> = {Natacion:'Nat',Natación:'Nat',Ciclismo:'Cic',Carrera:'Car',Fuerza:'Fue',Brick:'Brk'}
+                                const vacio = sz.sinZona || !sz.zona
                                 return (
-                                  <div key={sz.id} className="flex items-center gap-1 rounded-lg px-2 py-1 border text-xs"
-                                    style={{backgroundColor:(CZ[sz.zona]||'#888')+'20',borderColor:CZ[sz.zona]||'#888'}}>
-                                    <span className="text-white font-bold">{sz.zona}</span>
-                                    <span className="text-gray-400">{DL[sz.disciplina] || sz.disciplina}</span>
+                                  <div key={sz.id} className={'flex items-center gap-1 rounded-lg px-2 py-1 border text-xs ' + (vacio ? 'border-dashed' : '')}
+                                    style={vacio ? { backgroundColor: '#6b728026', borderColor: '#9ca3af' } : {backgroundColor:(CZ[sz.zona]||'#888')+'20',borderColor:CZ[sz.zona]||'#888'}}>
+                                    {vacio
+                                      ? <span className="text-gray-300 italic">sin zona</span>
+                                      : <span className="text-white font-bold">{sz.zona}</span>}
+                                    <span style={vacio ? { color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af', fontWeight: 700 } : undefined}
+                                      className={vacio ? '' : 'text-gray-400'}>{DL[sz.disciplina] || sz.disciplina}</span>
                                     <button onClick={() => setSesZonas(prev => prev.filter(x => x.id !== sz.id))} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
                                   </div>
                                 )

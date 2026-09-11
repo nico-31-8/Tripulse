@@ -10,7 +10,8 @@ import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
-import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip } from '@/lib/devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
+import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
 
 /* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
    Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
@@ -167,7 +168,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     })
     setSesiones(sesiones_cargadas.map((s: any) => {
       let bloques = bloquesPorSes[s.id] || []
-      if (bloques.length === 0 && s.zona_fuerza) bloques = [{ zona: s.zona_fuerza, disciplina: 'Fuerza' }]
+      /* Sin tareas con zona, la de la propia sesión: la misma regla que el
+         lienzo (zonasDeSesion). Antes solo se miraba la de fuerza, y una sesión
+         de carrera o bici creada en el calendario salía «sin zona» aquí. */
+      if (bloques.length === 0) bloques = zonasDeSesion(s).map(zona => ({ zona, disciplina: s.disciplina }))
       return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
     }))
     setLoading(false)
@@ -352,6 +356,24 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setSeleccion([])
   }
 
+  /* Borrar unidades del pool: se van de la semana Y del dibujo de periodización,
+     que guardan el mismo array. Solo unidades sin colocar (ver borrarDelPool);
+     una sesión ya colocada se borra con la x de su tarjeta. Pregunta antes: el
+     dibujo no tiene histórico del que recuperarlas. */
+  const eliminarSeleccion = async () => {
+    const n = seleccion.length
+    if (!n) return
+    if (!confirm('¿Eliminar ' + (n === 1 ? 'esta unidad' : 'estas ' + n + ' unidades') + '?\n\nSe borran de la semana y también del dibujo de periodización.')) return
+    await persistirZonas(borrarDelPool(sesZonasAll, seleccion))
+    setSeleccion([])
+  }
+
+  const eliminarUnidad = async (grupoId: string, nZonas: number) => {
+    if (weekIndex === null) return
+    if (!confirm('¿Eliminar esta sesión compleja (' + nZonas + ' zonas)?\n\nSe borra de la semana y también del dibujo de periodización.')) return
+    await persistirZonas(borrarUnidadDelPool(sesZonasAll, grupoId, weekIndex))
+  }
+
   // Deshace una unidad fusionada: sus chips vuelven a ser sueltos.
   const separar = async (grupoId: string) => {
     await persistirZonas(sesZonasAll.map(z => z.grupo === grupoId ? { ...z, grupo: undefined } : z))
@@ -411,9 +433,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       if (!confirm(aviso)) return
     }
 
+    // Las de sus bloques, que ya traen la de la propia sesión si no tiene tareas.
     const zonas: string[] = s._bloques?.length
       ? s._bloques.map((b: any) => b.zona)
-      : (s.zona_fuerza ? [s.zona_fuerza] : [])
+      : zonasDeSesion(s)
     // Sin zonas no hay unidad que devolver: sería crear un chip en blanco.
     if (!zonas.length) {
       alert('Esta sesión no tiene ninguna zona, así que no hay unidad que devolver al pool. Bórrala con la x si no la quieres.')
@@ -589,12 +612,17 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                     🔗 Fusionar ({seleccion.length})
                   </button>
                   <button onClick={marcarSeleccionHechas} className="text-xs text-gray-400 hover:text-orange-400 px-2 py-1.5 transition" title="Quitar del pool sin crear sesión">✓ Hechas</button>
-                  <button onClick={() => setSeleccion([])} className="text-xs text-gray-500 hover:text-white px-1 transition">✕</button>
+                  <button onClick={eliminarSeleccion}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-900/70 text-red-300 hover:bg-red-950/60 hover:border-red-700 transition"
+                    title="Borrarlas de la semana y del dibujo de periodización">
+                    🗑 Eliminar ({seleccion.length})
+                  </button>
+                  <button onClick={() => setSeleccion([])} className="text-xs text-gray-500 hover:text-white px-1 transition" title="Quitar la selección">✕</button>
                 </div>
               )}
             </div>
             <p className="text-gray-600 text-xs mb-3">
-              Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja. Arrastra una unidad a un día para programarla, o una sesión de vuelta aquí para deshacerla.
+              Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja, o Eliminar para borrarlas también del dibujo. Arrastra una unidad a un día para programarla, o una sesión de vuelta aquí para deshacerla.
             </p>
 
             {/* Con el pool vacío el bloque sigue estando, pero tiene que decir por
@@ -642,8 +670,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                     title="Sesión compleja · arrástrala a un día">
                     <div className="flex items-center justify-between gap-3 mb-1.5">
                       <span className="font-bold text-orange-400 uppercase tracking-wide" style={{ fontSize: 10 }}>Compleja · {DISC_CORTO[disc] || disc}</span>
-                      <button onClick={e => { e.stopPropagation(); separar(u.grupo!) }}
-                        className="text-gray-500 hover:text-red-400 leading-none" style={{ fontSize: 13 }} title="Separar de nuevo">⊗</button>
+                      <span className="flex items-center gap-2">
+                        <button onClick={e => { e.stopPropagation(); separar(u.grupo!) }}
+                          className="text-gray-500 hover:text-orange-300 leading-none" style={{ fontSize: 13 }} title="Separar de nuevo">⊗</button>
+                        <button onClick={e => { e.stopPropagation(); eliminarUnidad(u.grupo!, u.chips.length) }}
+                          className="text-gray-500 hover:text-red-400 leading-none" style={{ fontSize: 12 }} title="Eliminarla de la semana y del dibujo de periodización">🗑</button>
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {u.chips.map(ch => {
@@ -752,7 +784,8 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                                   </span>
                                 )
                               })
-                            : <span className="text-[9px] font-medium px-1.5 py-0.5 rounded leading-none bg-white/10 text-white/50">sin zona</span>}
+                            : <span className="text-[9px] font-medium px-1.5 py-0.5 rounded leading-none bg-white/10 text-white/80 border border-dashed border-white/50"
+                                title="Esta sesión no tiene zona. Ábrela para ponérsela.">sin zona</span>}
                         </div>
                         <p className="text-[10px] opacity-70 mt-1.5">{s.duracion_minutos ? s.duracion_minutos + 'min' : '—'} · RPE {s.rpe_estimado || '—'}</p>
                         {s.estado === 'Realizada' && <p className="text-[10px] opacity-60 mt-0.5">✓ Realizada</p>}

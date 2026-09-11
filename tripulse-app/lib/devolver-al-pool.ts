@@ -118,3 +118,22 @@ export function devolverAlPool(chips: ChipZona[], sesion: SesionQueVuelve, seman
 export function borrarConSuChip(chips: ChipZona[], idSesion: number): ChipZona[] {
   return (chips || []).filter(z => z.id_sesion !== idSesion)
 }
+
+/**
+ * Borrar unidades DEL POOL, sin colocar: se van de la semana y del dibujo de
+ * periodización, que son el mismo array (`dibujo_borrador.sesiones_zonas`).
+ *
+ * Solo toca chips sin colocar. Un chip que ya es una sesión no está en el pool
+ * y no se borra por aquí aunque su id llegue en la lista: quitarlo dejaría la
+ * sesión en el calendario sin su chip. Esas se borran con la x de su tarjeta,
+ * que se lleva el chip con ella (borrarConSuChip).
+ */
+export function borrarDelPool(chips: ChipZona[], ids: string[]): ChipZona[] {
+  const fuera = new Set(ids)
+  return (chips || []).filter(z => !(fuera.has(z.id) && !z.hecho))
+}
+
+/** Una sesión compleja entera del pool: sus chips de esa semana, sin colocar. */
+export function borrarUnidadDelPool(chips: ChipZona[], grupo: string, semana: number): ChipZona[] {
+  return (chips || []).filter(z => !(z.grupo === grupo && z.semana === semana && !z.hecho))
+}

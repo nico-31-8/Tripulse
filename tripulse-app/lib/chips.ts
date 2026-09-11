@@ -20,4 +20,9 @@ export interface ChipZona {
   // Solo en chips de brick (disciplina === 'Brick'): un brick no cabe en un par
   // zona+deporte, así que el chip se lleva sus bloques y transiciones encima.
   brick?: BrickValor
+  // Una sesión del calendario que todavía NO tiene zona (ni en sus tareas ni en
+  // la sesión). Sale en el lienzo en gris, «sin zona», para que se vea que ese
+  // día hay algo y que le falta. `zona` va vacía. Nunca se crea a mano: solo la
+  // reconstrucción desde el calendario (lib/chips-desde-sesiones).
+  sinZona?: boolean
 }
