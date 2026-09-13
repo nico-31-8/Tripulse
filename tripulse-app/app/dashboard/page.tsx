@@ -16,6 +16,8 @@ import HoyEntrenas from '@/components/HoyEntrenas'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
+import { cargarSenales } from '@/lib/senales-datos'
+import type { ResultadoSenales, NivelSenal } from '@/lib/senales'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -47,6 +49,8 @@ export default function Dashboard() {
   const [esPlataforma, setEsPlataforma] = useState(false)
   // Mensajes y comentarios de sesión sin revisar, de todos sus atletas.
   const [porRevisar, setPorRevisar] = useState<Pendientes>(SIN_PENDIENTES)
+  // Las señales del atleta abierto: qué pasa, con qué dato y qué haría.
+  const [senales, setSenales] = useState<ResultadoSenales | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -96,7 +100,10 @@ export default function Dashboard() {
     setActivo(dep)
     setAtletaActivo(dep.id)
     setMetricas(null)
+    setSenales(null)
     cargarMetricasPanel(supabase, dep).then(setMetricas)
+    // Las señales van por su cuenta: son un aviso, no pueden retrasar el panel.
+    cargarSenales(supabase, dep.id).then(setSenales).catch(() => setSenales(null))
     /* Seis consultas que no dependen unas de otras iban en serie. Y el
        mesociclo pasaba antes por el macrociclo solo para acotar: con
        `mesociclo.id_deportista` (Fase A) sobra ese salto. */
@@ -161,9 +168,17 @@ export default function Dashboard() {
   const nSemana = (metricas?.semana || []).reduce((a: number, d: any) => a + d.sesiones.length, 0)
   const hoyStr = hoyISO()
 
-  // Avisos "Necesita tu atención" = wellness sin registrar + mensajes sin leer + sugerencias del atleta.
-  const notifs: { color: string; texto: string; sub?: string; add?: string }[] = activo ? [
-    ...(readiness && !wellHoy.hoy ? [{ color: '#eab308', texto: 'Wellness sin registrar hoy', sub: 'Recuérdale que lo rellene' }] : []),
+  /* Avisos "Necesita tu atención": primero las SEÑALES (lib/senales), que traen
+     el dato que las sostiene y qué hacer; luego lo de siempre. */
+  const COLOR_SENAL: Record<NivelSenal, string> = { roja: '#ef4444', ambar: '#f59e0b', info: '#3b82f6' }
+  const notifs: { color: string; texto: string; sub?: string; add?: string; accion?: string }[] = activo ? [
+    ...(senales?.senales || []).map(s => ({
+      color: COLOR_SENAL[s.nivel], texto: s.titulo, sub: s.porque, accion: s.accion, add: s.accion,
+    })),
+    /* «Hoy no lo ha rellenado» sobra cuando la señal ya dice que lleva días sin
+       hacerlo: son lo mismo, y el de la señal trae la fecha del último. */
+    ...(readiness && !wellHoy.hoy && !(senales?.senales || []).some(s => s.id === 'sin_wellness')
+      ? [{ color: '#eab308', texto: 'Wellness sin registrar hoy', sub: 'Recuérdale que lo rellene' }] : []),
     /* Lo mismo que cuenta el aviso de arriba —mensajes y comentarios de sesión—,
        para que los dos números no puedan decir cosas distintas. */
     ...(totalDe(porRevisar, activo.id) > 0 ? [{ color: '#ec4899', texto: textoPendientes({ porAtleta: {}, ...porRevisar.porAtleta[activo.id] }) + ' sin revisar', sub: 'de ' + (activo.nombre?.split(' ')[0] || 'tu deportista') }] : []),
@@ -606,9 +621,19 @@ export default function Dashboard() {
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] text-gray-200 leading-snug">{n.texto}</p>
                             {n.sub && <p className="text-[11px] text-gray-500">{n.sub}</p>}
+                            {/* Qué haría. La decisión es del entrenador; esto es la propuesta. */}
+                            {n.accion && <p className="text-[11.5px] text-gray-300 mt-1 leading-snug">→ {n.accion}</p>}
                             {n.add && <button onClick={() => addTarea(n.add)} className="text-blue-400 hover:text-blue-300 text-[11px] font-medium mt-0.5 transition">＋ añadir a tareas</button>}
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Lo que todavía no se puede mirar, y qué falta para poder. */}
+                  {!!senales?.sinBase?.length && (
+                    <div className="mt-3 pt-3 border-t border-gray-800/70">
+                      {senales.sinBase.map((t, i) => (
+                        <p key={i} className="text-[11px] text-gray-600 leading-snug">· {t}</p>
                       ))}
                     </div>
                   )}

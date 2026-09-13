@@ -16,6 +16,32 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 11 de septiembre de 2026
 
+### «Necesita tu atención» ahora te dice qué pasa y qué haría
+
+El panel de la derecha enseñaba recordatorios sueltos. Ahora, arriba del todo,
+salen las **señales** de ese atleta. Cada una trae tres cosas:
+
+1. **Qué pasa:** «Su sesión más larga ha dado un salto».
+2. **El dato que lo sostiene:** «70 min esta semana, frente a 60 min de la más
+   larga del mes anterior (+17 %)».
+3. **Qué haría:** «Si el salto no era intencionado, vuelve a 66 min como techo».
+
+Puedes convertir esa propuesta en tarea con un clic. Decides tú: la app propone.
+
+**Lo que mira hoy:**
+- su bienestar comparado con lo normal **en él**, y si lleva días bajando;
+- si **las sesiones le están costando más de lo previsto** (lo que antes avisa
+  de que la fatiga se acumula);
+- si **duerme menos** de lo que suele;
+- si su **sesión más larga** ha dado un salto;
+- si se han quedado **sesiones sin hacer**;
+- y si **lleva días sin rellenar** el wellness.
+
+**Y cuando no hay datos suficientes, lo dice en vez de inventarse un aviso:**
+abajo del panel aparece qué falta, por ejemplo «Su bienestar: 6 registros; con
+14 ya se puede comparar con su normal». Un aviso construido sobre cuatro días
+de datos vale menos que no decir nada.
+
 ### La fatiga y la frescura, bien calculadas (tus números van a cambiar)
 
 **La fatiga no bajaba los días de descanso.** El cálculo de la forma (CTL, ATL
