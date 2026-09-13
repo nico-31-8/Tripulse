@@ -26,6 +26,7 @@ import { controlDeEjercicio } from '@/lib/control-esfuerzo'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
+import { rpeDeSesion } from '@/lib/rpe-sesion'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
 
@@ -160,9 +161,13 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
     e.preventDefault()
     setGuardando(true)
     const duracionReal = sesion.usar_cronometro && segundos > 0 ? Math.round(segundos / 60) : null
+    /* El RPE va TAMBIÉN en la sesión: la carga real, la forma y el resumen
+       semanal lo leen de ahí, y sin él lo sustituían por el planificado. */
+    const rpeSesion = rpeDeSesion(rpeReal, esBrick ? tareas.map(t => postBloques[t.id]?.rpe ?? rpeReal) : undefined)
     await supabase.from('sesion').update({
       estado: 'Realizada',
       ...(duracionReal ? { duracion_real: duracionReal } : {}),
+      ...(rpeSesion != null ? { rpe_reportado: rpeSesion, rpe_origen: 'atleta' } : {}),
     }).eq('id', id)
 
     // Lo que es del DÍA va igual en todos los bloques; el SICAT lo lee así.

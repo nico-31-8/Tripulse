@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularACWR, estadoACWR, escalaACWRTexto, UMBRALES_ACWR } from './panel-metricas'
+import { calcularACWR, estadoACWR, escalaACWRTexto, progresionACWR, UMBRALES_ACWR } from './panel-metricas'
 
 const serie = (cargas: number[]) => cargas.map(carga => ({ carga }))
 
@@ -50,6 +50,22 @@ describe('las etiquetas', () => {
     expect(t).toContain('0,8')
     expect(t).toContain('1,3')
     expect(t).toContain('1,5')
-    expect(t).toMatch(/Subcarga.*Zona óptima.*Precaución.*Peligro/)
+    expect(t).toMatch(/por debajo de lo habitual.*en línea con lo habitual.*subida notable.*subida fuerte/)
+    // Y avisa de que no es un semáforo (Máster de Resistencia, L4.3).
+    expect(t).toMatch(/orientativo/)
+  })
+
+  /* Las etiquetas DESCRIBEN la subida, no sentencian: «Peligro» comunicaba una
+     certeza que el ACWR no tiene. */
+  it('ninguna etiqueta suena a veredicto de lesión', () => {
+    for (const v of [0.5, 1, 1.4, 2]) expect(estadoACWR(v).label).not.toMatch(/peligro|óptim|riesgo/i)
+  })
+})
+
+describe('progresionACWR', () => {
+  it('la misma cuenta, dicha como se decide', () => {
+    expect(progresionACWR(1.45)).toBe('+45 % sobre su media de 4 semanas')
+    expect(progresionACWR(0.8)).toBe('−20 % bajo su media de 4 semanas')
+    expect(progresionACWR(1)).toBe('Igual que su media de 4 semanas')
   })
 })

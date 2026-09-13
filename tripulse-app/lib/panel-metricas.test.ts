@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diasDeLaSemanaActual, cargaActual, serieForma, TAU_ATL, TAU_CTL } from './panel-metricas'
+import { diasDeLaSemanaActual, cargaActual, serieForma, formaFiable, HISTORIA_MINIMA_FORMA, TAU_ATL, TAU_CTL } from './panel-metricas'
 import { sumarDias, indiceDia } from './fechas'
 import { calcularCargas, estadoTSB } from './panel-metricas'
 
@@ -167,6 +167,48 @@ describe('serieForma — la curva, en un solo sitio', () => {
 
   it('sin días no hay serie', () => {
     expect(serieForma({})).toEqual([])
+  })
+
+  /* EL FALLO (2026-09-11). Se recorrían solo los días con sesión, así que un
+     hueco de cinco días de descanso contaba como uno: la fatiga no bajaba lo que
+     tenía que bajar. Con los datos de Bruno, TSB −183 en vez de −93. */
+  it('los días de descanso cuentan aunque no vengan en la lista', () => {
+    const conHueco = serieForma({ '2026-08-01': 600, '2026-08-06': 0 })
+    const explicito = serieForma({ '2026-08-01': 600, '2026-08-02': 0, '2026-08-03': 0, '2026-08-04': 0, '2026-08-05': 0, '2026-08-06': 0 })
+    expect(conHueco).toEqual(explicito)
+    expect(conHueco).toHaveLength(6)
+  })
+
+  it('tras cinco días de descanso la fatiga ha bajado de verdad', () => {
+    const s = serieForma({ '2026-08-01': 600, '2026-08-06': 300 })
+    // Antes: un solo paso de decaimiento entre el 1 y el 6 → ATL 225 el día 6.
+    // Con los cinco días: ATL 111 (150 × 0,75⁵ + 75).
+    expect(s[s.length - 1].atl).toBe(111)
+  })
+
+  it('`hasta` estira la serie hasta hoy: los días sin entrenar desde la última sesión también cuentan', () => {
+    const s = serieForma({ '2026-08-01': 600 }, '2026-08-11')
+    expect(s).toHaveLength(11)
+    expect(s[s.length - 1].fecha).toBe('2026-08-11')
+    expect(s[s.length - 1].atl).toBeLessThan(s[0].atl)
+    // Y un `hasta` anterior a la última sesión no recorta nada.
+    expect(serieForma({ '2026-08-01': 600, '2026-08-03': 100 }, '2026-08-02')).toHaveLength(3)
+  })
+})
+
+describe('forma sin base', () => {
+  /* La condición es una media de ~42 días que arranca en cero: con menos
+     historia, cualquier semana normal sale como sobrecarga. */
+  it('hacen falta 42 días de historia', () => {
+    expect(HISTORIA_MINIMA_FORMA).toBe(42)
+    expect(formaFiable(serieForma({ '2026-08-01': 300 }, '2026-08-20'))).toBe(false)
+    expect(formaFiable(serieForma({ '2026-07-01': 300 }, '2026-08-20'))).toBe(true)
+  })
+
+  it('cargaActual dice cuántos días lleva y si ya es fiable', () => {
+    const c = cargaActual([{ fecha_sesion: '2026-08-01', rpe_reportado: 5, duracion_minutos: 60 }], '2026-08-21')!
+    expect(c.dias).toBe(21)
+    expect(c.fiable).toBe(false)
   })
 
   /* Y que las dos caras públicas sigan dando lo mismo que el núcleo: si alguien

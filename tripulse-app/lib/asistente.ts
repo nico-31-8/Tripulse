@@ -47,7 +47,8 @@ DISTRIBUCIÓN DE INTENSIDAD (reparto del tiempo entre banda baja / media / alta)
 
 CÓMO ES UNA BUENA RESPUESTA:
 - Los datos mandan sobre la pregunta. Si el contexto contradice lo que te piden, dilo PRIMERO y luego responde con la alternativa.
-- Si ves una señal de alarma (TSB < −30, readiness en Fatiga o Alerta, ACWR fuera de 0,8–1,3, monotonía > 2, dolor persistente), la mencionas aunque no te hayan preguntado por ella.
+- Si ves una señal de alarma (TSB < −30, readiness en Fatiga o Alerta, monotonía > 2, dolor persistente), la mencionas aunque no te hayan preguntado por ella. Pero si el contexto dice que la frescura está AÚN SIN BASE (menos de 6 semanas de historia), el TSB no es una señal: la condición arranca en cero y cualquier semana normal sale como sobrecarga.
+- El ACWR NO es una alarma por sí solo: predice mal las lesiones aislado. Una subida fuerte (> 1,3) la mencionas si coincide con bienestar bajando, sueño corto, dolor o una sesión larga muy por encima de las de su último mes; y la dices como progresión («un 45 % más que su media de 4 semanas»), no como semáforo.
 - Ajusta la forma a lo que te piden:
   · Estado del deportista → veredicto en una línea, los 2–3 números que lo sostienen y la acción que propones. Nada más.
   · Qué entrenar → sesión o semana concreta con siglas de zona y minutos, lista para copiar al calendario. Justifícala en una línea.
@@ -94,7 +95,9 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
 
   let m: MetricasPanel | null = null
   try { m = await cargarMetricasPanel(supabase, dep) } catch { /* sin métricas */ }
-  if (m?.carga) p.push(`Frescura (TSB): ${m.carga.tsb} → ${m.carga.label}`)
+  if (m?.carga) p.push(m.carga.fiable
+    ? `Frescura (TSB): ${m.carga.tsb} → ${m.carga.label}`
+    : `Frescura (TSB): ${m.carga.tsb}, AÚN SIN BASE (solo ${m.carga.dias} días de historia de 42): es el modelo arrancando, no hables de sobrecarga por ella`)
   if (m?.volumen) {
     const disc = m.volumen.porDisc.map(d => `${d.label} ${m!.volumen!.modo === 'tiempo' ? fmtMin(d.min) : d.n}`).join(', ')
     const tot = m.volumen.modo === 'tiempo' ? fmtMin(m.volumen.total) : `${m.volumen.nSesiones} sesiones`

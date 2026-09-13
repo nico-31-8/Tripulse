@@ -13,6 +13,7 @@ import { cargaActual, estadoTSB as estadoTSBBase } from '@/lib/panel-metricas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import { delProveedor } from '@/lib/noches-reloj'
+import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -153,6 +154,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [carga, setCarga] = useState<any>(null)
   const [ecoScores, setEcoScores] = useState<any[]>([])
   const [ultimasSesiones, setUltimasSesiones] = useState<any[]>([])
+  const [tareasHechas, setTareasHechas] = useState<TareaHecha[]>([])
   const [peso, setPeso] = useState<number | null>(null)
   const [adherencia, setAdherencia] = useState<{ pct: number; hechas: number; total: number; marcas: boolean[] } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -187,7 +189,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
           ].filter(Boolean)
           return t.length ? `Tests: ${t.join(', ')}.` : 'Sin tests cargados: no se le pueden prescribir ritmos.'
         })(),
-        carga ? `TSB ${carga.tsb > 0 ? '+' : ''}${carga.tsb} → ${estadoTSB(carga.tsb).label}.` : '',
+        carga ? (carga.fiable
+          ? `TSB ${carga.tsb > 0 ? '+' : ''}${carga.tsb} → ${estadoTSB(carga.tsb).label}.`
+          : `TSB ${carga.tsb > 0 ? '+' : ''}${carga.tsb}: aún sin base (${carga.dias} días de historia de 42); no lo uses para hablar de sobrecarga.`) : '',
         adherencia ? `Adherencia ${adherencia.pct}% (${adherencia.hechas} de ${adherencia.total}).` : '',
         `Pestaña abierta: ${pestana}.`,
       ].filter(Boolean).join(' ')
@@ -251,10 +255,14 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
        Las tres consultas van a la vez: ninguna depende de otra. */
     const hoyStr = hoyISO()
     const [ses42, ses30, ultimas] = await Promise.all([
+      /* 84 días y no 42: el modelo arranca en cero, y con solo 42 días la
+         condición de un atleta con años de historia salía siempre por los suelos.
+         Los 42 de más son para calentarlo, como hace /carga. Y con
+         `duracion_real`, que es la que manda al contar la carga. */
       vivas(supabase.from('sesion')
-        .select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos')
+        .select('fecha_sesion, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real')
         .eq('id_deportista', Number(id)).eq('estado', 'Realizada')
-        .gte('fecha_sesion', sumarDias(hoyStr, -42))).order('fecha_sesion'),
+        .gte('fecha_sesion', sumarDias(hoyStr, -84))).order('fecha_sesion'),
       // Adherencia: de lo planificado hasta HOY, cuánto completó. Solo hasta hoy,
       // porque una sesión futura todavía no es una sesión perdida.
       vivas(supabase.from('sesion').select('estado, fecha_sesion')
@@ -265,8 +273,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
          Esa distinción es la que hace seguro recortar aquí: si estas filas
          entraran en `lib/panel-metricas`, la lista de columnas tendría que salir
          de lo que lee ESA librería, no de lo que usa este fichero. */
+      /* Con lo REAL: duración y RPE del atleta, y quién la apuntó. Antes solo
+         traía lo planificado y la lista enseñaba el plan como si fuera lo hecho. */
       vivas(supabase.from('sesion')
-        .select('id, fecha_sesion, disciplina, duracion_minutos, rpe_estimado, notas_entrenador, estado')
+        .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, origen, notas_post, estado')
         .eq('id_deportista', Number(id)).eq('estado', 'Realizada'))
         .order('fecha_sesion', { ascending: false }).limit(10),
     ])
@@ -275,7 +285,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
        /carga. Aquí estaba la EWMA escrita OTRA VEZ a mano con sus constantes
        copiadas; el comentario que había admitía que ya habían tenido que
        alinearlas una vez. */
-    setCarga(cargaActual(ses42.data || []))
+    setCarga(cargaActual(ses42.data || [], hoyStr))
 
     const lista30 = ses30.data || []
     if (lista30.length) {
@@ -290,6 +300,14 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     }
 
     setUltimasSesiones(ultimas.data || [])
+    // Lo que apuntó al cerrar cada una: sensación, dolor, FC y su comentario.
+    const idsHechas = (ultimas.data || []).map(s => s.id)
+    if (idsHechas.length) {
+      const { data: th } = await supabase.from('tarea')
+        .select('id_sesion, notas_post, dolor_muscular, sensacion_tecnica, fc_media, rpe_reportado')
+        .in('id_sesion', idsHechas)
+      setTareasHechas((th || []) as TareaHecha[])
+    }
     setLoading(false)
   }
 
@@ -386,7 +404,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: colorBienestar(b) }} />{estadoBienestar(b)}
                     </span>
                   })()}
-                  {carga && <span className="text-[11.5px] text-gray-300 px-2.5 py-1 rounded-full bg-white/5">{estadoTSB(carga.tsb).label} · TSB {carga.tsb > 0 ? '+' : ''}{carga.tsb}</span>}
+                  {carga && <span className="text-[11.5px] text-gray-300 px-2.5 py-1 rounded-full bg-white/5">{carga.fiable ? estadoTSB(carga.tsb).label : 'Forma aún sin base'} · TSB {carga.tsb > 0 ? '+' : ''}{carga.tsb}</span>}
                   {hayAlertaSalud && <span className="text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ef444422', color: '#fca5a5' }}>⚠️ Antecedentes médicos</span>}
                   {!anamnesis && <span className="text-[11.5px] px-2.5 py-1 rounded-full bg-white/5 text-gray-400">Anamnesis pendiente</span>}
                 </div>
@@ -625,10 +643,13 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   </div>
                   {carga ? (
                     <>
-                      <p className={'text-[36px] font-bold leading-none mt-3 tabular-nums ' + estadoTSB(carga.tsb).color}>
+                      <p className={'text-[36px] font-bold leading-none mt-3 tabular-nums ' + (carga.fiable ? estadoTSB(carga.tsb).color : 'text-gray-400')}>
                         {carga.tsb > 0 ? '+' : ''}{carga.tsb}<span className="text-[14px] text-gray-500 font-medium"> TSB</span>
                       </p>
-                      <p className={'text-[11.5px] mt-1.5 ' + estadoTSB(carga.tsb).color}>{estadoTSB(carga.tsb).label}</p>
+                      <p className={'text-[11.5px] mt-1.5 ' + (carga.fiable ? estadoTSB(carga.tsb).color : 'text-gray-500')}
+                        title={carga.fiable ? undefined : 'La frescura se apoya en una media de 42 días que arranca en cero: con ' + carga.dias + ' días de historia todavía no dice nada fiable.'}>
+                        {carga.fiable ? estadoTSB(carga.tsb).label : 'Aún sin base (' + carga.dias + ' de 42 días)'}
+                      </p>
                       <div className="grid grid-cols-2 gap-1.5 mt-3.5">
                         <div className="rounded-[10px] border border-white/[0.055] bg-white/[0.02] px-2 py-1.5">
                           <p className="text-[9.5px] text-gray-500">CTL · Forma</p>
@@ -776,7 +797,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               </div>
             )}
 
-            {/* Lista de sesiones */}
+            {/* LO QUE HA HECHO. Lo real frente a lo planificado, y lo que contó.
+                Antes esta lista enseñaba la duración del plan, el RPE del
+                entrenador y sus notas: lo hecho no se veía en su propia ficha. */}
             {ultimasSesiones.length === 0 ? (
               <div className="text-center py-16 text-gray-500">
                 <div className="text-5xl mb-3">🏅</div>
@@ -784,34 +807,70 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {ultimasSesiones.map(s => (
-                  <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
-                    className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-orange-500 transition text-left w-full">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{ICONO_DISC[s.disciplina] || '🏃'}</span>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-baseline justify-between gap-3 flex-wrap px-1">
+                  <h3 className="font-bold text-white">Lo que ha hecho</h3>
+                  <p className="text-gray-500 text-xs">Lo real frente a lo planificado · últimas {ultimasSesiones.length}</p>
+                </div>
+                {ultimasSesiones.map(s => {
+                  const r = resumirHecha(s, tareasHechas)
+                  const colorRpe = r.desvio === 'mas_duro' ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                    : r.desvio === 'mas_suave' ? 'text-sky-300 bg-sky-500/10 border-sky-500/30'
+                      : 'text-gray-300 bg-white/5 border-gray-700'
+                  const tituloRpe = r.desvio === 'mas_duro' ? 'Le costó bastante más de lo previsto'
+                    : r.desvio === 'mas_suave' ? 'Le resultó bastante más fácil de lo previsto' : undefined
+                  const coma = (n: number) => String(n).replace('.', ',')
+                  return (
+                    <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
+                      className="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800 hover:border-orange-500 transition text-left w-full">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-2xl">{ICONO_DISC[s.disciplina] || '🏃'}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className={'text-xs px-2 py-0.5 rounded-full border ' + (COLOR_DISC[s.disciplina] || 'bg-gray-800 border-gray-700 text-gray-300')}>
                               {s.disciplina}
                             </span>
-                            <span className="text-gray-500 text-xs">{s.fecha_sesion}</span>
+                            <span className="text-gray-400 text-xs capitalize">
+                              {new Date(s.fecha_sesion + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            </span>
+                            {r.porSuCuenta && <span className="text-xs" title="La apuntó el atleta por su cuenta">🙋</span>}
                           </div>
-                          {s.notas_entrenador && <p className="text-gray-400 text-xs truncate max-w-xs">{s.notas_entrenador}</p>}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-white font-semibold text-sm tabular-nums">
+                            {r.minutosReales ?? r.minutosPlan ?? '—'}{(r.minutosReales ?? r.minutosPlan) != null ? ' min' : ''}
+                          </span>
+                          {r.minutosReales != null && r.minutosPlan != null && r.minutosReales !== r.minutosPlan && (
+                            <span className="block text-gray-500 text-[11px] tabular-nums">plan {r.minutosPlan} min</span>
+                          )}
+                          {r.minutosReales == null && r.minutosPlan != null && (
+                            <span className="block text-gray-600 text-[11px]">según plan</span>
+                          )}
                         </div>
                       </div>
-                      <div className="text-right flex flex-col gap-1 items-end">
-                        {s.duracion_minutos && (
-                          <span className="text-white font-semibold text-sm">{s.duracion_minutos} min</span>
+
+                      <div className="flex flex-wrap items-center gap-1.5 mt-3 text-[11px]">
+                        {r.rpeReal != null ? (
+                          <span className={'px-2 py-0.5 rounded-full border tabular-nums ' + colorRpe} title={tituloRpe}>
+                            RPE {coma(r.rpeReal)}{r.rpePlan != null ? <span className="opacity-70"> · plan {r.rpePlan}</span> : null}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full border border-dashed border-gray-700 text-gray-500">Sin RPE</span>
                         )}
-                        {s.rpe_estimado && (
-                          <span className="text-gray-400 text-xs">RPE {s.rpe_estimado}/10</span>
+                        {r.sensacion != null && <span className="px-2 py-0.5 rounded-full bg-white/5 text-gray-300 tabular-nums">Sensación {coma(r.sensacion)}/5</span>}
+                        {r.dolor != null && (
+                          <span className={'px-2 py-0.5 rounded-full tabular-nums ' + (r.dolor >= 4 ? 'bg-amber-500/10 text-amber-300' : 'bg-white/5 text-gray-300')}>
+                            Dolor {coma(r.dolor)}/5
+                          </span>
                         )}
-                        <span className="text-orange-500 text-xs">Ver sesión →</span>
+                        {r.fcMedia != null && <span className="px-2 py-0.5 rounded-full bg-white/5 text-gray-300 tabular-nums">FC {r.fcMedia}</span>}
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      {r.comentario && (
+                        <p className="text-gray-300 text-[13px] italic mt-2.5 line-clamp-2">«{r.comentario}»</p>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
 

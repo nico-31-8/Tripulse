@@ -26,6 +26,7 @@
 // apareciera en unos sitios y en otros no.
 
 import { valorCanonico } from './medicion'
+import { rellenarRpeTareas } from './rpe-sesion'
 
 export interface BloqueRegistro {
   /** Sigla de Zonas 2 (AEL, AEM…) o «Z3» del sistema clásico. Vacío = sin zona. */
@@ -222,6 +223,9 @@ export async function guardarRegistroResistencia(
     if (m.sinRitmo) sinRitmo = true
   }
 
+  // El RPE también en sus tareas: el SICAT y los índices lo leen de ahí.
+  if (realizada) await rellenarRpeTareas(sb, ses.id, rpe)
+
   return {
     idSesion: ses.id, guardados: cuentan.length, error: null,
     aviso: sinRitmo ? AVISO_RITMO : null,
@@ -314,6 +318,7 @@ export async function actualizarRegistroResistencia(
     notas_entrenador: opciones.notas || null,
   }).eq('id', idSesion)
   if (eS) return { guardados: cuentan.length, error: eS.message }
+  if (opciones.realizada) await rellenarRpeTareas(sb, idSesion, opciones.rpe)
 
   return { guardados: cuentan.length, error: null, aviso: sinRitmo ? AVISO_RITMO : null }
 }

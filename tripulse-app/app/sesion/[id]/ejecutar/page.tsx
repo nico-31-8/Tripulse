@@ -11,6 +11,7 @@ import FuerzaRegistro from './FuerzaRegistro'
 import { cargaZona } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
+import { rpeDeSesion } from '@/lib/rpe-sesion'
 
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
@@ -299,9 +300,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     // duracion_real solo se escribe si hay un número: si el atleta dejó la casilla
     // vacía se conserva lo que hubiera, en vez de machacarlo con un null.
     const durReal = Number(duracionRealInput)
+    /* El RPE va TAMBIÉN en la sesión: la carga real, la forma y el resumen
+       semanal lo leen de ahí, y sin él lo sustituían por el planificado. */
+    const rpeSesion = rpeDeSesion(rpe, esBrick ? tareas.map(t => postBloques[t.id]?.rpe ?? rpe) : undefined)
     await supabase.from('sesion').update({
       estado: 'Realizada',
       ...(durReal > 0 ? { duracion_real: Math.round(durReal) } : {}),
+      ...(rpeSesion != null ? { rpe_reportado: rpeSesion, rpe_origen: 'atleta' } : {}),
     }).eq('id', id)
     if (tareas.length > 0) {
       // El dolor, las notas y la HRV son del DÍA: van igual en todos los bloques.

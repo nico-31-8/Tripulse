@@ -89,7 +89,12 @@ export interface EstadoReal {
    */
   cumplimiento?: number | null
   acwr?: number | null
+  /** `null` si la forma aún no tiene base (menos de 6 semanas de historia). */
   tsb?: number | null
+  /** Su bienestar está bajando respecto a lo normal en él (readiness Fatiga o Alerta). */
+  bienestarBajando?: boolean | null
+  /** Su sesión más larga de la semana pasa del 110 % de la más larga del mes anterior. */
+  sesionLargaExcede?: boolean | null
 }
 
 export interface AjusteSemana {
@@ -158,22 +163,35 @@ export function ajustarSemana(
   // 1. Fatiga alta → la semana se convierte en descarga.
   //    No se toca el tapering: ya es volumen bajo por diseño, y recortarlo más
   //    por un TSB negativo sería recortar justo lo que lo está haciendo bajar.
+  //
+  //    EL ACWR SOLO NO DESCARGA (decidido con el usuario el 2026-09-11). Por sí
+  //    solo predice mal: el numerador está dentro del denominador y la «zona
+  //    dulce» no se sostiene (Máster de Resistencia, L4.3). Una subida fuerte
+  //    descarga cuando la confirma algo que el ACWR no ve: el bienestar bajando
+  //    o una sesión larga por encima del 110 % de las del último mes. Sin eso,
+  //    la semana no sube (regla 2), pero tampoco se tira a descarga.
   const tsbMal = estado.tsb != null && estado.tsb < UMBRALES_TSB.sobrecarga
-  const acwrMal = estado.acwr != null && estado.acwr > UMBRALES_ACWR.precaucion
+  const acwrFuerte = estado.acwr != null && estado.acwr > UMBRALES_ACWR.precaucion
+  const confirmacion = estado.bienestarBajando ? 'su bienestar está bajando'
+    : estado.sesionLargaExcede ? 'su sesión larga pasa del 110 % de las del último mes' : null
+  const acwrMal = acwrFuerte && confirmacion != null
   if ((tsbMal || acwrMal) && !s.esDescarga && !enTaper) {
     carga = Math.min(carga, CARGA_DESCARGA)
     descarga = true
     const razon = tsbMal
       ? 'TSB ' + Math.round(estado.tsb!) + ' (' + estadoTSB(estado.tsb!).label + ')'
-      : 'ACWR ' + estado.acwr!.toFixed(2) + ' (' + estadoACWR(estado.acwr!).label + ')'
+      : 'ACWR ' + estado.acwr!.toFixed(2) + ' (' + estadoACWR(estado.acwr!).label + ') y ' + confirmacion
     motivos.push('Pasa a descarga por ' + razon + ': la semana que venía pedía ' + pct(s.cargaRelativa) + '.')
   }
 
-  // 2. Precaución → no sube. Mantiene la carga de la semana anterior.
-  const acwrOjo = estado.acwr != null && estado.acwr > UMBRALES_ACWR.optima && estado.acwr <= UMBRALES_ACWR.precaucion
+  // 2. Subida notable, o fuerte sin nada que la confirme → no sube. Mantiene la
+  //    carga de la semana anterior.
+  const acwrOjo = estado.acwr != null && estado.acwr > UMBRALES_ACWR.optima
   if (acwrOjo && !descarga && !s.esDescarga && cargaSemanaAnterior != null && s.cargaRelativa > cargaSemanaAnterior) {
     carga = Math.min(carga, cargaSemanaAnterior)
-    motivos.push('No sube: ACWR ' + estado.acwr!.toFixed(2) + ' está en precaución. Se repite la carga de la semana anterior.')
+    motivos.push(acwrFuerte
+      ? 'No sube: ACWR ' + estado.acwr!.toFixed(2) + ' (subida fuerte), pero su bienestar y su sesión larga están en lo normal: se repite la carga de la semana anterior en vez de descargar.'
+      : 'No sube: ACWR ' + estado.acwr!.toFixed(2) + ' (subida notable). Se repite la carga de la semana anterior.')
   }
 
   // 3. La semana anterior no se hizo → no se progresa sobre ella.

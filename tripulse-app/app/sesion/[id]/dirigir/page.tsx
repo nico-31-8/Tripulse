@@ -24,6 +24,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { fechaLargaCompleta } from '@/lib/fechas'
 
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
+import { rellenarRpeTareas } from '@/lib/rpe-sesion'
 import Cargando from '@/components/Cargando'
 import {
   estadoInicial, pulsar, parar, msDeSerie, msDeDescanso, descansoPasado,
@@ -160,6 +161,9 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
       ...(rpe != null ? { rpe_reportado: rpe, rpe_origen: rpeOrigen } : {}),
       ...(notaSesion.trim() ? { notas_post: notaSesion.trim() } : {}),
     }).eq('id', id)
+    /* Y en sus bloques, que es donde lo leen el SICAT y los índices de
+       percepción: sin esto, una sesión dirigida no les contaba el esfuerzo. */
+    await rellenarRpeTareas(supabase, Number(id), rpe)
 
     setGuardando(false)
     router.push('/sesion/' + id)

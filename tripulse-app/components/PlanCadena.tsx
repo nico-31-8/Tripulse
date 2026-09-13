@@ -15,8 +15,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { cadenaDeMesos, ajustarCadena, type EstadoReal, type MesoDeCadena } from '@/lib/plan-cadena'
-import { calcularCargas, calcularACWR, estadoTSB, estadoACWR } from '@/lib/panel-metricas'
-import { cargaReal, estimarDuraciones } from '@/lib/duracion-carga'
+import { serieForma, formaFiable, calcularACWR, estadoTSB, estadoACWR, HISTORIA_MINIMA_FORMA } from '@/lib/panel-metricas'
+import { cargaReal, estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
+import type { ResultadoDuracion } from '@/lib/duracion'
+import { analizarWellness } from '@/lib/wellness-analisis'
+import { sesionLarga } from '@/lib/progresion'
 import { sumarDias, diasEntre } from '@/lib/desplazar'
 import type { DistanciaTri } from '@/lib/distribucion-zonas'
 
@@ -37,6 +40,8 @@ function lunesDe(iso: string): string {
 
 export default function PlanCadena({ dep, mesos, horasReferencia, distancia, competicion }: Props) {
   const [estado, setEstado] = useState<EstadoReal | null>(null)
+  // Días de historia de la forma: con menos de 42, el TSB no se usa para decidir.
+  const [diasForma, setDiasForma] = useState(0)
   const [lunesAjuste, setLunesAjuste] = useState<string | null>(null)
   const [cargandoEstado, setCargandoEstado] = useState(true)
 
@@ -67,18 +72,31 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
           .gte('fecha_sesion', desde).or('eliminada.is.null,eliminada.eq.false'),
       ])
       const ses = [...(enPlan || []), ...(libres || [])]
-      const dur = ses.length ? await estimarDuraciones(supabase, ses.map(s => s.id), {}) : {}
+      const [dur, wellQ] = await Promise.all([
+        ses.length ? estimarDuraciones(supabase, ses.map(s => s.id), {}) : Promise.resolve({} as Record<number, ResultadoDuracion>),
+        supabase.from('wellness').select('*').eq('id_deportista', dep.id)
+          .gte('fecha', sumarDias(hoy, -45)).order('fecha', { ascending: false }),
+      ])
 
-      // Serie diaria solo de lo REALIZADO: la carga que no se hizo no fatiga.
+      // Carga de lo REALIZADO por día: la carga que no se hizo no fatiga.
       const hechas = ses.filter(s => s.estado === 'Realizada')
-        .map(s => ({ fecha_sesion: s.fecha_sesion, carga: cargaReal(s, dur[s.id]) }))
       const porDia: Record<string, number> = {}
-      hechas.forEach(h => { porDia[h.fecha_sesion] = (porDia[h.fecha_sesion] || 0) + h.carga })
-      const serie = Object.keys(porDia).sort().map(f => ({ carga: porDia[f], fecha_sesion: f }))
+      hechas.forEach(s => { porDia[s.fecha_sesion] = (porDia[s.fecha_sesion] || 0) + cargaReal(s, dur[s.id]) })
 
-      const cargas = calcularCargas(ses.filter(s => s.estado === 'Realizada'))
-      const tsb = cargas.length ? cargas[cargas.length - 1].tsb : null
-      const acwr = calcularACWR(serie)
+      /* UNA serie para la frescura y el ACWR, día a día y hasta hoy. Antes el
+         ACWR se calculaba sobre los días CON sesión —«los últimos 7» eran casi
+         dos semanas— y el TSB sobre otra serie sin las duraciones estimadas. */
+      const diaria = serieForma(porDia, hoy)
+      const tsb = diaria.length && formaFiable(diaria) ? diaria[diaria.length - 1].tsb : null
+      const acwr = calcularACWR(diaria)
+
+      /* Lo que el ACWR no ve y hace falta para que una subida fuerte descargue
+         (decidido con el usuario el 2026-09-11): el bienestar y la sesión larga. */
+      const readiness = analizarWellness(wellQ.data || []).readiness
+      const bienestarBajando = readiness ? readiness.nivel === 'fatiga' || readiness.nivel === 'alerta' : null
+      const larga = sesionLarga(hechas.map(s => ({ fecha_sesion: s.fecha_sesion, minutos: minutosCarga(s, dur[s.id]) })), hoy)
+      const sesionLargaExcede = larga ? larga.excede : null
+      const serie = diaria.map(p => ({ fecha_sesion: p.fecha, carga: p.carga }))
 
       // Cumplimiento de la semana que acaba de terminar: lo que se hizo entre lo
       // que el microciclo tenía planificado.
@@ -92,7 +110,8 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
         cumplimiento = Math.round((real / micro.ua_planificada) * 100) / 100
       }
 
-      setEstado({ tsb, acwr, cumplimiento })
+      setEstado({ tsb, acwr, cumplimiento, bienestarBajando, sesionLargaExcede })
+      setDiasForma(diaria.length)
       setCargandoEstado(false)
     }
     cargar().catch(() => setCargandoEstado(false))
@@ -114,13 +133,31 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
               <span className="text-gray-500">TSB </span>
               {estado?.tsb != null
                 ? <b style={{ color: estadoTSB(estado.tsb).color }}>{Math.round(estado.tsb)} · {estadoTSB(estado.tsb).label}</b>
-                : <span className="text-gray-600">sin datos</span>}
+                : diasForma > 0
+                  ? <span className="text-gray-500" title="La frescura se apoya en una media de 42 días: con menos historia no se usa para decidir.">aún sin base ({diasForma} de {HISTORIA_MINIMA_FORMA} días)</span>
+                  : <span className="text-gray-600">sin datos</span>}
             </span>
             <span className="text-[13px]">
               <span className="text-gray-500">ACWR </span>
               {estado?.acwr != null
                 ? <b className="text-gray-200">{estado.acwr.toFixed(2)} · {estadoACWR(estado.acwr).label}</b>
                 : <span className="text-gray-600">hace falta más historia</span>}
+            </span>
+            <span className="text-[13px]">
+              <span className="text-gray-500">Bienestar </span>
+              {estado?.bienestarBajando == null
+                ? <span className="text-gray-600">sin base</span>
+                : estado.bienestarBajando
+                  ? <b className="text-amber-300">bajando</b>
+                  : <b className="text-gray-200">en lo normal</b>}
+            </span>
+            <span className="text-[13px]">
+              <span className="text-gray-500">Sesión larga </span>
+              {estado?.sesionLargaExcede == null
+                ? <span className="text-gray-600">sin con qué comparar</span>
+                : estado.sesionLargaExcede
+                  ? <b className="text-amber-300">pasa del 110 %</b>
+                  : <b className="text-gray-200">dentro del 110 %</b>}
             </span>
             <span className="text-[13px]">
               <span className="text-gray-500">Semana pasada </span>

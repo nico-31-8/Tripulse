@@ -439,13 +439,17 @@ export default function Dashboard() {
               <button onClick={() => router.push('/carga')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#3b82f6')}>
                 {bhead('📈', 'Carga · frescura', '#3b82f6')}
                 {metricas?.carga ? (
-                  <div className="flex items-end justify-between gap-2">
+                  /* Con menos de 6 semanas de historia el TSB es el modelo
+                     arrancando, no el atleta: se enseña en gris y sin veredicto. */
+                  <div className="flex items-end justify-between gap-2" title={metricas.carga.fiable ? undefined : 'La frescura se apoya en una media de 42 días. Con ' + metricas.carga.dias + ' días de historia todavía no dice nada fiable.'}>
                     <div>
-                      <span className="text-[26px] font-bold leading-none" style={{ color: metricas.carga.color }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</span>
-                      <p className="text-[11px] font-medium mt-1" style={{ color: metricas.carga.color }}>{metricas.carga.label}</p>
+                      <span className="text-[26px] font-bold leading-none" style={{ color: metricas.carga.fiable ? metricas.carga.color : '#9ca3af' }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</span>
+                      <p className="text-[11px] font-medium mt-1" style={{ color: metricas.carga.fiable ? metricas.carga.color : '#9ca3af' }}>
+                        {metricas.carga.fiable ? metricas.carga.label : 'Aún sin base (' + metricas.carga.dias + ' de 42 días)'}
+                      </p>
                       <p className="text-[9px] text-gray-500">frescura (TSB)</p>
                     </div>
-                    <Spark data={metricas.carga.spark} color={metricas.carga.color} />
+                    <Spark data={metricas.carga.spark} color={metricas.carga.fiable ? metricas.carga.color : '#9ca3af'} />
                   </div>
                 ) : <span className="text-xs text-gray-500">Sin datos</span>}
               </button>
@@ -500,7 +504,7 @@ export default function Dashboard() {
                   <div className="flex justify-between items-baseline mb-3">
                     <p className="font-semibold text-sm">Carga y frescura</p>
                     <span className="text-xs text-gray-500">
-                      {metricas?.carga ? <>hoy <b style={{ color: metricas.carga.color }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</b> · {metricas.carga.label}</> : 'últimas semanas'}
+                      {metricas?.carga ? <>hoy <b style={{ color: metricas.carga.fiable ? metricas.carga.color : '#9ca3af' }}>{metricas.carga.tsb > 0 ? '+' : ''}{metricas.carga.tsb}</b> · {metricas.carga.fiable ? metricas.carga.label : 'aún sin base (' + metricas.carga.dias + ' de 42 días)'}</> : 'últimas semanas'}
                     </span>
                   </div>
                   {metricas?.tendencia && metricas.tendencia.length > 1 ? (

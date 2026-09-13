@@ -7,7 +7,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
-import { serieForma, estadoTSB as estadoTSBBase, type NivelTSB } from '@/lib/panel-metricas'
+import { serieForma, estadoTSB as estadoTSBBase, HISTORIA_MINIMA_FORMA, type NivelTSB } from '@/lib/panel-metricas'
 
 /* Mismo interruptor que /carga y /volumen: una sola clave para toda la app, o el
    entrenador activaría la ponderación en un módulo y la vería apagada en otro. */
@@ -30,7 +30,8 @@ function calcularCargasDisc(bloques: Bloque[], factor: (b: Bloque) => number) {
   })
   // Misma recurrencia que el resto de la app (lib/panel-metricas). Lo propio de
   // esta vista es el factor por disciplina, no la curva.
-  return serieForma(mapa).map(p => ({ fecha: p.fecha.slice(5), atl: p.atl, ctl: p.ctl, tsb: p.tsb }))
+  // Hasta HOY, día a día: los de descanso también bajan la fatiga.
+  return serieForma(mapa, hoyISO()).map(p => ({ fecha: p.fecha.slice(5), atl: p.atl, ctl: p.ctl, tsb: p.tsb }))
 }
 
 // Umbrales y etiquetas vienen de lib/panel-metricas: había cuatro copias de esta
@@ -100,20 +101,26 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     // Sin filtrar por disciplina: el deporte lo pone el BLOQUE, no la sesión.
     const { data: ses } = await vivas(supabase
       .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, duracion_minutos, duracion_real')
+      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real')
       .eq('id_deportista', depId)
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
 
     setBloques(await cargarBloques(supabase, ses || [], {
-      rpe: s => s.rpe_estimado || 5,   // como antes: aquí se usa el RPE planificado
+      /* El RPE que DIO el atleta, como en el resto de la app (cargaReal). Aquí
+         se usaba el planificado «como antes»: la forma de lo HECHO se calculaba
+         con lo que el entrenador esperaba que costara. */
+      rpe: s => s.rpe_reportado || s.rpe_estimado || 5,
       estimar: false,                  // sin duración manual la sesión pesa 0, como antes
     }))
     setLoading(false)
   }
 
-  const datosPorDisc = useMemo(() => {
+  /* Además de la serie, qué disciplinas tienen historia suficiente para creerse
+     su TSB: se mira con la serie ENTERA, antes del recorte al rango. */
+  const calculo = useMemo(() => {
     const resultado: Record<string, any[]> = {}
+    const base: Record<string, boolean> = {}
     for (const disc of DISCIPLINAS) {
       // Este módulo era el único que se quedaba a nivel de disciplina mientras
       // /carga y /volumen ya ponderaban por zona: el mismo entrenador veía dos
@@ -129,10 +136,14 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
         return factorSicat(disc.key, sicat)
       }
       const suyos = bloques.filter(b => b.disciplina === disc.key)
-      resultado[disc.key] = calcularCargasDisc(suyos, factor).slice(-diasRango)
+      const entera = calcularCargasDisc(suyos, factor)
+      base[disc.key] = entera.length >= HISTORIA_MINIMA_FORMA
+      resultado[disc.key] = entera.slice(-diasRango)
     }
-    return resultado
+    return { series: resultado, base }
   }, [bloques, sicat, diasRango, pondZona, zonasRes])
+  const datosPorDisc = calculo.series
+  const conBase = calculo.base
 
   if (loading) return <div className="text-center py-8 text-gray-500 text-sm">Calculando carga por disciplina...</div>
 
@@ -158,17 +169,20 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
             </div>
           )
           const estado = estadoTSB(ultimo.tsb)
+          // Sin 6 semanas de historia, ni semáforo ni veredicto: es el modelo arrancando.
+          const fiable = conBase[disc.key]
           return (
             <button key={disc.key}
               onClick={() => setDiscActiva(disc.key)}
+              title={fiable ? undefined : 'Con menos de ' + HISTORIA_MINIMA_FORMA + ' días de historia en esta disciplina, la frescura todavía no dice nada fiable.'}
               className={'rounded-xl p-4 border text-left transition ' +
-                (discActiva === disc.key ? 'ring-2 ring-white ' : '') + estado.bg}>
+                (discActiva === disc.key ? 'ring-2 ring-white ' : '') + (fiable ? estado.bg : 'bg-gray-800 border-gray-700')}>
               <p className="text-xs text-gray-300 mb-1">{disc.label}</p>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl">{semaforo(ultimo.tsb)}</span>
-                <span className={'font-bold text-lg ' + estado.color}>{ultimo.tsb > 0 ? '+' : ''}{ultimo.tsb}</span>
+                {fiable && <span className="text-xl">{semaforo(ultimo.tsb)}</span>}
+                <span className={'font-bold text-lg ' + (fiable ? estado.color : 'text-gray-400')}>{ultimo.tsb > 0 ? '+' : ''}{ultimo.tsb}</span>
               </div>
-              <p className={'text-xs font-medium ' + estado.color}>{estado.label}</p>
+              <p className={'text-xs font-medium ' + (fiable ? estado.color : 'text-gray-500')}>{fiable ? estado.label : 'Aún sin base'}</p>
               <div className="mt-2 flex gap-2 text-xs text-gray-400">
                 <span>CTL {ultimo.ctl}</span>
                 <span>·</span>
@@ -181,7 +195,8 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
 
       {/* Alerta si hay desequilibrio */}
       {(() => {
-        const conDatos = DISCIPLINAS.filter(d => datosPorDisc[d.key]?.length)
+        // Solo las que tienen base: comparar un TSB arrancando con otro de verdad no dice nada.
+        const conDatos = DISCIPLINAS.filter(d => datosPorDisc[d.key]?.length && conBase[d.key])
         const tsbPorDisc = conDatos.map(d => {
           const datos = datosPorDisc[d.key]
           const ultimo = datos[datos.length - 1]

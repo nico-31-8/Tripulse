@@ -28,7 +28,8 @@ export const DISC_META: Record<string, { label: string; color: string }> = {
 const DISC_ORDEN = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
 export interface MetricasPanel {
-  carga: { tsb: number; label: string; color: string; spark: number[] } | null
+  /** `fiable`: hay historia suficiente (HISTORIA_MINIMA_FORMA) para creerse el TSB. */
+  carga: { tsb: number; label: string; color: string; spark: number[]; fiable: boolean; dias: number } | null
   tendencia: number[]
   proxima: { fecha: string; dow: string; disciplina: string; color: string } | null
   volumen: { total: number; nSesiones: number; modo: 'tiempo' | 'conteo'; porDisc: { key: string; label: string; color: string; min: number; n: number }[] } | null
@@ -84,37 +85,64 @@ export interface PuntoForma {
 }
 
 /**
+ * Días de historia a partir de los que la forma dice algo. La condición (CTL)
+ * es una media de ~42 días que arranca en cero: con menos, cualquier semana
+ * normal sale como «sobrecarga» porque la condición todavía no ha tenido tiempo
+ * de crecer. Es el modelo arrancando, no el atleta cansado.
+ */
+export const HISTORIA_MINIMA_FORMA = 42
+
+/** Tope de seguridad del bucle de días (≈ 5 años). */
+const MAX_DIAS_SERIE = 1830
+
+/**
  * La serie de forma a partir de la carga POR DÍA.
  *
- * `porDia` va con las fechas como claves; se recorren ordenadas, que es lo que
- * hace que la exponencial signifique algo. Los días sin carga no hacen falta:
- * el modelo decae solo entre puntos consecutivos igual que lo hacía antes en
- * las cuatro copias.
+ * UN PUNTO POR DÍA DE CALENDARIO, también los de descanso, que valen cero.
+ * Antes se recorrían solo los días con sesión, y el comentario decía que «el
+ * modelo decae solo entre puntos consecutivos»: no es verdad. Cada paso de la
+ * recurrencia es UN día; saltarse los de descanso hacía que un fin de semana sin
+ * entrenar contara como uno, la fatiga no bajaba lo que tenía que bajar y la
+ * frescura salía mucho más negativa de lo real (con los datos de Bruno, −183 en
+ * vez de −93). Las cinco pantallas de forma pasaban solo días con sesión.
+ *
+ * `hasta`: hasta qué día llegar. Para el estado de HOY hay que pasar hoy: si la
+ * última sesión fue hace cinco días, esos cinco de descanso también cuentan. Sin
+ * `hasta`, la serie acaba en el último día con carga (lo que quieren las pruebas).
  */
-export function serieForma(porDia: Record<string, number>): PuntoForma[] {
+export function serieForma(porDia: Record<string, number>, hasta?: string): PuntoForma[] {
+  const claves = Object.keys(porDia).sort()
+  if (!claves.length) return []
+  const ultima = claves[claves.length - 1]
+  const fin = hasta && hasta > ultima ? hasta : ultima
   let atl = 0, ctl = 0
-  return Object.keys(porDia).sort().map(fecha => {
+  const serie: PuntoForma[] = []
+  for (let fecha = claves[0], n = 0; fecha <= fin && n < MAX_DIAS_SERIE; fecha = sumarDias(fecha, 1), n++) {
     const carga = porDia[fecha] || 0
     atl = carga * (2 / TAU_ATL) + atl * (1 - 2 / TAU_ATL)
     ctl = carga * (2 / TAU_CTL) + ctl * (1 - 2 / TAU_CTL)
-    return {
+    serie.push({
       fecha,
       carga: Math.round(carga),
       atl: Math.round(atl),
       ctl: Math.round(ctl),
       tsb: Math.round(ctl - atl),
-    }
-  })
+    })
+  }
+  return serie
 }
 
-export function calcularCargas(sesiones: any[]) {
-  if (!sesiones.length) return [] as { carga: number; tsb: number }[]
+/** Si una serie de forma tiene historia suficiente para creerse su TSB. */
+export const formaFiable = (serie: { length: number }): boolean => serie.length >= HISTORIA_MINIMA_FORMA
+
+export function calcularCargas(sesiones: any[], hasta?: string) {
+  if (!sesiones.length) return [] as { fecha: string; carga: number; tsb: number }[]
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => {
     const carga = cargaReal(s)
     mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + carga
   })
-  return serieForma(mapa).map(p => ({ carga: p.carga, tsb: p.tsb }))
+  return serieForma(mapa, hasta).map(p => ({ fecha: p.fecha, carga: p.carga, tsb: p.tsb }))
 }
 /**
  * El estado de forma de HOY: fatiga, condición y frescura.
@@ -125,13 +153,13 @@ export function calcularCargas(sesiones: any[]) {
  * constantes copiadas: el comentario de aquel fichero admitía que ya habían
  * tenido que alinearlas una vez.
  */
-export function cargaActual(sesiones: any[]): { atl: number; ctl: number; tsb: number } | null {
+export function cargaActual(sesiones: any[], hasta?: string): { atl: number; ctl: number; tsb: number; dias: number; fiable: boolean } | null {
   if (!sesiones.length) return null
   const mapa: Record<string, number> = {}
   sesiones.forEach(s => { mapa[s.fecha_sesion] = (mapa[s.fecha_sesion] || 0) + cargaReal(s) })
-  const serie = serieForma(mapa)
+  const serie = serieForma(mapa, hasta)
   const u = serie[serie.length - 1]
-  return { atl: u.atl, ctl: u.ctl, tsb: u.tsb }
+  return { atl: u.atl, ctl: u.ctl, tsb: u.tsb, dias: serie.length, fiable: formaFiable(serie) }
 }
 // ESTA ES LA ÚNICA. Estaba copiada cuatro veces —aquí, en /carga, en la ficha del
 // deportista y en CargaPorDisciplina— y las copias ya habían empezado a separarse
@@ -176,7 +204,10 @@ export const UMBRALES_ACWR = { subcarga: 0.8, optima: 1.3, precaucion: 1.5 }
  * decir que no se sabe.
  */
 export function calcularACWR(diario: { carga: number }[]): number | null {
-  if (diario.length < 8) return null
+  /* Cinco semanas de días, como dice arriba. Comprobaba 8: con tres semanas de
+     historia dividía entre cuatro semanas crónicas que no existían y el ratio
+     salía inflado (Bruno: 4,97 sobre días con sesión; 2,45 con días reales). */
+  if (diario.length < 35) return null
   const aguda = diario.slice(-7).reduce((s, d) => s + d.carga, 0)
   const cronicas = diario.slice(-35, -7)
   if (!cronicas.length) return null
@@ -184,19 +215,35 @@ export function calcularACWR(diario: { carga: number }[]): number | null {
   return media > 0 ? Math.round((aguda / media) * 100) / 100 : null
 }
 
+/* LAS ETIQUETAS DESCRIBEN, NO SENTENCIAN (2026-09-11). Eran «Zona óptima» y
+   «Peligro», con semáforo. El ACWR tiene un defecto de construcción (el
+   numerador está dentro del denominador), predice mal por sí solo y la «zona
+   dulce» 0,8-1,3 no se sostiene (Máster de Resistencia, L4.3): hay que mirarlo,
+   no obedecerlo. Los `nivel` no cambian, que la cadena de mesociclos los usa. */
 export function estadoACWR(acwr: number): { nivel: NivelACWR; label: string } {
-  if (acwr < UMBRALES_ACWR.subcarga) return { nivel: 'subcarga', label: 'Subcarga' }
-  if (acwr <= UMBRALES_ACWR.optima) return { nivel: 'optima', label: 'Zona óptima' }
-  if (acwr <= UMBRALES_ACWR.precaucion) return { nivel: 'precaucion', label: 'Precaución' }
-  return { nivel: 'peligro', label: 'Peligro' }
+  if (acwr < UMBRALES_ACWR.subcarga) return { nivel: 'subcarga', label: 'Por debajo de lo habitual' }
+  if (acwr <= UMBRALES_ACWR.optima) return { nivel: 'optima', label: 'En línea con lo habitual' }
+  if (acwr <= UMBRALES_ACWR.precaucion) return { nivel: 'precaucion', label: 'Subida notable' }
+  return { nivel: 'peligro', label: 'Subida fuerte' }
+}
+
+/**
+ * La misma cuenta dicha como progresión, que es como se decide de verdad:
+ * «+45 % sobre su media de 4 semanas» dice lo mismo que «ACWR 1,45» y se entiende.
+ */
+export function progresionACWR(acwr: number): string {
+  const p = Math.round((acwr - 1) * 100)
+  if (p === 0) return 'Igual que su media de 4 semanas'
+  return (p > 0 ? '+' : '−') + Math.abs(p) + ' % ' + (p > 0 ? 'sobre' : 'bajo') + ' su media de 4 semanas'
 }
 
 /** La escala en texto, para el prompt del asistente. Se genera, no se escribe. */
 export function escalaACWRTexto(): string {
   const u = UMBRALES_ACWR
   const c = (n: number) => String(n).replace('.', ',')
-  return `< ${c(u.subcarga)} Subcarga · ${c(u.subcarga)}–${c(u.optima)} Zona óptima`
-    + ` · ${c(u.optima)}–${c(u.precaucion)} Precaución · > ${c(u.precaucion)} Peligro`
+  return `< ${c(u.subcarga)} por debajo de lo habitual · ${c(u.subcarga)}–${c(u.optima)} en línea con lo habitual`
+    + ` · ${c(u.optima)}–${c(u.precaucion)} subida notable · > ${c(u.precaucion)} subida fuerte.`
+    + ' Es orientativo: por sí solo predice mal las lesiones; se lee junto al bienestar, la sesión más larga y el contexto'
 }
 
 export function estadoTSB(tsb: number): { nivel: NivelTSB; label: string; color: string; texto: string } {
@@ -306,10 +353,14 @@ const VIVAS = FILTRO_VIVAS
   const cargaLibres = (await supabase.from('sesion').select(selSes)
     .eq('id_deportista', dep.id).is('id_microciclo', null)
     .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || []
-  const serieCarga = calcularCargas([...cargaChain, ...cargaLibres])
+  // Hasta HOY: los días de descanso desde la última sesión también cuentan.
+  const serieCarga = calcularCargas([...cargaChain, ...cargaLibres], hoyISO())
   const ultimaCarga = serieCarga[serieCarga.length - 1]
   const carga = ultimaCarga
-    ? { tsb: ultimaCarga.tsb, ...estadoTSB(ultimaCarga.tsb), spark: serieCarga.slice(-14).map(x => x.tsb) }
+    ? {
+        tsb: ultimaCarga.tsb, ...estadoTSB(ultimaCarga.tsb), spark: serieCarga.slice(-14).map(x => x.tsb),
+        fiable: formaFiable(serieCarga), dias: serieCarga.length,
+      }
     : null
   const tendencia = serieCarga.slice(-42).map(x => x.tsb)
 

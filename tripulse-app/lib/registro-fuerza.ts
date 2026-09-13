@@ -20,6 +20,7 @@
 
 import { volumenDe } from './modo-mejora'
 import { type ControlTipo } from './control-esfuerzo'
+import { rellenarRpeTareas } from './rpe-sesion'
 
 export interface SerieRegistro {
   peso: string
@@ -229,6 +230,9 @@ export async function guardarRegistroFuerza(
     if (eSer) return deshacer(eSer.message || 'No se pudieron guardar las series.')
   }
 
+  // El RPE también en sus tareas: el SICAT y los índices lo leen de ahí.
+  await rellenarRpeTareas(sb, ses.id, rpe)
+
   return { idSesion: ses.id, guardados: cuentan.length, error: null }
 }
 
@@ -381,6 +385,7 @@ export async function actualizarRegistroFuerza(
     rpe_reportado: rpe,
     notas_entrenador: notas || null,
   }).eq('id', idSesion)
+  await rellenarRpeTareas(sb, idSesion, rpe)
 
   return { guardados: cuentan.length, error: null }
 }

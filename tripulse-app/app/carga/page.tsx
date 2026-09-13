@@ -13,7 +13,7 @@ import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
 import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
-import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
+import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, progresionACWR, HISTORIA_MINIMA_FORMA, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 
@@ -34,7 +34,8 @@ function calcularCargas(sesiones: any[], factorFn: (s: any) => number = () => 1)
   })
   // La recurrencia y sus constantes viven en lib/panel-metricas: aquí solo se
   // decide de dónde sale la carga de cada día (que esta pantalla pondera).
-  return serieForma(mapa).map(p => ({ ...p, fecha: p.fecha.slice(5), fechaFull: p.fecha }))
+  // Hasta HOY y día a día: los de descanso también bajan la fatiga.
+  return serieForma(mapa, hoyISO()).map(p => ({ ...p, fecha: p.fecha.slice(5), fechaFull: p.fecha }))
 }
 
 // calcularACWR y los umbrales viven en lib/panel-metricas: esta pantalla era la
@@ -80,11 +81,11 @@ function estadoMonotonia(m: number) {
   return { label: 'Alta monotonía', color: 'text-red-400' }
 }
 
-// El color se queda aquí —es de esta pantalla— pero el umbral y la etiqueta
-// salen del catálogo compartido.
+// Sin semáforo: el ACWR se mira, no se obedece (ver estadoACWR en
+// lib/panel-metricas). El mismo color para todos los niveles, a propósito.
 const COLOR_ACWR: Record<NivelACWR, string> = {
-  subcarga: 'text-blue-400', optima: 'text-green-400',
-  precaucion: 'text-yellow-400', peligro: 'text-red-400',
+  subcarga: 'text-gray-200', optima: 'text-gray-200',
+  precaucion: 'text-gray-200', peligro: 'text-gray-200',
 }
 function estadoACWR(acwr: number) {
   const e = estadoACWRBase(acwr)
@@ -176,7 +177,11 @@ export default function CargaPage() {
     if (seleccionado) verCarga(seleccionado, dias)
   }
 
-  const datos = useMemo(() => calcularCargas(sesionesRaw, factorFn).slice(-rango), [sesionesRaw, rango, usarSicat, sicat, pondZona, zonasRes])
+  const serieCompleta = useMemo(() => calcularCargas(sesionesRaw, factorFn), [sesionesRaw, usarSicat, sicat, pondZona, zonasRes])
+  const datos = useMemo(() => serieCompleta.slice(-rango), [serieCompleta, rango])
+  /* Con menos de 6 semanas de historia (contando los 42 días de más que se
+     cargan para calentar el modelo) el TSB es el modelo arrancando. */
+  const formaConBase = serieCompleta.length >= HISTORIA_MINIMA_FORMA
   const ultimo = datos[datos.length - 1]
   const acwr = calcularACWR(datos)
   const monotonia = calcularMonotonia(datos)
@@ -187,8 +192,10 @@ export default function CargaPage() {
   useDeclararModulo('Carga', seleccionado && ultimo
     ? [
         `Carga de ${seleccionado.nombre}, últimas ${Math.round(rango / 7)} semanas${usarSicat ? ' (ponderada por SICAT)' : ''}:`,
-        `CTL ${ultimo.ctl}, ATL ${ultimo.atl}, TSB ${ultimo.tsb > 0 ? '+' : ''}${ultimo.tsb} → ${estadoTSB(ultimo.tsb).label}.`,
-        acwr ? `ACWR ${acwr} → ${estadoACWR(acwr).label}.` : 'ACWR sin datos suficientes.',
+        formaConBase
+          ? `CTL ${ultimo.ctl}, ATL ${ultimo.atl}, TSB ${ultimo.tsb > 0 ? '+' : ''}${ultimo.tsb} → ${estadoTSB(ultimo.tsb).label}.`
+          : `CTL ${ultimo.ctl}, ATL ${ultimo.atl}, TSB ${ultimo.tsb > 0 ? '+' : ''}${ultimo.tsb}: AÚN SIN BASE (solo ${serieCompleta.length} días de historia; hacen falta ${HISTORIA_MINIMA_FORMA}). No lo uses para hablar de sobrecarga.`,
+        acwr ? `ACWR ${acwr} → ${estadoACWR(acwr).label} (${progresionACWR(acwr)}; orientativo, no es alarma por sí solo).` : 'ACWR sin datos suficientes.',
         monotonia ? `Monotonía ${monotonia} → ${estadoMonotonia(monotonia).label}.` : 'Monotonía sin datos suficientes.',
         strain ? `Strain ${strain}.` : '',
         `Pestaña abierta: ${pestana === 'global' ? 'carga global' : pestana === 'disciplina' ? 'por disciplina' : 'visión diaria'}.`,
@@ -456,17 +463,23 @@ export default function CargaPage() {
                       <p className="text-2xl font-bold text-red-400">{ultimo.atl}</p>
                       <p className="text-xs text-gray-500 mt-1">Carga aguda 7d</p>
                     </div>
-                    <div className={'rounded-xl p-4 border ' + estadoTSB(ultimo.tsb).bg}>
+                    <div className={'rounded-xl p-4 border ' + (formaConBase ? estadoTSB(ultimo.tsb).bg : 'bg-gray-900 border-gray-800')}
+                      title={formaConBase ? undefined : 'La frescura se apoya en una media de 42 días que arranca en cero. Con ' + serieCompleta.length + ' días de historia, cualquier semana normal sale como sobrecarga: es el modelo arrancando, no el atleta.'}>
                       <p className="text-xs text-gray-300 mb-1 uppercase tracking-wide">TSB — Frescura</p>
-                      <p className={'text-2xl font-bold ' + estadoTSB(ultimo.tsb).color}>{ultimo.tsb > 0 ? '+' : ''}{ultimo.tsb}</p>
-                      <p className={'text-xs mt-1 ' + estadoTSB(ultimo.tsb).color}>{estadoTSB(ultimo.tsb).label}</p>
+                      <p className={'text-2xl font-bold ' + (formaConBase ? estadoTSB(ultimo.tsb).color : 'text-gray-400')}>{ultimo.tsb > 0 ? '+' : ''}{ultimo.tsb}</p>
+                      <p className={'text-xs mt-1 ' + (formaConBase ? estadoTSB(ultimo.tsb).color : 'text-gray-500')}>
+                        {formaConBase ? estadoTSB(ultimo.tsb).label : 'Aún sin base (' + serieCompleta.length + ' de ' + HISTORIA_MINIMA_FORMA + ' días)'}
+                      </p>
                     </div>
-                    <div className="tp-card p-4">
-                      <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">ACWR — Ratio</p>
+                    <div className="tp-card p-4"
+                      title="Última semana frente a la media semanal de las cuatro anteriores. Es orientativo: por sí solo predice mal las lesiones. Míralo junto al bienestar, la sesión más larga y lo que sabes de su vida.">
+                      <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Progresión de carga</p>
                       {acwr ? (
                         <>
-                          <p className={'text-2xl font-bold ' + estadoACWR(acwr).color}>{acwr}</p>
-                          <p className={'text-xs mt-1 ' + estadoACWR(acwr).color}>{estadoACWR(acwr).label}</p>
+                          <p className={'text-2xl font-bold tabular-nums ' + estadoACWR(acwr).color}>
+                            {acwr >= 1 ? '+' : '−'}{Math.abs(Math.round((acwr - 1) * 100))} %
+                          </p>
+                          <p className="text-xs mt-1 text-gray-400">{estadoACWR(acwr).label} · ACWR {String(acwr).replace('.', ',')}</p>
                         </>
                       ) : <p className="text-gray-500 text-sm mt-2">Sin datos suficientes</p>}
                     </div>

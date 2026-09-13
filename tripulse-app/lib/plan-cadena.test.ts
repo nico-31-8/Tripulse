@@ -61,10 +61,30 @@ describe('ajustar a lo que pasó', () => {
     expect(a.horasAjustadas).toBeLessThan(semanaQueSube.horasSemana)
   })
 
-  it('ACWR en peligro, igual', () => {
+  /* CAMBIADO el 2026-09-11, con el usuario. Antes una subida fuerte de ACWR
+     descargaba ella sola. El ACWR predice mal por sí solo (Máster, L4.3): hace
+     falta algo que lo confirme. */
+  it('ACWR con subida fuerte, SOLO, no descarga: la semana no sube y ya', () => {
     const a = ajustarSemana(semanaQueSube, { acwr: UMBRALES_ACWR.precaucion + 0.2 }, 1.0)
+    expect(a.convertidaEnDescarga).toBe(false)
+    expect(a.cargaAjustada).toBe(1.0)
+    expect(a.motivos[0]).toMatch(/No sube: ACWR 1\.70 \(subida fuerte\).*en vez de descargar/)
+  })
+
+  it('ACWR con subida fuerte Y bienestar bajando: descarga', () => {
+    const a = ajustarSemana(semanaQueSube, { acwr: UMBRALES_ACWR.precaucion + 0.2, bienestarBajando: true }, 1.0)
     expect(a.convertidaEnDescarga).toBe(true)
-    expect(a.motivos[0]).toMatch(/ACWR 1\.70 \(Peligro\)/)
+    expect(a.motivos[0]).toMatch(/ACWR 1\.70 \(Subida fuerte\) y su bienestar está bajando/)
+  })
+
+  it('ACWR con subida fuerte Y sesión larga por encima del 110 %: descarga', () => {
+    const a = ajustarSemana(semanaQueSube, { acwr: UMBRALES_ACWR.precaucion + 0.2, sesionLargaExcede: true }, 1.0)
+    expect(a.convertidaEnDescarga).toBe(true)
+    expect(a.motivos[0]).toMatch(/sesión larga pasa del 110 %/)
+  })
+
+  it('bienestar bajando SIN subida de carga no descarga por esta regla', () => {
+    expect(ajustarSemana(semanaQueSube, { acwr: 1.0, bienestarBajando: true }, 1.0).convertidaEnDescarga).toBe(false)
   })
 
   /* El tapering ya es volumen bajo por diseño. Recortarlo más por un TSB
@@ -80,7 +100,7 @@ describe('ajustar a lo que pasó', () => {
     const a = ajustarSemana(semanaQueSube, { acwr: 1.4 }, 1.0)
     expect(a.convertidaEnDescarga).toBe(false)
     expect(a.cargaAjustada).toBe(1.0)
-    expect(a.motivos[0]).toMatch(/No sube.*precaución/)
+    expect(a.motivos[0]).toMatch(/No sube.*subida notable/)
   })
 
   it('si la semana anterior no se hizo, no se progresa sobre ella', () => {

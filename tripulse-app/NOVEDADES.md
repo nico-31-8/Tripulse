@@ -16,6 +16,71 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 11 de septiembre de 2026
 
+### La fatiga y la frescura, bien calculadas (tus números van a cambiar)
+
+**La fatiga no bajaba los días de descanso.** El cálculo de la forma (CTL, ATL
+y TSB) solo recorría los días con sesión, así que un fin de semana sin entrenar
+contaba como un día. Resultado: fatiga inflada y frescura mucho más negativa de
+la real. Con los datos de Bruno, su frescura pasa de −183 a −93.
+
+**Vas a ver números distintos en el panel, en Carga, en la ficha y en la carga
+por disciplina.** Los de antes estaban mal; estos son los buenos.
+
+**Y cuando todavía no hay historia suficiente, ahora se dice.** La condición es
+una media de 42 días que arranca de cero: con tres semanas de datos, cualquier
+semana normal salía marcada como «sobrecarga» cuando lo que pasaba es que el
+cálculo estaba empezando. Ahora, en ese caso, el número sale en gris y pone
+**«Aún sin base (X de 42 días)»** en vez de un veredicto. El asistente de IA
+tampoco lo usa para avisarte de sobrecarga.
+
+**En la ficha, la forma se calcula con 84 días** en vez de 42, para que el
+cálculo llegue caliente, y con la duración **real** de cada sesión.
+
+**La «Carga por disciplina»** calculaba la forma de lo hecho con el RPE que tú
+planificaste. Ahora usa el que dio el atleta.
+
+**La progresión de carga (antes ACWR)** ya no sale hasta que hay cinco semanas
+de historia. Antes se calculaba con tres y salía disparada: en Bruno marcaba
+4,97 cuando de verdad era 2,45.
+
+**En el planificador de bloques**, una subida fuerte de carga ya no convierte
+sola una semana en descarga. Solo lo hace si además **su bienestar está
+bajando** o **su sesión más larga pasa del 110 %** de la más larga del último
+mes. Si no, la semana simplemente no sube. Y la frescura no se usa para decidir
+mientras no tenga sus 6 semanas de base. En «Cómo llega» verás esas dos señales
+nuevas.
+
+### Lo que le cuesta a tu atleta, ya bien contado
+
+**El RPE que da tu atleta al cerrar una sesión no llegaba a la mitad de la
+aplicación.** Se guardaba en cada bloque de la sesión, pero la carga real, la
+forma (CTL, ATL, TSB), la progresión, la monotonía, el resumen semanal y el
+asistente lo buscaban en la sesión entera. Como no lo encontraban, usaban
+**el RPE que tú habías planificado**. Ahora se guarda en los dos sitios, y las
+31 sesiones pasadas que lo tenían solo en los bloques ya están corregidas.
+
+Qué cambia en lo que ves: en el total de carga, casi nada (el de Bruno se
+movía 15 puntos de 3.581). Lo que aparece es lo importante: **cuándo una
+sesión le costó más o menos de lo previsto**, que es lo primero que avisa de
+la fatiga.
+
+**En la ficha de cada atleta, pestaña Entrenamiento, «Lo que ha hecho».**
+Esa lista enseñaba lo planificado —la duración del plan, tu RPE y tus notas—
+como si fuera lo hecho. Ahora cada sesión muestra lo real frente al plan: los
+minutos que duró, el RPE que dio y el que tú esperabas (en **ámbar** si le
+costó bastante más, en **azul** si bastante menos), su sensación, el dolor, la
+FC media y lo que te comentó. Las que apuntó él por su cuenta llevan 🙋.
+
+**«ACWR» pasa a llamarse «Progresión de carga»** y ya no lleva semáforo. Dice
+lo mismo de forma que se entiende —«+45 %» sobre su media de las cuatro
+semanas anteriores— y ya no pone «Peligro» ni «Zona óptima»: por sí solo,
+ese número predice mal las lesiones. Míralo junto a cómo está y lo que sabes
+de su semana.
+
+**Un arreglo en el modo entrenador (dirigir a pie de pista):** si escribías una
+nota al cerrar la sesión, no se guardaba nada, ni la sesión quedaba como hecha.
+Nadie lo había usado todavía, así que no se ha perdido nada.
+
 ### Aviso de mensajes en el panel principal
 
 Si tus atletas te han escrito, ahora lo ves nada más entrar. Arriba del panel
