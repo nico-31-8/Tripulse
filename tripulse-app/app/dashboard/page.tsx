@@ -13,7 +13,7 @@ import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
-import { ResumenEntrenador } from '@/components/ResumenSemanal'
+import { ResumenEntrenador, InformeDelAtleta } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
 import AvisoSenales from '@/components/AvisoSenales'
@@ -476,6 +476,11 @@ export default function Dashboard() {
                 })}
               </div>
             </button>
+
+            {/* Cómo fue la anterior, debajo de la que viene: mismo motor que la
+                tarjeta de equipo de la entrada, pero aquí no hay que ir a
+                buscarla. Se borra sola si esa semana no tenía nada planificado. */}
+            <InformeDelAtleta informe={informesEquipo?.get(activo.id)} className="mb-4" />
 
             {/* ===== KPIs ===== */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">

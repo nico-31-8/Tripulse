@@ -34,6 +34,12 @@ planificado, averiguar qué pasó antes de progresar; si subió más de un 30 %,
 consolidar antes de volver a subir; y si todo está en orden, subir el volumen
 entre un 5 y un 10 % sin tocar la sesión más larga.
 
+**Y ahora está donde lo vas a ver.** La tarjeta de equipo solo aparece en la
+pantalla de entrada, y como el panel recuerda con quién estabas, en la práctica
+entras directo a la ficha de alguien y no pasas por ahí nunca. Así que el
+informe del atleta que tengas abierto sale también **en su panel**, en tres
+líneas, justo debajo de la barra de la semana.
+
 **Tres cosas que han cambiado por debajo:**
 
 - **El bienestar se compara con el suyo.** Antes había un número fijo igual para

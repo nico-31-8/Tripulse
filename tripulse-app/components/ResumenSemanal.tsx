@@ -125,6 +125,33 @@ export function ResumenEntrenador({ informes, deportistas, cargando }: {
 }
 
 // ============================================================
+// La del atleta abierto, dentro del panel del entrenador
+// ============================================================
+// La tarjeta de equipo de arriba solo se ve en la pantalla de entrada, y el
+// panel recuerda con quién estabas: en la práctica el entrenador entra directo
+// a la ficha de alguien y no pasa nunca por ahí. Esta es la misma información
+// del mismo motor, en tres líneas, donde sí la va a ver.
+export function InformeDelAtleta({ informe, className = '' }: {
+  informe: Informe | null | undefined
+  className?: string
+}) {
+  if (!informe || !informe.hecho.planificadas) return null
+  const estilos = ESTILOS[informe.nivel]
+  return (
+    <div className={'rounded-2xl border px-4 py-3.5 ' + estilos.bg + ' ' + className}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={'w-2 h-2 rounded-full flex-shrink-0 ' + estilos.dot} />
+        <p className="text-[11px] font-medium text-gray-400">Su semana pasada · {rangoLegible(informe.lunes)}</p>
+      </div>
+      <p className="text-sm text-gray-200 leading-snug">{informe.titular}</p>
+      <p className={'text-xs mt-1.5 leading-snug ' + estilos.texto}>
+        <span className="text-gray-500">Para esta semana: </span>{informe.proxima}
+      </p>
+    </div>
+  )
+}
+
+// ============================================================
 // La del atleta: la suya
 // ============================================================
 // `plegado`/`alternar` son opcionales: si no se pasan, la tarjeta se comporta
