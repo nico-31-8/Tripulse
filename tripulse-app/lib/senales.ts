@@ -35,8 +35,14 @@ export type IdSenal =
 export interface Senal {
   id: IdSenal
   nivel: NivelSenal
-  /** Qué pasa, en una línea. */
+  /** Qué pasa, en una línea. Escrito para el ENTRENADOR: habla de él en tercera persona. */
   titulo: string
+  /**
+   * Lo mismo dicho AL ATLETA, en minúscula y sin punto, para poder meterlo en
+   * una frase. Obligatorio: si una señal no se puede contar en su cara, o está
+   * mal escrita o no debería existir.
+   */
+  tituloAtleta: string
   /** El dato que lo sostiene. Sin esto no se puede hablar con el atleta. */
   porque: string
   /** Qué haría. El entrenador decide; esto es la propuesta. */
@@ -128,6 +134,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
       id: 'bienestar',
       nivel: an.readiness.nivel === 'alerta' ? 'roja' : 'ambar',
       titulo: an.readiness.nivel === 'alerta' ? 'Varios marcadores fuera de su normal' : 'Señales de fatiga acumulada',
+      tituloAtleta: an.readiness.nivel === 'alerta' ? 'varios marcadores tuyos están fuera de lo normal en ti' : 'hay señales de fatiga acumulada',
       porque: fuera.length
         ? fuera.slice(0, 3).map(m => m.label + ' ' + coma(m.reciente!) + (m.unidad === '/7' ? '' : ' ' + m.unidad) + ' (su normal, ' + coma(m.base!) + ')').join(' · ')
         : an.conclusiones[0]?.texto || 'Su disposición está por debajo de lo normal en él.',
@@ -149,6 +156,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
         id: 'bienestar_tendencia',
         nivel: 'ambar',
         titulo: 'Su bienestar lleva días por debajo de lo normal',
+        tituloAtleta: 'llevas días por debajo de tu bienestar normal',
         porque: 'Últimos ' + DIAS_RECIENTE + ' días: ' + Math.round(mRec) + ' de 100, frente a ' + Math.round(mBase) + ' de su media.',
         accion: 'Pregúntale qué ha cambiado antes de tocar el plan: si es carga, se descarga; si es su vida (trabajo, sueño), se ajusta el plan a lo que hay.',
       })
@@ -171,6 +179,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
         id: 'cuesta_mas',
         nivel: 'ambar',
         titulo: 'Las sesiones le están costando más de lo previsto',
+        tituloAtleta: 'las sesiones te están costando más de lo previsto',
         porque: duras + ' de las últimas ' + hechasRpe.length + ' por encima del RPE que pusiste'
           + ' (de media, ' + (mDesvio > 0 ? '+' : '') + coma(mDesvio) + ' puntos).',
         accion: 'Si la carga externa es la de siempre, es fatiga acumulándose: baja la exigencia de la próxima sesión de calidad y mira sueño y estrés.',
@@ -188,6 +197,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
         id: 'sueno',
         nivel: 'ambar',
         titulo: 'Está durmiendo menos de lo que suele',
+        tituloAtleta: 'estás durmiendo menos de lo que sueles',
         porque: 'Últimos 7 días: ' + coma(rec) + ' h de media, frente a ' + coma(bas) + ' h de su normal.',
         accion: 'Con menos sueño la misma sesión cuesta más y se adapta peor. Pregúntale qué ha cambiado antes de subirle la carga.',
       })
@@ -204,6 +214,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
       id: 'sesion_larga',
       nivel: 'ambar',
       titulo: 'Su sesión más larga ha dado un salto',
+      tituloAtleta: 'tu sesión más larga ha dado un salto',
       porque: larga.ultimaSemana + ' min esta semana, frente a ' + larga.mesAnterior + ' min de la más larga del mes anterior (+'
         + Math.round((larga.ratio - 1) * 100) + ' %).',
       accion: 'Si el salto no era intencionado, vuelve al ' + Math.round(larga.mesAnterior * 1.1) + ' min como techo: es lo que mejor se relaciona con no lesionarse.',
@@ -221,6 +232,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
       id: 'cumplimiento',
       nivel: 'info',
       titulo: 'Se ha quedado sin hacer parte del plan',
+      tituloAtleta: 'se ha quedado parte del plan sin hacer',
       porque: perdidas.length + ' de ' + pasadas.length + ' sesiones de las dos últimas semanas sin marcar como hechas.',
       accion: 'Antes de progresar, averigua si no las hizo o no las apuntó: subir sobre una semana que no ocurrió es subir desde una base que no existe.',
     })
@@ -239,6 +251,7 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
       id: 'sin_wellness',
       nivel: 'info',
       titulo: 'Lleva ' + sinRellenar + ' días sin rellenar el wellness',
+      tituloAtleta: 'llevas ' + sinRellenar + ' días sin rellenar el wellness',
       porque: 'Su último registro es del ' + ultimo.slice(0, 10) + '.',
       accion: 'Sin sus registros no se puede ver la fatiga venir. Treinta segundos al despertar bastan.',
     })

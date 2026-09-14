@@ -186,7 +186,7 @@ describe('el orden', () => {
 describe('el equipo, para la entrada del panel', () => {
   const conSenales = (nivel: 'roja' | 'ambar' | 'info', n = 1): ResultadoSenales => ({
     senales: Array.from({ length: n }, (_, i) => ({
-      id: 'bienestar' as const, nivel, titulo: 'Titular ' + nivel + i, porque: '', accion: '',
+      id: 'bienestar' as const, nivel, titulo: 'Titular ' + nivel + i, tituloAtleta: 't', porque: '', accion: '',
     })),
     sinBase: [],
   })

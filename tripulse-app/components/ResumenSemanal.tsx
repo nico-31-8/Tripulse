@@ -1,193 +1,122 @@
 'use client'
+// ============================================================
+// TRIPULSE — El informe de la semana pasada
+// ============================================================
+// Dos tarjetas, un solo motor (`lib/informe-semanal`): la del entrenador, con
+// todo su equipo, y la del atleta, con lo suyo. Antes cada una hacía su propio
+// cálculo y escribía sus propias frases, así que podían contar cosas distintas
+// de la misma semana; y las frases eran adjetivos («carga elevada») en vez de
+// números que se puedan discutir.
+//
+// Lo que se pinta aquí sale entero del informe. Esta capa solo decide colores y
+// disposición: si hay que cambiar QUÉ se dice, se cambia en el motor, que está
+// probado.
+
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
-import { hoyISO, sumarDias, lunesDe } from '@/lib/fechas'
-// El score guardado es de MALESTAR (alto = peor). La lógica de semáforo/frases sigue
-// usando esa escala cruda; solo se invierte lo que se PINTA (ver lib/wellness-score).
-import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
-import { minutosCarga } from '@/lib/duracion-carga'
+import { hoyISO, lunesDe, sumarDias, rangoLegible } from '@/lib/fechas'
+import { colorBienestar } from '@/lib/wellness-score'
+import { cargarInforme, lunesDelInforme } from '@/lib/informe-datos'
+import { duracionLarga, type Informe, type NivelSemana } from '@/lib/informe-semanal'
 
-function getLunesAnterior(): string {
-  /* Cuatro funciones que hacían a mano lo que hace lib/fechas, y las cuatro con
-     el mismo fallo: `toISOString()` sobre una fecha LOCAL. De madrugada, el
-     resumen del atleta enseñaba la semana de antes. El `dia === 0 ? -6 : 1-dia`
-     era además la enésima versión del «el domingo cierra la semana». */
-  return sumarDias(lunesDe(hoyISO()), -7)
+const ESTILOS: Record<NivelSemana, { bg: string; dot: string; texto: string }> = {
+  ok: { bg: 'bg-green-900/30 border-green-700/50', dot: 'bg-green-400', texto: 'text-green-400' },
+  ambar: { bg: 'bg-yellow-900/30 border-yellow-700/50', dot: 'bg-yellow-400', texto: 'text-yellow-400' },
+  roja: { bg: 'bg-red-900/30 border-red-700/50', dot: 'bg-red-400', texto: 'text-red-400' },
 }
 
-function getDomingoAnterior(): string {
-  return sumarDias(getLunesAnterior(), 6)
+const pct = (x: number) => (x > 0 ? '+' : '') + Math.round(x * 100) + ' %'
+
+/** Un dato con su rótulo y su letra pequeña. Los tres de arriba de cada tarjeta. */
+function Casilla({ rotulo, valor, pie, color, grande }: {
+  rotulo: string; valor: string; pie: string; color?: string; grande?: boolean
+}) {
+  return (
+    /* Las clases van enteras y no concatenadas («rounded-» + «xl»): Tailwind
+       busca cadenas completas en el código, y una partida no la genera. */
+    <div className={'bg-gray-900/50 text-center ' + (grande ? 'rounded-xl p-3' : 'rounded-lg p-2')}>
+      <p className="text-xs text-gray-500 mb-0.5">{rotulo}</p>
+      <p className={(grande ? 'text-2xl' : 'text-lg') + ' font-bold tabular-nums'}
+        style={color ? { color } : undefined}>{valor}</p>
+      <p className="text-xs text-gray-600">{pie}</p>
+    </div>
+  )
 }
 
-function getLunesActual(): string {
-  return lunesDe(hoyISO())
+/** Las tres casillas comunes: lo que hizo, cuánto costó y cómo se encontró. */
+function Casillas({ inf, grande }: { inf: Informe; grande?: boolean }) {
+  const { hecho, bienestar: bien, comparado } = inf
+  return (
+    <div className={'grid grid-cols-3 ' + (grande ? 'gap-3 mb-4' : 'gap-2 mb-3')}>
+      <Casilla grande={grande} rotulo="Sesiones"
+        valor={hecho.realizadas + '/' + hecho.planificadas}
+        pie={hecho.cumplimiento != null ? Math.round(hecho.cumplimiento * 100) + ' %' : '—'} />
+      <Casilla grande={grande} rotulo="Tiempo" color="#fb923c"
+        valor={duracionLarga(hecho.minutos)}
+        /* La carga va de pie porque es el número que menos se entiende solo;
+           el tiempo lo entiende cualquiera. */
+        pie={Math.round(hecho.carga).toLocaleString('es-ES') + ' UA'
+          + (comparado ? ' · ' + pct(comparado.variacion) : '')} />
+      <Casilla grande={grande} rotulo="Bienestar"
+        color={bien.medio == null ? '#6b7280' : colorBienestar(bien.medio)}
+        valor={bien.medio != null ? String(bien.medio) : '—'}
+        pie={bien.medio == null ? (bien.dias ? 'Sin datos' : 'No lo rellenó')
+          : bien.base != null ? 'su normal, ' + bien.base : bien.dias + (bien.dias === 1 ? ' día' : ' días')} />
+    </div>
+  )
 }
 
-function getDomingoActual(): string {
-  return sumarDias(getLunesActual(), 6)
-}
-
-function generarFrase(cumplimiento: number, wellness: number | null, desviacion: number | null): string {
-  if (cumplimiento >= 0.8) {
-    if (wellness !== null && wellness < 25) {
-      if (desviacion !== null && Math.abs(desviacion) <= 0.15) return 'Semana perfecta — alta adherencia, carga ajustada y excelente estado.'
-      if (desviacion !== null && desviacion > 0.15) return 'Buena adherencia pero carga elevada. Vigilar recuperacion esta semana.'
-      return 'Semana solida. Continuar con la progresion planificada.'
-    }
-    if (wellness !== null && wellness >= 25 && wellness < 50) return 'Buena adherencia pero wellness algo deteriorado. Revisar descanso y estres.'
-    if (wellness !== null && wellness >= 50) return 'Semana cumplida pero con senales de fatiga. Considerar reducir carga.'
-    if (desviacion !== null && desviacion < -0.15) return 'Semana de descarga bien ejecutada. Buena adherencia.'
-    return 'Semana solida. Continuar con la progresion planificada.'
-  }
-  if (cumplimiento >= 0.6) {
-    if (wellness !== null && wellness < 25) return 'Semana irregular pero buen estado fisico. Valorar incremento gradual.'
-    return 'Semana con algunas sesiones perdidas. Hablar con el deportista.'
-  }
-  if (wellness !== null && wellness >= 50) return 'Semana dificil — pocas sesiones y estado deteriorado. Priorizar recuperacion.'
-  return 'Semana irregular. Revisar planificacion y comunicacion con el deportista.'
-}
-
-function calcularSemaforo(cumplimiento: number, wellness: number | null): 'verde' | 'amarillo' | 'rojo' {
-  if (cumplimiento >= 0.8 && (wellness === null || wellness < 50)) return 'verde'
-  if (cumplimiento >= 0.6 || (wellness !== null && wellness < 50)) return 'amarillo'
-  return 'rojo'
-}
-
-const ESTILOS = {
-  verde: { bg: 'bg-green-900/30 border-green-700/50', dot: 'bg-green-400', texto: 'text-green-400' },
-  amarillo: { bg: 'bg-yellow-900/30 border-yellow-700/50', dot: 'bg-yellow-400', texto: 'text-yellow-400' },
-  rojo: { bg: 'bg-red-900/30 border-red-700/50', dot: 'bg-red-400', texto: 'text-red-400' },
-}
-
-/* `getMicroIds` vivía aquí: tres consultas encadenadas para acabar acotando las
-   sesiones de un atleta. En el resumen del entrenador se llamaba UNA VEZ POR
-   ATLETA, así que con diez deportistas eran treinta viajes solo para saber qué
-   sesiones mirar. `sesion.id_deportista` lo resuelve sin ninguno. */
-
-// RESUMEN ENTRENADOR
-export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
+// ============================================================
+// La del entrenador: todo el equipo
+// ============================================================
+// Recibe los informes ya calculados en vez de pedirlos: el panel los necesita
+// también para las señales de la entrada, y son las mismas consultas. Si no se
+// los pasan, no pinta nada en vez de inventarse una segunda carga.
+export function ResumenEntrenador({ informes, deportistas, cargando }: {
+  informes: Map<number, Informe> | null
+  deportistas: { id: number; nombre?: string | null }[]
+  cargando?: boolean
+}) {
   const router = useRouter()
-  const [resumenes, setResumenes] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const lunesAnt = getLunesAnterior()
-  const domingoAnt = getDomingoAnterior()
+  const lunes = lunesDelInforme()
 
-  useEffect(() => { cargar() }, [entrenadorId])
+  if (cargando || !informes) return <div className="text-center py-4 text-gray-500 text-sm">Calculando la semana…</div>
 
-  const cargar = async () => {
-    const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorId)
-    if (!deps?.length) { setLoading(false); return }
-    const depIds = deps.map((d: any) => d.id)
+  /* Solo quien tenía algo planificado. El resto no es que fuera mal: es que esa
+     semana no existió para él, y una tarjeta que dice «0/0» es ruido. */
+  const filas = deportistas
+    .map(d => ({ dep: d, inf: informes.get(d.id) }))
+    .filter((f): f is { dep: typeof f.dep; inf: Informe } => !!f.inf && f.inf.hecho.planificadas > 0)
 
-    /* Antes esto era un N+1 doble: por cada atleta, tres consultas para la cadena
-       más una de sesiones y otra de wellness. Con diez deportistas, cincuenta
-       viajes para pintar una tarjeta.
-
-       Ahora son dos consultas para TODOS y el reparto se hace en memoria. Y de
-       paso las sesiones se filtran por papelera, que aquí no se hacía: una
-       borrada contaba como planificada-y-no-hecha y bajaba el cumplimiento. */
-    const [sesQ, wellQ] = await Promise.all([
-      /* `duracion_real` está en la lista porque lo lee `minutosCarga`, no este
-         fichero: al recortar un select hay que mirar también lo que consumen las
-         LIBRERÍAS a las que se le pasan las filas. Olvidarla no daría error —
-         la carga real saldría calculada con lo planificado. */
-      vivas(supabase.from('sesion')
-        .select('id_deportista, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real')
-        .in('id_deportista', depIds).gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
-      supabase.from('wellness').select('id_deportista, score_wellness')
-        .in('id_deportista', depIds).gte('fecha', lunesAnt).lte('fecha', domingoAnt),
-    ])
-
-    const sesPorDep = new Map<number, any[]>()
-    ;(sesQ.data || []).forEach((x: any) => {
-      const l = sesPorDep.get(x.id_deportista)
-      if (l) l.push(x); else sesPorDep.set(x.id_deportista, [x])
-    })
-    const wellPorDep = new Map<number, number[]>()
-    ;(wellQ.data || []).forEach((w: any) => {
-      const l = wellPorDep.get(w.id_deportista)
-      if (l) l.push(w.score_wellness || 0); else wellPorDep.set(w.id_deportista, [w.score_wellness || 0])
-    })
-
-    const resultados = deps.map((dep) => {
-      const sesiones = sesPorDep.get(dep.id) || []
-      if (!sesiones.length) return null
-
-      const planificadas = sesiones.length
-      const realizadas = sesiones.filter(s => s.estado === 'Realizada').length
-      const cumplimiento = planificadas > 0 ? realizadas / planificadas : 0
-      // La carga REAL sale del RPE que reportó el atleta y de los minutos que de
-      // verdad duró; la PLANIFICADA, del RPE estimado y los minutos previstos. Antes
-      // las dos usaban `rpe_estimado * duracion_minutos`, o sea la misma fórmula: la
-      // desviación no podía salir positiva ni aunque el atleta se pasara en todas, y
-      // la frase «carga elevada» de generarFrase era inalcanzable.
-      const cargaReal = sesiones.filter(s => s.estado === 'Realizada')
-        .reduce((acc, s) => acc + (s.rpe_reportado || s.rpe_estimado || 5) * minutosCarga(s), 0)
-      const cargaPlan = sesiones.reduce((acc, s) => acc + (s.rpe_estimado || 5) * (s.duracion_minutos || 0), 0)
-      const desviacion = cargaPlan > 0 ? (cargaReal - cargaPlan) / cargaPlan : null
-
-      const wellness = wellPorDep.get(dep.id) || []
-      const wellnessMedio = wellness.length
-        ? wellness.reduce((acc, w) => acc + w, 0) / wellness.length
-        : null
-
-      const color = calcularSemaforo(cumplimiento, wellnessMedio)
-      const frase = generarFrase(cumplimiento, wellnessMedio, desviacion)
-
-      return { dep, planificadas, realizadas, cumplimiento, cargaReal, desviacion, wellnessMedio, color, frase }
-    })
-
-    setResumenes(resultados.filter(Boolean))
-    setLoading(false)
-  }
-
-  if (loading) return <div className="text-center py-4 text-gray-500 text-sm">Calculando resumenes...</div>
-  if (!resumenes.length) return (
+  if (!filas.length) return (
     <div className="text-center py-6 text-gray-600 text-sm">
-      <p>No hay datos de la semana pasada todavia.</p>
-      <p className="text-xs mt-1">{lunesAnt} al {domingoAnt}</p>
+      <p>No hay nada planificado de la semana pasada todavía.</p>
+      <p className="text-xs mt-1">{rangoLegible(lunes)}</p>
     </div>
   )
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-gray-500 text-xs">Semana del {lunesAnt} al {domingoAnt}</p>
-      {resumenes.map((r: any) => {
-        const estilos = ESTILOS[r.color as keyof typeof ESTILOS]
+      <p className="text-gray-500 text-xs">Semana del {rangoLegible(lunes)}</p>
+      {filas.map(({ dep, inf }) => {
+        const estilos = ESTILOS[inf.nivel]
         return (
-          <div key={r.dep.id} className={'rounded-xl border p-4 ' + estilos.bg}>
-            <div className="flex justify-between items-start mb-3">
+          <div key={dep.id} className={'rounded-xl border p-4 ' + estilos.bg}>
+            <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2">
                 <div className={'w-2.5 h-2.5 rounded-full ' + estilos.dot} />
-                <p className="font-bold text-white">{r.dep.nombre}</p>
+                <p className="font-bold text-white">{dep.nombre}</p>
               </div>
-              <button onClick={() => router.push('/deportistas/' + r.dep.id)}
-                className="text-gray-500 hover:text-orange-400 text-xs transition">Ver perfil →</button>
+              <button onClick={() => router.push('/deportistas/' + dep.id)}
+                className="text-gray-500 hover:text-orange-400 text-xs transition flex-shrink-0">Ver perfil →</button>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="bg-gray-900/50 rounded-lg p-2 text-center">
-                <p className="text-xs text-gray-500 mb-0.5">Sesiones</p>
-                <p className={'text-lg font-bold ' + estilos.texto}>{r.realizadas}/{r.planificadas}</p>
-                <p className="text-xs text-gray-600">{Math.round(r.cumplimiento * 100)}%</p>
-              </div>
-              <div className="bg-gray-900/50 rounded-lg p-2 text-center">
-                <p className="text-xs text-gray-500 mb-0.5">Carga</p>
-                <p className="text-lg font-bold text-orange-400">{Math.round(r.cargaReal)} UA</p>
-                <p className="text-xs text-gray-600">
-                  {r.desviacion !== null ? (r.desviacion > 0 ? '+' : '') + Math.round(r.desviacion * 100) + '% plan' : '—'}
-                </p>
-              </div>
-              <div className="bg-gray-900/50 rounded-lg p-2 text-center">
-                <p className="text-xs text-gray-500 mb-0.5">Bienestar</p>
-                <p className="text-lg font-bold" style={{ color: r.wellnessMedio === null ? '#6b7280' : colorBienestar(bienestar(Math.round(r.wellnessMedio))!) }}>
-                  {r.wellnessMedio !== null ? bienestar(Math.round(r.wellnessMedio)) : '—'}
-                </p>
-                <p className="text-xs text-gray-600">{r.wellnessMedio !== null ? estadoBienestar(bienestar(Math.round(r.wellnessMedio))!) : 'Sin datos'}</p>
-              </div>
-            </div>
-            <p className={'text-xs font-medium ' + estilos.texto}>{r.frase}</p>
+            <p className="text-sm text-gray-300 mb-3 leading-snug">{inf.titular}</p>
+            <Casillas inf={inf} />
+            <p className={'text-xs font-medium ' + estilos.texto}>
+              <span className="text-gray-500 font-normal">Para esta semana: </span>{inf.proxima}
+            </p>
           </div>
         )
       })}
@@ -195,73 +124,44 @@ export function ResumenEntrenador({ entrenadorId }: { entrenadorId: string }) {
   )
 }
 
-// RESUMEN DEPORTISTA
-// `plegado`/`alternar` son opcionales: si no se pasan, la tarjeta se comporta como
-// siempre (fija, abierta). El panel del deportista sí los pasa, y entonces su propia
-// cabecera hace de conmutador — el semáforo se queda visible aunque esté plegada.
-export function ResumenDeportista({ depId, plegado, alternar }: { depId: number; plegado?: boolean; alternar?: () => void }) {
-  const [datos, setDatos] = useState<any>(null)
+// ============================================================
+// La del atleta: la suya
+// ============================================================
+// `plegado`/`alternar` son opcionales: si no se pasan, la tarjeta se comporta
+// como siempre (fija, abierta). El panel del deportista sí los pasa, y entonces
+// su propia cabecera hace de conmutador — el semáforo se queda visible aunque
+// esté plegada.
+export function ResumenDeportista({ depId, plegado, alternar }: {
+  depId: number; plegado?: boolean; alternar?: () => void
+}) {
+  const [inf, setInf] = useState<Informe | null>(null)
   const [sesionesSemActual, setSesionesSemActual] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const lunesAnt = getLunesAnterior()
-  const domingoAnt = getDomingoAnterior()
-  const lunesAct = getLunesActual()
-  const domingoAct = getDomingoActual()
 
-  useEffect(() => { cargar() }, [depId])
+  useEffect(() => {
+    let vivo = true
+    const hoy = hoyISO()
+    cargarInforme(supabase, depId, hoy).then(r => { if (vivo) setInf(r) }).catch(() => {})
+    /* Lo único que no sale del informe: lo que tiene POR DELANTE esta semana. */
+    const lunesAct = lunesDe(hoy)
+    const pendientes = async () => {
+      const { data } = await vivas(supabase.from('sesion').select('id').eq('id_deportista', depId)
+        .gte('fecha_sesion', lunesAct).lte('fecha_sesion', sumarDias(lunesAct, 6)))
+      if (vivo) setSesionesSemActual((data || []).length)
+    }
+    pendientes().catch(() => {})
+    return () => { vivo = false }
+  }, [depId])
 
-  const cargar = async () => {
-    const sel = 'id, estado, duracion_minutos, duracion_real'
+  // Sin nada planificado esa semana no se pinta: es la primera semana del atleta.
+  if (!inf || !inf.hecho.planificadas) return null
 
-    /* Cuatro consultas —las del plan y las libres, de cada una de las dos
-       semanas— eran una sola cosa: las sesiones del atleta en ese rango. El
-       comentario que había explicaba que las libres tenían que contar «o las dos
-       tarjetas dan cifras distintas de la misma semana a cinco centímetros una
-       de otra»; ahora no pueden, porque no hay dos consultas que separar. */
-    const [a, b] = await Promise.all([
-      vivas(supabase.from('sesion').select(sel).eq('id_deportista', depId)
-        .gte('fecha_sesion', lunesAnt).lte('fecha_sesion', domingoAnt)),
-      vivas(supabase.from('sesion').select('id').eq('id_deportista', depId)
-        .gte('fecha_sesion', lunesAct).lte('fecha_sesion', domingoAct)),
-    ])
-    const sesAnt = a.data || []
-    const sesAct = b.data || []
-
-    setSesionesSemActual(sesAct.length)
-
-    if (!sesAnt.length) { setLoading(false); return }
-
-    const planificadas = sesAnt.length
-    const realizadas = sesAnt.filter(s => s.estado === 'Realizada').length
-    const cumplimiento = planificadas > 0 ? realizadas / planificadas : 0
-    // minutosCarga y no `duracion_minutos` a secas: si la sesión se cerró con el
-    // cronómetro, lo que hizo de verdad está en `duracion_real`. Sin esto la tarjeta
-    // enseña el tiempo PLANIFICADO diciendo "entrenado".
-    const minutosTotal = sesAnt.filter(s => s.estado === 'Realizada')
-      .reduce((acc, s) => acc + minutosCarga(s), 0)
-
-    const { data: wellness } = await supabase.from('wellness').select('score_wellness')
-      .eq('id_deportista', depId).gte('fecha', lunesAnt).lte('fecha', domingoAnt)
-    const wellnessMedio = wellness?.length
-      ? wellness.reduce((acc, w) => acc + (w.score_wellness || 0), 0) / wellness.length
-      : null
-
-    const color = calcularSemaforo(cumplimiento, wellnessMedio)
-    setDatos({ planificadas, realizadas, cumplimiento, minutosTotal, wellnessMedio, color })
-    setLoading(false)
-  }
-
-  if (loading || !datos) return null
-
-  const estilos = ESTILOS[datos.color as keyof typeof ESTILOS]
-  const horas = Math.floor(datos.minutosTotal / 60)
-  const mins = datos.minutosTotal % 60
+  const estilos = ESTILOS[inf.nivel]
 
   const cabecera = (
     <div className="flex justify-between items-center w-full">
       <div className="text-left">
         <p className="font-bold text-white text-lg">Tu semana pasada</p>
-        <p className="text-gray-500 text-xs mt-0.5">{lunesAnt} al {domingoAnt}</p>
+        <p className="text-gray-500 text-xs mt-0.5">{rangoLegible(inf.lunes)}</p>
       </div>
       <div className="flex items-center gap-3">
         <div className={'w-3 h-3 rounded-full ' + estilos.dot} />
@@ -276,31 +176,14 @@ export function ResumenDeportista({ depId, plegado, alternar }: { depId: number;
         ? <button onClick={alternar} className={'w-full' + (plegado ? '' : ' mb-4')}>{cabecera}</button>
         : <div className="mb-4">{cabecera}</div>}
       {plegado ? null : <>
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-gray-900/50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500 mb-1">Sesiones</p>
-          <p className={'text-2xl font-bold ' + estilos.texto}>{datos.realizadas}/{datos.planificadas}</p>
-          <p className="text-xs text-gray-600">{Math.round(datos.cumplimiento * 100)}% completado</p>
-        </div>
-        <div className="bg-gray-900/50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500 mb-1">Tiempo</p>
-          <p className="text-2xl font-bold text-orange-400">{horas}h{mins > 0 ? mins + 'm' : ''}</p>
-          <p className="text-xs text-gray-600">entrenado</p>
-        </div>
-        <div className="bg-gray-900/50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500 mb-1">Bienestar</p>
-          <p className="text-2xl font-bold" style={{ color: datos.wellnessMedio === null ? '#6b7280' : colorBienestar(bienestar(Math.round(datos.wellnessMedio))!) }}>
-            {datos.wellnessMedio !== null ? bienestar(Math.round(datos.wellnessMedio)) : '—'}
-          </p>
-          <p className="text-xs text-gray-600">{datos.wellnessMedio !== null ? estadoBienestar(bienestar(Math.round(datos.wellnessMedio))!) : 'Sin datos'}</p>
-        </div>
-      </div>
-      {sesionesSemActual > 0 && (
-        <div className="bg-gray-900/50 rounded-xl px-4 py-3 flex justify-between items-center">
-          <p className="text-gray-400 text-sm">Esta semana tienes</p>
-          <p className="text-orange-400 font-bold">{sesionesSemActual} {sesionesSemActual === 1 ? 'sesión planificada' : 'sesiones planificadas'}</p>
-        </div>
-      )}
+        <Casillas inf={inf} grande />
+        <p className="text-sm text-gray-300 leading-snug mb-4">{inf.paraElAtleta}</p>
+        {sesionesSemActual > 0 && (
+          <div className="bg-gray-900/50 rounded-xl px-4 py-3 flex justify-between items-center">
+            <p className="text-gray-400 text-sm">Esta semana tienes</p>
+            <p className="text-orange-400 font-bold">{sesionesSemActual} {sesionesSemActual === 1 ? 'sesión planificada' : 'sesiones planificadas'}</p>
+          </div>
+        )}
       </>}
     </div>
   )

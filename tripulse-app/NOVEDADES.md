@@ -16,6 +16,41 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026
 
+### El resumen de la semana ahora dice números, no adjetivos
+
+Las dos tarjetas de «la semana pasada» —la tuya, con todo el equipo, y la del
+atleta en su panel— estaban escritas con frases hechas: «carga elevada»,
+«semana sólida», «señales de fatiga». Ninguna decía **cuánto**, así que no se
+podían discutir con nadie.
+
+Ahora cada tarjeta abre con lo que pasó y su número:
+
+> Hizo 5 de 6 sesiones: 6 h 10 min y 1.840 UA de carga, **+18 % respecto a sus
+> 4 semanas anteriores**.
+
+Y cierra con **qué haría yo con la semana que viene**, que sale de las señales
+de ese atleta: si hay una roja, su acción; si se quedó por debajo del 60 % de lo
+planificado, averiguar qué pasó antes de progresar; si subió más de un 30 %,
+consolidar antes de volver a subir; y si todo está en orden, subir el volumen
+entre un 5 y un 10 % sin tocar la sesión más larga.
+
+**Tres cosas que han cambiado por debajo:**
+
+- **El bienestar se compara con el suyo.** Antes había un número fijo igual para
+  todos (por debajo de 25 era «excelente estado»). Ahora la tarjeta enseña su
+  media de la semana y, al lado, **su normal** sacado de las semanas anteriores.
+- **La progresión se mira contra sus propias semanas**, no contra un índice. Y
+  las semanas en las que no entrenó no cuentan en la media: si contaran, volver
+  de dos semanas de parón saldría siempre como un subidón.
+- **Sin base no se compara.** Si no hay semanas anteriores, no sale ningún
+  porcentaje inventado.
+
+**Al atleta se le dice lo mismo, pero en su cara y sin órdenes de carga.** Él ve
+su semana con los mismos números y, en vez de «baja la exigencia de la próxima
+sesión de calidad», lee lo que sí está en su mano: marcar lo que hizo, rellenar
+el wellness y contarte lo que le pasa. Las decisiones de carga son tuyas; si la
+app le dijera una cosa y tú otra, la que pierde es la app.
+
 ### Al entrar ya sabes a quién tienes que mirar
 
 Las señales que salieron el otro día solo se veían **del atleta que tuvieras

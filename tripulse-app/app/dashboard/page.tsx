@@ -17,7 +17,8 @@ import { ResumenEntrenador } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
 import AvisoSenales from '@/components/AvisoSenales'
-import { cargarSenales, cargarSenalesDeVarios } from '@/lib/senales-datos'
+import { cargarSenales, cargarDatosDeVarios, senalesDeDatos, type DatosAtleta } from '@/lib/senales-datos'
+import { informesDeDatos } from '@/lib/informe-datos'
 import { resumenDeEquipo, COLOR_SENAL, type ResultadoSenales } from '@/lib/senales'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
@@ -50,11 +51,11 @@ export default function Dashboard() {
   const [esPlataforma, setEsPlataforma] = useState(false)
   // Mensajes y comentarios de sesión sin revisar, de todos sus atletas.
   const [porRevisar, setPorRevisar] = useState<Pendientes>(SIN_PENDIENTES)
-  /* Las señales de TODO el equipo: qué le pasa a cada uno, con qué dato y qué
-     haría. Se piden una vez porque es lo que se mira al entrar, cuando todavía no
-     hay ningún atleta abierto; el panel del que se abra sale de este mismo Map.
+  /* Lo que ha pasado con TODO el equipo estas últimas semanas, pedido una sola
+     vez. De aquí salen las dos cosas que se miran al entrar —las señales y el
+     informe de la semana pasada— sin repetir consultas a las mismas tablas.
      Un Map vacío significa «ya se ha intentado y no ha salido». */
-  const [senalesEquipo, setSenalesEquipo] = useState<Map<number, ResultadoSenales> | null>(null)
+  const [datosEquipo, setDatosEquipo] = useState<Map<number, DatosAtleta> | null>(null)
   // Red de seguridad: las de un atleta que no venía en el cálculo del equipo.
   const [senalesSueltas, setSenalesSueltas] = useState<{ id: number; res: ResultadoSenales } | null>(null)
 
@@ -73,10 +74,10 @@ export default function Dashboard() {
       /* Lo que tiene sin revisar en Comunicación. Sin await: es un aviso, no
          puede retrasar ni tumbar el panel si falla. */
       cargarPendientes(supabase, user.id, depIds).then(setPorRevisar).catch(() => {})
-      /* Las señales del equipo entero, también sin await: la entrada se pinta
-         enseguida y el aviso aparece cuando llega. Si falla, un Map vacío para
-         que el panel del atleta sepa que tiene que pedir las suyas. */
-      cargarSenalesDeVarios(supabase, depIds).then(setSenalesEquipo).catch(() => setSenalesEquipo(new Map()))
+      /* Los datos del equipo entero, también sin await: la entrada se pinta
+         enseguida y los avisos aparecen cuando llegan. Si falla, un Map vacío
+         para que el panel del atleta sepa que tiene que pedir los suyos. */
+      cargarDatosDeVarios(supabase, depIds).then(setDatosEquipo).catch(() => setDatosEquipo(new Map()))
       if (depIds.length) {
         const { data: macros } = await supabase.from('macrociclo').select('id').in('id_deportista', depIds).limit(1)
         setTienePlan(!!macros?.length)
@@ -104,6 +105,14 @@ export default function Dashboard() {
     window.addEventListener('focus', alVolver)
     return () => window.removeEventListener('focus', alVolver)
   }, [userId, deportistas])
+
+  /* Las señales y el informe salen de los mismos datos: un cálculo en memoria
+     cada uno, sin volver a la base. */
+  const hoy = hoyISO()
+  const senalesEquipo = useMemo(
+    () => (datosEquipo ? senalesDeDatos(datosEquipo, hoy) : null), [datosEquipo, hoy])
+  const informesEquipo = useMemo(
+    () => (datosEquipo ? informesDeDatos(datosEquipo, hoy) : null), [datosEquipo, hoy])
 
   /* Solo si el cálculo del equipo falló o llegó sin este atleta (recién creado,
      por ejemplo) se piden las suyas aparte. */
@@ -353,7 +362,7 @@ export default function Dashboard() {
             {/* Vista de equipo: cómo fue la semana pasada de cada deportista. */}
             {userId && (
               <div className="w-full mt-14 text-left fade-up" style={{ animationDelay: '260ms' }}>
-                <ResumenEntrenador entrenadorId={userId} />
+                <ResumenEntrenador informes={informesEquipo} deportistas={deportistas} cargando={!datosEquipo} />
               </div>
             )}
           </div>
