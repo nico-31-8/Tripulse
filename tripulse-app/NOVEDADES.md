@@ -16,6 +16,39 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### Los tests de grupo se dirigen con un solo reloj
+
+El test del grupo era un formulario: casillas para escribir a mano el escalón
+y los segundos de cada uno. Pero un entrenador a pie de pista no lleva doce
+cronómetros ni se acuerda de en qué escalón se bajó cada uno: **lleva un reloj
+y va apuntando quién se cae**.
+
+Ahora, al elegir el test, te pregunta cómo lo vais a hacer. Si dices **test de
+campo**, aparece un reloj para todo el grupo y un botón con el nombre de cada
+atleta. Das la salida y vas pulsando.
+
+Lo que guarda cada pulsación es lo que toca en cada test:
+
+- En el **Montreal** y en la **rampa** el reloj no cronometra: **lleva el
+  protocolo**, cantando el escalón que toca. Pulsas a quien se descuelga y se
+  capturan de golpe las dos cosas — en qué escalón iba y cuántos segundos
+  llevaba dentro. De ahí sale su VAM o su FTP.
+- En el **CSS** hay dos relojes, el de la distancia larga y el de la corta, y
+  pulsar significa «este ha llegado»: se guarda su tiempo.
+
+Los números caen en la lista de abajo según pulsas, **y se pueden corregir**:
+si alguien se bajó justo al cambiar de escalón y el reloj cogió 14,5 cuando
+iba en 14,0, lo tocas ahí antes de guardar.
+
+Y el protocolo del grupo tiene ahora **«Empieza en»**, igual que en la ficha de
+un atleta, y se guarda con el test de cada uno.
+
+**Un fallo corregido de paso:** el reloj del grupo ignoraba ese «Empieza en».
+Podías ponerlo en 10 km/h, se guardaba en la ficha, pero el reloj seguía
+cantando desde 8 — así que el escalón que capturaba al pulsar era otro y la VAM
+salía mal, sin ningún aviso. Pasaba porque ese cálculo estaba escrito en dos
+sitios: el reloj de un atleta leía bien y el del grupo leía mal. Ahora hay uno
+solo para los dos.
 ### Ya puedes medir a gente que no es tuya
 
 Si vas a una jornada de valoraciones, o un club te llama para medir a su equipo,

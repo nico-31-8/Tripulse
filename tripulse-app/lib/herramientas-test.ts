@@ -200,6 +200,20 @@ export function valeEnGrupo(h: Herramienta): boolean {
   return h.tipo === 'cuentaAtras' || h.tipo === 'cronometro' || h.tipo === 'secuenciador'
 }
 
+/**
+ * Con qué intensidad arranca un secuenciador.
+ *
+ * Vive aquí y no en cada pantalla porque es la MISMA decisión en dos sitios —el
+ * reloj de uno y el del grupo— y ya se escribió dos veces: una de ellas leía la
+ * constante en vez de la casilla, así que cambiar «Empieza en» no hacía nada y
+ * el escalón que capturaba al bajarse un atleta era otro. Un número mal,
+ * guardado sin que nada avisara.
+ */
+export function arranqueDe(h: Herramienta, valores: Record<string, string>): number {
+  if (h.tipo !== 'secuenciador') return 0
+  return Number(valores[h.campoInicial]) || h.inicial
+}
+
 /** Si el test entero se puede llevar con un reloj común. */
 export function seDirigeEnGrupo(clave: ClaveTest): boolean {
   const hs = herramientasDe(clave)

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  HERRAMIENTAS, AVISOS, herramientasDe, avisoDe, camposQueRellena, etiquetaDe, nombreDe,
+  HERRAMIENTAS, AVISOS, herramientasDe, avisoDe, camposQueRellena, etiquetaDe, nombreDe, arranqueDe,
   valeEnGrupo, seDirigeEnGrupo, sueltosDe,
 } from './herramientas-test'
 import { CATALOGO } from './catalogo-tests'
@@ -227,5 +227,35 @@ describe('qué se puede dirigir a un grupo entero', () => {
     const enGrupo = Object.keys(HERRAMIENTAS).filter(seDirigeEnGrupo)
     expect(enGrupo).toHaveLength(10)
     expect(Object.keys(HERRAMIENTAS)).toHaveLength(12)
+  })
+})
+
+describe('arranqueDe — dónde empieza el protocolo', () => {
+  /* Esto vive en la librería porque es la MISMA decisión en el reloj de uno y
+     en el del grupo, y ya estuvo escrita dos veces: una de ellas leía la
+     constante en vez de la casilla, así que cambiar «Empieza en» no hacía nada
+     y el escalón capturado al bajarse un atleta era otro. */
+  const seq = herramientasDe('montreal')[0]
+  const rampa = herramientasDe('rampa')[0]
+
+  it('manda lo que haya escrito en su casilla', () => {
+    expect(arranqueDe(seq, { velInicial: '10' })).toBe(10)
+    expect(arranqueDe(rampa, { potInicial: '200' })).toBe(200)
+  })
+
+  it('sin escribir nada, el valor de siempre', () => {
+    expect(arranqueDe(seq, {})).toBe(8)
+    expect(arranqueDe(rampa, {})).toBe(150)
+  })
+
+  it('un cero o una letra no dejan el protocolo arrancando en cero', () => {
+    /* Empezar en 0 km/h serían minutos de reloj corriendo sin que nadie se
+       mueva, y el escalón capturado saldría mal para todos. */
+    expect(arranqueDe(seq, { velInicial: '0' })).toBe(8)
+    expect(arranqueDe(seq, { velInicial: 'ocho' })).toBe(8)
+  })
+
+  it('lo que no es secuenciador no tiene arranque', () => {
+    expect(arranqueDe(herramientasDe('milla')[0], {})).toBe(0)
   })
 })

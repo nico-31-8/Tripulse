@@ -47,6 +47,10 @@ export const TESTS_GRUPO: Record<ClaveTest, DefinicionTest> = {
     tabla: 'test1_carrera',
     resultado: 'VAM',
     protocolo: [
+      /* Dónde arranca el protocolo. Va el primero porque es lo primero que se
+         decide, y se guarda con el test: dos Montreal que empezaron a distinta
+         velocidad no son comparables. */
+      { clave: 'velInicial', etiqueta: 'Empieza en', sufijo: 'km/h', porDefecto: '8' },
       { clave: 'incrementoVel', etiqueta: 'Sube cada escalón', sufijo: 'km/h', porDefecto: '0.5' },
       { clave: 'durTotal', etiqueta: 'Dura cada escalón', sufijo: 'seg', porDefecto: '60' },
     ],
@@ -75,6 +79,7 @@ export const TESTS_GRUPO: Record<ClaveTest, DefinicionTest> = {
     tabla: 'test3_ciclismo',
     resultado: 'FTP',
     protocolo: [
+      { clave: 'potInicial', etiqueta: 'Empieza en', sufijo: 'W', porDefecto: '150' },
       { clave: 'incrementoPot', etiqueta: 'Sube cada escalón', sufijo: 'W', porDefecto: '20' },
       { clave: 'durEscalones', etiqueta: 'Dura cada escalón', sufijo: 'seg', porDefecto: '60' },
     ],
@@ -103,6 +108,7 @@ export function resultadoDe(clave: ClaveTest, protocolo: Valores, persona: Valor
 /** Los nombres de columna reales de cada campo, por tabla. */
 const COLUMNAS: Record<ClaveTest, Record<string, string>> = {
   carrera: {
+    velInicial: 'velocidad_inicial',
     incrementoVel: 'incremento_velocidad',
     durTotal: 'duracion_total_escalon',
     velUltimo: 'velocidad_ultimo_escalon',
@@ -115,6 +121,7 @@ const COLUMNAS: Record<ClaveTest, Record<string, string>> = {
     tiempoPequeno: 'tiempo_distancia_pequena',
   },
   ciclismo: {
+    potInicial: 'potencia_inicial',
     incrementoPot: 'incremento_potencia',
     durEscalones: 'duracion_escalones',
     potenciaPico: 'potencia_pico',

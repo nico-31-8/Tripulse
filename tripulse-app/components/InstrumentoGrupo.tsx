@@ -29,7 +29,7 @@ import {
   restante, terminada, progreso, relojMinutos, relojDecimas,
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
-import { herramientasDe, avisoDe, valeEnGrupo, sueltosDe, type Herramienta } from '@/lib/herramientas-test'
+import { herramientasDe, avisoDe, valeEnGrupo, sueltosDe, arranqueDe, type Herramienta } from '@/lib/herramientas-test'
 
 export interface Atleta {
   id: number
@@ -75,8 +75,9 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
   const escalon = (h: Herramienta, i: number, ms?: number) => {
     if (h.tipo !== 'secuenciador') return { numero: 1, intensidad: 0, dentro: 0, duracion: 60 }
     const duracion = Number(protocolo[h.campoDuracion]) || 60
+    const desde = arranqueDe(h, protocolo)
     return {
-      ...escalonEn(ms ?? transcurrido(crono(i), ahora), h.inicial, duracion,
+      ...escalonEn(ms ?? transcurrido(crono(i), ahora), desde, duracion,
                    Number(protocolo[h.campoIncremento]) || 0),
       duracion,
     }

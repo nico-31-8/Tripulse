@@ -11,6 +11,9 @@ import {
   type ClaveTest, type Valores, type ResultadoGuardado,
 } from '@/lib/grupos-test'
 import { ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
+import InstrumentoGrupo from '@/components/InstrumentoGrupo'
+import { seDirigeEnGrupo } from '@/lib/herramientas-test'
+import type { ModoTest } from '@/lib/catalogo-tests'
 
 /* Un test de grupo es UN protocolo y N resultados, que es exactamente como se
    hace en la vida real: el equipo entero hace el mismo test y tú vas anotando
@@ -22,6 +25,14 @@ import { ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
    zonas igual que si lo hubieras metido en su ficha. */
 
 const CLAVES: ClaveTest[] = ['carrera', 'natacion', 'ciclismo']
+
+/* El mismo test tiene dos nombres: aquí se llama por el deporte y en los
+   instrumentos por el protocolo. Las CASILLAS son las mismas —velUltimo,
+   tiempoAguantado, tiempoGrande…— así que lo que capture el reloj cae donde
+   este formulario lo espera, sin traducir nada. */
+const INSTRUMENTO: Record<ClaveTest, string> = {
+  carrera: 'montreal', natacion: 'css', ciclismo: 'rampa',
+}
 
 export default function TestDeGrupo({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -39,6 +50,9 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
   // reordenar la lista no mezcle los datos de dos atletas.
   const [porPersona, setPorPersona] = useState<Record<number, Valores>>({})
 
+  /* Cómo se hace: con un reloj común o metiendo los números después.
+     `null` = todavía no lo ha dicho, y entonces se pregunta. */
+  const [modo, setModo] = useState<ModoTest | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState('')
   const [parte, setParte] = useState<ResultadoGuardado[] | null>(null)
@@ -56,6 +70,7 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
     setPorPersona({})
     setParte(null)
     setError('')
+    setModo(null)
   }, [clave])
 
   const cargar = async () => {
@@ -69,6 +84,16 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
   const ponPersona = (idDep: number, k: string, v: string) =>
     setPorPersona(p => ({ ...p, [idDep]: { ...(p[idDep] || {}), [k]: v } }))
 
+  /* El reloj captura VARIAS casillas de golpe —el escalón y los segundos que
+     aguantó— y tienen que entrar juntas: en dos pasos, el segundo leería un
+     estado viejo y se perdería el primero. */
+  const capturarDe = (idDep: number, campos: Record<string, string>) =>
+    setPorPersona(p => ({ ...p, [idDep]: { ...(p[idDep] || {}), ...campos } }))
+
+  /** Ya tiene su número: para tacharlo en la lista del reloj. */
+  const yaTiene = (idDep: number) =>
+    resultadoDe(clave, protocolo, porPersona[idDep] || {}) != null
+
   // Cómo se lee el número que sale. La VAM y el CSS en km/h y m/s no le dicen
   // nada a nadie: al lado va el ritmo, que es lo que el atleta va a ver.
   const legible = (n: number | null) => {
@@ -77,6 +102,10 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
     if (clave === 'natacion') return n + ' m/s · ' + ritmoDeCss(n)
     return n + ' W'
   }
+
+  /* Si este test se puede llevar con un reloj común. Los tres clásicos sí:
+     el Montreal y la rampa con secuenciador, el CSS con dos cronómetros. */
+  const dirigible = seDirigeEnGrupo(INSTRUMENTO[clave])
 
   const listos = miembros.filter(m => resultadoDe(clave, protocolo, porPersona[m.id_deportista] || {}) != null).length
 
@@ -144,6 +173,53 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
           </p>
         </section>
 
+        {/* ===== ¿CÓMO LO VAS A HACER? =====
+            Igual que en la ficha de un atleta: se pregunta después de elegir el
+            test y antes de enseñar nada, y solo se pinta lo elegido. */}
+        {dirigible && modo === null && (
+          <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-[13px] font-semibold">¿Cómo vais a hacer el {def.nombre}?</p>
+            <p className="text-[11.5px] text-gray-500 mt-0.5 mb-3">Eliges una y solo se enseña esa.</p>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {([
+                { m: 'campo' as const, ic: '⏱️', t: 'Test de campo',
+                  d: 'Lo estáis haciendo ahora. Un reloj para todos y un botón por atleta: lo pulsas según va cayendo cada uno.' },
+                { m: 'mano' as const, ic: '✍️', t: 'A mano',
+                  d: 'Ya está hecho. Metes los números de cada uno y la app calcula el resultado.' },
+              ]).map(o => (
+                <button key={o.m} onClick={() => setModo(o.m)}
+                  className="rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-orange-500/40 p-4 text-left transition">
+                  <p className="text-[15px] font-bold">{o.ic} {o.t}</p>
+                  <p className="text-[12px] text-gray-400 mt-1 leading-snug">{o.d}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {dirigible && modo && (
+          <div className="flex items-center gap-2 text-[12px] -mb-3">
+            <span className="text-gray-400">{modo === 'campo' ? '⏱️ Test de campo' : '✍️ A mano'}</span>
+            <button onClick={() => setModo(null)} className="text-orange-400/90 hover:text-orange-300 transition">cambiar</button>
+          </div>
+        )}
+
+        {/* ===== EL RELOJ DE TODOS =====
+            Un entrenador no lleva doce cronómetros: lleva uno y va apuntando
+            quién se cae. El reloj arranca con la salida y cada botón captura,
+            del tiempo que lleve corrido, lo que le toca a esa persona: en el
+            Montreal y la rampa el escalón en el que iba y los segundos que
+            aguantaba; en el CSS, su tiempo. */}
+        {dirigible && modo === 'campo' && miembros.length > 0 && (
+          <InstrumentoGrupo
+            claveTest={INSTRUMENTO[clave]}
+            protocolo={protocolo}
+            atletas={miembros.map(m => ({ id: m.id_deportista, nombre: m.nombre }))}
+            capturado={yaTiene}
+            onCapturar={capturarDe} />
+        )}
+
+        {(!dirigible || modo) && (
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           {miembros.length === 0 ? (
             <p className="text-gray-500 text-sm">El grupo no tiene a nadie todavía.</p>
@@ -181,7 +257,9 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
               <div className="flex justify-between items-center gap-3 flex-wrap mt-5 pt-5 border-t border-gray-800">
                 <p className="text-gray-500 text-xs">
                   {listos === 0
-                    ? 'Ve rellenando; se guardan solo los que estén completos.'
+                    ? (modo === 'campo'
+                        ? 'Según vayas pulsando arriba, aquí se rellena solo. Lo puedes corregir.'
+                        : 'Ve rellenando; se guardan solo los que estén completos.')
                     : listos + ' de ' + miembros.length + ' ' + (listos === 1 ? 'listo' : 'listos') + '. A quien le falte algo no se le guarda nada.'}
                 </p>
                 <button onClick={guardar} disabled={ocupado || listos === 0}
@@ -207,6 +285,7 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
             </div>
           )}
         </section>
+        )}
       </div>
     </main>
   )
