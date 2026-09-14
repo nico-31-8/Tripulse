@@ -429,14 +429,27 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               { k: 'Reloj', v: reloj ? '⌚ ' + nombreReloj(reloj.proveedor) : 'Sin conectar', u: '', chico: true,
                 sub: !reloj ? 'lo conecta el atleta en su perfil'
                   : !datosListos(reloj.proveedor) ? 'conectado; sus datos, en preparación'
-                    : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7) },
-            ].map(s => (
-              <div key={s.k} className="px-6 py-3.5 border-r border-white/[0.075] last:border-r-0">
-                <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>
-                <p className={'font-bold mt-1.5 tabular-nums tracking-tight ' + (s.chico ? 'text-[15px]' : 'text-[19px]')}>{s.v}{s.u && <span className="text-[10.5px] text-gray-500 font-normal ml-0.5">{s.u}</span>}</p>
-                {s.sub && <p className="text-[11px] text-gray-500 mt-0.5">{s.sub}</p>}
-              </div>
-            ))}
+                    : !reloj.ultimaNoche ? 'sin noches todavía' : reloj.ultimaNoche === hoyISO() ? 'noche de hoy recibida' : 'última noche: ' + reloj.ultimaNoche.slice(8, 10) + '/' + reloj.ultimaNoche.slice(5, 7),
+                /* La casilla ya decía si hay reloj; lo que no había era dónde ver
+                   lo que manda. Se entra siempre, también sin reloj: es donde se
+                   explica por qué no llega nada. */
+                ir: '/actividades/' + id },
+            ].map(s => {
+              const cuerpo = (
+                <>
+                  <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">{s.k}</p>
+                  <p className={'font-bold mt-1.5 tabular-nums tracking-tight ' + (s.chico ? 'text-[15px]' : 'text-[19px]')}>{s.v}{s.u && <span className="text-[10.5px] text-gray-500 font-normal ml-0.5">{s.u}</span>}</p>
+                  {s.sub && <p className="text-[11px] text-gray-500 mt-0.5">{s.sub}</p>}
+                </>
+              )
+              const clase = 'px-6 py-3.5 border-r border-white/[0.075] last:border-r-0'
+              return s.ir
+                ? <button key={s.k} onClick={() => router.push(s.ir!)} className={clase + ' text-left hover:bg-white/[0.03] transition group'}>
+                    {cuerpo}
+                    <p className="text-[10.5px] text-orange-400/80 mt-1 opacity-0 group-hover:opacity-100 transition">Ver lo que manda →</p>
+                  </button>
+                : <div key={s.k} className={clase}>{cuerpo}</div>
+            })}
           </div>
 
           {/* Datos personales — se despliegan al pulsar la foto */}

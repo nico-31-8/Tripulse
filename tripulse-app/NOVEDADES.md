@@ -16,6 +16,39 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026
 
+### Ya puedes ver lo que manda el reloj de un deportista
+
+Hasta ahora, cuando un atleta conectaba su reloj, la app se guardaba sus
+entrenos y **no los enseñaba en ninguna parte**. En su ficha ponía que el reloj
+estaba conectado y cuándo había llegado la última noche, y ahí se acababa.
+
+Ahora la casilla **«Reloj»** de su ficha se puede pulsar y lleva a una pantalla
+con todo lo que ha mandado el dispositivo: cada actividad con su duración,
+distancia, ritmo, frecuencia cardíaca media y máxima, calorías y la carga que
+calcula el propio reloj. Con filtros por periodo y por disciplina, y los totales
+de lo que estés mirando.
+
+**Debajo de cada actividad sale lo que tenías planificado ese día.** Ves la
+carrera de 62 minutos a 148 ppm y justo debajo que le habías puesto 55 minutos
+en Z3. La comparación la haces tú de un vistazo.
+
+Tres decisiones que conviene que sepas:
+
+- **Lo que el reloj llama de otra forma no se fuerza.** Si registra un triatlón,
+  eso no es «Carrera»: se queda sin disciplina y aparece contado aparte como
+  «sin clasificar». Meterlo en la que más se parezca ensuciaría la carga de esa
+  disciplina.
+- **Lo que no llega sale como un guion, no como un cero.** Un entreno sin
+  distancia no recorrió cero metros: es que el reloj no la mandó.
+- **Y estas actividades no se unen a tus sesiones.** Se ponen al lado para que
+  compares; lo que cuenta para la carga sigue siendo lo que el deportista marca
+  como hecho. Decidir por su cuenta que *esta* carrera es *esa* sesión y volcarle
+  los minutos puede meter carga falsa, y eso es peor que no hacer nada.
+
+Hay también un **«Ver lo que mandó el reloj»** que despliega el dato en crudo.
+Ese no es para el día a día: es la herramienta para escribir la traducción de
+las marcas que todavía no traducimos.
+
 ### El resumen de la semana ahora dice números, no adjetivos
 
 Las dos tarjetas de «la semana pasada» —la tuya, con todo el equipo, y la del
