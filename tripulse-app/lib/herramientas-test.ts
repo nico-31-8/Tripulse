@@ -59,7 +59,17 @@ export type Herramienta =
       campoDuracion: string
       /** De qué casilla se lee cuánto sube cada escalón. */
       campoIncremento: string
-      /** Con qué intensidad empieza el protocolo. */
+      /** De qué casilla se lee con qué intensidad ARRANCA. */
+      campoInicial: string
+      /**
+       * Con qué intensidad empieza si nadie la cambia.
+       *
+       * Es un punto de partida, no una ley: a un atleta lento arrancar en 8
+       * km/h le cuesta nueve minutos de calentamiento dentro del test, y a uno
+       * rápido se le acaba la tabla. Por eso se puede cambiar antes de empezar
+       * y se guarda con el test — dos Montreal que arrancaron distinto no son
+       * comparables, y sin guardarlo nadie sabría por qué.
+       */
       inicial: number
       unidad: string
       que: string
@@ -90,12 +100,14 @@ export const HERRAMIENTAS: Record<ClaveTest, Herramienta[]> = {
     tipo: 'secuenciador',
     campoIntensidad: 'velUltimo', campoAguanto: 'tiempoAguantado',
     campoDuracion: 'durTotal', campoIncremento: 'incrementoVel',
+    campoInicial: 'velInicial',
     inicial: 8, unidad: 'km/h', que: 'El protocolo de Montreal',
   }],
   rampa: [{
     tipo: 'secuenciador',
     campoIntensidad: 'potenciaPico', campoAguanto: 'tiempoNoCompletado',
     campoDuracion: 'durEscalones', campoIncremento: 'incrementoPot',
+    campoInicial: 'potInicial',
     inicial: 150, unidad: 'W', que: 'La rampa',
   }],
   css: [

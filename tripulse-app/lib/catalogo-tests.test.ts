@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   CATALOGO, testPorClave, porDisciplina,
   camposDeProtocolo, camposPorPersona, protocoloInicial,
-  resultadosDe, principalDe, estaCompleto, filasDeTest,
+  resultadosDe, principalDe, estaCompleto, filaDeCampo,
   avisosDeTesteo, mmss, enBanda,
 } from './catalogo-tests'
 
@@ -195,42 +195,54 @@ describe('los tests sin fórmula se registran, no se inventan', () => {
   })
 })
 
-describe('filasDeTest — lo que se escribe en tests_libres', () => {
-  it('una fila por resultado, con el test delante del nombre', () => {
-    const filas = filasDeTest(t('bosco'), 7, '2026-09-02',
-      { unidad: 'cm', sj: '30', cmj: '34' }, { pesoKg: 72 })
-    expect(filas).toHaveLength(5)
-    expect(filas.map(f => f.nombre)).toEqual([
-      'Saltos: SJ y CMJ · CMJ',
-      'Saltos: SJ y CMJ · Squat Jump',
-      'Saltos: SJ y CMJ · Potencia del CMJ',
-      'Saltos: SJ y CMJ · Índice de elasticidad',
-      'Saltos: SJ y CMJ · EUR',
-    ])
-    expect(filas.every(f => f.id_deportista === 7 && f.fecha === '2026-09-02')).toBe(true)
+describe('filaDeCampo — lo que se escribe en test_campo', () => {
+  it('UNA fila con todos los números del test juntos', () => {
+    const f = filaDeCampo(t('bosco'), 7, '2026-09-02',
+      { unidad: 'cm', sj: '30', cmj: '34' }, { pesoKg: 72 })!
+    expect(f.clave).toBe('bosco')
+    expect(f.id_deportista).toBe(7)
+    expect(f.fecha).toBe('2026-09-02')
+    expect(Object.keys(f.resultados).sort()).toEqual(['cmj', 'eur', 'ie', 'potenciaCMJ', 'sj'])
   })
 
-  it('lo que no salió no se escribe: nada de filas a null', () => {
-    /* Una fila con el resultado vacío aparecería luego en el historial como si
-       el test se hubiera hecho. */
-    const filas = filasDeTest(t('bosco'), 7, '2026-09-02', { unidad: 'cm', cmj: '34' })
-    expect(filas.map(f => f.nombre)).toEqual(['Saltos: SJ y CMJ · CMJ'])
+  it('el principal sale aparte, con su unidad, para poder graficarlo', () => {
+    const f = filaDeCampo(t('t30'), 7, '2026-09-02', { metros: '9000' })!
+    expect(f.principal_clave).toBe('ritmoUmbral')
+    expect(f.unidad).toBe('s/km')
+    expect(typeof f.principal).toBe('number')
+  })
+
+  it('separa lo que se midió de los ajustes del protocolo', () => {
+    /* Sin esto, dos Bosco medidos en cm y en segundos de vuelo darían números
+       que no se pueden comparar y nada diría por qué. */
+    const f = filaDeCampo(t('bosco'), 7, '2026-09-02', { unidad: 'cm', cmj: '34' })!
+    expect(f.protocolo).toEqual({ unidad: 'cm' })
+    expect(f.brutos).toEqual({ cmj: '34' })
+  })
+
+  it('lo que no salió no se escribe', () => {
+    const f = filaDeCampo(t('bosco'), 7, '2026-09-02', { unidad: 'cm', cmj: '34' })!
+    expect(Object.keys(f.resultados)).toEqual(['cmj'])
   })
 
   it('los intermedios marcados noGuardar se quedan fuera', () => {
     /* El ritmo medio del T30 se enseña para entender de dónde sale el umbral,
        pero seguirlo en el tiempo junto al umbral sería tener dos series que
        significan lo mismo. */
-    const filas = filasDeTest(t('t30'), 7, '2026-09-02', { metros: '9000' })
-    expect(filas).toHaveLength(1)
-    expect(filas[0].nombre).toContain('Ritmo umbral')
-    expect(filas[0].unidad).toBe('s/km')
+    const f = filaDeCampo(t('t30'), 7, '2026-09-02', { metros: '9000' })!
+    expect(Object.keys(f.resultados)).toEqual(['ritmoUmbral'])
   })
 
-  it('las notas van en todas las filas, y vacías quedan a null', () => {
+  it('sin un solo resultado no se escribe nada', () => {
+    expect(filaDeCampo(t('bosco'), 7, '2026-09-02', { unidad: 'cm' })).toBeNull()
+  })
+
+  it('guarda cómo se hizo, y las notas vacías quedan a null', () => {
     const v = { unidad: 'cm', cmj: '34' }
-    expect(filasDeTest(t('bosco'), 7, '2026-09-02', v, {}, '  ')[0].notas).toBeNull()
-    expect(filasDeTest(t('bosco'), 7, '2026-09-02', v, {}, 'con molestia')[0].notas).toBe('con molestia')
+    expect(filaDeCampo(t('bosco'), 7, '2026-09-02', v, {}, { modo: 'campo' })!.modo).toBe('campo')
+    expect(filaDeCampo(t('bosco'), 7, '2026-09-02', v)!.modo).toBeNull()
+    expect(filaDeCampo(t('bosco'), 7, '2026-09-02', v, {}, { notas: '  ' })!.notas).toBeNull()
+    expect(filaDeCampo(t('bosco'), 7, '2026-09-02', v, {}, { notas: 'con molestia' })!.notas).toBe('con molestia')
   })
 })
 
@@ -312,7 +324,7 @@ describe('barrido: los diecisiete con datos plausibles', () => {
       // Con datos buenos, el número principal tiene que salir.
       expect(principalDe(x, v, CTX)!.valor, x.clave).not.toBeNull()
       expect(estaCompleto(x, v, CTX), x.clave).toBe(true)
-      expect(filasDeTest(x, 1, '2026-09-02', v, CTX).length, x.clave).toBeGreaterThan(0)
+      expect(filaDeCampo(x, 1, '2026-09-02', v, CTX), x.clave).not.toBeNull()
     })
   }
 
@@ -399,5 +411,35 @@ describe('las fichas de técnica y sus bandas de referencia', () => {
     expect(testPorClave('tec-carrera')!.disciplina).toBe('Carrera')
     expect(testPorClave('tec-natacion')!.disciplina).toBe('Natación')
     expect(testPorClave('bikefit')!.disciplina).toBe('Ciclismo')
+  })
+})
+
+describe('hacia dónde se mejora', () => {
+  /* La gráfica de evolución pinta en verde lo que crece. En un ritmo, en un
+     SWOLF o en un porcentaje de deterioro, crecer es ir a PEOR: sin declararlo,
+     el atleta que corre el T30 quince segundos más lento por kilómetro vería
+     una flecha verde. */
+  const MENOS_ES_MEJOR = ['s/km', 's/100m', 'seg', '%']
+
+  it('toda salida principal cuyo número baja al mejorar lo dice', () => {
+    for (const t of CATALOGO) {
+      const princ = t.salidas.find(s => s.principal)
+      if (!princ || !MENOS_ES_MEJOR.includes(princ.unidad)) continue
+      expect(princ.mejor, t.clave + ' → ' + princ.clave).toBe('bajo')
+    }
+  })
+
+  it('las que suben al mejorar no dicen nada, que es el defecto', () => {
+    for (const t of CATALOGO) {
+      const princ = t.salidas.find(s => s.principal)
+      if (!princ || MENOS_ES_MEJOR.includes(princ.unidad)) continue
+      /* El SWOLF no tiene unidad y también baja: se declara a mano. */
+      if (princ.clave === 'swolf') continue
+      expect(princ.mejor ?? 'alto', t.clave + ' → ' + princ.clave).toBe('alto')
+    }
+  })
+
+  it('el SWOLF baja al mejorar aunque no tenga unidad', () => {
+    expect(CATALOGO.find(x => x.clave === 'swolf')!.salidas.find(s => s.principal)!.mejor).toBe('bajo')
   })
 })

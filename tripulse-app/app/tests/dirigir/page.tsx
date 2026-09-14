@@ -180,6 +180,8 @@ export default function DirigirTests() {
     setOcupado(true); setError(''); setParte(null)
     const r = await guardarTestsDeCampo(supabase, {
       test, fecha, protocolo, contextos, notas,
+      /* Esta pantalla ES el test de campo: se dirige a pie de pista. */
+      modo: 'campo',
       personas: seleccionados.map(d => ({ id_deportista: d.id, nombre: d.nombre, valores: porPersona[d.id] || {} })),
     })
     if (r.error) setError(r.error)

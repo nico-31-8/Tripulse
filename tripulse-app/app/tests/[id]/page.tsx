@@ -13,7 +13,7 @@ import TestDeCampo from '@/components/TestDeCampo'
 import InstrumentosTest from '@/components/InstrumentosTest'
 import { contextosDe } from '@/lib/dirigir-tests'
 import { herramientasDe } from '@/lib/herramientas-test'
-import { CATALOGO, type Contexto, type Disciplina } from '@/lib/catalogo-tests'
+import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/catalogo-tests'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
@@ -23,7 +23,7 @@ const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cua
    suelto. Todo lo que hay bajo esa pestaña sale del catálogo. */
 const TABS = ['carrera', 'natacion', 'ciclismo', 'fuerza', 'triatlon'] as const
 const ETIQUETA_TAB: Record<string, string> = {
-  carrera: '🏃 Carrera', natacion: '🏊 Natacion', ciclismo: '🚴 Ciclismo',
+  carrera: '🏃 Carrera', natacion: '🏊 Natación', ciclismo: '🚴 Ciclismo',
   fuerza: '🏋️ Fuerza', triatlon: '🔀 Triatlón',
 }
 const TITULO_TAB: Record<string, string> = {
@@ -101,7 +101,56 @@ const PROTOCOLO_COMBINADO: Record<string, { titulo: string; pasos: string[]; not
   },
 }
 
-function GraficaEvolucion({ datos, dataKey, color, unidad, label }: { datos: any[], dataKey: string, color: string, unidad: string, label: string }) {
+
+/** La caja de siempre de esta pantalla, sin repetir la clase treinta veces. */
+function Campo({ etiqueta, ...props }: { etiqueta?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="flex flex-col gap-1">
+      {etiqueta && <span className="text-gray-400 text-sm">{etiqueta}</span>}
+      <input {...props}
+        className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
+    </label>
+  )
+}
+
+/**
+ * Una de las tres zonas de un test dirigido.
+ *
+ * Los ajustes del protocolo, el instrumento y lo que queda apuntado son tres
+ * momentos distintos —antes, durante y después— y antes se veían como una lista
+ * plana de casillas donde no se sabía cuál tocabas ni cuándo.
+ */
+function Zona({ titulo, pie, children }: { titulo: string; pie?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 flex flex-col gap-3">
+      <div>
+        <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500">{titulo}</p>
+        {pie && <p className="text-[11.5px] text-gray-500 mt-0.5">{pie}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** El resultado que se está calculando mientras escribes. */
+function Salida({ children }: { children: React.ReactNode }) {
+  return <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm flex gap-4 flex-wrap">{children}</div>
+}
+
+const BOTON_GUARDAR = 'bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50'
+
+/** Una fila de `test_campo`, con lo que esta pantalla necesita de ella. */
+interface FilaTestCampo {
+  id: number
+  clave: string
+  fecha: string
+  resultados: Record<string, number> | null
+  principal: number | null
+  unidad: string | null
+  modo: string | null
+}
+
+function GraficaEvolucion({ datos, dataKey, color, unidad, label, mejor = 'alto' }: { datos: any[], dataKey: string, color: string, unidad: string, label: string, mejor?: 'alto' | 'bajo' }) {
   if (datos.length < 2) return (
     <div className="bg-gray-800 rounded-xl p-4 text-center text-gray-600 text-sm mb-4">
       Necesitas al menos 2 tests para ver la evolución
@@ -113,14 +162,17 @@ function GraficaEvolucion({ datos, dataKey, color, unidad, label }: { datos: any
   }))
   const ultimo = datosGrafica[datosGrafica.length - 1]?.valor
   const primero = datosGrafica[0]?.valor
-  const mejora = ultimo && primero ? Math.round((ultimo - primero) * 100) / 100 : null
+  const cambio = ultimo && primero ? Math.round((ultimo - primero) * 100) / 100 : null
+  /* Subir no siempre es mejorar: en un ritmo o en un SWOLF, subir es ir a peor.
+     Sin esto la gráfica pintaría de verde quince segundos más lento por km. */
+  const mejora = cambio === null ? null : (mejor === 'bajo' ? -cambio : cambio)
   return (
     <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
       <div className="flex justify-between items-center mb-3">
         <p className="text-sm font-semibold text-gray-300">📈 Evolución {label}</p>
         {mejora !== null && (
           <span className={'text-xs font-bold px-2 py-1 rounded-lg ' + (mejora > 0 ? 'bg-green-900/50 text-green-400' : mejora < 0 ? 'bg-red-900/50 text-red-400' : 'bg-gray-800 text-gray-400')}>
-            {mejora > 0 ? '▲' : mejora < 0 ? '▼' : '='} {Math.abs(mejora)} {unidad}
+            {cambio! > 0 ? '▲' : cambio! < 0 ? '▼' : '='} {Math.abs(cambio!)} {unidad}
           </span>
         )}
       </div>
@@ -213,6 +265,10 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const [tests3, setTests3] = useState<any[]>([])
   const [testsFuerza, setTestsFuerza] = useState<any[]>([])
   const [testsLibres, setTestsLibres] = useState<any[]>([])
+  /* Los de la batería, ya con su número de verdad: antes vivían mezclados con
+     los apuntados a mano y guardados como texto, y por eso no tenían ni
+     evolución ni récords. */
+  const [testsCampo, setTestsCampo] = useState<FilaTestCampo[]>([])
   // El peso y el sexo, que los tests de campo necesitan para la potencia del
   // salto y para el nivel de referencia. Se piden con el mismo helper que la
   // pantalla de grupo para no tener dos formas de sacar el último pesaje.
@@ -221,10 +277,19 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   // Qué test de la pestaña está abierto. Puede ser un clásico o uno de la batería.
   const [testSel, setTestSel] = useState<string | null>(null)
   const [mostrarForm, setMostrarForm] = useState(false)
+  /* Cómo se va a hacer el test que está abierto.
+     `null` = todavía no lo ha dicho, y entonces la pantalla pregunta. Antes se
+     enseñaban las dos formas a la vez —el cronómetro encima y las casillas
+     debajo— y no había manera de saber cuál era el camino. */
+  const [modo, setModo] = useState<ModoTest | null>(null)
   const [mostrarFormLibre, setMostrarFormLibre] = useState(false)
+  /* «Otros tests» se queda, pero guardado: ocupaba un cuarto de la pantalla
+     permanentemente para algo que casi nadie usa. Quien lo necesite, lo abre. */
+  const [mostrarOtros, setMostrarOtros] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fecha, setFecha] = useState('')
+  const [velInicial, setVelInicial] = useState('')
   const [velUltimo, setVelUltimo] = useState('')
   const [durTotal, setDurTotal] = useState('')
   const [tiempoAguantado, setTiempoAguantado] = useState('')
@@ -233,6 +298,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const [distPequena, setDistPequena] = useState('200')
   const [tiempoGrande, setTiempoGrande] = useState('')
   const [tiempoPequeno, setTiempoPequeno] = useState('')
+  const [potInicial, setPotInicial] = useState('')
   const [potenciaPico, setPotenciaPico] = useState('')
   const [tiempoCompletado, setTiempoCompletado] = useState('')
   const [tiempoNoCompletado, setTiempoNoCompletado] = useState('')
@@ -267,19 +333,21 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
     setDeportista(dep)
     if (!dep) { setNoExiste(true); return }
-    // Cinco tablas distintas, ninguna depende de otra: iban en fila por costumbre.
-    const [t1, t2, t3, tf, tl] = await Promise.all([
+    // Seis tablas distintas, ninguna depende de otra: iban en fila por costumbre.
+    const [t1, t2, t3, tf, tl, tc] = await Promise.all([
       supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('tests_libres').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      supabase.from('test_campo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
     ])
     setTests1(t1.data || [])
     setTests2(t2.data || [])
     setTests3(t3.data || [])
     setTestsFuerza(tf.data || [])
     setTestsLibres(tl.data || [])
+    setTestsCampo(tc.data || [])
     const ctxs = await contextosDe(supabase, [Number(id)])
     setContexto(ctxs[Number(id)] ?? {})
   }
@@ -312,6 +380,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
      cinco formularios a un objeto de valores, y son los que escriben en las
      tablas de las que salen las zonas. No se tocan sin necesidad. */
   const SETTERS: Record<string, (v: string) => void> = {
+    velInicial: setVelInicial, potInicial: setPotInicial,
     velUltimo: setVelUltimo, durTotal: setDurTotal,
     tiempoAguantado: setTiempoAguantado, incrementoVel: setIncrementoVel,
     tiempoGrande: setTiempoGrande, tiempoPequeno: setTiempoPequeno,
@@ -320,6 +389,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     sprintTiempo: setSprintTiempo, t25: setT25, t50: setT50,
   }
   const VALORES: Record<string, string> = {
+    velInicial, potInicial,
     velUltimo, durTotal, tiempoAguantado, incrementoVel,
     tiempoGrande, tiempoPequeno,
     potenciaPico, tiempoNoCompletado, durEscalones, incrementoPot,
@@ -347,8 +417,11 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const elegirTest = (t: (typeof testsDelTab)[number]) => {
     // Volver a pulsar el mismo lo cierra: es lo que sustituye al «Cancelar» que
     // tenía el botón de «+ Nuevo test».
-    if (testSel === t.id) { setTestSel(null); setMostrarForm(false); return }
+    if (testSel === t.id) { setTestSel(null); setMostrarForm(false); setModo(null); return }
     setTestSel(t.id)
+    /* Sin instrumentos no hay dos formas de hacerlo: se entra directo a mano.
+       Preguntar «¿cómo lo haces?» cuando solo hay una respuesta es ruido. */
+    setModo(t.conCrono ? null : 'mano')
     if (t.clasico) { setTestTipo(t.clasico.tipo === 'fuerza' ? 'aerobico' : t.clasico.tipo); setMostrarForm(true) }
     else setMostrarForm(false)
   }
@@ -364,6 +437,15 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   }
   const anclaDef = ANCLA_TAB[tab]
   const anclaFila = anclaDef?.filas.find(f => f[anclaDef.col] != null) ?? null
+
+  /** El test que está abierto, sea clásico o de la batería. */
+  const testSelObj = testsDelTab.find(t => t.id === testSel) ?? null
+
+  /** Lo que ha hecho de la batería en esta disciplina, y de este test. */
+  const campoDelTab = testsCampo.filter(r => CATALOGO.find(x => x.clave === r.clave)?.disciplina === DISCIPLINA_TAB[tab])
+
+  /** Lo que ha hecho de ESTE test de la batería, para su evolución. */
+  const campoDelTest = testSel ? testsCampo.filter(r => r.clave === testSel) : []
 
   /** El test de la batería que toca abrir, o null si el elegido es clásico. */
   const claveBateria = testsDelTab.find(t => t.id === testSel && !t.clasico)?.id ?? null
@@ -388,7 +470,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
 
   const guardarTest1 = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('')
-    const { error } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM() })
+    const { error } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_inicial: velInicial ? Number(velInicial) : null, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM() })
     if (error) setError('Error: ' + error.message)
     else { setMostrarForm(false); cargarDatos() }
     setLoading(false)
@@ -404,7 +486,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
 
   const guardarTest3 = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('')
-    const { error } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, potencia_pico: Number(potenciaPico), tiempo_escalon_completado: Number(tiempoCompletado), tiempo_escalon_no_completado: Number(tiempoNoCompletado), duracion_escalones: Number(durEscalones), incremento_potencia: Number(incrementoPot), ftp: calcularFTP() })
+    const { error } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, potencia_inicial: potInicial ? Number(potInicial) : null, potencia_pico: Number(potenciaPico), tiempo_escalon_completado: Number(tiempoCompletado), tiempo_escalon_no_completado: Number(tiempoNoCompletado), duracion_escalones: Number(durEscalones), incremento_potencia: Number(incrementoPot), ftp: calcularFTP() })
     if (error) setError('Error: ' + error.message)
     else { setMostrarForm(false); cargarDatos() }
     setLoading(false)
@@ -445,8 +527,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   const guardarProtocolo = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('')
     let err: any = null
-    if (tab === 'carrera') ({ error: err } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM(), mss: calcularMSS() }))
-    else if (tab === 'ciclismo') ({ error: err } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, potencia_pico: Number(potenciaPico), tiempo_escalon_completado: Number(tiempoCompletado), tiempo_escalon_no_completado: Number(tiempoNoCompletado), duracion_escalones: Number(durEscalones), incremento_potencia: Number(incrementoPot), ftp: calcularFTP(), mpp: Number(mppSprint) }))
+    if (tab === 'carrera') ({ error: err } = await supabase.from('test1_carrera').insert({ id_deportista: Number(id), fecha, velocidad_inicial: velInicial ? Number(velInicial) : null, velocidad_ultimo_escalon: Number(velUltimo), duracion_total_escalon: Number(durTotal), tiempo_aguantado_ultimo: Number(tiempoAguantado), incremento_velocidad: Number(incrementoVel), vam: calcularVAM(), mss: calcularMSS() }))
+    else if (tab === 'ciclismo') ({ error: err } = await supabase.from('test3_ciclismo').insert({ id_deportista: Number(id), fecha, potencia_inicial: potInicial ? Number(potInicial) : null, potencia_pico: Number(potenciaPico), tiempo_escalon_completado: Number(tiempoCompletado), tiempo_escalon_no_completado: Number(tiempoNoCompletado), duracion_escalones: Number(durEscalones), incremento_potencia: Number(incrementoPot), ftp: calcularFTP(), mpp: Number(mppSprint) }))
     else if (tab === 'natacion') ({ error: err } = await supabase.from('test2_natacion').insert({ id_deportista: Number(id), fecha, distancia_grande: Number(distGrande), distancia_pequena: Number(distPequena), tiempo_distancia_grande: Number(tiempoGrande), tiempo_distancia_pequena: Number(tiempoPequeno), css: calcularCSS(), v25: calcularVsprint(t25, 25), v50: calcularVsprint(t50, 50) }))
     if (err) setError('Error: ' + err.message)
     else { setMostrarProtocolo(false); resetSprint(); setFecha(''); cargarDatos() }
@@ -564,13 +646,13 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {/* ===== FILA PRINCIPAL: tests de la app (3/4) + otros tests (1/4) ===== */}
-        <div className="grid gap-4 lg:grid-cols-4 items-start">
-        <div className="lg:col-span-3 min-w-0">
+        {/* ===== LOS TESTS ===== */}
+        <div>
+        <div className="min-w-0">
 
         <div className="flex gap-2 mb-6 flex-wrap">
           {TABS.map(t => (
-            <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null) }}
+            <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null); setModo(null) }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
               {ETIQUETA_TAB[t]}
             </button>
@@ -652,125 +734,259 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {tab === 'ciclismo' && <GraficaEvolucion datos={tests3} dataKey="ftp" color="#facc15" unidad="W" label="FTP" />}
         {tab === 'fuerza' && <GraficaFuerza datos={testsFuerza} />}
 
-        {/* La ficha del test de la batería que esté elegido arriba. */}
-        {claveBateria && (
-          <TestDeCampo idDeportista={Number(id)} disciplina={DISCIPLINA_TAB[tab]}
-            clave={claveBateria} contexto={contexto} onGuardado={cargarDatos} />
+        {/* ===== ¿CÓMO LO VAS A HACER? =====
+            La pregunta va DESPUÉS de elegir el test y ANTES de ver nada, que es
+            el orden en que se decide de verdad. Solo sale si el test tiene
+            instrumentos: donde solo hay una forma, preguntar es ruido. */}
+        {testSel && testSelObj?.conCrono && modo === null && (
+          <div className="tp-card p-4 mb-4">
+            <p className="text-[13px] font-semibold">¿Cómo vas a hacer el {testSelObj.nombre}?</p>
+            <p className="text-[11.5px] text-gray-500 mt-0.5 mb-3">Eliges una y solo se enseña esa.</p>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {([
+                { m: 'campo' as const, ic: '⏱️', t: 'Test de campo',
+                  d: 'Lo estoy haciendo ahora. Cronómetro, secuenciador y contador, y el número sale mientras mides.' },
+                { m: 'mano' as const, ic: '✍️', t: 'A mano',
+                  d: 'Ya está hecho. Meto los números que apunté y la app calcula el resultado.' },
+              ]).map(o => (
+                <button key={o.m} onClick={() => setModo(o.m)}
+                  className="rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-orange-500/40 p-4 text-left transition">
+                  <p className="text-[15px] font-bold">{o.ic} {o.t}</p>
+                  <p className="text-[12px] text-gray-400 mt-1 leading-snug">{o.d}</p>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
-        {/* FORMULARIOS */}
-        {mostrarForm && testTipo === 'aerobico' && tab === 'carrera' && (
+        {/* Ya elegido: se dice cuál es y se puede cambiar sin cerrar el test. */}
+        {testSel && modo && testSelObj?.conCrono && (
+          <div className="flex items-center gap-2 mb-3 text-[12px]">
+            <span className="text-gray-400">{modo === 'campo' ? '⏱️ Test de campo' : '✍️ A mano'}</span>
+            <button onClick={() => setModo(null)} className="text-orange-400/90 hover:text-orange-300 transition">cambiar</button>
+          </div>
+        )}
+
+        {/* La ficha del test de la batería que esté elegido arriba. */}
+        {claveBateria && modo && (
+          <TestDeCampo idDeportista={Number(id)} disciplina={DISCIPLINA_TAB[tab]}
+            clave={claveBateria} contexto={contexto} modo={modo} onGuardado={cargarDatos} />
+        )}
+
+        {/* La evolución de ese test. Hasta ahora la batería no podía tener
+            ninguna: su resultado se guardaba como texto. */}
+        {claveBateria && campoDelTest.length > 1 && (
+          <GraficaEvolucion datos={campoDelTest} dataKey="principal" color="#fb923c"
+            unidad={campoDelTest[0].unidad ?? ''} label={testSelObj?.nombre ?? ''}
+            mejor={CATALOGO.find(x => x.clave === claveBateria)?.salidas.find(o => o.principal)?.mejor ?? 'alto'} />
+        )}
+
+        {/* ===== MONTREAL ===== */}
+        {mostrarForm && modo && testTipo === 'aerobico' && tab === 'carrera' && (
           <form onSubmit={guardarTest1} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h4 className="font-bold">Test incremental de carrera</h4>
-            <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} />
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <input type="number" step="0.1" placeholder="Velocidad ultimo escalon (km/h)" value={velUltimo} onChange={e => setVelUltimo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Duracion total del escalon (segundos)" value={durTotal} onChange={e => setDurTotal(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Tiempo aguantado en ultimo escalon (segundos)" value={tiempoAguantado} onChange={e => setTiempoAguantado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" step="0.1" placeholder="Incremento de velocidad por escalon (km/h)" value={incrementoVel} onChange={e => setIncrementoVel(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            {calcularVAM() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">VAM calculada: </span><span className="text-orange-400 font-bold">{calcularVAM()} km/h</span><span className="text-gray-400 ml-3">({formatVAM(calcularVAM()!)})</span></div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+
+            {modo === 'campo' ? (<>
+              <Zona titulo="Ajustes del protocolo" pie="Se cambian antes de arrancar y se guardan con el test: dos Montreal que empiezan a distinta velocidad no se pueden comparar.">
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <Campo etiqueta="Empieza en (km/h)" type="number" step="0.1" value={velInicial}
+                    onChange={e => setVelInicial(e.target.value)} placeholder="8" />
+                  <Campo etiqueta="Sube cada escalón (km/h)" type="number" step="0.1" value={incrementoVel}
+                    onChange={e => setIncrementoVel(e.target.value)} required />
+                  <Campo etiqueta="Dura cada escalón (seg)" type="number" value={durTotal}
+                    onChange={e => setDurTotal(e.target.value)} required />
+                </div>
+              </Zona>
+              <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} />
+              <Zona titulo="Lo que ha cogido el secuenciador" pie="Se rellena solo cuando el atleta se baja, y de ahí sale la VAM de abajo. Solo hay que tocarlo si cogiste mal el momento.">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Campo etiqueta="Velocidad del último escalón (km/h)" type="number" step="0.1" value={velUltimo}
+                    onChange={e => setVelUltimo(e.target.value)} required />
+                  <Campo etiqueta="Segundos aguantados en él" type="number" value={tiempoAguantado}
+                    onChange={e => setTiempoAguantado(e.target.value)} required />
+                </div>
+              </Zona>
+            </>) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Campo etiqueta="Empezó en (km/h)" type="number" step="0.1" value={velInicial}
+                  onChange={e => setVelInicial(e.target.value)} placeholder="8" />
+                <Campo etiqueta="Velocidad del último escalón (km/h)" type="number" step="0.1" value={velUltimo}
+                  onChange={e => setVelUltimo(e.target.value)} required />
+                <Campo etiqueta="Duración total del escalón (seg)" type="number" value={durTotal}
+                  onChange={e => setDurTotal(e.target.value)} required />
+                <Campo etiqueta="Tiempo aguantado en el último (seg)" type="number" value={tiempoAguantado}
+                  onChange={e => setTiempoAguantado(e.target.value)} required />
+                <Campo etiqueta="Incremento por escalón (km/h)" type="number" step="0.1" value={incrementoVel}
+                  onChange={e => setIncrementoVel(e.target.value)} required />
+              </div>
+            )}
+
+            {calcularVAM() && <Salida><span><span className="text-gray-400">VAM calculada: </span><span className="text-orange-400 font-bold">{calcularVAM()} km/h</span><span className="text-gray-400 ml-3">({formatVAM(calcularVAM()!)})</span></span></Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
           </form>
         )}
 
-        {mostrarForm && testTipo === 'aerobico' && tab === 'natacion' && (
+        {/* ===== CSS ===== */}
+        {mostrarForm && modo && testTipo === 'aerobico' && tab === 'natacion' && (
           <form onSubmit={guardarTest2} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test CSS natacion</h4>
-            <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} />
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="number" placeholder="Distancia grande (m)" value={distGrande} onChange={e => setDistGrande(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <input type="number" placeholder="Distancia pequena (m)" value={distPequena} onChange={e => setDistPequena(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="number" placeholder="Tiempo distancia grande (seg)" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <input type="number" placeholder="Tiempo distancia pequena (seg)" value={tiempoPequeno} onChange={e => setTiempoPequeno(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            </div>
-            {calcularCSS() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">CSS calculada: </span><span className="text-orange-400 font-bold">{calcularCSS()} m/s</span><span className="text-gray-400 ml-3">({formatCSS(calcularCSS()!)})</span></div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+            <h4 className="font-bold">Test CSS de natación</h4>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+
+            {modo === 'campo' ? (<>
+              <Zona titulo="Ajustes del protocolo" pie="Las dos distancias del test.">
+                <div className="grid grid-cols-2 gap-3">
+                  <Campo etiqueta="Distancia grande (m)" type="number" value={distGrande} onChange={e => setDistGrande(e.target.value)} required />
+                  <Campo etiqueta="Distancia pequeña (m)" type="number" value={distPequena} onChange={e => setDistPequena(e.target.value)} required />
+                </div>
+              </Zona>
+              <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} />
+              <Zona titulo="Lo que han cogido los cronómetros" pie="Se rellena solo al pararlos, y de ahí sale la CSS de abajo.">
+                <div className="grid grid-cols-2 gap-3">
+                  <Campo etiqueta="Tiempo de la grande (seg)" type="number" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} required />
+                  <Campo etiqueta="Tiempo de la pequeña (seg)" type="number" value={tiempoPequeno} onChange={e => setTiempoPequeno(e.target.value)} required />
+                </div>
+              </Zona>
+            </>) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Distancia grande (m)" type="number" value={distGrande} onChange={e => setDistGrande(e.target.value)} required />
+                <Campo etiqueta="Distancia pequeña (m)" type="number" value={distPequena} onChange={e => setDistPequena(e.target.value)} required />
+                <Campo etiqueta="Tiempo de la grande (seg)" type="number" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} required />
+                <Campo etiqueta="Tiempo de la pequeña (seg)" type="number" value={tiempoPequeno} onChange={e => setTiempoPequeno(e.target.value)} required />
+              </div>
+            )}
+
+            {calcularCSS() && <Salida><span><span className="text-gray-400">CSS calculada: </span><span className="text-orange-400 font-bold">{calcularCSS()} m/s</span><span className="text-gray-400 ml-3">({formatCSS(calcularCSS()!)})</span></span></Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
           </form>
         )}
 
-        {mostrarForm && testTipo === 'aerobico' && tab === 'ciclismo' && (
+        {/* ===== RAMPA ===== */}
+        {mostrarForm && modo && testTipo === 'aerobico' && tab === 'ciclismo' && (
           <form onSubmit={guardarTest3} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test FTP ciclismo</h4>
-            <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} />
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <input type="number" placeholder="Potencia pico (vatios)" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Duracion de los escalones (segundos)" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Tiempo aguantado escalon completado (seg)" value={tiempoCompletado} onChange={e => setTiempoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Tiempo aguantado escalon no completado (seg)" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <input type="number" placeholder="Incremento de potencia por escalon (vatios)" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            {calcularFTP() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm flex gap-4 flex-wrap"><span><span className="text-gray-400">PAM: </span><span className="text-orange-400 font-bold">{calcularPAM()} W</span></span><span><span className="text-gray-400">FTP (75 %): </span><span className="text-orange-400 font-bold">{calcularFTP()} W</span></span></div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+            <h4 className="font-bold">Test de rampa en ciclismo</h4>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+
+            {modo === 'campo' ? (<>
+              <Zona titulo="Ajustes del protocolo" pie="Se cambian antes de arrancar y se guardan con el test.">
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <Campo etiqueta="Empieza en (W)" type="number" value={potInicial} onChange={e => setPotInicial(e.target.value)} placeholder="150" />
+                  <Campo etiqueta="Sube cada escalón (W)" type="number" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} required />
+                  <Campo etiqueta="Dura cada escalón (seg)" type="number" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} required />
+                </div>
+              </Zona>
+              <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} />
+              <Zona titulo="Lo que ha cogido el secuenciador" pie="La potencia y los segundos del escalón en el que se bajó se rellenan solos; de ahí salen la PAM y el FTP de abajo.">
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <Campo etiqueta="Potencia pico (W)" type="number" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} required />
+                  <Campo etiqueta="Segundos del escalón no completado" type="number" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} required />
+                  <Campo etiqueta="Segundos del último completado" type="number" value={tiempoCompletado} onChange={e => setTiempoCompletado(e.target.value)} required />
+                </div>
+              </Zona>
+            </>) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Campo etiqueta="Empezó en (W)" type="number" value={potInicial} onChange={e => setPotInicial(e.target.value)} placeholder="150" />
+                <Campo etiqueta="Potencia pico (W)" type="number" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} required />
+                <Campo etiqueta="Duración de los escalones (seg)" type="number" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} required />
+                <Campo etiqueta="Tiempo del escalón completado (seg)" type="number" value={tiempoCompletado} onChange={e => setTiempoCompletado(e.target.value)} required />
+                <Campo etiqueta="Tiempo del escalón no completado (seg)" type="number" value={tiempoNoCompletado} onChange={e => setTiempoNoCompletado(e.target.value)} required />
+                <Campo etiqueta="Incremento por escalón (W)" type="number" value={incrementoPot} onChange={e => setIncrementoPot(e.target.value)} required />
+              </div>
+            )}
+
+            {calcularFTP() && <Salida>
+              <span><span className="text-gray-400">PAM: </span><span className="text-orange-400 font-bold">{calcularPAM()} W</span></span>
+              <span><span className="text-gray-400">FTP (75 %): </span><span className="text-orange-400 font-bold">{calcularFTP()} W</span></span>
+            </Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
           </form>
         )}
 
-        {/* FORMULARIOS SPRINT */}
-        {mostrarForm && testTipo === 'sprint' && tab === 'carrera' && (
+        {/* ===== SPRINTS ===== */}
+        {mostrarForm && modo && testTipo === 'sprint' && tab === 'carrera' && (
           <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test de sprint — Velocidad máxima (MSS)</h4>
-            <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} />
-            <p className="text-gray-400 text-sm">Sprint lanzado de 30–40m a máxima velocidad (con 10–20m previos de lanzamiento). Introduce la distancia cronometrada y el tiempo.</p>
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="number" step="0.5" placeholder="Distancia (m)" value={sprintDist} onChange={e => setSprintDist(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <input type="number" step="0.01" placeholder="Tiempo (s)" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            <h4 className="font-bold">Sprint — velocidad máxima (MSS)</h4>
+            <p className="text-gray-400 text-sm">Sprint lanzado de 30–40 m a máxima velocidad, con 10–20 m previos de lanzamiento.</p>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+
+            {modo === 'campo' ? (<>
+              <Zona titulo="Ajustes del protocolo">
+                <Campo etiqueta="Distancia cronometrada (m)" type="number" step="0.5" value={sprintDist} onChange={e => setSprintDist(e.target.value)} required />
+              </Zona>
+              <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} />
+              <Zona titulo="Lo que ha cogido el cronómetro" pie="Se rellena solo al pararlo, y de ahí sale la MSS de abajo.">
+                <Campo etiqueta="Tiempo (seg)" type="number" step="0.01" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} required />
+              </Zona>
+            </>) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Distancia (m)" type="number" step="0.5" value={sprintDist} onChange={e => setSprintDist(e.target.value)} required />
+                <Campo etiqueta="Tiempo (seg)" type="number" step="0.01" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} required />
+              </div>
+            )}
+
+            {calcularMSS() && <Salida><span><span className="text-gray-400">MSS: </span><span className="text-orange-400 font-bold">{calcularMSS()} km/h</span>{asrPreview !== null && <span className="text-blue-400 ml-3">· ASR = MSS − VAM: {asrPreview} km/h</span>}</span></Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
+          </form>
+        )}
+
+        {mostrarForm && modo && testTipo === 'sprint' && tab === 'ciclismo' && (
+          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <h4 className="font-bold">Sprint — potencia pico (MPP)</h4>
+            <p className="text-gray-400 text-sm">Sprint máximo de 6 segundos tras calentar. El número lo da el potenciómetro.</p>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+            <Campo etiqueta="Potencia pico (W)" type="number" value={mppSprint} onChange={e => setMppSprint(e.target.value)} required />
+            {mppSprint && <Salida><span><span className="text-gray-400">MPP: </span><span className="text-orange-400 font-bold">{mppSprint} W</span>{aprPreview !== null && <span className="text-blue-400 ml-3">· APR = MPP − PAM: {aprPreview} W</span>}</span></Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
+          </form>
+        )}
+
+        {mostrarForm && modo && testTipo === 'sprint' && tab === 'natacion' && (
+          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
+            <h4 className="font-bold">Sprints — velocidades máximas (V25 / V50)</h4>
+            <p className="text-gray-400 text-sm">Sprints máximos de 25 m y 50 m, con recuperación completa entre ellos.</p>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+
+            {modo === 'campo' && <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} />}
+            <div className="grid grid-cols-2 gap-3">
+              <Campo etiqueta="Tiempo 25 m (seg)" type="number" step="0.01" value={t25} onChange={e => setT25(e.target.value)} required />
+              <Campo etiqueta="Tiempo 50 m (seg)" type="number" step="0.01" value={t50} onChange={e => setT50(e.target.value)} required />
             </div>
-            {calcularMSS() && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">MSS: </span><span className="text-orange-400 font-bold">{calcularMSS()} km/h</span>{asrPreview !== null && <span className="text-blue-400 ml-3">· ASR = MSS − VAM: {asrPreview} km/h</span>}</div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+
+            {(calcularVsprint(t25, 25) || calcularVsprint(t50, 50)) && <Salida>
+              <span><span className="text-gray-400">V25: </span><span className="text-orange-400 font-bold">{calcularVsprint(t25, 25) || '—'} m/s</span></span>
+              <span><span className="text-gray-400">V50: </span><span className="text-orange-400 font-bold">{calcularVsprint(t50, 50) || '—'} m/s</span></span>
+            </Salida>}
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
           </form>
         )}
 
-        {mostrarForm && testTipo === 'sprint' && tab === 'ciclismo' && (
-          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test de sprint — Potencia pico (MPP)</h4>
-            <p className="text-gray-400 text-sm">Sprint máximo de 6 segundos (tras calentamiento). Introduce la potencia pico registrada por el potenciómetro.</p>
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <input type="number" placeholder="Potencia pico MPP (vatios)" value={mppSprint} onChange={e => setMppSprint(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            {mppSprint && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">MPP: </span><span className="text-orange-400 font-bold">{mppSprint} W</span>{aprPreview !== null && <span className="text-blue-400 ml-3">· APR = MPP − FTP: {aprPreview} W</span>}</div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
-          </form>
-        )}
-
-        {mostrarForm && testTipo === 'sprint' && tab === 'natacion' && (
-          <form onSubmit={guardarSprint} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test de sprint — Velocidades máximas (V25/V50)</h4>
-            <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} />
-            <p className="text-gray-400 text-sm">Sprints máximos de 25m y 50m (con recuperación completa entre ellos). Introduce los tiempos.</p>
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="number" step="0.01" placeholder="Tiempo 25m (s)" value={t25} onChange={e => setT25(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <input type="number" step="0.01" placeholder="Tiempo 50m (s)" value={t50} onChange={e => setT50(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            </div>
-            {(calcularVsprint(t25, 25) || calcularVsprint(t50, 50)) && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">V25: </span><span className="text-orange-400 font-bold">{calcularVsprint(t25, 25) || '—'} m/s</span><span className="text-gray-400 ml-3">V50: </span><span className="text-orange-400 font-bold">{calcularVsprint(t50, 50) || '—'} m/s</span></div>}
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
-          </form>
-        )}
-
-        {mostrarForm && tab === 'fuerza' && (
+        {/* ===== 1RM ===== */}
+        {mostrarForm && modo && tab === 'fuerza' && (
           <form onSubmit={guardarTestFuerza} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
-            <h4 className="font-bold">Test 1RM — Fuerza maxima</h4>
-            <p className="text-gray-400 text-sm">Introduce el peso y las repeticiones realizadas. Si haces 1 repeticion al fallo es el 1RM directo. Si haces mas repeticiones se estima con la formula de Epley.</p>
-            <div><label className="text-gray-400 text-sm mb-1 block">Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required /></div>
-            <input type="text" placeholder="Nombre del ejercicio (ej: Sentadilla, Press banca, Peso muerto)" value={ejercicio} onChange={e => setEjercicio(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-            <select value={grupoMuscular} onChange={e => setGrupoMuscular(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-              <option value="">Grupo muscular principal</option>
-              {GRUPOS_MUSCULARES.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="number" step="0.5" placeholder="Peso (kg)" value={pesoKg} onChange={e => setPesoKg(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-              <input type="number" placeholder="Repeticiones realizadas" value={reps} onChange={e => setReps(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+            <h4 className="font-bold">Test de 1RM — fuerza máxima</h4>
+            <p className="text-gray-400 text-sm">Una repetición al fallo es el 1RM directo. Con más repeticiones se estima con la fórmula de Epley.</p>
+            <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
+            <Campo etiqueta="Ejercicio" type="text" placeholder="Sentadilla, press banca, peso muerto…" value={ejercicio} onChange={e => setEjercicio(e.target.value)} required />
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-400 text-sm">Grupo muscular principal</span>
+              <select value={grupoMuscular} onChange={e => setGrupoMuscular(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">Sin especificar</option>
+                {GRUPOS_MUSCULARES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Campo etiqueta="Peso (kg)" type="number" step="0.5" value={pesoKg} onChange={e => setPesoKg(e.target.value)} required />
+              <Campo etiqueta="Repeticiones" type="number" value={reps} onChange={e => setReps(e.target.value)} required />
             </div>
-            {rmPreview && <div className="bg-gray-800 px-4 py-3 rounded-lg text-sm"><span className="text-gray-400">1RM estimado (Epley): </span><span className="text-orange-400 font-bold">{rmPreview} kg</span></div>}
+            {rmPreview && <Salida><span><span className="text-gray-400">1RM estimado (Epley): </span><span className="text-orange-400 font-bold">{rmPreview} kg</span></span></Salida>}
             <textarea placeholder="Notas (opcional)" value={notasFuerza} onChange={e => setNotasFuerza(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
-            <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar test'}</button>
+            <button type="submit" disabled={loading} className={BOTON_GUARDAR}>{loading ? 'Guardando…' : 'Guardar test'}</button>
           </form>
         )}
 
         {/* LISTAS DE TESTS */}
         {tab === 'carrera' && (tests1.length === 0 ?
-          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>No hay tests de carrera todavia.</p></div> :
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏃</div><p>Todavía no hay tests de carrera.</p></div> :
           <div className="grid gap-4">{tests1.map(t => (
             <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex justify-between items-center">
@@ -788,7 +1004,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         )}
 
         {tab === 'natacion' && (tests2.length === 0 ?
-          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>No hay tests de natacion todavia.</p></div> :
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏊</div><p>Todavía no hay tests de natación.</p></div> :
           <div className="grid gap-4">{tests2.map(t => (
             <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex justify-between items-center">
@@ -806,7 +1022,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         )}
 
         {tab === 'ciclismo' && (tests3.length === 0 ?
-          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>No hay tests de ciclismo todavia.</p></div> :
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🚴</div><p>Todavía no hay tests de ciclismo.</p></div> :
           <div className="grid gap-4">{tests3.map(t => (
             <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex justify-between items-center">
@@ -821,7 +1037,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         )}
 
         {tab === 'fuerza' && (testsFuerza.length === 0 ?
-          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏋️</div><p>No hay tests de fuerza todavia.</p></div> :
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">🏋️</div><p>Todavía no hay tests de fuerza.</p></div> :
           <div className="grid gap-4">{testsFuerza.map(t => (
             <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex justify-between items-center">
@@ -840,10 +1056,54 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           ))}</div>
         )}
 
-        </div>{/* /columna izquierda (3/4) */}
+        {/* ===== LO QUE HA HECHO DE LA BATERÍA =====
+            Antes esto no se veía en ningún sitio de la disciplina: caía en el
+            panel de «Otros tests», mezclado con lo apuntado a mano y guardado
+            como texto. Ahora son números, así que tienen su lista y su
+            evolución igual que los clásicos. */}
+        {!!campoDelTab.length && (
+          <div className="mt-6">
+            <p className="text-[10.5px] font-semibold tracking-widest uppercase text-gray-500 mb-2">
+              De la batería <span className="text-orange-400">{campoDelTab.length}</span>
+            </p>
+            <div className="grid gap-2">
+              {campoDelTab.map(r => {
+                const def = CATALOGO.find(x => x.clave === r.clave)
+                return (
+                  <button key={r.id} onClick={() => { setTestSel(r.clave); setModo('mano'); setMostrarForm(false) }}
+                    className="tp-card p-3.5 flex items-center justify-between gap-3 text-left hover:border-white/20 transition">
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-semibold truncate">{def?.nombre ?? r.clave}</p>
+                      <p className="text-gray-500 text-[11px] mt-0.5">
+                        {r.fecha}
+                        {r.modo && <span> · {r.modo === 'campo' ? 'dirigido' : 'a mano'}</span>}
+                        {Object.keys(r.resultados ?? {}).length > 1 &&
+                          <span> · {Object.keys(r.resultados ?? {}).length} datos</span>}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-orange-400 font-bold text-[17px] leading-none tabular-nums">
+                        {r.principal ?? '—'}
+                      </p>
+                      <p className="text-gray-500 text-[10px] mt-0.5">{r.unidad}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
-        {/* ===== OTROS TESTS — los que no son del catálogo (1/4) ===== */}
-        <div className="tp-card p-4">
+        </div>{/* /columna de los tests */}
+
+        {/* ===== OTROS TESTS — los que no son del catálogo, guardados ===== */}
+        <button onClick={() => setMostrarOtros(o => !o)}
+          className="mt-2 mb-3 text-[12.5px] text-gray-500 hover:text-gray-300 transition">
+          {mostrarOtros ? "▴ Ocultar otros tests" : "▾ Otros tests"}
+          <span className="text-gray-600"> · los que apuntas a mano</span>
+        </button>
+        {mostrarOtros && (
+        <div className="tp-card p-4 max-w-md">
           <div className="flex justify-between items-center gap-2 mb-1">
             <h3 className="text-[15px] font-bold">Otros tests</h3>
             <button onClick={() => setMostrarFormLibre(!mostrarFormLibre)} className="bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition flex-shrink-0">{mostrarFormLibre ? 'Cancelar' : '+ Añadir'}</button>
@@ -877,8 +1137,9 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
               </div>
             ))}</div>
           }
-        </div>{/* /otros tests (1/4) */}
-        </div>{/* /fila principal */}
+        </div>
+        )}{/* /otros tests */}
+        </div>{/* /los tests */}
       </div>
 
       {/* MODAL PROTOCOLO COMBINADO */}

@@ -88,16 +88,18 @@ describe('contextosDe', () => {
 })
 
 describe('guardarTestsDeCampo', () => {
-  it('escribe una fila por resultado de cada persona', async () => {
+  it('UNA fila por persona, con todos sus números juntos', async () => {
     const sb = sbFalso()
     const r = await guardarTestsDeCampo(sb as any, {
       test: BOSCO, fecha: '2026-09-02', protocolo: { unidad: 'cm' }, personas: PERSONAS,
       contextos: { 1: { pesoKg: 72 }, 2: { pesoKg: 60 } },
+      modo: 'campo',
     })
     expect(r.error).toBeNull()
-    expect(r.resultados.map(x => x.filas)).toEqual([5, 5])
-    expect(sb.escritas).toHaveLength(10)
-    expect(sb.escritas.every(f => f._tabla === 'tests_libres')).toBe(true)
+    expect(sb.escritas).toHaveLength(2)
+    expect(sb.escritas.every(f => f._tabla === 'test_campo')).toBe(true)
+    expect(Object.keys(sb.escritas[0].resultados).sort()).toEqual(['cmj', 'eur', 'ie', 'potenciaCMJ', 'sj'])
+    expect(sb.escritas[0].modo).toBe('campo')
   })
 
   it('el protocolo se mezcla con lo de cada uno', async () => {
@@ -108,8 +110,8 @@ describe('guardarTestsDeCampo', () => {
       test: BOSCO, fecha: '2026-09-02', protocolo: { unidad: 'ms' },
       personas: [{ id_deportista: 1, nombre: 'Ana', valores: { cmj: '526' } }],
     })
-    const cmj = sb.escritas.find(f => f.nombre.endsWith('CMJ'))
-    expect(cmj.resultado).toBeCloseTo(33.9, 1)
+    expect(sb.escritas[0].resultados.cmj).toBeCloseTo(33.9, 1)
+    expect(sb.escritas[0].protocolo).toEqual({ unidad: 'ms' })
   })
 
   it('SE SALTA a quien no lo terminó en vez de guardarle un test vacío', async () => {
@@ -123,7 +125,7 @@ describe('guardarTestsDeCampo', () => {
     })
     expect(r.resultados.map(x => x.id_deportista)).toEqual([1])
     expect(sb.escritas).toHaveLength(1)
-    expect(sb.escritas[0].resultado).toBe(15)
+    expect(sb.escritas[0].principal).toBe(15)
   })
 
   it('si el lote falla se reintenta uno a uno y se salva lo que se pueda', async () => {
@@ -187,28 +189,26 @@ describe('testsDeHoy — para el aviso de dos disciplinas', () => {
     },
   })
 
-  it('reconoce el test por el prefijo del nombre', async () => {
+  it('reconoce el test por su clave', async () => {
     const r = await testsDeHoy(sbCon([
-      { id_deportista: 1, nombre: 'FTP 20 minutos · FTP' },
+      { id_deportista: 1, clave: 'ftp20' },
     ]) as any, [1], '2026-09-02')
     expect(r[1].map(t => t.clave)).toEqual(['ftp20'])
   })
 
-  it('un test que dejó cinco filas cuenta UNA vez', async () => {
-    /* Sin esto el aviso diría que hoy se han hecho cinco tests de saltos. */
+  it('el mismo test dos veces cuenta UNA', async () => {
+    /* Sin esto el aviso diría que hoy se han hecho dos tests de saltos. */
     const r = await testsDeHoy(sbCon([
-      { id_deportista: 1, nombre: 'Saltos: SJ y CMJ · CMJ' },
-      { id_deportista: 1, nombre: 'Saltos: SJ y CMJ · EUR' },
-      { id_deportista: 1, nombre: 'Saltos: SJ y CMJ · Squat Jump' },
+      { id_deportista: 1, clave: 'bosco' },
+      { id_deportista: 1, clave: 'bosco' },
     ]) as any, [1], '2026-09-02')
     expect(r[1]).toHaveLength(1)
   })
 
-  it('lo que no es de la batería se ignora', async () => {
-    /* tests_libres admite cualquier cosa escrita a mano desde la ficha. */
+  it('una clave que no es del catálogo se ignora', async () => {
     const r = await testsDeHoy(sbCon([
-      { id_deportista: 1, nombre: 'Dominadas' },
-      { id_deportista: 1, nombre: null },
+      { id_deportista: 1, clave: 'inventado' },
+      { id_deportista: 1, clave: null },
     ]) as any, [1], '2026-09-02')
     expect(r[1]).toEqual([])
   })

@@ -121,8 +121,11 @@ export default function InstrumentosTest({ claveTest, valores, setCampo }: {
   const escalon = (h: Herramienta, i: number) => {
     if (h.tipo !== 'secuenciador') return { numero: 1, intensidad: 0, dentro: 0, duracion: 60 }
     const duracion = Number(valores[h.campoDuracion]) || 60
+    /* El arranque sale de la casilla; `inicial` solo es el respaldo de cuando
+       todavía no se ha tocado. */
+    const desde = Number(valores[h.campoInicial]) || h.inicial
     return {
-      ...escalonEn(transcurrido(crono(i), ahora), h.inicial, duracion,
+      ...escalonEn(transcurrido(crono(i), ahora), desde, duracion,
                    Number(valores[h.campoIncremento]) || 0),
       duracion,
     }

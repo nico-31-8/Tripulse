@@ -27,7 +27,7 @@ const PROTOCOLOS: Record<string, { titulo: string, material: string[], calentami
     titulo: 'Test 1RM fuerza',
     material: ['Barra y discos calibrados', 'Banco o rack segun ejercicio', 'Observador de seguridad obligatorio'],
     calentamiento: '10 min cardio suave + series especificas: 15 reps al 50%, 8 reps al 70%, 3 reps al 85%.',
-    protocolo: ['Opcion A (1RM directo): intenta el maximo peso en 1 repeticion. Descansa 3-5 min entre intentos.', 'Opcion B (estimado, mas seguro): realiza un peso submaximal al fallo tecnico (2-10 reps)', 'Formula de Epley: peso x (1 + repeticiones/30)', 'Ejemplo: 80kg x 5 reps = 1RM estimado 93 kg'],
+    protocolo: ['Opción A (1RM directo): intenta el máximo peso en 1 repetición. Descansa 3-5 min entre intentos.', 'Opción B (estimado, más seguro): haz un peso submáximo hasta el fallo técnico (2-10 reps)', 'Fórmula de Epley: peso × (1 + repeticiones/30)', 'Ejemplo: 80 kg × 5 reps = 1RM estimado de 93 kg'],
     consideraciones: ['Nunca sin observador en ejercicios de barra libre', 'La tecnica correcta es prioritaria sobre el peso', 'El estimado con 2-5 reps es mas fiable que con 8-10', 'Minimo 72h tras el ultimo entreno intenso de fuerza']
   }
 }
@@ -41,7 +41,7 @@ export default function ProtocoloTest({ tipo }: { tipo: string }) {
     <div className="mb-4">
       <button onClick={() => setAbierto(!abierto)} className="flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm transition">
         <span>{abierto ? '▼' : '▶'}</span>
-        <span>Como se hace este test?</span>
+        <span>¿Cómo se hace este test?</span>
       </button>
       {abierto && (
         <div className="mt-3 bg-gray-800 rounded-xl p-5 border border-gray-700 text-sm">

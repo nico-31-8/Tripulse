@@ -14,6 +14,85 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 14 de septiembre de 2026 · Tests
+
+### Ahora eliges cómo haces el test, y solo ves esa forma
+
+Un test se puede hacer de dos maneras: **dirigiéndolo en vivo** con cronómetro,
+o **metiendo a mano** los números cuando ya está hecho. Hasta ahora la pantalla
+te enseñaba **las dos a la vez** —el cronómetro arriba y las casillas debajo,
+apiladas— y no había manera de saber cuál era el camino.
+
+Ahora eliges el test y la pantalla te pregunta:
+
+> **⏱️ Test de campo** — lo estoy haciendo ahora.
+> **✍️ A mano** — ya está hecho, meto los números.
+
+Y a partir de ahí solo ves una. Queda una línea arriba diciendo en cuál estás,
+con un «cambiar» al lado. En los tests que no tienen nada que cronometrar —el
+FTP lo da el potenciómetro, el salto lo da la alfombra— no se pregunta nada: se
+entra directo a mano.
+
+### Los protocolos de siempre también se dirigen
+
+El Montreal, la rampa, el CSS y los sprints ya se pueden hacer **como test de
+campo**. El Montreal y la rampa no llevan cronómetro sino **secuenciador**: va
+cantando el escalón que toca y a qué intensidad, y cuando el atleta se baja
+captura dónde iba y cuántos segundos aguantaba.
+
+Y el test dirigido se lee ahora en tres partes, que son los tres momentos
+reales del test:
+
+1. **Ajustes del protocolo** — antes de arrancar.
+2. **El instrumento** — durante.
+3. **Lo que ha cogido el aparato** — después. Se rellena solo, y de ahí sale el
+   resultado. Solo hay que tocarlo si cogiste mal el momento.
+
+### Puedes cambiar dónde empieza el protocolo
+
+El Montreal arrancaba **siempre en 8 km/h** y la rampa **siempre en 150 W**, y
+no había forma de tocarlo. A un atleta lento eso le supone nueve minutos
+calentando dentro del propio test; a uno rápido se le acaba la tabla.
+
+Ahora se cambia antes de arrancar. **Y se guarda con el test**, que es igual de
+importante: dos Montreal que empezaron en 8 y en 10 km/h no son comparables, y
+sin guardarlo nadie sabría por qué se movió la VAM.
+
+### Los tests de la batería ya tienen resultados de verdad
+
+Los diecisiete tests de campo guardaban su resultado **como texto**, en la misma
+tabla que las notas que apuntas a mano. Un RSI de Drop Jump de 1,42 quedaba
+escrito como la palabra «1,42», y un Bosco dejaba cinco filas sueltas sin nada
+que dijera que salieron del mismo test.
+
+Por eso la batería no tenía ni evolución, ni récords, ni comparación. Ahora cada
+test hecho deja **una ficha** con lo que mediste, lo que se calculó, el resultado
+principal como número, con qué ajustes se hizo y si fue dirigido o a mano.
+
+En cada disciplina aparece **«De la batería»** con lo que ha hecho el atleta:
+resultado, fecha y cómo se hizo. Pulsas uno y se abre. Y desde el segundo test,
+cada uno tiene **su gráfica de evolución**, igual que la VAM o el FTP.
+
+Un aviso sobre esas gráficas: pintan en verde la mejora, y **en seis tests
+mejorar es que el número BAJE** —el T30 y el T400 se miden en segundos, y el
+SWOLF, el tiempo del RAST, el deterioro del brick y la deriva del decoupling
+cuanto más bajos mejor—. Ahora cada test sabe hacia dónde se mejora. Antes de
+esto, un atleta que corriera el T30 quince segundos más lento por kilómetro
+habría visto una flecha verde.
+
+### Y la pantalla respira
+
+**«Otros tests»** ocupaba un cuarto del ancho de forma permanente. Sigue estando
+—si lo usas, ahí está— pero ahora detrás de un botón abajo. Y como los de la
+batería ya no caen ahí, ese panel por fin significa una sola cosa: lo que
+apuntas tú a mano.
+
+Arreglados también los textos viejos: «Natación», «Todavía no hay tests de
+carrera», «¿Cómo se hace este test?» y el protocolo del 1RM entero.
+
+
+---
+
 ## 14 de septiembre de 2026
 
 ### Ya puedes ver lo que manda el reloj de un deportista

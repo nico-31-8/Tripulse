@@ -7,15 +7,20 @@
 // está lo otro: leer del deportista lo que el test necesita y escribir lo que
 // sale.
 //
-// TODO VA A `tests_libres`, que guarda un número con su nombre y su unidad. Un
-// test deja varias filas —un Bosco deja cinco— porque cada una se sigue en el
-// tiempo por su lado: la altura del CMJ y el EUR son dos series distintas.
+// TODO VA A `test_campo`, UNA FILA POR TEST HECHO: lo que se midió, lo que se
+// calculó, el principal aparte en numeric para poder graficarlo, y con qué
+// ajustes de protocolo se hizo.
+//
+// Antes iba a `tests_libres` —la tabla de las notas sueltas— con una fila por
+// número y el resultado guardado como TEXTO. Por eso la batería no tenía ni
+// evolución ni récords: un RSI de 1,42 estaba escrito como la palabra «1,42».
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   CATALOGO,
   type TestCampo, type Valores, type Contexto,
-  filasDeTest, estaCompleto,
+  filaDeCampo, estaCompleto,
+  type FilaCampo, type ModoTest,
 } from './catalogo-tests'
 
 /** Lo que hace falta del deportista para calcular, por id. */
@@ -70,13 +75,15 @@ export interface EncargoDeTest {
   personas: PersonaDeTest[]
   contextos?: Contextos
   notas?: string
+  /** Dirigido con cronómetro o metido a mano después. Cambia lo que vale el número. */
+  modo?: ModoTest
 }
 
 export interface ResultadoGuardado {
   id_deportista: number
   nombre: string
   ok: boolean
-  /** Cuántas filas dejó en tests_libres. */
+  /** 1 si se guardó, 0 si no. Se conserva el nombre por los avisos que lo leen. */
   filas: number
 }
 
@@ -103,29 +110,31 @@ export async function guardarTestsDeCampo(
   if (!e.fecha) return { error: 'Sin fecha no se guarda: un test sin día no sirve para ordenar nada.', resultados: [] }
 
   const ctxs = e.contextos ?? {}
-  const conFilas = e.personas
+  const conFila = e.personas
     .map(p => {
       const v = { ...e.protocolo, ...p.valores }
       const ctx = ctxs[p.id_deportista] ?? {}
-      return { p, filas: estaCompleto(e.test, v, ctx) ? filasDeTest(e.test, p.id_deportista, e.fecha, v, ctx, e.notas) : [] }
+      const fila = estaCompleto(e.test, v, ctx)
+        ? filaDeCampo(e.test, p.id_deportista, e.fecha, v, ctx, { modo: e.modo, notas: e.notas })
+        : null
+      return { p, fila }
     })
-    .filter(x => x.filas.length > 0)
+    .filter((x): x is { p: typeof e.personas[number]; fila: FilaCampo } => x.fila !== null)
 
-  if (conFilas.length === 0) return { error: 'Ningún test está completo todavía.', resultados: [] }
+  if (conFila.length === 0) return { error: 'Ningún test está completo todavía.', resultados: [] }
 
-  const todas = conFilas.flatMap(x => x.filas)
-  const { error: errLote } = await supabase.from('tests_libres').insert(todas)
+  const { error: errLote } = await supabase.from('test_campo').insert(conFila.map(x => x.fila))
   if (!errLote) {
     return {
       error: null,
-      resultados: conFilas.map(x => ({ id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: true, filas: x.filas.length })),
+      resultados: conFila.map(x => ({ id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: true, filas: 1 })),
     }
   }
 
   const resultados: ResultadoGuardado[] = []
-  for (const x of conFilas) {
-    const { error } = await supabase.from('tests_libres').insert(x.filas)
-    resultados.push({ id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: !error, filas: error ? 0 : x.filas.length })
+  for (const x of conFila) {
+    const { error } = await supabase.from('test_campo').insert(x.fila)
+    resultados.push({ id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: !error, filas: error ? 0 : 1 })
   }
   return { error: null, resultados }
 }
@@ -133,12 +142,10 @@ export async function guardarTestsDeCampo(
 /**
  * Qué tests de la batería ya se le han hecho hoy a cada uno.
  *
- * Sirve para el aviso del §9 de «no dos disciplinas el mismo día». Se reconocen
- * por el nombre, porque `filasDeTest` escribe «<test> · <resultado>» y ese
- * prefijo es justo el nombre del test del catálogo.
- *
- * `select('*')`: nombrar una columna que no exista tumbaría la consulta entera
- * y el aviso desaparecería en silencio, que es peor que no tenerlo.
+ * Sirve para el aviso del §9 de «no dos disciplinas el mismo día». Ahora se
+ * reconocen por su CLAVE, que es una columna: antes había que adivinarlos
+ * mirando si el nombre de la fila empezaba por el del test, porque la tabla de
+ * notas sueltas no tenía dónde guardar de qué test venía.
  */
 export async function testsDeHoy(
   supabase: SupabaseClient,
@@ -149,13 +156,12 @@ export async function testsDeHoy(
   for (const id of ids) por[id] = []
   if (ids.length === 0 || !fecha) return por
 
-  const { data } = await supabase.from('tests_libres').select('*').in('id_deportista', ids).eq('fecha', fecha)
+  const { data } = await supabase.from('test_campo').select('id_deportista, clave')
+    .in('id_deportista', ids).eq('fecha', fecha)
   for (const f of data ?? []) {
     const lista = por[f.id_deportista]
     if (!lista) continue
-    const t = CATALOGO.find(x => typeof f.nombre === 'string' && f.nombre.startsWith(x.nombre + ' · '))
-    /* Un test deja varias filas: sin este filtro un Bosco contaría cinco veces
-       y el aviso diría que se han hecho cinco tests. */
+    const t = CATALOGO.find(x => x.clave === f.clave)
     if (t && !lista.includes(t)) lista.push(t)
   }
   return por

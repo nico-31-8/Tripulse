@@ -106,6 +106,14 @@ export interface Salida {
    * y no medio resultado.
    */
   calcular: (v: Valores, ctx: Contexto) => number | null
+  /**
+   * Si mejorar es que el número SUBA o que BAJE. Por defecto, que suba.
+   *
+   * Existe porque la gráfica de evolución pinta en verde lo que crece, y en un
+   * ritmo o en un SWOLF crecer es ir a peor: sin esto, un atleta que corre el
+   * T30 quince segundos más lento por kilómetro vería una flecha verde.
+   */
+  mejor?: 'alto' | 'bajo'
   /** La frase que lo interpreta, si la hay. */
   leer?: (n: number | null, ctx: Contexto) => string
   /** Cómo se enseña cuando no es un número pelado (un ritmo, un rango). */
@@ -291,7 +299,7 @@ export const CATALOGO: TestCampo[] = [
     brutos: [{ clave: 'metros', etiqueta: 'Metros en 30 min', sufijo: 'm' }],
     salidas: [
       {
-        clave: 'ritmoUmbral', etiqueta: 'Ritmo umbral', unidad: 's/km', principal: true,
+        clave: 'ritmoUmbral', etiqueta: 'Ritmo umbral', unidad: 's/km', principal: true, mejor: 'bajo',
         calcular: v => {
           const m = num(v.metros)
           if (!isFinite(m) || m <= 0) return null
@@ -385,7 +393,7 @@ export const CATALOGO: TestCampo[] = [
     ojo: 'Es la alternativa al CSS cuando solo se puede hacer una distancia. El CSS, con dos, mide mejor.',
     brutos: [{ clave: 'segundos', etiqueta: 'Tiempo del 400', sufijo: 'seg' }],
     salidas: [{
-      clave: 'ritmoUmbral', etiqueta: 'Ritmo umbral', unidad: 's/100m', principal: true,
+      clave: 'ritmoUmbral', etiqueta: 'Ritmo umbral', unidad: 's/100m', principal: true, mejor: 'bajo',
       calcular: v => umbralDeT400(num(v.segundos)),
       formato: n => (n == null ? '—' : mmss(n) + ' /100m'),
       leer: (n, ctx) => {
@@ -410,7 +418,7 @@ export const CATALOGO: TestCampo[] = [
       { clave: 'segundos', etiqueta: 'Tiempo del largo', sufijo: 'seg' },
     ],
     salidas: [{
-      clave: 'swolf', etiqueta: 'SWOLF', unidad: '', principal: true,
+      clave: 'swolf', etiqueta: 'SWOLF', unidad: '', principal: true, mejor: 'bajo',
       calcular: v => swolf(num(v.brazadas), num(v.segundos)),
       leer: (n, _ctx) => leeSWOLF(n, 25),
     }],
@@ -434,7 +442,7 @@ export const CATALOGO: TestCampo[] = [
     ],
     salidas: [
       {
-        clave: 'tiempo', etiqueta: 'Tiempo', unidad: 'seg', principal: true,
+        clave: 'tiempo', etiqueta: 'Tiempo', unidad: 'seg', principal: true, mejor: 'bajo',
         calcular: v => (isFinite(num(v.segundos)) && num(v.segundos) > 0 ? num(v.segundos) : null),
       },
       {
@@ -534,7 +542,7 @@ export const CATALOGO: TestCampo[] = [
       { clave: 'aislado', etiqueta: 'Ritmo aislado de referencia', sufijo: 'seg/km' },
     ],
     salidas: [{
-      clave: 'deterioro', etiqueta: 'Deterioro', unidad: '%', principal: true,
+      clave: 'deterioro', etiqueta: 'Deterioro', unidad: '%', principal: true, mejor: 'bajo',
       calcular: v => deterioroBrick(num(v.brick), num(v.aislado)),
       leer: n => leeDeterioro(n)?.texto ?? '',
     }],
@@ -551,7 +559,7 @@ export const CATALOGO: TestCampo[] = [
       { clave: 'ultimos', etiqueta: 'FC media de los últimos 20 min', sufijo: 'ppm' },
     ],
     salidas: [{
-      clave: 'deriva', etiqueta: 'Deriva', unidad: '%', principal: true,
+      clave: 'deriva', etiqueta: 'Deriva', unidad: '%', principal: true, mejor: 'bajo',
       calcular: v => decoupling(num(v.primeros), num(v.ultimos)),
       leer: n => leeDecoupling(n)?.texto ?? '',
     }],
@@ -666,45 +674,84 @@ export function estaCompleto(t: TestCampo, v: Valores, ctx: Contexto = {}): bool
   return resultadosDe(t, v, ctx).some(r => r.valor != null && !r.salida.noGuardar)
 }
 
-export interface FilaLibre {
+export type ModoTest = 'campo' | 'mano'
+
+/** Una fila de `test_campo`: UN test hecho, con todo lo suyo. */
+export interface FilaCampo {
   id_deportista: number
-  nombre: string
+  clave: string
   fecha: string
-  resultado: number
-  unidad: string
+  /** Lo que se midió, tal cual se tecleó. */
+  brutos: Valores
+  /** Lo que se calculó, una clave por salida. */
+  resultados: Record<string, number>
+  /** El principal aparte, para poder graficarlo sin abrir el jsonb. */
+  principal: number | null
+  principal_clave: string | null
+  unidad: string | null
+  /** Con qué ajustes se hizo. */
+  protocolo: Valores
+  /** Cómo se hizo: dirigido con cronómetro o metido después. */
+  modo: ModoTest | null
   notas: string | null
 }
 
 /**
- * Las filas de `tests_libres` que deja un test.
+ * Lo que deja un test hecho, en UNA fila.
  *
- * UNA FILA POR RESULTADO, no una por test: la tabla guarda un número con su
- * nombre y su unidad, y un Bosco da cinco números que interesan por separado
- * —la altura del CMJ y el EUR se siguen en el tiempo cada uno por su lado—. El
- * nombre lleva delante el del test para que en el historial se vea de dónde
- * salió cada uno.
+ * Antes eran varias —una por número— en `tests_libres`, que es la tabla de las
+ * notas sueltas y guarda el resultado como TEXTO. Un Bosco dejaba cinco filas
+ * de texto sin nada que dijera que salieron del mismo test, y por eso la
+ * batería no tenía ni evolución ni récords.
+ *
+ * Ahora los números viven juntos, con lo que se midió al lado y con los ajustes
+ * del protocolo con los que se hizo: dos Montreal que arrancaron en 8 y en
+ * 10 km/h no son comparables, y sin guardar eso nadie sabría por qué.
  *
  * Los `noGuardar` se quedan fuera: son intermedios que se enseñan para entender
  * el resultado, no cosas que se sigan en el tiempo.
+ *
+ * `null` si no hay ni un resultado: un test sin nada no se escribe.
  */
-export function filasDeTest(
+export function filaDeCampo(
   t: TestCampo,
   idDeportista: number,
   fecha: string,
   v: Valores,
   ctx: Contexto = {},
-  notas?: string,
-): FilaLibre[] {
-  return resultadosDe(t, v, ctx)
-    .filter(r => r.valor != null && !r.salida.noGuardar)
-    .map(r => ({
-      id_deportista: idDeportista,
-      nombre: t.nombre + ' · ' + r.salida.etiqueta,
-      fecha,
-      resultado: r.valor as number,
-      unidad: r.salida.unidad,
-      notas: notas?.trim() || null,
-    }))
+  extra: { modo?: ModoTest; notas?: string } = {},
+): FilaCampo | null {
+  const rs = resultadosDe(t, v, ctx).filter(r => r.valor != null && !r.salida.noGuardar)
+  if (!rs.length) return null
+
+  const resultados: Record<string, number> = {}
+  for (const r of rs) resultados[r.salida.clave] = r.valor as number
+
+  const principal = rs.find(r => r.salida.principal) ?? rs[0]
+
+  /* Lo del protocolo se separa de lo medido: son cosas distintas. Uno dice
+     CÓMO se hizo el test y el otro QUÉ dio. */
+  const delProtocolo = new Set(camposDeProtocolo(t).map(c => c.clave))
+  const protocolo: Valores = {}
+  const brutos: Valores = {}
+  for (const [k, val] of Object.entries(v)) {
+    if (delProtocolo.has(k)) protocolo[k] = val
+    else brutos[k] = val
+  }
+
+  return {
+    id_deportista: idDeportista,
+    clave: t.clave,
+    fecha,
+    brutos,
+    resultados,
+    principal: principal.valor,
+    principal_clave: principal.salida.clave,
+    unidad: principal.salida.unidad || null,
+    protocolo,
+    modo: extra.modo ?? null,
+    notas: extra.notas?.trim() || null,
+  }
 }
 
 // ============================================================

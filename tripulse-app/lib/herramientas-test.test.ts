@@ -8,9 +8,9 @@ import { CATALOGO } from './catalogo-tests'
 /* Los siete clásicos no están en el catálogo —tienen tabla propia— así que sus
    casillas se escriben aquí a mano. Son los nombres que usa /tests/[id]. */
 const CAMPOS_CLASICOS: Record<string, string[]> = {
-  montreal: ['velUltimo', 'durTotal', 'tiempoAguantado', 'incrementoVel'],
+  montreal: ['velInicial', 'velUltimo', 'durTotal', 'tiempoAguantado', 'incrementoVel'],
   css: ['distGrande', 'distPequena', 'tiempoGrande', 'tiempoPequeno'],
-  rampa: ['potenciaPico', 'tiempoCompletado', 'tiempoNoCompletado', 'durEscalones', 'incrementoPot'],
+  rampa: ['potInicial', 'potenciaPico', 'tiempoCompletado', 'tiempoNoCompletado', 'durEscalones', 'incrementoPot'],
   'sprint-carrera': ['sprintDist', 'sprintTiempo'],
   'sprint-natacion': ['t25', 't50'],
   'sprint-ciclismo': ['mppSprint'],
@@ -64,13 +64,17 @@ describe('cada instrumento escribe donde puede escribir', () => {
     }
   })
 
-  it('el secuenciador lee la duración y el incremento de casillas reales', () => {
+  it('el secuenciador lee de casillas reales: arranque, duración e incremento', () => {
+    /* El arranque lo LEE, no lo escribe —por eso no está en camposQueRellena—
+       pero si la clave estuviera mal escrita el protocolo empezaría siempre en
+       el valor de respaldo y el entrenador vería que cambiarlo no hace nada. */
     for (const clave of Object.keys(HERRAMIENTAS)) {
       const campos = camposDe(clave)!
       for (const h of herramientasDe(clave)) {
         if (h.tipo !== 'secuenciador') continue
         expect(campos, clave).toContain(h.campoDuracion)
         expect(campos, clave).toContain(h.campoIncremento)
+        expect(campos, clave).toContain(h.campoInicial)
       }
     }
   })

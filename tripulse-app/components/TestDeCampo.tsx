@@ -22,7 +22,7 @@ import { hoyISO } from '@/lib/fechas'
 import {
   CATALOGO, protocoloInicial, camposDeProtocolo, camposPorPersona,
   resultadosDe, principalDe, estaCompleto, avisosDeTesteo, enBanda,
-  type Disciplina, type Valores, type Contexto, type CampoBruto, type TestCampo,
+  type Disciplina, type Valores, type Contexto, type CampoBruto, type TestCampo, type ModoTest,
 } from '@/lib/catalogo-tests'
 import { herramientasDe, camposQueRellena, etiquetaDe } from '@/lib/herramientas-test'
 import InstrumentosTest from './InstrumentosTest'
@@ -81,10 +81,18 @@ function Casilla({ campo, valor, onChange, rellenada }: {
   )
 }
 
-export default function TestDeCampo({ idDeportista, disciplina, contexto, clave, onGuardado }: {
+export default function TestDeCampo({ idDeportista, disciplina, contexto, clave, modo, onGuardado }: {
   idDeportista: number
   disciplina: Disciplina
   contexto: Contexto
+  /**
+   * Cómo se está haciendo: dirigido con cronómetro o metido a mano después.
+   *
+   * Antes se enseñaban las dos cosas a la vez —los instrumentos encima y las
+   * casillas debajo— y no había forma de saber cuál era el camino. Ahora la
+   * página pregunta primero y aquí solo se pinta lo elegido.
+   */
+  modo: ModoTest
   /**
    * Cuál enseñar. Lo elige la página, no este componente.
    *
@@ -175,6 +183,7 @@ export default function TestDeCampo({ idDeportista, disciplina, contexto, clave,
       test, fecha, protocolo: {}, notas,
       contextos: { [idDeportista]: contexto },
       personas: [{ id_deportista: idDeportista, nombre: '', valores }],
+      modo,
     })
     if (r.error) setError(r.error)
     else {
@@ -228,9 +237,11 @@ export default function TestDeCampo({ idDeportista, disciplina, contexto, clave,
           </label>
 
           {/* Los instrumentos van ARRIBA de las casillas: primero se dirige el
-              test y después se mira lo que quedó escrito. */}
-          <InstrumentosTest claveTest={test.clave} valores={valores}
-            setCampo={(k, v) => setValores(x => ({ ...x, [k]: v }))} />
+              test y después se mira lo que quedó escrito. A mano no se pintan. */}
+          {modo === 'campo' && (
+            <InstrumentosTest claveTest={test.clave} valores={valores}
+              setCampo={(k, v) => setValores(x => ({ ...x, [k]: v }))} />
+          )}
 
           {/* En la ficha de una persona el protocolo y lo suyo van seguidos: la
               división de arriba/abajo solo tiene sentido cuando son varios. */}

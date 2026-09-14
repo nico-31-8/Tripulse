@@ -32,7 +32,7 @@ export default function TestsPage() {
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-bold mb-2">Tests</h2>
-        <p className="text-gray-400 mb-6">Selecciona un deportista para ver o añadir sus tests</p>
+        <p className="text-gray-400 mb-6">Elige un deportista para ver o añadir sus tests</p>
 
         {/* La entrada a la batería de campo. Va aquí arriba y no escondida en la
             ficha de un atleta porque el entrenador que va a testar todavía no ha
@@ -50,7 +50,7 @@ export default function TestsPage() {
         {deportistas.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-5xl mb-4">🏋️</div>
-            <p>No tienes deportistas todavia.</p>
+            <p>Todavía no tienes deportistas.</p>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -62,7 +62,7 @@ export default function TestsPage() {
                     <p className="text-gray-400 text-sm">
                       {d.sexo || 'Sin especificar'} · 
                       {d.fecha_nacimiento ? ` ${calcularEdad(d.fecha_nacimiento)} años · ` : ' '}
-                      FC max: {d.fc_maxima || '—'} ppm
+                      FC máx: {d.fc_maxima || '—'} ppm
                     </p>
                   </div>
                   <span className="text-orange-500 text-sm">Ver tests →</span>
