@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { senalesDeAtleta, MIN_REGISTROS_BASE, type SesionSenal } from './senales'
+import {
+  senalesDeAtleta, resumenDeEquipo, textoEquipo,
+  MIN_REGISTROS_BASE, type SesionSenal, type ResultadoSenales,
+} from './senales'
 import type { RegistroWellness } from './wellness-analisis'
 
 const HOY = '2026-09-11'
@@ -144,13 +147,25 @@ describe('sesión larga y cumplimiento', () => {
 })
 
 describe('dejar de rellenar también es una señal', () => {
+  /* Con sesiones recientes: sin ellas no salta, y eso se prueba abajo. */
+  const entrenando = [ses('2026-09-10'), ses('2026-09-08')]
+
   it('avisa a los 3 días', () => {
-    const s = senalesDeAtleta({ wellness: [dia('2026-09-07')], sesiones: [], hoy: HOY }).senales.find(x => x.id === 'sin_wellness')!
+    const s = senalesDeAtleta({ wellness: [dia('2026-09-07')], sesiones: entrenando, hoy: HOY }).senales.find(x => x.id === 'sin_wellness')!
     expect(s.titulo).toContain('4 días')
   })
 
   it('con el de ayer, no', () => {
-    expect(senalesDeAtleta({ wellness: [dia('2026-09-10')], sesiones: [], hoy: HOY }).senales.some(s => s.id === 'sin_wellness')).toBe(false)
+    expect(senalesDeAtleta({ wellness: [dia('2026-09-10')], sesiones: entrenando, hoy: HOY }).senales.some(s => s.id === 'sin_wellness')).toBe(false)
+  })
+
+  it('una cuenta parada no avisa, por muchos meses que lleve', () => {
+    expect(senalesDeAtleta({ wellness: [dia('2026-05-03')], sesiones: [], hoy: HOY }).senales).toEqual([])
+  })
+
+  it('pero si sigue entrenando, sí', () => {
+    expect(senalesDeAtleta({ wellness: [dia('2026-05-03')], sesiones: entrenando, hoy: HOY })
+      .senales.some(s => s.id === 'sin_wellness')).toBe(true)
   })
 })
 
@@ -165,5 +180,49 @@ describe('el orden', () => {
     const niveles = r.senales.map(s => s.nivel)
     expect(niveles).toEqual([...niveles].sort((a, b) => ({ roja: 0, ambar: 1, info: 2 })[a] - ({ roja: 0, ambar: 1, info: 2 })[b]))
     expect(niveles[niveles.length - 1]).toBe('info')
+  })
+})
+
+describe('el equipo, para la entrada del panel', () => {
+  const conSenales = (nivel: 'roja' | 'ambar' | 'info', n = 1): ResultadoSenales => ({
+    senales: Array.from({ length: n }, (_, i) => ({
+      id: 'bienestar' as const, nivel, titulo: 'Titular ' + nivel + i, porque: '', accion: '',
+    })),
+    sinBase: [],
+  })
+
+  const deportistas = [{ id: 1, nombre: 'Ana' }, { id: 2, nombre: 'Bruno' }, { id: 3, nombre: 'Carla' }]
+
+  it('solo salen los que tienen algo', () => {
+    const por = new Map([[1, conSenales('ambar')], [2, { senales: [], sinBase: ['x'] }]])
+    expect(resumenDeEquipo(por, deportistas).map(a => a.id)).toEqual([1])
+  })
+
+  it('lo rojo va antes que lo ámbar y lo ámbar antes que lo informativo', () => {
+    const por = new Map([[1, conSenales('info')], [2, conSenales('roja')], [3, conSenales('ambar')]])
+    expect(resumenDeEquipo(por, deportistas).map(a => a.nombre)).toEqual(['Bruno', 'Carla', 'Ana'])
+  })
+
+  it('a igual nivel, primero quien tiene más', () => {
+    const por = new Map([[1, conSenales('ambar', 1)], [2, conSenales('ambar', 3)]])
+    expect(resumenDeEquipo(por, deportistas).map(a => a.n)).toEqual([3, 1])
+  })
+
+  it('lleva el titular de la primera señal', () => {
+    const por = new Map([[1, conSenales('roja')]])
+    expect(resumenDeEquipo(por, deportistas)[0].titular).toBe('Titular roja0')
+  })
+
+  it('un atleta sin nombre no rompe la lista', () => {
+    const por = new Map([[9, conSenales('ambar')]])
+    expect(resumenDeEquipo(por, [{ id: 9, nombre: '  ' }])[0].nombre).toBe('Sin nombre')
+  })
+
+  it('el texto concuerda en singular y plural, y calla si no hay nadie', () => {
+    const uno = resumenDeEquipo(new Map([[1, conSenales('ambar')]]), deportistas)
+    const dos = resumenDeEquipo(new Map([[1, conSenales('ambar')], [2, conSenales('info')]]), deportistas)
+    expect(textoEquipo(uno)).toBe('1 atleta con señales')
+    expect(textoEquipo(dos)).toBe('2 atletas con señales')
+    expect(textoEquipo([])).toBe('')
   })
 })

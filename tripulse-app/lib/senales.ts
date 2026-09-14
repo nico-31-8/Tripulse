@@ -226,10 +226,15 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
     })
   }
 
-  // ---- 7. Y si no llegan datos, eso también es una señal ----
+  /* ---- 7. Y si no llegan datos, eso también es una señal ----
+     Solo de quien está entrenando. Sin esa condición, una cuenta que dejó de
+     usarse hace cuatro meses enseñaría «lleva 134 días sin rellenar» todos los
+     días del resto de su vida, y la entrada del panel —donde esto se lee de un
+     vistazo— se llenaría de gente que no entrena. Dejar de rellenar solo es
+     noticia si hay algo que mirar. */
   const ultimo = wellness[0]?.fecha
   const sinRellenar = ultimo ? dias(ultimo.slice(0, 10), hoy) : null
-  if (sinRellenar != null && sinRellenar >= DIAS_SIN_WELLNESS) {
+  if (sinRellenar != null && sinRellenar >= DIAS_SIN_WELLNESS && pasadas.length > 0) {
     senales.push({
       id: 'sin_wellness',
       nivel: 'info',
@@ -239,7 +244,58 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
     })
   }
 
-  const orden: Record<NivelSenal, number> = { roja: 0, ambar: 1, info: 2 }
-  senales.sort((a, b) => orden[a.nivel] - orden[b.nivel])
+  senales.sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel])
   return { senales, sinBase }
+}
+
+const ORDEN_NIVEL: Record<NivelSenal, number> = { roja: 0, ambar: 1, info: 2 }
+
+/** El color de cada nivel. Aquí para que la entrada y el panel pinten igual. */
+export const COLOR_SENAL: Record<NivelSenal, string> = {
+  roja: '#ef4444', ambar: '#f59e0b', info: '#3b82f6',
+}
+
+// ============================================================
+// El equipo entero, para la entrada del panel
+// ============================================================
+// Al entrar, el entrenador no tiene abierto a nadie. Sin esto, la única forma de
+// saber quién necesita que le mire es abrirlos uno a uno — y entonces las
+// señales solo sirven para el atleta que ya sospechabas.
+
+export interface AtletaConSenales {
+  id: number
+  nombre: string
+  /** El nivel más alto de sus señales: con eso se pinta. */
+  nivel: NivelSenal
+  /** Cuántas tiene. */
+  n: number
+  /** La primera, que ya viene ordenada de más grave a menos. */
+  titular: string
+}
+
+/** Quién tiene algo y qué es lo primero. Ordenados de más grave a menos. */
+export function resumenDeEquipo(
+  por: Map<number, ResultadoSenales>,
+  deportistas: { id: number; nombre?: string | null }[],
+): AtletaConSenales[] {
+  const out: AtletaConSenales[] = []
+  for (const d of deportistas || []) {
+    const s = por.get(d.id)?.senales || []
+    if (!s.length) continue
+    out.push({
+      id: d.id,
+      nombre: (d.nombre || '').trim() || 'Sin nombre',
+      nivel: s[0].nivel,
+      n: s.length,
+      titular: s[0].titulo,
+    })
+  }
+  return out.sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel] || b.n - a.n)
+}
+
+/** «2 atletas con señales» / «1 atleta con señales». Vacío si no hay ninguno. */
+export function textoEquipo(lista: AtletaConSenales[]): string {
+  const n = (lista || []).length
+  if (!n) return ''
+  return n === 1 ? '1 atleta con señales' : n + ' atletas con señales'
 }

@@ -10,7 +10,17 @@ import {
 export async function estimarDuraciones(
   supabase: any,
   sesionIds: number[],
-  tests: TestsDeportista,
+  /**
+   * Los tests del deportista, o una función que los da por sesión.
+   *
+   * La forma de función existe para las pantallas que miran a VARIOS atletas a
+   * la vez (la entrada del panel): las consultas de aquí abajo no dependen del
+   * deportista, así que se piden una vez para todas las sesiones y cada una se
+   * calcula con los tests de su dueño. Sin esto habría que llamar a esta función
+   * una vez por atleta —cuatro viajes por cabeza— o, peor, estimar distinto en
+   * la entrada que en el panel.
+   */
+  tests: TestsDeportista | ((sesionId: number) => TestsDeportista),
   /** Ver `OpcionesDuracion`. Apagado por defecto: se enciende donde se ha revisado. */
   opciones: OpcionesDuracion = {},
 ): Promise<Record<number, ResultadoDuracion>> {
@@ -44,7 +54,8 @@ export async function estimarDuraciones(
       p_duracion: (durs || []).filter((d: any) => d.id_tarea === t.id),
       ejercicios: (ejs || []).filter((e: any) => e.id_tarea === t.id),
     }))
-    out[sid] = calcularDuracionEstimada(tareasDur, tests, opciones)
+    out[sid] = calcularDuracionEstimada(
+      tareasDur, typeof tests === 'function' ? tests(sid) : tests, opciones)
   }
   return out
 }

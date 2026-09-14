@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { sugerenciasDelAtleta } from '@/lib/sugerencias-entrenador'
@@ -16,8 +16,9 @@ import HoyEntrenas from '@/components/HoyEntrenas'
 import { ResumenEntrenador } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
-import { cargarSenales } from '@/lib/senales-datos'
-import type { ResultadoSenales, NivelSenal } from '@/lib/senales'
+import AvisoSenales from '@/components/AvisoSenales'
+import { cargarSenales, cargarSenalesDeVarios } from '@/lib/senales-datos'
+import { resumenDeEquipo, COLOR_SENAL, type ResultadoSenales } from '@/lib/senales'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -49,8 +50,13 @@ export default function Dashboard() {
   const [esPlataforma, setEsPlataforma] = useState(false)
   // Mensajes y comentarios de sesión sin revisar, de todos sus atletas.
   const [porRevisar, setPorRevisar] = useState<Pendientes>(SIN_PENDIENTES)
-  // Las señales del atleta abierto: qué pasa, con qué dato y qué haría.
-  const [senales, setSenales] = useState<ResultadoSenales | null>(null)
+  /* Las señales de TODO el equipo: qué le pasa a cada uno, con qué dato y qué
+     haría. Se piden una vez porque es lo que se mira al entrar, cuando todavía no
+     hay ningún atleta abierto; el panel del que se abra sale de este mismo Map.
+     Un Map vacío significa «ya se ha intentado y no ha salido». */
+  const [senalesEquipo, setSenalesEquipo] = useState<Map<number, ResultadoSenales> | null>(null)
+  // Red de seguridad: las de un atleta que no venía en el cálculo del equipo.
+  const [senalesSueltas, setSenalesSueltas] = useState<{ id: number; res: ResultadoSenales } | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -67,6 +73,10 @@ export default function Dashboard() {
       /* Lo que tiene sin revisar en Comunicación. Sin await: es un aviso, no
          puede retrasar ni tumbar el panel si falla. */
       cargarPendientes(supabase, user.id, depIds).then(setPorRevisar).catch(() => {})
+      /* Las señales del equipo entero, también sin await: la entrada se pinta
+         enseguida y el aviso aparece cuando llega. Si falla, un Map vacío para
+         que el panel del atleta sepa que tiene que pedir las suyas. */
+      cargarSenalesDeVarios(supabase, depIds).then(setSenalesEquipo).catch(() => setSenalesEquipo(new Map()))
       if (depIds.length) {
         const { data: macros } = await supabase.from('macrociclo').select('id').in('id_deportista', depIds).limit(1)
         setTienePlan(!!macros?.length)
@@ -95,15 +105,37 @@ export default function Dashboard() {
     return () => window.removeEventListener('focus', alVolver)
   }, [userId, deportistas])
 
+  /* Solo si el cálculo del equipo falló o llegó sin este atleta (recién creado,
+     por ejemplo) se piden las suyas aparte. */
+  useEffect(() => {
+    if (!activo || !senalesEquipo || senalesEquipo.get(activo.id)) return
+    const id = activo.id
+    let vivo = true
+    cargarSenales(supabase, id).then(res => { if (vivo) setSenalesSueltas({ id, res }) }).catch(() => {})
+    return () => { vivo = false }
+  }, [activo, senalesEquipo])
+
+  /* Las señales del atleta abierto salen del MISMO cálculo que las de la entrada.
+     Si la entrada dijera «3» y su panel enseñara dos, volveríamos a la familia de
+     fallos que llevamos toda la semana cerrando. Y al salir de `activo` en vez de
+     guardarse aparte, no puede quedarse enseñando las del anterior. */
+  const sueltas = senalesSueltas
+  const senales: ResultadoSenales | null = activo
+    ? senalesEquipo?.get(activo.id) ?? (sueltas && sueltas.id === activo.id ? sueltas.res : null)
+    : null
+
+  // Quién tiene algo hoy, ordenado de más grave a menos.
+  const resumenSenales = useMemo(
+    () => (senalesEquipo ? resumenDeEquipo(senalesEquipo, deportistas) : []),
+    [senalesEquipo, deportistas])
+  const nivelDe = (id: number) => resumenSenales.find(a => a.id === id)?.nivel
+
   const seleccionar = async (dep: any) => {
     setSwitcherOpen(false)
     setActivo(dep)
     setAtletaActivo(dep.id)
     setMetricas(null)
-    setSenales(null)
     cargarMetricasPanel(supabase, dep).then(setMetricas)
-    // Las señales van por su cuenta: son un aviso, no pueden retrasar el panel.
-    cargarSenales(supabase, dep.id).then(setSenales).catch(() => setSenales(null))
     /* Seis consultas que no dependen unas de otras iban en serie. Y el
        mesociclo pasaba antes por el macrociclo solo para acotar: con
        `mesociclo.id_deportista` (Fase A) sobra ese salto. */
@@ -170,7 +202,6 @@ export default function Dashboard() {
 
   /* Avisos "Necesita tu atención": primero las SEÑALES (lib/senales), que traen
      el dato que las sostiene y qué hacer; luego lo de siempre. */
-  const COLOR_SENAL: Record<NivelSenal, string> = { roja: '#ef4444', ambar: '#f59e0b', info: '#3b82f6' }
   const notifs: { color: string; texto: string; sub?: string; add?: string; accion?: string }[] = activo ? [
     ...(senales?.senales || []).map(s => ({
       color: COLOR_SENAL[s.nivel], texto: s.titulo, sub: s.porque, accion: s.accion, add: s.accion,
@@ -268,8 +299,15 @@ export default function Dashboard() {
         ) : !activo ? (
           /* ===== ENTRADA: elegir deportista ===== */
           <div className="min-h-[74vh] flex flex-col items-center justify-center text-center">
-            {/* Lo primero que se ve al entrar: si alguien te ha escrito. */}
-            <AvisoComunicacion pendientes={porRevisar} deportistas={deportistas} className="fade-up max-w-lg mb-8" />
+            {/* Lo primero que se ve al entrar: si alguien te ha escrito, y lo que
+                dicen los datos de sus atletas sin que se lo preguntes. Los dos se
+                borran solos cuando no hay nada; `empty:hidden` se lleva también el
+                hueco, para que una entrada tranquila quede como estaba. */}
+            <div className="w-full max-w-lg flex flex-col gap-3 mb-8 empty:hidden empty:mb-0">
+              <AvisoComunicacion pendientes={porRevisar} deportistas={deportistas} className="fade-up" />
+              <AvisoSenales atletas={resumenSenales} className="fade-up"
+                onAbrir={id => { const d = deportistas.find(x => x.id === id); if (d) seleccionar(d) }} />
+            </div>
             <p className="fade-up text-sm font-medium text-orange-400/90 mb-2">Hola, {perfil?.nombre} 👋</p>
             <h2 className="fade-up text-3xl sm:text-[34px] font-bold tracking-tight mb-2" style={{ animationDelay: '60ms' }}>¿Con quién trabajamos hoy?</h2>
 
@@ -297,6 +335,13 @@ export default function Dashboard() {
                       {sinRevisar > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 min-w-[24px] h-6 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold grid place-items-center tabular-nums ring-[3px] ring-gray-950"
                           title={sinRevisar + ' sin revisar en Comunicación'}>{sinRevisar}</span>
+                      )}
+                      {/* Abajo, separado del contador naranja de mensajes: eso es
+                          correo sin abrir y esto es su estado. No se mezclan. */}
+                      {nivelDe(d.id) && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-[3px] ring-gray-950"
+                          style={{ background: COLOR_SENAL[nivelDe(d.id)!] }}
+                          title={resumenSenales.find(a => a.id === d.id)?.titular} />
                       )}
                     </span>
                     <span className="font-semibold text-[15px] text-gray-400 group-hover:text-white transition-colors duration-200">{d.nombre}</span>
@@ -359,6 +404,10 @@ export default function Dashboard() {
                             <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
                               style={{ background: 'linear-gradient(145deg, ' + g1 + ', ' + g2 + ')' }}>{inicial(d.nombre)}</span>
                             <span className={'flex-1 text-sm truncate ' + (sel ? 'text-white font-semibold' : 'text-gray-300')}>{d.nombre}</span>
+                            {nivelDe(d.id) && (
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLOR_SENAL[nivelDe(d.id)!] }}
+                                title={resumenSenales.find(a => a.id === d.id)?.titular} />
+                            )}
                             {totalDe(porRevisar, d.id) > 0 && (
                               <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-orange-500 text-white text-[11px] font-bold grid place-items-center tabular-nums"
                                 title="Sin revisar en Comunicación">{totalDe(porRevisar, d.id)}</span>

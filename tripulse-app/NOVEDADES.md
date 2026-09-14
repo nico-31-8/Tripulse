@@ -14,6 +14,36 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 14 de septiembre de 2026
+
+### Al entrar ya sabes a quién tienes que mirar
+
+Las señales que salieron el otro día solo se veían **del atleta que tuvieras
+abierto**. O sea que para enterarte de que a alguien le está costando más de lo
+previsto tenías que sospecharlo primero y entrar a mirarlo.
+
+Ahora, nada más entrar, encima de la parrilla de caras aparece **«2 atletas con
+señales»** con el nombre de cada uno y lo primero que le pasa:
+
+> **Bruno** · Su sesión más larga ha dado un salto
+> **Marta** · Lleva 17 días sin rellenar el wellness
+
+Pulsas el nombre y se abre su panel, que es donde está el dato completo y la
+acción. Además, cada cara de la parrilla lleva **un punto de color** (rojo,
+ámbar o azul según lo que tenga), y lo mismo en el desplegable de cambiar de
+deportista. El contador naranja de mensajes sin leer sigue donde estaba: eso es
+correo sin abrir y esto es su estado, no se mezclan.
+
+**Quien no entrena, no avisa.** Antes de sacar esto, una cuenta que dejó de
+usarse en mayo habría salido todos los días con «lleva 134 días sin rellenar el
+wellness». Ahora eso solo se cuenta de atletas que tienen entrenamientos estas
+dos semanas. Una lista en la que sale todo el mundo no se lee.
+
+Y las señales de la entrada y las del panel salen **del mismo cálculo**: no
+puede pasar que la entrada diga tres y su panel enseñe dos.
+
+---
+
 ## 11 de septiembre de 2026
 
 ### «Necesita tu atención» ahora te dice qué pasa y qué haría
