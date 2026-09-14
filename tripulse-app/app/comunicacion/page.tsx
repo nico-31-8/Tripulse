@@ -43,7 +43,7 @@ export default function ComunicacionPage() {
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
 
-    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre')
+    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
     const deportistas = deps || []
     setDeportistas(deportistas)
 

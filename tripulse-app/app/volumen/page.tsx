@@ -161,7 +161,7 @@ export default function VolumenPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
       const act = getAtletaActivo()

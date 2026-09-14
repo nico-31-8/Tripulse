@@ -35,6 +35,10 @@ export default function Deportistas() {
   const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
+  /* Los que solo hacen tests. Van aparte y plegados: no son su equipo, pero
+     tiene que poder llegar a su ficha para ver lo que midió. */
+  const [evaluados, setEvaluados] = useState<{ id: number; nombre: string }[]>([])
+  const [verEvaluados, setVerEvaluados] = useState(false)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [nombre, setNombre] = useState('')
   const [sexo, setSexo] = useState('')
@@ -50,15 +54,22 @@ export default function Deportistas() {
   const [formGrupo, setFormGrupo] = useState(false)
   const [nombreGrupo, setNombreGrupo] = useState('')
   const [elegidos, setElegidos] = useState<number[]>([])
+  /* Gente a la que solo se le va a pasar un test, escrita a mano. Un nombre
+     por línea: es lo más rápido de teclear con una lista delante. */
+  const [nuevosTexto, setNuevosTexto] = useState('')
 
   useEffect(() => { cargarDeportistas(); cargarLosGrupos() }, [])
 
   const cargarDeportistas = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
-    const { data, error } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
-    if (error) setError('Error al cargar: ' + error.message)
-    setDeportistas(data || [])
+    const [suyos, soloTest] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false),
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
+    ])
+    if (suyos.error) setError('Error al cargar: ' + suyos.error.message)
+    setDeportistas(suyos.data || [])
+    setEvaluados(soloTest.data || [])
   }
 
   const cargarLosGrupos = async () => {
@@ -74,14 +85,17 @@ export default function Deportistas() {
     e.preventDefault()
     setLoading(true); setError('')
     const user = await usuarioActual()
-    const { error: err } = await crearGrupo(supabase, user!.id, nombreGrupo, elegidos)
+    const { error: err } = await crearGrupo(supabase, user!.id, nombreGrupo, elegidos, undefined, nuevos)
     if (err) setError(err)
     else {
-      setNombreGrupo(''); setElegidos([]); setFormGrupo(false)
+      setNombreGrupo(''); setElegidos([]); setNuevosTexto(''); setFormGrupo(false)
+      await cargarDeportistas()
       await cargarLosGrupos()
     }
     setLoading(false)
   }
+
+  const nuevos = nuevosTexto.split(/\r?\n/).map(n => n.trim()).filter(Boolean)
 
   const alternar = (id: number) =>
     setElegidos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -141,9 +155,8 @@ export default function Deportistas() {
             {/* Un grupo se crea desde donde ya estás creando gente: es la misma
                 pregunta ("¿a quién voy a entrenar?") con otra respuesta. */}
             <button onClick={() => { setFormGrupo(!formGrupo); setMostrarForm(false) }}
-              disabled={deportistas.length === 0}
-              title={deportistas.length === 0 ? 'Primero crea algún deportista' : 'Un grupo entrena lo mismo a la vez'}
-              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
+              title="Un grupo entrena lo mismo a la vez, y también sirve para pasar tests a gente que no es tuya"
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
               {formGrupo ? 'Cancelar' : '+ Nuevo grupo'}
             </button>
             <button onClick={() => { setMostrarForm(!mostrarForm); setFormGrupo(false) }} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
@@ -197,25 +210,49 @@ export default function Deportistas() {
               className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
             <div>
               <label className="text-gray-400 text-sm mb-2 block">
-                Quién entra {elegidos.length > 0 && <span className="text-orange-400">· {elegidos.length} elegido{elegidos.length > 1 ? 's' : ''}</span>}
+                Quién entra {elegidos.length > 0 && <span className="text-orange-400">· {elegidos.length} de los tuyos</span>}
               </label>
-              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
-                {deportistas.map(d => (
-                  <label key={d.id}
-                    className={'flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ' +
-                      (elegidos.includes(d.id)
-                        ? 'bg-orange-500/10 border-orange-500/50'
-                        : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
-                    <input type="checkbox" checked={elegidos.includes(d.id)} onChange={() => alternar(d.id)}
-                      className="accent-orange-500 w-4 h-4" />
-                    <span className="text-white text-sm">{d.nombre}</span>
-                  </label>
-                ))}
-              </div>
+              {deportistas.length === 0 ? (
+                <p className="text-gray-500 text-sm">Todavía no tienes deportistas. Puedes crear el grupo solo con gente nueva.</p>
+              ) : (
+                <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+                  {deportistas.map(d => (
+                    <label key={d.id}
+                      className={'flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ' +
+                        (elegidos.includes(d.id)
+                          ? 'bg-orange-500/10 border-orange-500/50'
+                          : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
+                      <input type="checkbox" checked={elegidos.includes(d.id)} onChange={() => alternar(d.id)}
+                        className="accent-orange-500 w-4 h-4" />
+                      <span className="text-white text-sm">{d.nombre}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
-            <button type="submit" disabled={loading || !elegidos.length}
+
+            {/* ===== GENTE QUE NO ES TUYA =====
+                Para medir a quien no entrenas: una jornada de valoraciones, el
+                equipo de un club. Se les crea ficha con el nombre y nada más
+                —pedir sexo, fecha y FC máxima de doce desconocidos es garantizar
+                que no se rellena ninguno— y quedan fuera del panel, de wellness
+                y de las señales, que es donde serían ruido. Sus tests se guardan
+                igual, por si algún día acaban siendo tuyos. */}
+            <div>
+              <label className="text-gray-400 text-sm mb-1 block">
+                Gente que no es tuya {nuevos.length > 0 && <span className="text-orange-400">· {nuevos.length}</span>}
+              </label>
+              <p className="text-gray-500 text-xs mb-2">
+                Un nombre por línea. Solo para pasarles tests: no entran en tu panel ni en tu cupo de deportistas.
+              </p>
+              <textarea value={nuevosTexto} onChange={e => setNuevosTexto(e.target.value)} rows={4}
+                placeholder={'Marta Iglesias\nPedro Souto\n…'}
+                className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full text-sm" />
+            </div>
+
+            <button type="submit" disabled={loading || (!elegidos.length && !nuevos.length)}
               className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-40">
-              {loading ? 'Guardando...' : 'Crear grupo'}
+              {loading ? 'Guardando…' : 'Crear grupo'}
             </button>
           </form>
         )}
@@ -243,7 +280,7 @@ export default function Deportistas() {
         {deportistas.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-5xl mb-4">👥</div>
-            <p>No tienes deportistas todavia. Anade el primero.</p>
+            <p>Todavía no tienes deportistas. Añade el primero.</p>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -254,7 +291,7 @@ export default function Deportistas() {
                   <p className="text-gray-400 text-sm">
                     {d.sexo || 'Sin especificar'} · 
                     {d.fecha_nacimiento ? ` ${calcularEdad(d.fecha_nacimiento)} años · ` : ' '}
-                    FC max: {d.fc_maxima || '—'} ppm · 
+                    FC máx: {d.fc_maxima || '—'} ppm · 
                     HRV basal: {d.hrv_basal || '—'} ms
                   </p>
                 </div>
@@ -269,6 +306,31 @@ export default function Deportistas() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* ===== EVALUADOS =====
+            Gente a la que solo se le pasó un test. No es su equipo —no salen en
+            el panel, ni en wellness, ni en las señales— pero sus resultados
+            están guardados por si algún día acaba entrenándolos. */}
+        {evaluados.length > 0 && (
+          <section className="mt-10">
+            <button onClick={() => setVerEvaluados(v => !v)}
+              className="text-gray-500 hover:text-gray-300 text-[12.5px] transition">
+              {verEvaluados ? '▴ Ocultar evaluados' : '▾ Evaluados'}
+              <span className="text-gray-600"> · {evaluados.length} · solo tests, fuera de tu equipo</span>
+            </button>
+            {verEvaluados && (
+              <div className="grid gap-2 mt-3">
+                {evaluados.map(d => (
+                  <button key={d.id} onClick={() => router.push('/tests/' + d.id)}
+                    className="bg-gray-900 rounded-xl px-5 py-3.5 border border-gray-800 hover:border-gray-700 transition text-left flex items-center justify-between gap-3">
+                    <span className="font-semibold text-[14px]">{d.nombre}</span>
+                    <span className="text-gray-500 text-[12px]">Ver sus tests →</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
         )}
       </div>
       {/* Modal enlace invitación */}

@@ -16,7 +16,7 @@ export default function TestsPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
+      const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
       setDeportistas(data || [])
       // Si hay un deportista activo, entramos directo a sus tests (sin volver a elegir).
       const act = getAtletaActivo()

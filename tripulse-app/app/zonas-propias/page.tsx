@@ -91,7 +91,7 @@ export default function ZonasPropiasPage() {
     const [{ data: zs }, { data: deps }] = await Promise.all([
       supabase.from('zona_entrenador').select('*').eq('id_entrenador', user.id)
         .eq('archivada', false).order('orden'),
-      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre'),
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
     ])
     setZonas(leerZonas(zs))
     setDeportistas(deps || [])

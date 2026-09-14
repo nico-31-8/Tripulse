@@ -26,7 +26,7 @@ export default function PapeleraPage() {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
 
-    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
+    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false)
     if (!deps?.length) { setLoading(false); return }
     const depIds = deps.map((d: any) => d.id)
 

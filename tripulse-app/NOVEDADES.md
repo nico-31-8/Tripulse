@@ -16,6 +16,39 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### Ya puedes medir a gente que no es tuya
+
+Si vas a una jornada de valoraciones, o un club te llama para medir a su equipo,
+antes no tenías dónde meter esos datos: o dabas de alta a cada uno como
+deportista tuyo —y se te llenaba el panel de atletas que no entrenan— o los
+apuntabas en un papel.
+
+Ahora, al crear un grupo, además de elegir a los tuyos hay un recuadro:
+**«Gente que no es tuya»**. Escribes **un nombre por línea** y ya está. Puedes
+crear un grupo mezclando los dos, o **entero de gente de fuera** — el botón de
+nuevo grupo ya no está bloqueado cuando todavía no tienes deportistas.
+
+Solo se pide el nombre. Pedir sexo, fecha de nacimiento y frecuencia cardíaca
+máxima de doce desconocidos con la lista en la mano es garantizar que no se
+rellena ninguno; lo que falte se completa después si esa persona acaba siendo
+tuya.
+
+**Para pasarles el test**, en Dirigir tests hay ahora una fila de pestañas
+arriba: **Mis deportistas** y un botón por cada grupo. Pulsas el grupo y trae a
+sus miembros **ya marcados todos**, listos para medir.
+
+**No ensucian nada de lo tuyo.** Esa gente está fuera del panel, de la entrada,
+de las señales, del informe semanal, de wellness, de comunicación, de carga, de
+volumen, de los índices, del SICAT y de la planificación. Si no fuera así, te
+aparecerían como atletas que no entrenan nunca y te reventarían justo lo que
+miras cada día: el aviso de «2 atletas con señales» pasaría a contar gente que
+mediste una tarde.
+
+Los ves en tres sitios: dentro de su grupo, en Dirigir tests, y en
+**Deportistas → «▾ Evaluados»**, abajo del todo y plegado. Desde ahí entras a
+sus tests. Sus resultados se guardan igual que los de cualquiera, por si algún
+día acabas entrenando a esa persona.
+
 ### Ahora eliges cómo haces el test, y solo ves esa forma
 
 Un test se puede hacer de dos maneras: **dirigiéndolo en vivo** con cronómetro,

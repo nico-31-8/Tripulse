@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  crearGrupo, meterEnGrupo, sacarDelGrupo, contarMiembros, borrarGrupo,
+  crearGrupo, meterEnGrupo, sacarDelGrupo, contarMiembros, borrarGrupo, crearEvaluados,
   renombrarGrupo, sistemaZonasMayoritario,
   faltaEsquema, testsQueFaltan, ERROR_FALTA_ESQUEMA,
 } from './grupos'
@@ -45,7 +45,7 @@ describe('crearGrupo', () => {
   it('no crea nada sin nombre ni sin deportistas', async () => {
     const sb = sbFalso()
     expect((await crearGrupo(sb, 'u1', '   ', [1])).error).toMatch(/nombre/i)
-    expect((await crearGrupo(sb, 'u1', 'Escuela', [])).error).toMatch(/deportista/i)
+    expect((await crearGrupo(sb, 'u1', 'Escuela', [])).error).toMatch(/alguien/i)
     expect(sb.ops).toHaveLength(0)
   })
 
@@ -218,5 +218,82 @@ describe('faltaEsquema', () => {
     })).toBe(false)
     expect(faltaEsquema({ code: '23505', message: 'duplicate key' })).toBe(false)
     expect(faltaEsquema(null)).toBe(false)
+  })
+})
+
+describe('evaluados — gente a la que solo se le pasa un test', () => {
+  /** Un supabase de mentira que apunta lo que se escribe. */
+  const sbFalso = (o: { fallaMiembros?: boolean } = {}) => {
+    const escrito: any[] = []
+    const borrado: any[] = []
+    return {
+      escrito, borrado,
+      from(tabla: string) {
+        const q: any = {
+          insert: (filas: any) => {
+            const lista = Array.isArray(filas) ? filas : [filas]
+            escrito.push(...lista.map(f => ({ ...f, _tabla: tabla })))
+            if (tabla === 'grupo_entreno_miembro') {
+              return o.fallaMiembros ? Promise.resolve({ error: { message: 'no' } }) : Promise.resolve({ error: null })
+            }
+            return {
+              select: () => tabla === 'grupo_entreno'
+                ? { single: () => Promise.resolve({ data: { id: 'g1' }, error: null }) }
+                : Promise.resolve({ data: lista.map((_, i) => ({ id: 100 + i })), error: null }),
+            }
+          },
+          select: () => q,
+          eq: () => q,
+          in: (_c: string, v: any[]) => { borrado.push({ tabla, ids: v }); return Promise.resolve({ error: null }) },
+          delete: () => q,
+        }
+        return q
+      },
+    }
+  }
+
+  it('crea una ficha por nombre, marcada como solo_test', async () => {
+    const sb = sbFalso()
+    const r = await crearEvaluados(sb as any, 'ent-1', ['Ana', 'Bea'])
+    expect(r.error).toBeNull()
+    expect(r.ids).toEqual([100, 101])
+    expect(sb.escrito).toHaveLength(2)
+    expect(sb.escrito.every(f => f.solo_test === true && f.id_entrenador === 'ent-1')).toBe(true)
+  })
+
+  it('quita espacios, vacíos y repetidos', async () => {
+    const sb = sbFalso()
+    await crearEvaluados(sb as any, 'ent-1', ['  Ana  ', '', '   ', 'Ana', 'Bea'])
+    expect(sb.escrito.map(f => f.nombre)).toEqual(['Ana', 'Bea'])
+  })
+
+  it('sin nombres no escribe nada ni da error', async () => {
+    const sb = sbFalso()
+    const r = await crearEvaluados(sb as any, 'ent-1', ['  ', ''])
+    expect(r).toEqual({ ids: [], error: null })
+    expect(sb.escrito).toEqual([])
+  })
+
+  it('un grupo puede ser entero de gente nueva, sin ninguno de los suyos', async () => {
+    const sb = sbFalso()
+    const r = await crearGrupo(sb as any, 'ent-1', 'Valoraciones CN Vigo', [], undefined, ['Ana', 'Bea'])
+    expect(r.error).toBeNull()
+    expect(r.id).toBe('g1')
+    const miembros = sb.escrito.filter(f => f._tabla === 'grupo_entreno_miembro')
+    expect(miembros.map(m => m.id_deportista)).toEqual([100, 101])
+  })
+
+  it('sin nadie y sin nombres nuevos, no se crea', async () => {
+    const sb = sbFalso()
+    expect((await crearGrupo(sb as any, 'ent-1', 'Vacío', [], undefined, [])).error).toMatch(/alguien/)
+  })
+
+  it('si los miembros fallan, no quedan ni el grupo ni las fichas sueltas', async () => {
+    /* Fichas huérfanas en «Evaluados» que el entrenador no sabría de dónde
+       salieron son peor que el error. */
+    const sb = sbFalso({ fallaMiembros: true })
+    const r = await crearGrupo(sb as any, 'ent-1', 'Jornada', [], undefined, ['Ana'])
+    expect(r.id).toBeNull()
+    expect(sb.borrado.some(b => b.tabla === 'deportista' && b.ids.includes(100))).toBe(true)
   })
 })

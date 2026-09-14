@@ -60,7 +60,7 @@ export default function WellnessEntrenador() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
       if (deps) {
         /* Esto era una consulta POR ATLETA: con veinte deportistas, veinte
            viajes para pintar la lista. Ahora es uno para todos y se reparte en

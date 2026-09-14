@@ -74,7 +74,7 @@ export default function TestsPropiosPage() {
     const [{ data: defs }, { data: deps }] = await Promise.all([
       supabase.from('test_definicion').select('*').eq('id_entrenador', user.id)
         .eq('archivado', false).order('created_at', { ascending: false }),
-      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre'),
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
     ])
     const ids = (defs || []).map((d: any) => d.id)
     /* Cuántas mediciones tiene cada uno, en UNA consulta y no una por test:

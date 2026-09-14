@@ -67,7 +67,7 @@ export default function Dashboard() {
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)
       supabase.rpc('soy_plataforma').then(({ data }) => setEsPlataforma(!!data))
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).order('nombre')
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
       setDeportistas(deps || [])
       // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
       const depIds = (deps || []).map((d: any) => d.id)

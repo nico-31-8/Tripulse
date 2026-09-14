@@ -85,20 +85,33 @@ export async function miembrosDe(sb: any, idGrupo: string): Promise<MiembroGrupo
 // mano, y encima parecería que la operación funcionó.
 export async function crearGrupo(
   sb: any, idEntrenador: string, nombre: string, idsDeportistas: number[], descripcion?: string,
+  /* Gente que todavía no tiene ficha: se crea aquí, marcada como `solo_test`.
+     Un grupo puede no llevar a ninguno de los suyos y ser entero de evaluados:
+     es el caso de una jornada de valoraciones en un club. */
+  nuevos: string[] = [],
 ): Promise<{ id: string | null; error: string | null }> {
   const limpio = (nombre || '').trim()
   if (!limpio) return { id: null, error: 'El grupo necesita un nombre.' }
-  if (!idsDeportistas.length) return { id: null, error: 'Elige al menos un deportista.' }
+  const porCrear = [...new Set((nuevos || []).map(n => (n || '').trim()).filter(Boolean))]
+  if (!idsDeportistas.length && !porCrear.length) return { id: null, error: 'Elige a alguien o añade a alguien nuevo.' }
 
   const { data: g, error: eG } = await sb.from('grupo_entreno')
     .insert({ id_entrenador: idEntrenador, nombre: limpio, descripcion: descripcion?.trim() || null })
     .select('id').single()
   if (eG || !g) return { id: null, error: faltaEsquema(eG) ? ERROR_FALTA_ESQUEMA : (eG?.message || 'No se pudo crear el grupo.') }
 
+  const { ids: idsNuevos, error: eN } = await crearEvaluados(sb, idEntrenador, porCrear)
+  if (eN) {
+    await sb.from('grupo_entreno').delete().eq('id', g.id)
+    return { id: null, error: eN }
+  }
+
+  const todos = [...idsDeportistas, ...idsNuevos]
   const { error: eM } = await sb.from('grupo_entreno_miembro')
-    .insert(idsDeportistas.map(id => ({ id_grupo: g.id, id_deportista: id })))
+    .insert(todos.map(id => ({ id_grupo: g.id, id_deportista: id })))
   if (eM) {
     await sb.from('grupo_entreno').delete().eq('id', g.id)
+    if (idsNuevos.length) await sb.from('deportista').delete().in('id', idsNuevos)
     return { id: null, error: eM.message }
   }
   return { id: g.id, error: null }
@@ -223,4 +236,52 @@ export function testsQueFaltan(
   if (!t.ftp) faltan.push('FTP')
   if (!t.css) faltan.push('CSS')
   return faltan
+}
+
+/**
+ * Fichas de gente a la que solo se le va a pasar un test.
+ *
+ * El entrenador mide a deportistas que no son suyos —una jornada de
+ * valoraciones, un club que le llama— y quiere guardar el resultado por si
+ * algún día entrena a esa persona. Son fichas de deportista normales: tienen
+ * sus tests, su historial y su ficha. Lo que NO son es su equipo, y por eso van
+ * marcadas con `solo_test`: sin esa marca aparecerían en el panel, en wellness
+ * y en las señales como atletas que no entrenan nunca, y ensuciarían justo lo
+ * que se mira todos los días.
+ *
+ * Solo se les pide el nombre. Pedir sexo, fecha de nacimiento y FC máxima para
+ * pasar un test de campo a doce desconocidos es garantizar que no se rellena
+ * ninguno; lo que falte se completa después si esa persona acaba siendo suya.
+ */
+export async function crearEvaluados(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any, idEntrenador: string, nombres: string[],
+): Promise<{ ids: number[]; error: string | null }> {
+  const limpios = [...new Set((nombres || []).map(n => (n || '').trim()).filter(Boolean))]
+  if (!limpios.length) return { ids: [], error: null }
+
+  const { data, error } = await sb.from('deportista')
+    .insert(limpios.map(nombre => ({ id_entrenador: idEntrenador, nombre, solo_test: true })))
+    .select('id')
+  if (error) return { ids: [], error: error.message }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { ids: (data || []).map((d: any) => Number(d.id)), error: null }
+}
+
+/** Los mismos, pero metidos en un grupo que ya existe. */
+export async function anadirEvaluados(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any, idEntrenador: string, idGrupo: string, nombres: string[],
+): Promise<{ ids: number[]; error: string | null }> {
+  const { ids, error } = await crearEvaluados(sb, idEntrenador, nombres)
+  if (error) return { ids: [], error }
+  if (!ids.length) return { ids: [], error: null }
+  const eM = await meterEnGrupo(sb, idGrupo, ids)
+  if (eM) {
+    /* Si no entran en el grupo, sus fichas no valen para nada y el entrenador
+       se las encontraría sueltas en «Evaluados» sin saber de dónde salieron. */
+    await sb.from('deportista').delete().in('id', ids)
+    return { ids: [], error: eM }
+  }
+  return { ids, error: null }
 }

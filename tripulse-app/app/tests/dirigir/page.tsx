@@ -40,6 +40,7 @@ import {
   avisosDeTesteo,
   type TestCampo, type Valores, type Disciplina, type CampoBruto,
 } from '@/lib/catalogo-tests'
+import { cargarGrupos, miembrosDe, type Grupo } from '@/lib/grupos'
 import {
   contextosDe, guardarTestsDeCampo, resumenDeTests, testsDeHoy, diasHastaCarreraA,
   type Contextos, type ResultadoGuardado,
@@ -90,6 +91,12 @@ export default function DirigirTests() {
   const [fecha, setFecha] = useState(hoyISO())
   const [protocolo, setProtocolo] = useState<Valores>(() => protocoloInicial(testPorClave('6min')!))
   const [elegidos, setElegidos] = useState<number[]>([])
+  /* Los grupos, para poder testar a uno entero de una pulsación — y porque es
+     la única forma de llegar a la gente que solo hace tests: esos no están en
+     la lista de sus deportistas a propósito. */
+  const [gruposEntreno, setGruposEntreno] = useState<Grupo[]>([])
+  const [grupoSel, setGrupoSel] = useState<string | null>(null)
+  const [delGrupo, setDelGrupo] = useState<Deportista[]>([])
   // Por id y no por posición: reordenar la lista no puede mezclar los datos de
   // dos atletas.
   const [porPersona, setPorPersona] = useState<Record<number, Valores>>({})
@@ -140,10 +147,13 @@ export default function DirigirTests() {
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) return
-    const { data } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre')
+    const { data } = await supabase.from('deportista').select('id, nombre')
+      .eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
     const lista = (data || []) as Deportista[]
     setDeportistas(lista)
     if (lista.length) setContextos(await contextosDe(supabase, lista.map(d => d.id)))
+    const { grupos: gs } = await cargarGrupos(supabase)
+    setGruposEntreno(gs)
   }
 
   const ponProtocolo = (k: string, v: string) => setProtocolo(p => ({ ...p, [k]: v }))
@@ -153,10 +163,24 @@ export default function DirigirTests() {
   const alternar = (id: number) =>
     setElegidos(e => (e.includes(id) ? e.filter(x => x !== id) : [...e, id]))
 
+  /* Elegir un grupo trae a sus miembros y los marca a todos: si has venido a
+     testar a un grupo, marcarlos uno a uno es trabajo que la app puede hacer. */
+  const elegirGrupo = async (id: string | null) => {
+    setGrupoSel(id)
+    if (!id) { setDelGrupo([]); setElegidos([]); return }
+    const ms = await miembrosDe(supabase, id)
+    const lista = ms.map(m => ({ id: m.id_deportista, nombre: m.nombre }))
+    setDelGrupo(lista)
+    setElegidos(lista.map(d => d.id))
+    if (lista.length) setContextos(await contextosDe(supabase, lista.map(d => d.id)))
+  }
+
   /** Lo escrito de una persona, ya con el protocolo mezclado. */
   const valoresDe = (id: number): Valores => ({ ...protocolo, ...(porPersona[id] || {}) })
 
-  const seleccionados = (deportistas || []).filter(d => elegidos.includes(d.id))
+  /* Con un grupo elegido se testa a sus miembros; sin él, a los suyos. */
+  const candidatos: Deportista[] = grupoSel ? delGrupo : (deportistas || [])
+  const seleccionados = candidatos.filter(d => elegidos.includes(d.id))
   const listos = seleccionados.filter(d => estaCompleto(test, valoresDe(d.id), contextos[d.id] || {})).length
   const uno = seleccionados.length === 1
 
@@ -293,11 +317,30 @@ export default function DirigirTests() {
             </span>
           </div>
 
-          {deportistas.length === 0 ? (
-            <p className="text-gray-500 text-sm">Todavía no tienes deportistas.</p>
+          {gruposEntreno.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              <button onClick={() => elegirGrupo(null)}
+                className={'text-[11.5px] font-semibold px-3 py-1.5 rounded-full border transition ' +
+                  (grupoSel === null ? 'bg-white/[0.1] text-white border-white/20' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>
+                Mis deportistas
+              </button>
+              {gruposEntreno.map(g => (
+                <button key={g.id} onClick={() => elegirGrupo(g.id)}
+                  className={'text-[11.5px] font-semibold px-3 py-1.5 rounded-full border transition ' +
+                    (grupoSel === g.id ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>
+                  {g.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {candidatos.length === 0 ? (
+            <p className="text-gray-500 text-sm">
+              {grupoSel ? 'Este grupo no tiene a nadie dentro.' : 'Todavía no tienes deportistas. Puedes crear un grupo con gente de fuera desde Deportistas.'}
+            </p>
           ) : (
             <div className="flex gap-2 flex-wrap">
-              {deportistas.map(d => (
+              {candidatos.map(d => (
                 <button key={d.id} onClick={() => alternar(d.id)}
                   className={'px-3 py-1.5 rounded-lg text-sm transition ' +
                     (elegidos.includes(d.id) ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white')}>
