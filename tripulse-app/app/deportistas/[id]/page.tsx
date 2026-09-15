@@ -446,7 +446,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               return s.ir
                 ? <button key={s.k} onClick={() => router.push(s.ir!)} className={clase + ' text-left hover:bg-white/[0.03] transition group'}>
                     {cuerpo}
-                    <p className="text-[10.5px] text-orange-400/80 mt-1 opacity-0 group-hover:opacity-100 transition">Ver lo que manda →</p>
+                    {/* En el móvil no hay `hover`: si la pista de que esto se pulsa
+                        solo aparece al pasar el ratón, en el teléfono no existe y nadie
+                        descubre la pantalla. Se ve siempre, y se esconde a partir de
+                        `sm` para no ensuciar el escritorio. */}
+                    <p className="text-[10.5px] text-orange-400/80 mt-1 transition sm:opacity-0 sm:group-hover:opacity-100">Ver lo que manda →</p>
                   </button>
                 : <div key={s.k} className={clase}>{cuerpo}</div>
             })}

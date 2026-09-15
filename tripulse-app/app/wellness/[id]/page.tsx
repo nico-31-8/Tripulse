@@ -14,6 +14,7 @@ import CruceWellness from '@/components/CruceWellness'
 import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, type NocheReloj } from '@/lib/noches-reloj'
 import { llamarReloj } from '@/lib/relojes-cliente'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
+import AvisoConectarReloj from '@/components/AvisoConectarReloj'
 
 // Color de la flecha de tendencia según si el cambio es favorable para esa métrica.
 function flechaColor(m: MetricaAnalisis): string {
@@ -351,6 +352,16 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
         </div>
 
         {/* Consultando: el análisis manda y va primero. */}
+        {/* Aquí es donde se paga solo: con un reloj conectado la app deja de
+            preguntarle el sueño y la HRV porque ya las tiene. Ofrecérselo justo
+            mientras las escribe a mano es el único momento en que se entiende
+            para qué sirve. Solo al atleta: la conexión la hace él desde su
+            perfil, al entrenador no le sirve de nada el botón.
+            `conectado` ya está resuelto aquí: viene del mismo Promise.all que el
+            deportista, y sin deportista la pantalla no llega a pintarse. */}
+        {esDeportista && <AvisoConectarReloj conectado={conectado} className="mb-6"
+          mensaje="Conéctalo y dejarás de escribir el sueño y la HRV a mano: los trae él." />}
+
         {!mostrarForm && panelAnalisis}
 
         <div className="flex justify-between items-center mb-6">

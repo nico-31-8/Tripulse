@@ -16,6 +16,26 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### Tus deportistas ya saben que pueden conectar su reloj
+
+La conexión del reloj estaba en el perfil del deportista, la tercera tarjeta,
+detrás del menú «Más» de la barra de abajo. Tres niveles. Y en toda su
+aplicación **no había una sola línea que le dijera que eso existe**: si no lo
+sabes, no entras a tu perfil a buscarlo.
+
+Lo irónico es que la pantalla donde más se nota tenerlo era justo donde no se
+ofrecía. Con un reloj conectado, el wellness **deja de preguntarle el sueño y
+la HRV** porque ya los tiene — y ahí estaba él, todas las mañanas,
+escribiéndolos a mano.
+
+Ahora, **en su wellness**, justo encima del formulario: «¿Llevas reloj?
+Conéctalo y dejarás de escribir el sueño y la HRV a mano: los trae él», con un
+botón que lleva directo. Y **en su pantalla de hoy**, más discreto, para el que
+acaba de entrar en la app.
+
+Los dos se borran solos en cuanto conecte uno. Y en el wellness solo lo ve él:
+tú entras a esa misma pantalla para mirarle, y ahí ese botón no te sirve — la
+conexión la hace el deportista desde su perfil, no se puede hacer por él.
 ### El reloj del Montreal y de la rampa pita al cambiar de escalón
 
 Dirigiendo un test incremental vas cantando la velocidad: «8,5… 9,0… 9,5». Para

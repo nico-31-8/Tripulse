@@ -16,6 +16,7 @@ import { cargarReferencias } from '@/lib/referencia-zona'
 import { vivas } from '@/lib/papelera'
 import { aISO } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
+import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConectarReloj'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
@@ -45,6 +46,9 @@ function Cabecera({ titulo, resumen, abierto, onClick }: { titulo: string; resum
 export default function DashboardDeportista() {
   const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
+  /* Si ya tiene reloj. Con `null` mientras se mira, para que el aviso no le
+     parpadee en la cara a quien sí lo tiene. */
+  const relojConectado = useRelojConectado()
   const [deportista, setDeportista] = useState<any>(null)
   const [sesionesHoy, setSesionesHoy] = useState<any[]>([])
   const [tareasPorSesion, setTareasPorSesion] = useState<Record<number, any[]>>({})
@@ -254,6 +258,10 @@ export default function DashboardDeportista() {
           <h2 className="text-2xl font-bold">Hola, {perfil?.nombre} 👋</h2>
           <span className="text-gray-600 text-xs">{new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
         </div>
+
+        {/* Que exista. En su aplicación no había una sola línea que se lo dijera,
+            y la conexión vive tres niveles abajo: «Más» → Mi perfil → bajar. */}
+        <AvisoConectarReloj conectado={relojConectado} className="mb-4" />
 
         {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
         <InvitacionesClub />

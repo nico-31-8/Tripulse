@@ -70,7 +70,7 @@ export function AvisoDeSalida({ abierto, aviso, onSeguir, onSalir }: {
 }) {
   if (!abierto) return null
   return (
-    <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
         <h3 className="font-bold text-[17px]">¿Salir del test?</h3>
         <p className="text-gray-400 text-[13px] mt-2 leading-snug">
@@ -127,7 +127,12 @@ export default function PantallaDeTest({ titulo, sub, alSalir, aviso, children }
   const bloqueo = useBloqueoDeSalida(true)
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-950 overflow-y-auto overscroll-contain">
+    /* Por encima del menú lateral (z-50), no a su misma altura.
+       Empatados, quien pinta encima depende del orden del layout: hoy gana esta
+       pantalla por estar después, pero mover un import lo invertiría y el botón
+       de TRIPULSE volvería a quedar sobre la cabecera del test — que es
+       exactamente el fallo que ya nos comió el «← Plan» en modo entreno. */
+    <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto overscroll-contain">
       <header className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 px-4 sm:px-6 h-[58px] flex items-center">
         <BarraDeTest titulo={titulo} sub={sub} onSalir={bloqueo.preguntar} />
       </header>
