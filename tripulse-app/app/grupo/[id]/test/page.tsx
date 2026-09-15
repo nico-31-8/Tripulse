@@ -12,6 +12,7 @@ import {
 } from '@/lib/grupos-test'
 import { ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
 import InstrumentoGrupo from '@/components/InstrumentoGrupo'
+import PantallaDeTest from '@/components/PantallaDeTest'
 import { seDirigeEnGrupo } from '@/lib/herramientas-test'
 import type { ModoTest } from '@/lib/catalogo-tests'
 
@@ -123,6 +124,100 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
     setOcupado(false)
   }
 
+  /* Los ajustes del protocolo y la lista de personas se usan en los dos modos
+     —a mano se quedan en la página, dirigido viven dentro de la pantalla que
+     tapa la aplicación— así que se escriben UNA vez. */
+  const ajustes = (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-gray-800">
+        <label className="flex flex-col gap-1">
+          <span className="text-gray-400 text-xs">Qué día</span>
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+            className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+        </label>
+        {def.protocolo.map(c => (
+          <label key={c.clave} className="flex flex-col gap-1">
+            <span className="text-gray-400 text-xs">{c.etiqueta} {c.sufijo && <span className="text-gray-600">({c.sufijo})</span>}</span>
+            <input type="number" inputMode="decimal" value={protocolo[c.clave] ?? ''}
+              onChange={e => ponProtocolo(c.clave, e.target.value)}
+              className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+          </label>
+        ))}
+      </div>
+      <p className="text-gray-600 text-xs">
+        Esto es igual para todo el grupo: hacéis el mismo test. Abajo solo va lo que cambia de uno a otro.
+      </p>
+    </>
+  )
+
+  const listaPersonas = (
+          <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            {miembros.length === 0 ? (
+              <p className="text-gray-500 text-sm">El grupo no tiene a nadie todavía.</p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3">
+                  {miembros.map(m => {
+                    const v = porPersona[m.id_deportista] || {}
+                    const res = resultadoDe(clave, protocolo, v)
+                    return (
+                      <div key={m.id_deportista} className="flex flex-wrap items-end gap-3 pb-3 border-b border-gray-800 last:border-0">
+                        <span className="font-medium w-full sm:w-40 sm:truncate">{m.nombre}</span>
+                        {def.porPersona.map(c => (
+                          <label key={c.clave} className="flex flex-col gap-1 flex-1 min-w-[110px]">
+                            <span className="text-gray-500 text-[11px]">{c.etiqueta} {c.sufijo && <span className="text-gray-600">({c.sufijo})</span>}</span>
+                            <input type="number" inputMode="decimal" value={v[c.clave] ?? ''}
+                              onChange={e => ponPersona(m.id_deportista, c.clave, e.target.value)}
+                              className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                          </label>
+                        ))}
+                        {/* El número sale mientras escribes: si te has equivocado de
+                            casilla, se ve aquí antes de guardar y no dos semanas
+                            después en los ritmos del atleta. */}
+                        <div className="flex-1 min-w-[150px] text-right">
+                          <span className="text-gray-500 text-[11px] block">{def.resultado}</span>
+                          <span className={'text-sm font-semibold tabular-nums ' + (res == null ? 'text-gray-600' : 'text-orange-400')}>
+                            {legible(res) || '—'}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="flex justify-between items-center gap-3 flex-wrap mt-5 pt-5 border-t border-gray-800">
+                  <p className="text-gray-500 text-xs">
+                    {listos === 0
+                      ? (modo === 'campo'
+                          ? 'Según vayas pulsando arriba, aquí se rellena solo. Lo puedes corregir.'
+                          : 'Ve rellenando; se guardan solo los que estén completos.')
+                      : listos + ' de ' + miembros.length + ' ' + (listos === 1 ? 'listo' : 'listos') + '. A quien le falte algo no se le guarda nada.'}
+                  </p>
+                  <button onClick={guardar} disabled={ocupado || listos === 0}
+                    className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
+                    {ocupado ? 'Guardando…' : 'Guardar ' + listos + (listos === 1 ? ' test' : ' tests')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {parte && (
+              <div className="mt-5 pt-5 border-t border-gray-800">
+                <p className="text-sm font-medium mb-2">{resumenTests(parte, miembros.length)}</p>
+                <div className="flex flex-col gap-1">
+                  {parte.map(r => (
+                    <div key={r.id_deportista} className="flex items-center gap-2 text-xs">
+                      <span className={r.ok ? 'text-green-500' : 'text-red-400'}>{r.ok ? '✓' : '✕'}</span>
+                      <span className="text-gray-300">{r.nombre}</span>
+                      {r.error && <span className="text-red-400/80">· {r.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+    </section>
+)
+
   if (noExiste) return <Cargando volverA="/deportistas" noExiste />
   if (!grupo) return <Cargando volverA="/deportistas" />
 
@@ -153,24 +248,7 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
             ))}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-gray-800">
-            <label className="flex flex-col gap-1">
-              <span className="text-gray-400 text-xs">Qué día</span>
-              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-                className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-            </label>
-            {def.protocolo.map(c => (
-              <label key={c.clave} className="flex flex-col gap-1">
-                <span className="text-gray-400 text-xs">{c.etiqueta} {c.sufijo && <span className="text-gray-600">({c.sufijo})</span>}</span>
-                <input type="number" inputMode="decimal" value={protocolo[c.clave] ?? ''}
-                  onChange={e => ponProtocolo(c.clave, e.target.value)}
-                  className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-              </label>
-            ))}
-          </div>
-          <p className="text-gray-600 text-xs">
-            Esto es igual para todo el grupo: hacéis el mismo test. Abajo solo va lo que cambia de uno a otro.
-          </p>
+          {modo !== 'campo' && ajustes}
         </section>
 
         {/* ===== ¿CÓMO LO VAS A HACER? =====
@@ -204,89 +282,42 @@ export default function TestDeGrupo({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        {/* ===== EL RELOJ DE TODOS =====
-            Un entrenador no lleva doce cronómetros: lleva uno y va apuntando
-            quién se cae. El reloj arranca con la salida y cada botón captura,
-            del tiempo que lleve corrido, lo que le toca a esa persona: en el
-            Montreal y la rampa el escalón en el que iba y los segundos que
-            aguantaba; en el CSS, su tiempo. */}
-        {dirigible && modo === 'campo' && miembros.length > 0 && (
-          <InstrumentoGrupo
-            claveTest={INSTRUMENTO[clave]}
-            protocolo={protocolo}
-            atletas={miembros.map(m => ({ id: m.id_deportista, nombre: m.nombre }))}
-            capturado={yaTiene}
-            onCapturar={capturarDe} />
-        )}
-
-        {(!dirigible || modo) && (
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          {miembros.length === 0 ? (
-            <p className="text-gray-500 text-sm">El grupo no tiene a nadie todavía.</p>
-          ) : (
-            <>
-              <div className="flex flex-col gap-3">
-                {miembros.map(m => {
-                  const v = porPersona[m.id_deportista] || {}
-                  const res = resultadoDe(clave, protocolo, v)
-                  return (
-                    <div key={m.id_deportista} className="flex flex-wrap items-end gap-3 pb-3 border-b border-gray-800 last:border-0">
-                      <span className="font-medium w-full sm:w-40 sm:truncate">{m.nombre}</span>
-                      {def.porPersona.map(c => (
-                        <label key={c.clave} className="flex flex-col gap-1 flex-1 min-w-[110px]">
-                          <span className="text-gray-500 text-[11px]">{c.etiqueta} {c.sufijo && <span className="text-gray-600">({c.sufijo})</span>}</span>
-                          <input type="number" inputMode="decimal" value={v[c.clave] ?? ''}
-                            onChange={e => ponPersona(m.id_deportista, c.clave, e.target.value)}
-                            className="bg-gray-800 text-white px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                        </label>
-                      ))}
-                      {/* El número sale mientras escribes: si te has equivocado de
-                          casilla, se ve aquí antes de guardar y no dos semanas
-                          después en los ritmos del atleta. */}
-                      <div className="flex-1 min-w-[150px] text-right">
-                        <span className="text-gray-500 text-[11px] block">{def.resultado}</span>
-                        <span className={'text-sm font-semibold tabular-nums ' + (res == null ? 'text-gray-600' : 'text-orange-400')}>
-                          {legible(res) || '—'}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="flex justify-between items-center gap-3 flex-wrap mt-5 pt-5 border-t border-gray-800">
-                <p className="text-gray-500 text-xs">
-                  {listos === 0
-                    ? (modo === 'campo'
-                        ? 'Según vayas pulsando arriba, aquí se rellena solo. Lo puedes corregir.'
-                        : 'Ve rellenando; se guardan solo los que estén completos.')
-                    : listos + ' de ' + miembros.length + ' ' + (listos === 1 ? 'listo' : 'listos') + '. A quien le falte algo no se le guarda nada.'}
-                </p>
-                <button onClick={guardar} disabled={ocupado || listos === 0}
-                  className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40">
-                  {ocupado ? 'Guardando…' : 'Guardar ' + listos + (listos === 1 ? ' test' : ' tests')}
-                </button>
-              </div>
-            </>
-          )}
-
-          {parte && (
-            <div className="mt-5 pt-5 border-t border-gray-800">
-              <p className="text-sm font-medium mb-2">{resumenTests(parte, miembros.length)}</p>
-              <div className="flex flex-col gap-1">
-                {parte.map(r => (
-                  <div key={r.id_deportista} className="flex items-center gap-2 text-xs">
-                    <span className={r.ok ? 'text-green-500' : 'text-red-400'}>{r.ok ? '✓' : '✕'}</span>
-                    <span className="text-gray-300">{r.nombre}</span>
-                    {r.error && <span className="text-red-400/80">· {r.error}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-        )}
+        {!dirigible && listaPersonas}
+        {dirigible && modo === 'mano' && listaPersonas}
       </div>
+
+      {/* ===== EL TEST EN MARCHA TAPA LA APLICACIÓN =====
+          Salir con el reloj corriendo no es un error que se corrija: se ha ido
+          el reloj y con él el escalón de cada atleta, y el test hay que
+          repetirlo con la gente ya cansada. Se sale por un solo sitio, y
+          preguntando. */}
+      {dirigible && modo === 'campo' && (
+        <PantallaDeTest
+          titulo={def.nombre + ' · ' + grupo.nombre}
+          sub={miembros.length + (miembros.length === 1 ? ' atleta' : ' atletas') + ' · ' + listos + ' con resultado'}
+          aviso="Se para el reloj y se pierde lo que no hayas guardado. Si ya tienes resultados, guárdalos antes."
+          alSalir={() => setModo(null)}>
+          <section className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col gap-4">
+            {ajustes}
+          </section>
+          {/* ===== EL RELOJ DE TODOS =====
+              Un entrenador no lleva doce cronómetros: lleva uno y va apuntando
+              quién se cae. El reloj arranca con la salida y cada botón captura,
+              del tiempo que lleve corrido, lo que le toca a esa persona: en el
+              Montreal y la rampa el escalón en el que iba y los segundos que
+              aguantaba; en el CSS, su tiempo. */}
+          {miembros.length > 0 && (
+            <InstrumentoGrupo
+              claveTest={INSTRUMENTO[clave]}
+              protocolo={protocolo}
+              atletas={miembros.map(m => ({ id: m.id_deportista, nombre: m.nombre }))}
+              capturado={yaTiene}
+              onCapturar={capturarDe} />
+          )}
+
+          {listaPersonas}
+        </PantallaDeTest>
+      )}
     </main>
   )
 }

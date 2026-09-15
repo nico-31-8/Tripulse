@@ -16,6 +16,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### Un test en marcha ya no se puede abandonar sin querer
+
+Dirigiendo un test se podía salir de la pantalla con un gesto de atrás en el
+móvil o con el botón del navegador. Y salir con el reloj corriendo no es un
+error que se corrija: se ha ido el reloj y con él el escalón en el que iba cada
+atleta. El test hay que repetirlo, con la gente ya cansada.
+
+Ahora, al elegir **Test de campo**, el test se abre **encima de todo** y tapa la
+aplicación. Arriba queda el nombre del test, el grupo, cuántos llevas con
+resultado, y un único **«Salir del test»**.
+
+Están tapados los tres caminos de salida: el botón de atrás (y el gesto del
+móvil), recargar o cerrar la pestaña, y pulsar cualquier cosa del menú de
+debajo.
+
+**No bloquea: pregunta.** Si quieres salir, sales — pero enterándote, y con el
+aviso de que se para el reloj y se pierde lo que no hayas guardado.
+
+Los ajustes del protocolo están **dentro** de esa pantalla. Si al ir a dar la
+salida ves que el incremento no es el que querías, lo cambias ahí sin salir del
+test.
 ### Los tests de grupo se dirigen con un solo reloj
 
 El test del grupo era un formulario: casillas para escribir a mano el escalón
