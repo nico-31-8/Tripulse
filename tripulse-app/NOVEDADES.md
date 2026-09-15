@@ -16,6 +16,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### El reloj del Montreal y de la rampa pita al cambiar de escalón
+
+Dirigiendo un test incremental vas cantando la velocidad: «8,5… 9,0… 9,5». Para
+eso tienes que estar mirando el reloj, y mirar el reloj es **no mirar a los
+atletas** — que es justo cuando se ve quién se está descolgando.
+
+Ahora suena un tono corto en cada cambio de escalón, en el test de un atleta y
+en el del grupo. Puedes levantar la vista y quedarte con ellos.
+
+Lo sintetiza el navegador, no es un fichero: así suena también en una pista sin
+cobertura. El sonido **se despierta al dar la salida** y no antes, porque los
+navegadores no dejan que una página suene sin que hayas pulsado algo.
+
+**Y se puede apagar.** Debajo del reloj hay un «🔊 Pita al cambiar de escalón»
+que se queda recordado para la próxima vez. Al encenderlo pita una vez, para
+que compruebes el volumen antes de empezar.
+
+No pita con el reloj parado, ni al arrancar —el primer escalón no es un
+cambio—, ni dentro del mismo escalón. Y si dejas el móvil en segundo plano y
+vuelves con cuatro escalones de golpe, pita una vez y no cuatro: un pitido de
+más en mitad de un test confunde al que está corriendo.
 ### Un test en marcha ya no se puede abandonar sin querer
 
 Dirigiendo un test se podía salir de la pantalla con un gesto de atrás en el

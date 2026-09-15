@@ -23,13 +23,14 @@
 //
 // Los dos que no se pueden se dicen en pantalla en vez de desaparecer sin
 // explicación: el entrenador tiene que saber que ahí hay que ir de uno en uno.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   CRONO_PARADO, corriendo, intacto, transcurrido, arrancar, pausar, reiniciar,
   restante, terminada, progreso, relojMinutos, relojDecimas,
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
 import { herramientasDe, avisoDe, valeEnGrupo, sueltosDe, arranqueDe, type Herramienta } from '@/lib/herramientas-test'
+import { debePitar, pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
 
 export interface Atleta {
   id: number
@@ -56,6 +57,15 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
   const sueltos = sueltosDe(claveTest)
 
   const [cronos, setCronos] = useState<Record<number, EstadoCrono>>({})
+  /* Ver InstrumentosTest: el escalón anterior va en una ref para no repintar. */
+  const escalonPrevio = useRef<Record<number, number | null>>({})
+  const [conSonido, setConSonido] = useState(true)
+  /* Lo que prefiera este entrenador se lee DESPUÉS de montar, no al crear el
+     estado: en el servidor no hay localStorage, así que leerlo en el render
+     daría una cosa en el HTML y otra al hidratar. La regla del compilador avisa
+     de poner estado en un efecto, y aquí es justo lo que toca. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setConSonido(pitidoEncendido()) }, [])
   const [ahora, setAhora] = useState(() => Date.now())
 
   useEffect(() => { setCronos({}) }, [claveTest])
@@ -71,13 +81,7 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
     return () => clearInterval(t)
   }, [algoCorre])
 
-  if (herramientas.length === 0) return null
-
   const crono = (i: number) => cronos[i] ?? CRONO_PARADO
-  const ponCrono = (i: number, e: EstadoCrono) => setCronos(c => ({ ...c, [i]: e }))
-  const darSalida = (i: number) => { const t = Date.now(); setAhora(t); ponCrono(i, arrancar(crono(i), t)) }
-  const parar = (i: number) => { const t = Date.now(); setAhora(t); ponCrono(i, pausar(crono(i), t)) }
-
   const escalon = (h: Herramienta, i: number, ms?: number) => {
     if (h.tipo !== 'secuenciador') return { numero: 1, intensidad: 0, dentro: 0, duracion: 60 }
     const duracion = Number(protocolo[h.campoDuracion]) || 60
@@ -88,6 +92,26 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
       duracion,
     }
   }
+
+  /* El mismo pitido que en la ficha de un atleta, y por el mismo motivo: aquí
+     todavía más, porque con diez corriendo no se puede estar mirando el reloj.
+     Ver `lib/pitido`. */
+  useEffect(() => {
+    herramientas.forEach((h, i) => {
+      if (h.tipo !== 'secuenciador') return
+      const va = corriendo(crono(i))
+      const n = escalon(h, i).numero
+      if (debePitar(escalonPrevio.current[i], n, va)) pitar()
+      escalonPrevio.current[i] = va ? n : null
+    })
+  })
+
+  if (herramientas.length === 0) return null
+
+  const ponCrono = (i: number, e: EstadoCrono) => setCronos(c => ({ ...c, [i]: e }))
+  const darSalida = (i: number) => { despertarAudio(); const t = Date.now(); setAhora(t); ponCrono(i, arrancar(crono(i), t)) }
+  const parar = (i: number) => { const t = Date.now(); setAhora(t); ponCrono(i, pausar(crono(i), t)) }
+
 
   /**
    * Coge el tiempo de ESTE atleta sin parar el reloj.
@@ -168,6 +192,13 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
             const e = crono(i)
             const s = h.tipo === 'secuenciador' ? escalon(h, i) : null
             return (<>
+              {s && (
+                <button type="button"
+                  onClick={() => { const v = !conSonido; setConSonido(v); ponPitido(v); if (v) { despertarAudio(); pitar() } }}
+                  className="self-center text-[11.5px] text-gray-500 hover:text-gray-300 transition">
+                  {conSonido ? "🔊 Pita al cambiar de escalón" : "🔇 Sin sonido"}
+                </button>
+              )}
               {s ? (
                 <div className="flex items-center justify-center gap-7 flex-wrap">
                   <div className="text-center">

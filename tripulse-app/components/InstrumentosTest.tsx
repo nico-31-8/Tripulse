@@ -20,13 +20,14 @@
 // `herramientas-test` y avisa por `setCampo` cuando tiene un número. Quien lo
 // use decide qué hacer con él: en la batería va a un objeto de valores, en los
 // clásicos va a un `useState`.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   CRONO_PARADO, corriendo, intacto, transcurrido, arrancar, pausar, reiniciar, vuelta,
   resumenVueltas, restante, terminada, progreso, relojMinutos, relojDecimas,
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
 import { herramientasDe, avisoDe, arranqueDe, type Herramienta } from '@/lib/herramientas-test'
+import { debePitar, pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
 
 /** Un reloj grande: es lo que se mira a tres metros, con el atleta corriendo. */
 function Reloj({ texto, pie, estado }: { texto: string; pie: string; estado?: 'corre' | 'fin' }) {
@@ -58,6 +59,17 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
   // Un cronómetro por instrumento: el SWOLF tiene dos —el largo y las
   // brazadas— y no pueden compartir estado.
   const [cronos, setCronos] = useState<Record<number, EstadoCrono>>({})
+  /* El escalón en el que iba cada secuenciador la última vez que se miró, para
+     pitar solo cuando CAMBIA. En una ref y no en estado: cambiarlo no tiene que
+     repintar nada, y en estado provocaría un render por cada vuelta del reloj. */
+  const escalonPrevio = useRef<Record<number, number | null>>({})
+  const [conSonido, setConSonido] = useState(true)
+  /* Lo que prefiera este entrenador se lee DESPUÉS de montar, no al crear el
+     estado: en el servidor no hay localStorage, así que leerlo en el render
+     daría una cosa en el HTML y otra al hidratar. La regla del compilador avisa
+     de poner estado en un efecto, y aquí es justo lo que toca. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setConSonido(pitidoEncendido()) }, [])
   const [ahora, setAhora] = useState(() => Date.now())
 
   // Al cambiar de test se tiran los relojes: un tiempo arrastrado de otro test
@@ -77,11 +89,44 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
     return () => clearInterval(t)
   }, [algoCorre])
 
+  const crono = (i: number) => cronos[i] ?? CRONO_PARADO
+  const escalon = (h: Herramienta, i: number) => {
+    if (h.tipo !== 'secuenciador') return { numero: 1, intensidad: 0, dentro: 0, duracion: 60 }
+    const duracion = Number(valores[h.campoDuracion]) || 60
+    const desde = arranqueDe(h, valores)
+    return {
+      ...escalonEn(transcurrido(crono(i), ahora), desde, duracion,
+                   Number(valores[h.campoIncremento]) || 0),
+      duracion,
+    }
+  }
+
+  /* Un pitido al cambiar de escalón.
+     Cantando «8,5… 9,0…» hay que mirar el reloj, y mirar el reloj es no mirar a
+     los atletas, que es cuando se ve quién se descuelga. El pitido le devuelve
+     los ojos.
+
+     El efecto va sin lista de dependencias a propósito: corre en cada repintado
+     —diez veces por segundo mientras el reloj anda— y es `debePitar` quien
+     decide, comparando con el escalón anterior. Con lista habría que acertar a
+     poner ahí dentro el tiempo, y un despiste dejaría el pitido mudo. */
+  useEffect(() => {
+    herramientas.forEach((h, i) => {
+      if (h.tipo !== 'secuenciador') return
+      const va = corriendo(crono(i))
+      const n = escalon(h, i).numero
+      if (debePitar(escalonPrevio.current[i], n, va)) pitar()
+      escalonPrevio.current[i] = va ? n : null
+    })
+  })
+
   if (herramientas.length === 0) return null
 
-  const crono = (i: number) => cronos[i] ?? CRONO_PARADO
   const ponCrono = (i: number, e: EstadoCrono) => setCronos(c => ({ ...c, [i]: e }))
-  const alArrancar = (i: number) => { const t = Date.now(); setAhora(t); ponCrono(i, arrancar(crono(i), t)) }
+  /* El audio se despierta AQUÍ, en la pulsación que da la salida: los
+     navegadores no dejan sonar sin una, y hacerlo al cargar la pantalla lo
+     bloquearían en silencio. */
+  const alArrancar = (i: number) => { despertarAudio(); const t = Date.now(); setAhora(t); ponCrono(i, arrancar(crono(i), t)) }
 
   /* Parar ES apuntar: es lo que uno hace al cruzar la meta. La casilla se queda
      editable, así que un tiempo mal cogido se corrige a mano. */
@@ -124,16 +169,6 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
      La duración y el incremento se leen de SUS CASILLAS: si el entrenador monta
      escalones de 30 s, el reloj va con él, y son las mismas casillas que luego
      usa la fórmula. */
-  const escalon = (h: Herramienta, i: number) => {
-    if (h.tipo !== 'secuenciador') return { numero: 1, intensidad: 0, dentro: 0, duracion: 60 }
-    const duracion = Number(valores[h.campoDuracion]) || 60
-    const desde = arranqueDe(h, valores)
-    return {
-      ...escalonEn(transcurrido(crono(i), ahora), desde, duracion,
-                   Number(valores[h.campoIncremento]) || 0),
-      duracion,
-    }
-  }
 
   /* Congela dónde iba y rellena las dos casillas de golpe. Es el gesto del
      test: el atleta se baja y no hay tiempo de apuntar dos números. */
@@ -241,6 +276,14 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
             const e = crono(i)
             const s = escalon(h, i)
             return (<>
+              {/* El pitido se puede apagar: hay pistas donde molesta, y una app
+                  que suena sin que puedas callarla se acaba dejando de usar. */}
+              <button type="button"
+                onClick={() => { const v = !conSonido; setConSonido(v); ponPitido(v); if (v) { despertarAudio(); pitar() } }}
+                className="self-center text-[11.5px] text-gray-500 hover:text-gray-300 transition"
+                title={conSonido ? "Suena al cambiar de escalón" : "Sin sonido"}>
+                {conSonido ? "🔊 Pita al cambiar de escalón" : "🔇 Sin sonido"}
+              </button>
               <div className="flex items-center justify-center gap-7 flex-wrap">
                 <div className="text-center">
                   <div className="font-mono tabular-nums text-4xl font-semibold leading-none">{s.numero}</div>
