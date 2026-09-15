@@ -303,19 +303,33 @@ export default function CargaPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
+      {/* LA BARRA, EN UN TELÉFONO.
+          Llevaba cuatro cosas —título largo, nombre del atleta, «cambiar», el
+          conmutador SICAT y «← Dashboard»— y por delante 176 px reservados para
+          el logo. En una pantalla de 390 no caben: el SICAT acababa encima del
+          título y «← Dashboard» se salía por la derecha.
+
+          En estrecho se queda con lo que de verdad se usa desde ahí —de qué va
+          la pantalla y el conmutador— y lo demás baja o desaparece:
+            · el título se acorta a «Carga»;
+            · el atleta y su «cambiar» bajan a su propia línea, con el ancho
+              entero para ellos;
+            · «← Dashboard» se va: el menú del logo ya lleva ahí. */}
       <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-between items-center border-b border-gray-800 gap-4">
         <div className="flex items-baseline gap-3 min-w-0">
-          <h2 className="text-[17px] font-bold tracking-tight leading-none">Carga de entrenamiento</h2>
+          <h2 className="text-[17px] font-bold tracking-tight leading-none truncate">
+            Carga<span className="hidden sm:inline"> de entrenamiento</span>
+          </h2>
           {seleccionado && (
             /* El botón va FUERA del truncate. Estando dentro, en móvil el nombre
                se comía el ancho y "cambiar" quedaba recortado fuera de la
                pantalla: no había forma de cambiar de deportista desde el teléfono.
                Ahora se acorta el nombre, que es lo prescindible. */
-            <>
+            <div className="hidden sm:flex items-baseline gap-3 min-w-0">
               <span className="text-[12.5px] text-gray-500 truncate min-w-0">{seleccionado.nombre}</span>
               <button onClick={() => setSeleccionado(null)}
                 className="text-[12.5px] text-orange-400 hover:text-orange-300 transition flex-none">cambiar</button>
-            </>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-3 flex-none">
@@ -333,9 +347,19 @@ export default function CargaPage() {
               🔬 SICAT{usarSicat && pondZona ? ' · zona' : ''}
             </button>
           )}
-          <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+          <button onClick={() => router.push('/dashboard')} className="hidden sm:block text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
         </div>
       </nav>
+      {/* El atleta abierto, en su propia línea y solo en estrecho: arriba no
+          cabía sin comerse el título. */}
+      {seleccionado && (
+        <div className="sm:hidden flex items-baseline gap-3 px-5 py-2 border-b border-gray-800 bg-gray-900/60">
+          <span className="text-[13px] text-gray-300 truncate min-w-0">{seleccionado.nombre}</span>
+          <button onClick={() => setSeleccionado(null)}
+            className="text-[12.5px] text-orange-400 transition flex-none">cambiar</button>
+        </div>
+      )}
+
       <div className="max-w-[1400px] mx-auto px-6 py-6">
 
         {/* Pestañas */}

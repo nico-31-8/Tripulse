@@ -16,6 +16,19 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### La barra de Carga ya no se amontona en el móvil
+
+Llevaba cinco cosas en una fila —el título, el nombre del atleta, «cambiar», el
+conmutador SICAT y «← Dashboard»— con 176 píxeles por delante reservados para
+el logo. En un teléfono no caben: el SICAT acababa **encima del título** y el
+«← Dashboard» se salía por la derecha.
+
+Ahora, en estrecho, arriba solo queda de qué va la pantalla y el conmutador:
+
+- el título se acorta a **«Carga»** (en el ordenador sigue entero);
+- el **atleta y su «cambiar» bajan a su propia línea**, con el ancho entero;
+- **«← Dashboard» desaparece**: el menú del logo ya lleva ahí, era lo único
+  repetido de la fila.
 ### La periodización visual ya se puede usar desde el móvil
 
 No funcionaba nada: esa pantalla estaba escrita con **eventos de ratón**, y en
