@@ -44,11 +44,13 @@ function Reloj({ texto, pie, estado }: { texto: string; pie: string; estado?: 'c
 const BTN = 'py-4 rounded-lg font-semibold transition'
 const SEC = 'bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 rounded-lg text-sm transition'
 
-export default function InstrumentosTest({ claveTest, valores, setCampo }: {
+export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMarcha }: {
   claveTest: string
   /** Lo que hay escrito ahora, para el contador y para el secuenciador. */
   valores: Record<string, string>
   setCampo: (clave: string, valor: string) => void
+  /** Avisa de que hay un reloj corriendo, para que la pantalla se pueda blindar. */
+  onEnMarcha?: (b: boolean) => void
 }) {
   const herramientas = herramientasDe(claveTest)
   const aviso = avisoDe(claveTest)
@@ -65,6 +67,10 @@ export default function InstrumentosTest({ claveTest, valores, setCampo }: {
   /* Solo repinta MIENTRAS algo corre. Un intervalo permanente re-renderizaría
      diez veces por segundo para siempre, también con todo parado. */
   const algoCorre = Object.values(cronos).some(corriendo)
+
+  /* Se avisa fuera de que hay un reloj en marcha. Lo usa quien tenga que tapar
+     la pantalla: salir con el reloj corriendo pierde el test. */
+  useEffect(() => { onEnMarcha?.(algoCorre) }, [algoCorre, onEnMarcha])
   useEffect(() => {
     if (!algoCorre) return
     const t = setInterval(() => setAhora(Date.now()), 100)

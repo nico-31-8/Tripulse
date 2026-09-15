@@ -11,6 +11,7 @@ import { calcularObjetivos, idsConPacing } from '@/lib/pacing'
 import { pruebaPorId } from '@/lib/pruebas'
 import TestDeCampo from '@/components/TestDeCampo'
 import InstrumentosTest from '@/components/InstrumentosTest'
+import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/PantallaDeTest'
 import { contextosDe } from '@/lib/dirigir-tests'
 import { herramientasDe } from '@/lib/herramientas-test'
 import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/catalogo-tests'
@@ -282,6 +283,10 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
      enseñaban las dos formas a la vez —el cronómetro encima y las casillas
      debajo— y no había manera de saber cuál era el camino. */
   const [modo, setModo] = useState<ModoTest | null>(null)
+  /* Si hay un reloj corriendo. El candado se ata a esa ventana y no a entrar en
+     modo campo: aquí alrededor hay récords y gráficas que siguen sirviendo
+     mientras no se esté midiendo. */
+  const [enMarcha, setEnMarcha] = useState(false)
   const [mostrarFormLibre, setMostrarFormLibre] = useState(false)
   /* «Otros tests» se queda, pero guardado: ocupaba un cuarto de la pantalla
      permanentemente para algo que casi nadie usa. Quien lo necesite, lo abre. */
@@ -441,6 +446,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   /** El test que está abierto, sea clásico o de la batería. */
   const testSelObj = testsDelTab.find(t => t.id === testSel) ?? null
 
+  const bloqueo = useBloqueoDeSalida(enMarcha)
+
   /** Lo que ha hecho de la batería en esta disciplina, y de este test. */
   const campoDelTab = testsCampo.filter(r => CATALOGO.find(x => x.clave === r.clave)?.disciplina === DISCIPLINA_TAB[tab])
 
@@ -576,8 +583,13 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-        <h1 className="text-[17px] font-bold tracking-tight truncate">Tests <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· rendimiento y récords</span></h1>
-        <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-[13px] transition flex-shrink-0">← Perfil deportista</button>
+        {enMarcha ? (
+          <BarraDeTest titulo={(testSelObj?.nombre ?? "Test") + " en marcha"}
+            sub={deportista?.nombre} onSalir={bloqueo.preguntar} />
+        ) : (<>
+          <h1 className="text-[17px] font-bold tracking-tight truncate">Tests <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· rendimiento y récords</span></h1>
+          <button onClick={() => router.push(`/deportistas/${id}`)} className="text-gray-400 hover:text-white text-[13px] transition flex-shrink-0">← Perfil deportista</button>
+        </>)}
       </header>
 
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-5">
@@ -798,7 +810,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                     onChange={e => setDurTotal(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} />
+              <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el secuenciador" pie="Se rellena solo cuando el atleta se baja, y de ahí sale la VAM de abajo. Solo hay que tocarlo si cogiste mal el momento.">
                 <div className="grid sm:grid-cols-2 gap-3">
                   <Campo etiqueta="Velocidad del último escalón (km/h)" type="number" step="0.1" value={velUltimo}
@@ -840,7 +852,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                   <Campo etiqueta="Distancia pequeña (m)" type="number" value={distPequena} onChange={e => setDistPequena(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} />
+              <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que han cogido los cronómetros" pie="Se rellena solo al pararlos, y de ahí sale la CSS de abajo.">
                 <div className="grid grid-cols-2 gap-3">
                   <Campo etiqueta="Tiempo de la grande (seg)" type="number" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} required />
@@ -875,7 +887,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                   <Campo etiqueta="Dura cada escalón (seg)" type="number" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} />
+              <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el secuenciador" pie="La potencia y los segundos del escalón en el que se bajó se rellenan solos; de ahí salen la PAM y el FTP de abajo.">
                 <div className="grid sm:grid-cols-3 gap-3">
                   <Campo etiqueta="Potencia pico (W)" type="number" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} required />
@@ -913,7 +925,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
               <Zona titulo="Ajustes del protocolo">
                 <Campo etiqueta="Distancia cronometrada (m)" type="number" step="0.5" value={sprintDist} onChange={e => setSprintDist(e.target.value)} required />
               </Zona>
-              <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} />
+              <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el cronómetro" pie="Se rellena solo al pararlo, y de ahí sale la MSS de abajo.">
                 <Campo etiqueta="Tiempo (seg)" type="number" step="0.01" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} required />
               </Zona>
@@ -946,7 +958,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             <p className="text-gray-400 text-sm">Sprints máximos de 25 m y 50 m, con recuperación completa entre ellos.</p>
             <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
 
-            {modo === 'campo' && <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} />}
+            {modo === 'campo' && <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />}
             <div className="grid grid-cols-2 gap-3">
               <Campo etiqueta="Tiempo 25 m (seg)" type="number" step="0.01" value={t25} onChange={e => setT25(e.target.value)} required />
               <Campo etiqueta="Tiempo 50 m (seg)" type="number" step="0.01" value={t50} onChange={e => setT50(e.target.value)} required />
@@ -1243,6 +1255,11 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </div>
         </div>
       )}
+
+      <AvisoDeSalida abierto={bloqueo.preguntando}
+        aviso="Se para el reloj y se pierde lo que no hayas guardado."
+        onSeguir={bloqueo.cerrar}
+        onSalir={() => { bloqueo.cerrar(); setModo(null); setTestSel(null) }} />
 
       {/* Modal: tabla de intensidades por zona */}
       {mostrarIntensidades && (

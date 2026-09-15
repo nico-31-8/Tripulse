@@ -32,6 +32,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
 import InstrumentoGrupo from '@/components/InstrumentoGrupo'
+import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/PantallaDeTest'
 import { camposQueRellena } from '@/lib/herramientas-test'
 import Cargando from '@/components/Cargando'
 import {
@@ -91,6 +92,10 @@ export default function DirigirTests() {
   const [fecha, setFecha] = useState(hoyISO())
   const [protocolo, setProtocolo] = useState<Valores>(() => protocoloInicial(testPorClave('6min')!))
   const [elegidos, setElegidos] = useState<number[]>([])
+  /* Si hay un reloj corriendo. Esta pantalla no tiene un «entro en modo
+     campo» que blindar —ES el modo campo— así que el candado se ata a la
+     ventana en la que salir cuesta el test: la del reloj en marcha. */
+  const [enMarcha, setEnMarcha] = useState(false)
   /* Los grupos, para poder testar a uno entero de una pulsación — y porque es
      la única forma de llegar a la gente que solo hace tests: esos no están en
      la lista de sus deportistas a propósito. */
@@ -184,6 +189,8 @@ export default function DirigirTests() {
   const listos = seleccionados.filter(d => estaCompleto(test, valoresDe(d.id), contextos[d.id] || {})).length
   const uno = seleccionados.length === 1
 
+  const bloqueo = useBloqueoDeSalida(enMarcha)
+
   /**
    * Los avisos del §9 para una persona.
    *
@@ -219,7 +226,11 @@ export default function DirigirTests() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Panel</button>
+        {enMarcha
+          ? <BarraDeTest titulo={test.nombre + ' en marcha'}
+              sub={listos + ' de ' + seleccionados.length + ' con resultado'}
+              onSalir={bloqueo.preguntar} />
+          : <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Panel</button>}
       </nav>
 
       <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6">
@@ -305,6 +316,7 @@ export default function DirigirTests() {
               setPorPersona(p => ({ ...p, [id]: { ...(p[id] ?? {}), ...campos } }))
               setAbierto(id)
             }}
+            onEnMarcha={setEnMarcha}
           />
         )}
 
@@ -473,6 +485,11 @@ export default function DirigirTests() {
           </button>
         </section>
       </div>
+
+      <AvisoDeSalida abierto={bloqueo.preguntando}
+        aviso="Se para el reloj y se pierde lo que no hayas guardado. Si ya tienes resultados, guárdalos antes."
+        onSeguir={bloqueo.cerrar}
+        onSalir={() => { bloqueo.cerrar(); router.push('/tests') }} />
     </main>
   )
 }

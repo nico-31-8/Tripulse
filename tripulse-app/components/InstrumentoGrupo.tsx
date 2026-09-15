@@ -38,7 +38,7 @@ export interface Atleta {
 
 const BTN = 'py-4 rounded-lg font-semibold transition'
 
-export default function InstrumentoGrupo({ claveTest, protocolo, atletas, capturado, onCapturar }: {
+export default function InstrumentoGrupo({ claveTest, protocolo, atletas, capturado, onCapturar, onEnMarcha }: {
   claveTest: string
   /** El protocolo del grupo: de aquí salen la duración y el incremento. */
   protocolo: Record<string, string>
@@ -47,6 +47,8 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
   capturado: (id: number) => boolean
   /** Lo que se ha medido de este atleta: {clave de casilla: valor}. */
   onCapturar: (id: number, campos: Record<string, string>) => void
+  /** Avisa de que hay un reloj corriendo, para que la pantalla se pueda blindar. */
+  onEnMarcha?: (b: boolean) => void
 }) {
   const herramientas = herramientasDe(claveTest)
   const aviso = avisoDe(claveTest)
@@ -59,6 +61,10 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
   useEffect(() => { setCronos({}) }, [claveTest])
 
   const algoCorre = Object.values(cronos).some(corriendo)
+
+  /* Se avisa fuera de que hay un reloj en marcha. Lo usa quien tenga que tapar
+     la pantalla: salir con el reloj corriendo pierde el test. */
+  useEffect(() => { onEnMarcha?.(algoCorre) }, [algoCorre, onEnMarcha])
   useEffect(() => {
     if (!algoCorre) return
     const t = setInterval(() => setAhora(Date.now()), 100)

@@ -37,6 +37,12 @@ aviso de que se para el reloj y se pierde lo que no hayas guardado.
 Los ajustes del protocolo están **dentro** de esa pantalla. Si al ir a dar la
 salida ves que el incremento no es el que querías, lo cambias ahí sin salir del
 test.
+
+**Y lo mismo en los tests de un solo atleta**, tanto en su ficha como en Dirigir
+tests. Ahí no se tapa la pantalla —alrededor están sus récords y su evolución,
+que siguen sirviendo— pero **en cuanto das la salida**, la barra de arriba deja
+de ser un enlace de vuelta y se convierte en «Montreal en marcha» con un único
+botón de salir. El atrás y el cierre de pestaña quedan tapados igual.
 ### Los tests de grupo se dirigen con un solo reloj
 
 El test del grupo era un formulario: casillas para escribir a mano el escalón
