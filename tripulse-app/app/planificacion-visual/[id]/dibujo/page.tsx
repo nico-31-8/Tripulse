@@ -580,7 +580,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       // Mover bloque existente
       if (movingBlockRef.current) {
         const { tipo, id, offsetSem } = movingBlockRef.current
@@ -669,13 +669,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         setMMacId(mac.id); setModal('meso')
       }
     }
-    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp)
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp) }
   }, [totalSem])
 
   useEffect(() => {
     if (dragWk === null) return
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       /* La cuenta y su umbral viven en `lib/arrastre-carga.ts`, con pruebas.
 
          EL UMBRAL NO ES UN ADORNO. La barra mide 180 px y representa el pico
@@ -689,8 +689,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       setSems(prev => prev.map(s => s.i === dragWk ? { ...s, ua } : s))
     }
     const onUp = () => setDragWk(null)
-    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp)
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp) }
   }, [dragWk, dragY0, dragUA0, dragMaxUA0])
 
   const macAt = (wi: number) => macros.find(m => wi >= m.si && wi <= m.sf)
@@ -1484,8 +1484,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 )}
 
                 {/* MACRO */}
-                <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 52 }}
-                  onMouseDown={e => {
+                <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 52, touchAction: 'pan-y' }}
+                  onPointerDown={e => {
                     if (e.button !== 0) return
                     const wi = getWeekFromClientX(e.clientX)
                     if (macrosRef.current.some(m => wi >= m.si && wi <= m.sf)) return
@@ -1501,7 +1501,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       className="absolute inset-y-2 rounded-xl flex items-center px-3 z-10 overflow-hidden group/mac cursor-pointer"
                       style={{ left: LABEL_W + mac.si * semanaW + 1, width: (mac.sf - mac.si + 1) * semanaW - 2, backgroundColor: C_MACRO[mac.tipo] || '#EA580C' }}
                       onDoubleClick={e => abrirEditarMacro(mac, e)}
-                      onMouseDown={e => {
+                      onPointerDown={e => {
                         if (e.detail === 2) return // doble clic — no mover
                         e.stopPropagation(); e.preventDefault()
                         const wi = getWeekFromClientX(e.clientX)
@@ -1511,8 +1511,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       }}>
                       <span className="text-white text-xs font-bold truncate mr-2">{mac.nombre}</span>
                       <span className="text-white/50 text-xs flex-shrink-0 hidden lg:inline">{mac.tipo} · {mac.sf - mac.si + 1}s</span>
+                      <button onClick={e => { e.stopPropagation(); abrirEditarMacro(mac, e) }}
+                        className="ml-auto flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/mac:text-white/80 hover:text-white transition text-sm leading-none pl-2">✏️</button>
                       <button onClick={e => { e.stopPropagation(); borrarMacro(mac.id) }}
-                        className="ml-auto flex-shrink-0 text-white/0 group-hover/mac:text-white/80 hover:text-white transition text-base leading-none pl-2">x</button>
+                        className="flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/mac:text-white/80 hover:text-white transition text-base leading-none pl-2">x</button>
                       {/* Tooltip */}
                       <div className="absolute bottom-full left-0 mb-2 hidden group-hover/mac:block z-50 pointer-events-none">
                         <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-xl p-3 text-left min-w-48">
@@ -1539,7 +1541,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
                 {/* MESO */}
                 <div className="relative border-b border-gray-800 cursor-crosshair" style={{ height: 44 }}
-                  onMouseDown={e => {
+                  onPointerDown={e => {
                     if (e.button !== 0) return
                     const wi = getWeekFromClientX(e.clientX)
                     const mac = macrosRef.current.find(m => wi >= m.si && wi <= m.sf); if (!mac) return
@@ -1562,7 +1564,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         className="absolute inset-y-1.5 rounded-lg flex items-center px-2 z-10 border overflow-hidden group/meso cursor-pointer"
                         style={{ left: LABEL_W + me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
                         onDoubleClick={e => { clearTimeout(mesoClickTimerRef.current); abrirEditarMeso(me, e) }}
-                        onMouseDown={e => {
+                        onPointerDown={e => {
                           if (e.detail === 2) return
                           e.stopPropagation(); e.preventDefault()
                           const wi = getWeekFromClientX(e.clientX)
@@ -1574,8 +1576,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         }}>
                         <span className="text-white text-xs font-medium truncate mr-2">{me.nombre}</span>
                         <span className="text-white/40 text-xs flex-shrink-0">{me.sf - me.si + 1}s</span>
-                        <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); borrarMeso(me.id) }}
-                          className="ml-auto flex-shrink-0 text-white/0 group-hover/meso:text-white/70 hover:text-white transition text-base leading-none pl-2">x</button>
+                        <button onClick={e => { e.stopPropagation(); abrirEditarMeso(me, e) }}
+                          className="ml-auto flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/meso:text-white/70 hover:text-white transition text-sm leading-none pl-2">✏️</button>
+                        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); borrarMeso(me.id) }}
+                          className="flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/meso:text-white/70 hover:text-white transition text-base leading-none pl-2">x</button>
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover/meso:block z-50 pointer-events-none">
                           <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-xl p-3 text-left min-w-48">
@@ -1767,6 +1771,21 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               ? <p className="text-orange-400 text-xs font-bold mb-1">{s.ua} UA planificadas</p>
                               : <p className="text-gray-500 text-xs font-bold mb-1">Sin carga planificada</p>}
                             <p className="text-gray-500 text-xs mb-3">{s.tipo}</p>
+                            {/* Escribir la cifra exacta. Estaba solo en el doble clic
+                                sobre la barra, y en una pantalla táctil no hay doble
+                                clic: el dedo solo puede arrastrar, y arrastrar va de
+                                25 en 25. */}
+                            {canDrag && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setPopupBarra(null)
+                                  setEditWk(s.i); setEditVal(s.ua?.toString() || '')
+                                }}
+                                className="w-full mb-2 bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 text-xs font-semibold py-2 rounded-lg transition">
+                                ✏️ Escribir las UA
+                              </button>
+                            )}
                             <button
                               onClick={e => {
                                 e.stopPropagation()
@@ -1807,7 +1826,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               top: 0, bottom: 36, left: 0, right: 0, zIndex: 5,
                               cursor: canDrag ? 'ns-resize' : 'default',
                             }}
-                            onMouseDown={e => { if (!canDrag) return; e.preventDefault(); setDragWk(s.i); setDragY0(e.clientY); setDragUA0(s.ua || 0); setDragMaxUA0(allMaxUA); setEditWk(null) }}
+                            onPointerDown={e => { if (!canDrag) return; e.preventDefault(); setDragWk(s.i); setDragY0(e.clientY); setDragUA0(s.ua || 0); setDragMaxUA0(allMaxUA); setEditWk(null) }}
                             onDoubleClick={() => { if (canDrag) { setEditWk(s.i); setEditVal(s.ua?.toString() || '') } }}
                             onClick={e => {
                               /* SOLTAR NO ES PINCHAR. El navegador manda el clic

@@ -16,6 +16,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### La periodización visual ya se puede usar desde el móvil
+
+No funcionaba nada: esa pantalla estaba escrita con **eventos de ratón**, y en
+un teléfono no existen. El navegador manda un clic al soltar el dedo, pero no
+hay forma de seguirlo mientras se mueve — y esa pantalla entera es arrastrar.
+
+Ahora el dedo hace lo mismo que el ratón. Y cada zona sabe de quién es el gesto:
+
+- En las **columnas de semana**, el dedo **hacia los lados mueve la línea de
+  tiempo** y **hacia arriba y abajo cambia las UA** de esa semana.
+- En las **bandas de macro y meso**, el dedo horizontal **dibuja el bloque**;
+  para desplazarte a lo ancho tienes el resto del lienzo.
+
+**Dos cosas que solo existían en el doble clic** —y en táctil no hay doble
+clic— ahora tienen su botón:
+
+- **«✏️ Escribir las UA»**, en el desplegable de cada semana. Arrastrar va de 25
+  en 25; para un número exacto había que hacer doble clic.
+- **El lápiz de cada macro y cada meso**, para cambiarles el nombre o el tipo.
+
+**Y un fallo que convenía corregir:** la **x de borrar** de macros y mesos era
+invisible y **seguía respondiendo al dedo**. En el móvil tocabas un bloque cerca
+del borde derecho y lo borrabas sin verlo venir. Ahora se ve.
 ### Dos arreglos del panel en el móvil
 
 **Los nombres de Herramientas ya se leen enteros.** Iban a dos columnas y se
