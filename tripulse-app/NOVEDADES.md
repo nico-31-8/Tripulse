@@ -16,6 +16,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### En el móvil ya puedes entrar a cualquier sesión del calendario
+
+En una pantalla estrecha la casilla de un día no tiene sitio para listar sus
+sesiones: solo caben unos puntos de color. Y como tocar el día abría siempre
+«nueva sesión», **no había forma de entrar a las que ya estaban** — ni a la
+primera ni, sobre todo, a la segunda.
+
+Ahora, tocar un día con sesiones abre **«¿Qué sesión?»**: una por línea, con su
+disciplina, sus zonas, el volumen, la duración y si ya está hecha. Pulsas y
+entras. Abajo queda **«+ Nueva sesión ese día»**, que es lo que hacía antes ese
+mismo gesto.
+
+Si el día está vacío va directo a crear, como siempre. Y si llevas algo en la
+mano —una plantilla, una sesión o una semana copiada— el toque sigue siendo
+pegar.
+
+**El mismo agujero estaba en «Meso» y «Semanas», y ahí para todos**, también en
+el ordenador: esas casillas son un cuadradito con puntos y no listan nada en
+ningún tamaño de pantalla, así que desde ellas no se podía abrir una sesión
+nunca. Ya preguntan igual.
+
+En el ordenador, en la vista de mes, no cambia nada: ahí la casilla ya enseña
+sus sesiones y cada una se abre sola.
 ### Tus deportistas ya saben que pueden conectar su reloj
 
 La conexión del reloj estaba en el perfil del deportista, la tercera tarjeta,

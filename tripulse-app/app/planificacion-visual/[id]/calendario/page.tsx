@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useEsMovil } from '@/lib/es-movil'
 import { hoyISO, lunesDe, aISO } from '@/lib/fechas'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { conVolumen } from '@/lib/sesion-volumen'
@@ -123,7 +124,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
      a ver qué toca, y eso se ve en un mes con sus días. Las otras vistas están
      a un toque en la barra de arriba. */
   const [vistaDetalle, setVistaDetalle] = useState<'multi'|'mes'>('mes')
-  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|'competicion'|'verCompeticion'|'bloquear'|'verBloqueo'|'pegarSemana'|null>(null)
+  const [modalTipo, setModalTipo] = useState<'macro'|'meso'|'micro'|'sesion'|'editarSesion'|'competicion'|'verCompeticion'|'bloquear'|'verBloqueo'|'pegarSemana'|'elegirSesion'|null>(null)
   const [sesionEditando, setSesionEditando] = useState<any>(null)
   const [fechaSel, setFechaSel] = useState('')
   const [macroSel, setMacroSel] = useState<any>(null)
@@ -174,6 +175,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // plan/carga y la leyenda) se va detrás de un botón, y arriba se queda solo lo
   // que se usa cada vez — el mes y los días.
   const [hojaAcciones, setHojaAcciones] = useState(false)
+  /* En el móvil la casilla del día no tiene sitio para la lista de sesiones —
+     solo caben unos puntos de color— así que tocar el día abría siempre «crear
+     sesión» y NO HABÍA FORMA DE ABRIR LAS QUE YA ESTABAN. Ahora tocar un día
+     con sesiones pregunta a cuál quieres entrar. */
+  const esMovil = useEsMovil()
 
   // Copiar/pegar
   const [sesionCopiada, setSesionCopiada] = useState<any>(null)
@@ -529,6 +535,26 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (meso) { setMesoSel(meso); setMacroSel(macro); setModalTipo('micro'); return }
     if (macro) { setMacroSel(macro); setModalTipo('meso'); return }
     setModalTipo('macro')
+  }
+
+  /**
+   * Tocar un día.
+   *
+   * En escritorio la casilla ya lista sus sesiones y cada una se abre sola, así
+   * que tocar el hueco significa «quiero una nueva». En el móvil no caben, y
+   * significaba lo mismo: por eso no se podía entrar a la segunda sesión de un
+   * día. Con algo dentro, se pregunta primero.
+   */
+  const tocarDia = (f: string) => {
+    /* Con algo en la mano —una plantilla, una sesión o una semana copiada— el
+       toque es pegar, y eso manda sobre todo lo demás. */
+    if (esMovil && !plantillaEnMano && !sesionCopiada && !semanaCopiada
+        && getSesionesDia(f).length > 0 && !getBloqueoSemana(f)) {
+      setFechaSel(f)
+      setModalTipo('elegirSesion')
+      return
+    }
+    abrirModalNuevaSesion(f)
   }
 
   const abrirModalNuevaSesion = (f: string) => {
@@ -1210,7 +1236,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     const esCopiadaSemana = esSemanaCopiada(f)
                     return (
                       <div key={f}
-                        onClick={() => abrirModalNuevaSesion(f)}
+                        onClick={() => tocarDia(f)}
                         onDragOver={e => { if (arrastrando) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
                         onDrop={e => {
                           e.preventDefault(); e.stopPropagation()
@@ -1337,7 +1363,16 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       const esCopiadaSemana = esSemanaCopiada(f)
                       const esHoy = f === hoy
                       return (
-                        <button key={f} onClick={() => abrirModal(f)}
+                        <button key={f}
+                          /* Estas casillas no listan sus sesiones en ningún tamaño de
+                             pantalla —son un cuadradito con puntos— así que sin esto no
+                             había forma de abrir una sesión desde aquí. */
+                          onClick={() => {
+                            if (ses.length > 0 && !bloqueo && !plantillaEnMano && !sesionCopiada && !semanaCopiada) {
+                              setFechaSel(f); setModalTipo('elegirSesion'); return
+                            }
+                            abrirModal(f)
+                          }}
                           className={'relative rounded text-xs py-1.5 text-center transition flex flex-col items-center justify-center min-h-8 ' +
                             (bloqueo ? 'bg-red-900/30 text-red-400 ' :
                              comp ? 'bg-yellow-500/30 ring-1 ring-yellow-500 text-yellow-300 ' :
@@ -1478,7 +1513,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                    modalTipo === 'verCompeticion' ? '🏆 Competición' :
                    modalTipo === 'bloquear' ? '🚫 Bloquear semana' :
                    modalTipo === 'verBloqueo' ? '🚫 Semana bloqueada' :
-                   modalTipo === 'pegarSemana' ? '📋 Pegar semana' : '+ Nueva sesión'}
+                   modalTipo === 'pegarSemana' ? '📋 Pegar semana' :
+                   modalTipo === 'elegirSesion' ? '¿Qué sesión?' : '+ Nueva sesión'}
                 </h3>
                 <p className="text-gray-400 text-sm">{fechaSel}</p>
                 {modalTipo === 'meso' && <p className="text-orange-400 text-xs mt-0.5">Macro: {macroSel?.objetivo}</p>}
@@ -1492,6 +1528,34 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               </div>
               <button onClick={() => { setModalTipo(null); setSesionLibre(false) }} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
+
+            {modalTipo === 'elegirSesion' && (
+              <div className="flex flex-col gap-2">
+                {getSesionesDia(fechaSel).map(s => (
+                  <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
+                    className="w-full flex items-center gap-3 rounded-xl border border-gray-700 bg-gray-800/60 hover:border-orange-500/50 px-3.5 py-3 text-left transition">
+                    <span className={'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + (COLOR_DISC_FULL[s.disciplina]?.split(' ')[0] || 'bg-gray-500')} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold truncate">
+                        {s.disciplina || 'Sesión'}
+                        {s.zonas?.length > 0 && <span className="text-orange-400 font-normal"> · {s.zonas.join(' · ')}</span>}
+                      </span>
+                      <span className="block text-[11.5px] text-gray-500 truncate">
+                        {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}
+                        {s.estado === 'Realizada' ? ' · hecha' : ''}
+                      </span>
+                    </span>
+                    <span className="text-gray-600 text-sm flex-shrink-0">→</span>
+                  </button>
+                ))}
+                {/* Crear otra sigue a un toque: es lo que hacía antes el mismo
+                    gesto, y quitárselo sería cambiar un problema por otro. */}
+                <button onClick={() => abrirModalNuevaSesion(fechaSel)}
+                  className="w-full rounded-xl border border-dashed border-gray-700 hover:border-orange-500/50 px-3.5 py-3 text-sm text-gray-400 hover:text-white transition">
+                  + Nueva sesión ese día
+                </button>
+              </div>
+            )}
 
             {modalTipo === 'pegarSemana' && (
               <div className="flex flex-col gap-4">
