@@ -641,7 +641,11 @@ export default function Dashboard() {
                     <span className={'tp-chev text-gray-500 ' + (toolsOpen ? 'open' : '')}>▾</span>
                   </button>
                   <div className={'tp-collapse px-4 ' + (toolsOpen ? 'open pb-4' : '')}>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {/* UNA columna en el móvil. Con dos, al nombre le quedaban unos
+                        85 px y se cortaban todos — y lo peor: «Comunicación» y
+                        «Comunidad» quedaban las dos en «Comuni…», dos destinos
+                        distintos idénticos en pantalla. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {[
                         { ic: '👥', l: 'Deportistas', s: deportistas.length + ' en tu equipo', c: '#f97316', h: '/deportistas' },
                         { ic: '💬', l: 'Comunicación', s: (metricas?.general?.comunicacion || 0) > 0 ? metricas!.general.comunicacion + ' sin leer' : 'Al día', c: '#ec4899', h: '/comunicacion' },
@@ -658,7 +662,7 @@ export default function Dashboard() {
                       ].map(t => (
                         <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
                           <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>
-                          <div className="min-w-0 text-left"><p className="text-[12.5px] font-semibold text-gray-200 truncate">{t.l}</p><p className="text-[10.5px] text-gray-500 truncate">{t.s}</p></div>
+                          <div className="min-w-0 text-left"><p className="text-[12.5px] font-semibold text-gray-200">{t.l}</p><p className="text-[10.5px] text-gray-500 truncate">{t.s}</p></div>
                         </button>
                       ))}
                     </div>

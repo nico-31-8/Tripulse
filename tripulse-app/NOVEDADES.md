@@ -16,6 +16,22 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 14 de septiembre de 2026 · Tests
 
+### Dos arreglos del panel en el móvil
+
+**Los nombres de Herramientas ya se leen enteros.** Iban a dos columnas y se
+cortaban todos: «Deporti…», «Bibl. Fu…», «Asistent…». Y lo peor —
+«Comunicación» y «Comunidad» quedaban las dos en «Comuni…»: dos sitios
+distintos, idénticos en pantalla. Ahora van a una columna en el móvil. En el
+ordenador siguen en tres, igual que estaban.
+
+**Y el botón del asistente ya no se come el final de la página.** Flota abajo a
+la derecha y se sentaba encima de lo último que hubiera: en el panel se estaba
+comiendo el final del último aviso de «Necesita tu atención». Ahora las
+pantallas le reservan su sitio.
+
+Solo en el móvil: en una pantalla ancha el botón cae sobre el margen de la
+derecha y no tapa nada, así que reservar hueco ahí sería dejar un vacío al pie
+de todas las pantallas para arreglar algo que no pasa.
 ### En el móvil ya puedes entrar a cualquier sesión del calendario
 
 En una pantalla estrecha la casilla de un día no tiene sitio para listar sus

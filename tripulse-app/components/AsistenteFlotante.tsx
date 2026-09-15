@@ -86,8 +86,18 @@ export default function AsistenteFlotante() {
     return () => { vivo = false }
   }, [abierto])
 
-  if (!esEntrenador) return null
-  if (RUTAS_SIN_BOTON.some(r => pathname === r)) return null
+  const botonVisible = esEntrenador && !RUTAS_SIN_BOTON.some(r => pathname === r)
+
+  /* El botón es `fixed`, así que se sienta encima de lo último de la página: en
+     el móvil se estaba comiendo el final del último aviso del panel. La página no
+     puede saberlo sola —el botón lo pinta el layout— así que se marca el body y
+     el hueco lo reserva el CSS, igual que hace la barra del deportista. */
+  useEffect(() => {
+    document.body.classList.toggle('con-asistente', botonVisible)
+    return () => document.body.classList.remove('con-asistente')
+  }, [botonVisible])
+
+  if (!botonVisible) return null
 
   const sugerencias = [
     ...(modulo ? (SUGERENCIAS_MODULO[modulo.modulo] || []) : []),

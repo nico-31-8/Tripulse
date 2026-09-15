@@ -99,6 +99,15 @@ html, body {
    hay que tocar las ocho páginas una a una. */
 @media (max-width: 639px) {
   body.con-nav-deportista { padding-bottom: 66px; }
+
+  /* Sitio para el botón del asistente, que es `fixed bottom-5 right-5` y mide
+     48 px: sin esto se sienta encima de lo último de la página —se estaba comiendo
+     el final del último aviso del panel—. Se le da a MAIN y no al body para que el
+     fondo siga llegando abajo del todo.
+     Solo en móvil, y a propósito: en una pantalla ancha el contenido va centrado y
+     con márgenes, así que el botón cae sobre el hueco de la derecha y no tapa nada.
+     Reservar 88 px ahí sería dejar un vacío al pie de todas las pantallas. */
+  body.con-asistente main { padding-bottom: 88px; }
 }
 
 /* ===== Áreas táctiles del deportista en móvil =====
