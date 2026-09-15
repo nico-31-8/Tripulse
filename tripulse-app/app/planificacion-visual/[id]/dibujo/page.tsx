@@ -73,6 +73,15 @@ function hexToRgb(hex: string) {
   return { r: parseInt(h.slice(0,2),16) || 234, g: parseInt(h.slice(2,4),16) || 88, b: parseInt(h.slice(4,6),16) || 12 }
 }
 
+/* Las tres capas del lienzo. Viven aquí porque se pintan en dos sitios —el
+   panel de la derecha y, en el móvil, la barra de herramientas— y una lista
+   duplicada es una capa nueva que aparece en un sitio y no en el otro. */
+const CAPAS_LIENZO: [string, string, string][] = [
+  ['plan', 'Planificado', '#EA580C'],
+  ['prog', 'Programado', '#3B82F6'],
+  ['real', 'Realizado', '#22C55E'],
+]
+
 const C_MACRO: Record<string, string> = {
   Tradicional: '#EA580C', Inversa: '#7C3AED', ATR: '#0D9488', Ondulatoria: '#B45309',
 }
@@ -180,6 +189,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [capas, setCapas] = useState<Set<string>>(new Set(['plan']))
   const [semSelIdx, setSemSelIdx] = useState<number | null>(null)
   const [popupBarra, setPopupBarra] = useState<number | null>(null)
+
+  /* El panel de la derecha ocupa 288 px FIJOS, así que en una ventana de 380
+     al lienzo le quedaban noventa: el dibujo salía aplastado contra el borde y
+     los macros y mesos cortados. En estrecho el lienzo se lleva el ancho entero
+     y el panel pasa a ser un cajón. */
+  const [panelAbierto, setPanelAbierto] = useState(false)
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null)
   const [detalleSem, setDetalleSem] = useState<any>(null)
   const [loadingDetalle, setLoadingDetalle] = useState(false)
@@ -1355,8 +1370,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 {modoEdicion && <span className="bg-blue-900/50 border border-blue-700/50 text-blue-300 px-2 py-0.5 rounded-lg text-xs font-medium flex-shrink-0">Editando</span>}
                 <span className="text-gray-400 flex-shrink-0">Desde <span className="text-white font-medium">{fechaInicio}</span></span>
                 <span className="text-gray-700 flex-shrink-0">·</span>
-                {/* Barra de progreso planificado vs programado */}
-                <div className="flex items-center gap-2 flex-1 min-w-0 max-w-xs">
+                {/* Barra de progreso planificado vs programado.
+                    `hidden sm:flex`: en estrecho se amontonaba con el resto de la
+                    fila y vive en el cajón, que es donde se consulta. */}
+                <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0 max-w-xs">
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-gray-500" style={{ fontSize: 10 }}>Programado</span>
@@ -1432,6 +1449,26 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <span className="text-white text-xs font-medium px-1 min-w-8 text-center">{totalSem}s</span>
                   <button onClick={() => setTotalSem(s => s + 1)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition text-sm font-bold">+</button>
                 </div>
+                {/* Las capas, a mano mientras dibujas. Tener que abrir el cajón
+                    para encender «Realizado» sería el mismo problema con otra
+                    forma. La inicial basta: el color dice cuál es. */}
+                <div className="sm:hidden flex gap-1">
+                  {CAPAS_LIENZO.map(([k, label, col]) => (
+                    <button key={k} onClick={() => toggleCapa(k)} title={label}
+                      className={'w-7 h-7 rounded-lg text-[11px] font-bold border transition ' +
+                        (capas.has(k) ? 'text-white' : 'text-gray-600 border-gray-700')}
+                      style={capas.has(k) ? { backgroundColor: col, borderColor: col } : {}}>
+                      {label[0]}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Abre el cajón con las capas y el resumen. Solo en estrecho:
+                    en ancho el panel ya está a la vista. */}
+                <button onClick={() => setPanelAbierto(true)}
+                  className="sm:hidden text-gray-300 text-xs transition px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12]">
+                  ☰ Capas
+                </button>
                 <button onClick={() => setPantalla('elegir')} className="text-gray-500 hover:text-gray-300 text-xs transition px-2 py-1 rounded-lg hover:bg-gray-800">← Cambiar</button>
                 <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
                   disabled={generando || (!generado && macros.length === 0)}
@@ -2441,13 +2478,28 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           </div>
 
           {/* PANEL DERECHO */}
-          <div className="w-72 flex-shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col">
+          {/* El fondo oscuro del cajón. Solo en estrecho: en ancho el panel es
+              parte de la pantalla y no tapa nada. */}
+          {panelAbierto && (
+            <div className="fixed inset-0 bg-black/60 z-30 sm:hidden" onClick={() => setPanelAbierto(false)} />
+          )}
+
+          <div className={'bg-gray-900 border-l border-gray-800 flex flex-col '
+            + 'fixed inset-y-0 right-0 z-40 w-[86%] max-w-xs overflow-y-auto transition-transform duration-300 '
+            + 'sm:static sm:z-auto sm:w-72 sm:max-w-none sm:flex-shrink-0 sm:translate-x-0 sm:transition-none '
+            + (panelAbierto ? 'translate-x-0' : 'translate-x-full')}>
+
+            {/* Cerrar el cajón. En ancho no hay cajón que cerrar. */}
+            <div className="sm:hidden flex justify-end p-2 border-b border-gray-800">
+              <button onClick={() => setPanelAbierto(false)}
+                className="text-gray-400 hover:text-white text-sm px-3 py-1.5 rounded-lg bg-white/[0.06]">Cerrar</button>
+            </div>
 
             {/* CAPAS VISIBLES */}
             <div className="flex-shrink-0 border-b border-gray-800 p-3">
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Capas visibles en el canvas</p>
               <div className="flex gap-1 mb-3">
-                {([['plan', 'Planificado', '#EA580C'], ['prog', 'Programado', '#3B82F6'], ['real', 'Realizado', '#22C55E']] as [string, string, string][]).map(([k, label, col]) => (
+                {CAPAS_LIENZO.map(([k, label, col]) => (
                   <button key={k} onClick={() => toggleCapa(k)}
                     className={'flex-1 py-2 rounded-lg text-xs font-bold transition border ' + (capas.has(k) ? 'text-white' : 'text-gray-600 border-gray-700 hover:text-gray-400')}
                     style={capas.has(k) ? { backgroundColor: col, borderColor: col } : {}}>

@@ -39,6 +39,21 @@ clic— ahora tienen su botón:
 **Y un fallo que convenía corregir:** la **x de borrar** de macros y mesos era
 invisible y **seguía respondiendo al dedo**. En el móvil tocabas un bloque cerca
 del borde derecho y lo borrabas sin verlo venir. Ahora se ve.
+
+**Y el reparto de la pantalla, que era lo otro que la hacía inservible.** El
+panel de la derecha se llevaba 288 píxeles fijos, así que en un teléfono al
+lienzo le quedaban unos noventa: el dibujo salía aplastado contra el borde y los
+macros y mesos, cortados.
+
+Ahora en estrecho **el lienzo ocupa la pantalla entera** y ese panel es un cajón
+que se abre con el botón **«☰ Capas»**. En el ordenador no cambia nada: sigue
+siendo el panel de siempre, fijo y a la vista.
+
+Los **interruptores de capas se quedan fuera del cajón**, en la barra de arriba,
+como tres cuadraditos de color con su inicial. Son lo único que se toca
+*mientras* dibujas, y tener que abrir un cajón para encender «Realizado» sería
+el mismo estorbo con otra forma. La barra de progreso sí se va dentro: era lo
+que se amontonaba con el resto de la fila.
 ### Dos arreglos del panel en el móvil
 
 **Los nombres de Herramientas ya se leen enteros.** Iban a dos columnas y se
