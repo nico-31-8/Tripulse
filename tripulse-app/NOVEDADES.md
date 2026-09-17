@@ -14,6 +14,64 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 17 de septiembre de 2026 · Tests propios
+
+### Un test puede medir lo mismo varias veces
+
+Hasta ahora una casilla de un test propio guardaba **un número**. Si hacías un
+6×100 y querías los seis tiempos, tenías que crear seis casillas a mano y sumarlas
+una a una — y el día que quisieras hacer 8×100 se te rompían las fórmulas.
+
+Ahora una casilla puede ser una **serie**: dices que se mide seis veces y guarda
+los seis. En las fórmulas se usa con `suma`, `media`, `minimo`, `maximo`,
+`primera` y `ultima`, así que el total de un 6×100 es `suma(t100)` y da igual
+cuántos sean.
+
+**Se llaman `minimo` y `maximo`, no «mejor» y «peor»**, a propósito: en segundos
+el mejor es el más pequeño y en vatios el más grande, así que «mejor» mentiría en
+la mitad de los tests.
+
+### El cronómetro de repeticiones
+
+Si la serie lleva cronómetro, al pasar el test sale **un botón**: cada pulsación
+cierra una repetición y la deja en su fila. Al cerrar la última, el reloj para
+solo. Hay **«Deshacer la última»** —con seis repeticiones se pulsa de más, es
+cuestión de tiempo— y su tiempo vuelve a la repetición en marcha en vez de
+perderse.
+
+Y **todas las casillas se pueden escribir a mano encima**, también las que llena
+el reloj: el cronómetro propone, tú mandas.
+
+### Si falta una repetición, no se calcula
+
+Si el atleta hace cinco de los seis 100, **los cinco tiempos se guardan igual** —el
+dato no se pierde nunca— pero los resultados que usen esa serie no salen, y te
+dicen «faltan 1 de 6». Llamar «total del 6×100» a la suma de cinco sería un número
+que miente, y en una gráfica no habría forma de ver que ese punto vale menos.
+
+### Los desplegables que recortaban en silencio
+
+Tres desplegables de la aplicación reservaban un alto escrito a mano y **se comían
+lo que sobrara sin avisar**: ni barra para deslizar, ni puntos suspensivos, ni
+nada. En el panel, las herramientas **«Tests propios» y «Zonas propias» habían
+dejado de verse en el móvil**. Pasaba también en el desplegable de referencia de
+ECO y en los datos personales de la ficha del deportista, donde se perdía la
+última fila.
+
+Ahora el alto se mide en vez de adivinarse.
+
+### Y un laboratorio, para probar lo siguiente
+
+En **Tests propios → 🧪 Laboratorio** hay un constructor nuevo, **en pruebas**, para
+montar cualquier tipo de test: escalonados con la velocidad subiendo sola, course
+navette con su pitido, isometrías por lado, fuerza máxima por intentos… y el mismo
+test a varias personas a la vez con un solo reloj.
+
+**Lo que montes ahí se guarda solo en tu navegador y no llega a ningún deportista.**
+Está para que lo pruebes y digas qué cambiar antes de que sustituya a lo de ahora.
+
+---
+
 ## 14 de septiembre de 2026 · Tests
 
 ### La barra de Carga ya no se amontona en el móvil
