@@ -15,6 +15,7 @@ import { calcularSicatZonas, type SicatZonasResultado, type CeldaZona } from '@/
 import { cargaZona } from '@/lib/zonas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { useAltoDeContenido } from '@/lib/alto-desplegable'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
@@ -369,6 +370,7 @@ export default function EcoPage() {
   const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
   const [pondZona, setPondZona] = useState(false)
   const [refOpen, setRefOpen] = useState(false)
+  const { ref: refRef, alto: altoRef } = useAltoDeContenido()
   // Equilibrio por tramos: el SICAT de siempre mete toda la historia en un saco.
   const [gran, setGran] = useState<Granularidad>('mes')
   const [serie, setSerie] = useState<PuntoTramo[] | null>(null)
@@ -796,8 +798,10 @@ export default function EcoPage() {
                 </div>
                 <span className={'tp-chev text-gray-500 ' + (refOpen ? 'open' : '')}>▾</span>
               </button>
-              <div className={'tp-collapse px-4 ' + (refOpen ? 'open pb-4' : '')} style={{ maxHeight: refOpen ? 920 : 0 }}>
-                <div className="grid gap-4 lg:grid-cols-2">
+              {/* El alto medido, no los 920 px de antes: en el móvil el radar
+                  y la tabla se ponen uno debajo del otro y se pasaban. */}
+              <div className={'tp-collapse px-4 ' + (refOpen ? 'open' : '')} style={{ maxHeight: refOpen ? altoRef : 0 }}>
+                <div ref={refRef} className="grid gap-4 lg:grid-cols-2 pb-4">
                   {radarData.some(d => d.Individual > 0) && (
                     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                       <h3 className="font-semibold text-[13px]">Perfil ECO — individual vs. poblacional</h3>

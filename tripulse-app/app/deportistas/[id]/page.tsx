@@ -14,6 +14,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import { delProveedor } from '@/lib/noches-reloj'
 import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
+import { useAltoDeContenido } from '@/lib/alto-desplegable'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -147,6 +148,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [deportista, setDeportista] = useState<any>(null)
   const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'>('estado')
   const [avatarOpen, setAvatarOpen] = useState(false)
+  const { ref: refDatos, alto: altoDatos } = useAltoDeContenido()
   const [anamnesis, setAnamnesis] = useState<any>(null)
   const [tests, setTests] = useState<any>({})
   const [zonas, setZonas] = useState<any[]>([])
@@ -457,8 +459,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
           </div>
 
           {/* Datos personales — se despliegan al pulsar la foto */}
-          <div className={'tp-collapse ' + (avatarOpen ? 'open' : '')} style={{ maxHeight: avatarOpen ? 420 : 0, marginTop: 0 }}>
-            <div className="px-6 py-5 border-t border-white/[0.075]">
+          {/* El alto medido, no los 420 px de antes: en un teléfono los once
+              datos caen a dos columnas y la última fila se quedaba fuera. */}
+          <div className={'tp-collapse ' + (avatarOpen ? 'open' : '')} style={{ maxHeight: avatarOpen ? altoDatos : 0, marginTop: 0 }}>
+            <div ref={refDatos} className="px-6 py-5 border-t border-white/[0.075]">
               <div className="flex justify-between items-baseline mb-3 flex-wrap gap-2">
                 <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500">Datos personales</p>
                 <button onClick={abrirEdicion} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-3 py-1.5 rounded-lg text-[11.5px] font-semibold transition">✏️ Editar</button>

@@ -11,6 +11,7 @@ import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-met
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
 import { ResumenEntrenador, InformeDelAtleta } from '@/components/ResumenSemanal'
@@ -46,6 +47,9 @@ export default function Dashboard() {
   const [cargando, setCargando] = useState(true)
   const [tienePlan, setTienePlan] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  /* El alto de las herramientas se mide (ver lib/alto-desplegable): a una sola
+     columna en el móvil no caben en los 460 px que reservaba la clase. */
+  const { ref: refTools, alto: altoTools } = useAltoDeContenido()
   // Acceso al panel de plataforma. Solo aparece para nuestras cuentas; esconderlo
   // es cosmética, el candado está en cada función SQL de /admin.
   const [esPlataforma, setEsPlataforma] = useState(false)
@@ -640,12 +644,18 @@ export default function Dashboard() {
                     <div className="flex-1"><p className="text-sm font-semibold">Herramientas</p><p className="text-[11px] text-gray-500">Deportistas, comunicación, biblioteca, comunidad y más</p></div>
                     <span className={'tp-chev text-gray-500 ' + (toolsOpen ? 'open' : '')}>▾</span>
                   </button>
-                  <div className={'tp-collapse px-4 ' + (toolsOpen ? 'open pb-4' : '')}>
+                  {/* AQUÍ SE PERDIERON «Tests propios» y «Zonas propias».
+                      La clase reserva 460 px y recorta lo que sobre sin dejar
+                      rastro. Con tres columnas las ocho herramientas cabían;
+                      al pasarlas a una sola columna en el móvil dejaron de
+                      caber, y las dos últimas desaparecieron de la app. Ahora
+                      el alto se mide, así que da igual cuántas se añadan. */}
+                  <div className={'tp-collapse px-4 ' + (toolsOpen ? 'open' : '')} style={{ maxHeight: toolsOpen ? altoTools : 0 }}>
                     {/* UNA columna en el móvil. Con dos, al nombre le quedaban unos
                         85 px y se cortaban todos — y lo peor: «Comunicación» y
                         «Comunidad» quedaban las dos en «Comuni…», dos destinos
                         distintos idénticos en pantalla. */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div ref={refTools} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-4">
                       {[
                         { ic: '👥', l: 'Deportistas', s: deportistas.length + ' en tu equipo', c: '#f97316', h: '/deportistas' },
                         { ic: '💬', l: 'Comunicación', s: (metricas?.general?.comunicacion || 0) > 0 ? metricas!.general.comunicacion + ' sin leer' : 'Al día', c: '#ec4899', h: '/comunicacion' },
