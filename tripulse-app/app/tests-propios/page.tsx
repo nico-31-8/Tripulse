@@ -23,15 +23,88 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
   ANCLAS, ANCLAS_REFERENCIA, tipoDeAncla, esInverso, leerDefinicion, calcularResultados, pegasDe, pegaDe,
   sePuedeGuardar, seriesDe, referenciasDe, TEST_VACIO,
-  type Ancla, type DefinicionTest, type Medicion, type ResultadoTest, type SerieResultado,
+  esSerie, vecesDe, serieDeDatos, faltanDe, MAX_VECES,
+  type Ancla, type CampoTest, type DefinicionTest, type InstrumentoCampo,
+  type Medicion, type ResultadoTest, type SerieResultado,
 } from '@/lib/test-definicion'
-import { renombrarEn, dependencias, type Bloque } from '@/lib/formula'
+import { renombrarEn, dependencias, FUNCIONES, type Bloque, type Funcion } from '@/lib/formula'
+import { herramientasPropias, seTomaConReloj } from '@/lib/herramientas-propias'
+import InstrumentosTest from '@/components/InstrumentosTest'
+import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/PantallaDeTest'
 import { puedeFijar, propuestaPropia, origenDe } from '@/lib/ancla-propia'
 import { fijarZonas } from '@/lib/zonas-desde-test'
 
 const SIGNO: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', '(': '(', ')': ')' }
 const OPS = ['+', '-', '*', '/', '^', '(', ')']
 const DEPORTES = ['Carrera', 'Ciclismo', 'Natacion', 'Fuerza', 'Otro']
+
+/* El desplegable maneja textos y el test guarda objetos, así que la traducción
+   va en un solo sitio y en los dos sentidos. */
+const COMO_OPCIONES = [
+  { valor: 'mano', texto: 'A mano' },
+  { valor: 'crono-seg', texto: 'Cronómetro · segundos' },
+  { valor: 'crono-min', texto: 'Cronómetro · minutos' },
+  { valor: 'contador', texto: 'Contador' },
+  { valor: 'cuenta', texto: 'Cuenta atrás' },
+]
+
+const comoDe = (c: CampoTest): string => {
+  const i = c.instrumento
+  if (!i) return 'mano'
+  if (i.tipo === 'cronometro') return i.unidad === 'min' ? 'crono-min' : 'crono-seg'
+  return i.tipo === 'contador' ? 'contador' : 'cuenta'
+}
+
+const instrumentoDe = (valor: string, antes?: InstrumentoCampo): InstrumentoCampo | undefined => {
+  if (valor === 'crono-seg') return { tipo: 'cronometro', unidad: 'seg' }
+  if (valor === 'crono-min') return { tipo: 'cronometro', unidad: 'min' }
+  if (valor === 'contador') return { tipo: 'contador' }
+  /* Seis minutos por defecto, que es el test de duración fija más corriente.
+     Si ya había una cuenta atrás puesta se respeta su duración. */
+  if (valor === 'cuenta') return { tipo: 'cuentaAtras', segundos: antes?.tipo === 'cuentaAtras' ? antes.segundos : 360 }
+  return undefined
+}
+
+/** Qué va a pasar con esta casilla, dicho antes de que pase. */
+function pistaDeCampo(c: CampoTest): string {
+  const serie = esSerie(c), n = vecesDe(c)
+  const i = c.instrumento
+  if (!i) {
+    return serie
+      ? 'Te salen ' + n + ' casillas para escribirlas cuando puedas: es lo que te canta otra persona.'
+      : 'Una casilla y la escribes tú.'
+  }
+  if (i.tipo === 'cronometro') {
+    const u = i.unidad === 'min' ? 'minutos' : 'segundos'
+    return serie
+      ? 'Un botón: cada pulsación cierra una repetición y la deja en su fila, en ' + u + '. Al cerrar la ' + n + '.ª, el reloj para.'
+      : 'Al pararlo escribe ' + u + ' aquí — cuéntalo así en la fórmula.'
+  }
+  if (i.tipo === 'contador') {
+    return serie
+      ? 'Un contador no se puede llevar a la vez que el reloj: déjalo a mano y lo escribes después.'
+      : 'Una pulsación por brazada. El número cae aquí.'
+  }
+  return 'La cuenta atrás manda el tiempo y NO rellena nada: lo que se teclea aquí es lo que hayas medido durante ese rato.'
+}
+
+/** Lo que hay escrito, tal cual se guarda: un texto, o una lista si es serie. */
+export type Entrada = Record<string, string | string[]>
+
+const entradaVacia = (def: DefinicionTest): Entrada =>
+  Object.fromEntries((def.campos || []).map(c =>
+    [c.clave, esSerie(c) ? Array.from({ length: vecesDe(c) }, () => '') : '']))
+
+/**
+ * Solo las casillas de un número suelto.
+ *
+ * `InstrumentosTest` lee de aquí para el contador y el secuenciador, y espera
+ * textos. Colarle una lista haría que `Number(...)` de una serie de una sola
+ * repetición devolviera su valor y el de seis un NaN — la misma trampa que ya
+ * está tapada en el motor de fórmulas.
+ */
+const sueltosDe = (e: Entrada): Record<string, string> =>
+  Object.fromEntries(Object.entries(e).filter(([, v]) => typeof v === 'string')) as Record<string, string>
 
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
 /* hoyISO y no toISOString(): ese da el dia en UTC, asi que una medicion
@@ -58,12 +131,28 @@ export default function TestsPropiosPage() {
   const [editando, setEditando] = useState<number | null>(null)
   const [def, setDef] = useState<DefinicionTest>({ ...TEST_VACIO })
 
+  /* Qué serie está esperando a que se diga qué se le pide. Va por resultado
+     porque la paleta es de un resultado concreto. */
+  const [pidiendo, setPidiendo] = useState<{ res: number; campo: string } | null>(null)
+
   const [testActivo, setTestActivo] = useState<FilaTest | null>(null)
   const [depActivo, setDepActivo] = useState<number | null>(null)
   const [mediciones, setMediciones] = useState<Medicion[]>([])
-  const [entrada, setEntrada] = useState<Record<string, string>>({})
+  /* Una casilla normal guarda un texto; una serie guarda una lista de la
+     longitud que diga el test. Lo que se manda a la base es esto tal cual:
+     jsonb acepta las dos formas, así que no hizo falta tocar la tabla. */
+  const [entrada, setEntrada] = useState<Record<string, string | string[]>>({})
+  /* A mano o con reloj. Solo se pregunta si el test lleva algún instrumento:
+     un selector de una sola opción es un toque de más cada vez. */
+  const [modoTest, setModoTest] = useState<'mano' | 'campo'>('mano')
+  const [relojEnMarcha, setRelojEnMarcha] = useState(false)
   const [fecha, setFecha] = useState(hoy())
   const [guardando, setGuardando] = useState(false)
+
+  /* Con un reloj en marcha, salir de aquí no es un error que se corrija: se ha
+     ido el reloj y con él las repeticiones que llevara, y el test hay que
+     repetirlo con el atleta ya cansado. No se bloquea nada, se PREGUNTA. */
+  const bloqueo = useBloqueoDeSalida(relojEnMarcha)
 
   useEffect(() => { arrancar() }, [])
 
@@ -141,6 +230,18 @@ export default function TestsPropiosPage() {
     ...d, resultados: d.resultados.map((r, k) => k === i ? { ...r, ...cambios } : r),
   }))
 
+  /** Cambia una casilla. `veces` e `instrumento` se quitan cuando no aplican. */
+  const parcheC = (i: number, cambios: Partial<CampoTest>) => setDef(d => ({
+    ...d,
+    campos: d.campos.map((c, k) => {
+      if (k !== i) return c
+      const nuevo: CampoTest = { ...c, ...cambios }
+      if (vecesDe(nuevo) === 1) delete nuevo.veces
+      if (!nuevo.instrumento) delete nuevo.instrumento
+      return nuevo
+    }),
+  }))
+
   const addBloque = (i: number, b: Bloque) => setDef(d => ({
     ...d, resultados: d.resultados.map((r, k) => k === i ? { ...r, formula: [...r.formula, b] } : r),
   }))
@@ -179,7 +280,8 @@ export default function TestsPropiosPage() {
   const abrirAtleta = async (t: FilaTest) => {
     setTestActivo(t)
     setVista('atleta')
-    setEntrada(Object.fromEntries(t.def.campos.map(c => [c.clave, ''])))
+    setEntrada(entradaVacia(t.def))
+    setModoTest(seTomaConReloj(t.def) ? 'campo' : 'mano')
     setFecha(hoy())
     const dep = depActivo ?? deportistas[0]?.id ?? null
     setDepActivo(dep)
@@ -193,9 +295,36 @@ export default function TestsPropiosPage() {
     setMediciones((data || []).map((m: any) => ({ fecha: m.fecha, datos: m.datos || {} })))
   }
 
+  /**
+   * Escribe UNA repetición de una serie.
+   *
+   * Se escribe la repetición y no la lista entera a propósito: el cronómetro
+   * rehaciendo la lista de golpe se cargaría lo que el entrenador hubiera
+   * corregido a mano en otra fila, que es justo lo que va a hacer cuando falle
+   * una pulsación.
+   */
+  const ponVuelta = (clave: string, indice: number, valor: string) => setEntrada(x => {
+    const campo = (testActivo?.def.campos || []).find(c => c.clave === clave)
+    const largo = campo ? vecesDe(campo) : indice + 1
+    const previo = x[clave]
+    const lista = Array.from({ length: largo }, (_, k) =>
+      (Array.isArray(previo) ? previo[k] : undefined) ?? '')
+    if (indice < 0 || indice >= largo) return x
+    lista[indice] = valor
+    return { ...x, [clave]: lista }
+  })
+
   const cambiarDeportista = async (id: number) => {
     setDepActivo(id)
-    if (testActivo) await cargarMediciones(testActivo.id, id)
+    /* Y SE VACÍA LO ESCRITO. Sin esto, los tiempos del anterior siguen en
+       pantalla y el siguiente «Guardar medición» se los apunta a otra persona:
+       un dato falso con pinta de bueno, que además nadie va a notar porque los
+       números son plausibles. Los relojes también se tiran, porque el `id` que
+       recibe el instrumento lleva el deportista. */
+    if (testActivo) {
+      setEntrada(entradaVacia(testActivo.def))
+      await cargarMediciones(testActivo.id, id)
+    }
   }
 
   const guardarMedicion = async () => {
@@ -217,6 +346,11 @@ export default function TestsPropiosPage() {
   // ---------- estilos compartidos ----------
   const campo = 'bg-gray-800 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-orange-500 w-full border border-transparent'
   const campoMal = campo.replace('border-transparent', 'border-red-500/60 bg-red-500/5')
+  /* Se REEMPLAZA el borde, no se añade detrás: `border-transparent` y
+     `border-orange-500/50` fijan la misma propiedad, y quién gana lo decide el
+     orden de la hoja de estilos, no el de la cadena. Añadiéndolo, el naranja
+     que dice «esto lo ha puesto el reloj» podía no verse. */
+  const campoMedido = campo.replace('border-transparent', 'border-orange-500/50 bg-orange-500/10')
   const lab = 'block text-gray-400 text-[11.5px] mb-1'
   const btn = 'bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-40'
   const btnSec = 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition'
@@ -239,6 +373,11 @@ export default function TestsPropiosPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-between items-center border-b border-gray-800">
+        {relojEnMarcha ? (
+          <BarraDeTest titulo={(testActivo?.nombre ?? 'Test') + ' en marcha'}
+            sub={deportistas.find(d => d.id === depActivo)?.nombre}
+            onSalir={bloqueo.preguntar} />
+        ) : (<>
         <span className="text-sm text-gray-500">
           {vista === 'lista' ? 'Tests propios'
             : vista === 'editor' ? (editando ? 'Editar test' : 'Crear test')
@@ -248,9 +387,19 @@ export default function TestsPropiosPage() {
           {vista !== 'lista' && (
             <button onClick={() => setVista('lista')} className="text-gray-400 hover:text-white text-sm transition">← Mis tests</button>
           )}
+          {/* La puerta al laboratorio. Una línea, para que quitarlo sea quitar
+              una línea: lo de dentro está EN PRUEBAS y no escribe en la base. */}
+          <button onClick={() => router.push('/laboratorio')}
+            className="text-violet-300/90 hover:text-violet-200 text-sm transition">🧪 Laboratorio</button>
           <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">Dashboard</button>
         </div>
+        </>)}
       </nav>
+
+      <AvisoDeSalida abierto={bloqueo.preguntando}
+        aviso="Se para el reloj y se pierden las repeticiones que no hayas guardado."
+        onSeguir={bloqueo.cerrar}
+        onSalir={() => { bloqueo.cerrar(); setRelojEnMarcha(false); setVista('lista') }} />
 
       <div className="max-w-4xl mx-auto px-6 py-8">
         {aviso && (
@@ -333,20 +482,69 @@ export default function TestsPropiosPage() {
             {/* --- campos --- */}
             <div className={tarjeta}>
               <p className="font-bold text-[15px] mb-0.5">1 · Qué datos se rellenan</p>
-              <p className="text-gray-500 text-xs mb-4">Cada uno con su clave, que es como lo llamarás en las fórmulas.</p>
+              <p className="text-gray-500 text-xs mb-4">
+                Cada uno con su clave, que es como lo llamarás en las fórmulas. Y si se mide
+                varias veces —los seis 100 de un 6×100—, dilo aquí: guardará una lista.
+              </p>
               {def.campos.map((c, i) => {
                 const mal = pegaDe(pegas, 'campo', i)
+                const ins = c.instrumento
                 return (
-                  <div key={i} className="flex gap-2 items-start mb-2 flex-wrap">
-                    <div style={{ maxWidth: 190, flex: 1 }}>
-                      <input className={(mal ? campoMal : campo) + ' font-mono'} value={c.clave}
-                        onChange={e => renombrarCampo(i, e.target.value)} />
-                      {mal && <span className="block text-red-300 text-[10.5px] mt-1">{mal}</span>}
+                  <div key={i} className="border border-gray-800 rounded-xl p-3 mb-3 bg-[#0d1420]">
+                    <div className="grid gap-2.5 items-end" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
+                      <div>
+                        <label className={lab}>Clave</label>
+                        <input className={(mal ? campoMal : campo) + ' font-mono'} value={c.clave}
+                          onChange={e => renombrarCampo(i, e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={lab}>Lo que verás al pasarlo</label>
+                        <input className={campo} value={c.etiqueta} placeholder="Cada 100"
+                          onChange={e => parcheC(i, { etiqueta: e.target.value })} />
+                      </div>
+                      <div>
+                        {/* VA FIJO EN EL TEST, no se elige al pasarlo: un 6×100
+                            no es un 8×100, y si pudiera cambiarse sobre la
+                            marcha la gráfica del total compararía dos
+                            protocolos distintos sin decirlo. */}
+                        <label className={lab}>Cuántas veces</label>
+                        <select className={campo} value={vecesDe(c)}
+                          onChange={e => parcheC(i, { veces: Number(e.target.value) })}>
+                          <option value={1}>Una vez</option>
+                          {Array.from({ length: MAX_VECES - 1 }, (_, k) => k + 2).map(n => (
+                            <option key={n} value={n}>Serie de {n}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={lab}>Cómo se rellena</label>
+                        <select className={campo} value={comoDe(c)}
+                          onChange={e => parcheC(i, { instrumento: instrumentoDe(e.target.value, ins) })}>
+                          {COMO_OPCIONES.map(o => <option key={o.valor} value={o.valor}>{o.texto}</option>)}
+                        </select>
+                      </div>
+                      {ins?.tipo === 'cuentaAtras' && (
+                        <div>
+                          <label className={lab}>Dura (minutos)</label>
+                          <input className={campo} type="number" step="any" min="0"
+                            value={ins.segundos ? String(ins.segundos / 60) : ''}
+                            onChange={e => parcheC(i, {
+                              instrumento: { tipo: 'cuentaAtras', segundos: Math.round(Number(e.target.value) * 60) },
+                            })} />
+                        </div>
+                      )}
                     </div>
-                    <input className={campo + ' flex-1 min-w-[160px]'} value={c.etiqueta} placeholder="Lo que verás al pasarlo"
-                      onChange={e => setDef(d => ({ ...d, campos: d.campos.map((x, k) => k === i ? { ...x, etiqueta: e.target.value } : x) }))} />
-                    <button onClick={() => setDef(d => ({ ...d, campos: d.campos.filter((_, k) => k !== i) }))}
-                      className="text-gray-600 hover:text-red-400 px-2 py-2">×</button>
+
+                    <div className="flex justify-between items-start gap-3 mt-2.5 pt-2.5 border-t border-dashed border-gray-800">
+                      {/* Qué va a pasar exactamente con esta casilla, dicho
+                          mientras se monta la fórmula: si el cronómetro escribe
+                          segundos y la fórmula está pensada en minutos, el
+                          resultado sale mal y NADA falla. */}
+                      <p className="text-gray-400 text-[11.5px] leading-snug">{pistaDeCampo(c)}</p>
+                      <button onClick={() => setDef(d => ({ ...d, campos: d.campos.filter((_, k) => k !== i) }))}
+                        className="text-gray-600 hover:text-red-400 px-2 shrink-0">×</button>
+                    </div>
+                    {mal && <p className="text-red-300 text-[11px] mt-2">{mal}</p>}
                   </div>
                 )
               })}
@@ -432,10 +630,11 @@ export default function TestsPropiosPage() {
                               <button key={n} onClick={() => quitarBloque(i, n)} title="Quitar"
                                 className={'font-mono text-[13px] font-semibold px-2.5 py-1.5 rounded-lg border transition hover:brightness-125 ' + (
                                   b.t === 'var' ? 'bg-orange-500/16 border-orange-500/45 text-orange-300'
+                                  : b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
                                   : b.t === 'ref' ? 'bg-violet-500/16 border-violet-400/45 text-violet-300'
                                   : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-300'
                                   : 'bg-gray-800 border-gray-600 text-gray-300')}>
-                                {b.t === 'op' ? SIGNO[String(b.v)] : String(b.v)}
+                                {b.t === 'op' ? SIGNO[String(b.v)] : b.t === 'fn' ? b.v + '(' + b.de + ')' : String(b.v)}
                               </button>
                             ))}
                       </div>
@@ -446,10 +645,33 @@ export default function TestsPropiosPage() {
                     <div className="mt-3 flex flex-col gap-2">
                       <Paleta etiqueta="Campos del test" vacio="Añade algún campo arriba">
                         {def.campos.filter(c => c.clave).map(c => (
-                          <BotonBloque key={c.clave} clase="bg-orange-500/16 border-orange-500/45 text-orange-300"
-                            onClick={() => addBloque(i, { t: 'var', v: c.clave })}>{c.clave}</BotonBloque>
+                          esSerie(c)
+                            /* Una serie no es un número: pulsarla NO la mete en
+                               la fórmula, pregunta qué se le quiere pedir. Dos
+                               toques en vez de uno, y a cambio no hay forma de
+                               escribir algo que no signifique nada. */
+                            ? <BotonBloque key={c.clave} clase="bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200"
+                                onClick={() => setPidiendo(p => p?.res === i && p.campo === c.clave ? null : { res: i, campo: c.clave })}>
+                                {c.clave} <span className="opacity-60">×{vecesDe(c)}</span>
+                              </BotonBloque>
+                            : <BotonBloque key={c.clave} clase="bg-orange-500/16 border-orange-500/45 text-orange-300"
+                                onClick={() => addBloque(i, { t: 'var', v: c.clave })}>{c.clave}</BotonBloque>
                         ))}
                       </Paleta>
+                      {/* Se comprueba que la serie siga existiendo: si se borra
+                          o se pasa a «Una vez» con la pregunta abierta, el
+                          desplegable quedaría ofreciendo funciones de un campo
+                          que ya no las admite. */}
+                      {pidiendo?.res === i && def.campos.some(c => c.clave === pidiendo.campo && esSerie(c)) && (
+                        <Paleta etiqueta={'De «' + pidiendo.campo + '», ¿qué quieres?'}>
+                          {(Object.keys(FUNCIONES) as Funcion[]).map(f => (
+                            <BotonBloque key={f} clase="bg-fuchsia-500/20 border-fuchsia-400/50 text-fuchsia-100"
+                              onClick={() => { addBloque(i, { t: 'fn', v: f, de: pidiendo.campo }); setPidiendo(null) }}>
+                              {f}() <span className="opacity-60">{FUNCIONES[f]}</span>
+                            </BotonBloque>
+                          ))}
+                        </Paleta>
+                      )}
                       {previos.length > 0 && (
                         <Paleta etiqueta="Resultados anteriores — encadenar">
                           {previos.map(p => (
@@ -503,17 +725,55 @@ export default function TestsPropiosPage() {
                 </div>
                 <div style={{ minWidth: 190 }}>
                   <label className={lab}>Deportista</label>
-                  <select className={campo} value={depActivo ?? ''} onChange={e => cambiarDeportista(Number(e.target.value))}>
+                  {/* No se cambia de atleta con el reloj andando: cambiar vacía
+                      lo escrito, y con una serie a medias eso son cuatro 100
+                      que ya no se pueden repetir. */}
+                  <select className={campo} value={depActivo ?? ''} disabled={relojEnMarcha}
+                    onChange={e => cambiarDeportista(Number(e.target.value))}>
                     {deportistas.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="flex gap-3 flex-wrap items-end">
-                {testActivo.def.campos.map(c => (
+              {seTomaConReloj(testActivo.def) && (
+                <div className="flex gap-2 mb-4">
+                  {([['campo', '⏱ Test de campo'], ['mano', '✍ A mano']] as const).map(([k, t]) => (
+                    <button key={k} onClick={() => setModoTest(k)}
+                      className={'text-[12.5px] font-semibold px-3.5 py-2 rounded-lg border transition ' +
+                        (modoTest === k
+                          ? 'bg-orange-500/16 border-orange-500/50 text-orange-300'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200')}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {modoTest === 'campo' && seTomaConReloj(testActivo.def) && (
+                <div className="mb-4">
+                  <InstrumentosTest
+                    id={'propio:' + testActivo.id + ':' + depActivo}
+                    herramientas={herramientasPropias(testActivo.def)}
+                    valores={sueltosDe(entrada)}
+                    setCampo={(clave, valor) => setEntrada(x => ({ ...x, [clave]: valor }))}
+                    setVuelta={ponVuelta}
+                    onEnMarcha={setRelojEnMarcha} />
+                </div>
+              )}
+
+              {/* Las series, alineadas por repetición: el 100 nº 3 y sus
+                  brazadas, en la misma fila. Con una columna por serie y las
+                  repeticiones sueltas no habría forma de saber cuál va con
+                  cuál — y esa es la mitad de la información. */}
+              <TablaSeries def={testActivo.def} entrada={entrada} ponRep={ponVuelta}
+                clase={campo} claseMedido={campoMedido} />
+
+              <div className="flex gap-3 flex-wrap items-end mt-4">
+                {testActivo.def.campos.filter(c => !esSerie(c)).map(c => (
                   <div key={c.clave} style={{ maxWidth: 200, flex: 1 }}>
                     <label className={lab}>{c.etiqueta || c.clave}</label>
-                    <input className={campo} type="number" step="any" value={entrada[c.clave] ?? ''}
+                    <input className={c.instrumento ? campoMedido : campo}
+                      type="number" step="any" value={String(entrada[c.clave] ?? '')}
                       onChange={e => setEntrada(x => ({ ...x, [c.clave]: e.target.value }))} />
                   </div>
                 ))}
@@ -525,6 +785,10 @@ export default function TestsPropiosPage() {
                   {guardando ? 'Guardando…' : 'Guardar medición'}
                 </button>
               </div>
+
+              {/* Lo que falta, contado antes de guardar. Se guarda igual —el dato
+                  en bruto no se pierde nunca— pero los resultados no saldrán. */}
+              <Incompletas def={testActivo.def} entrada={entrada} />
 
               <Sale def={testActivo.def} datos={entrada} />
             </div>
@@ -597,7 +861,7 @@ function FijarConEsto({ def, idDefinicion, idDeportista, datos, fecha, avisar }:
   def: DefinicionTest
   idDefinicion: number
   idDeportista: number
-  datos: Record<string, string>
+  datos: Entrada
   fecha: string
   avisar: (tipo: 'ok' | 'mal', texto: string) => void
 }) {
@@ -718,7 +982,7 @@ function CajaNumero({ onAdd }: { onAdd: (n: number) => void }) {
 
 /** La prueba del editor: se ve el resultado antes de guardar nada. */
 function Prueba({ def }: { def: DefinicionTest }) {
-  const [datos, setDatos] = useState<Record<string, string>>({})
+  const [datos, setDatos] = useState<Entrada>({})
   if (!def.campos.length || !def.resultados.length) return null
   const vals = calcularResultados(def, datos)
   return (
@@ -726,11 +990,23 @@ function Prueba({ def }: { def: DefinicionTest }) {
       <p className="text-gray-500 text-[11px] uppercase tracking-wider mb-3">Pruébalo antes de guardarlo</p>
       <div className="flex gap-3 flex-wrap mb-4">
         {def.campos.map(c => (
-          <div key={c.clave} style={{ maxWidth: 150 }}>
-            <label className="block text-gray-400 text-[11.5px] mb-1 font-mono">{c.clave}</label>
+          <div key={c.clave} style={{ maxWidth: esSerie(c) ? 230 : 150 }}>
+            <label className="block text-gray-400 text-[11.5px] mb-1 font-mono">
+              {c.clave}{esSerie(c) && <span className="text-gray-600"> ×{vecesDe(c)}</span>}
+            </label>
+            {/* Para probar, la serie entera en una casilla separada por espacios:
+                montar aquí seis recuadros sería pedirle al entrenador que pase el
+                test de verdad solo para ver si la fórmula sale. */}
             <input className="bg-gray-800 text-white text-sm rounded-lg px-3 py-2 w-full outline-none focus:ring-1 focus:ring-orange-500"
-              type="number" step="any" value={datos[c.clave] ?? ''}
-              onChange={e => setDatos(d => ({ ...d, [c.clave]: e.target.value }))} />
+              type={esSerie(c) ? 'text' : 'number'} step="any"
+              placeholder={esSerie(c) ? '74,2 75 76,1…' : ''}
+              value={Array.isArray(datos[c.clave]) ? (datos[c.clave] as string[]).join(' ') : String(datos[c.clave] ?? '')}
+              onChange={e => setDatos(d => ({
+                ...d,
+                [c.clave]: esSerie(c)
+                  ? e.target.value.replace(/,/g, '.').split(/[\s;]+/).filter(x => x !== '')
+                  : e.target.value,
+              }))} />
           </div>
         ))}
       </div>
@@ -748,10 +1024,98 @@ function Prueba({ def }: { def: DefinicionTest }) {
   )
 }
 
+/**
+ * Las series, una columna cada una y una fila por repetición.
+ *
+ * ALINEADAS POR REPETICIÓN, que es la decisión de diseño de toda esta pantalla:
+ * el 100 nº 3 y sus brazadas tienen que estar en la misma fila. Cada serie en
+ * su propio bloque daría más aire y perdería la mitad de la información.
+ *
+ * Y TODAS LAS CASILLAS SE PUEDEN ESCRIBIR, también las que llena el reloj. El
+ * cronómetro propone; con seis repeticiones se falla pulsando, y un tiempo mal
+ * cogido tiene que poder corregirse sin repetir el test.
+ */
+function TablaSeries({ def, entrada, ponRep, clase, claseMedido }: {
+  def: DefinicionTest
+  entrada: Entrada
+  ponRep: (clave: string, indice: number, valor: string) => void
+  clase: string
+  /** La misma casilla, marcada como puesta por un instrumento. */
+  claseMedido: string
+}) {
+  const series = (def.campos || []).filter(esSerie)
+  if (series.length === 0) return null
+  const filas = Math.max(...series.map(vecesDe))
+
+  return (
+    <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full border-collapse" style={{ minWidth: 260 }}>
+        <thead>
+          <tr>
+            <th className="text-left text-[10px] uppercase tracking-wider text-gray-600 font-semibold py-2 pr-2 w-10">Rep.</th>
+            {series.map(c => (
+              <th key={c.clave} className="text-left text-[11px] text-gray-400 font-semibold py-2 px-1.5 align-bottom">
+                {c.etiqueta || c.clave}
+                <span className="block text-[10px] text-gray-600 font-normal">
+                  {c.instrumento ? COMO_OPCIONES.find(o => o.valor === comoDe(c))?.texto : 'A mano'}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: filas }, (_, f) => (
+            <tr key={f}>
+              <td className="font-mono text-[12px] text-gray-600 tabular-nums pr-2">{f + 1}</td>
+              {series.map(c => {
+                const fuera = f >= vecesDe(c)
+                const v = serieDeDatos(entrada, c)[f]
+                return (
+                  <td key={c.clave} className="px-1.5 py-1">
+                    {fuera ? <span className="text-gray-700 text-sm">—</span> : (
+                      <input className={(c.instrumento ? claseMedido : clase) + ' font-mono tabular-nums'}
+                        type="number" step="any" inputMode="decimal"
+                        value={String(v ?? '')}
+                        onChange={e => ponRep(c.clave, f, e.target.value)} />
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Qué series están a medias, dicho antes de guardar. */
+function Incompletas({ def, entrada }: { def: DefinicionTest; entrada: Entrada }) {
+  const medias = (def.campos || []).filter(esSerie).map(c => {
+    const faltan = faltanDe(serieDeDatos(entrada, c))
+    return { c, faltan }
+  }).filter(x => x.faltan > 0 && x.faltan < vecesDe(x.c))
+
+  if (medias.length === 0) return null
+  return (
+    <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2.5 text-[12px] leading-snug text-amber-200/90">
+      {medias.map(({ c, faltan }) => (
+        <p key={c.clave}>
+          <b className="text-amber-100">{c.etiqueta || c.clave}: faltan {faltan} de {vecesDe(c)}.</b>
+        </p>
+      ))}
+      <p className="text-amber-200/70 mt-1">
+        Se guarda igual —lo medido no se pierde—, pero los resultados que usen esa serie no se
+        calculan: llamar «total» a la suma de las que sí están sería un número que miente.
+      </p>
+    </div>
+  )
+}
+
 /** Lo que sale de lo que acabas de teclear, antes de guardarlo. */
-function Sale({ def, datos }: { def: DefinicionTest; datos: Record<string, string> }) {
+function Sale({ def, datos }: { def: DefinicionTest; datos: Entrada }) {
   const vals = calcularResultados(def, datos)
-  const algo = Object.values(datos).some(v => String(v).trim() !== '')
+  const algo = Object.values(datos).flat().some(v => String(v ?? '').trim() !== '')
   if (!algo) return null
   return (
     <div className="mt-4 pt-4 border-t border-gray-800 flex gap-6 flex-wrap">
@@ -877,7 +1241,13 @@ function Historial({ def, mediciones }: { def: DefinicionTest; mediciones: Medic
               return (
                 <tr key={m.fecha} className="border-b border-gray-800/70">
                   <td className="py-2 px-2 text-gray-500 tabular-nums">{m.fecha}</td>
-                  {def.campos.map(c => <td key={c.clave} className="py-2 px-2 text-gray-300 tabular-nums">{String(m.datos[c.clave] ?? '—')}</td>)}
+                  {def.campos.map(c => (
+                    <td key={c.clave} className="py-2 px-2 text-gray-300 tabular-nums">
+                      {esSerie(c)
+                        ? serieDeDatos(m.datos, c).map(x => (x === '' || x == null ? '—' : String(x))).join(' · ')
+                        : String(m.datos[c.clave] ?? '—')}
+                    </td>
+                  ))}
                   {vals.map((v, i) => (
                     <td key={i} className="py-2 px-2 font-semibold tabular-nums">
                       {v.error ? <span className="text-red-300/70 font-normal text-xs">—</span>

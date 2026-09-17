@@ -84,6 +84,20 @@ export function vuelta(e: EstadoCrono, ahora: number): EstadoCrono {
   }
 }
 
+/**
+ * Deshace la última vuelta, y su tiempo VUELVE a la repetición en curso.
+ *
+ * Hace falta porque con seis repeticiones se pulsa de más: te adelantas al
+ * tocar la pared, o el dedo rebota. Tirar ese tiempo sería peor que el error
+ * —la repetición en curso empezaría a contar desde el pulsado de más y saldría
+ * corta—, así que se devuelve al acumulado y el reloj sigue como si nada.
+ */
+export function deshacerVuelta(e: EstadoCrono): EstadoCrono {
+  if (e.vueltas.length === 0) return e
+  const ultima = e.vueltas[e.vueltas.length - 1]
+  return { ...e, acumulado: e.acumulado + ultima, vueltas: e.vueltas.slice(0, -1) }
+}
+
 export interface ResumenVueltas {
   /** Cuántas se completaron. */
   repes: number

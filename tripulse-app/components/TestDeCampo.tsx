@@ -24,7 +24,7 @@ import {
   resultadosDe, principalDe, estaCompleto, avisosDeTesteo, enBanda,
   type Disciplina, type Valores, type Contexto, type CampoBruto, type TestCampo, type ModoTest,
 } from '@/lib/catalogo-tests'
-import { herramientasDe, camposQueRellena, etiquetaDe } from '@/lib/herramientas-test'
+import { herramientasDe, camposQueRellena, etiquetaDe, avisoDe } from '@/lib/herramientas-test'
 import InstrumentosTest from './InstrumentosTest'
 import { guardarTestsDeCampo, testsDeHoy, diasHastaCarreraA } from '@/lib/dirigir-tests'
 import { propuestaDe, fijarZonas } from '@/lib/zonas-desde-test'
@@ -239,7 +239,7 @@ export default function TestDeCampo({ idDeportista, disciplina, contexto, clave,
           {/* Los instrumentos van ARRIBA de las casillas: primero se dirige el
               test y después se mira lo que quedó escrito. A mano no se pintan. */}
           {modo === 'campo' && (
-            <InstrumentosTest claveTest={test.clave} valores={valores}
+            <InstrumentosTest id={test.clave} herramientas={herramientas} aviso={avisoDe(test.clave)} valores={valores}
               setCampo={(k, v) => setValores(x => ({ ...x, [k]: v }))} />
           )}
 

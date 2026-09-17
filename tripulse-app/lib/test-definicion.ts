@@ -25,8 +25,9 @@
 // Este fichero es lógica pura: ni pantalla ni base de datos.
 
 import {
-  evaluar, textoDe, dependencias, motivoNombreMalo,
-  type Bloque,
+  evaluar, textoDe, dependencias, motivoNombreMalo, esFuncion,
+  camposSueltos, seriesQueUsa,
+  type Bloque, type Funcion,
 } from './formula'
 
 export type Ancla = 'vo2max' | 'umbral' | 'umbral_aer' | 'sprint' | 'especifica' | 'nada'
@@ -62,9 +63,43 @@ export const ANCLAS_REFERENCIA: Ancla[] =
 export const esAncla = (a: string): a is Ancla => a in ANCLAS
 export const tipoDeAncla = (a: string): TipoAncla => (esAncla(a) ? ANCLAS[a].tipo : 'seguimiento')
 
+/**
+ * Con qué se rellena una casilla. Sin instrumento = a mano, que es lo de
+ * siempre y lo que tienen todos los tests creados hasta ahora.
+ *
+ * LA IDEA, QUE ES LA MISMA QUE EN LA BATERÍA: el número que mide el instrumento
+ * CAE EN SU CASILLA. Si hay que leerlo en la pantalla y teclearlo debajo, el
+ * cronómetro de la app no aporta nada sobre el del móvil.
+ */
+export type InstrumentoCampo =
+  /** Al pararlo, el tiempo cae aquí. La unidad IMPORTA: la fórmula la usa tal cual. */
+  | { tipo: 'cronometro'; unidad: 'seg' | 'min' }
+  /** Una pulsación por brazada, por repetición, por lo que sea. */
+  | { tipo: 'contador' }
+  /**
+   * Duración fija. NO RELLENA NADA: manda el tiempo y ya. Lo que se teclea en
+   * la casilla es lo que se haya medido durante ese rato —los metros de un test
+   * de 6 minutos—. Es lo más fácil de malinterpretar de todo esto, y por eso se
+   * dice en pantalla.
+   */
+  | { tipo: 'cuentaAtras'; segundos: number }
+
+/** Lo máximo que puede repetirse una casilla. Un 30×100 ya es mucho test. */
+export const MAX_VECES = 30
+
 export interface CampoTest {
   clave: string
   etiqueta: string
+  /**
+   * Cuántas veces se mide. Ausente o 1 = una casilla de toda la vida; más de
+   * una = SERIE, y entonces guarda una lista en vez de un número.
+   *
+   * VA FIJO EN EL TEST, no se elige al pasarlo. Un 6×100 no es un 8×100: si
+   * pudiera cambiarse sobre la marcha, la gráfica del tiempo total compararía
+   * dos protocolos distintos sin decirlo, que es la peor forma de mentir.
+   */
+  veces?: number
+  instrumento?: InstrumentoCampo
 }
 
 export interface ResultadoTest {
@@ -100,6 +135,45 @@ export const TEST_VACIO: DefinicionTest = {
 
 const txt = (v: unknown): string => String(v ?? '').trim()
 
+/** Sin rellenar. Vacío no es cero, ni aquí ni en el motor de fórmulas. */
+const sinRellenar = (v: unknown): boolean =>
+  v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
+
+// ------------------------------------------------------------
+// Series
+// ------------------------------------------------------------
+
+/** Cuántas veces se mide esta casilla. Siempre al menos una. */
+export const vecesDe = (c: CampoTest): number => {
+  const n = Math.round(Number(c?.veces))
+  return Number.isFinite(n) && n > 1 ? Math.min(n, MAX_VECES) : 1
+}
+
+export const esSerie = (c: CampoTest): boolean => vecesDe(c) > 1
+
+/**
+ * Lo medido en una serie, SIEMPRE con la longitud que dice el test.
+ *
+ * Se normaliza aquí y no en cada pantalla porque lo guardado no manda sobre la
+ * definición: una medición vieja con cuatro valores de una serie que hoy son
+ * seis tiene que salir como «faltan 2», no como una serie de cuatro completa.
+ * Y un valor suelto de cuando la casilla se medía una sola vez cae en la
+ * primera repetición en vez de perderse.
+ */
+export function serieDeDatos(datos: Record<string, unknown> | null | undefined, c: CampoTest): unknown[] {
+  const bruto = datos?.[c.clave]
+  const lista = Array.isArray(bruto) ? bruto : sinRellenar(bruto) ? [] : [bruto]
+  return Array.from({ length: vecesDe(c) }, (_, i) => lista[i] ?? '')
+}
+
+/** Cuántas repeticiones quedaron sin medir. */
+export const faltanDe = (valores: unknown[]): number =>
+  (valores || []).filter(sinRellenar).length
+
+/** El valor de una casilla para el motor: un número suelto, o la lista entera. */
+export const valorDeCampo = (datos: Record<string, unknown> | null | undefined, c: CampoTest): unknown =>
+  esSerie(c) ? serieDeDatos(datos, c) : datos?.[c.clave]
+
 // ------------------------------------------------------------
 // Leer lo guardado
 // ------------------------------------------------------------
@@ -121,7 +195,16 @@ export function leerDefinicion(bruto: unknown): DefinicionTest {
   if (!d || typeof d !== 'object') return { ...TEST_VACIO }
 
   const campos: CampoTest[] = Array.isArray(d.campos)
-    ? d.campos.map((c: any) => ({ clave: txt(c?.clave), etiqueta: txt(c?.etiqueta) })).filter((c: CampoTest) => c.clave)
+    ? d.campos.map((c: any) => {
+        const veces = Math.round(Number(c?.veces))
+        const ins = leerInstrumento(c?.instrumento)
+        return {
+          clave: txt(c?.clave),
+          etiqueta: txt(c?.etiqueta),
+          ...(Number.isFinite(veces) && veces > 1 ? { veces: Math.min(veces, MAX_VECES) } : {}),
+          ...(ins ? { instrumento: ins } : {}),
+        }
+      }).filter((c: CampoTest) => c.clave)
     : []
 
   const resultados: ResultadoTest[] = Array.isArray(d.resultados)
@@ -138,6 +221,26 @@ export function leerDefinicion(bruto: unknown): DefinicionTest {
   return { nombre: txt(d.nombre), deporte: txt(d.deporte) || 'Carrera', campos, resultados }
 }
 
+/**
+ * Un instrumento guardado, o nada si no se reconoce.
+ *
+ * Igual que con las anclas: LO GUARDADO NO MANDA SOBRE EL CÓDIGO. Un
+ * instrumento que ya no exista degrada a «a mano», que es la casilla de
+ * siempre, en vez de colarse hasta la pantalla del test.
+ */
+function leerInstrumento(bruto: unknown): InstrumentoCampo | null {
+  if (!bruto || typeof bruto !== 'object') return null
+  const b = bruto as Record<string, unknown>
+  const tipo = txt(b.tipo)
+  if (tipo === 'cronometro') return { tipo, unidad: txt(b.unidad) === 'min' ? 'min' : 'seg' }
+  if (tipo === 'contador') return { tipo }
+  if (tipo === 'cuentaAtras') {
+    const s = Math.round(Number(b.segundos))
+    return Number.isFinite(s) && s > 0 ? { tipo, segundos: s } : null
+  }
+  return null
+}
+
 /** Los bloques de una fórmula, tirando lo que no sea un bloque de verdad. */
 export function leerFormula(bruto: unknown): Bloque[] {
   if (!Array.isArray(bruto)) return []
@@ -147,6 +250,9 @@ export function leerFormula(bruto: unknown): Bloque[] {
     if (t === 'num') {
       const n = Number(b?.v)
       if (Number.isFinite(n)) out.push({ t: 'num', v: n })
+    } else if (t === 'fn') {
+      const v = txt(b?.v), de = txt(b?.de)
+      if (esFuncion(v) && de) out.push({ t: 'fn', v: v as Funcion, de })
     } else if (t === 'var' || t === 'ref' || t === 'op') {
       const v = txt(b?.v)
       if (v) out.push({ t, v } as Bloque)
@@ -181,7 +287,7 @@ export function calcularResultados(
   datos: Record<string, unknown>,
 ): ValorResultado[] {
   const vars: Record<string, unknown> = {}
-  for (const c of def.campos || []) if (c.clave) vars[c.clave] = datos?.[c.clave]
+  for (const c of def.campos || []) if (c.clave) vars[c.clave] = valorDeCampo(datos, c)
 
   return (def.resultados || []).map(r => {
     if (!r.formula?.length) return { valor: null, error: 'sin fórmula' }
@@ -225,6 +331,22 @@ export function pegasDe(def: DefinicionTest): Pega[] {
   ;(def.campos || []).forEach((c, i) => {
     const m = motivoNombreMalo(c.clave, 'campo', i, claves)
     if (m) pegas.push({ donde: 'campo', indice: i, texto: m })
+
+    const ins = c.instrumento
+    if (!ins) return
+    /* Una serie solo lleva cronómetro, POR AHORA y a propósito. Un contador por
+       repetición no se puede llevar a la vez que el reloj —no hay dos manos—,
+       así que lo que se hace de verdad es apuntarlo después: eso es una serie a
+       mano, que ya se puede. Y una cuenta atrás no se repite: dura lo que dura. */
+    if (esSerie(c) && ins.tipo !== 'cronometro') {
+      pegas.push({
+        donde: 'campo', indice: i,
+        texto: 'Una serie solo puede llevar cronómetro. Déjala a mano y la escribes después.',
+      })
+    }
+    if (ins.tipo === 'cuentaAtras' && !(ins.segundos > 0)) {
+      pegas.push({ donde: 'campo', indice: i, texto: '¿Cuánto dura la cuenta atrás?' })
+    }
   })
 
   ;(def.resultados || []).forEach((r, i) => {
@@ -252,6 +374,29 @@ export function pegasDe(def: DefinicionTest): Pega[] {
           ? 'Usa «' + ref + '», que va DESPUÉS: súbelo o cámbialo'
           : 'Usa «' + ref + '», que no existe',
       })
+    }
+
+    /* Series usadas mal, en los dos sentidos. Se comprueba aquí y no al
+       evaluar por lo mismo que lo de arriba: al evaluar solo fallaría el día
+       que alguien pasara el test, y para entonces ya está guardado. */
+    const porClave = new Map((def.campos || []).map(c => [txt(c.clave), c]))
+    for (const c of camposSueltos(r.formula)) {
+      const campo = porClave.get(c)
+      if (campo && esSerie(campo)) {
+        pegas.push({
+          donde: 'resultado', indice: i,
+          texto: '«' + c + '» se mide ' + vecesDe(campo) + ' veces: usa suma(' + c + '), media(' + c + ')…',
+        })
+      }
+    }
+    for (const { campo, funcion } of seriesQueUsa(r.formula)) {
+      const cm = porClave.get(campo)
+      if (cm && !esSerie(cm)) {
+        pegas.push({
+          donde: 'resultado', indice: i,
+          texto: '«' + campo + '» se mide una sola vez: quita el ' + funcion + '()',
+        })
+      }
     }
   })
 

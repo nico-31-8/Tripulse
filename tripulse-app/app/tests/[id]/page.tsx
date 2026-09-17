@@ -13,7 +13,7 @@ import TestDeCampo from '@/components/TestDeCampo'
 import InstrumentosTest from '@/components/InstrumentosTest'
 import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/PantallaDeTest'
 import { contextosDe } from '@/lib/dirigir-tests'
-import { herramientasDe } from '@/lib/herramientas-test'
+import { herramientasDe, avisoDe } from '@/lib/herramientas-test'
 import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/catalogo-tests'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
@@ -810,7 +810,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                     onChange={e => setDurTotal(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="montreal" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
+              <InstrumentosTest id="montreal" herramientas={herramientasDe('montreal')} aviso={avisoDe('montreal')}
+                valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el secuenciador" pie="Se rellena solo cuando el atleta se baja, y de ahí sale la VAM de abajo. Solo hay que tocarlo si cogiste mal el momento.">
                 <div className="grid sm:grid-cols-2 gap-3">
                   <Campo etiqueta="Velocidad del último escalón (km/h)" type="number" step="0.1" value={velUltimo}
@@ -852,7 +853,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                   <Campo etiqueta="Distancia pequeña (m)" type="number" value={distPequena} onChange={e => setDistPequena(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="css" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
+              <InstrumentosTest id="css" herramientas={herramientasDe('css')} aviso={avisoDe('css')}
+                valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que han cogido los cronómetros" pie="Se rellena solo al pararlos, y de ahí sale la CSS de abajo.">
                 <div className="grid grid-cols-2 gap-3">
                   <Campo etiqueta="Tiempo de la grande (seg)" type="number" value={tiempoGrande} onChange={e => setTiempoGrande(e.target.value)} required />
@@ -887,7 +889,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                   <Campo etiqueta="Dura cada escalón (seg)" type="number" value={durEscalones} onChange={e => setDurEscalones(e.target.value)} required />
                 </div>
               </Zona>
-              <InstrumentosTest claveTest="rampa" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
+              <InstrumentosTest id="rampa" herramientas={herramientasDe('rampa')} aviso={avisoDe('rampa')}
+                valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el secuenciador" pie="La potencia y los segundos del escalón en el que se bajó se rellenan solos; de ahí salen la PAM y el FTP de abajo.">
                 <div className="grid sm:grid-cols-3 gap-3">
                   <Campo etiqueta="Potencia pico (W)" type="number" value={potenciaPico} onChange={e => setPotenciaPico(e.target.value)} required />
@@ -925,7 +928,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
               <Zona titulo="Ajustes del protocolo">
                 <Campo etiqueta="Distancia cronometrada (m)" type="number" step="0.5" value={sprintDist} onChange={e => setSprintDist(e.target.value)} required />
               </Zona>
-              <InstrumentosTest claveTest="sprint-carrera" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
+              <InstrumentosTest id="sprint-carrera" herramientas={herramientasDe('sprint-carrera')} aviso={avisoDe('sprint-carrera')}
+                valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />
               <Zona titulo="Lo que ha cogido el cronómetro" pie="Se rellena solo al pararlo, y de ahí sale la MSS de abajo.">
                 <Campo etiqueta="Tiempo (seg)" type="number" step="0.01" value={sprintTiempo} onChange={e => setSprintTiempo(e.target.value)} required />
               </Zona>
@@ -958,7 +962,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             <p className="text-gray-400 text-sm">Sprints máximos de 25 m y 50 m, con recuperación completa entre ellos.</p>
             <Campo etiqueta="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} required />
 
-            {modo === 'campo' && <InstrumentosTest claveTest="sprint-natacion" valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />}
+            {modo === 'campo' && <InstrumentosTest id="sprint-natacion" herramientas={herramientasDe('sprint-natacion')} aviso={avisoDe('sprint-natacion')}
+                valores={VALORES} setCampo={ponCampo} onEnMarcha={setEnMarcha} />}
             <div className="grid grid-cols-2 gap-3">
               <Campo etiqueta="Tiempo 25 m (seg)" type="number" step="0.01" value={t25} onChange={e => setT25(e.target.value)} required />
               <Campo etiqueta="Tiempo 50 m (seg)" type="number" step="0.01" value={t50} onChange={e => setT50(e.target.value)} required />

@@ -23,10 +23,10 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   CRONO_PARADO, corriendo, intacto, transcurrido, arrancar, pausar, reiniciar, vuelta,
-  resumenVueltas, restante, terminada, progreso, relojMinutos, relojDecimas,
+  deshacerVuelta, resumenVueltas, restante, terminada, progreso, relojMinutos, relojDecimas,
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
-import { herramientasDe, avisoDe, arranqueDe, type Herramienta } from '@/lib/herramientas-test'
+import { arranqueDe, type Herramienta } from '@/lib/herramientas-test'
 import { debePitar, pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
 
 /** Un reloj grande: es lo que se mira a tres metros, con el atleta corriendo. */
@@ -45,16 +45,41 @@ function Reloj({ texto, pie, estado }: { texto: string; pie: string; estado?: 'c
 const BTN = 'py-4 rounded-lg font-semibold transition'
 const SEC = 'bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 rounded-lg text-sm transition'
 
-export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMarcha }: {
-  claveTest: string
+export default function InstrumentosTest({
+  id, herramientas, valores, setCampo, setVuelta, aviso, onEnMarcha,
+}: {
+  /**
+   * Quién es este test. No se usa para buscar nada: solo para tirar los relojes
+   * al cambiar de test. Va aparte de `herramientas` porque una lista es un
+   * objeto nuevo en cada repintado, y usarla de dependencia reiniciaría los
+   * cronómetros diez veces por segundo mientras corren.
+   */
+  id: string
+  /**
+   * Los instrumentos, ya resueltos por quien llama. Antes este componente los
+   * buscaba él solo a partir de la clave del test, y así solo servía para los
+   * tests que están en el mapa: los tests que se crea el entrenador no tienen
+   * clave ahí. Recibirlos hechos es lo que deja usar EL MISMO reloj en los dos
+   * sitios, que es lo importante — dos relojes distintos acabarían contando
+   * distinto.
+   */
+  herramientas: Herramienta[]
   /** Lo que hay escrito ahora, para el contador y para el secuenciador. */
   valores: Record<string, string>
   setCampo: (clave: string, valor: string) => void
+  /**
+   * Para las series: escribe la repetición número `indice` (desde 0).
+   *
+   * OBLIGATORIO si alguna herramienta es `serie`: sin esto el reloj avanzaría
+   * y los tiempos no caerían en ninguna parte. Va opcional porque los tests de
+   * la batería no llevan series y no tienen por qué pasarlo.
+   */
+  setVuelta?: (clave: string, indice: number, valor: string) => void
+  /** Lo que hay que saber del instrumento antes de fiarse del número. */
+  aviso?: string | null
   /** Avisa de que hay un reloj corriendo, para que la pantalla se pueda blindar. */
   onEnMarcha?: (b: boolean) => void
 }) {
-  const herramientas = herramientasDe(claveTest)
-  const aviso = avisoDe(claveTest)
 
   // Un cronómetro por instrumento: el SWOLF tiene dos —el largo y las
   // brazadas— y no pueden compartir estado.
@@ -74,7 +99,7 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
 
   // Al cambiar de test se tiran los relojes: un tiempo arrastrado de otro test
   // sería un dato falso con pinta de bueno.
-  useEffect(() => { setCronos({}) }, [claveTest])
+  useEffect(() => { setCronos({}) }, [id])
 
   /* Solo repinta MIENTRAS algo corre. Un intervalo permanente re-renderizaría
      diez veces por segundo para siempre, también con todo parado. */
@@ -143,6 +168,37 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
   const alReiniciar = (i: number, h: Herramienta) => {
     ponCrono(i, reiniciar())
     if (h.tipo === 'vueltas') { setCampo(h.repes, ''); setCampo(h.mejor, ''); setCampo(h.ultima, '') }
+    if (h.tipo === 'serie') for (let k = 0; k < h.veces; k++) setVuelta?.(h.campo, k, '')
+  }
+
+  /** Cierra una repetición de una serie y la deja en SU fila. */
+  const alVueltaSerie = (i: number, h: Herramienta) => {
+    if (h.tipo !== 'serie') return
+    const antes = crono(i)
+    if (antes.vueltas.length >= h.veces) return
+    const t = Date.now()
+    const e = vuelta(antes, t)
+    /* `vuelta` no guarda una vuelta de cero: eso es una pulsación doble sin
+       querer, no una repetición de 0 segundos. Si no guardó nada, no hay nada
+       que escribir tampoco. */
+    if (e.vueltas.length === antes.vueltas.length) return
+
+    const k = e.vueltas.length - 1
+    const ms = e.vueltas[k]
+    setVuelta?.(h.campo, k, String(h.unidad === 'min' ? enMinutos(ms) : enSegundos(ms)))
+    /* La última cierra el reloj. Dejarlo corriendo invitaría a una séptima
+       repetición que el test no tiene y que no cabría en ninguna casilla. */
+    ponCrono(i, e.vueltas.length >= h.veces ? pausar(e, t) : e)
+    setAhora(t)
+  }
+
+  /** Deshace la última repetición: su tiempo vuelve a la que está en marcha. */
+  const alDeshacer = (i: number, h: Herramienta) => {
+    if (h.tipo !== 'serie') return
+    const e = crono(i)
+    if (e.vueltas.length === 0) return
+    setVuelta?.(h.campo, e.vueltas.length - 1, '')
+    ponCrono(i, deshacerVuelta(e))
   }
 
   const alVuelta = (i: number, h: Herramienta) => {
@@ -256,6 +312,46 @@ export default function InstrumentosTest({ claveTest, valores, setCampo, onEnMar
                   ))}
                 </div>
               )}
+            </>)
+          })()}
+
+          {h.tipo === 'serie' && (() => {
+            const e = crono(i)
+            const hechas = e.vueltas.length
+            const completa = hechas >= h.veces
+            const ultima = hechas + 1 === h.veces
+            return (<>
+              <Reloj texto={relojDecimas(transcurrido(e, ahora))}
+                pie={completa ? h.que + ' · completa' : 'Va por la ' + (hechas + 1) + '.ª de ' + h.veces}
+                estado={completa ? 'fin' : corriendo(e) ? 'corre' : undefined} />
+              {/* Una barra por repetición: a tres metros se cuenta de un vistazo
+                  cuántas van, que es lo único que hay que saber sin acercarse. */}
+              <div className="flex gap-1">
+                {Array.from({ length: h.veces }, (_, k) => (
+                  <div key={k} className={'h-1.5 flex-1 rounded-full ' +
+                    (k < hechas ? 'bg-orange-500' : k === hechas && corriendo(e) ? 'bg-orange-500/30' : 'bg-white/10')} />
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={() => alVueltaSerie(i, h)} disabled={!corriendo(e) || completa}
+                  className={'flex-[2] min-w-[150px] bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 ' + BTN}>
+                  {completa ? 'Serie completa' : ultima ? 'Cerrar la última' : 'Vuelta'}
+                </button>
+                <button type="button" onClick={() => corriendo(e) ? alParar(i, h) : alArrancar(i)} disabled={completa}
+                  className={'flex-1 bg-gray-800 hover:bg-gray-700 disabled:text-gray-600 ' + BTN}>
+                  {corriendo(e) ? 'Pausar' : intacto(e) ? 'Empezar' : 'Seguir'}
+                </button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {/* Con seis repeticiones se pulsa de más: es cuestión de tiempo. */}
+                <button type="button" onClick={() => alDeshacer(i, h)} disabled={hechas === 0} className={SEC + ' disabled:text-gray-700'}>
+                  Deshacer la última
+                </button>
+                <button type="button" onClick={() => alReiniciar(i, h)} className={SEC}>Reiniciar la serie</button>
+              </div>
+              {/* Los tiempos NO se repiten aquí: están en su tabla, justo debajo,
+                  y ahí se pueden corregir. Enseñarlos en dos sitios sería tener
+                  dos versiones del mismo número en pantalla. */}
             </>)
           })()}
 

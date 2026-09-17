@@ -42,6 +42,18 @@ export type Herramienta =
   /** Una pulsación por brazada. */
   | { tipo: 'contador'; campo: string; que: string }
   /**
+   * Una casilla que se mide VARIAS VECES con el mismo reloj: los seis 100 de un
+   * 6×100. Un botón, y cada pulsación cierra una repetición y la deja en su
+   * fila — que es como se cronometra de verdad en el bordillo. Al cerrar la
+   * última, el reloj para solo: no hay una séptima que cronometrar.
+   *
+   * Se diferencia de `vueltas` en para qué sirve. `vueltas` resume (cuántas, la
+   * mejor, la última) porque en un test hasta el agotamiento nadie sabe cuántas
+   * van a salir. Aquí el número está fijado por el protocolo y lo que importa
+   * es CADA UNA, porque de ellas salen la suma, la media y la caída.
+   */
+  | { tipo: 'serie'; campo: string; veces: number; unidad: 'seg' | 'min'; que: string }
+  /**
    * Lleva el protocolo por escalones: canta cuál toca y a qué intensidad, y al
    * bajarse el atleta captura dónde iba.
    *
@@ -152,7 +164,7 @@ export function avisoDe(clave: ClaveTest): string | null {
 export function camposQueRellena(clave: ClaveTest): string[] {
   const cs: string[] = []
   for (const h of herramientasDe(clave)) {
-    if (h.tipo === 'cronometro' || h.tipo === 'contador') cs.push(h.campo)
+    if (h.tipo === 'cronometro' || h.tipo === 'contador' || h.tipo === 'serie') cs.push(h.campo)
     else if (h.tipo === 'vueltas') cs.push(h.repes, h.mejor, h.ultima)
     else if (h.tipo === 'secuenciador') cs.push(h.campoIntensidad, h.campoAguanto)
   }
@@ -166,6 +178,7 @@ export function nombreDe(h: Herramienta): string {
     case 'cronometro': return 'Cronómetro'
     case 'vueltas': return 'Vueltas'
     case 'contador': return 'Contador'
+    case 'serie': return 'Cronómetro por repeticiones'
     case 'secuenciador': return 'Secuenciador'
   }
 }
@@ -191,6 +204,7 @@ export function etiquetaDe(clave: ClaveTest): string {
  *   · Secuenciador ..... sí, y es donde más se nota.
  *   · Vueltas .......... NO: cada atleta hace SUS repeticiones a su ritmo.
  *   · Contador ......... NO: las brazadas son de cada uno.
+ *   · Serie ............ NO: el 100 de cada uno se cierra cuando llega ÉL.
  *
  * Los dos que no se pueden hay que DECIRLO en pantalla, no esconderlos: si el
  * instrumento desaparece sin explicación, el entrenador cree que la app se ha
