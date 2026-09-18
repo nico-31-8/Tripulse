@@ -130,6 +130,68 @@ export const PLANTILLAS: Plantilla[] = [
     },
   },
   {
+    id: 'rast',
+    nombre: 'Sprints repetidos (RAST)',
+    descripcion: 'Seis sprints de 35 m. La potencia de cada uno la calcula la app, y de ahí salen la máxima, la media y la fatiga.',
+    distintivo: 'columna calculada',
+    test: {
+      nombre: 'RAST', deporte: 'Carrera',
+      sueltos: [col({ clave: 'peso', etiqueta: 'Peso del atleta', unidad: 'kg', clase: 'dada', valor: '70' })],
+      bloques: [{
+        clave: 's', etiqueta: 'Sprint', modo: 'cerrado', veces: 6, duracion: 0,
+        columnas: [
+          col({ clave: 'ts', etiqueta: 'Tiempo', unidad: 's', instrumento: 'crono-seg' }),
+          /* P = peso · d² / t³ con d = 35 m, o sea peso · 1225 / t³. SE CALCULA
+             POR SPRINT: la media de las seis potencias no es la potencia de la
+             media de los seis tiempos, porque el cubo no es lineal. Con tiempos
+             de 4,8 a 6,1 s se van un 4 %. */
+          col({
+            clave: 'pot', etiqueta: 'Potencia', unidad: 'W', clase: 'calculada',
+            formula: [
+              { t: 'var', v: 'peso' }, { t: 'op', v: '*' }, { t: 'num', v: 1225 },
+              { t: 'op', v: '/' }, { t: 'op', v: '(' }, { t: 'var', v: 'ts' },
+              { t: 'op', v: '^' }, { t: 'num', v: 3 }, { t: 'op', v: ')' },
+            ],
+          }),
+        ],
+      }],
+      resultados: [
+        { nombre: 'p_max', unidad: 'W', formula: [fnB('maximo', 'pot')] },
+        { nombre: 'p_media', unidad: 'W', formula: [fnB('media', 'pot')] },
+        { nombre: 'fatiga', unidad: 'W/s', formula: [
+          { t: 'op', v: '(' }, fnB('maximo', 'pot'), { t: 'op', v: '-' }, fnB('minimo', 'pot'), { t: 'op', v: ')' },
+          { t: 'op', v: '/' }, fnB('suma', 'ts'),
+        ] },
+      ],
+    },
+  },
+  {
+    id: 'ift',
+    nombre: '30-15 IFT',
+    descripcion: 'Treinta segundos corriendo y quince andando, con la velocidad subiendo. El reloj canta los dos tramos.',
+    distintivo: 'repetición en tramos',
+    test: {
+      nombre: '30-15 IFT', deporte: 'Carrera',
+      sueltos: [col({ clave: 'inicio', etiqueta: 'Empieza en', unidad: 'km/h', clase: 'dada', valor: '8' })],
+      bloques: [{
+        clave: 'e', etiqueta: 'Escalón completado', modo: 'abierto', veces: 25,
+        duracion: 45, duracionUd: 's',
+        /* La repetición no es todo lo mismo: 30 s corriendo y 15 andando. El
+           reloj canta cada tramo, que es lo que el atleta necesita oír. */
+        tramos: [{ nombre: 'Correr', segundos: 30 }, { nombre: 'Andar', segundos: 15 }],
+        pitaCambio: true, avisoAntes: 0, ritmo: 'no', ritmoCada: 0,
+        columnas: [col({
+          clave: 'vel', etiqueta: 'Velocidad', unidad: 'km/h', clase: 'dada',
+          tipo: 'progresion', desde: 8, paso: 0.5, desdeRef: 'inicio',
+        })],
+      }],
+      resultados: [
+        { nombre: 'vift', unidad: 'km/h', formula: [fnB('ultima', 'vel')] },
+        { nombre: 'escalones', unidad: 'ud', formula: [fnB('cuantas', 'vel')] },
+      ],
+    },
+  },
+  {
     id: 'una',
     nombre: 'Una sola medida',
     descripcion: 'Un salto, un dinamómetro, una marca. Una casilla y ya.',

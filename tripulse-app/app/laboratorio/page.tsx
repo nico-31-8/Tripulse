@@ -20,7 +20,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
   FUNCIONES, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
-  relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas,
+  relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, col, fnB,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
   type Instrumento, type TestLab,
@@ -47,6 +47,14 @@ const REJILLA = { gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' } as
 
 type Vista = 'plantillas' | 'editor' | 'pasar'
 interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
+/** Qué columna está esperando a que se diga qué se le pide, y en qué fórmula. */
+interface Pidiendo { clave: string; col: string; fn: Funcion | null }
+
+const CLASES: Record<string, string> = {
+  medida: 'La mides (de cada uno)',
+  dada: 'La pones tú (del protocolo)',
+  calculada: 'La calcula la app (con las de su fila)',
+}
 
 export default function Laboratorio() {
   const router = useRouter()
@@ -59,7 +67,7 @@ export default function Laboratorio() {
   const [atletas, setAtletas] = useState<string[]>(['Deportista'])
   const [med, setMed] = useState<Record<string, Datos>>({})
   const [activo, setActivo] = useState(0)
-  const [pidiendo, setPidiendo] = useState<{ res: number; col: string; fn: Funcion | null } | null>(null)
+  const [pidiendo, setPidiendo] = useState<Pidiendo | null>(null)
   const [reloj, setReloj] = useState<Reloj | null>(null)
   const [suena, setSuena] = useState(true)
   const [ahora, setAhora] = useState(() => Date.now())
@@ -70,6 +78,7 @@ export default function Laboratorio() {
   const escPrevio = useRef<Record<string, number>>({})
   const avisado = useRef<Record<string, boolean>>({})
   const ritmoPrevio = useRef<Record<string, number>>({})
+  const tramoPrevio = useRef<Record<string, number>>({})
   /* Las marcas absolutas del reloj compartido, por persona y columna. Con un
      reloj para todos, el tiempo de cada repetición es la resta con SU marca
      anterior: restar contra el reloj le daría a todos el del más rápido. */
@@ -130,18 +139,30 @@ export default function Laboratorio() {
     const datos = datosDe(nombreActivo)
     for (const bl of escalonadosDe(test)) {
       if (reloj.clave !== '@' + bl.clave) continue
+      const dur = duracionDe(bl)
       const n = escalonAhora(bl, ms)
-      const dentroMs = ms % (bl.duracion * 1000)
+      const dentroMs = ms % (dur * 1000)
       const dentro = Math.floor(dentroMs / 1000)
 
       // 1. Al CAMBIAR. Nunca en el primero: ese no es un cambio, es la salida.
       const previo = escPrevio.current[bl.clave]
-      if (previo !== undefined && previo !== n && bl.pitaCambio !== false) pitar(880, 220)
+      const cambioEscalon = previo !== undefined && previo !== n
+      if (cambioEscalon && bl.pitaCambio !== false) pitar(880, 220)
       escPrevio.current[bl.clave] = n
+
+      /* 1b. Y al pasar de un tramo a otro dentro de la repetición: en el 30-15
+         es la señal de dejar de correr, que es medio test. Se calla si el
+         escalón acaba de cambiar, porque eso ya ha sonado. */
+      const tr = tramoEn(bl, dentroMs)
+      if (tr) {
+        const prevTr = tramoPrevio.current[bl.clave]
+        if (!cambioEscalon && prevTr !== undefined && prevTr !== tr.indice) pitar(1100, 130)
+        tramoPrevio.current[bl.clave] = tr.indice
+      }
 
       // 2. El aviso de que queda poco: más agudo y más corto, para no confundirlo.
       if ((bl.avisoAntes || 0) > 0) {
-        const quedan = bl.duracion - dentro
+        const quedan = dur - dentro
         const llave = bl.clave + ':' + n
         if (quedan <= (bl.avisoAntes || 0) && quedan > 0 && !avisado.current[llave]) {
           pitar(1400, 70); avisado.current[llave] = true
@@ -319,7 +340,8 @@ export default function Laboratorio() {
                 <div>
                   {paso === 1 && <Paso1 test={test} mut={mut} />}
                   {paso === 2 && <Paso2 test={test} mut={mut} renombrar={renombrar} proto={proto}
-                    setProto={setProto} atletas={atletas} setMed={setMed} />}
+                    setProto={setProto} atletas={atletas} setMed={setMed}
+                    pidiendo={pidiendo} setPidiendo={setPidiendo} />}
                   {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(nombreActivo)}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} />}
                   {paso === 4 && (
@@ -366,7 +388,7 @@ export default function Laboratorio() {
               onBajo={(bl, a) => {
                 const ms = reloj && reloj.clave === '@' + bl.clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
                 const esn = escalonAhora(bl, ms)
-                const dentro = Math.floor(ms / 1000) % bl.duracion
+                const dentro = Math.floor(ms / 1000) % duracionDe(bl)
                 ponMed(a, d => {
                   /* El último COMPLETO, no el que iba: ese no lo terminó, y sus
                      segundos son justo el otro dato. */
@@ -466,7 +488,7 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
 // ============================================================
 // 2 · Qué se apunta
 // ============================================================
-function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed }: {
+function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed, pidiendo, setPidiendo }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   renombrar: (c: Columna, nuevo: string, bl: Bloque | null) => void
@@ -474,6 +496,8 @@ function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed }: {
   setProto: (f: (d: Datos) => Datos) => void
   atletas: string[]
   setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
+  pidiendo: Pidiendo | null
+  setPidiendo: (p: Pidiendo | null) => void
 }) {
   const repes = clavesRepetidas(test)
 
@@ -481,6 +505,12 @@ function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed }: {
     setMed(m0 => {
       const m = { ...m0 }
       for (const a of atletas) m[a] = { ...(m[a] || {}), [clave]: Array.from({ length: veces }, () => '') }
+      return m
+    })
+  const sinMedida = (clave: string) =>
+    setMed(m0 => {
+      const m: Record<string, Datos> = {}
+      for (const a of Object.keys(m0)) { const d = { ...m0[a] }; delete d[clave]; m[a] = d }
       return m
     })
 
@@ -595,17 +625,21 @@ function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed }: {
 
             <div className="mt-3 flex flex-col gap-2.5">
               {bl.columnas.map((c, ci) => (
-                <FilaColumna key={ci} c={c} bl={bl} test={test} proto={proto}
+                <FilaColumna key={ci} c={c} bl={bl} indice={ci} test={test} proto={proto}
+                  pidiendo={pidiendo} setPidiendo={setPidiendo}
                   onCambio={(k, v) => mut(t => { (t.bloques[bi].columnas[ci] as unknown as Record<string, unknown>)[k] = v })}
                   onClase={v => {
                     mut(t => {
                       const x = t.bloques[bi].columnas[ci]
                       x.clase = v as Columna['clase']
                       if (v === 'dada' && !x.tipo) x.tipo = 'progresion'
+                      if (v === 'calculada' && !x.formula) x.formula = []
                     })
-                    if (v === 'dada') {
-                      setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) { const d = { ...m0[a] }; delete d[c.clave]; m[a] = d } return m })
-                    } else nuevaMedida(c.clave, bl.veces)
+                    /* Solo lo MEDIDO lleva casillas. Una dada sale del protocolo
+                       y una calculada de su fila: dejarles una casilla sería
+                       invitar a escribir encima de algo que se recalcula. */
+                    if (v === 'medida') nuevaMedida(c.clave, bl.veces)
+                    else sinMedida(c.clave)
                   }}
                   onRenombra={n => renombrar(c, n, bl)}
                   onQuita={() => {
@@ -660,24 +694,31 @@ function Pildora({ tono, children }: { tono: 'blo' | 'dada' | 'med'; children: R
 }
 
 /** Una casilla suelta o una columna de un bloque: se editan igual. */
-function FilaColumna({ c, bl, test, proto, onCambio, onClase, onRenombra, onQuita }: {
+function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra, onQuita, pidiendo, setPidiendo }: {
   c: Columna
   bl: Bloque | null
+  /** Qué puesto ocupa en su bloque: una calculada solo ve lo que va antes. */
+  indice?: number
   test: TestLab
   proto: Datos
   onCambio: (campo: string, valor: unknown) => void
   onClase: (v: string) => void
   onRenombra: (nuevo: string) => void
   onQuita: () => void
+  pidiendo?: Pidiendo | null
+  setPidiendo?: (p: Pidiendo | null) => void
 }) {
   const dada = c.clase === 'dada'
+  const calc = c.clase === 'calculada'
   const id = (bl ? bl.clave : 's') + '-' + c.clave
   const dados = test.sueltos.filter(s => s.clase === 'dada' && s.clave)
 
   return (
     <div className={bl ? 'border border-gray-800 rounded-lg p-2.5 bg-[#0b1220]' : caja}>
       <h4 className="flex items-center gap-2 flex-wrap text-[12.5px] font-bold mb-2.5">
-        <Pildora tono={dada ? 'dada' : 'med'}>{dada ? (bl ? 'La pones tú' : 'Del protocolo') : bl ? 'La mides' : 'Se mide'}</Pildora>
+        <Pildora tono={calc ? 'blo' : dada ? 'dada' : 'med'}>
+          {calc ? 'La calcula la app' : dada ? (bl ? 'La pones tú' : 'Del protocolo') : bl ? 'La mides' : 'Se mide'}
+        </Pildora>
         {c.etiqueta || c.clave}
         <button onClick={onQuita} className="ml-auto text-gray-600 hover:text-red-400 px-1">×</button>
       </h4>
@@ -698,12 +739,15 @@ function FilaColumna({ c, bl, test, proto, onCambio, onClase, onRenombra, onQuit
         <div>
           <label className={lab} htmlFor={id + '-c'}>Qué clase es</label>
           <select id={id + '-c'} className={campo} value={c.clase} onChange={e => onClase(e.target.value)}>
-            <option value="medida">La mides (de cada uno)</option>
-            <option value="dada">La pones tú (del protocolo)</option>
+            <option value="medida">{CLASES.medida}</option>
+            <option value="dada">{CLASES.dada}</option>
+            {/* Calculada solo dentro de un bloque: fuera, una casilla que sale
+                de otras es justo lo que ya es un resultado. */}
+            {bl && <option value="calculada">{CLASES.calculada}</option>}
           </select>
         </div>
 
-        {!dada && (
+        {!dada && !calc && (
           <div>
             <label className={lab} htmlFor={id + '-i'}>Cómo se rellena</label>
             <select id={id + '-i'} className={campo} value={c.instrumento}
@@ -743,6 +787,21 @@ function FilaColumna({ c, bl, test, proto, onCambio, onClase, onRenombra, onQuit
         )}
       </div>
 
+      {calc && bl && setPidiendo && (
+        <div className="mt-2.5">
+          <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">De qué sale</p>
+          {/* Aquí cada nombre vale UN número, el de su repetición, así que no se
+              ofrecen funciones de serie: dentro de una fila no hay serie. */}
+          <MontaFormula
+            formula={c.formula || []} clave={'col:' + bl.clave + ':' + c.clave}
+            escalares={test.sueltos.map(x => x.clave)
+              .concat(bl.columnas.slice(0, indice ?? bl.columnas.length).map(x => x.clave))}
+            series={[]} refs={[]}
+            pidiendo={pidiendo ?? null} setPidiendo={setPidiendo}
+            onCambio={f => onCambio('formula', f)} />
+        </div>
+      )}
+
       <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5 pt-2.5 border-t border-dashed border-gray-800">
         {pistaCol(c, bl, proto)}
       </p>
@@ -774,6 +833,11 @@ function Origen({ id, et, campo: cp, c, dados, onCambio }: {
 
 function pistaCol(c: Columna, bl: Bloque | null, proto: Datos): React.ReactNode {
   const n = bl ? bl.veces : 1
+  if (c.clase === 'calculada') {
+    return c.formula?.length
+      ? <>Sale sola en <b className="text-white">cada repetición</b>, de las columnas de su fila. No hay casilla que rellenar: si escribieras encima, estarías tapando algo que se recalcula.</>
+      : <><b className="text-amber-300">Todavía no sale de nada.</b> Móntale la fórmula aquí arriba con las columnas que van antes que ella.</>
+  }
   if (c.clase === 'dada') {
     if (!bl) return <>La pones tú antes de empezar y vale <b className="text-white">para todos</b> los que hagan el test a la vez. Se guarda con la medición: dos tests que arrancaron distinto no son comparables, y sin guardarlo nadie sabría por qué.</>
     if (c.tipo === 'lista') return <>Sale ya puesta: <b className="text-white">{(c.etiquetas || []).slice(0, n).join(' · ') || '—'}</b>. No se teclea nada.</>
@@ -833,27 +897,58 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
 
   const ud = bl.duracionUd === 'min' ? 'min' : 's'
   const val = ud === 'min' ? Math.round(bl.duracion / 60 * 100) / 100 : bl.duracion
+  const tramos = bl.tramos || []
 
   return (
     <div className={marco}>
       <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">⏱ El reloj</p>
 
-      <div className={frase}>
-        Cada
-        <input type="number" step="any" min={0.1} className={mini} value={val}
-          onChange={e => mut(t => {
-            /* Se escribe en la unidad que se esté enseñando; dentro SIEMPRE son
-               segundos. Guardar minutos a veces y segundos otras acaba en un
-               escalón de 60 minutos sin que nadie sepa por qué. */
-            const n = Number(e.target.value) * (bl.duracionUd === 'min' ? 60 : 1)
-            t.bloques[bi].duracion = Math.max(1, Math.round(n)) || 1
-          })} />
-        <select className={sel} value={ud} onChange={e => mut(t => { t.bloques[bi].duracionUd = e.target.value as 's' | 'min' })}>
-          <option value="s">segundos</option>
-          <option value="min">minutos</option>
-        </select>
-        el reloj pasa a la siguiente <b className="text-white">{(bl.etiqueta || 'repetición').toLowerCase()}</b>.
-      </div>
+      {tramos.length === 0 ? (
+        <div className={frase}>
+          Cada
+          <input type="number" step="any" min={0.1} className={mini} value={val}
+            onChange={e => mut(t => {
+              /* Se escribe en la unidad que se esté enseñando; dentro SIEMPRE son
+                 segundos. Guardar minutos a veces y segundos otras acaba en un
+                 escalón de 60 minutos sin que nadie sepa por qué. */
+              const n = Number(e.target.value) * (bl.duracionUd === 'min' ? 60 : 1)
+              t.bloques[bi].duracion = Math.max(1, Math.round(n)) || 1
+            })} />
+          <select className={sel} value={ud} onChange={e => mut(t => { t.bloques[bi].duracionUd = e.target.value as 's' | 'min' })}>
+            <option value="s">segundos</option>
+            <option value="min">minutos</option>
+          </select>
+          el reloj pasa a la siguiente <b className="text-white">{(bl.etiqueta || 'repetición').toLowerCase()}</b>.
+        </div>
+      ) : (
+        <>
+          {/* Con tramos, la duración de la repetición es SU SUMA y no hay campo
+              aparte: dos sitios diciendo cuánto dura acabarían discrepando. */}
+          <div className={frase}>
+            Cada <b className="text-white">{(bl.etiqueta || 'repetición').toLowerCase()}</b> son
+            <b className="text-white">{duracionDe(bl)} s</b>, repartidos así:
+          </div>
+          {tramos.map((tr, ti) => (
+            <div key={ti} className={frase}>
+              <input type="text" className={mini + ' w-[110px] text-left'} value={tr.nombre}
+                onChange={e => mut(t => { t.bloques[bi].tramos![ti].nombre = e.target.value })} />
+              <input type="number" min={1} className={mini} value={tr.segundos}
+                onChange={e => mut(t => { t.bloques[bi].tramos![ti].segundos = Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+              segundos
+              {tramos.length > 1 && (
+                <button onClick={() => mut(t => { t.bloques[bi].tramos!.splice(ti, 1) })}
+                  className="text-gray-600 hover:text-red-400 px-1">×</button>
+              )}
+            </div>
+          ))}
+          <div className="flex gap-2 flex-wrap mt-2">
+            <button onClick={() => mut(t => { t.bloques[bi].tramos!.push({ nombre: 'Otro', segundos: 15 }) })}
+              className={btnSec + ' ' + btnMini}>+ Otro tramo</button>
+            <button onClick={() => mut(t => { delete t.bloques[bi].tramos })}
+              className="text-[11.5px] text-gray-500 hover:text-gray-300 transition px-2">Volver a una sola pieza</button>
+          </div>
+        </>
+      )}
 
       <div className="flex gap-1.5 flex-wrap mt-2.5">
         <button className={chip(bl.pitaCambio !== false)}
@@ -873,6 +968,17 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
             if (b.ritmo === 'metros' && !b.ritmoCada) b.ritmoCada = 20
           })}>
           {bl.ritmo === 'metros' ? '🏃 Pita cada X metros' : bl.ritmo === 'segundos' ? '⏲ Pita cada X segundos' : '➕ Marcar el paso dentro'}
+        </button>
+        {/* El 30-15 son 30 s corriendo y 15 andando: dos trozos dentro de la
+            misma repetición. Sin esto el reloj sabía cuándo cambiaba de escalón
+            pero no cuándo había que dejar de correr, que es medio test. */}
+        <button className={chip(tramos.length > 0)}
+          onClick={() => mut(t => {
+            const b = t.bloques[bi]
+            if (b.tramos?.length) delete b.tramos
+            else b.tramos = [{ nombre: 'Correr', segundos: 30 }, { nombre: 'Andar', segundos: 15 }]
+          })}>
+          {tramos.length ? '🔀 Partida en ' + tramos.length + ' tramos' : '➗ Partir la repetición'}
         </button>
       </div>
 
@@ -930,18 +1036,10 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   datos: Datos
-  pidiendo: { res: number; col: string; fn: Funcion | null } | null
-  setPidiendo: (p: { res: number; col: string; fn: Funcion | null } | null) => void
+  pidiendo: Pidiendo | null
+  setPidiendo: (p: Pidiendo | null) => void
 }) {
   const vals = calcular(test, datos)
-  const ficha = 'font-mono text-[12px] px-2.5 py-1 rounded-md border transition hover:brightness-125'
-  const cls = (b: Bloq) => b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
-    : b.t === 'var' ? 'bg-orange-500/14 border-orange-500/45 text-orange-200'
-      : b.t === 'ref' ? 'bg-violet-500/14 border-violet-400/45 text-violet-200'
-        : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
-          : 'bg-gray-800 border-gray-600 text-gray-300'
-
-  const pon = (i: number, b: Bloq) => { mut(t => { t.resultados[i].formula.push(b) }); setPidiendo(null) }
 
   return (
     <div className={tarjeta}>
@@ -976,78 +1074,14 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
               </div>
             </div>
 
-            <div className="bg-[#0b1220] border border-dashed border-gray-700 rounded-xl px-2.5 py-2 flex flex-wrap gap-1.5 items-center min-h-[44px] mt-2.5">
-              {r.formula.length === 0
-                ? <span className="text-gray-600 text-[12.5px] italic">Móntala con los bloques de abajo</span>
-                : r.formula.map((b, n) => (
-                  <button key={n} title="Quitar" onClick={() => mut(t => { t.resultados[i].formula.splice(n, 1) })}
-                    className={ficha + ' ' + cls(b)}>
-                    {b.t === 'fn' ? etiquetaFn(b) : String(b.v)}
-                  </button>
-                ))}
-            </div>
-
-            <div className="mt-2.5 flex flex-col gap-2">
-              <Grupo et="Casillas y columnas">
-                {test.sueltos.map(c => (
-                  <button key={c.clave} className={ficha + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
-                    onClick={() => pon(i, { t: 'var', v: c.clave })}>{c.clave}</button>
-                ))}
-                {todasLasColumnas(test).map(x => (
-                  <button key={x.c.clave} className={ficha + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
-                    onClick={() => setPidiendo({ res: i, col: x.c.clave, fn: null })}>
-                    {x.c.clave} <span className="opacity-60">×{x.bl.veces}</span>
-                  </button>
-                ))}
-                {!test.sueltos.length && !todasLasColumnas(test).length && <span className="text-gray-600 text-[12.5px] italic">Añade algo en el paso 2</span>}
-              </Grupo>
-
-              {pidiendo?.res === i && !pidiendo.fn && (
-                <Grupo et={'De «' + pidiendo.col + '», ¿qué quieres?'} escalon>
-                  {(Object.keys(FUNCIONES) as Funcion[]).map(f => (
-                    <button key={f} className={ficha + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
-                      onClick={() => setPidiendo({ ...pidiendo, fn: f })}>
-                      {f}() <span className="opacity-60">{FUNCIONES[f]}</span>
-                    </button>
-                  ))}
-                </Grupo>
-              )}
-
-              {pidiendo?.res === i && pidiendo.fn && (
-                <Grupo et={pidiendo.fn + '(' + pidiendo.col + ') ¿de cuáles?'} escalon>
-                  {([['De todas', 0, 0], ['Sin la primera', 2, 0], ['Sin la última', 0, -1]] as const).map(([n, d, h]) => (
-                    <button key={n} className={ficha + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
-                      onClick={() => pon(i, fnB(pidiendo.fn!, pidiendo.col, d, h))}>{n}</button>
-                  ))}
-                  <button className={ficha + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
-                    onClick={() => {
-                      const a = prompt('¿Desde qué repetición?', '2'); if (a === null) return
-                      const b = prompt('¿Hasta cuál? (0 = hasta la última)', '3'); if (b === null) return
-                      pon(i, fnB(pidiendo.fn!, pidiendo.col, Math.max(1, Math.round(Number(a) || 1)), Math.round(Number(b) || 0)))
-                    }}>De la X a la Y…</button>
-                  <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
-                    En un 6×100 la primera sale de pared y no compara con las demás. Y el índice de fatiga son dos tramos: 1–3 contra 4–6.
-                  </p>
-                </Grupo>
-              )}
-
-              <Grupo et="Operaciones">
-                {['+', '-', '*', '/', '(', ')'].map(o => (
-                  <button key={o} className={ficha + ' bg-gray-800 border-gray-600 text-gray-300'}
-                    onClick={() => pon(i, { t: 'op', v: o })}>{o}</button>
-                ))}
-                <button className={ficha + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
-                  onClick={() => { const n = prompt('¿Qué número?', '100'); if (n !== null && Number.isFinite(Number(n))) pon(i, { t: 'num', v: Number(n) }) }}>123…</button>
-              </Grupo>
-
-              {test.resultados.slice(0, i).filter(x => x.nombre).length > 0 && (
-                <Grupo et="Resultados anteriores">
-                  {test.resultados.slice(0, i).filter(x => x.nombre).map(x => (
-                    <button key={x.nombre} className={ficha + ' bg-violet-500/14 border-violet-400/45 text-violet-200'}
-                      onClick={() => pon(i, { t: 'ref', v: x.nombre })}>{x.nombre}</button>
-                  ))}
-                </Grupo>
-              )}
+            <div className="mt-2.5">
+              <MontaFormula
+                formula={r.formula} clave={'res:' + i}
+                escalares={test.sueltos.map(c => c.clave)}
+                series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
+                refs={test.resultados.slice(0, i).filter(x => x.nombre).map(x => x.nombre)}
+                pidiendo={pidiendo} setPidiendo={setPidiendo}
+                onCambio={f => mut(t => { t.resultados[i].formula = f })} />
             </div>
 
             {vals[i]?.error && (
@@ -1069,6 +1103,114 @@ function Grupo({ et, escalon, children }: { et: string; escalon?: boolean; child
       <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">{et}</p>
       <div className="flex flex-wrap gap-1.5 items-center">{children}</div>
     </div>
+  )
+}
+
+const FICHA = 'font-mono text-[12px] px-2.5 py-1 rounded-md border transition hover:brightness-125'
+const colorFicha = (b: Bloq) => b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
+  : b.t === 'var' ? 'bg-orange-500/14 border-orange-500/45 text-orange-200'
+    : b.t === 'ref' ? 'bg-violet-500/14 border-violet-400/45 text-violet-200'
+      : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
+        : 'bg-gray-800 border-gray-600 text-gray-300'
+
+/**
+ * El montador de fórmulas, que sirve para las dos.
+ *
+ * La diferencia entre una y otra es QUÉ VALE UN NOMBRE. En un resultado, el
+ * nombre de una columna vale la serie entera y hay que decir qué se le pide; en
+ * una columna calculada vale UN número, el de su repetición, y por eso ahí no
+ * se ofrecen funciones. Escribir dos montadores habría dejado que uno ofreciera
+ * lo que el otro prohíbe.
+ */
+function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPidiendo, onCambio }: {
+  formula: Bloq[]
+  clave: string
+  escalares: string[]
+  series: { clave: string; veces: number }[]
+  refs: string[]
+  pidiendo: Pidiendo | null
+  setPidiendo: (p: Pidiendo | null) => void
+  onCambio: (f: Bloq[]) => void
+}) {
+  const mio = pidiendo?.clave === clave ? pidiendo : null
+  const pon = (b: Bloq) => { onCambio([...formula, b]); setPidiendo(null) }
+
+  return (
+    <>
+      <div className="bg-[#0b1220] border border-dashed border-gray-700 rounded-xl px-2.5 py-2 flex flex-wrap gap-1.5 items-center min-h-[44px]">
+        {formula.length === 0
+          ? <span className="text-gray-600 text-[12.5px] italic">Móntala con los bloques de abajo</span>
+          : formula.map((b, n) => (
+            <button key={n} title="Quitar" onClick={() => onCambio(formula.filter((_, k) => k !== n))}
+              className={FICHA + ' ' + colorFicha(b)}>
+              {b.t === 'fn' ? etiquetaFn(b) : String(b.v)}
+            </button>
+          ))}
+      </div>
+
+      <div className="mt-2.5 flex flex-col gap-2">
+        <Grupo et={series.length ? 'Casillas y columnas' : 'Lo que puedes usar aquí'}>
+          {escalares.map(k => (
+            <button key={k} className={FICHA + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
+              onClick={() => pon({ t: 'var', v: k })}>{k}</button>
+          ))}
+          {series.map(s => (
+            <button key={s.clave} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+              onClick={() => setPidiendo({ clave, col: s.clave, fn: null })}>
+              {s.clave} <span className="opacity-60">×{s.veces}</span>
+            </button>
+          ))}
+          {!escalares.length && !series.length && <span className="text-gray-600 text-[12.5px] italic">Nada todavía</span>}
+        </Grupo>
+
+        {mio && !mio.fn && (
+          <Grupo et={'De «' + mio.col + '», ¿qué quieres?'} escalon>
+            {(Object.keys(FUNCIONES) as Funcion[]).map(f => (
+              <button key={f} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+                onClick={() => setPidiendo({ ...mio, fn: f })}>
+                {f}() <span className="opacity-60">{FUNCIONES[f]}</span>
+              </button>
+            ))}
+          </Grupo>
+        )}
+
+        {mio?.fn && (
+          <Grupo et={mio.fn + '(' + mio.col + ') ¿de cuáles?'} escalon>
+            {([['De todas', 0, 0], ['Sin la primera', 2, 0], ['Sin la última', 0, -1]] as const).map(([n, d, h]) => (
+              <button key={n} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+                onClick={() => pon(fnB(mio.fn!, mio.col, d, h))}>{n}</button>
+            ))}
+            <button className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+              onClick={() => {
+                const a = prompt('¿Desde qué repetición?', '2'); if (a === null) return
+                const b = prompt('¿Hasta cuál? (0 = hasta la última)', '3'); if (b === null) return
+                pon(fnB(mio.fn!, mio.col, Math.max(1, Math.round(Number(a) || 1)), Math.round(Number(b) || 0)))
+              }}>De la X a la Y…</button>
+            <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+              En un 6×100 la primera sale de pared y no compara con las demás. Y el índice de fatiga son dos tramos: 1–3 contra 4–6.
+            </p>
+          </Grupo>
+        )}
+
+        <Grupo et="Operaciones">
+          {['+', '-', '*', '/', '^', '(', ')'].map(o => (
+            <button key={o} className={FICHA + ' bg-gray-800 border-gray-600 text-gray-300'}
+              onClick={() => pon({ t: 'op', v: o })}>{o}</button>
+          ))}
+          <button className={FICHA + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
+            onClick={() => { const n = prompt('¿Qué número?', '100'); if (n !== null && Number.isFinite(Number(n))) pon({ t: 'num', v: Number(n) }) }}>123…</button>
+        </Grupo>
+
+        {refs.length > 0 && (
+          <Grupo et="Resultados anteriores">
+            {refs.map(r => (
+              <button key={r} className={FICHA + ' bg-violet-500/14 border-violet-400/45 text-violet-200'}
+                onClick={() => pon({ t: 'ref', v: r })}>{r}</button>
+            ))}
+          </Grupo>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -1298,9 +1440,12 @@ function Pasar({
       {escalonados.map(bl => {
         const clave = '@' + bl.clave
         const ms = msDe(clave)
+        const dur = duracionDe(bl)
         const n = escalonAhora(bl, ms)
-        const dentro = Math.floor(ms / 1000) % bl.duracion
-        const cd = bl.columnas.find(c => c.clase === 'dada' && c.tipo === 'progresion')!
+        const dentroMs = ms % (dur * 1000)
+        const dentro = Math.floor(dentroMs / 1000)
+        const tr = tramoEn(bl, dentroMs)
+        const cd = columnaDeVelocidad(bl, datosDe(atletas[activo] || atletas[0]))!
         const corre = reloj?.clave === clave && reloj.corre
         return (
           <div key={bl.clave}>
@@ -1310,10 +1455,15 @@ function Pasar({
                 <div className={pie}>{cd.unidad} ahora · escalón {n}</div>
               </div>
               <div>
-                <div className="font-mono tabular-nums text-[26px] leading-none text-white">
-                  {Math.floor(dentro / 60)}:{String(dentro % 60).padStart(2, '0')}
+                {/* Con tramos se canta LO QUE QUEDA DE ESTE TRAMO, no lo que
+                    lleva la repetición: al atleta lo que le sirve es cuántos
+                    segundos le quedan de correr. */}
+                <div className={'font-mono tabular-nums text-[26px] leading-none ' + (tr ? 'text-fuchsia-300' : 'text-white')}>
+                  {tr
+                    ? Math.floor(tr.restante / 60) + ':' + String(tr.restante % 60).padStart(2, '0')
+                    : Math.floor(dentro / 60) + ':' + String(dentro % 60).padStart(2, '0')}
                 </div>
-                <div className={pie}>en este escalón</div>
+                <div className={pie}>{tr ? tr.nombre + ' · queda' : 'en este escalón'}</div>
               </div>
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
                 <button onClick={() => onArranca(clave)} className={btnSec + ' flex-1 min-w-[110px]'}>

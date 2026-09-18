@@ -13,8 +13,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   calcular, pegasDe, protoVacio, medVacia, col, fnB,
+  duracionDe, tramoEn, escalonAhora, intervaloRitmo,
   type TestLab, type Datos,
 } from './lab-constructor'
+import { plantillaPorId } from './lab-plantillas'
+
+const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
 /** Monta el test, le mete los datos y devuelve los resultados por nombre. */
 function pasar(t: TestLab, datos: Datos): Record<string, number | null> {
@@ -293,104 +297,164 @@ describe('tests abiertos', () => {
 })
 
 // ============================================================
-// 4. LO QUE NO CABE
+// 4. LO QUE ANTES NO CABÍA
 // ============================================================
 //
-// Cuatro cosas. Las tres primeras son de verdad, la cuarta es cosmética.
-describe('lo que NO cabe, y por qué', () => {
+// Tres huecos que se cerraron el 2026-09-18. Los tests se quedan para que no se
+// vuelvan a abrir sin que nadie se entere.
+describe('columnas calculadas por repetición', () => {
   /**
-   * 1. NO HAY COLUMNAS CALCULADAS POR REPETICIÓN.
-   *
-   * Es el hueco grande, y sale en tres tests muy usados:
-   *
-   *   · RAST — la potencia de cada sprint es peso·35²/t³. La potencia MEDIA de
-   *     los seis NO es peso·35²/media(t)³, porque el cubo no es lineal. Sale un
-   *     número plausible y equivocado.
-   *   · RSI del drop jump — es altura/contacto de CADA salto, y luego el mejor.
-   *     `maximo(altura)/minimo(contacto)` mezcla dos saltos distintos.
-   *   · Perfil carga-velocidad — la potencia de cada serie es carga·velocidad.
-   *
-   * Lo que haría falta: una columna del bloque que en vez de medirse se calcule
-   * con las otras de SU MISMA repetición, y que después se le puedan pedir
-   * `maximo`, `media`… como a cualquier otra.
+   * EL HUECO GRANDE, y salía en tres tests muy usados: RAST, RSI del drop jump
+   * y perfil carga-velocidad. Todos necesitan calcular algo de CADA repetición
+   * antes de agregarlo, y hacerlo sobre la media da otro número.
    */
-  it('el RAST da distinto según se calcule por repetición o sobre la media', () => {
+  it('la media de las potencias NO es la potencia de la media', () => {
     const peso = 70, d = 35
     const tiempos = [4.8, 5.0, 5.2, 5.5, 5.8, 6.1]
     const potencia = (x: number) => peso * d * d / (x * x * x)
-
     const mediaDeLasPotencias = tiempos.map(potencia).reduce((a, b) => a + b, 0) / tiempos.length
     const potenciaDeLaMedia = potencia(tiempos.reduce((a, b) => a + b, 0) / tiempos.length)
+    /* Un 4 %. Parece poco hasta que se compara con el test del mes pasado y la
+       mejora que se le enseña al atleta es de ese orden. */
+    expect(mediaDeLasPotencias / potenciaDeLaMedia).toBeGreaterThan(1.04)
 
-    /* Casi un 3 % de diferencia. Parece poco hasta que se compara con el test
-       del mes pasado y la mejora que se enseña es de un 2 %. */
-    expect(mediaDeLasPotencias).toBeGreaterThan(potenciaDeLaMedia)
-    expect(mediaDeLasPotencias / potenciaDeLaMedia).toBeGreaterThan(1.02)
-
-    /* Lo que SÍ sale bien hoy: cualquier cosa que dependa de UN solo tiempo. */
     const t: TestLab = {
-      nombre: 'RAST (solo lo que cabe)', deporte: 'Carrera',
+      nombre: 'RAST', deporte: 'Carrera',
       sueltos: [col({ clave: 'peso', etiqueta: 'Peso', unidad: 'kg', clase: 'dada', valor: '70' })],
       bloques: [{
         clave: 's', etiqueta: 'Sprint', modo: 'cerrado', veces: 6, duracion: 0,
-        columnas: [col({ clave: 'ts', etiqueta: 'Tiempo', unidad: 's', instrumento: 'crono-seg' })],
+        columnas: [
+          col({ clave: 'ts', etiqueta: 'Tiempo', unidad: 's', instrumento: 'crono-seg' }),
+          col({ clave: 'pot', etiqueta: 'Potencia', unidad: 'W', clase: 'calculada', formula: [
+            v('peso'), op('*'), num(1225), op('/'), op('('), v('ts'), op('^'), num(3), op(')'),
+          ] }),
+        ],
       }],
-      resultados: [{ nombre: 'p_max', unidad: 'W', formula: [
-        v('peso'), op('*'), num(1225), op('/'), op('('), fnB('minimo', 'ts'), op('^'), num(3), op(')'),
-      ] }],
+      resultados: [
+        { nombre: 'p_max', unidad: 'W', formula: [fnB('maximo', 'pot')] },
+        { nombre: 'p_media', unidad: 'W', formula: [fnB('media', 'pot')] },
+        { nombre: 'fatiga', unidad: 'W/s', formula: [
+          op('('), fnB('maximo', 'pot'), op('-'), fnB('minimo', 'pot'), op(')'), op('/'), fnB('suma', 'ts'),
+        ] },
+      ],
     }
     const r = pasar(t, { ts: tiempos.map(String) })
     expect(r.p_max).toBeCloseTo(potencia(4.8), 2)
+    /* Y AQUÍ ESTÁ LO QUE SE ARREGLÓ: la media es la de las seis potencias. */
+    expect(r.p_media).toBeCloseTo(mediaDeLasPotencias, 2)
+    expect(r.p_media).not.toBeCloseTo(potenciaDeLaMedia, 0)
+    expect(r.fatiga).toBeCloseTo((potencia(4.8) - potencia(6.1)) / 32.4, 2)
   })
 
-  /**
-   * 2. EL RITMO DENTRO DE LA REPETICIÓN ES UNO SOLO.
-   *
-   * El 30-15 IFT son 30 s corriendo y 15 s andando: dos tramos dentro de la
-   * misma repetición, con pitidos distintos. El Yo-Yo IR1 igual (2×20 m y 10 s
-   * de pausa). Hoy una repetición tiene UNA duración y UN ritmo, así que el
-   * reloj no sabe cantar la pausa.
-   *
-   * Lo que haría falta: que la repetición pueda tener tramos —«30 s de trabajo
-   * + 15 s de pausa»— y que el pitido sepa distinguirlos.
-   *
-   * SE PUEDE APAÑAR hoy poniendo la repetición de 45 s: los datos salen bien,
-   * pero el reloj no avisa de cuándo parar de correr, que es medio test.
-   */
-  it('el 30-15 se puede apuntar, pero el reloj no lo dirige', () => {
+  it('el RSI del drop jump sale salto a salto, no mezclando el mejor con el peor', () => {
     const t: TestLab = {
-      nombre: '30-15 IFT', deporte: 'Carrera', sueltos: [],
+      nombre: 'Drop jump', deporte: 'Fuerza', sueltos: [],
       bloques: [{
-        clave: 'e', etiqueta: 'Escalón', modo: 'abierto', veces: 25,
-        duracion: 45, pitaCambio: true, avisoAntes: 5,
-        columnas: [col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'km/h', clase: 'dada', tipo: 'progresion', desde: 8, paso: 0.5 })],
+        clave: 'j', etiqueta: 'Salto', modo: 'cerrado', veces: 3, duracion: 0,
+        columnas: [
+          col({ clave: 'alt', etiqueta: 'Altura', unidad: 'm' }),
+          col({ clave: 'con', etiqueta: 'Contacto', unidad: 's' }),
+          col({ clave: 'rsi', etiqueta: 'RSI', unidad: '', clase: 'calculada', formula: [v('alt'), op('/'), v('con')] }),
+        ],
       }],
-      resultados: [{ nombre: 'vift', unidad: 'km/h', formula: [fnB('ultima', 'vel')] }],
+      resultados: [{ nombre: 'rsi_max', unidad: '', formula: [fnB('maximo', 'rsi')] }],
     }
-    /* Los datos salen: la VIFT es la velocidad del último escalón completado. */
-    expect(pasar(t, { '@e': 12 }).vift).toBeCloseTo(13.5, 3)
-    /* Pero el bloque solo sabe de una duración: no hay dónde decir «30 corriendo
-       y 15 andando». Si esto deja de ser verdad, hay que reescribir el test. */
-    expect(Object.keys(t.bloques[0])).not.toContain('tramos')
+    /* Alturas 0,32 0,30 0,34 y contactos 0,20 0,18 0,25 → RSI 1,60 1,667 1,36.
+       El mejor es 1,667. Mezclando el mejor salto con el mejor contacto saldría
+       0,34/0,18 = 1,889, que es un salto que no ha existido. */
+    const r = pasar(t, { alt: ['0.32', '0.30', '0.34'], con: ['0.20', '0.18', '0.25'] })
+    expect(r.rsi_max).toBeCloseTo(1.6667, 3)
+    expect(r.rsi_max).not.toBeCloseTo(0.34 / 0.18, 2)
   })
 
-  /**
-   * 3. LA PROGRESIÓN ES ARITMÉTICA.
-   *
-   * La navette real no sube de 0,5 en 0,5 exactos, y el Yo-Yo IR1 tiene una
-   * tabla de velocidades que no es una progresión. Hoy hay dos formas de dar
-   * una columna: progresión o LISTA, y la lista guarda TEXTO.
-   *
-   * Y resulta que la lista con números SÍ funciona para calcular —el motor
-   * convierte lo que le llega—, así que el apaño existe: escribir las 21
-   * velocidades a mano. Lo que no funciona es el pitido por metros, que lee la
-   * velocidad solo de una progresión.
-   */
-  it('una lista de números vale para calcular, pero no para el pitido', () => {
+  it('una calculada puede apoyarse en otra anterior', () => {
     const t: TestLab = {
-      nombre: 'Yo-Yo IR1 (velocidades a mano)', deporte: 'Carrera', sueltos: [],
+      nombre: 'Encadenadas', deporte: 'Otro', sueltos: [],
       bloques: [{
-        clave: 'n', etiqueta: 'Nivel', modo: 'abierto', veces: 5, duracion: 0,
+        clave: 'r', etiqueta: 'Serie', modo: 'cerrado', veces: 2, duracion: 0,
+        columnas: [
+          col({ clave: 'carga', etiqueta: 'Carga', unidad: 'kg' }),
+          col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'm/s' }),
+          col({ clave: 'fuerza', etiqueta: 'Fuerza', unidad: 'N', clase: 'calculada', formula: [v('carga'), op('*'), num(9.81)] }),
+          col({ clave: 'pot', etiqueta: 'Potencia', unidad: 'W', clase: 'calculada', formula: [v('fuerza'), op('*'), v('vel')] }),
+        ],
+      }],
+      resultados: [{ nombre: 'p_max', unidad: 'W', formula: [fnB('maximo', 'pot')] }],
+    }
+    const r = pasar(t, { carga: ['40', '80'], vel: ['1.2', '0.7'] })
+    expect(r.p_max).toBeCloseTo(80 * 9.81 * 0.7, 2)
+  })
+
+  it('no deja nombrar una columna que va después, ni usar funciones de serie dentro', () => {
+    const base = (formula: typeof v extends never ? never : ReturnType<typeof v>[]): TestLab => ({
+      nombre: 'x', deporte: 'Otro', sueltos: [],
+      bloques: [{
+        clave: 'r', etiqueta: 'r', modo: 'cerrado', veces: 2, duracion: 0,
+        columnas: [
+          col({ clave: 'calc', etiqueta: '', clase: 'calculada', formula }),
+          col({ clave: 'luego', etiqueta: '' }),
+        ],
+      }],
+      resultados: [{ nombre: 'z', unidad: '', formula: [fnB('media', 'calc')] }],
+    })
+    expect(pegasDe(base([v('luego')])).some(p => /va DESPUÉS/.test(p.texto))).toBe(true)
+    expect(pegasDe(base([])).some(p => /ponle una fórmula/.test(p.texto))).toBe(true)
+    const conFn: TestLab = base([v('luego')])
+    conFn.bloques[0].columnas[0].formula = [fnB('media', 'luego')]
+    expect(pegasDe(conFn).some(p => /no valen suma\(\) ni media\(\)/.test(p.texto))).toBe(true)
+  })
+})
+
+describe('la repetición partida en tramos', () => {
+  /**
+   * El 30-15 IFT son 30 s corriendo y 15 andando; el Yo-Yo IR1, 2×20 m y 10 s
+   * de pausa. Antes el reloj sabía cuándo cambiaba de escalón pero no cuándo
+   * había que dejar de correr, que es medio test.
+   */
+  it('la duración sale de los tramos, no de un campo aparte', () => {
+    const t = clon(plantillaPorId('ift')!.test)
+    const bl = t.bloques[0]
+    expect(duracionDe(bl)).toBe(45)
+    /* Y si alguien cambia un tramo, la duración se mueve sola: dos sitios
+       diciendo cuánto dura una repetición acabarían diciendo cosas distintas. */
+    bl.tramos![1].segundos = 20
+    expect(duracionDe(bl)).toBe(50)
+    expect(escalonAhora(bl, 50_000)).toBe(2)
+  })
+
+  it('el reloj sabe en qué tramo va y cuánto le queda', () => {
+    const bl = clon(plantillaPorId('ift')!.test).bloques[0]
+    expect(tramoEn(bl, 0)?.nombre).toBe('Correr')
+    expect(tramoEn(bl, 29_000)?.nombre).toBe('Correr')
+    expect(tramoEn(bl, 29_000)?.restante).toBe(1)
+    expect(tramoEn(bl, 30_000)?.nombre).toBe('Andar')
+    expect(tramoEn(bl, 44_000)?.restante).toBe(1)
+  })
+
+  it('un tramo sin duración o sin nombre no deja guardar', () => {
+    const t = clon(plantillaPorId('ift')!.test)
+    t.bloques[0].tramos = [{ nombre: 'Correr', segundos: 30 }, { nombre: '', segundos: 0 }]
+    const p = pegasDe(t)
+    expect(p.some(x => /sin duración/.test(x.texto))).toBe(true)
+    expect(p.some(x => /nombre a cada tramo/.test(x.texto))).toBe(true)
+  })
+
+  it('la VIFT sigue saliendo del último escalón completo', () => {
+    expect(pasar(clon(plantillaPorId('ift')!.test), { '@e': 12 }).vift).toBeCloseTo(13.5, 3)
+  })
+})
+
+describe('la velocidad del pitido también sale de una lista', () => {
+  /**
+   * El Yo-Yo IR1 tiene una tabla de velocidades que no es una progresión.
+   * Pidiendo solo progresiones, esos protocolos se quedaban sin pitido.
+   */
+  it('con una lista de números, el ritmo por metros funciona', () => {
+    const t: TestLab = {
+      nombre: 'Yo-Yo IR1', deporte: 'Carrera', sueltos: [],
+      bloques: [{
+        clave: 'n', etiqueta: 'Nivel', modo: 'abierto', veces: 5, duracion: 60,
+        ritmo: 'metros', ritmoCada: 40, pitaCambio: true,
         columnas: [col({
           clave: 'vel', etiqueta: 'Velocidad', unidad: 'km/h', clase: 'dada',
           tipo: 'lista', etiquetas: ['10', '12', '13', '13.5', '14'],
@@ -398,8 +462,15 @@ describe('lo que NO cabe, y por qué', () => {
       }],
       resultados: [{ nombre: 'vfinal', unidad: 'km/h', formula: [fnB('ultima', 'vel')] }],
     }
+    expect(pegasDe(t)).toEqual([])
     expect(pasar(t, { '@n': 4 }).vfinal).toBeCloseTo(13.5, 3)
+    /* 40 m a 10 km/h son 14,4 s; a 13,5 km/h, 10,67. El hueco se acorta solo. */
+    expect(intervaloRitmo(t.bloques[0], 1, {})).toBeCloseTo(40 / (10 / 3.6) * 1000, 0)
+    expect(intervaloRitmo(t.bloques[0], 4, {})).toBeCloseTo(40 / (13.5 / 3.6) * 1000, 0)
   })
+})
+
+describe('lo que sigue sin caber', () => {
 
   /**
    * 4. LAS FÓRMULAS SON ARITMÉTICA, NO ESTADÍSTICA.

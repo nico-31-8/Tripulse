@@ -33,7 +33,20 @@
 // Tipos
 // ------------------------------------------------------------
 
-export type Clase = 'dada' | 'medida'
+/**
+ * De dónde sale una casilla.
+ *
+ *   · dada      — la pone el entrenador antes. Es del PROTOCOLO: igual para todos.
+ *   · medida    — se toma durante el test. Es DE CADA UNO.
+ *   · calculada — sale de las otras columnas DE SU MISMA REPETICIÓN.
+ *
+ * La tercera existe porque sin ella tres tests muy usados daban un número
+ * plausible y equivocado. En el RAST la potencia de cada sprint es
+ * peso·35²/t³, y la media de las seis potencias NO es la potencia de la media
+ * de los seis tiempos: con tiempos de 4,8 a 6,1 s se van un 4 %. Igual el RSI
+ * del drop jump (altura/contacto de CADA salto) y el perfil carga-velocidad.
+ */
+export type Clase = 'dada' | 'medida' | 'calculada'
 export type Instrumento = 'mano' | 'crono-seg' | 'crono-min' | 'contador'
 export type TipoDada = 'progresion' | 'lista'
 export type Ritmo = 'no' | 'segundos' | 'metros'
@@ -92,6 +105,20 @@ export interface Columna {
   desdeRef?: string
   pasoRef?: string
   etiquetas?: string[]
+  /**
+   * Solo en las calculadas: de qué sale, dentro de su repetición.
+   *
+   * Aquí los nombres valen UN número, no la serie entera: `ts` es el tiempo de
+   * ESTA repetición. Por eso no se pueden usar funciones de serie dentro —no
+   * hay serie dentro de una fila— y `pegasDe` no deja guardarlo.
+   */
+  formula?: Bloq[]
+}
+
+/** Un trozo de una repetición: «30 s corriendo», «15 s andando». */
+export interface Tramo {
+  nombre: string
+  segundos: number
 }
 
 export interface Bloque {
@@ -99,10 +126,22 @@ export interface Bloque {
   etiqueta: string
   modo: 'cerrado' | 'abierto'
   veces: number
-  /** Segundos que dura cada repetición. 0 = sin reloj. */
+  /** Segundos que dura cada repetición. 0 = sin reloj. Si hay tramos, manda la suma. */
   duracion: number
   /** Solo para enseñarlo: dentro SIEMPRE son segundos. */
   duracionUd?: 's' | 'min'
+  /**
+   * La repetición partida en trozos, cuando no es todo lo mismo.
+   *
+   * El 30-15 IFT son 30 s corriendo y 15 s andando; el Yo-Yo IR1, 2×20 m y 10 s
+   * de pausa. Sin esto el reloj sabía cuándo cambiaba de escalón pero no cuándo
+   * había que dejar de correr, que es medio test.
+   *
+   * Cuando hay tramos, la duración de la repetición es SU SUMA y no el campo de
+   * arriba: dos sitios diciendo cuánto dura una repetición es la forma segura
+   * de que acaben diciendo cosas distintas. Se pregunta con `duracionDe`.
+   */
+  tramos?: Tramo[]
   pitaCambio?: boolean
   avisoAntes?: number
   ritmo?: Ritmo
@@ -289,6 +328,10 @@ export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
 export const textoDe = (f: Bloq[]): string =>
   (f || []).map(b => (b.t === 'fn' ? textoFn(b) : String(b.v))).join(' ')
 
+/** A qué casillas apunta una fórmula, sean sueltas o de un bloque. */
+export const camposDe = (f: Bloq[]): string[] =>
+  [...new Set((f || []).map(b => (b.t === 'fn' ? b.de : b.t === 'var' ? b.v : null)).filter(Boolean) as string[])]
+
 /** El valor de una columna dada en la repetición `k` (desde 0). */
 export function valorDado(c: Columna, k: number, datos: Datos): string | number {
   if (c.tipo === 'lista') { const e = (c.etiquetas || [])[k]; return e === undefined ? '' : e }
@@ -318,25 +361,69 @@ export function hechasDe(bl: Bloque, datos: Datos): number {
   return ult
 }
 
+/**
+ * Lo que vale cada columna del bloque en la repetición `k`.
+ *
+ * LAS CALCULADAS SE HACEN AQUÍ, dentro de la fila, y en el orden en que están:
+ * cada una ve las de antes. Así `potencia` puede salir del tiempo de SU sprint
+ * y no del promedio de los seis, que es otro número.
+ *
+ * Si a una calculada le falta algún ingrediente, el hueco se propaga: la
+ * repetición se queda vacía y lo dirá el recuento de huecos, que es el mensaje
+ * que de verdad ayuda. Un error de la fórmula —dividir por cero— sí se guarda,
+ * porque ese hay que arreglarlo y no se arregla midiendo otra vez.
+ */
+export function filaDe(
+  bl: Bloque, k: number, datos: Datos,
+  sueltos: Record<string, unknown>,
+  errores?: Record<string, string>,
+): Record<string, unknown> {
+  const fila: Record<string, unknown> = { ...sueltos }
+  for (const c of bl.columnas) {
+    if (c.clase === 'dada') { fila[c.clave] = valorDado(c, k, datos); continue }
+    if (c.clase === 'medida') { fila[c.clave] = (datos[c.clave] as unknown[] | undefined)?.[k]; continue }
+
+    if (!c.formula?.length) { fila[c.clave] = ''; continue }
+    if (camposDe(c.formula).some(d => vacio(fila[d]))) { fila[c.clave] = ''; continue }
+    try {
+      fila[c.clave] = evaluar(textoDe(c.formula), fila)
+    } catch (e) {
+      fila[c.clave] = ''
+      if (errores && !errores[c.clave]) {
+        errores[c.clave] = 'en «' + c.clave + '», repetición ' + (k + 1) + ': ' + ((e as Error)?.message || 'no se pudo calcular')
+      }
+    }
+  }
+  return fila
+}
+
 export function variablesDe(test: TestLab, datos: Datos, errores: Record<string, string>): Record<string, unknown> {
   const vars: Record<string, unknown> = {}
   for (const c of test.sueltos || []) vars[c.clave] = datos[c.clave]
 
   for (const bl of test.bloques || []) {
     const hechas = hechasDe(bl, datos)
+    const series: Record<string, unknown[]> = {}
+    for (const c of bl.columnas) series[c.clave] = []
+    /* Repetición a repetición y no columna a columna: una calculada necesita a
+       sus compañeras de FILA, no la serie de al lado. */
+    for (let k = 0; k < hechas; k++) {
+      const fila = filaDe(bl, k, datos, vars, errores)
+      for (const c of bl.columnas) series[c.clave].push(fila[c.clave])
+    }
+
     for (const c of bl.columnas) {
-      const lista: unknown[] = []
-      for (let k = 0; k < hechas; k++) {
-        lista.push(c.clase === 'dada' ? valorDado(c, k, datos) : (datos[c.clave] as unknown[] | undefined)?.[k])
-      }
+      const lista = series[c.clave]
       const faltan = lista.filter(vacio).length
       if (hechas === 0) {
         errores[c.clave] = '«' + c.clave + '» todavía no tiene nada' +
           (bl.modo === 'abierto' ? ': marca hasta dónde llegó' : '')
-      } else if (faltan > 0) {
+      } else if (faltan > 0 && !errores[c.clave]) {
         /* Se dice distinto porque se arregla distinto: en un bloque cerrado
            faltan repeticiones; en uno abierto hay un hueco en medio, que
-           significa que alguien se saltó una fila. */
+           significa que alguien se saltó una fila. Y si la columna ya traía un
+           error suyo —una fórmula que revienta— ese manda: «faltan 6 de 6» le
+           haría buscar datos que sí están. */
         errores[c.clave] = bl.modo === 'cerrado'
           ? 'faltan ' + faltan + ' de ' + bl.veces + ' en «' + c.clave + '»'
           : 'hay ' + faltan + ' hueco' + (faltan === 1 ? '' : 's') + ' dentro de «' + c.clave + '»'
@@ -404,7 +491,7 @@ export const cronosDe = (t: TestLab | null) =>
   todasLasColumnas(t).filter(x => x.c.clase === 'medida' && x.c.instrumento.indexOf('crono') === 0)
 
 export const escalonadosDe = (t: TestLab | null): Bloque[] =>
-  (t?.bloques || []).filter(bl => bl.duracion > 0 && bl.columnas.some(c => c.clase === 'dada' && c.tipo === 'progresion'))
+  (t?.bloques || []).filter(bl => duracionDe(bl) > 0 && !!columnaDeVelocidad(bl, {}))
 
 /**
  * Qué relojes lleva este test, dicho en palabras.
@@ -415,7 +502,9 @@ export const escalonadosDe = (t: TestLab | null): Bloque[] =>
  */
 export function relojesDe(t: TestLab | null): string[] {
   const o = escalonadosDe(t).map(bl => {
-    let x = 'escalones de ' + bl.duracion + ' s en «' + (bl.etiqueta || bl.clave) + '»'
+    let x = bl.tramos?.length
+      ? 'repeticiones de ' + bl.tramos.map(tr => tr.segundos + ' s ' + tr.nombre).join(' + ') + ' en «' + (bl.etiqueta || bl.clave) + '»'
+      : 'escalones de ' + duracionDe(bl) + ' s en «' + (bl.etiqueta || bl.clave) + '»'
     if (bl.ritmo === 'metros') x += ' (pita cada ' + bl.ritmoCada + ' m)'
     else if (bl.ritmo === 'segundos') x += ' (pita cada ' + bl.ritmoCada + ' s)'
     return x
@@ -429,8 +518,41 @@ export function relojesDe(t: TestLab | null): string[] {
   return o
 }
 
-export const escalonAhora = (bl: Bloque, ms: number): number =>
-  Math.min(bl.veces, Math.floor(ms / 1000 / bl.duracion) + 1)
+/**
+ * Cuánto dura una repetición. UN SOLO SITIO lo decide.
+ *
+ * Con tramos manda su suma, no el campo `duracion`: dos sitios diciendo cuánto
+ * dura una repetición es la forma segura de que acaben diciendo cosas
+ * distintas, y aquí eso sería el reloj cantando el cambio cuando no toca.
+ */
+export function duracionDe(bl: Bloque): number {
+  if (bl.tramos?.length) return bl.tramos.reduce((a, t) => a + (Number(t.segundos) || 0), 0)
+  return bl.duracion
+}
+
+export const escalonAhora = (bl: Bloque, ms: number): number => {
+  const d = duracionDe(bl)
+  if (d <= 0) return 1
+  return Math.min(bl.veces, Math.floor(ms / 1000 / d) + 1)
+}
+
+/** En qué trozo de la repetición se va, y cuánto le queda. */
+export interface EnTramo { indice: number; nombre: string; restante: number; dentro: number }
+
+export function tramoEn(bl: Bloque, msDentro: number): EnTramo | null {
+  if (!bl.tramos?.length) return null
+  const s = Math.floor(msDentro / 1000)
+  let acumulado = 0
+  for (let i = 0; i < bl.tramos.length; i++) {
+    const dur = Number(bl.tramos[i].segundos) || 0
+    if (s < acumulado + dur) {
+      return { indice: i, nombre: bl.tramos[i].nombre, restante: acumulado + dur - s, dentro: s - acumulado }
+    }
+    acumulado += dur
+  }
+  const ult = bl.tramos.length - 1
+  return { indice: ult, nombre: bl.tramos[ult].nombre, restante: 0, dentro: Number(bl.tramos[ult].segundos) || 0 }
+}
 
 /**
  * Cada cuánto pita DENTRO de la repetición, en ms. 0 = no pita.
@@ -443,11 +565,26 @@ export function intervaloRitmo(bl: Bloque, n: number, datos: Datos): number {
   if (bl.ritmo !== 'metros') return 0
   const m = Number(bl.ritmoCada) || 0
   if (!m) return 0
-  const cd = bl.columnas.find(c => c.clase === 'dada' && c.tipo === 'progresion')
+  const cd = columnaDeVelocidad(bl, datos)
   if (!cd) return 0
   const v = Number(valorDado(cd, n - 1, datos))
   if (!Number.isFinite(v) || v <= 0) return 0
   return m / (v / 3.6) * 1000
+}
+
+/**
+ * De qué columna sale la velocidad que canta el reloj.
+ *
+ * Vale una progresión o una LISTA de números, porque hay protocolos cuya tabla
+ * de velocidades no sube parejo —el Yo-Yo IR1— y escribirla a mano era la única
+ * salida. Pidiendo solo progresiones, esos tests se quedaban sin pitido.
+ */
+export function columnaDeVelocidad(bl: Bloque, datos: Datos): Columna | null {
+  const dadas = bl.columnas.filter(c => c.clase === 'dada')
+  const prog = dadas.find(c => c.tipo === 'progresion')
+  if (prog) return prog
+  const lista = dadas.find(c => c.tipo === 'lista' && Number.isFinite(Number(valorDado(c, 0, datos))))
+  return lista || null
 }
 
 // ------------------------------------------------------------
@@ -464,7 +601,9 @@ export function medVacia(t: TestLab): Datos {
   const d: Datos = {}
   for (const c of t.sueltos || []) if (c.clase !== 'dada') d[c.clave] = c.valor || ''
   for (const bl of t.bloques || []) for (const c of bl.columnas) {
-    if (c.clase !== 'dada') d[c.clave] = Array.from({ length: bl.veces }, () => '')
+    /* Las calculadas no se teclean, así que no llevan casilla: si la llevaran,
+       el entrenador podría escribir encima de algo que se recalcula solo. */
+    if (c.clase === 'medida') d[c.clave] = Array.from({ length: bl.veces }, () => '')
   }
   return d
 }
@@ -491,9 +630,42 @@ export function pegasDe(t: TestLab): Pega[] {
   }
 
   t.bloques.forEach((bl, i) => {
-    if (bl.ritmo === 'metros' && !bl.columnas.some(c => c.clase === 'dada' && c.tipo === 'progresion')) {
-      p.push({ donde: 'bloque', indice: i, texto: 'Para pitar por metros hace falta una intensidad que suba sola' })
+    if (bl.ritmo === 'metros' && !columnaDeVelocidad(bl, {})) {
+      p.push({ donde: 'bloque', indice: i, texto: 'Para pitar por metros hace falta una velocidad en el bloque' })
     }
+    if (bl.tramos?.length) {
+      if (bl.tramos.some(tr => !(Number(tr.segundos) > 0))) {
+        p.push({ donde: 'bloque', indice: i, texto: 'Hay un tramo sin duración en «' + (bl.etiqueta || bl.clave) + '»' })
+      }
+      if (bl.tramos.some(tr => !tr.nombre.trim())) {
+        p.push({ donde: 'bloque', indice: i, texto: 'Ponle nombre a cada tramo de «' + (bl.etiqueta || bl.clave) + '»' })
+      }
+    }
+
+    /* Una calculada solo ve lo de SU fila, y solo lo que va ANTES que ella.
+       Nombrar a una posterior la dejaría apoyándose en algo que todavía no
+       existe, y dos que se nombraran entre sí no tendrían salida. */
+    bl.columnas.forEach((c, ci) => {
+      if (c.clase !== 'calculada') return
+      if (!c.formula?.length) {
+        p.push({ donde: 'columna', indice: i, texto: '«' + c.clave + '» no tiene de qué salir: ponle una fórmula' })
+        return
+      }
+      if (c.formula.some(b => b.t === 'fn')) {
+        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma() ni media(): aquí cada nombre es UNA repetición, no la serie' })
+      }
+      const antes = bl.columnas.slice(0, ci).map(x => x.clave)
+      const fuera = t.sueltos.map(x => x.clave)
+      for (const d of camposDe(c.formula)) {
+        if (fuera.includes(d) || antes.includes(d)) continue
+        p.push({
+          donde: 'columna', indice: i,
+          texto: bl.columnas.map(x => x.clave).includes(d)
+            ? '«' + c.clave + '» usa «' + d + '», que va DESPUÉS: súbelo o cámbialo'
+            : '«' + c.clave + '» usa «' + d + '», que no está en su bloque ni es una casilla suelta',
+        })
+      }
+    })
   })
 
   t.resultados.forEach((r, i) => {
