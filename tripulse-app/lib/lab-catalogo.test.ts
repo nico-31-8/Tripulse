@@ -142,6 +142,43 @@ describe('tests por repeticiones', () => {
     expect(r.fatiga).toBeCloseTo(4.444, 2)   // (78,333/75 − 1) × 100
   })
 
+  it('se puede trabajar con una repetición concreta, y con dos seguidas', () => {
+    const t: TestLab = {
+      nombre: 'Con la 2.ª y la 3.ª', deporte: 'Natación', sueltos: [],
+      bloques: [{
+        clave: 'r', etiqueta: 'Cada 100', modo: 'cerrado', veces: 6, duracion: 0,
+        columnas: [col({ clave: 't', etiqueta: 'Tiempo', unidad: 's' })],
+      }],
+      resultados: [
+        /* Un tramo de UNA repetición: de la 2.ª a la 2.ª. */
+        { nombre: 'la_segunda', unidad: 's', formula: [fnB('suma', 't', 2, 2)] },
+        { nombre: 'la_tercera', unidad: 's', formula: [fnB('suma', 't', 3, 3)] },
+        /* Y las dos juntas, que es un tramo de dos. */
+        { nombre: 'media_2y3', unidad: 's', formula: [fnB('media', 't', 2, 3)] },
+        { nombre: 'de_la_2_a_la_3', unidad: 's', formula: [fnB('suma', 't', 3, 3), op('-'), fnB('suma', 't', 2, 2)] },
+      ],
+    }
+    const r = pasar(t, { t: ['74', '75', '76', '77', '78', '80'] })
+    expect(r.la_segunda).toBeCloseTo(75, 3)
+    expect(r.la_tercera).toBeCloseTo(76, 3)
+    expect(r.media_2y3).toBeCloseTo(75.5, 3)
+    expect(r.de_la_2_a_la_3).toBeCloseTo(1, 3)
+  })
+
+  it('pedir una repetición que no existe avisa, no devuelve cero', () => {
+    const t: TestLab = {
+      nombre: 'Fuera de rango', deporte: 'Otro', sueltos: [],
+      bloques: [{
+        clave: 'r', etiqueta: 'r', modo: 'cerrado', veces: 3, duracion: 0,
+        columnas: [col({ clave: 't', etiqueta: '' })],
+      }],
+      resultados: [{ nombre: 'z', unidad: '', formula: [fnB('suma', 't', 5, 5)] }],
+    }
+    const vals = calcular(t, { t: ['1', '2', '3'] })
+    expect(vals[0].valor).toBeNull()
+    expect(vals[0].error).toMatch(/desde la 5/)
+  })
+
   it('Sprint de 30 m con parciales: el tramo de 20 a 30', () => {
     const t: TestLab = {
       nombre: 'Sprint 30 m', deporte: 'Carrera', sueltos: [],

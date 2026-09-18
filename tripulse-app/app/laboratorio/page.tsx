@@ -1171,6 +1171,16 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
                 {f}() <span className="opacity-60">{FUNCIONES[f]}</span>
               </button>
             ))}
+            {/* «Quiero la 2.ª» es una pregunta tan corriente como «quiero la
+                media», y no tenía por qué pasar por elegir una función: de una
+                sola repetición, la suma y la media son el mismo número. */}
+            <button className={FICHA + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
+              onClick={() => {
+                const n = prompt('¿Cuál? (1 = la primera)', '2')
+                if (n === null) return
+                const k = Math.max(1, Math.round(Number(n) || 1))
+                pon(fnB('suma', mio.col, k, k))
+              }}>una sola <span className="opacity-60">la 2.ª, la 5.ª…</span></button>
           </Grupo>
         )}
 

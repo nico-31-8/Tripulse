@@ -319,6 +319,10 @@ export const textoFn = (b: Extract<Bloq, { t: 'fn' }>): string =>
 
 /** Cómo se lee en pantalla, que no es cómo se le da al motor. */
 export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
+  /* Un tramo de UNA repetición no necesita función: la suma, la media y el
+     máximo de un solo número son el mismo número. Así que se lee por lo que
+     es —«la 2.ª de t100»— en vez de por cómo está guardado. */
+  if (b.d && b.d === b.h) return 'la ' + b.d + '.ª de ' + b.de
   if (!b.d && !b.h) return b.v + '(' + b.de + ')'
   if (b.d === 2 && !b.h) return b.v + '(' + b.de + ' · sin la 1.ª)'
   if (!b.d && b.h === -1) return b.v + '(' + b.de + ' · sin la última)'
