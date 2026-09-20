@@ -61,7 +61,7 @@ function leerFormula(bruto: unknown): Bloq[] {
         if (a !== undefined) bl.a = a
         out.push(bl)
       }
-    } else if (t === 'var' || t === 'ref' || t === 'op') {
+    } else if (t === 'var' || t === 'ref' || t === 'op' || t === 'antes') {
       const v = txt(o?.v)
       if (v) out.push({ t, v } as Bloq)
     }

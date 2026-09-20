@@ -698,19 +698,30 @@ describe('la misma curva de lactato, leída de las dos formas', () => {
   })
 })
 
-describe('lo que sigue sin caber', () => {
+describe('lo que cabe ahora, y lo que sigue fuera', () => {
 
   /**
-   * DE LOS CUATRO HUECOS QUE HABÍA AQUÍ, DOS SE CERRARON EL 2026-09-20:
+   * LOS CUATRO HUECOS QUE HABÍA AQUÍ SE CERRARON EL 2026-09-20:
    *
    *   · El Dmax —la distancia máxima a la cuerda— es `dmax` y `dmaxmod`.
    *   · Los ajustes que no son rectas: `polinomio` llega hasta el grado 3 y
-   *     `curva` dice cuánto se fía. El tope es 3 a propósito.
+   *     `curva` devuelve cuánto se fía. El tope es 3 a propósito.
+   *   · Tres columnas a la vez: resulta que ya se podía, con una columna
+   *     calculada. Está abajo, porque el atajo que nadie encuentra es igual
+   *     que no tenerlo.
+   *   · Cruzar mediciones: `antes(resultado)`, y `calcular` recibe los datos
+   *     en bruto de la vez anterior.
    *
-   * Quedan estos dos, y cada uno con su alambre: el día que entren, el test de
-   * abajo falla y hay que venir a actualizar esto.
+   * Lo que queda fuera ahora es más pequeño y está aquí para que no se cuele
+   * como si no existiera:
+   *
+   *   · Un agregado que lea TRES SERIES enteras a la vez. Sigue sin haber un
+   *     test real que lo pida, y el atajo de la columna calculada cubre todo
+   *     lo que ha aparecido hasta ahora.
+   *   · Mirar dos tests atrás. Eso no es un hueco, es una decisión: el
+   *     anterior se calcula sin historial para no tener que cargarlo entero
+   *     por pintar una fila, y `pegasDe` lo dice al montarlo.
    */
-
   /* 1. MÁS DE DOS COLUMNAS A LA VEZ. Ojo, que lo que suena a esto YA SE PUEDE:
      dentro de una repetición, una columna calculada combina las que haga falta
      —tres, cuatro, las que sean— y después se le pide lo que sea a ESA
@@ -743,14 +754,27 @@ describe('lo que sigue sin caber', () => {
     expect(r.coste_medio).toBeCloseTo((14 + 320 / 11 + 700 / 12) / 3, 6)
   })
 
-  /* 2. CRUZAR MEDICIONES. Cada fórmula ve UNA medición, así que «cuánto ha
-     mejorado desde el test anterior» no puede ser un resultado. La gráfica sí
-     lo enseña (ver `lab-series`), pero no se puede colgar una zona de ello ni
-     meterlo en otra fórmula. */
-  it('calcular ve una sola medición, no el historial', () => {
-    /* El alambre: el día que `calcular` reciba el historial, su firma cambia
-       y esto falla. */
-    expect(calcular.length).toBe(2)
+  /* 2. TRES SERIES ENTERAS A LA VEZ. Lo de arriba junta tres columnas DENTRO
+     de una repetición; lo que no hay es algo que cruce tres series como
+     `pendiente` cruza dos. El alambre de abajo —la lista de funciones que
+     cruzan columnas— salta en cuanto entre una nueva, y entonces habrá que
+     venir a decir qué test cabe ahora que antes no cabía. */
+
+  /* 3. MIRAR DOS TESTS ATRÁS. `antes(resultado)` llega a la vez anterior y se
+     para ahí a propósito: el test anterior se calcula SIN historial, para no
+     tener que cargarlo entero solo por pintar una fila. */
+  it('el anterior del anterior se rechaza al montarlo, no al calcularlo', () => {
+    const t: TestLab = {
+      nombre: 'x', deporte: 'Otro',
+      sueltos: [col({ clave: 'marca', etiqueta: '' })],
+      bloques: [],
+      resultados: [
+        { nombre: 'hoy', unidad: 's', formula: [v('marca')] },
+        { nombre: 'mejora', unidad: 's', formula: [v('marca'), op('-'), { t: 'antes', v: 'hoy' }] },
+        { nombre: 'nomas', unidad: 's', formula: [{ t: 'antes', v: 'mejora' }] },
+      ],
+    }
+    expect(pegasDe(t).some(p => /el anterior del anterior/.test(p.texto))).toBe(true)
   })
 
   /* EL ALAMBRE GORDO. Una función nueva de dos columnas entra por aquí, así

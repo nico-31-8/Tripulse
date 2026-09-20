@@ -98,6 +98,42 @@ te dice, sin que se lo pidas:
 - y cuando la curva **no se dobla hacia arriba** en ningún sitio, que entonces
   no hay umbral y no se inventa ninguno.
 
+### «Cuánto ha mejorado» ya es un resultado, no solo una flecha
+
+Hasta ahora, comparar un test con el anterior solo se podía **mirando** la
+gráfica. Ahora, al montar un resultado hay un grupo nuevo, **«Del test
+anterior»**: eliges uno de tus resultados y te da **lo que valió la vez
+pasada**.
+
+Con eso, «ha bajado 6 segundos» o «ha subido un 4 %» pasa a ser **un resultado
+más**: sale en la tabla, tiene su gráfica y puede entrar en otras fórmulas.
+
+Tres cosas que conviene saber:
+
+- **No se guarda el número de aquel día: se vuelve a calcular** con la fórmula
+  de hoy. Así, si corriges una fórmula, la comparación se corrige con ella. Si
+  se guardara, «cuánto ha mejorado» acabaría restando dos números calculados de
+  formas distintas y no habría manera de notarlo.
+- **La primera vez no dibuja punto**, porque no hay con qué comparar. Y si
+  aquel día el resultado no llegó a salir, te lo dice **con esas palabras** —no
+  es lo mismo «todavía no lo ha hecho nunca» que «aquel día faltaba un dato».
+- **Mientras montas el test, dirá que no hay anterior.** Es normal: ahí no hay
+  ningún atleta ni ninguna medición detrás.
+
+Se compara con **la vez inmediatamente anterior**, y solo con esa: mirar dos
+tests atrás no se puede, a propósito.
+
+### Tres columnas a la vez: ya se podía
+
+Cuando un resultado necesita cruzar **tres columnas** —por ejemplo velocidad,
+lactato y pulso de cada escalón— no hace falta nada especial, y eso no estaba
+dicho en ningún sitio. Se hace con una **columna calculada** del bloque: ahí
+puedes usar todas las columnas que quieras de la misma repetición, y después le
+pides a esa columna la media, el máximo o lo que necesites.
+
+Ahora, cuando un bloque tiene tres columnas o más, el montador de fórmulas te lo
+recuerda ahí mismo.
+
 ---
 
 ## 20 de septiembre de 2026 · Laboratorio

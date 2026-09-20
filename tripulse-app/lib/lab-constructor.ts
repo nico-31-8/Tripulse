@@ -233,6 +233,14 @@ export type Bloq =
   | { t: 'fn'; v: Funcion; de: string; d?: number; h?: number }
   /** `interpola(vel, lac, 4)`: lo que mira dos columnas a la vez. */
   | { t: 'fn2'; v: Funcion2; x: string; y: string; a?: number }
+  /**
+   * `antes(vam)`: lo que valió ESE resultado la vez anterior.
+   *
+   * Es lo único de aquí que se sale de una medición. Todo lo demás mira los
+   * datos de una pasada; esto mira la de antes, para que «cuánto ha mejorado»
+   * pueda ser un resultado más y no solo un número de la gráfica.
+   */
+  | { t: 'antes'; v: string }
 
 export interface Resultado {
   nombre: string
@@ -294,6 +302,18 @@ export const RE_NOMBRE = new RegExp('^[' + LETRA + '][' + LETRA + '0-9]*$')
 /** Sin rellenar. VACÍO NO ES CERO, y JavaScript opina lo contrario. */
 export const vacio = (v: unknown): boolean =>
   v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
+
+/** La palabra reservada para mirar al test anterior. */
+export const PALABRA_ANTES = 'antes'
+
+/**
+ * Con qué nombre viaja hasta el motor lo del test anterior.
+ *
+ * Lleva `@` y `:` A PROPÓSITO: ninguna casilla puede llamarse así —`RE_NOMBRE`
+ * no los admite—, de modo que un resultado del test pasado no puede taparle el
+ * sitio a una columna ni al revés.
+ */
+export const PREFIJO_ANTES = '@antes:'
 
 function aplicar(f: Funcion, xs: number[]): number {
   const s = xs.reduce((a, b) => a + b, 0)
@@ -705,6 +725,26 @@ export function evaluar(expr: string, vars: Record<string, unknown>, avisos?: st
     if (x === '(') { const v = expresion(); if (comer() !== ')') throw new Error('falta cerrar un paréntesis'); return v }
     if (/^\d/.test(x)) return parseFloat(x)
     if (RE_INI.test(x)) {
+      /* El test anterior: `antes(vam)`.
+         SE DISTINGUE «no hay anterior» DE «el anterior no salió» porque se
+         arreglan distinto: lo primero se arregla pasando el test otra vez
+         dentro de unas semanas, y lo segundo yendo a la medición de aquel día
+         a ver qué le faltaba. Un solo mensaje para los dos mandaría a buscar
+         datos que no existen. */
+      if (x === PALABRA_ANTES && mirar() === '(') {
+        comer()
+        const quien = comer()
+        if (quien === undefined || !RE_INI.test(quien)) throw new Error('«antes» necesita el nombre de un resultado dentro')
+        if (comer() !== ')') throw new Error('falta cerrar el paréntesis de «antes»')
+        const clave = PREFIJO_ANTES + quien
+        if (!(clave in vars)) throw new Error('no hay un test anterior con el que comparar «' + quien + '»')
+        const previo = vars[clave]
+        if (previo === null || previo === undefined) throw new Error('en el test anterior, «' + quien + '» no llegó a salir')
+        const n = Number(previo)
+        if (!Number.isFinite(n)) throw new Error('en el test anterior, «' + quien + '» no llegó a salir')
+        return n
+      }
+
       /* Las de dos columnas: `interpola(vel, lac, 4)`, `pendiente(carga, vel)`. */
       if (esFuncion2(x) && mirar() === '(') {
         comer()
@@ -806,7 +846,12 @@ export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
 }
 
 export const textoDe = (f: Bloq[]): string =>
-  (f || []).map(b => (b.t === 'fn' ? textoFn(b) : b.t === 'fn2' ? textoFn2(b) : String(b.v))).join(' ')
+  (f || []).map(b => (
+    b.t === 'fn' ? textoFn(b)
+      : b.t === 'fn2' ? textoFn2(b)
+        : b.t === 'antes' ? PALABRA_ANTES + '(' + b.v + ')'
+          : String(b.v)
+  )).join(' ')
 
 /** A qué casillas apunta una fórmula, sean sueltas o de un bloque. */
 export const camposDe = (f: Bloq[]): string[] => {
@@ -933,11 +978,39 @@ export interface ValorResultado {
   avisos?: string[]
 }
 
-export function calcular(test: TestLab, datos: Datos): ValorResultado[] {
+/**
+ * Los resultados de una pasada.
+ *
+ * `anterior` son los datos EN BRUTO de la vez de antes, y se recalculan aquí
+ * igual que los de esta: los resultados no se guardan nunca, así que corregir
+ * una fórmula corrige también aquello contra lo que se compara. Guardando el
+ * número de aquel día, «cuánto ha mejorado» acabaría restando dos cosas
+ * calculadas con fórmulas distintas.
+ *
+ * Y LA CADENA SE CORTA EN UNO: el test anterior se calcula SIN historial, así
+ * que dentro de él `antes()` no existe. No es una limitación técnica —sería
+ * fácil seguir tirando del hilo—: es que «el anterior del anterior» obligaría
+ * a cargar el historial entero para pintar una fila, y nadie ha pedido nunca
+ * eso. `pegasDe` lo rechaza al montarlo, que es donde se entiende.
+ */
+export function calcular(test: TestLab, datos: Datos, anterior?: Datos | null): ValorResultado[] {
   const errores: Record<string, string> = {}
   const vars = variablesDe(test, datos, errores)
+  const lista = test.resultados || []
 
-  return (test.resultados || []).map(r => {
+  if (anterior) {
+    const previos = calcular(test, anterior)
+    lista.forEach((r, i) => {
+      if (!r.nombre) return
+      const v = previos[i]
+      /* La casilla se pone SIEMPRE que hay anterior, aunque aquel día no
+         saliera: con la casilla puesta y vacía se puede decir «el anterior no
+         salió», y sin ella solo «no hay anterior», que es otra cosa. */
+      vars[PREFIJO_ANTES + r.nombre] = v && !v.error && v.valor != null ? v.valor : null
+    })
+  }
+
+  return lista.map(r => {
     if (!r.formula?.length) return { valor: null, error: 'sin fórmula' }
     /* Si una columna que usa está incompleta se dice ESO y no «no es un
        número»: el motivo es lo que le dice al entrenador qué hacer. */
@@ -1125,6 +1198,7 @@ export function pegasDe(t: TestLab): Pega[] {
   for (const c of todas) {
     if (!RE_NOMBRE.test(c.clave)) p.push({ donde: 'test', indice: -1, texto: '«' + c.clave + '» no vale de clave: solo letras, números y guion bajo' })
     else if (esFuncion(c.clave)) p.push({ donde: 'test', indice: -1, texto: '«' + c.clave + '» ya es una función de serie: elige otra clave' })
+    else if (c.clave === PALABRA_ANTES) p.push({ donde: 'test', indice: -1, texto: '«antes» está reservado para mirar al test anterior: elige otra clave' })
   }
 
   t.bloques.forEach((bl, i) => {
@@ -1152,6 +1226,13 @@ export function pegasDe(t: TestLab): Pega[] {
       if (c.formula.some(b => b.t === 'fn' || b.t === 'fn2')) {
         p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma(), media() ni las de dos columnas: aquí cada nombre es UNA repetición, no la serie' })
       }
+      /* Ni mirar atrás: una columna se calcula con lo de SU fila, y la fila
+         equivalente del test pasado no existe —aquel día pudo tener otro
+         número de repeticiones—. Lo que se compara entre tests son los
+         resultados, que sí son un número cada uno. */
+      if (c.formula.some(b => b.t === 'antes')) {
+        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no vale mirar al test anterior: eso se hace en un resultado, no en una columna' })
+      }
       const antes = bl.columnas.slice(0, ci).map(x => x.clave)
       const fuera = t.sueltos.map(x => x.clave)
       for (const d of camposDe(c.formula)) {
@@ -1167,6 +1248,9 @@ export function pegasDe(t: TestLab): Pega[] {
   })
 
   t.resultados.forEach((r, i) => {
+    if (r.nombre === PALABRA_ANTES) {
+      p.push({ donde: 'resultado', indice: i, texto: '«antes» está reservado para mirar al test anterior: ponle otro nombre' })
+    }
     if (!r.formula.length) { p.push({ donde: 'resultado', indice: i, texto: 'Sin fórmula no sale nada' }); return }
     const antes = t.resultados.slice(0, i).map(x => x.nombre)
     for (const b of r.formula) {
@@ -1203,6 +1287,25 @@ export function pegasDe(t: TestLab): Pega[] {
       }
       if (b.t === 'ref' && !antes.includes(String(b.v))) {
         p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + b.v + '», que no va antes que este' })
+      }
+      /* `antes` SÍ puede nombrar a un resultado posterior: lo que lee es el
+         valor de la vez pasada, que no depende del orden de hoy. Lo que no
+         puede es encadenarse, porque el test anterior se calcula sin
+         historial: dentro de él `antes()` no existe. */
+      if (b.t === 'antes') {
+        const quien = String(b.v)
+        const otro = t.resultados.find(x => x.nombre === quien)
+        if (!otro) {
+          p.push({ donde: 'resultado', indice: i, texto: 'Pide el anterior de «' + quien + '», que no es un resultado de este test' })
+        } else if (otro === r) {
+          p.push({
+            donde: 'resultado', indice: i,
+            texto: '«' + quien + '» no puede pedirse a sí mismo el anterior: en el test de antes tendría que mirar al de más atrás. ' +
+              'Haz otro resultado que reste los dos',
+          })
+        } else if ((otro.formula || []).some(z => z.t === 'antes')) {
+          p.push({ donde: 'resultado', indice: i, texto: '«' + quien + '» ya mira al test anterior: no se puede pedir el anterior del anterior' })
+        }
       }
     }
   })

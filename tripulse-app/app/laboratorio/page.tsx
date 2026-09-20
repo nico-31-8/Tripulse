@@ -311,9 +311,13 @@ export default function Laboratorio() {
      guardando cosas distintas. */
   const fijarConEsto = async (indice: number, fechaMed: string) => {
     if (!test || !editandoId || !atletaHist) return
-    const ultima = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha)).pop()
+    const orden = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const ultima = orden[orden.length - 1]
     if (!ultima) return
-    const p = propuestaLab(test, indice, ultima.datos)
+    /* Con la penúltima detrás, que es lo que ve el entrenador en la tabla: si
+       el resultado compara con el test anterior, el número que se fija tiene
+       que ser el mismo que está mirando. */
+    const p = propuestaLab(test, indice, ultima.datos, orden[orden.length - 2]?.datos ?? null)
     if (!p) { decir('mal', 'Ese resultado no puede fijar la referencia'); return }
     setGuardando(true)
     const r = await fijarZonas(supabase, atletaHist, fechaMed, p, origenDe(editandoId))
@@ -1320,6 +1324,12 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
                 escalares={test.sueltos.map(c => c.clave)}
                 series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
                 refs={test.resultados.slice(0, i).filter(x => x.nombre).map(x => x.nombre)}
+                /* `antes` SÍ puede nombrar a uno posterior —lee la vez pasada,
+                   que no depende del orden de hoy— pero no a sí mismo ni a
+                   otro que ya mire atrás: el anterior del anterior no existe. */
+                previos={test.resultados
+                  .filter((x, k) => x.nombre && k !== i && !(x.formula || []).some(z => z.t === 'antes'))
+                  .map(x => x.nombre)}
                 pidiendo={pidiendo} setPidiendo={setPidiendo}
                 onCambio={f => mut(t => { t.resultados[i].formula = f })} />
             </div>
@@ -1370,8 +1380,16 @@ const colorFicha = (b: Bloq) => b.t === 'fn2' ? 'bg-emerald-500/14 border-emeral
   : b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
   : b.t === 'var' ? 'bg-orange-500/14 border-orange-500/45 text-orange-200'
     : b.t === 'ref' ? 'bg-violet-500/14 border-violet-400/45 text-violet-200'
-      : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
-        : 'bg-gray-800 border-gray-600 text-gray-300'
+      : b.t === 'antes' ? 'bg-sky-500/14 border-sky-400/45 text-sky-200'
+        : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
+          : 'bg-gray-800 border-gray-600 text-gray-300'
+
+/** Cómo se lee una ficha de la fórmula. */
+const textoFicha = (b: Bloq): string =>
+  b.t === 'fn' ? etiquetaFn(b)
+    : b.t === 'fn2' ? etiquetaFn2(b)
+      : b.t === 'antes' ? 'antes(' + b.v + ')'
+        : String(b.v)
 
 /**
  * El montador de fórmulas, que sirve para las dos.
@@ -1382,12 +1400,14 @@ const colorFicha = (b: Bloq) => b.t === 'fn2' ? 'bg-emerald-500/14 border-emeral
  * se ofrecen funciones. Escribir dos montadores habría dejado que uno ofreciera
  * lo que el otro prohíbe.
  */
-function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPidiendo, onCambio }: {
+function MontaFormula({ formula, clave, escalares, series, refs, previos = [], pidiendo, setPidiendo, onCambio }: {
   formula: Bloq[]
   clave: string
   escalares: string[]
   series: { clave: string; veces: number }[]
   refs: string[]
+  /** Los que se le pueden pedir a `antes()`. Vacío en una columna calculada. */
+  previos?: string[]
   pidiendo: Pidiendo | null
   setPidiendo: (p: Pidiendo | null) => void
   onCambio: (f: Bloq[]) => void
@@ -1403,7 +1423,7 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
           : formula.map((b, n) => (
             <button key={n} title="Quitar" onClick={() => onCambio(formula.filter((_, k) => k !== n))}
               className={FICHA + ' ' + colorFicha(b)}>
-              {b.t === 'fn' ? etiquetaFn(b) : b.t === 'fn2' ? etiquetaFn2(b) : String(b.v)}
+              {textoFicha(b)}
             </button>
           ))}
       </div>
@@ -1558,6 +1578,36 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
                 onClick={() => pon({ t: 'ref', v: r })}>{r}</button>
             ))}
           </Grupo>
+        )}
+
+        {/* LO ÚNICO QUE SE SALE DE ESTA MEDICIÓN. Todo lo demás mira los datos
+            de la pasada de hoy; esto mira la de antes, que es lo que hace que
+            «cuánto ha mejorado» pueda ser un resultado y no solo un número que
+            se lee en la gráfica. */}
+        {previos.length > 0 && (
+          <Grupo et="Del test anterior">
+            {previos.map(r => (
+              <button key={r} className={FICHA + ' bg-sky-500/14 border-sky-400/45 text-sky-200'}
+                onClick={() => pon({ t: 'antes', v: r })}>antes({r})</button>
+            ))}
+            <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+              Lo que valió ese resultado la vez anterior, recalculado con la fórmula de hoy. Aquí abajo, en la vista
+              previa, dirá que no hay anterior: esto solo tiene con qué comparar cuando el atleta ya lo ha hecho
+              alguna vez.
+            </p>
+          </Grupo>
+        )}
+
+        {/* EL ATAJO DE LAS TRES COLUMNAS. Las de dos columnas cruzan dos
+            series; para juntar tres cosas de una MISMA repetición no hace
+            falta nada nuevo, y sin decirlo aquí el entrenador se queda
+            buscando una función que no existe. */}
+        {series.length >= 3 && (
+          <p className="text-gray-500 text-[11px] leading-snug border-t border-dashed border-gray-800 pt-2">
+            ¿Necesitas tres columnas a la vez? Júntalas antes en una <b className="text-gray-400">columna calculada</b> del
+            bloque —ahí puedes usar las que quieras de la misma repetición— y luego pídele aquí la media, el máximo o lo
+            que sea a esa columna.
+          </p>
         )}
       </div>
     </>
@@ -1972,7 +2022,12 @@ function Historial({
   const series = seriesDe(test, mediciones)
   const conDatos = series.filter(s => s.puntos.length >= 2)
   const anclas = conAncla(test)
-  const ultima = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha))[mediciones.length - 1]
+  /* En orden de fecha UNA VEZ, y de aquí salen la última y el «anterior» de
+     cada fila: si cada sitio lo ordenara por su cuenta, un día la tabla
+     compararía con una medición y la gráfica con otra. */
+  const orden = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const ultima = orden[orden.length - 1]
+  const previaDe = (k: number) => (k > 0 ? orden[k - 1].datos : null)
 
   return (
     <div className="flex flex-col gap-4">
@@ -2030,7 +2085,7 @@ function Historial({
               </p>
               <div className="flex flex-col gap-2 mt-3">
                 {anclas.map(({ indice, r }) => {
-                  const p = propuestaLab(test, indice, ultima.datos)
+                  const p = propuestaLab(test, indice, ultima.datos, previaDe(orden.length - 1))
                   const v = puedeFijarLab(test.deporte, r)
                   return (
                     <div key={indice} className="flex items-center gap-3 flex-wrap border border-gray-800 rounded-xl p-3 bg-[#0d1420]">
@@ -2079,8 +2134,8 @@ function Historial({
                   </tr>
                 </thead>
                 <tbody>
-                  {[...mediciones].sort((a, b) => b.fecha.localeCompare(a.fecha)).map(m => {
-                    const vals = calcular(test, m.datos)
+                  {orden.map((m, k) => ({ m, k })).reverse().map(({ m, k }) => {
+                    const vals = calcular(test, m.datos, previaDe(k))
                     return (
                       <tr key={m.fecha} className="border-b border-gray-800/70">
                         <td className="py-2 px-2 text-gray-500 tabular-nums">{m.fecha}</td>

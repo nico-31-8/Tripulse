@@ -50,14 +50,17 @@ export const puedeFijarLab = (deporte: string, r: Resultado): Veredicto =>
  * en pantalla: si un día cambia una fórmula, cambia en los dos sitios porque
  * solo hay uno.
  */
-export function propuestaLab(test: TestLab, indice: number, datos: Datos): Propuesta | null {
+export function propuestaLab(test: TestLab, indice: number, datos: Datos, anterior?: Datos | null): Propuesta | null {
   const r = test?.resultados?.[indice]
   if (!r) return null
 
   const v = puedeFijarLab(test.deporte, r)
   if (!v.destino) return null
 
-  const calc = calcular(test, datos)[indice]
+  /* Con la medición anterior, igual que en la tabla y en la gráfica: un
+     resultado montado con «antes()» no puede valer una cosa en pantalla y
+     otra al fijar las zonas. */
+  const calc = calcular(test, datos, anterior)[indice]
   if (!calc || calc.error || calc.valor == null) return null
 
   const convertir = conversionA(v.destino.columna, r.unidad)

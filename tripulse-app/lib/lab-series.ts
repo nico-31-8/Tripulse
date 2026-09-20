@@ -51,7 +51,13 @@ export interface Serie {
  */
 export function seriesDe(test: TestLab, mediciones: Medicion[]): Serie[] {
   const orden = [...(mediciones || [])].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
-  const calculado = orden.map(m => ({ fecha: m.fecha, vals: calcular(test, m.datos || {}) }))
+  /* Cada una con la de antes: sin eso, un resultado montado con «antes()»
+     saldría vacío en toda la línea. Y la primera no tiene anterior, que es
+     justo lo que hay que decir y no disimular con un cero. */
+  const calculado = orden.map((m, k) => ({
+    fecha: m.fecha,
+    vals: calcular(test, m.datos || {}, k > 0 ? orden[k - 1].datos || {} : null),
+  }))
 
   return (test.resultados || []).map((r, i) => {
     const puntos: Punto[] = []
