@@ -80,6 +80,13 @@ export type Funcion = 'suma' | 'media' | 'minimo' | 'maximo' | 'primera' | 'ulti
  * fuerza-velocidad es una recta ajustada a cuatro puntos de la que salen F0 y
  * V0. Ninguna de las dos es una media de nada.
  *
+ * Y EL DMAX NO ES NI LO UNO NI LO OTRO. No se le pide a la curva un valor
+ * concreto —el 4 de «umbral a 4» es un número elegido hace cuarenta años, que
+ * a un atleta muy entrenado le cae demasiado arriba—: se le pregunta dónde se
+ * dobla ELLA, tirando la cuerda de su primer punto al último y buscando el
+ * punto que más se aparta. Eso no es una media ni una interpolación: es una
+ * búsqueda por toda la curva, y por eso necesitaba su propia función.
+ *
  * Y TODAS VAN CON RED, porque el peligro de estas no es que fallen: es que
  * SALEN AUNQUE ESTÉN MAL. Una media mala se ve —4.000 W en un RAST cantan—,
  * pero una recta mal ajustada devuelve su F0 y su V0 con aspecto impecable
@@ -93,17 +100,50 @@ export const FUNCIONES2: Record<string, string> = {
   pendiente: 'cuánto sube la recta',
   corte: 'cuánto vale la recta en cero',
   ajuste: 'cuánto se fía la recta (0 a 1)',
+  dmax: 'el umbral Dmax',
+  dmaxmod: 'el Dmax modificado',
+  curva: 'cuánto se fía la curva (0 a 1)',
 }
 
-export type Funcion2 = 'interpola' | 'pendiente' | 'corte' | 'ajuste'
+export type Funcion2 = 'interpola' | 'pendiente' | 'corte' | 'ajuste' | 'dmax' | 'dmaxmod' | 'curva'
 
 export const esFuncion2 = (n: string): n is Funcion2 =>
   Object.prototype.hasOwnProperty.call(FUNCIONES2, n)
 
-/** Por debajo de aquí, una recta dice poco. */
+/** Las que buscan el punto donde la curva más se aparta de su cuerda. */
+export const esDmax = (f: Funcion2): boolean => f === 'dmax' || f === 'dmaxmod'
+
+/** Por debajo de aquí, una recta —o una curva— dice poco. */
 export const AJUSTE_MINIMO = 0.9
 /** Con menos puntos que esto, la recta pasa por ellos por narices. */
 export const PUNTOS_MINIMOS = 3
+
+/**
+ * El grado con el que se ajusta una curva. Tope 3, y no por gusto.
+ *
+ * Un polinomio de grado alto pasa cada vez más cerca de los puntos y cada vez
+ * peor por en medio: se ondula entre escalón y escalón y el R² sale MEJOR
+ * mientras la curva empeora. Con cuatro o siete escalones, el grado 3 es el
+ * techo de lo que se puede ajustar sin empezar a dibujar ondas.
+ */
+export const GRADO_MAXIMO = 3
+export const GRADO_CURVA = 3
+
+/**
+ * Cuánto tiene que subir el lactato de golpe para marcar el arranque del Dmax
+ * modificado: 0,4 mmol/L, que es como está definido el método.
+ *
+ * Es una constante del protocolo, no un ajuste. Si se pudiera tocar, dos
+ * entrenadores llamarían «Dmax modificado» a dos números distintos.
+ */
+export const SUBIDA_MOD = 0.4
+
+/**
+ * Cuánto tiene que apartarse la curva de su cuerda, como parte del recorrido
+ * de la columna, para que el Dmax signifique algo. El porqué del 5 %, medido,
+ * está en `dmaxDe`.
+ */
+export const SEPARACION_MINIMA = 0.05
 
 /* `hasOwnProperty` y no `in`: con `in`, «toString» o «constructor» darían true
    —están en el prototipo de cualquier objeto— y una casilla llamada así se
@@ -374,12 +414,250 @@ function interpolar(p: Punto[], objetivo: number, nx: string, ny: string, avisos
   return primero
 }
 
+// ------------------------------------------------------------
+// La curva, y el punto donde más se aparta de su cuerda: el Dmax
+// ------------------------------------------------------------
+
+export interface Curva {
+  /** Van sobre la x CENTRADA Y ESCALADA, no sobre la de verdad: usa `enCurva`. */
+  coef: number[]
+  ajuste: number
+  n: number
+  grado: number
+  xm: number
+  xs: number
+}
+
+const enU = (coef: number[], u: number): number =>
+  coef.reduce((a, c, i) => a + c * Math.pow(u, i), 0)
+
+/** Cuánto vale la curva en una x de las de verdad. */
+export const enCurva = (c: Curva, x: number): number => enU(c.coef, (x - c.xm) / c.xs)
+
+/**
+ * Ajusta un polinomio a los puntos, por mínimos cuadrados.
+ *
+ * LA X SE CENTRA Y SE ESCALA antes de ajustar. Sin eso, con velocidades de 8 a
+ * 20 el sistema maneja sumas de x⁶ y pierde cifras por el camino: el mismo test
+ * daría un ajuste distinto según la columna estuviera en km/h o en m/s, que es
+ * justo lo que no puede pasar.
+ */
+export function polinomio(p: Punto[], grado: number): Curva {
+  const g = Math.max(1, Math.min(GRADO_MAXIMO, Math.round(grado)))
+  const n = p.length
+  if (n < g + 1) {
+    throw new Error('una curva de grado ' + g + ' necesita al menos ' + (g + 1) + ' puntos y hay ' + n)
+  }
+  const equis = p.map(q => q.x)
+  const xm = equis.reduce((a, v) => a + v, 0) / n
+  const ancho = (Math.max(...equis) - Math.min(...equis)) / 2
+  const xs = ancho > 0 ? ancho : 1
+  const u = equis.map(v => (v - xm) / xs)
+
+  /* Ecuaciones normales: A·c = b, con A[i][j] = suma de u^(i+j) y b[i] = suma
+     de y·u^i. */
+  const m = g + 1
+  const A: number[][] = []
+  for (let i = 0; i < m; i++) {
+    const fila: number[] = []
+    for (let j = 0; j < m; j++) fila.push(u.reduce((a, v) => a + Math.pow(v, i + j), 0))
+    fila.push(p.reduce((a, q, k) => a + q.y * Math.pow(u[k], i), 0))
+    A.push(fila)
+  }
+  /* Gauss con pivoteo: sin buscar el pivote más grande, un cero en la diagonal
+     parte la eliminación y salen coeficientes infinitos. */
+  for (let i = 0; i < m; i++) {
+    let mejor = i
+    for (let k = i + 1; k < m; k++) if (Math.abs(A[k][i]) > Math.abs(A[mejor][i])) mejor = k
+    if (Math.abs(A[mejor][i]) < 1e-12) {
+      throw new Error('estos puntos no dan para una curva de grado ' + g + ': ¿se repiten los valores de la columna de abajo?')
+    }
+    const guarda = A[i]
+    A[i] = A[mejor]
+    A[mejor] = guarda
+    for (let k = 0; k < m; k++) {
+      if (k === i) continue
+      const f = A[k][i] / A[i][i]
+      for (let j = i; j <= m; j++) A[k][j] -= f * A[i][j]
+    }
+  }
+  const coef = A.map((fila, i) => fila[m] / A[i][i])
+
+  const my = p.reduce((a, q) => a + q.y, 0) / n
+  const sst = p.reduce((a, q) => a + (q.y - my) ** 2, 0)
+  const sse = p.reduce((a, q, k) => a + (q.y - enU(coef, u[k])) ** 2, 0)
+  return { coef, ajuste: sst === 0 ? 1 : 1 - sse / sst, n, grado: g, xm, xs }
+}
+
+/** Lo que hay que decir de una curva antes de fiarse de ella. */
+function avisosDeCurva(c: Curva, nx: string, ny: string): string[] {
+  const av: string[] = []
+  const nEs = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',')
+  /* Con grado+1 puntos el polinomio pasa por TODOS y el R² sale 1 sin que eso
+     signifique nada: el aviso tiene que salir justo cuando el número es
+     perfecto, que es cuando nadie sospecha. */
+  if (c.n < c.grado + 2) {
+    av.push('la curva de «' + nx + '»–«' + ny + '» es de grado ' + c.grado + ' y sale de ' + c.n +
+      ' puntos: con tan pocos pasa por ellos por narices y el ajuste no dice nada')
+  } else if (c.ajuste < AJUSTE_MINIMO) {
+    av.push('los puntos de «' + nx + '»–«' + ny + '» no caen bien en la curva (se fía ' + nEs(c.ajuste) +
+      ' de 1): mira si hay alguna toma mal hecha')
+  }
+  return av
+}
+
+/** El Dmax solo admite estos dos. El porqué está en `aplicar2`. */
+export const gradoDmaxVale = (a: number | undefined): boolean =>
+  a === undefined || a === 0 || a === GRADO_CURVA
+
+/**
+ * El Dmax: dónde la curva se aparta más de la cuerda que une sus extremos.
+ *
+ * SE MIDE EN VERTICAL, NO EN PERPENDICULAR. Sale EXACTAMENTE el mismo punto
+ * —la distancia perpendicular es la vertical multiplicada por el coseno de la
+ * cuerda, y ese coseno es el mismo para todos los puntos— y se ahorra el
+ * problema que trae la perpendicular: mezcla km/h con mmol/L, así que pasar la
+ * velocidad a m/s movería el umbral sin que nadie tocara un dato. Además, la
+ * vertical se lee: son mmol/L por debajo de la cuerda.
+ *
+ * Y SE APARTA HACIA ABAJO. La curva de lactato se dobla hacia arriba, así que
+ * queda por debajo de su cuerda. Si ningún punto quedara por debajo, la curva
+ * se dobla al revés y aquí no hay umbral que buscar: se dice, en vez de
+ * devolver el menos malo.
+ */
+export function dmaxDe(
+  bruto: Punto[], mod: boolean, grado: number,
+  nx: string, ny: string, avisos?: string[],
+): number {
+  /* EL GRADO NO ES UN GUSTO, y se rechaza AQUÍ y no en quien llama: con grado
+     1 la curva ajustada ES una recta, la cuerda une dos de sus puntos y la
+     separación vale cero en todas partes —el barrido acaba devolviendo el
+     máximo del ruido de la coma flotante, un número creíble salido de la
+     nada—; con grado 2 la cuerda une dos puntos de una parábola, y el punto
+     que más se aparta de la cuerda de una parábola cae SIEMPRE en el centro
+     exacto del rango, se midiera lo que se midiera. Las dos devuelven un
+     número impecable que no mide nada, que es justo el fallo del que hay que
+     protegerse aquí. */
+  if (!gradoDmaxVale(grado)) {
+    throw new Error('el Dmax se busca sobre los escalones medidos (0) o sobre una curva de grado ' + GRADO_CURVA +
+      ': con grado 1 la curva es la propia cuerda y con grado 2 el punto sale siempre en el centro del rango')
+  }
+  /* Ordenado por x: la cuerda va del primer escalón al último, y «la primera
+     subida de 0,4» es entre escalones consecutivos. Tal y como venga tecleado
+     no tiene por qué estarlo. */
+  const p = [...bruto].sort((a, b) => a.x - b.x)
+  const n = p.length
+  if (n < 3) throw new Error('el Dmax necesita al menos 3 escalones y hay ' + n + ': con dos, la cuerda ES la curva')
+
+  const nEs = (v: number) => String(v).replace('.', ',')
+  let i0 = 0
+  if (mod) {
+    i0 = -1
+    /* El pelín de margen NO es manía: 1,7 − 1,3 da 0,3999999999999999 en coma
+       flotante, así que la subida de 0,4 que el entrenador ve escrita en su
+       hoja se colaba por debajo del listón. Costaba un escalón entero de
+       umbral —15 km/h en vez de 14— sin que nada fallara. */
+    for (let i = 0; i + 1 < n; i++) if (p[i + 1].y - p[i].y >= SUBIDA_MOD - 1e-9) { i0 = i; break }
+    if (i0 < 0) {
+      throw new Error('«' + ny + '» nunca sube ' + nEs(SUBIDA_MOD) +
+        ' de un escalón al siguiente: el Dmax modificado no tiene dónde empezar')
+    }
+    if (i0 > n - 3) {
+      throw new Error('la subida de ' + nEs(SUBIDA_MOD) + ' de «' + ny +
+        '» aparece ya al final: de ahí al último escalón no queda curva que medir')
+    }
+  }
+
+  const A = p[i0], B = p[n - 1]
+  if (!(B.x > A.x)) throw new Error('los valores de «' + nx + '» no suben: no hay cuerda que trazar')
+
+  const sinDoblar = () => new Error('«' + ny + '» no se dobla hacia arriba entre esos escalones: ' +
+    'ninguno queda por debajo de la cuerda, así que el Dmax no tiene dónde caer')
+
+  /**
+   * CUÁNTO SE DOBLA, y no solo dónde.
+   *
+   * Un lactato que sube en línea recta también tiene un punto que se aparta un
+   * pelín de su cuerda, y el Dmax lo devuelve tan contento. Con seis escalones
+   * clavados en una recta salía un umbral de 11,045, con una separación de
+   * 0,00003 mmol/L: un número inventado con toda la pinta de dato.
+   *
+   * El listón sale de medirlo: las curvas que de verdad hacen codo se separan
+   * entre un 17 % y un 70 % del recorrido del lactato, y las que no llegan a
+   * doblarse se quedan por debajo del 1 %. En medio no hay nada, así que el
+   * 5 % separa las dos familias con sitio de sobra a los dos lados.
+   */
+  const rango = Math.max(...p.map(q => q.y)) - Math.min(...p.map(q => q.y))
+  const tres = (v: number) => (Math.round(v * 1000) / 1000).toString().replace('.', ',')
+  const avisaSiApenas = (s: number) => {
+    if (!avisos || !(rango > 0) || s / rango >= SEPARACION_MINIMA) return
+    avisos.push('«' + nx + '»–«' + ny + '» apenas se dobla: se separa ' + tres(s) +
+      ' de la cuerda en un recorrido de ' + tres(rango) + '. El Dmax sale donde sale, pero ahí no hay codo')
+  }
+
+  if (grado <= 0) {
+    /* Sobre los escalones medidos: el umbral CAE en uno de ellos. Los dos
+       extremos están en la cuerda por definición, así que no se miran. */
+    const cuerda = (x: number) => A.y + (B.y - A.y) * (x - A.x) / (B.x - A.x)
+    let mejor = -1, sep = 0
+    for (let i = i0 + 1; i < n - 1; i++) {
+      const s = cuerda(p[i].x) - p[i].y
+      if (mejor < 0 || s > sep) { mejor = i; sep = s }
+    }
+    if (mejor < 0 || !(sep > 0)) throw sinDoblar()
+    avisaSiApenas(sep)
+    return p[mejor].x
+  }
+
+  const c = polinomio(p, grado)
+  if (avisos) for (const av of avisosDeCurva(c, nx, ny)) avisos.push(av)
+  const yA = enCurva(c, A.x), yB = enCurva(c, B.x)
+  const sepEn = (x: number) => yA + (yB - yA) * (x - A.x) / (B.x - A.x) - enCurva(c, x)
+
+  /* Barrido grueso y luego fino alrededor del mejor. Una cúbica menos una
+     recta puede tener dos jorobas, así que una búsqueda que dé por hecha una
+     sola se quedaría tan contenta en la equivocada. */
+  const barre = (a: number, b: number, pasos: number) => {
+    let mx = a, ms = -Infinity
+    for (let k = 0; k <= pasos; k++) {
+      const x = a + (b - a) * k / pasos
+      const s = sepEn(x)
+      if (s > ms) { ms = s; mx = x }
+    }
+    return { x: mx, s: ms }
+  }
+  const paso = (B.x - A.x) / 500
+  const g1 = barre(A.x, B.x, 500)
+  const g2 = barre(Math.max(A.x, g1.x - paso), Math.min(B.x, g1.x + paso), 200)
+  if (!(g2.s > 0)) throw sinDoblar()
+  avisaSiApenas(g2.s)
+
+  /* En el borde significa que la curva no llega a doblarse dentro de lo
+     medido. El número sale igual —y con aspecto de umbral— así que se dice. */
+  if (avisos && (g2.x - A.x <= paso || B.x - g2.x <= paso)) {
+    avisos.push('el Dmax de «' + nx + '»–«' + ny + '» cae en el borde de lo medido: la curva no llega a doblarse dentro del rango, ' +
+      'mira si el test subió lo suficiente')
+  }
+  return Math.round(g2.x * 1000) / 1000
+}
+
 function aplicar2(f: Funcion2, vars: Record<string, unknown>, nx: string, ny: string, a: number | undefined, avisos?: string[]): number {
   const p = paresDe(vars, nx, ny)
   if (f === 'interpola') {
     if (a === undefined || !Number.isFinite(a)) throw new Error('«interpola» necesita saber a qué valor')
     return interpolar(p, a, nx, ny, avisos)
   }
+
+  /* Qué grado vale lo dice `dmaxDe`, no esto: si lo mirasen los dos, un día
+     dirían cosas distintas. */
+  if (esDmax(f)) return dmaxDe(p, f === 'dmaxmod', a === undefined ? GRADO_CURVA : a, nx, ny, avisos)
+
+  if (f === 'curva') {
+    const c = polinomio(p, a === undefined ? GRADO_CURVA : a)
+    if (avisos) for (const av of avisosDeCurva(c, nx, ny)) avisos.push(av)
+    return c.ajuste
+  }
+
   const r = recta(p)
   if (avisos) for (const av of avisosDeRecta(r, nx, ny)) avisos.push(av)
   if (f === 'pendiente') return r.m
@@ -504,6 +782,14 @@ export function etiquetaFn2(b: Extract<Bloq, { t: 'fn2' }>): string {
   if (b.v === 'interpola') return b.x + ' cuando ' + b.y + ' = ' + (b.a === undefined ? '?' : n(b.a))
   if (b.v === 'pendiente') return 'pendiente ' + b.x + '→' + b.y
   if (b.v === 'corte') return 'corte ' + b.x + '→' + b.y
+  /* Sobre qué se ha buscado va EN LA ETIQUETA y no escondido en el número: el
+     Dmax de los escalones y el de la curva son dos números distintos, y el
+     entrenador tiene que ver cuál está mirando sin abrir nada. */
+  if (esDmax(b.v)) {
+    return (b.v === 'dmaxmod' ? 'Dmax mod ' : 'Dmax ') + b.x + '→' + b.y +
+      ' (' + (b.a === 0 ? 'escalones' : 'curva') + ')'
+  }
+  if (b.v === 'curva') return 'se fía la curva ' + b.x + '→' + b.y
   return 'se fía ' + b.x + '→' + b.y
 }
 
@@ -903,6 +1189,16 @@ export function pegasDe(t: TestLab): Pega[] {
         }
         if (b.v === 'interpola' && (b.a === undefined || !Number.isFinite(b.a))) {
           p.push({ donde: 'resultado', indice: i, texto: 'A «interpola» le falta decir a qué valor de «' + b.y + '»' })
+        }
+        /* Lo mismo que rechaza el motor, dicho aquí: si solo lo dijera al
+           calcular, el test se guardaría tan tranquilo y el fallo aparecería
+           el día del test, con el atleta delante. */
+        if (esDmax(b.v) && !gradoDmaxVale(b.a)) {
+          p.push({
+            donde: 'resultado', indice: i,
+            texto: 'El Dmax va sobre los escalones medidos o sobre una curva de grado ' + GRADO_CURVA +
+              ': con cualquier otro grado el número sale igual y no mide nada',
+          })
         }
       }
       if (b.t === 'ref' && !antes.includes(String(b.v))) {

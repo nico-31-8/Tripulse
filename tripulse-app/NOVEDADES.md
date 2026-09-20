@@ -59,6 +59,45 @@ entrar ahí** y te dice por qué. Y una marca tuya sirve para colgarle **tus**
 zonas, pero no para ocupar esa casilla. Eso se avisa **al crear el test**, no
 meses después.
 
+### El Dmax: preguntarle a la curva dónde se dobla
+
+Hasta ahora, de un escalonado con lactato podías sacar **el umbral a 4 mmol/L**:
+le dices un valor y la aplicación busca a qué velocidad lo alcanzó. El 4 es un
+número elegido hace cuarenta años, y a un atleta muy entrenado le cae demasiado
+arriba.
+
+El **Dmax** pregunta otra cosa: **dónde se dobla la curva de este atleta**. Se
+tira una cuerda del primer escalón al último y se busca el punto que más se
+separa de ella. Ahí está el codo. Está también el **Dmax modificado**, que es el
+mismo cálculo pero con la cuerda empezando donde el lactato pega su primera
+subida de 0,4 mmol/L.
+
+Al montarlo eliges **dónde buscarlo**, porque son dos números distintos:
+
+- **Sobre la curva**, que es lo que hace un laboratorio: se ajusta una curva a
+  tus puntos y el umbral puede caer **entre dos escalones**.
+- **Sobre los escalones medidos**, sin ajustar nada: el umbral es **siempre uno
+  de los escalones que mediste**.
+
+La plantilla «Escalonado con lactato» ya trae los dos umbrales y el Dmax
+modificado, para que puedas compararlos. **Si dicen cosas muy distintas, eso ya
+es información.** Cualquiera de los dos puede fijar las zonas del atleta.
+
+**Y con red, como todo lo que sale de una curva.** Estos números tienen un
+problema propio: salen aunque no signifiquen nada. Una curva de lactato que sube
+casi en línea recta también tiene un punto que se separa un pelín de su cuerda,
+y el Dmax lo devolvería con dos decimales y aspecto de dato. Ahora la aplicación
+te dice, sin que se lo pidas:
+
+- cuando **la curva apenas se dobla** —el umbral sale, pero ahí no hay codo—;
+- cuando **la curva no ajusta bien** a tus puntos, con cuánto se fía;
+- cuando tienes **tan pocos escalones** que la curva pasa por todos por narices
+  y el ajuste no dice nada;
+- cuando el lactato **nunca pega la subida de 0,4** y el Dmax modificado no
+  tiene dónde empezar;
+- y cuando la curva **no se dobla hacia arriba** en ningún sitio, que entonces
+  no hay umbral y no se inventa ninguno.
+
 ---
 
 ## 20 de septiembre de 2026 · Laboratorio

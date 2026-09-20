@@ -9,10 +9,17 @@
 // Al final hay un bloque de LO QUE NO CABE, con lo que se necesitaría para que
 // cupiera. Está escrito como test para que no se olvide: el día que se añada,
 // estos dejan de pasar y hay que venir a actualizarlos.
+//
+// ESO LA PRIMERA VEZ NO PASÓ, y conviene saber por qué. El hueco del Dmax
+// estaba escrito como un test que solo comprobaba una cuenta, así que el día
+// que el Dmax entró siguió pasando tan feliz y el comentario se quedó
+// mintiendo. Un alambre que no puede saltar no es un alambre: ahora el de cada
+// hueco mira algo que CAMBIA al cerrarlo —la lista de funciones, la firma de
+// `calcular`— y no una cuenta que seguirá dando lo mismo para siempre.
 
 import { describe, it, expect } from 'vitest'
 import {
-  calcular, pegasDe, protoVacio, medVacia, col, fnB,
+  calcular, pegasDe, protoVacio, medVacia, col, fnB, FUNCIONES2,
   duracionDe, tramoEn, escalonAhora, intervaloRitmo,
   type TestLab, type Datos,
 } from './lab-constructor'
@@ -653,24 +660,12 @@ describe('las de dos columnas, cuando se piden mal', () => {
   })
 })
 
-describe('lo que sigue sin caber', () => {
-
-  /**
-   * 4. LO QUE QUEDA DE LA ESTADÍSTICA.
-   *
-   * La interpolación y la recta YA ESTÁN (ver «La estadística, y su red»): el
-   * umbral a 4 mmol/L y el perfil fuerza-velocidad se montan y avisan cuando no
-   * hay que fiarse.
-   *
-   * Lo que sigue fuera es lo que no es ni una cosa ni la otra: el Dmax —la
-   * distancia máxima a la cuerda entre el primer punto y el último—, los
-   * ajustes que no son rectas, y cualquier cosa con más de dos columnas. No es
-   * un hueco del modelo de datos: las columnas están ahí con sus valores por
-   * repetición. Es del motor de fórmulas, y se deja fuera a propósito mientras
-   * no haya un caso que lo pida de verdad.
-   */
-  it('el umbral interpolado ya sale; el Dmax todavía hay que hacerlo a mano', () => {
-    /* Con cuatro escalones y su lactato, el modelo GUARDA todo lo necesario… */
+describe('la misma curva de lactato, leída de las dos formas', () => {
+  /* El umbral a 4 mmol/L pregunta por un valor elegido a dedo hace cuarenta
+     años; el Dmax pregunta dónde se dobla la curva de ESTE atleta. Los dos
+     salen del mismo escalonado, y dan números distintos a propósito. Todo lo
+     que hay que saber del Dmax —y su red— está en `lab-dmax.test.ts`. */
+  it('el escalonado saca los dos umbrales de una sola pasada', () => {
     const t: TestLab = {
       nombre: 'Escalonado', deporte: 'Carrera', sueltos: [],
       bloques: [{
@@ -680,14 +675,90 @@ describe('lo que sigue sin caber', () => {
           col({ clave: 'lac', etiqueta: 'Lactato', unidad: 'mmol/L' }),
         ],
       }],
-      resultados: [{ nombre: 'lac_max', unidad: 'mmol/L', formula: [fnB('maximo', 'lac')] }],
+      resultados: [
+        { nombre: 'lac_max', unidad: 'mmol/L', formula: [fnB('maximo', 'lac')] },
+        { nombre: 'umbral_4', unidad: 'km/h', formula: [{ t: 'fn2', v: 'interpola', x: 'vel', y: 'lac', a: 4 }] },
+        { nombre: 'dmax_esc', unidad: 'km/h', formula: [{ t: 'fn2', v: 'dmax', x: 'vel', y: 'lac', a: 0 }] },
+        { nombre: 'dmax_curva', unidad: 'km/h', formula: [{ t: 'fn2', v: 'dmax', x: 'vel', y: 'lac', a: 3 }] },
+      ],
     }
-    const r = pasar(t, { '@e': 4, lac: ['1.1', '1.6', '2.9', '5.2', '', '', '', ''] })
-    expect(r.lac_max).toBeCloseTo(5.2, 3)
-    /* La velocidad a 4 mmol/L cae entre el 3.º y el 4.º, y eso YA lo hace
-       `interpola`: 12 + (4−2,9)/(5,2−2,9) = 12,48. Se comprueba en el bloque
-       de la estadística. Lo que sigue a mano es el Dmax, que necesita la
-       distancia de cada punto a la cuerda entre el primero y el último. */
-    expect(12 + (4 - 2.9) / (5.2 - 2.9)).toBeCloseTo(12.478, 2)
+    /* 10→1,0 · 11→1,1 · 12→1,3 · 13→1,7 · 14→2,6 · 15→4,2 · 16→7,0 */
+    const r = pasar(t, { '@e': 7, lac: ['1', '1.1', '1.3', '1.7', '2.6', '4.2', '7', ''] })
+    expect(r.lac_max).toBeCloseTo(7, 3)
+    /* El 4 cae entre el 14 y el 15: 14 + (4−2,6)/(4,2−2,6) = 14,875. */
+    expect(r.umbral_4).toBeCloseTo(14.875, 3)
+    /* La cuerda va de (10; 1) a (16; 7), o sea y = x − 9. El escalón que más
+       se separa es el 14, con 2,4 mmol/L por debajo. */
+    expect(r.dmax_esc).toBe(14)
+    /* Sobre la curva cae entre dos escalones, y por debajo del umbral a 4:
+       son dos preguntas distintas a la misma curva. */
+    expect(r.dmax_curva).toBeGreaterThan(13)
+    expect(r.dmax_curva).toBeLessThan(14)
+    expect(r.dmax_curva).toBeLessThan(r.umbral_4 as number)
+  })
+})
+
+describe('lo que sigue sin caber', () => {
+
+  /**
+   * DE LOS CUATRO HUECOS QUE HABÍA AQUÍ, DOS SE CERRARON EL 2026-09-20:
+   *
+   *   · El Dmax —la distancia máxima a la cuerda— es `dmax` y `dmaxmod`.
+   *   · Los ajustes que no son rectas: `polinomio` llega hasta el grado 3 y
+   *     `curva` dice cuánto se fía. El tope es 3 a propósito.
+   *
+   * Quedan estos dos, y cada uno con su alambre: el día que entren, el test de
+   * abajo falla y hay que venir a actualizar esto.
+   */
+
+  /* 1. MÁS DE DOS COLUMNAS A LA VEZ. Ojo, que lo que suena a esto YA SE PUEDE:
+     dentro de una repetición, una columna calculada combina las que haga falta
+     —tres, cuatro, las que sean— y después se le pide lo que sea a ESA
+     columna. Lo que no hay es un agregado que lea tres SERIES enteras a la
+     vez, y no hay todavía un test real que lo pida. Antes de inventar
+     sintaxis, el atajo. */
+  it('tres columnas de una fila se juntan con una calculada, sin sintaxis nueva', () => {
+    const t: TestLab = {
+      nombre: 'Tres columnas', deporte: 'Carrera', sueltos: [],
+      bloques: [{
+        clave: 'e', etiqueta: 'Escalón', modo: 'cerrado', veces: 3, duracion: 0,
+        columnas: [
+          col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'km/h', clase: 'dada', tipo: 'progresion', desde: 10, paso: 1 }),
+          col({ clave: 'lac', etiqueta: 'Lactato', unidad: 'mmol/L' }),
+          col({ clave: 'fc', etiqueta: 'Pulso', unidad: 'ppm' }),
+          col({
+            clave: 'coste', etiqueta: 'Coste', unidad: '', clase: 'calculada',
+            formula: [v('lac'), op('*'), v('fc'), op('/'), v('vel')],
+          }),
+        ],
+      }],
+      resultados: [
+        { nombre: 'coste_max', unidad: '', formula: [fnB('maximo', 'coste')] },
+        { nombre: 'coste_medio', unidad: '', formula: [fnB('media', 'coste')] },
+      ],
+    }
+    /* 1·140/10 = 14 · 2·160/11 = 29,0909 · 4·175/12 = 58,3333 */
+    const r = pasar(t, { lac: ['1', '2', '4'], fc: ['140', '160', '175'] })
+    expect(r.coste_max).toBeCloseTo(58.3333, 3)
+    expect(r.coste_medio).toBeCloseTo((14 + 320 / 11 + 700 / 12) / 3, 6)
+  })
+
+  /* 2. CRUZAR MEDICIONES. Cada fórmula ve UNA medición, así que «cuánto ha
+     mejorado desde el test anterior» no puede ser un resultado. La gráfica sí
+     lo enseña (ver `lab-series`), pero no se puede colgar una zona de ello ni
+     meterlo en otra fórmula. */
+  it('calcular ve una sola medición, no el historial', () => {
+    /* El alambre: el día que `calcular` reciba el historial, su firma cambia
+       y esto falla. */
+    expect(calcular.length).toBe(2)
+  })
+
+  /* EL ALAMBRE GORDO. Una función nueva de dos columnas entra por aquí, así
+     que añadir una obliga a pasar por este fichero y decir qué test cabe ahora
+     que antes no cabía. */
+  it('estas son todas las funciones que cruzan dos columnas', () => {
+    expect(Object.keys(FUNCIONES2).sort()).toEqual(
+      ['ajuste', 'corte', 'curva', 'dmax', 'dmaxmod', 'interpola', 'pendiente'],
+    )
   })
 })

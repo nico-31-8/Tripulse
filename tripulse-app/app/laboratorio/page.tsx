@@ -25,7 +25,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
-  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB,
+  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
@@ -70,9 +70,11 @@ interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
  *
  * Las de una columna van en dos pasos (cuál → qué se le pide) y las de dos, en
  * tres (qué se quiere → qué va en X → qué va en Y), porque preguntarlo todo de
- * golpe es un formulario, y esto tiene que leerse como una frase.
+ * golpe es un formulario, y esto tiene que leerse como una frase. El Dmax lleva
+ * un cuarto —sobre los escalones o sobre la curva— porque son dos números
+ * distintos y elegirlo por él sería decidirle el umbral a su atleta.
  */
-interface Pidiendo { clave: string; col: string; fn: Funcion | null; fn2?: Funcion2; x?: string }
+interface Pidiendo { clave: string; col: string; fn: Funcion | null; fn2?: Funcion2; x?: string; y?: string }
 
 const CLASES: Record<string, string> = {
   medida: 'La mides (de cada uno)',
@@ -1474,7 +1476,9 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
         )}
 
         {mio?.fn2 && !mio.x && (
-          <Grupo et={mio.fn2 === 'interpola' ? '¿Qué columna quieres que te devuelva?' : '¿Qué va en el eje de abajo?'} escalon>
+          <Grupo escalon et={
+            mio.fn2 === 'interpola' || esDmax(mio.fn2) ? '¿Qué columna quieres que te devuelva?' : '¿Qué va en el eje de abajo?'
+          }>
             {series.map(s => (
               <button key={s.clave} className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
                 onClick={() => setPidiendo({ ...mio, x: s.clave })}>{s.clave}</button>
@@ -1482,11 +1486,18 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
           </Grupo>
         )}
 
-        {mio?.fn2 && mio.x && (
-          <Grupo et={mio.fn2 === 'interpola' ? '¿Y cuál es la que tiene que llegar a un valor?' : '¿Y qué va en el de al lado?'} escalon>
+        {mio?.fn2 && mio.x && !mio.y && (
+          <Grupo escalon et={
+            mio.fn2 === 'interpola' ? '¿Y cuál es la que tiene que llegar a un valor?'
+              : esDmax(mio.fn2) ? '¿Y cuál es la que se dobla?'
+                : '¿Y qué va en el de al lado?'
+          }>
             {series.filter(s => s.clave !== mio.x).map(s => (
               <button key={s.clave} className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
                 onClick={() => {
+                  /* Al Dmax le queda una pregunta más, así que aquí solo se
+                     apunta la columna. */
+                  if (esDmax(mio.fn2!)) { setPidiendo({ ...mio, y: s.clave }); return }
                   if (mio.fn2 !== 'interpola') { pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: s.clave }); return }
                   const a = prompt('¿A qué valor de «' + s.clave + '»?', '4')
                   if (a === null) return
@@ -1495,11 +1506,39 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
                   pon({ t: 'fn2', v: 'interpola', x: mio.x!, y: s.clave, a: n })
                 }}>{s.clave}</button>
             ))}
-            {mio.fn2 !== 'interpola' && (
+            {mio.fn2 !== 'interpola' && !esDmax(mio.fn2) && (
               <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
                 La recta se ajusta a los puntos de las dos columnas. Si no caen bien en una recta, el número sale igual — pero te lo dice.
               </p>
             )}
+            {esDmax(mio.fn2) && (
+              <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+                La que se dobla es el lactato. Se tira una cuerda de su primer punto al último y se busca dónde la curva
+                se separa más de ella: ahí está el umbral.
+              </p>
+            )}
+          </Grupo>
+        )}
+
+        {/* SOBRE QUÉ SE BUSCA. Son dos números distintos y ninguno es «el
+            bueno»: el de los escalones cae siempre en uno de los que se
+            midieron, el de la curva cae donde le toque. Elegirlo por el
+            entrenador sería decidirle el umbral a su atleta sin decírselo. */}
+        {mio?.fn2 && mio.x && mio.y && esDmax(mio.fn2) && (
+          <Grupo et="¿Y dónde lo busco?" escalon>
+            <button className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+              onClick={() => pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: mio.y!, a: GRADO_CURVA })}>
+              sobre la curva <span className="opacity-60">como un laboratorio</span>
+            </button>
+            <button className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+              onClick={() => pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: mio.y!, a: 0 })}>
+              sobre los escalones <span className="opacity-60">cae en uno de los medidos</span>
+            </button>
+            <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+              Sobre la curva se ajusta un polinomio a los puntos y se busca en ella, que es lo que hace un laboratorio:
+              el umbral puede caer entre dos escalones. Sobre los escalones no se ajusta nada, así que el umbral es
+              siempre uno de los que mediste. Si la curva ajusta mal, el número sale igual — y te lo dice.
+            </p>
           </Grupo>
         )}
 

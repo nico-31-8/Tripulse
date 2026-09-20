@@ -109,7 +109,7 @@ export const PLANTILLAS: Plantilla[] = [
   {
     id: 'lactato',
     nombre: 'Escalonado con lactato',
-    descripcion: 'Igual que la VAM, pero midiendo lactato y pulso en cada escalón.',
+    descripcion: 'Igual que la VAM, pero midiendo lactato y pulso en cada escalón. De ahí salen el umbral a 4 mmol/L y el Dmax.',
     distintivo: 'columna dada + medidas',
     test: {
       nombre: 'Escalonado con lactato', deporte: 'Carrera', sueltos: [],
@@ -129,6 +129,19 @@ export const PLANTILLAS: Plantilla[] = [
            en la recta que los une. Y si el lactato no llegó a 4, esto se niega
            a devolver un número: extrapolarlo sería inventárselo. */
         { nombre: 'umbral_4', unidad: 'km/h', ancla: 'umbral', formula: [{ t: 'fn2', v: 'interpola', x: 'vel', y: 'lactato', a: 4 }] },
+        /* Y AL LADO, EL DMAX, que es la otra forma de leer la misma curva. El
+           4 de arriba es un número elegido a dedo hace cuarenta años y a un
+           atleta muy entrenado le cae demasiado arriba; el Dmax no pregunta
+           por un valor, pregunta dónde se dobla la curva de ESTE atleta. Salen
+           los dos para poder compararlos: si dicen cosas muy distintas, eso ya
+           es información.
+
+           `se_fia_curva` no es adorno: el Dmax sale de una curva ajustada, y
+           una curva mal ajustada devuelve su umbral con el mismo aspecto
+           impecable que una bien ajustada. */
+        { nombre: 'dmax', unidad: 'km/h', ancla: 'umbral', formula: [{ t: 'fn2', v: 'dmax', x: 'vel', y: 'lactato', a: 3 }] },
+        { nombre: 'dmax_mod', unidad: 'km/h', formula: [{ t: 'fn2', v: 'dmaxmod', x: 'vel', y: 'lactato', a: 3 }] },
+        { nombre: 'se_fia_curva', unidad: 'de 1', formula: [{ t: 'fn2', v: 'curva', x: 'vel', y: 'lactato' }] },
         { nombre: 'escalones', unidad: 'ud', formula: [fnB('cuantas', 'vel')] },
       ],
     },
