@@ -41,7 +41,7 @@ export const PLANTILLAS: Plantilla[] = [
       }],
       resultados: [
         { nombre: 'total', unidad: 's', formula: [fnB('suma', 't100')] },
-        { nombre: 'media100', unidad: 's', formula: [fnB('media', 't100')] },
+        { nombre: 'media100', unidad: 's', ancla: 'especifica', inverso: true, formula: [fnB('media', 't100')] },
         { nombre: 'caida', unidad: 's', formula: [fnB('ultima', 't100'), { t: 'op', v: '-' }, fnB('primera', 't100')] },
         { nombre: 'sin_salida', unidad: 's', formula: [fnB('media', 't100', 2, 0)] },
       ],
@@ -73,7 +73,7 @@ export const PLANTILLAS: Plantilla[] = [
         /* La corrección de Montreal por el escalón que no terminó. El
            incremento y la duración salen de SUS CASILLAS, no de un número
            escrito aquí: cambiarlos para un atleta lento tiene que mover la VAM. */
-        { nombre: 'vam', unidad: 'km/h', formula: [
+        { nombre: 'vam', unidad: 'km/h', ancla: 'vo2max', formula: [
           fnB('ultima', 'vel'), { t: 'op', v: '+' }, { t: 'var', v: 'aguanto' },
           { t: 'op', v: '/' }, { t: 'var', v: 'duracion' }, { t: 'op', v: '*' }, { t: 'var', v: 'incremento' },
         ] },
@@ -128,7 +128,7 @@ export const PLANTILLAS: Plantilla[] = [
         /* El umbral clásico cae ENTRE dos escalones, así que hay que buscarlo
            en la recta que los une. Y si el lactato no llegó a 4, esto se niega
            a devolver un número: extrapolarlo sería inventárselo. */
-        { nombre: 'umbral_4', unidad: 'km/h', formula: [{ t: 'fn2', v: 'interpola', x: 'vel', y: 'lactato', a: 4 }] },
+        { nombre: 'umbral_4', unidad: 'km/h', ancla: 'umbral', formula: [{ t: 'fn2', v: 'interpola', x: 'vel', y: 'lactato', a: 4 }] },
         { nombre: 'escalones', unidad: 'ud', formula: [fnB('cuantas', 'vel')] },
       ],
     },

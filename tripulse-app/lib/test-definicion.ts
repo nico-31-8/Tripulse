@@ -433,15 +433,33 @@ export interface SerieResultado {
   mejora: boolean | null
 }
 
+/* Palabras de tiempo, pero ENTERAS.
+   La versión anterior buscaba trozos sueltos y fallaba por los dos lados:
+     · «total» en «s» daba FALSE, porque buscaba «seg» y no una «s» a secas.
+       Un test en segundos pintaba cada mejora en rojo.
+     · «minimo_pot» en «W» daba TRUE, porque el «min» de «minimo» se colaba
+       como si fuera un minuto. Y ahora que hay una función `minimo()`, que un
+       entrenador llame así a un resultado es cuestión de tiempo.
+   Y LA BARRA SOLO VALE DETRÁS, NO DELANTE. Es lo que separa «s/100m» —donde el
+   tiempo va ARRIBA en la fracción y menos es mejor— de «m/s», donde va abajo y
+   MÁS es mejor. Permitiendo la barra delante, una velocidad en m/s se leía como
+   un tiempo y la gráfica pintaba cada mejora en rojo. */
+const PALABRAS_DE_TIEMPO =
+  /(^|[\s_·-])(s|seg|segs|segundo|segundos|min|mins|minuto|minutos|tiempo|tiempos|ritmo|ritmos|pace)($|[\s/_·-])/i
+
 /**
  * Si en esa unidad bajar es mejorar.
  *
  * El ritmo mejora BAJANDO y la velocidad mejora subiendo. Sin esto, cada mejora
  * de un atleta en min/km se pintaría en rojo — el gráfico diciendo lo contrario
  * de lo que pasó.
+ *
+ * Es una CORAZONADA sobre texto libre, así que se equivocará: por eso existe
+ * `inverso`, para que lo que diga el entrenador mande sobre esto.
  */
 export function menosEsMejor(nombre: string, unidad: string): boolean {
-  return /min|\/km|\/100|seg|tiempo|ritmo|pace/i.test(nombre + ' ' + unidad)
+  const texto = nombre + ' ' + unidad
+  return PALABRAS_DE_TIEMPO.test(texto) || /\/km|\/100/i.test(texto)
 }
 
 /**

@@ -14,6 +14,53 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de septiembre de 2026 · Tests propios y Laboratorio
+
+### La flecha de las gráficas iba al revés en dos casos
+
+Cuando un resultado mejora, su gráfica lo pinta en verde; cuando empeora, en
+rojo. Para saber hacia dónde se mejora, la aplicación mira la unidad: un ritmo
+mejora **bajando** y una velocidad mejora **subiendo**.
+
+Esa corazonada fallaba por los dos lados, y se veía en la gráfica:
+
+- **Un resultado en «s»** —segundos— se leía como si más fuera mejor. Cualquier
+  test cronometrado en segundos **pintaba cada mejora en rojo**.
+- **Un resultado llamado «minimo_algo»** se leía como si fueran minutos, porque
+  el «min» de «minimo» se colaba. Una potencia mínima en vatios salía al revés.
+
+Ya distingue palabras enteras. Y también distingue **«s/100m» de «m/s»**: en el
+primero el tiempo va arriba en la fracción y menos es mejor; en el segundo es
+una velocidad y más es mejor.
+
+**Si tenías tests con esas unidades, sus flechas cambian de color a partir de
+ahora — y ahora dicen la verdad.** Los números no se mueven: solo el color y el
+«mejor / peor». Si en algún resultado tuyo la corazonada no acierta, la puedes
+corregir a mano con el «↓ menos es mejor» que hay debajo de la unidad.
+
+### En el Laboratorio: ver cómo va, y fijar zonas con ello
+
+Un test guardado tiene ahora un botón **«Cómo va»**: eliges a un deportista y
+ves **una gráfica por resultado**, con su flecha, y la tabla de todas las veces
+que lo pasó.
+
+Los resultados **se recalculan** desde lo que se midió en bruto, así que
+corregir una fórmula corrige el historial entero. Y una medición a la que le
+falte algo **no rompe la línea**: no pone punto, en vez de poner un cero que se
+dibujaría como una caída en picado.
+
+Además, al crear un resultado puedes decir **para qué sirve**. Si es una
+referencia válida, desde «Cómo va» puedes **fijar con él la VAM, el FTP o el CSS
+del atleta** — y con eso se mueven todas las zonas que calcula la aplicación.
+
+Con sus límites dichos a la cara, que son los de siempre: en carrera la casilla
+guarda una **VAM**, que es un VO₂máx, así que un umbral de carrera **no puede
+entrar ahí** y te dice por qué. Y una marca tuya sirve para colgarle **tus**
+zonas, pero no para ocupar esa casilla. Eso se avisa **al crear el test**, no
+meses después.
+
+---
+
 ## 20 de septiembre de 2026 · Laboratorio
 
 El constructor de tests en pruebas (**Tests propios → 🧪 Laboratorio**) da ya para

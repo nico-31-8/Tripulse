@@ -20,6 +20,7 @@ import {
   type Funcion, type Funcion2, type Instrumento, type Resultado,
   type TestLab, type TipoDada, type Tramo,
 } from './lab-constructor'
+import { esAncla, type Ancla } from './test-definicion'
 
 const txt = (v: unknown): string => String(v ?? '').trim()
 const num = (v: unknown): number | undefined => {
@@ -145,7 +146,14 @@ function leerResultado(bruto: unknown): Resultado | null {
   if (!o || typeof o !== 'object') return null
   const nombre = txt(o.nombre)
   if (!nombre) return null
-  return { nombre, unidad: txt(o.unidad), formula: leerFormula(o.formula) }
+
+  const r: Resultado = { nombre, unidad: txt(o.unidad), formula: leerFormula(o.formula) }
+  /* Un ancla que ya no exista degrada a «nada»: LO GUARDADO NO MANDA SOBRE EL
+     CÓDIGO, y menos cuando de eso depende qué número gobierna las zonas. */
+  if (esAncla(txt(o.ancla))) r.ancla = txt(o.ancla) as Ancla
+  if (o.graf === false) r.graf = false
+  if (typeof o.inverso === 'boolean') r.inverso = o.inverso
+  return r
 }
 
 /**

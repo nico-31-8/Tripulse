@@ -29,6 +29,8 @@
 //
 // Este fichero es lógica pura: ni pantalla ni base de datos.
 
+import type { Ancla } from './test-definicion'
+
 // ------------------------------------------------------------
 // Tipos
 // ------------------------------------------------------------
@@ -196,6 +198,23 @@ export interface Resultado {
   nombre: string
   unidad: string
   formula: Bloq[]
+  /**
+   * Para qué sirve este número. Se reusa el vocabulario de /tests-propios
+   * (lib/test-definicion) en vez de inventar otro: es la misma pregunta, y dos
+   * listas de anclas acabarían diciendo cosas distintas.
+   */
+  ancla?: Ancla
+  /** Si sale en las gráficas de evolución. Ausente = sí. */
+  graf?: boolean
+  /**
+   * Si en esta unidad BAJAR es mejorar.
+   *
+   * Ausente = lo decide la unidad. Se puede fijar a mano porque de esto
+   * dependen dos cosas que mienten en silencio si se equivocan: el color de la
+   * flecha en la gráfica y hacia dónde va el porcentaje de una zona colgada de
+   * aquí — el 95 % de 1:13 es más LENTO, no más rápido.
+   */
+  inverso?: boolean
 }
 
 export interface TestLab {

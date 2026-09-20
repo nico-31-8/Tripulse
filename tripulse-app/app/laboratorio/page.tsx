@@ -20,16 +20,20 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
-import { leerModelo, paraGuardar, medicionDe } from '@/lib/lab-guardar'
+import { leerModelo, paraGuardar, medicionDe, leerMediciones, type Medicion } from '@/lib/lab-guardar'
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
-  type Funcion2, type Instrumento, type TestLab,
+  type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
+import { ANCLAS, ANCLAS_REFERENCIA, type Ancla } from '@/lib/test-definicion'
+import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
+import { puedeFijarLab, propuestaLab, origenDe } from '@/lib/lab-zonas'
+import { fijarZonas } from '@/lib/zonas-desde-test'
 import { pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
 
 const LLAVE = 'tp_laboratorio_v1'
@@ -59,7 +63,7 @@ const caja = 'border border-gray-800 rounded-xl p-3 bg-[#0d1420] mb-3'
 const rejilla = 'grid gap-2.5 items-end'
 const REJILLA = { gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' } as const
 
-type Vista = 'plantillas' | 'editor' | 'pasar'
+type Vista = 'plantillas' | 'editor' | 'pasar' | 'historial'
 interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
 /**
  * Qué se está preguntando y en qué fórmula.
@@ -94,6 +98,9 @@ export default function Laboratorio() {
   const [fecha, setFecha] = useState(() => hoyISO())
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
+  const [atletaHist, setAtletaHist] = useState<number | null>(null)
+  const [mediciones, setMediciones] = useState<Medicion[]>([])
+  const [cargandoHist, setCargandoHist] = useState(false)
   const [pidiendo, setPidiendo] = useState<Pidiendo | null>(null)
   const [reloj, setReloj] = useState<Reloj | null>(null)
   const [suena, setSuena] = useState(true)
@@ -285,6 +292,34 @@ export default function Laboratorio() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { cargar() }, [])
 
+  const verHistorial = async (idAtleta: number) => {
+    setAtletaHist(idAtleta)
+    if (!editandoId) return
+    setCargandoHist(true)
+    const { data } = await supabase.from('test_medicion')
+      .select('fecha, datos').eq('id_definicion', editandoId).eq('id_deportista', idAtleta)
+      .order('fecha', { ascending: true })
+    setMediciones(leerMediciones(data))
+    setCargandoHist(false)
+  }
+
+  /* Escribe la referencia del atleta, de la que salen TODAS las zonas que
+     calcula la aplicación. Reusa `fijarZonas`, el mismo camino que usan los
+     tests de la batería: un segundo sitio escribiendo en esas columnas acabaría
+     guardando cosas distintas. */
+  const fijarConEsto = async (indice: number, fechaMed: string) => {
+    if (!test || !editandoId || !atletaHist) return
+    const ultima = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha)).pop()
+    if (!ultima) return
+    const p = propuestaLab(test, indice, ultima.datos)
+    if (!p) { decir('mal', 'Ese resultado no puede fijar la referencia'); return }
+    setGuardando(true)
+    const r = await fijarZonas(supabase, atletaHist, fechaMed, p, origenDe(editandoId))
+    setGuardando(false)
+    if (r.error) { decir('mal', 'No se pudo fijar: ' + r.error); return }
+    decir('ok', p.destino.nombre + ' fijada en ' + p.texto + (r.sinOrigen ? ' (sin guardar el origen)' : ''))
+  }
+
   const guardarTest = async () => {
     if (!test || !userId) return
     if (pegasDe(test).length) { decir('mal', 'Hay cosas por arreglar antes de guardarlo'); return }
@@ -380,7 +415,12 @@ export default function Laboratorio() {
             {guardando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Guardar test'}
           </button>
         )}
+        {vista === 'editor' && editandoId !== null && (
+          <button onClick={() => { setVista('historial'); if (atletaHist) verHistorial(atletaHist) }}
+            className={btnSec + ' ' + btnMini}>Cómo va →</button>
+        )}
         {vista === 'editor' && <button onClick={() => setVista('pasar')} className={btn + ' ' + btnMini}>Pasar el test →</button>}
+        {vista === 'historial' && <button onClick={() => setVista('editor')} className={btnSec + ' ' + btnMini}>← Al editor</button>}
         {vista === 'pasar' && <button onClick={() => setVista('editor')} className={btnSec + ' ' + btnMini}>← Al editor</button>}
         <button onClick={() => router.push('/tests-propios')} className="text-gray-400 hover:text-white text-[13px] transition">Salir</button>
       </div>
@@ -519,6 +559,12 @@ export default function Laboratorio() {
               </div>
             </div>
           </>
+        ) : vista === 'historial' ? (
+          <Historial
+            test={test} deportistas={deportistas}
+            atleta={atletaHist} setAtleta={verHistorial}
+            mediciones={mediciones} cargando={cargandoHist} guardando={guardando}
+            onFijar={fijarConEsto} />
         ) : (
           <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
             <Pasar
@@ -1234,7 +1280,36 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
                 <label className={lab} htmlFor={'r' + i + 'u'}>Unidad</label>
                 <input id={'r' + i + 'u'} className={campo} value={r.unidad}
                   onChange={e => mut(t => { t.resultados[i].unidad = e.target.value })} />
+                {/* Lo que la app ha deducido de la unidad, y se puede corregir.
+                    De esto dependen la flecha de la gráfica y hacia dónde va el
+                    porcentaje de una zona colgada de aquí: el 95 % de 1:13 es
+                    más LENTO, no más rápido. */}
+                <button onClick={() => mut(t => { t.resultados[i].inverso = !esInverso(r) })}
+                  title="Hacia dónde va la mejora en esta unidad. Cámbialo si no acierta."
+                  className="text-[10.5px] text-gray-500 hover:text-gray-300 mt-1 transition">
+                  {esInverso(r) ? '↓ menos es mejor' : '↑ más es mejor'}
+                </button>
               </div>
+              <div className="min-w-[210px]">
+                <label className={lab} htmlFor={'r' + i + 'a'}>¿Para qué sirve?</label>
+                {/* Agrupado, porque el grupo ES el concepto: todo lo de arriba
+                    es un número del que se pueden colgar zonas, sea un umbral o
+                    una marca suya. */}
+                <select id={'r' + i + 'a'} className={campo} value={r.ancla || 'nada'}
+                  onChange={e => mut(t => { t.resultados[i].ancla = e.target.value as Ancla })}>
+                  <optgroup label="Referencias — se les pueden colgar zonas">
+                    {ANCLAS_REFERENCIA.map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
+                  </optgroup>
+                  <optgroup label="Lo demás">
+                    <option value="nada">{ANCLAS.nada.etiqueta}</option>
+                  </optgroup>
+                </select>
+                <Cabe deporte={test.deporte} r={r} />
+              </div>
+              <label className="flex items-center gap-2 text-gray-400 text-xs pt-5 cursor-pointer select-none">
+                <input type="checkbox" checked={r.graf !== false} className="accent-orange-500"
+                  onChange={e => mut(t => { t.resultados[i].graf = e.target.checked })} /> gráfica
+              </label>
             </div>
 
             <div className="mt-2.5">
@@ -1257,6 +1332,25 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
       <button onClick={() => mut(t => { t.resultados.push({ nombre: 'resultado' + (t.resultados.length + 1), unidad: '', formula: [] }) })}
         className={btnSec}>+ Añadir resultado</button>
     </div>
+  )
+}
+
+
+/**
+ * Si este resultado podrá fijar la referencia de la app, dicho AL CREARLO.
+ *
+ * Antes no se decía en ninguna parte: te enterabas meses después, en la otra
+ * pantalla, al ir a fijar zonas y encontrarte con que no se podía.
+ */
+function Cabe({ deporte, r }: { deporte: string; r: Resultado }) {
+  if (!r.ancla || r.ancla === 'nada') return null
+  const v = puedeFijarLab(deporte, r)
+  return (
+    <p className={'text-[10.5px] leading-snug mt-1 ' + (v.destino ? 'text-green-400/80' : 'text-gray-500')}>
+      {v.destino
+        ? <>⚓ Puede fijar {v.destino.nombre} del atleta.</>
+        : <>◈ Referencia tuya: {v.motivo}</>}
+    </p>
   )
 }
 
@@ -1816,6 +1910,205 @@ function Pasar({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Cómo va este test con el tiempo
+// ============================================================
+function Historial({
+  test, deportistas, atleta, setAtleta, mediciones, cargando,
+  guardando, onFijar,
+}: {
+  test: TestLab
+  deportistas: Atleta[]
+  atleta: number | null
+  setAtleta: (id: number) => void
+  mediciones: Medicion[]
+  cargando: boolean
+  guardando: boolean
+  onFijar: (indice: number, fecha: string) => void
+}) {
+  const series = seriesDe(test, mediciones)
+  const conDatos = series.filter(s => s.puntos.length >= 2)
+  const anclas = conAncla(test)
+  const ultima = [...mediciones].sort((a, b) => a.fecha.localeCompare(b.fecha))[mediciones.length - 1]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className={tarjeta}>
+        <div className="flex justify-between items-start gap-3 flex-wrap">
+          <div>
+            <p className="font-bold text-[15px]">{test.nombre}</p>
+            <p className="text-gray-500 text-xs mt-1">{test.deporte} · cómo ha ido con el tiempo</p>
+          </div>
+          <div style={{ minWidth: 190 }}>
+            <label className={lab} htmlFor="hist-dep">Deportista</label>
+            <select id="hist-dep" className={campo} value={atleta ?? ''}
+              onChange={e => setAtleta(Number(e.target.value))}>
+              <option value="">Elige a quién miras…</option>
+              {deportistas.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {!atleta ? (
+        <div className={tarjeta}><p className="text-gray-600 text-[13px] italic">Elige un deportista para ver cómo le ha ido.</p></div>
+      ) : cargando ? (
+        <div className={tarjeta}><p className="text-gray-600 text-[13px] italic">Cargando…</p></div>
+      ) : !mediciones.length ? (
+        <div className={tarjeta}>
+          <p className="text-gray-600 text-[13px] italic">Todavía no le has pasado este test.</p>
+        </div>
+      ) : (
+        <>
+          <div className={tarjeta}>
+            <p className="font-bold text-[15px]">Cómo va</p>
+            <p className="text-gray-500 text-xs mt-1">
+              Una gráfica por resultado: cada uno tiene su unidad y no se pueden mezclar en un eje.
+            </p>
+            {conDatos.length === 0 ? (
+              <p className="text-gray-600 text-[13px] italic mt-3">
+                {mediciones.length < 2
+                  ? 'Con una sola medición no hay tendencia que dibujar. Guarda otra con distinta fecha.'
+                  : 'Ningún resultado está marcado para gráfica.'}
+              </p>
+            ) : (
+              <div className="grid gap-3 mt-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))' }}>
+                {conDatos.map((s, i) => <Grafica key={s.nombre} s={s} idx={i} />)}
+              </div>
+            )}
+          </div>
+
+          {anclas.length > 0 && ultima && (
+            <div className={tarjeta}>
+              <p className="font-bold text-[15px]">Fijar sus zonas con esto</p>
+              <p className="text-gray-500 text-xs mt-1">
+                De la última medición ({ultima.fecha}). Escribe la referencia del atleta, que es de donde
+                salen todas las zonas que calcula la aplicación.
+              </p>
+              <div className="flex flex-col gap-2 mt-3">
+                {anclas.map(({ indice, r }) => {
+                  const p = propuestaLab(test, indice, ultima.datos)
+                  const v = puedeFijarLab(test.deporte, r)
+                  return (
+                    <div key={indice} className="flex items-center gap-3 flex-wrap border border-gray-800 rounded-xl p-3 bg-[#0d1420]">
+                      <span className="font-mono text-[12.5px] text-orange-300 min-w-[90px]">{r.nombre}</span>
+                      {p ? (
+                        <>
+                          <span className="text-[12.5px] text-gray-300">
+                            → {v.destino?.nombre}: <b className="font-mono text-white">{p.texto}</b>
+                          </span>
+                          <button onClick={() => onFijar(indice, ultima.fecha)} disabled={guardando}
+                            className={btn + ' ' + btnMini + ' ml-auto'}>
+                            {guardando ? 'Guardando…' : 'Fijar'}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[11.5px] text-gray-500 leading-snug">
+                          {v.motivo || 'Todavía no hay número en la última medición.'}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-gray-500 text-[11px] leading-snug mt-3">
+                Se guarda como estimado y con el test dentro del origen: una fórmula que te has montado tú
+                no tiene detrás la validación que tienen los tests del catálogo, y dentro de dos meses hay
+                que poder saber de dónde salió el número.
+              </p>
+            </div>
+          )}
+
+          <div className={tarjeta}>
+            <p className="font-bold text-[15px]">Cada vez que lo pasó</p>
+            <p className="text-gray-500 text-xs mt-1">
+              Los resultados se recalculan desde lo que se midió, así que corregir una fórmula corrige
+              el historial entero.
+            </p>
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full border-collapse text-[12.5px]">
+                <thead>
+                  <tr className="text-gray-500 text-[10px] uppercase tracking-wide border-b border-gray-700">
+                    <th className="text-left py-2 px-2">Fecha</th>
+                    {test.resultados.map(r => (
+                      <th key={r.nombre} className="text-left py-2 px-2 font-mono normal-case">{r.nombre}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...mediciones].sort((a, b) => b.fecha.localeCompare(a.fecha)).map(m => {
+                    const vals = calcular(test, m.datos)
+                    return (
+                      <tr key={m.fecha} className="border-b border-gray-800/70">
+                        <td className="py-2 px-2 text-gray-500 tabular-nums">{m.fecha}</td>
+                        {vals.map((v, i) => (
+                          <td key={i} className="py-2 px-2 font-semibold tabular-nums">
+                            {v.error
+                              ? <span className="text-gray-600 font-normal text-[11px]" title={v.error}>—</span>
+                              : nEs(v.valor as number) + ' ' + test.resultados[i].unidad}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Una línea por resultado, con su flecha sabiendo hacia dónde se mejora. */
+function Grafica({ s, idx }: { s: Serie; idx: number }) {
+  const vs = s.puntos.map(p => p.valor)
+  let min = Math.min(...vs), max = Math.max(...vs)
+  if (max === min) { max = min + 1; min = min - 1 }
+  const pad = (max - min) * 0.15; min -= pad; max += pad
+
+  const W = 260, H = 84
+  const x = (n: number) => (n / (s.puntos.length - 1)) * (W - 8) + 4
+  const y = (v: number) => H - 14 - ((v - min) / (max - min)) * (H - 26)
+  const linea = s.puntos.map((p, n) => `${n ? 'L' : 'M'}${x(n).toFixed(1)},${y(p.valor).toFixed(1)}`).join(' ')
+  const area = `${linea} L${x(s.puntos.length - 1).toFixed(1)},${H - 14} L${x(0).toFixed(1)},${H - 14} Z`
+
+  const col = s.mejora === null ? '#9ca3af' : s.mejora ? '#4ade80' : '#f87171'
+  const ult = s.puntos[s.puntos.length - 1]
+
+  return (
+    <div className="bg-[#161f2e] border border-gray-800 rounded-xl px-4 py-3">
+      <div className="flex justify-between items-baseline gap-2">
+        <span className="text-xs font-bold">{s.nombre} <span className="text-gray-500 font-normal">{s.unidad}</span></span>
+        <span className="font-mono text-[15px] font-bold tabular-nums">{nEs(ult.valor)}</span>
+      </div>
+      <div className="text-[11px] tabular-nums" style={{ color: col }}>
+        {s.delta === null || s.delta === 0 ? 'igual que la anterior'
+          : (s.delta > 0 ? '+' : '') + nEs(s.delta) + ' · ' + (s.mejora ? 'mejor' : 'peor')}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full block mt-2"
+        style={{ height: 84, overflow: 'visible' }} role="img"
+        aria-label={`Evolución de ${s.nombre}: ${s.puntos.map(p => nEs(p.valor)).join(', ')}`}>
+        <defs>
+          <linearGradient id={'lab-g' + idx} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={col} stopOpacity=".22" />
+            <stop offset="100%" stopColor={col} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#lab-g${idx})`} />
+        <path d={linea} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={x(s.puntos.length - 1)} cy={y(ult.valor)} r="3" fill={col} />
+      </svg>
+      {/* Si la recta de un perfil no ajustaba, eso tiene que seguir dicho junto
+          al punto: el número ya está dibujado y con aspecto de dato firme. */}
+      {s.avisos.length > 0 && (
+        <p className="text-[10.5px] text-amber-300/90 leading-snug mt-1.5">⚠ {s.avisos.join(' · ')}</p>
+      )}
     </div>
   )
 }

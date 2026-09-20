@@ -259,6 +259,23 @@ describe('las series de las gráficas', () => {
     // Sin esto, cada mejora en min/km se pintaría en rojo.
     expect(menosEsMejor('ritmo', 'min/km')).toBe(true)
     expect(menosEsMejor('VAM', 'km/h')).toBe(false)
+
+    /* Palabras ENTERAS. La versión anterior fallaba por los dos lados y los
+       dos fallos se ven en la gráfica, pintando la flecha al revés. */
+    expect(menosEsMejor('total', 's'), 'un test en segundos').toBe(true)
+    expect(menosEsMejor('tiempo_sosten', 's')).toBe(true)
+    expect(menosEsMejor('ritmo100', 's/100m')).toBe(true)
+    /* Y ahora que hay una función `minimo()`, que alguien llame así a un
+       resultado es cuestión de tiempo: el «min» de «minimo» no es un minuto. */
+    expect(menosEsMejor('minimo_pot', 'W'), 'minimo no es minuto').toBe(false)
+    expect(menosEsMejor('maximo', 'W')).toBe(false)
+    /* La barra solo cuenta detrás: en «s/100m» el tiempo va arriba y menos es
+       mejor; en «m/s» va abajo y es una velocidad, donde más es mejor. */
+    expect(menosEsMejor('v', 'm/s'), 'una velocidad no es un tiempo').toBe(false)
+    expect(menosEsMejor('css', 'm/s')).toBe(false)
+    expect(menosEsMejor('vel_ascension', 'm/min')).toBe(false)
+    expect(menosEsMejor('potencia', 'W')).toBe(false)
+    expect(menosEsMejor('lactato_pico', 'mmol/L')).toBe(false)
     const s = seriesDe(COOPER, meds)
     expect(s[0].delta).toBeGreaterThan(0)   // la VAM sube
     expect(s[0].mejora).toBe(true)
