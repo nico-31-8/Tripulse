@@ -14,6 +14,64 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de septiembre de 2026 · Laboratorio
+
+El constructor de tests en pruebas (**Tests propios → 🧪 Laboratorio**) da ya para
+montar casi cualquier test. Lo que montes ahí sigue guardándose **solo en tu
+navegador**: es para probarlo y decir qué cambiar.
+
+### Una columna que se calcula sola, repetición a repetición
+
+Hay tests donde el número que importa sale de **cada** repetición antes de
+juntarlas. En el **RAST**, la potencia de cada sprint es peso × 35² / tiempo³; en
+el **drop jump**, el RSI es la altura partida por el contacto **de ese salto**.
+
+Hasta ahora eso había que hacerlo sobre la media, y **no es lo mismo**: con seis
+sprints de 4,8 a 6,1 segundos, la media de las seis potencias es 567 W y la
+potencia de la media de los tiempos, 545 W. Un 4 % — justo del tamaño de las
+mejoras que le enseñas al atleta.
+
+Ahora una columna puede salir de las otras **de su propia fila**, y después le
+pides la máxima o la media como a cualquiera. El RAST está de plantilla.
+
+### La repetición partida en tramos
+
+El **30-15 IFT** son treinta segundos corriendo y quince andando. Antes el reloj
+sabía cuándo cambiaba de escalón pero no cuándo había que dejar de correr, que
+es medio test.
+
+Ahora una repetición se puede partir, y el reloj **canta lo que queda del tramo**
+—no lo que lleva la repetición— y pita al pasar de uno a otro con un tono
+distinto. También de plantilla.
+
+### El umbral y la recta, con red
+
+Dos cosas que no se resuelven sumando:
+
+- **El umbral a 4 mmol/L cae entre dos escalones.** Si mides 12 km/h → 2,9 y
+  13 → 5,2, el punto está en 12,48. Ahora se puede pedir.
+- **El perfil fuerza-velocidad es una recta** ajustada a cuatro sprints, de la
+  que salen F0, V0 y la potencia máxima.
+
+**Y las dos avisan solas cuando no hay que fiarse.** Es lo importante: una media
+mala se ve, pero una recta mal ajustada devuelve su F0 y su V0 con aspecto
+impecable aunque los puntos no formen una recta. Así que:
+
+- si los puntos no caen bien en una recta, **el número sale con un aviso** que
+  dice cuánto se fía;
+- si la recta sale de dos puntos, avisa de que **por dos puntos pasa una recta
+  por narices** y el ajuste no dice nada;
+- y si le pides el umbral a 4 cuando el lactato **solo llegó a 2,9**, se niega:
+  eso no es calcular, es inventárselo.
+
+### Y trabajar con una repetición suelta
+
+En las fórmulas ya se podía coger un tramo —«sin la primera», «de la 2 a la 3»—.
+Ahora hay un botón **«una sola»** para quedarte con la 2.ª o la 5.ª a secas, y la
+fórmula se lee «la 2.ª de t100» en vez de un rango.
+
+---
+
 ## 17 de septiembre de 2026 · Tests propios
 
 ### Un test puede medir lo mismo varias veces

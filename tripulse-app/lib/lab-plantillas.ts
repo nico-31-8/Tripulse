@@ -125,6 +125,10 @@ export const PLANTILLAS: Plantilla[] = [
       resultados: [
         { nombre: 'vel_final', unidad: 'km/h', formula: [fnB('ultima', 'vel')] },
         { nombre: 'lactato_pico', unidad: 'mmol/L', formula: [fnB('maximo', 'lactato')] },
+        /* El umbral clásico cae ENTRE dos escalones, así que hay que buscarlo
+           en la recta que los une. Y si el lactato no llegó a 4, esto se niega
+           a devolver un número: extrapolarlo sería inventárselo. */
+        { nombre: 'umbral_4', unidad: 'km/h', formula: [{ t: 'fn2', v: 'interpola', x: 'vel', y: 'lactato', a: 4 }] },
         { nombre: 'escalones', unidad: 'ud', formula: [fnB('cuantas', 'vel')] },
       ],
     },
@@ -188,6 +192,36 @@ export const PLANTILLAS: Plantilla[] = [
       resultados: [
         { nombre: 'vift', unidad: 'km/h', formula: [fnB('ultima', 'vel')] },
         { nombre: 'escalones', unidad: 'ud', formula: [fnB('cuantas', 'vel')] },
+      ],
+    },
+  },
+  {
+    id: 'perfil',
+    nombre: 'Perfil fuerza-velocidad',
+    descripcion: 'Cuatro sprints con cuatro cargas. De la recta que forman salen F0, V0 y la potencia máxima — y te dice cuánto se fía de ella.',
+    distintivo: 'recta ajustada',
+    test: {
+      nombre: 'Perfil fuerza-velocidad', deporte: 'Ciclismo', sueltos: [],
+      bloques: [{
+        clave: 's', etiqueta: 'Sprint', modo: 'cerrado', veces: 4, duracion: 0,
+        columnas: [
+          col({ clave: 'carga', etiqueta: 'Carga', unidad: 'N', clase: 'dada', tipo: 'lista', etiquetas: ['100', '200', '300', '400'] }),
+          col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'm/s' }),
+        ],
+      }],
+      /* vel = V0 − (V0/F0)·carga. El corte es V0, y F0 sale de −V0/pendiente.
+         `se_fia` no es adorno: con los puntos torcidos la recta sale igual, y
+         es lo único que lo delata. Además avisa sola. */
+      resultados: [
+        { nombre: 'v0', unidad: 'm/s', formula: [{ t: 'fn2', v: 'corte', x: 'carga', y: 'vel' }] },
+        { nombre: 'pend', unidad: '', formula: [{ t: 'fn2', v: 'pendiente', x: 'carga', y: 'vel' }] },
+        { nombre: 'f0', unidad: 'N', formula: [
+          { t: 'op', v: '-' }, { t: 'ref', v: 'v0' }, { t: 'op', v: '/' }, { t: 'ref', v: 'pend' },
+        ] },
+        { nombre: 'p_max', unidad: 'W', formula: [
+          { t: 'ref', v: 'f0' }, { t: 'op', v: '*' }, { t: 'ref', v: 'v0' }, { t: 'op', v: '/' }, { t: 'num', v: 4 },
+        ] },
+        { nombre: 'se_fia', unidad: 'de 1', formula: [{ t: 'fn2', v: 'ajuste', x: 'carga', y: 'vel' }] },
       ],
     },
   },

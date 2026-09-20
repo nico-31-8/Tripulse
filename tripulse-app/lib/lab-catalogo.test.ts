@@ -438,7 +438,7 @@ describe('columnas calculadas por repetición', () => {
     expect(pegasDe(base([])).some(p => /ponle una fórmula/.test(p.texto))).toBe(true)
     const conFn: TestLab = base([v('luego')])
     conFn.bloques[0].columnas[0].formula = [fnB('media', 'luego')]
-    expect(pegasDe(conFn).some(p => /no valen suma\(\) ni media\(\)/.test(p.texto))).toBe(true)
+    expect(pegasDe(conFn).some(p => /no valen suma\(\), media\(\)/.test(p.texto))).toBe(true)
   })
 })
 
@@ -504,6 +504,152 @@ describe('la velocidad del pitido también sale de una lista', () => {
     /* 40 m a 10 km/h son 14,4 s; a 13,5 km/h, 10,67. El hueco se acorta solo. */
     expect(intervaloRitmo(t.bloques[0], 1, {})).toBeCloseTo(40 / (10 / 3.6) * 1000, 0)
     expect(intervaloRitmo(t.bloques[0], 4, {})).toBeCloseTo(40 / (13.5 / 3.6) * 1000, 0)
+  })
+})
+
+// ============================================================
+// 5. La estadística, y su red
+// ============================================================
+//
+// El peligro de estas no es que fallen: es que SALEN AUNQUE ESTÉN MAL. Una
+// media mala se ve —4.000 W en un RAST cantan—, pero una recta mal ajustada
+// devuelve su F0 y su V0 con aspecto impecable. Por eso cada test de aquí
+// comprueba dos cosas: que el número sale bien, y que cuando no vale se dice.
+describe('interpolar: el dato que cae entre dos escalones', () => {
+  const escalonado = (): TestLab => ({
+    nombre: 'Escalonado con lactato', deporte: 'Carrera', sueltos: [],
+    bloques: [{
+      clave: 'e', etiqueta: 'Escalón', modo: 'abierto', veces: 8, duracion: 180,
+      columnas: [
+        col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'km/h', clase: 'dada', tipo: 'progresion', desde: 10, paso: 1 }),
+        col({ clave: 'lac', etiqueta: 'Lactato', unidad: 'mmol/L' }),
+      ],
+    }],
+    resultados: [{ nombre: 'umbral', unidad: 'km/h', formula: [
+      { t: 'fn2', v: 'interpola', x: 'vel', y: 'lac', a: 4 },
+    ] }],
+  })
+
+  it('el umbral a 4 mmol/L sale entre el 12 y el 13', () => {
+    /* 10→1,1 · 11→1,6 · 12→2,9 · 13→5,2. El 4 cae entre los dos últimos:
+       12 + (4−2,9)/(5,2−2,9) = 12,478. */
+    const r = pasar(escalonado(), { '@e': 4, lac: ['1.1', '1.6', '2.9', '5.2', '', '', '', ''] })
+    expect(r.umbral).toBeCloseTo(12.478, 3)
+  })
+
+  /* SE NIEGA A EXTRAPOLAR. Pedir el umbral a 4 cuando el lactato solo llegó a
+     2,9 no es calcular: es inventarse un dato que además sale con decimales de
+     aspecto serio. */
+  it('si el lactato no llegó a 4, NO se lo inventa', () => {
+    const t = escalonado()
+    const vals = calcular(t, { '@e': 3, lac: ['1.1', '1.6', '2.9', '', '', '', '', ''] })
+    expect(vals[0].valor).toBeNull()
+    expect(vals[0].error).toMatch(/solo se movió entre/)
+    expect(vals[0].error).toMatch(/inventarlo/)
+  })
+
+  it('si el lactato pasa dos veces por 4, avisa de cuál ha cogido', () => {
+    const t = escalonado()
+    /* Baja y vuelve a subir: pasa por 4 dos veces. El número sale —el primero—
+       pero hay que decir que había otro. */
+    const vals = calcular(t, { '@e': 5, lac: ['1', '4.5', '3', '4.5', '6', '', '', ''] })
+    expect(vals[0].valor).not.toBeNull()
+    expect(vals[0].avisos?.join(' ')).toMatch(/pasa por 4.*veces/)
+  })
+})
+
+describe('la recta: el perfil fuerza-velocidad', () => {
+  /* Cuatro sprints con cuatro cargas, midiendo la velocidad. Los puntos caen en
+     una recta vel = V0 − (V0/F0)·carga, y de ella salen los tres números que
+     SON el test: V0, F0 y la potencia máxima. */
+  const perfil = (): TestLab => ({
+    nombre: 'Perfil fuerza-velocidad', deporte: 'Ciclismo', sueltos: [],
+    bloques: [{
+      clave: 's', etiqueta: 'Sprint', modo: 'cerrado', veces: 4, duracion: 0,
+      columnas: [
+        col({ clave: 'carga', etiqueta: 'Carga', unidad: 'N', clase: 'dada', tipo: 'lista', etiquetas: ['100', '200', '300', '400'] }),
+        col({ clave: 'vel', etiqueta: 'Velocidad', unidad: 'm/s' }),
+      ],
+    }],
+    resultados: [
+      { nombre: 'v0', unidad: 'm/s', formula: [{ t: 'fn2', v: 'corte', x: 'carga', y: 'vel' }] },
+      { nombre: 'pend', unidad: '', formula: [{ t: 'fn2', v: 'pendiente', x: 'carga', y: 'vel' }] },
+      { nombre: 'f0', unidad: 'N', formula: [
+        op('-'), { t: 'ref', v: 'v0' }, op('/'), { t: 'ref', v: 'pend' },
+      ] },
+      { nombre: 'se_fia', unidad: '', formula: [{ t: 'fn2', v: 'ajuste', x: 'carga', y: 'vel' }] },
+    ],
+  })
+
+  it('saca V0, la pendiente y F0 de cuatro puntos', () => {
+    /* Recta exacta: vel = 10 − 0,02·carga → V0 = 10, F0 = 500. */
+    const r = pasar(perfil(), { vel: ['8', '6', '4', '2'] })
+    expect(r.v0).toBeCloseTo(10, 6)
+    expect(r.pend).toBeCloseTo(-0.02, 6)
+    expect(r.f0).toBeCloseTo(500, 4)
+    expect(r.se_fia).toBeCloseTo(1, 6)
+  })
+
+  /* AQUÍ ESTÁ LA RED. Con los puntos torcidos la recta sale igual, con su V0 y
+     su F0 de aspecto impecable. Lo que cambia es que ahora lo dice sola. */
+  it('si los puntos no caen en una recta, el número sale PERO avisa', () => {
+    const t = perfil()
+    const vals = calcular(t, { carga: [], vel: ['8', '2', '7', '1'] })
+    expect(vals[0].valor).not.toBeNull()
+    expect(vals[0].avisos?.join(' ')).toMatch(/no caen bien en una recta/)
+    expect(vals[0].avisos?.join(' ')).toMatch(/se fía 0,/)
+  })
+
+  it('con dos puntos la recta es perfecta por narices, y también lo dice', () => {
+    const t = perfil()
+    t.bloques[0].veces = 2
+    t.bloques[0].columnas[0].etiquetas = ['100', '200']
+    const vals = calcular(t, { vel: ['8', '6'] })
+    expect(vals[0].valor).toBeCloseTo(10, 6)
+    expect(vals[0].avisos?.join(' ')).toMatch(/2 puntos/)
+    expect(vals[0].avisos?.join(' ')).toMatch(/por narices/)
+  })
+
+  it('un buen ajuste no avisa de nada', () => {
+    const t = perfil()
+    const vals = calcular(t, { vel: ['8', '6', '4', '2'] })
+    expect(vals[0].avisos).toBeUndefined()
+  })
+})
+
+describe('las de dos columnas, cuando se piden mal', () => {
+  const base = (f: TestLab['resultados'][0]['formula']): TestLab => ({
+    nombre: 'x', deporte: 'Otro',
+    sueltos: [col({ clave: 'suelta', etiqueta: '' })],
+    bloques: [
+      { clave: 'a', etiqueta: 'a', modo: 'cerrado', veces: 3, duracion: 0, columnas: [col({ clave: 'x1', etiqueta: '' }), col({ clave: 'y1', etiqueta: '' })] },
+      { clave: 'b', etiqueta: 'b', modo: 'cerrado', veces: 2, duracion: 0, columnas: [col({ clave: 'x2', etiqueta: '' })] },
+    ],
+    resultados: [{ nombre: 'z', unidad: '', formula: f }],
+  })
+
+  it('no deja cruzar columnas de bloques distintos', () => {
+    const p = pegasDe(base([{ t: 'fn2', v: 'pendiente', x: 'x1', y: 'x2' }]))
+    expect(p.some(q => /bloques distintos/.test(q.texto))).toBe(true)
+  })
+
+  it('no deja usar una casilla suelta', () => {
+    const p = pegasDe(base([{ t: 'fn2', v: 'pendiente', x: 'x1', y: 'suelta' }]))
+    expect(p.some(q => /se mide una sola vez/.test(q.texto))).toBe(true)
+  })
+
+  it('a interpola hay que decirle a qué valor', () => {
+    const p = pegasDe(base([{ t: 'fn2', v: 'interpola', x: 'x1', y: 'y1' }]))
+    expect(p.some(q => /a qué valor/.test(q.texto))).toBe(true)
+  })
+
+  it('dentro de una columna calculada no valen', () => {
+    const t = base([{ t: 'fn2', v: 'pendiente', x: 'x1', y: 'y1' }])
+    t.bloques[0].columnas.push(col({
+      clave: 'mal', etiqueta: '', clase: 'calculada',
+      formula: [{ t: 'fn2', v: 'pendiente', x: 'x1', y: 'y1' }],
+    }))
+    expect(pegasDe(t).some(q => /no valen suma\(\), media\(\) ni las de dos columnas/.test(q.texto))).toBe(true)
   })
 })
 

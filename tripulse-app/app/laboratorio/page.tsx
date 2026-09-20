@@ -18,12 +18,12 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
-  FUNCIONES, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
+  FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
-  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, col, fnB,
+  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
-  type Instrumento, type TestLab,
+  type Funcion2, type Instrumento, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
 import { pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
@@ -47,8 +47,14 @@ const REJILLA = { gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' } as
 
 type Vista = 'plantillas' | 'editor' | 'pasar'
 interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
-/** Qué columna está esperando a que se diga qué se le pide, y en qué fórmula. */
-interface Pidiendo { clave: string; col: string; fn: Funcion | null }
+/**
+ * Qué se está preguntando y en qué fórmula.
+ *
+ * Las de una columna van en dos pasos (cuál → qué se le pide) y las de dos, en
+ * tres (qué se quiere → qué va en X → qué va en Y), porque preguntarlo todo de
+ * golpe es un formulario, y esto tiene que leerse como una frase.
+ */
+interface Pidiendo { clave: string; col: string; fn: Funcion | null; fn2?: Funcion2; x?: string }
 
 const CLASES: Record<string, string> = {
   medida: 'La mides (de cada uno)',
@@ -1107,7 +1113,8 @@ function Grupo({ et, escalon, children }: { et: string; escalon?: boolean; child
 }
 
 const FICHA = 'font-mono text-[12px] px-2.5 py-1 rounded-md border transition hover:brightness-125'
-const colorFicha = (b: Bloq) => b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
+const colorFicha = (b: Bloq) => b.t === 'fn2' ? 'bg-emerald-500/14 border-emerald-400/40 text-emerald-200'
+  : b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
   : b.t === 'var' ? 'bg-orange-500/14 border-orange-500/45 text-orange-200'
     : b.t === 'ref' ? 'bg-violet-500/14 border-violet-400/45 text-violet-200'
       : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
@@ -1143,7 +1150,7 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
           : formula.map((b, n) => (
             <button key={n} title="Quitar" onClick={() => onCambio(formula.filter((_, k) => k !== n))}
               className={FICHA + ' ' + colorFicha(b)}>
-              {b.t === 'fn' ? etiquetaFn(b) : String(b.v)}
+              {b.t === 'fn' ? etiquetaFn(b) : b.t === 'fn2' ? etiquetaFn2(b) : String(b.v)}
             </button>
           ))}
       </div>
@@ -1199,6 +1206,49 @@ function MontaFormula({ formula, clave, escalares, series, refs, pidiendo, setPi
             <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
               En un 6×100 la primera sale de pared y no compara con las demás. Y el índice de fatiga son dos tramos: 1–3 contra 4–6.
             </p>
+          </Grupo>
+        )}
+
+        {/* Con dos o más columnas que se repitan aparece lo que las cruza: la
+            recta y el punto que cae entre dos escalones. */}
+        {series.length >= 2 && !mio?.fn && (
+          <Grupo et="Con dos columnas a la vez">
+            {(Object.keys(FUNCIONES2) as Funcion2[]).map(f => (
+              <button key={f} className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+                onClick={() => setPidiendo({ clave, col: '', fn: null, fn2: f })}>
+                {f}() <span className="opacity-60">{FUNCIONES2[f]}</span>
+              </button>
+            ))}
+          </Grupo>
+        )}
+
+        {mio?.fn2 && !mio.x && (
+          <Grupo et={mio.fn2 === 'interpola' ? '¿Qué columna quieres que te devuelva?' : '¿Qué va en el eje de abajo?'} escalon>
+            {series.map(s => (
+              <button key={s.clave} className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+                onClick={() => setPidiendo({ ...mio, x: s.clave })}>{s.clave}</button>
+            ))}
+          </Grupo>
+        )}
+
+        {mio?.fn2 && mio.x && (
+          <Grupo et={mio.fn2 === 'interpola' ? '¿Y cuál es la que tiene que llegar a un valor?' : '¿Y qué va en el de al lado?'} escalon>
+            {series.filter(s => s.clave !== mio.x).map(s => (
+              <button key={s.clave} className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+                onClick={() => {
+                  if (mio.fn2 !== 'interpola') { pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: s.clave }); return }
+                  const a = prompt('¿A qué valor de «' + s.clave + '»?', '4')
+                  if (a === null) return
+                  const n = Number(String(a).replace(',', '.'))
+                  if (!Number.isFinite(n)) return
+                  pon({ t: 'fn2', v: 'interpola', x: mio.x!, y: s.clave, a: n })
+                }}>{s.clave}</button>
+            ))}
+            {mio.fn2 !== 'interpola' && (
+              <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+                La recta se ajusta a los puntos de las dos columnas. Si no caen bien en una recta, el número sale igual — pero te lo dice.
+              </p>
+            )}
           </Grupo>
         )}
 
@@ -1369,6 +1419,16 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
               : <span className="font-mono tabular-nums font-bold">{nEs(vals[i].valor as number)} <span className="text-gray-500 font-normal">{r.unidad}</span></span>}
           </div>
         ))}
+        {/* Los avisos van SOLOS, sin que el entrenador tenga que acordarse de
+            pedir el ajuste: una recta mal ajustada devuelve su número con
+            aspecto impecable, y eso es justo lo que hay que romper. */}
+        {vals.some(x => x.avisos?.length) && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-[11.5px] text-amber-200 leading-snug">
+            {vals.flatMap((x, i) => (x.avisos || []).map(a => (
+              <p key={i + a}>⚠ <b className="text-amber-100">{test.resultados[i].nombre}</b>: {a}</p>
+            )))}
+          </div>
+        )}
       </div>
     </div>
   )

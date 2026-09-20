@@ -70,6 +70,39 @@ export const FUNCIONES: Record<string, string> = {
 
 export type Funcion = 'suma' | 'media' | 'minimo' | 'maximo' | 'primera' | 'ultima' | 'cuantas'
 
+/**
+ * Lo que se le pide a DOS columnas a la vez.
+ *
+ * Aquí está lo que no se resuelve sumando: el umbral a 4 mmol/L cae ENTRE dos
+ * escalones y hay que buscarlo en la recta que los une, y el perfil
+ * fuerza-velocidad es una recta ajustada a cuatro puntos de la que salen F0 y
+ * V0. Ninguna de las dos es una media de nada.
+ *
+ * Y TODAS VAN CON RED, porque el peligro de estas no es que fallen: es que
+ * SALEN AUNQUE ESTÉN MAL. Una media mala se ve —4.000 W en un RAST cantan—,
+ * pero una recta mal ajustada devuelve su F0 y su V0 con aspecto impecable
+ * aunque los puntos no formen una recta. Por eso `ajuste` existe, por eso
+ * `pendiente` y `corte` avisan solos cuando el ajuste es malo o hay pocos
+ * puntos, y por eso `interpola` se niega a extrapolar: pedir el umbral a 4
+ * cuando el lactato solo llegó a 2,9 no es calcular, es inventar.
+ */
+export const FUNCIONES2: Record<string, string> = {
+  interpola: 'dónde la otra llega a un valor',
+  pendiente: 'cuánto sube la recta',
+  corte: 'cuánto vale la recta en cero',
+  ajuste: 'cuánto se fía la recta (0 a 1)',
+}
+
+export type Funcion2 = 'interpola' | 'pendiente' | 'corte' | 'ajuste'
+
+export const esFuncion2 = (n: string): n is Funcion2 =>
+  Object.prototype.hasOwnProperty.call(FUNCIONES2, n)
+
+/** Por debajo de aquí, una recta dice poco. */
+export const AJUSTE_MINIMO = 0.9
+/** Con menos puntos que esto, la recta pasa por ellos por narices. */
+export const PUNTOS_MINIMOS = 3
+
 /* `hasOwnProperty` y no `in`: con `in`, «toString» o «constructor» darían true
    —están en el prototipo de cualquier objeto— y una casilla llamada así se
    trataría como función. */
@@ -156,6 +189,8 @@ export type Bloq =
   | { t: 'num'; v: number }
   /** `media(t100, 2, 3)`: qué se pide, a qué columna y de qué tramo. */
   | { t: 'fn'; v: Funcion; de: string; d?: number; h?: number }
+  /** `interpola(vel, lac, 4)`: lo que mira dos columnas a la vez. */
+  | { t: 'fn2'; v: Funcion2; x: string; y: string; a?: number }
 
 export interface Resultado {
   nombre: string
@@ -232,8 +267,112 @@ export function recorta(lista: unknown[], nombre: string, d?: number, h?: number
   return lista.slice(de - 1, a)
 }
 
-/** Calcula una expresión. Lanza con el motivo, porque el motivo es lo que se enseña. */
-export function evaluar(expr: string, vars: Record<string, unknown>): number {
+// ------------------------------------------------------------
+// Las dos columnas a la vez: la recta y el punto que cae en medio
+// ------------------------------------------------------------
+
+interface Punto { x: number; y: number }
+
+/** Las parejas (x, y) de dos columnas del mismo bloque. */
+function paresDe(vars: Record<string, unknown>, nx: string, ny: string): Punto[] {
+  for (const n of [nx, ny]) {
+    if (!(n in vars)) throw new Error('no existe «' + n + '»')
+    if (!Array.isArray(vars[n])) throw new Error('«' + n + '» no se repite: esto necesita dos columnas de un bloque')
+  }
+  const xs = vars[nx] as unknown[], ys = vars[ny] as unknown[]
+  if (xs.length !== ys.length) {
+    throw new Error('«' + nx + '» y «' + ny + '» no tienen el mismo número de repeticiones: ¿son del mismo bloque?')
+  }
+  const out: Punto[] = []
+  for (let i = 0; i < xs.length; i++) {
+    if (vacio(xs[i]) || vacio(ys[i])) continue
+    const x = Number(xs[i]), y = Number(ys[i])
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('«' + nx + '» o «' + ny + '» tienen algo que no es un número')
+    out.push({ x, y })
+  }
+  return out
+}
+
+export interface Recta { m: number; b: number; ajuste: number; n: number }
+
+/** Mínimos cuadrados, con el R² que dice cuánto vale lo que ha salido. */
+export function recta(p: Punto[]): Recta {
+  const n = p.length
+  if (n < 2) throw new Error('con ' + n + ' punto' + (n === 1 ? '' : 's') + ' no hay recta que ajustar')
+  const sx = p.reduce((a, q) => a + q.x, 0), sy = p.reduce((a, q) => a + q.y, 0)
+  const sxx = p.reduce((a, q) => a + q.x * q.x, 0), sxy = p.reduce((a, q) => a + q.x * q.y, 0)
+  const den = n * sxx - sx * sx
+  if (den === 0) throw new Error('todos los puntos están en la misma X: no hay recta')
+  const m = (n * sxy - sx * sy) / den
+  const b = (sy - m * sx) / n
+  const my = sy / n
+  const sst = p.reduce((a, q) => a + (q.y - my) ** 2, 0)
+  const sse = p.reduce((a, q) => a + (q.y - (m * q.x + b)) ** 2, 0)
+  return { m, b, ajuste: sst === 0 ? 1 : 1 - sse / sst, n }
+}
+
+/** Lo que hay que decir de una recta antes de fiarse de ella. */
+function avisosDeRecta(r: Recta, nx: string, ny: string): string[] {
+  const av: string[] = []
+  if (r.n < PUNTOS_MINIMOS) {
+    av.push('la recta de «' + nx + '»–«' + ny + '» sale de ' + r.n + ' puntos: con tan pocos pasa por ellos por narices y el ajuste no dice nada')
+  } else if (r.ajuste < AJUSTE_MINIMO) {
+    av.push('los puntos de «' + nx + '»–«' + ny + '» no caen bien en una recta (se fía ' +
+      (Math.round(r.ajuste * 100) / 100).toString().replace('.', ',') + ' de 1): mira si el protocolo dio suficiente rango')
+  }
+  return av
+}
+
+/**
+ * Dónde vale `objetivo` la columna `y`, buscándolo en la recta entre los dos
+ * puntos que lo rodean.
+ *
+ * SE NIEGA A EXTRAPOLAR. Pedir el umbral a 4 mmol/L cuando el lactato solo
+ * llegó a 2,9 no es calcular: es inventarse un dato que además sale con dos
+ * decimales de aspecto serio.
+ */
+function interpolar(p: Punto[], objetivo: number, nx: string, ny: string, avisos?: string[]): number {
+  if (p.length < 2) throw new Error('con ' + p.length + ' punto(s) no se puede interpolar')
+  const ys = p.map(q => q.y)
+  const min = Math.min(...ys), max = Math.max(...ys)
+  const nEs = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',')
+  if (objetivo < min || objetivo > max) {
+    throw new Error('pides ' + nEs(objetivo) + ' de «' + ny + '», que solo se movió entre ' +
+      nEs(min) + ' y ' + nEs(max) + ': fuera de ahí sería inventarlo')
+  }
+  let cruces = 0, primero: number | null = null
+  for (let i = 1; i < p.length; i++) {
+    const a = p[i - 1], b = p[i]
+    if ((a.y - objetivo) * (b.y - objetivo) > 0) continue
+    if (a.y === b.y) continue
+    cruces++
+    if (primero === null) primero = a.x + (objetivo - a.y) * (b.x - a.x) / (b.y - a.y)
+  }
+  if (primero === null) throw new Error('«' + ny + '» no cruza ' + nEs(objetivo) + ' en ningún sitio')
+  if (cruces > 1 && avisos) {
+    avisos.push('«' + ny + '» pasa por ' + nEs(objetivo) + ' ' + cruces + ' veces: se ha cogido la primera')
+  }
+  return primero
+}
+
+function aplicar2(f: Funcion2, vars: Record<string, unknown>, nx: string, ny: string, a: number | undefined, avisos?: string[]): number {
+  const p = paresDe(vars, nx, ny)
+  if (f === 'interpola') {
+    if (a === undefined || !Number.isFinite(a)) throw new Error('«interpola» necesita saber a qué valor')
+    return interpolar(p, a, nx, ny, avisos)
+  }
+  const r = recta(p)
+  if (avisos) for (const av of avisosDeRecta(r, nx, ny)) avisos.push(av)
+  if (f === 'pendiente') return r.m
+  if (f === 'corte') return r.b
+  return r.ajuste
+}
+
+/**
+ * Calcula una expresión. Lanza con el motivo, porque el motivo es lo que se
+ * enseña. Y si hay algo que decir sin llegar a fallar, cae en `avisos`.
+ */
+export function evaluar(expr: string, vars: Record<string, unknown>, avisos?: string[]): number {
   const t = String(expr).match(RE_TOK) || []
   let i = 0
   const mirar = () => t[i]
@@ -269,6 +408,26 @@ export function evaluar(expr: string, vars: Record<string, unknown>): number {
     if (x === '(') { const v = expresion(); if (comer() !== ')') throw new Error('falta cerrar un paréntesis'); return v }
     if (/^\d/.test(x)) return parseFloat(x)
     if (RE_INI.test(x)) {
+      /* Las de dos columnas: `interpola(vel, lac, 4)`, `pendiente(carga, vel)`. */
+      if (esFuncion2(x) && mirar() === '(') {
+        comer()
+        const nx = comer()
+        if (nx === undefined || !RE_INI.test(nx)) throw new Error('«' + x + '» necesita dos columnas dentro')
+        if (comer() !== ',') throw new Error('«' + x + '» necesita dos columnas separadas por una coma')
+        const ny = comer()
+        if (ny === undefined || !RE_INI.test(ny)) throw new Error('a «' + x + '» le falta la segunda columna')
+        let a: number | undefined
+        if (mirar() === ',') {
+          comer()
+          let neg = 1
+          if (mirar() === '-') { comer(); neg = -1 }
+          const num = parseFloat(comer())
+          a = Number.isFinite(num) ? neg * num : undefined
+        }
+        if (comer() !== ')') throw new Error('falta cerrar el paréntesis de «' + x + '»')
+        return aplicar2(x, vars, nx, ny, a, avisos)
+      }
+
       if (esFuncion(x) && mirar() === '(') {
         comer()
         const serie = comer()
@@ -317,6 +476,18 @@ export function evaluar(expr: string, vars: Record<string, unknown>): number {
 export const textoFn = (b: Extract<Bloq, { t: 'fn' }>): string =>
   b.v + '(' + b.de + (b.d || b.h ? ', ' + (b.d || 1) + ', ' + (b.h || 0) : '') + ')'
 
+export const textoFn2 = (b: Extract<Bloq, { t: 'fn2' }>): string =>
+  b.v + '(' + b.x + ', ' + b.y + (b.a === undefined ? '' : ', ' + b.a) + ')'
+
+/** Cómo se lee una de dos columnas: por lo que pregunta, no por su sintaxis. */
+export function etiquetaFn2(b: Extract<Bloq, { t: 'fn2' }>): string {
+  const n = (v: number) => String(v).replace('.', ',')
+  if (b.v === 'interpola') return b.x + ' cuando ' + b.y + ' = ' + (b.a === undefined ? '?' : n(b.a))
+  if (b.v === 'pendiente') return 'pendiente ' + b.x + '→' + b.y
+  if (b.v === 'corte') return 'corte ' + b.x + '→' + b.y
+  return 'se fía ' + b.x + '→' + b.y
+}
+
 /** Cómo se lee en pantalla, que no es cómo se le da al motor. */
 export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
   /* Un tramo de UNA repetición no necesita función: la suma, la media y el
@@ -330,11 +501,18 @@ export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
 }
 
 export const textoDe = (f: Bloq[]): string =>
-  (f || []).map(b => (b.t === 'fn' ? textoFn(b) : String(b.v))).join(' ')
+  (f || []).map(b => (b.t === 'fn' ? textoFn(b) : b.t === 'fn2' ? textoFn2(b) : String(b.v))).join(' ')
 
 /** A qué casillas apunta una fórmula, sean sueltas o de un bloque. */
-export const camposDe = (f: Bloq[]): string[] =>
-  [...new Set((f || []).map(b => (b.t === 'fn' ? b.de : b.t === 'var' ? b.v : null)).filter(Boolean) as string[])]
+export const camposDe = (f: Bloq[]): string[] => {
+  const o: string[] = []
+  for (const b of f || []) {
+    if (b.t === 'fn') o.push(b.de)
+    else if (b.t === 'var') o.push(b.v)
+    else if (b.t === 'fn2') o.push(b.x, b.y)
+  }
+  return [...new Set(o)]
+}
 
 /** El valor de una columna dada en la repetición `k` (desde 0). */
 export function valorDado(c: Columna, k: number, datos: Datos): string | number {
@@ -438,7 +616,17 @@ export function variablesDe(test: TestLab, datos: Datos, errores: Record<string,
   return vars
 }
 
-export interface ValorResultado { valor: number | null; error: string | null }
+export interface ValorResultado {
+  valor: number | null
+  error: string | null
+  /**
+   * Lo que hay que saber antes de fiarse del número, sin que llegue a ser un
+   * fallo. Una media mala se ve; una recta mal ajustada devuelve su F0 y su V0
+   * con aspecto impecable, así que el aviso tiene que salir SOLO — no depender
+   * de que el entrenador se acuerde de añadir un resultado con el ajuste.
+   */
+  avisos?: string[]
+}
 
 export function calcular(test: TestLab, datos: Datos): ValorResultado[] {
   const errores: Record<string, string> = {}
@@ -451,9 +639,10 @@ export function calcular(test: TestLab, datos: Datos): ValorResultado[] {
     const dep = r.formula.map(b => (b.t === 'fn' ? b.de : b.t === 'var' ? b.v : null)).filter(Boolean) as string[]
     for (const d of dep) if (errores[d]) return { valor: null, error: errores[d] }
     try {
-      const v = evaluar(textoDe(r.formula), vars)
+      const avisos: string[] = []
+      const v = evaluar(textoDe(r.formula), vars, avisos)
       if (r.nombre) vars[r.nombre] = v
-      return { valor: v, error: null }
+      return { valor: v, error: null, ...(avisos.length ? { avisos } : {}) }
     } catch (e) {
       return { valor: null, error: (e as Error)?.message || 'no se pudo calcular' }
     }
@@ -655,8 +844,8 @@ export function pegasDe(t: TestLab): Pega[] {
         p.push({ donde: 'columna', indice: i, texto: '«' + c.clave + '» no tiene de qué salir: ponle una fórmula' })
         return
       }
-      if (c.formula.some(b => b.t === 'fn')) {
-        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma() ni media(): aquí cada nombre es UNA repetición, no la serie' })
+      if (c.formula.some(b => b.t === 'fn' || b.t === 'fn2')) {
+        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma(), media() ni las de dos columnas: aquí cada nombre es UNA repetición, no la serie' })
       }
       const antes = bl.columnas.slice(0, ci).map(x => x.clave)
       const fuera = t.sueltos.map(x => x.clave)
@@ -682,6 +871,20 @@ export function pegasDe(t: TestLab): Pega[] {
         if (!x) { p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + clave + '», que no existe' }); continue }
         if (b.t === 'var' && x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se repite: usa suma(' + clave + '), media(' + clave + ')…' })
         if (b.t === 'fn' && !x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se mide una sola vez: quita el ' + b.v + '()' })
+      }
+      if (b.t === 'fn2') {
+        for (const clave of [b.x, b.y]) {
+          const x = buscaCol(t, clave)
+          if (!x) { p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + clave + '», que no existe' }); continue }
+          if (!x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se mide una sola vez: ' + b.v + '() necesita dos columnas que se repitan' })
+        }
+        const bx = buscaCol(t, b.x)?.bl, by = buscaCol(t, b.y)?.bl
+        if (bx && by && bx !== by) {
+          p.push({ donde: 'resultado', indice: i, texto: '«' + b.x + '» y «' + b.y + '» son de bloques distintos: no hay parejas que cruzar' })
+        }
+        if (b.v === 'interpola' && (b.a === undefined || !Number.isFinite(b.a))) {
+          p.push({ donde: 'resultado', indice: i, texto: 'A «interpola» le falta decir a qué valor de «' + b.y + '»' })
+        }
       }
       if (b.t === 'ref' && !antes.includes(String(b.v))) {
         p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + b.v + '», que no va antes que este' })
