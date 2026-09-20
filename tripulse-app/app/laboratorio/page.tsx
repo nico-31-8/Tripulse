@@ -3,13 +3,16 @@
 // TRIPULSE — Laboratorio: el constructor de tests (EN PRUEBAS)
 // ============================================================
 //
-// PANTALLA APARTE Y SIN BASE DE DATOS. Está para probar el modelo nuevo de
-// «cualquier test» dentro de la aplicación, no para usarla con atletas de
-// verdad: lo que se monta aquí se guarda SOLO en este navegador. Así se puede
-// juzgar el proceso entero sin arriesgar ni un dato.
+// PANTALLA APARTE, PERO YA CON BASE DE DATOS. Nació sin ella —para poder
+// juzgar el proceso entero sin arriesgar un dato— y desde que guarda tests,
+// mediciones y zonas eso dejó de ser verdad. Lo único que sigue viviendo solo
+// en este navegador es el BORRADOR: lo que llevas montado antes de darle a
+// «Guardar test».
 //
 // NO TOCA /tests-propios. Si el modelo convence, lo sustituye; si no, se borra
-// esta carpeta y los dos ficheros de lib y no queda rastro.
+// esta carpeta, los ficheros `lab-*` de lib y la columna `modelo`, y no queda
+// rastro. Sigue en pruebas hasta que se haya usado con atletas de verdad, y
+// por eso lleva el distintivo en la cabecera.
 //
 // LO QUE SE ESTÁ PROBANDO es si un entrenador puede montar cualquier test sin
 // que le expliquen el modelo: bloques de repeticiones, columnas dadas y
@@ -134,7 +137,7 @@ export default function Laboratorio() {
     setTimeout(() => setAviso(null), 4000)
   }
 
-  /* ---------- se guarda solo en este navegador ----------
+  /* ---------- el BORRADOR, solo en este navegador ----------
      Recargar sin querer y perder el test que llevabas media hora montando no es
      un fallo que se le pueda pedir a nadie que aguante. Y va todo en try/catch:
      en una ventana privada `localStorage` no está o lanza, y la pantalla tiene
@@ -443,10 +446,6 @@ export default function Laboratorio() {
             <p className="text-gray-500 text-xs mt-1">
               Elige el que más se parezca y lo cambias, o empieza con la hoja en blanco. Las plantillas
               no encierran: una vez dentro, todo se toca.
-            </p>
-            <p className="text-[11.5px] text-violet-300/80 mt-3 leading-snug">
-              Esto es un laboratorio: lo que montes aquí se guarda <b>solo en este navegador</b> y no
-              llega a ningún deportista. Está para probar el proceso.
             </p>
           </div>
           {guardados.length > 0 && (

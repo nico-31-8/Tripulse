@@ -393,7 +393,9 @@ export default function TestsPropiosPage() {
             <button onClick={() => setVista('lista')} className="text-gray-400 hover:text-white text-sm transition">← Mis tests</button>
           )}
           {/* La puerta al laboratorio. Una línea, para que quitarlo sea quitar
-              una línea: lo de dentro está EN PRUEBAS y no escribe en la base. */}
+              una línea. Lo de dentro sigue EN PRUEBAS, pero YA ESCRIBE en la
+              base: sus tests van en `test_definicion` con la columna `modelo`
+              puesta, y esta pantalla filtra los suyos. */}
           <button onClick={() => router.push('/laboratorio')}
             className="text-violet-300/90 hover:text-violet-200 text-sm transition">🧪 Laboratorio</button>
           <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">Dashboard</button>
