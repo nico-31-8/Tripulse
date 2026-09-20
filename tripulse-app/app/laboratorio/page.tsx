@@ -17,6 +17,10 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
+import { hoyISO } from '@/lib/fechas'
+import { leerModelo, paraGuardar, medicionDe } from '@/lib/lab-guardar'
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
@@ -29,6 +33,16 @@ import { PLANTILLAS } from '@/lib/lab-plantillas'
 import { pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
 
 const LLAVE = 'tp_laboratorio_v1'
+/**
+ * La caja de lo que se teclea PROBANDO, en el paso 4.
+ *
+ * Va aparte de los deportistas de verdad a propósito: probar el test no puede
+ * acabar escribiéndole un dato a nadie, y mezclarlas sería cuestión de tiempo.
+ */
+const PRUEBA = '_prueba'
+
+interface Atleta { id: number; nombre: string }
+interface Guardado { id: number; nombre: string; deporte: string; def: TestLab; mediciones: number }
 const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
 const DEPORTES = ['Carrera', 'Ciclismo', 'Natación', 'Fuerza', 'Otro']
@@ -70,9 +84,16 @@ export default function Laboratorio() {
   const [paso, setPaso] = useState(1)
   const [test, setTest] = useState<TestLab | null>(null)
   const [proto, setProto] = useState<Datos>({})
-  const [atletas, setAtletas] = useState<string[]>(['Deportista'])
+  const [atletas, setAtletas] = useState<Atleta[]>([])
   const [med, setMed] = useState<Record<string, Datos>>({})
   const [activo, setActivo] = useState(0)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [guardados, setGuardados] = useState<Guardado[]>([])
+  const [deportistas, setDeportistas] = useState<Atleta[]>([])
+  const [editandoId, setEditandoId] = useState<number | null>(null)
+  const [fecha, setFecha] = useState(() => hoyISO())
+  const [guardando, setGuardando] = useState(false)
+  const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
   const [pidiendo, setPidiendo] = useState<Pidiendo | null>(null)
   const [reloj, setReloj] = useState<Reloj | null>(null)
   const [suena, setSuena] = useState(true)
@@ -90,11 +111,19 @@ export default function Laboratorio() {
      anterior: restar contra el reloj le daría a todos el del más rápido. */
   const marcas = useRef<Record<string, Record<string, number[]>>>({})
 
-  const nombreActivo = atletas[Math.min(activo, atletas.length - 1)] || 'Deportista'
+  const atletaActivo = atletas[Math.min(activo, atletas.length - 1)] || null
+  /* En el editor se prueba contra la caja de pruebas; al pasar el test, contra
+     la de cada deportista. */
+  const cajaActiva = vista === 'pasar' && atletaActivo ? String(atletaActivo.id) : PRUEBA
+  const nombreActivo = vista === 'pasar' && atletaActivo ? atletaActivo.nombre : 'Probando'
   const datosDe = useCallback(
     (a: string): Datos => ({ ...proto, ...(med[a] || {}) }),
     [proto, med],
   )
+  const decir = (tipo: 'ok' | 'mal', texto: string) => {
+    setAviso({ tipo, texto })
+    setTimeout(() => setAviso(null), 4000)
+  }
 
   /* ---------- se guarda solo en este navegador ----------
      Recargar sin querer y perder el test que llevabas media hora montando no es
@@ -142,7 +171,7 @@ export default function Laboratorio() {
   useEffect(() => {
     if (!test || !reloj?.corre || vista !== 'pasar') return
     const ms = ahora - reloj.desde + reloj.acu
-    const datos = datosDe(nombreActivo)
+    const datos = datosDe(cajaActiva)
     for (const bl of escalonadosDe(test)) {
       if (reloj.clave !== '@' + bl.clave) continue
       const dur = duracionDe(bl)
@@ -191,11 +220,16 @@ export default function Laboratorio() {
   const ponMed = (a: string, fn: (d: Datos) => void) =>
     setMed(m0 => { const m = { ...m0 }; const d = { ...(m[a] || {}) }; fn(d); m[a] = d; return m })
 
-  const empezarCon = (t: TestLab, conPaso: number) => {
+  const cajasVacias = (t: TestLab, gente: Atleta[]): Record<string, Datos> => {
+    const m: Record<string, Datos> = { [PRUEBA]: medVacia(t) }
+    for (const a of gente) m[String(a.id)] = medVacia(t)
+    return m
+  }
+
+  const empezarCon = (t: TestLab, conPaso: number, id: number | null = null) => {
     setTest(t); setProto(protoVacio(t))
-    const nuevos: Record<string, Datos> = {}
-    for (const a of ['Deportista']) nuevos[a] = medVacia(t)
-    setAtletas(['Deportista']); setMed(nuevos); setActivo(0)
+    setAtletas([]); setMed(cajasVacias(t, [])); setActivo(0)
+    setEditandoId(id)
     marcas.current = {}; setReloj(null); setPidiendo(null)
     setPaso(conPaso); setVista('editor')
   }
@@ -203,9 +237,91 @@ export default function Laboratorio() {
   const vaciarDatos = () => {
     if (!test) return
     setProto(protoVacio(test))
-    const nuevos: Record<string, Datos> = {}
-    for (const a of atletas) nuevos[a] = medVacia(test)
-    setMed(nuevos); marcas.current = {}; setReloj(null)
+    setMed(cajasVacias(test, atletas)); marcas.current = {}; setReloj(null)
+  }
+
+  // ---------- la base ----------
+  const cargar = async () => {
+    const user = await usuarioActual()
+    if (!user) return
+    setUserId(user.id)
+    const [{ data: defs }, { data: deps }] = await Promise.all([
+      /* Se piden TODAS las columnas y no una lista: si la columna «modelo»
+         todavía no existe en esta base, pedirla por su nombre daría un error de
+         consulta y la pantalla entera se quedaría en blanco. Así, simplemente
+         no hay tests del modelo nuevo y el laboratorio sigue sirviendo para
+         montar y probar. */
+      supabase.from('test_definicion').select('*').eq('id_entrenador', user.id)
+        .eq('archivado', false).order('created_at', { ascending: false }),
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
+        .eq('solo_test', false).order('nombre'),
+    ])
+    const ids: number[] = []
+    const mios: Guardado[] = []
+    for (const d of (defs || []) as Record<string, unknown>[]) {
+      const def = leerModelo(d.modelo, String(d.nombre || ''), String(d.deporte || 'Carrera'))
+      /* Sin modelo es un test de /tests-propios: aquí ni se ofrece, para no
+         enseñar una versión mutilada de algo que allí está entero. */
+      if (!def) continue
+      mios.push({ id: Number(d.id), nombre: String(d.nombre || ''), deporte: String(d.deporte || ''), def, mediciones: 0 })
+      ids.push(Number(d.id))
+    }
+    if (ids.length) {
+      /* Cuántas mediciones tiene cada uno, en UNA consulta y no una por test. */
+      const { data: meds } = await supabase.from('test_medicion').select('id_definicion').in('id_definicion', ids)
+      const cuenta: Record<number, number> = {}
+      for (const m of (meds || []) as { id_definicion: number }[]) cuenta[m.id_definicion] = (cuenta[m.id_definicion] || 0) + 1
+      for (const g of mios) g.mediciones = cuenta[g.id] || 0
+    }
+    setGuardados(mios)
+    setDeportistas(((deps || []) as { id: number; nombre: string }[]).map(d => ({ id: d.id, nombre: d.nombre })))
+  }
+
+  /* Se pide al montar y nada más: la lista se refresca a mano después de
+     guardar, que es cuando puede haber cambiado.
+     La regla del compilador ve una llamada que acaba en `setState` y avisa,
+     pero aquí el estado se pone DESPUÉS de que conteste la base — que es
+     exactamente el caso que la propia regla admite. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { cargar() }, [])
+
+  const guardarTest = async () => {
+    if (!test || !userId) return
+    if (pegasDe(test).length) { decir('mal', 'Hay cosas por arreglar antes de guardarlo'); return }
+    setGuardando(true)
+    const fila = paraGuardar(test, userId)
+    const { data, error } = editandoId
+      ? await supabase.from('test_definicion').update(fila).eq('id', editandoId).select('id').single()
+      : await supabase.from('test_definicion').insert(fila).select('id').single()
+    setGuardando(false)
+    if (error) { decir('mal', 'No se pudo guardar: ' + error.message); return }
+    if (data?.id) setEditandoId(Number(data.id))
+    decir('ok', editandoId ? 'Test actualizado.' : 'Test creado.')
+    await cargar()
+  }
+
+  /* Una fila por persona que tenga algo escrito.
+     El protocolo va DENTRO de cada medición: dos tests que arrancaron con
+     distinto incremento no son comparables, y si viviera solo en la definición,
+     cambiarlo mañana reescribiría en silencio todas las del pasado. */
+  const guardarMediciones = async () => {
+    if (!test || !editandoId) { decir('mal', 'Guarda antes el test'); return }
+    const conDatos = atletas.filter(a => Object.values(med[String(a.id)] || {}).some(v =>
+      Array.isArray(v) ? v.some(x => String(x ?? '').trim() !== '') : String(v ?? '').trim() !== ''))
+    if (!conDatos.length) { decir('mal', 'Todavía no hay nada que guardar'); return }
+
+    setGuardando(true)
+    const filas = conDatos.map(a => ({
+      id_definicion: editandoId, id_deportista: a.id, fecha,
+      datos: medicionDe(proto, med[String(a.id)] || {}),
+    }))
+    /* Repetir el mismo día es CORREGIR, no apuntar dos veces: lo respalda el
+       índice único de la tabla y esto solo evita que acabe en un error. */
+    const { error } = await supabase.from('test_medicion').upsert(filas, { onConflict: 'id_definicion,id_deportista,fecha' })
+    setGuardando(false)
+    if (error) { decir('mal', 'No se pudo guardar: ' + error.message); return }
+    decir('ok', conDatos.length === 1 ? 'Medición guardada.' : conDatos.length + ' mediciones guardadas.')
+    await cargar()
   }
 
   /* Renombrar arrastra las fórmulas, los datos y las referencias de las
@@ -259,6 +375,11 @@ export default function Laboratorio() {
         {vista !== 'plantillas' && (
           <button onClick={() => { setVista('plantillas'); setPidiendo(null) }} className={btnSec + ' ' + btnMini}>← Otro test</button>
         )}
+        {vista === 'editor' && (
+          <button onClick={guardarTest} disabled={guardando} className={btnSec + ' ' + btnMini}>
+            {guardando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Guardar test'}
+          </button>
+        )}
         {vista === 'editor' && <button onClick={() => setVista('pasar')} className={btn + ' ' + btnMini}>Pasar el test →</button>}
         {vista === 'pasar' && <button onClick={() => setVista('editor')} className={btnSec + ' ' + btnMini}>← Al editor</button>}
         <button onClick={() => router.push('/tests-propios')} className="text-gray-400 hover:text-white text-[13px] transition">Salir</button>
@@ -282,6 +403,23 @@ export default function Laboratorio() {
               llega a ningún deportista. Está para probar el proceso.
             </p>
           </div>
+          {guardados.length > 0 && (
+            <div className={tarjeta}>
+              <p className="font-bold text-[15px]">Tus tests</p>
+              <p className="text-gray-500 text-xs mt-1">Los que ya has montado aquí. Se abren para seguir tocándolos o para pasarlos.</p>
+              <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))' }}>
+                {guardados.map(g => (
+                  <button key={g.id} onClick={() => empezarCon(clon(g.def), 4, g.id)}
+                    className="bg-[#0d1420] border border-gray-800 hover:border-orange-500 rounded-xl p-3 text-left flex flex-col gap-1 transition">
+                    <span className="font-semibold text-[13.5px]">{g.nombre}</span>
+                    <span className="text-[11.5px] text-gray-500">
+                      {g.deporte} · {g.mediciones === 0 ? 'sin pasar todavía' : g.mediciones + (g.mediciones === 1 ? ' medición' : ' mediciones')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))' }}>
             {PLANTILLAS.map(p => (
               <button key={p.id} onClick={() => empezarCon(clon(p.test), 2)}
@@ -307,20 +445,25 @@ export default function Laboratorio() {
 
   const pegas = pegasDe(test)
   const previa = (
-    <Previa test={test} proto={proto} med={med[nombreActivo] || {}} nombre={nombreActivo}
+    <Previa test={test} proto={proto} med={med[cajaActiva] || {}} nombre={nombreActivo}
       onProto={(k, v) => setProto(p => ({ ...p, [k]: v }))}
-      onMed={(k, v, i) => ponMed(nombreActivo, d => {
+      onMed={(k, v, i) => ponMed(cajaActiva, d => {
         if (i === undefined) { d[k] = v; return }
         const l = Array.isArray(d[k]) ? [...(d[k] as string[])] : []
         l[i] = v; d[k] = l
       })}
-      onLlego={(bl, n) => ponMed(nombreActivo, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })} />
+      onLlego={(bl, n) => ponMed(cajaActiva, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })} />
   )
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       {cabecera}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
+        {aviso && (
+          <div className={'mb-4 px-4 py-2.5 rounded-xl text-[13px] border ' + (aviso.tipo === 'ok'
+            ? 'bg-green-500/10 border-green-500/30 text-green-300'
+            : 'bg-red-500/10 border-red-500/30 text-red-300')}>{aviso.texto}</div>
+        )}
         {vista === 'editor' ? (
           <>
             <div className="flex gap-1.5 flex-wrap mb-4">
@@ -346,9 +489,9 @@ export default function Laboratorio() {
                 <div>
                   {paso === 1 && <Paso1 test={test} mut={mut} />}
                   {paso === 2 && <Paso2 test={test} mut={mut} renombrar={renombrar} proto={proto}
-                    setProto={setProto} atletas={atletas} setMed={setMed}
+                    setProto={setProto} cajas={Object.keys(med)} setMed={setMed}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} />}
-                  {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(nombreActivo)}
+                  {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(cajaActiva)}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} />}
                   {paso === 4 && (
                     <div className={tarjeta}>
@@ -380,22 +523,29 @@ export default function Laboratorio() {
           <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
             <Pasar
               test={test} atletas={atletas} activo={activo} setActivo={setActivo}
+              deportistas={deportistas} guardado={editandoId !== null}
+              fecha={fecha} setFecha={setFecha} guardando={guardando}
+              onGuardarMediciones={guardarMediciones}
               datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
               suena={suena}
               onSonido={() => { const v = !suena; setSuena(v); ponPitido(v); if (v) { despertarAudio(); pitar(880, 100) } }}
-              onAtleta={n => { setAtletas(a => [...a, n]); setMed(m => ({ ...m, [n]: medVacia(test) })); setActivo(atletas.length) }}
+              onAtleta={a => {
+                if (atletas.some(x => x.id === a.id)) return
+                setAtletas(l => [...l, a])
+                setMed(m => ({ ...m, [String(a.id)]: medVacia(test) }))
+                setActivo(atletas.length)
+              }}
               onQuitaAtleta={i => {
-                if (atletas.length < 2) return
-                const n = atletas[i]
-                setAtletas(a => a.filter((_, k) => k !== i))
-                setMed(m => { const x = { ...m }; delete x[n]; return x })
-                setActivo(a => Math.min(a, atletas.length - 2))
+                const a = atletas[i]
+                setAtletas(l => l.filter((_, k) => k !== i))
+                setMed(m => { const x = { ...m }; delete x[String(a.id)]; return x })
+                setActivo(v => Math.max(0, Math.min(v, atletas.length - 2)))
               }}
               onBajo={(bl, a) => {
                 const ms = reloj && reloj.clave === '@' + bl.clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
                 const esn = escalonAhora(bl, ms)
                 const dentro = Math.floor(ms / 1000) % duracionDe(bl)
-                ponMed(a, d => {
+                ponMed(String(a.id), d => {
                   /* El último COMPLETO, no el que iba: ese no lo terminó, y sus
                      segundos son justo el otro dato. */
                   d['@' + bl.clave] = Math.max(0, esn - 1)
@@ -405,25 +555,30 @@ export default function Laboratorio() {
               }}
               onVuelta={(c, bl, a) => {
                 if (!reloj?.corre || reloj.clave !== c.clave) return
+                const k = String(a.id)
                 const ms = ahora - reloj.desde + reloj.acu
-                if (!marcas.current[a]) marcas.current[a] = {}
-                const lista = marcas.current[a][c.clave] || (marcas.current[a][c.clave] = [])
+                if (!marcas.current[k]) marcas.current[k] = {}
+                const lista = marcas.current[k][c.clave] || (marcas.current[k][c.clave] = [])
                 if (lista.length >= bl.veces) return
+                /* La marca que se guarda es la del RELOJ COMPARTIDO, y el tiempo
+                   de cada repetición es la resta con la anterior DE ESA PERSONA:
+                   restar contra el reloj le daría a todos el del más rápido. */
                 const previo = lista.length ? lista[lista.length - 1] : 0
                 const dur = ms - previo
                 if (dur <= 0) return
                 lista.push(ms)
                 const val = c.instrumento === 'crono-min' ? Math.round(dur / 600) / 100 : Math.round(dur / 100) / 10
-                ponMed(a, d => {
+                ponMed(k, d => {
                   const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
                   l[lista.length - 1] = String(val); d[c.clave] = l
                 })
               }}
               onDeshace={(c, a) => {
-                const lista = marcas.current[a]?.[c.clave]
+                const k = String(a.id)
+                const lista = marcas.current[k]?.[c.clave]
                 if (!lista?.length) return
                 lista.pop()
-                ponMed(a, d => {
+                ponMed(k, d => {
                   const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
                   l[lista.length] = ''; d[c.clave] = l
                 })
@@ -431,13 +586,14 @@ export default function Laboratorio() {
               onReinicia={(c, bl) => {
                 setReloj(null)
                 for (const a of atletas) {
-                  if (marcas.current[a]) marcas.current[a][c.clave] = []
-                  ponMed(a, d => { d[c.clave] = Array.from({ length: bl.veces }, () => '') })
+                  const k = String(a.id)
+                  if (marcas.current[k]) marcas.current[k][c.clave] = []
+                  ponMed(k, d => { d[c.clave] = Array.from({ length: bl.veces }, () => '') })
                 }
               }}
               onReiniciaEsc={bl => {
                 setReloj(null); escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
-                for (const a of atletas) ponMed(a, d => { delete d['@' + bl.clave] })
+                for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
               }}
               onArranca={clave => {
                 despertarAudio()
@@ -494,13 +650,14 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
 // ============================================================
 // 2 · Qué se apunta
 // ============================================================
-function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed, pidiendo, setPidiendo }: {
+function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo, setPidiendo }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   renombrar: (c: Columna, nuevo: string, bl: Bloque | null) => void
   proto: Datos
   setProto: (f: (d: Datos) => Datos) => void
-  atletas: string[]
+  /** Todas las cajas de datos: la de pruebas y la de cada deportista. */
+  cajas: string[]
   setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
   pidiendo: Pidiendo | null
   setPidiendo: (p: Pidiendo | null) => void
@@ -510,7 +667,7 @@ function Paso2({ test, mut, renombrar, proto, setProto, atletas, setMed, pidiend
   const nuevaMedida = (clave: string, veces: number) =>
     setMed(m0 => {
       const m = { ...m0 }
-      for (const a of atletas) m[a] = { ...(m[a] || {}), [clave]: Array.from({ length: veces }, () => '') }
+      for (const a of cajas) m[a] = { ...(m[a] || {}), [clave]: Array.from({ length: veces }, () => '') }
       return m
     })
   const sinMedida = (clave: string) =>
@@ -1438,24 +1595,32 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
 // Pasar el test: un reloj para todos y un botón por persona
 // ============================================================
 function Pasar({
-  test, atletas, activo, setActivo, datosDe, reloj, ahora, suena, onSonido,
+  test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
+  onGuardarMediciones, datosDe, reloj, ahora, suena, onSonido,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
 }: {
   test: TestLab
-  atletas: string[]
+  atletas: Atleta[]
   activo: number
   setActivo: (i: number) => void
+  deportistas: Atleta[]
+  /** Si el test ya está guardado: sin eso no hay dónde colgar las mediciones. */
+  guardado: boolean
+  fecha: string
+  setFecha: (f: string) => void
+  guardando: boolean
+  onGuardarMediciones: () => void
   datosDe: (a: string) => Datos
   reloj: Reloj | null
   setReloj: (r: Reloj | null) => void
   ahora: number
   suena: boolean
   onSonido: () => void
-  onAtleta: (n: string) => void
+  onAtleta: (a: Atleta) => void
   onQuitaAtleta: (i: number) => void
-  onBajo: (bl: Bloque, a: string) => void
-  onVuelta: (c: Columna, bl: Bloque, a: string) => void
-  onDeshace: (c: Columna, a: string) => void
+  onBajo: (bl: Bloque, a: Atleta) => void
+  onVuelta: (c: Columna, bl: Bloque, a: Atleta) => void
+  onDeshace: (c: Columna, a: Atleta) => void
   onReinicia: (c: Columna, bl: Bloque) => void
   onReiniciaEsc: (bl: Bloque) => void
   onArranca: (clave: string) => void
@@ -1472,28 +1637,36 @@ function Pasar({
     <div className={tarjeta}>
       <p className="font-bold text-[15px]">{test.nombre || 'Test'}</p>
       <p className="text-gray-500 text-xs mt-1">
-        {test.deporte} · {atletas.length > 1 ? atletas.length + ' personas a la vez' : 'una persona'}
+        {test.deporte} · {atletas.length > 1 ? atletas.length + ' personas a la vez' : atletas.length === 1 ? 'una persona' : 'sin nadie todavía'}
       </p>
 
       <div className="flex gap-1.5 flex-wrap items-center mt-3">
         {atletas.map((a, i) => (
-          <span key={a} onClick={() => setActivo(i)}
+          <span key={a.id} onClick={() => setActivo(i)}
             className={'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] cursor-pointer border transition ' +
               (i === activo ? 'bg-orange-500/14 border-orange-500/50 text-orange-300 font-semibold' : 'bg-gray-800 border-transparent text-gray-400')}>
-            {a}
-            {atletas.length > 1 && (
-              <button onClick={e => { e.stopPropagation(); onQuitaAtleta(i) }} className="text-gray-600 hover:text-red-400">×</button>
-            )}
+            {a.nombre}
+            <button onClick={e => { e.stopPropagation(); onQuitaAtleta(i) }} className="text-gray-600 hover:text-red-400">×</button>
           </span>
         ))}
-        <button onClick={() => {
-          const n = prompt('¿Cómo se llama?', 'Deportista ' + (atletas.length + 1))
-          if (!n) return
-          if (atletas.includes(n)) { alert('Ya hay alguien con ese nombre.'); return }
-          onAtleta(n)
-        }} className={btnSec + ' ' + btnMini}>+ Persona</button>
+        {/* Los de verdad, de tu equipo: lo que se apunte aquí acaba en su
+            ficha, así que no se escriben nombres a mano. */}
+        <select className={campo + ' w-auto'} value=""
+          onChange={e => { const a = deportistas.find(d => String(d.id) === e.target.value); if (a) onAtleta(a) }}>
+          <option value="">+ Añadir deportista…</option>
+          {deportistas.filter(d => !atletas.some(a => a.id === d.id)).map(d => (
+            <option key={d.id} value={d.id}>{d.nombre}</option>
+          ))}
+        </select>
       </div>
 
+      {!atletas.length && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] text-amber-200 leading-snug">
+          {deportistas.length
+            ? <>Elige a quién se lo pasas. Puedes poner a varios: el reloj es uno solo y cada uno tiene su botón.</>
+            : <>No tienes deportistas en tu equipo todavía. El test se puede montar igual, pero para pasarlo hace falta alguien a quien pasárselo.</>}
+        </div>
+      )}
       {!cronos.length && !escalonados.length && (
         <div className="mt-3 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
           Este test no lleva reloj: se rellena a mano en la tabla de al lado. Es una opción legítima —
@@ -1515,13 +1688,13 @@ function Pasar({
         const dentroMs = ms % (dur * 1000)
         const dentro = Math.floor(dentroMs / 1000)
         const tr = tramoEn(bl, dentroMs)
-        const cd = columnaDeVelocidad(bl, datosDe(atletas[activo] || atletas[0]))!
+        const cd = columnaDeVelocidad(bl, datosDe(String((atletas[activo] || atletas[0])?.id ?? '')))!
         const corre = reloj?.clave === clave && reloj.corre
         return (
           <div key={bl.clave}>
             <div className={relojCaja}>
               <div>
-                <div className={gordo}>{nEs(Number(valorDado(cd, n - 1, datosDe(atletas[activo] || atletas[0]))))}</div>
+                <div className={gordo}>{nEs(Number(valorDado(cd, n - 1, datosDe(String((atletas[activo] || atletas[0])?.id ?? '')))))}</div>
                 <div className={pie}>{cd.unidad} ahora · escalón {n}</div>
               </div>
               <div>
@@ -1547,12 +1720,12 @@ function Pasar({
                 según se van descolgando. */}
             <div className="mt-3">
               {atletas.map(a => {
-                const hechas = hechasDe(bl, datosDe(a))
+                const hechas = hechasDe(bl, datosDe(String(a.id)))
                 return (
-                  <div key={a} className={filaAt}>
-                    <span className="font-semibold text-[13px] min-w-[110px]">{a}</span>
+                  <div key={a.id} className={filaAt}>
+                    <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
                     <span className="font-mono text-[12px] text-blue-300">
-                      {hechas ? 'escalón ' + hechas + ' · ' + nEs(Number(valorDado(cd, hechas - 1, datosDe(a)))) + ' ' + cd.unidad : 'sin marcar'}
+                      {hechas ? 'escalón ' + hechas + ' · ' + nEs(Number(valorDado(cd, hechas - 1, datosDe(String(a.id))))) + ' ' + cd.unidad : 'sin marcar'}
                     </span>
                     <button onClick={() => onBajo(bl, a)} className={btn + ' ' + btnMini + ' ml-auto'}>Se bajó</button>
                   </div>
@@ -1586,11 +1759,11 @@ function Pasar({
             </div>
             <div className="mt-3">
               {atletas.map(a => {
-                const hechas = ((datosDe(a)[c.clave] as string[] | undefined) || []).filter(x => x !== '' && x != null).length
+                const hechas = ((datosDe(String(a.id))[c.clave] as string[] | undefined) || []).filter(x => x !== '' && x != null).length
                 const completa = hechas >= bl.veces
                 return (
-                  <div key={a} className={filaAt}>
-                    <span className="font-semibold text-[13px] min-w-[110px]">{a}</span>
+                  <div key={a.id} className={filaAt}>
+                    <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
                     <span className="font-mono text-[12px] text-blue-300">
                       {completa ? 'completa' : 'va por la ' + (hechas + 1) + '.ª de ' + bl.veces}
                     </span>
@@ -1617,6 +1790,31 @@ function Pasar({
 
       <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
         Los tiempos <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla, que es donde además se corrigen.
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-800">
+        <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Guardar lo medido</p>
+        {!guardado ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] text-amber-200 leading-snug">
+            Este test todavía no está guardado, así que no hay dónde colgar las mediciones.
+            Vuelve al editor y dale a <b>Guardar test</b>.
+          </div>
+        ) : (
+          <div className="flex gap-2.5 flex-wrap items-end">
+            <div style={{ maxWidth: 170 }}>
+              <label className={lab} htmlFor="lab-fecha">Fecha</label>
+              <input id="lab-fecha" type="date" className={campo} value={fecha} onChange={e => setFecha(e.target.value)} />
+            </div>
+            <button onClick={onGuardarMediciones} disabled={guardando || !atletas.length} className={btn}>
+              {guardando ? 'Guardando…' : atletas.length > 1 ? 'Guardar las ' + atletas.length + ' mediciones' : 'Guardar la medición'}
+            </button>
+            <p className="text-[11.5px] text-gray-500 leading-snug basis-full">
+              Se guarda una por persona con algo escrito, y <b className="text-gray-300">con el protocolo dentro</b>:
+              dos tests que arrancaron distinto no son comparables, y así cambiarlo mañana no reescribe lo de ayer.
+              Repetir el mismo día es corregir, no apuntar dos veces.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
