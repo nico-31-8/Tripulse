@@ -24,6 +24,7 @@ import { diasEntre, sumarDias, aplicarDesplazamiento, aplicarDuracion } from '@/
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
+import { hayDibujoGuardado, pantallaDeEntrada } from '@/lib/entrada-dibujo'
 import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
 import { colocarBanda, filasBanda, columnasPorSemana } from '@/lib/banda-competiciones'
@@ -155,6 +156,42 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [reconstruyendo, setReconstruyendo] = useState(false)
   const [pantalla, setPantalla] = useState<'cargando'|'elegir'|'setup'|'canvas'>('cargando')
   const [macrosExistentes, setMacrosExistentes] = useState<any[]>([])
+  /**
+   * Lo que se mira del borrador para decidir si hay algo que recuperar.
+   *
+   * Solo la cabecera: cuántos bloques, cuándo se tocó y de qué fecha arranca.
+   * El contenido de verdad lo lee `cargarExistente`, que ya sabía hacerlo.
+   */
+  interface BorradorGuardado {
+    fecha_inicio?: string | null
+    total_semanas?: number | null
+    macros?: unknown[] | null
+    mesos?: unknown[] | null
+    updated_at?: string | null
+  }
+  /**
+   * El dibujo guardado que NO se ha volcado todavía al calendario.
+   *
+   * Existe porque la pantalla de entrada miraba solo la tabla `macrociclo` —la
+   * que llena «Generar planificación»— y a quien dibujaba una temporada entera
+   * sin darle al botón se le mandaba a «empezar de cero», con su dibujo
+   * intacto en la base y nadie buscándolo. Peor: al dibujar el primer bloque
+   * nuevo, el autoguardado lo escribía encima, y `dibujo_borrador` se
+   * actualiza en su sitio (no hay histórico).
+   */
+  const [borradorPendiente, setBorradorPendiente] = useState<BorradorGuardado | null>(null)
+  const resumenBorrador = (b: BorradorGuardado): string => {
+    const m = Array.isArray(b?.macros) ? b.macros.length : 0
+    const me = Array.isArray(b?.mesos) ? b.mesos.length : 0
+    return m + (m === 1 ? ' macrociclo' : ' macrociclos') +
+      ' · ' + me + (me === 1 ? ' mesociclo' : ' mesociclos') +
+      ' · ' + (Number(b?.total_semanas) || 0) + ' semanas'
+  }
+  const cuandoBorrador = (b: BorradorGuardado): string => {
+    const d = b?.updated_at ? new Date(b.updated_at) : null
+    if (!d || Number.isNaN(d.getTime())) return ''
+    return d.toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
   const [modoEdicion, setModoEdicion] = useState(false)
   const [fechaInicio, setFechaInicio] = useState('')
   const [totalSem, setTotalSem] = useState(24)
@@ -337,18 +374,21 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
          caminos (plan nuevo, elegir uno, y editar). */
       recargarComps()
 
-      const { data: macs } = await supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio')
-      if (macs && macs.length > 0) {
-        setMacrosExistentes(macs)
-        const autoEditar = new URLSearchParams(window.location.search).get('editar') === '1'
-        if (autoEditar) {
-          await cargarExistente()
-        } else {
-          setPantalla('elegir')
-        }
-      } else {
-        setPantalla('setup')
-      }
+      /* SE PREGUNTA POR LAS DOS COSAS: el plan confirmado y el dibujo guardado.
+         Antes solo por el primero, y un dibujo sin «Generar planificación»
+         detrás no existía para esta pantalla. */
+      const [{ data: macs }, { data: bor }] = await Promise.all([
+        supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio'),
+        supabase.from('dibujo_borrador')
+          .select('fecha_inicio, total_semanas, macros, mesos, updated_at')
+          .eq('id_deportista', id).maybeSingle(),
+      ])
+      if (hayDibujoGuardado(bor)) setBorradorPendiente(bor)
+      if (macs && macs.length > 0) setMacrosExistentes(macs)
+
+      const autoEditar = new URLSearchParams(window.location.search).get('editar') === '1'
+      if (macs && macs.length > 0 && autoEditar) await cargarExistente()
+      else setPantalla(pantallaDeEntrada(macs, bor))
     }
     init()
   }, [id])
@@ -423,13 +463,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
         supabase.from('dibujo_borrador').select('*').eq('id_deportista', depId).maybeSingle(),
       ])
 
-      const macsData = macs.data
-      if (!macsData?.length) { setPantalla('setup'); setCargandoDatos(false); return }
+      /* EL BORRADOR SOLO TAMBIÉN VALE PARA ENTRAR. Antes esto exigía filas en
+         `macrociclo`, así que un dibujo sin «Generar planificación» detrás no
+         se podía ni abrir: se caía a «empezar de cero». Y todo lo de abajo ya
+         sabía preferir el borrador a lo reconstruido de las tablas — lo único
+         que faltaba era dejarle pasar. */
+      const macsData = macs.data || []
+      const bz = borr.data
+      if (!macsData.length && !hayDibujoGuardado(bz)) { setPantalla('setup'); setCargandoDatos(false); return }
 
-      const fi = macsData[0].fecha_inicio
-      const totalW = Math.max(12, macsData.reduce((max: number, m: any) => {
-        return Math.max(max, semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas)
-      }, 12))
+      const fi = macsData[0]?.fecha_inicio || bz?.fecha_inicio
+      if (!fi) { setPantalla('setup'); setCargandoDatos(false); return }
+      const totalW = macsData.length
+        ? Math.max(12, macsData.reduce((max: number, m: any) => {
+          return Math.max(max, semanasEntre(fi, m.fecha_inicio) + m.duracion_semanas)
+        }, 12))
+        : Math.max(12, Number(bz?.total_semanas) || 24)
 
       const macrosD: MacroD[] = macsData.map((m: any) => ({
         id: uid(), dbId: m.id,
@@ -461,8 +510,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       /* El borrador MANDA sobre lo reconstruido de las tablas: es el último
          estado que dibujó el entrenador, y la carga o las semanas que aún no ha
          «Generado» no están en las tablas confirmadas. Reconstruir solo desde
-         ellas borraría lo dibujado. */
-      const bz = borr.data
+         ellas borraría lo dibujado. Se lee arriba, junto a las macros. */
 
       /* ── LOS CHIPS SE PONEN AL DÍA CON EL CALENDARIO ──────────
          El dibujo y el calendario eran dos documentos distintos que solo se
@@ -510,7 +558,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       if (chipsCalendario) setSesZonas(fusionarChips(bz?.sesiones_zonas || [], chipsCalendario))
       else if (bz?.sesiones_zonas?.length) setSesZonas(bz.sesiones_zonas)
       setSesionesProg(sesQ.data || [])
-      setModoEdicion(true)
+      /* «Edición» es que YA hay plan confirmado detrás, no que se haya abierto
+         el lienzo: de eso depende que el botón diga «Actualizar» o «Generar»
+         planificación. Con solo un dibujo guardado, lo que toca sigue siendo
+         generarla por primera vez. */
+      setModoEdicion(macsData.length > 0)
 
       /* Y SOLO AQUÍ se abre el autoguardado. Si el cargador se cae antes, la
          bandera se queda en false y no se escribe nada: no guardar es un
@@ -578,6 +630,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   const iniciarNuevo = () => {
     if (!fechaInicio) { alert('Elige una fecha de inicio'); return }
+    /* EMPEZAR DE CERO CON UN DIBUJO GUARDADO DETRÁS LO BORRA: en cuanto se
+       dibuje el primer macrociclo, el autoguardado escribe encima, y
+       `dibujo_borrador` se actualiza en su sitio (no hay histórico de donde
+       sacarlo). Vaciar a propósito es legítimo; hacerlo sin enterarse no. */
+    if (borradorPendiente && !confirm(
+      'Este atleta tiene un dibujo guardado (' + resumenBorrador(borradorPendiente) +
+      (cuandoBorrador(borradorPendiente) ? ', del ' + cuandoBorrador(borradorPendiente) : '') + ').\n\n' +
+      'Si empiezas de cero se perderá en cuanto dibujes el primer bloque, y no se puede deshacer.\n\n' +
+      '¿Empezar de cero de todos modos?')) return
     setSems(Array.from({ length: totalSem }, (_, i) => ({ i, ua: null, tipo: 'Carga', comp: '' })))
     setMacros([]); setMesos([])
     setModoEdicion(false)
@@ -1292,9 +1353,40 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             <div className="text-center mb-8">
               <div className="text-5xl mb-3">✏️</div>
               <h2 className="text-2xl font-bold mb-1">Dibujo de Periodizacion</h2>
-              <p className="text-gray-400 text-sm">{dep.nombre} ya tiene una planificacion creada</p>
+              <p className="text-gray-400 text-sm">
+                {macrosExistentes.length > 0
+                  ? dep.nombre + ' ya tiene una planificacion creada'
+                  : 'Tienes un dibujo a medias de ' + dep.nombre}
+              </p>
             </div>
             <div className="grid grid-cols-1 gap-4">
+              {/* EL DIBUJO SIN VOLCAR. Sin esta tarjeta, una temporada entera
+                  dibujada y sin «Generar planificación» no tenía puerta: la
+                  pantalla mandaba a empezar de cero y el autoguardado la
+                  machacaba al dibujar el primer bloque. */}
+              {borradorPendiente && macrosExistentes.length === 0 && (
+                <button onClick={cargarExistente} disabled={cargandoDatos}
+                  className="bg-gray-900 hover:bg-gray-800 border border-orange-500/50 hover:border-orange-500 rounded-2xl p-6 text-left transition group">
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">📝</div>
+                    <div className="flex-1">
+                      <p className="font-bold text-lg text-white mb-1">
+                        {cargandoDatos ? 'Cargando...' : 'Seguir con el dibujo guardado'}
+                      </p>
+                      <p className="text-gray-400 text-sm">
+                        {resumenBorrador(borradorPendiente)}
+                        {cuandoBorrador(borradorPendiente) ? ' · lo dejaste el ' + cuandoBorrador(borradorPendiente) : ''}
+                      </p>
+                      <p className="text-amber-300/80 text-xs mt-2 leading-snug">
+                        Todavía no está volcado: hasta que no le des a «Generar planificacion», el calendario
+                        y la vista de mesociclo no lo ven.
+                      </p>
+                    </div>
+                    <span className="text-orange-400 group-hover:translate-x-1 transition-transform text-lg">→</span>
+                  </div>
+                </button>
+              )}
+              {macrosExistentes.length > 0 && (
               <button onClick={cargarExistente} disabled={cargandoDatos}
                 className="bg-gray-900 hover:bg-gray-800 border border-orange-500/50 hover:border-orange-500 rounded-2xl p-6 text-left transition group">
                 <div className="flex items-start gap-4">
@@ -1313,6 +1405,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <span className="text-orange-400 group-hover:translate-x-1 transition-transform text-lg">→</span>
                 </div>
               </button>
+              )}
               <button onClick={() => setPantalla('setup')}
                 className="bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-gray-500 rounded-2xl p-6 text-left transition group">
                 <div className="flex items-start gap-4">
