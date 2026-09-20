@@ -17,6 +17,7 @@
 import { calcularDuracionEstimada } from './duracion'
 import type { TestsDeportista, ResultadoDuracion } from './duracion'
 import { cargaDeTarea } from './prescripcion-zona'
+import { metrosDeCardio } from './cardio-fuerza'
 
 export interface TareaCruda {
   id: number
@@ -29,7 +30,16 @@ export interface TareaCruda {
 
 export interface Distancia { id_tarea: number; metros_planeados?: number | null }
 export interface Duracion { id_tarea: number; tiempo_planeado?: number | null }
-export interface Ejercicio { id_tarea: number; repeticiones?: number | null }
+export interface Ejercicio {
+  id_tarea: number
+  repeticiones?: number | null
+  /* El cardio encadenado: sus metros cuentan si la modalidad ES una
+     disciplina de verdad. La regla vive en lib/cardio-fuerza. */
+  cardio_modo?: string | null
+  cardio_medida?: string | null
+  cardio_valor?: number | null
+  cardio_zona?: string | null
+}
 
 export interface SesionConVolumen {
   metros_total: number
@@ -85,6 +95,15 @@ export function conVolumen(
       const u = dur.get(t.id) || []
       metros += (d[0]?.metros_planeados || 0) * series
       seg += (u[0]?.tiempo_planeado || 0) * series
+      /* LOS METROS DEL CARDIO ENCADENADO. Un 4×400 en cinta dentro de una
+         sesión de fuerza son 1.600 m de carrera, y si no se cuentan aquí el
+         volumen semanal del atleta miente por defecto. Solo entran los de las
+         modalidades que SON una disciplina: el remo cuenta en duración y en
+         carga, pero sus metros no son metros de correr. */
+      for (const e of ejer.get(t.id) || []) {
+        const m = metrosDeCardio({ modo: e.cardio_modo, medida: e.cardio_medida, valor: e.cardio_valor }, series)
+        if (m) metros += m.metros
+      }
       return {
         disciplina: t.disciplina,
         series: t.series,

@@ -15,6 +15,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
+import { textoEncadenado } from '@/lib/tarea-vista'
 
 import { cargaDeTarea, objetivoDeCopia, cuelgaDeTestPropio, leerCopia, leerIdPropia } from '@/lib/prescripcion-zona'
 import { leerDefinicion } from '@/lib/test-definicion'
@@ -55,7 +56,10 @@ function ejercicioTarea(t: any): { nombre: string; tipo: string | null } | null 
   if (t.tecnica?.nombre) return { nombre: t.tecnica.nombre, tipo: null }
   const e = t.ejercicios?.[0]
   if (!e?.nombre) return null
-  const nombre = e.ejercicio_encadenado_nombre ? e.nombre + ' + ' + e.ejercicio_encadenado_nombre : e.nombre
+  /* El cardio encadenado se lee por el mismo sitio y CON SUS NÚMEROS: al atleta
+     «+ Remo» no le dice qué hacer, y «+ Remo 300 m · AEM» sí. */
+  const encadenado = textoEncadenado(e)
+  const nombre = encadenado ? e.nombre + ' + ' + encadenado : e.nombre
   return { nombre, tipo: e.tipo_serie && e.tipo_serie !== 'Normal' ? e.tipo_serie : null }
 }
 

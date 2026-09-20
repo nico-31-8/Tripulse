@@ -19,6 +19,7 @@
 //
 // Fuente: deporte/Resources/Triatlón/B1-04-Microciclo-Semanal.md
 import { calcularDuracionEstimada, type TestsDeportista, type TareaDuracion } from './duracion'
+import { SELECT_EJERCICIOS_CONTEO } from './cardio-fuerza'
 import { minutosEfectivos, minutosCarga } from './duracion-carga'
 import { factorConcatenacion } from './bricks'
 
@@ -204,7 +205,7 @@ export async function cargarBloques(
     ? await Promise.all([
         supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
         supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-        supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds),
+        supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds),
       ])
     : [{ data: [] }, { data: [] }, { data: [] }]
 

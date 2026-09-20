@@ -5,6 +5,7 @@
 // semana, en la previa de otra sesión. Las dos tienen que leer los mismos
 // números: si una contara el total y la otra el valor por serie, comparar dos
 // sesiones daría una conclusión falsa — que es justo para lo que sirve el panel.
+import { textoCardio } from './cardio-fuerza'
 import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
@@ -151,6 +152,11 @@ export function zonasDeSesion(tareas: any[]): string[] {
  * sus números se siguen viendo donde siempre, dentro de las notas.
  */
 export function textoEncadenado(ej: any): string {
+  /* El cardio se encadena por el mismo sitio, así que se lee por el mismo
+     sitio: las cinco pantallas que pintan «+ ...» no tienen que enterarse de
+     que hay dos clases de encadenado. */
+  const cardio = textoCardio({ modo: ej?.cardio_modo, medida: ej?.cardio_medida, valor: ej?.cardio_valor, zona: ej?.cardio_zona, objetivo: ej?.cardio_objetivo })
+  if (cardio) return cardio
   const nombre = ej?.ejercicio_encadenado_nombre
   if (!nombre) return ''
   const ser = ej.encadenado_series

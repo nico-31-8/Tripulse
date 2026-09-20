@@ -62,7 +62,8 @@ const SELECT_TAREA =
   'ejercicios(nombre, series, repeticiones, tipo_serie, ejercicio_encadenado_nombre, ' +
   'ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, ' +
   'escalones_drop, grupo_muscular, intensidad, control_tipo, ' +
-  'control_valor, notas_ejecucion)'
+  'control_valor, notas_ejecucion, ' +
+  'cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)'
 
 export default function PanelSemana({
   idDeportista, fechaSesion, idSesionActual, disciplinaSesion, onCopiar,

@@ -68,6 +68,13 @@ export interface FilaFuerza {
   repsFuerza2: string
   kgFuerza2: string
   escalonDrop: string
+  /* El cardio encadenado (tipo de serie «Cardio»). Las reglas de qué cuenta
+     y dónde viven en lib/cardio-fuerza. */
+  cardioModo: string
+  cardioMedida: 'metros' | 'segundos'
+  cardioValor: string
+  cardioZona: string
+  cardioObjetivo: string
   zonaFuerzaTarea: string
   guardado?: boolean
   idTarea?: number
@@ -189,6 +196,11 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
     repsFuerza2: ej?.encadenado_repeticiones != null ? String(ej.encadenado_repeticiones) : '',
     kgFuerza2: ej?.encadenado_intensidad != null ? String(ej.encadenado_intensidad) : '',
     escalonDrop: ej?.escalones_drop || '',
+    cardioModo: ej?.cardio_modo || '',
+    cardioMedida: ej?.cardio_medida === 'segundos' ? 'segundos' : 'metros',
+    cardioValor: ej?.cardio_valor != null ? String(ej.cardio_valor) : '',
+    cardioZona: ej?.cardio_zona || '',
+    cardioObjetivo: ej?.cardio_objetivo || '',
     zonaFuerzaTarea: t.zona_entrenamiento || '',
   }
 }

@@ -18,6 +18,7 @@
 import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS, pctMedioClasica, type CopiaZona } from './zonas'
 import { leerCopia } from './prescripcion-zona'
 import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
+import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
 import type { Sexo } from './tests-campo'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
@@ -52,7 +53,17 @@ export interface TareaDuracion {
   p_distancia?: { metros_planeados?: number | null }[] | null
   p_duracion?: { tiempo_planeado?: number | null }[] | null
   p_repeticiones?: { repeticiones_planteadas?: number | null }[] | null
-  ejercicios?: { repeticiones?: number | null }[] | null
+  ejercicios?: EjercicioDuracion[] | null
+}
+
+/** Lo que se mira de un ejercicio de fuerza para saber cuánto dura. */
+export interface EjercicioDuracion {
+  repeticiones?: number | null
+  /** El cardio encadenado, si el tipo de serie es «Cardio». */
+  cardio_modo?: string | null
+  cardio_medida?: string | null
+  cardio_valor?: number | null
+  cardio_zona?: string | null
 }
 
 export interface TestsDeportista {
@@ -155,6 +166,25 @@ function velNatacion(zona: string | null | undefined, css: number, copia?: Copia
   return velMs > 0 ? velMs : null
 }
 
+/**
+ * Cuánto dura UNA vez el cardio encadenado a este ejercicio, en segundos.
+ *
+ * El ritmo sale del atleta cuando la modalidad ES una disciplina suya —la
+ * cinta se corre al ritmo al que corre él, no al de una tabla— y de la regla
+ * gruesa de la máquina cuando no lo es. Sin ninguno de los dos devuelve
+ * `null`, que NO es cero: es «no se sabe», y sumar un cero haría durar la
+ * sesión menos de lo que dura.
+ */
+function segCardioPorSerie(e: EjercicioDuracion, tests: TestsDeportista): number | null {
+  const c = { modo: e.cardio_modo, medida: e.cardio_medida, valor: e.cardio_valor, zona: e.cardio_zona }
+  if (!hayCardio(c)) return null
+  const disc = modalidadDe(c.modo)?.disciplina
+  let ms: number | null = null
+  if (disc === 'Carrera' && tests.vam) ms = velCarrera(c.zona, tests.vam)
+  else if (disc === 'Natacion' && tests.css) ms = velNatacion(c.zona, tests.css)
+  return segundosDeCardio(c, ms)
+}
+
 // Tiempo de trabajo de UNA serie de la tarea, en segundos. null si no es estimable.
 function segTrabajoPorSerie(
   t: TareaDuracion, tests: TestsDeportista, conReferencia: boolean,
@@ -214,6 +244,14 @@ export function calcularDuracionEstimada(
       let trabajo = 0
       if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
       else if (isoSeg > 0) trabajo = series * isoSeg
+
+      /* EL CARDIO ENCADENADO SON MINUTOS DE VERDAD. Un 4×6 con 300 m de remo
+         pegados a cada serie no dura lo que dura el 4×6: dura seis minutos
+         más. Si no se sumaran, la sesión saldría corta y, detrás de ella, la
+         carga — que es lo que el entrenador mira para decidir la semana. */
+      const cardio = (t.ejercicios || []).reduce((acc, e) => acc + (segCardioPorSerie(e, tests) || 0), 0)
+      if (cardio > 0) trabajo += series * cardio
+
       if (trabajo > 0) {
         const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
         segundos += trabajo + descanso

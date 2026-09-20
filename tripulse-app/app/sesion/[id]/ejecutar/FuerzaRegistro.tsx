@@ -96,12 +96,15 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                     (tipoSerie === 'Normal' ? 'bg-gray-700 text-gray-300' :
                      tipoSerie === 'Superserie' ? 'bg-orange-900 text-orange-300' :
                      tipoSerie === 'Complex' ? 'bg-purple-900 text-purple-300' :
+                     tipoSerie === 'Cardio' ? 'bg-sky-900 text-sky-300' :
                      'bg-yellow-900 text-yellow-300')}>
                     {tipoSerie}
                   </span>
                   <span className="font-bold text-white">{ej.nombre}</span>
-                  {ej.ejercicio_encadenado_nombre && (
-                    <span className="text-orange-400 text-sm"> + {textoEncadenado(ej)}</span>
+                  {/* El cardio sale por aquí porque `textoEncadenado` ya lo
+                      contempla: para esta pantalla, encadenado es encadenado. */}
+                  {(ej.ejercicio_encadenado_nombre || ej.cardio_modo) && (
+                    <span className={(ej.cardio_modo ? 'text-sky-400' : 'text-orange-400') + ' text-sm'}> + {textoEncadenado(ej)}</span>
                   )}
                   {superado && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white align-middle">✓ superado</span>}
                 </div>

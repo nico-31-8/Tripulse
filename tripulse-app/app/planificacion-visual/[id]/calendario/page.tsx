@@ -6,6 +6,7 @@ import { useEsMovil } from '@/lib/es-movil'
 import { hoyISO, lunesDe, aISO } from '@/lib/fechas'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { conVolumen } from '@/lib/sesion-volumen'
+import { SELECT_EJERCICIOS_CONTEO } from '@/lib/cardio-fuerza'
 import { vivas } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import GraficaCarga from '@/components/GraficaCarga'
@@ -267,7 +268,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const [dists, durs, ejs] = await Promise.all([
       supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
       supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-      supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds),
+      supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds),
     ])
 
     // El volumen, la duración y las zonas: lógica pura, en lib/sesion-volumen.
