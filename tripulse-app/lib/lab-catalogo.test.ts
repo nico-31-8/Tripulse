@@ -656,17 +656,20 @@ describe('las de dos columnas, cuando se piden mal', () => {
 describe('lo que sigue sin caber', () => {
 
   /**
-   * 4. LAS FÓRMULAS SON ARITMÉTICA, NO ESTADÍSTICA.
+   * 4. LO QUE QUEDA DE LA ESTADÍSTICA.
    *
-   * El umbral de lactato por Dmax, el perfil fuerza-velocidad o cualquier
-   * interpolación necesitan una regresión, no una suma. Eso no es un hueco del
-   * modelo de datos —las columnas están ahí, con sus valores por repetición—
-   * sino del motor de fórmulas.
+   * La interpolación y la recta YA ESTÁN (ver «La estadística, y su red»): el
+   * umbral a 4 mmol/L y el perfil fuerza-velocidad se montan y avisan cuando no
+   * hay que fiarse.
    *
-   * Y es una decisión, no un olvido: una regresión metida en un editor de
-   * fórmulas de bloques es muy fácil de aplicar mal y muy difícil de ver mal.
+   * Lo que sigue fuera es lo que no es ni una cosa ni la otra: el Dmax —la
+   * distancia máxima a la cuerda entre el primer punto y el último—, los
+   * ajustes que no son rectas, y cualquier cosa con más de dos columnas. No es
+   * un hueco del modelo de datos: las columnas están ahí con sus valores por
+   * repetición. Es del motor de fórmulas, y se deja fuera a propósito mientras
+   * no haya un caso que lo pida de verdad.
    */
-  it('lo que hace falta para un umbral no es una función de serie', () => {
+  it('el umbral interpolado ya sale; el Dmax todavía hay que hacerlo a mano', () => {
     /* Con cuatro escalones y su lactato, el modelo GUARDA todo lo necesario… */
     const t: TestLab = {
       nombre: 'Escalonado', deporte: 'Carrera', sueltos: [],
@@ -681,9 +684,10 @@ describe('lo que sigue sin caber', () => {
     }
     const r = pasar(t, { '@e': 4, lac: ['1.1', '1.6', '2.9', '5.2', '', '', '', ''] })
     expect(r.lac_max).toBeCloseTo(5.2, 3)
-    /* …pero la velocidad a 4 mmol/L hay que interpolarla entre el 3.º y el 4.º,
-       y no hay función que lo haga. Sale a mano: 12 + (4−2,9)/(5,2−2,9) = 12,48. */
-    const v4 = 12 + (4 - 2.9) / (5.2 - 2.9)
-    expect(v4).toBeCloseTo(12.478, 2)
+    /* La velocidad a 4 mmol/L cae entre el 3.º y el 4.º, y eso YA lo hace
+       `interpola`: 12 + (4−2,9)/(5,2−2,9) = 12,48. Se comprueba en el bloque
+       de la estadística. Lo que sigue a mano es el Dmax, que necesita la
+       distancia de cada punto a la cuerda entre el primero y el último. */
+    expect(12 + (4 - 2.9) / (5.2 - 2.9)).toBeCloseTo(12.478, 2)
   })
 })

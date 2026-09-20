@@ -174,7 +174,12 @@ export default function TestsPropiosPage() {
     const cuenta: Record<number, number> = {}
     for (const m of meds || []) cuenta[m.id_definicion] = (cuenta[m.id_definicion] || 0) + 1
 
-    setTests((defs || []).map((d: any) => ({
+    /* Los del LABORATORIO se quedan fuera. Un test del modelo nuevo guarda su
+       definición en la columna `modelo` y deja `campos` y `resultados`
+       vacíos, así que aquí saldría como un test sin nada dentro: el entrenador
+       lo abriría, lo vería vacío y acabaría "arreglando" algo que no está roto.
+       Mientras los dos modelos convivan, cada uno enseña los suyos. */
+    setTests((defs || []).filter(d => !(d as { modelo?: unknown }).modelo).map((d: any) => ({
       id: d.id, nombre: d.nombre, deporte: d.deporte,
       def: leerDefinicion(d), mediciones: cuenta[d.id] || 0,
     })))
