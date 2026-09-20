@@ -25,7 +25,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
-  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA,
+  nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
@@ -1324,12 +1324,7 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
                 escalares={test.sueltos.map(c => c.clave)}
                 series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
                 refs={test.resultados.slice(0, i).filter(x => x.nombre).map(x => x.nombre)}
-                /* `antes` SÍ puede nombrar a uno posterior —lee la vez pasada,
-                   que no depende del orden de hoy— pero no a sí mismo ni a
-                   otro que ya mire atrás: el anterior del anterior no existe. */
-                previos={test.resultados
-                  .filter((x, k) => x.nombre && k !== i && !(x.formula || []).some(z => z.t === 'antes'))
-                  .map(x => x.nombre)}
+                previos={previosParaAntes(test, i)}
                 pidiendo={pidiendo} setPidiendo={setPidiendo}
                 onCambio={f => mut(t => { t.resultados[i].formula = f })} />
             </div>

@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  calcular, pegasDe, evaluar, textoDe, col, fnB,
+  calcular, pegasDe, evaluar, textoDe, col, fnB, previosParaAntes,
   PALABRA_ANTES, PREFIJO_ANTES,
   type TestLab, type Bloq,
 } from './lab-constructor'
@@ -23,6 +23,7 @@ import { seriesDe } from './lab-series'
 
 const v = (n: string): Bloq => ({ t: 'var', v: n })
 const op = (o: string): Bloq => ({ t: 'op', v: o })
+const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
 /** Un test de una sola marca, con «cuánto ha mejorado» como segundo resultado. */
 const conMejora = (): TestLab => ({
@@ -161,5 +162,49 @@ describe('en el historial', () => {
     const revueltas = [mediciones[2], mediciones[0], mediciones[1]]
     const series = seriesDe(conMejora(), revueltas)
     expect(series.find(s => s.nombre === 'mejora')?.puntos.map(p => p.valor)).toEqual([10, 6])
+  })
+})
+
+describe('un solo sitio decide a quién se le puede pedir el anterior', () => {
+  /* LA PANTALLA Y LAS PEGAS SALEN DE LA MISMA FUNCIÓN. Si la lista que se
+     ofrece y la que se acepta se calcularan por separado, un día ofrecería con
+     dos clics algo que luego no se deja guardar, y sin decir por qué. */
+  it('todo lo que se ofrece se puede guardar', () => {
+    const t = conMejora()
+    t.resultados.push({ nombre: 'ritmo', unidad: 's/km', formula: [v('marca')] })
+    t.resultados.push({ nombre: 'otra', unidad: '', formula: [{ t: 'antes', v: 'ritmo' }] })
+
+    t.resultados.forEach((_, i) => {
+      for (const quien of previosParaAntes(t, i)) {
+        const prueba = clon(t)
+        prueba.resultados[i].formula = [{ t: 'antes', v: quien }]
+        const malas = pegasDe(prueba).filter(p => p.donde === 'resultado' && p.indice === i)
+        expect(malas, 'resultado ' + i + ' → antes(' + quien + ')').toEqual([])
+      }
+    })
+  })
+
+  it('no se ofrece a sí mismo ni a los que ya miran atrás', () => {
+    const t = conMejora()
+    expect(previosParaAntes(t, 1)).toEqual(['tiempo'])
+    expect(previosParaAntes(t, 0)).toEqual([])
+  })
+})
+
+describe('un resultado que ya no está', () => {
+  /* Un test viejo puede llevar guardado un `antes()` de algo que después se
+     borró. «No hay test anterior» mandaría a mirar donde no es. */
+  it('dice que ya no es un resultado, y no que falte el test anterior', () => {
+    const t = conMejora()
+    t.resultados[1].formula = [{ t: 'antes', v: 'borrado' }]
+    const vals = calcular(t, { marca: '174' }, { marca: '180' })
+    expect(vals[1].error).toMatch(/ya no es un resultado/)
+    expect(vals[1].error).not.toMatch(/no hay un test anterior/)
+  })
+
+  it('y sin test anterior sigue diciendo que no hay anterior', () => {
+    const t = conMejora()
+    t.resultados[1].formula = [{ t: 'antes', v: 'borrado' }]
+    expect(calcular(t, { marca: '174' })[1].error).toMatch(/no hay un test anterior/)
   })
 })

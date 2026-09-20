@@ -315,6 +315,16 @@ export const PALABRA_ANTES = 'antes'
  */
 export const PREFIJO_ANTES = '@antes:'
 
+/**
+ * La señal de que SÍ hay test anterior, aunque ese nombre no esté.
+ *
+ * Sin ella, pedir el anterior de un resultado que alguien borró del test
+ * contestaba «no hay test anterior», que manda a mirar donde no es. Con la
+ * señal se puede decir lo que pasa de verdad: el test anterior está, y ese
+ * resultado ya no existe.
+ */
+export const MARCA_ANTES = '@antes'
+
 function aplicar(f: Funcion, xs: number[]): number {
   const s = xs.reduce((a, b) => a + b, 0)
   switch (f) {
@@ -737,7 +747,11 @@ export function evaluar(expr: string, vars: Record<string, unknown>, avisos?: st
         if (quien === undefined || !RE_INI.test(quien)) throw new Error('«antes» necesita el nombre de un resultado dentro')
         if (comer() !== ')') throw new Error('falta cerrar el paréntesis de «antes»')
         const clave = PREFIJO_ANTES + quien
-        if (!(clave in vars)) throw new Error('no hay un test anterior con el que comparar «' + quien + '»')
+        if (!(clave in vars)) {
+          throw new Error(MARCA_ANTES in vars
+            ? '«' + quien + '» ya no es un resultado de este test: en el anterior no hay qué comparar'
+            : 'no hay un test anterior con el que comparar «' + quien + '»')
+        }
         const previo = vars[clave]
         if (previo === null || previo === undefined) throw new Error('en el test anterior, «' + quien + '» no llegó a salir')
         const n = Number(previo)
@@ -999,6 +1013,7 @@ export function calcular(test: TestLab, datos: Datos, anterior?: Datos | null): 
   const lista = test.resultados || []
 
   if (anterior) {
+    vars[MARCA_ANTES] = true
     const previos = calcular(test, anterior)
     lista.forEach((r, i) => {
       if (!r.nombre) return
@@ -1313,3 +1328,19 @@ export function pegasDe(t: TestLab): Pega[] {
 }
 
 export const sePuedeGuardar = (t: TestLab): boolean => pegasDe(t).length === 0
+
+/**
+ * A qué resultados puede ESE resultado pedirles el anterior.
+ *
+ * UN SOLO SITIO LO DECIDE, y de aquí sale tanto la lista que se ofrece en
+ * pantalla como lo que `pegasDe` da por bueno. Si la pantalla ofreciera uno que
+ * las pegas rechazan, el entrenador montaría con dos clics un test que luego no
+ * se deja guardar y sin entender por qué.
+ *
+ * Puede nombrar a uno POSTERIOR —lo que lee es el valor de la vez pasada, que
+ * no depende del orden de hoy— pero no a sí mismo ni a otro que ya mire atrás.
+ */
+export const previosParaAntes = (t: TestLab, indice: number): string[] =>
+  (t.resultados || [])
+    .filter((x, k) => !!x.nombre && k !== indice && !(x.formula || []).some(z => z.t === 'antes'))
+    .map(x => x.nombre)
