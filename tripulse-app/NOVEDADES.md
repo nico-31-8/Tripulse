@@ -16,6 +16,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
+### Los tests escalonados suenan más fuerte, y vibran al cambiar de escalón
+
+En los tests con escalones (Montreal, rampas, course navette…), el aviso de
+cambio de escalón era un pitido flojo que costaba oír en pista. Ahora:
+
+- **Suena bastante más.** El tono es el de los cronos deportivos, más
+  penetrante y a volumen alto de principio a fin. Esto vale para todos los
+  pitidos de los tests, también los del ritmo y el «queda poco».
+- **El cambio de escalón son dos pitidos seguidos**, para que no se confunda
+  con los demás.
+- **Y el móvil vibra** dos veces a la vez. Al lado del botón del sonido hay
+  otro, *📳 Vibra al cambiar de escalón*, para apagarlo. Los dos se acuerdan de
+  lo que elegiste en ese móvil.
+- Al encender cualquiera de los dos, suena o vibra una vez, para comprobar que
+  el volumen está bien.
+
+**En iPhone no hay vibración**: Safari no deja vibrar a ninguna web, así que
+el botón no aparece. Y si en un iPhone no se oye nada, mira que no esté puesto
+el interruptor de silencio: puede callar los sonidos del navegador.
+
+En el laboratorio, el botón de cada bloque ahora dice *Avisa al cambiar*: si lo
+apagas, ese bloque no pita ni vibra al cambiar de escalón.
+
 ### Nueva categoría de ejercicios: Complejos
 
 Al prescribir fuerza, el desplegable **Grupo** tiene una categoría nueva,

@@ -10,6 +10,17 @@
 // esto se usa en una pista, con el móvil a dos rayas o sin cobertura. El
 // navegador sabe hacer un tono sin bajarse nada.
 //
+// QUE SE OIGA EN UN MÓVIL. Al principio era un tono puro de 880 Hz a un tercio
+// de volumen que se iba apagando: sonaba flojo, porque el altavoz de un móvil
+// casi no reproduce esa frecuencia pura. Ahora es una onda cuadrada —la de los
+// cronos deportivos—, cuyos armónicos caen donde el altavoz del móvil sí suena
+// y el oído es más sensible, y se mantiene a volumen alto hasta el final. Un
+// limitador a la salida evita que dos pitidos a la vez saturen.
+//
+// Y VIBRA. Con el móvil en la mano o en el bolsillo, el cambio de escalón se
+// nota aunque haya ruido. Solo en Android: Safari (iPhone) no deja vibrar desde
+// una web, y ahí el interruptor ni aparece.
+//
 // LOS NAVEGADORES NO DEJAN SONAR SIN UNA PULSACIÓN, y es una norma razonable:
 // si no, cualquier página pitaría sola. Por eso el audio se despierta en el
 // botón de «Dar la salida», que es una pulsación de verdad, y no al cargar la
@@ -37,6 +48,12 @@ export function debePitar(
 }
 
 let ctx: AudioContext | null = null
+let limitador: DynamicsCompressorNode | null = null
+
+/** Volumen de cada pitido (0 a 1). La onda cuadrada ya suena mucho más que la pura. */
+const VOLUMEN = 0.9
+/** Silencio entre dos pitidos seguidos, en ms. */
+const HUECO_MS = 90
 
 /** Con qué nombre lo guarda el navegador de este entrenador. */
 const CLAVE = 'tp_pitido_tests'
@@ -67,28 +84,99 @@ export function despertarAudio(): void {
   } catch { /* sin audio, el test sigue funcionando igual */ }
 }
 
+/** La salida común: un limitador, para que dos pitidos que coinciden no saturen. */
+function salida(c: AudioContext): AudioNode {
+  if (!limitador || limitador.context !== c) {
+    limitador = c.createDynamicsCompressor()
+    limitador.threshold.value = -3
+    limitador.knee.value = 0
+    limitador.ratio.value = 20
+    limitador.attack.value = 0.002
+    limitador.release.value = 0.05
+    limitador.connect(c.destination)
+  }
+  return limitador
+}
+
 /**
- * Un tono corto.
+ * Un tono corto, o varios seguidos.
  *
  * 880 Hz porque tiene que oírse en una pista con viento y con gente, y esa
- * octava se abre paso mejor que un grave. La rampa de volumen al final evita el
- * chasquido que deja cortar una onda en seco.
+ * octava se abre paso mejor que un grave. Sube de golpe, se mantiene a tope y
+ * cae en 20 ms al final: cortar la onda en seco dejaría un chasquido.
  */
-export function pitar(hz = 880, ms = 160): void {
+export function pitar(hz = 880, ms = 160, veces = 1): void {
   if (!pitidoEncendido()) return
   despertarAudio()
   if (!ctx || ctx.state !== 'running') return
   try {
-    const osc = ctx.createOscillator()
-    const vol = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = hz
-    const t = ctx.currentTime
-    vol.gain.setValueAtTime(0.0001, t)
-    vol.gain.exponentialRampToValueAtTime(0.35, t + 0.01)
-    vol.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000)
-    osc.connect(vol).connect(ctx.destination)
-    osc.start(t)
-    osc.stop(t + ms / 1000 + 0.02)
+    const dur = Math.max(ms, 40) / 1000
+    const t0 = ctx.currentTime
+    for (let k = 0; k < veces; k++) {
+      const t = t0 + k * (dur + HUECO_MS / 1000)
+      const osc = ctx.createOscillator()
+      const vol = ctx.createGain()
+      osc.type = 'square'
+      osc.frequency.value = hz
+      vol.gain.setValueAtTime(0.0001, t)
+      vol.gain.exponentialRampToValueAtTime(VOLUMEN, t + 0.005)
+      vol.gain.setValueAtTime(VOLUMEN, t + dur - 0.02)
+      vol.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      osc.connect(vol).connect(salida(ctx))
+      osc.start(t)
+      osc.stop(t + dur + 0.02)
+    }
   } catch { /* si el navegador no deja, el test sigue */ }
+}
+
+// ============================================================
+// La vibración
+// ============================================================
+
+const CLAVE_VIBRA = 'tp_vibra_tests'
+
+/** Dos golpes largos: se notan en la mano y en el bolsillo, y no se confunden con una notificación. */
+export const PATRON_ESCALON = [250, 120, 250]
+
+/** Si este navegador sabe vibrar. En iPhone (Safari) no: Apple no lo deja a las webs. */
+export function puedeVibrar(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
+}
+
+/** Si la vibración está encendida. Encendida por defecto, como el pitido. */
+export function vibracionEncendida(): boolean {
+  try { return localStorage.getItem(CLAVE_VIBRA) !== 'no' } catch { return true }
+}
+
+export function ponVibracion(encendida: boolean): void {
+  try { localStorage.setItem(CLAVE_VIBRA, encendida ? 'si' : 'no') } catch { /* modo privado */ }
+}
+
+/**
+ * Vibra, si se puede y si está encendida.
+ *
+ * El navegador solo deja vibrar después de que se haya tocado la página: aquí
+ * siempre es así, porque el reloj lo arranca una pulsación.
+ */
+export function vibrar(patron: number[] = PATRON_ESCALON): void {
+  if (!vibracionEncendida() || !puedeVibrar()) return
+  try { navigator.vibrate(patron) } catch { /* sin vibración, el test sigue */ }
+}
+
+// ============================================================
+// El aviso de cambio de escalón
+// ============================================================
+
+/** Cómo suena el cambio de escalón: dos pitidos. */
+export function sonarEscalon(): void {
+  pitar(880, 200, 2)
+}
+
+/**
+ * Lo que pasa al cambiar de escalón, en todas las pantallas: dos pitidos y dos
+ * vibraciones. Cada una se calla por su lado si el entrenador la ha apagado.
+ */
+export function avisarEscalon(): void {
+  sonarEscalon()
+  vibrar()
 }

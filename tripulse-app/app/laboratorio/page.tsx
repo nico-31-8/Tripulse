@@ -37,7 +37,8 @@ import { ANCLAS, ANCLAS_REFERENCIA, type Ancla } from '@/lib/test-definicion'
 import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
 import { puedeFijarLab, propuestaLab, origenDe } from '@/lib/lab-zonas'
 import { fijarZonas } from '@/lib/zonas-desde-test'
-import { pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
+import { pitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
+import InterruptoresAviso from '@/components/InterruptoresAviso'
 
 const LLAVE = 'tp_laboratorio_v1'
 /**
@@ -108,7 +109,6 @@ export default function Laboratorio() {
   const [cargandoHist, setCargandoHist] = useState(false)
   const [pidiendo, setPidiendo] = useState<Pidiendo | null>(null)
   const [reloj, setReloj] = useState<Reloj | null>(null)
-  const [suena, setSuena] = useState(true)
   const [ahora, setAhora] = useState(() => Date.now())
   const [cargado, setCargado] = useState(false)
 
@@ -159,7 +159,6 @@ export default function Laboratorio() {
         setPaso(Math.min(4, Math.max(1, o.paso || 1)))
       }
     } catch { /* ventana privada: se empieza de cero y ya */ }
-    setSuena(pitidoEncendido())
     setCargado(true)
   }, [])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -194,7 +193,7 @@ export default function Laboratorio() {
       // 1. Al CAMBIAR. Nunca en el primero: ese no es un cambio, es la salida.
       const previo = escPrevio.current[bl.clave]
       const cambioEscalon = previo !== undefined && previo !== n
-      if (cambioEscalon && bl.pitaCambio !== false) pitar(880, 220)
+      if (cambioEscalon && bl.pitaCambio !== false) avisarEscalon()
       escPrevio.current[bl.clave] = n
 
       /* 1b. Y al pasar de un tramo a otro dentro de la repetición: en el 30-15
@@ -578,8 +577,6 @@ export default function Laboratorio() {
               fecha={fecha} setFecha={setFecha} guardando={guardando}
               onGuardarMediciones={guardarMediciones}
               datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
-              suena={suena}
-              onSonido={() => { const v = !suena; setSuena(v); ponPitido(v); if (v) { despertarAudio(); pitar(880, 100) } }}
               onAtleta={a => {
                 if (atletas.some(x => x.id === a.id)) return
                 setAtletas(l => [...l, a])
@@ -1167,7 +1164,7 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
       <div className="flex gap-1.5 flex-wrap mt-2.5">
         <button className={chip(bl.pitaCambio !== false)}
           onClick={() => mut(t => { t.bloques[bi].pitaCambio = t.bloques[bi].pitaCambio === false })}>
-          {bl.pitaCambio !== false ? '🔊 Pita al cambiar' : '🔇 No pita al cambiar'}
+          {bl.pitaCambio !== false ? '🔔 Avisa al cambiar' : '🔕 No avisa al cambiar'}
         </button>
         <button className={chip((bl.avisoAntes || 0) > 0)}
           onClick={() => mut(t => { t.bloques[bi].avisoAntes = (t.bloques[bi].avisoAntes || 0) > 0 ? 0 : 5 })}>
@@ -1773,7 +1770,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
 // ============================================================
 function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
-  onGuardarMediciones, datosDe, reloj, ahora, suena, onSonido,
+  onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
 }: {
   test: TestLab
@@ -1791,8 +1788,6 @@ function Pasar({
   reloj: Reloj | null
   setReloj: (r: Reloj | null) => void
   ahora: number
-  suena: boolean
-  onSonido: () => void
   onAtleta: (a: Atleta) => void
   onQuitaAtleta: (i: number) => void
   onBajo: (bl: Bloque, a: Atleta) => void
@@ -1852,9 +1847,7 @@ function Pasar({
       )}
 
       {(cronos.length > 0 || escalonados.length > 0) && (
-        <button onClick={onSonido} className="mt-3 text-[11.5px] text-gray-500 hover:text-gray-300 transition">
-          {suena ? '🔊 Suena' : '🔇 Sin sonido'}
-        </button>
+        <InterruptoresAviso textoSonido="Suena" conVibracion={escalonados.length > 0} className="mt-3" />
       )}
 
       {escalonados.map(bl => {

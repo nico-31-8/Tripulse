@@ -27,7 +27,8 @@ import {
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
 import { arranqueDe, type Herramienta } from '@/lib/herramientas-test'
-import { debePitar, pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
+import { debePitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
+import InterruptoresAviso from '@/components/InterruptoresAviso'
 
 /** Un reloj grande: es lo que se mira a tres metros, con el atleta corriendo. */
 function Reloj({ texto, pie, estado }: { texto: string; pie: string; estado?: 'corre' | 'fin' }) {
@@ -88,13 +89,6 @@ export default function InstrumentosTest({
      pitar solo cuando CAMBIA. En una ref y no en estado: cambiarlo no tiene que
      repintar nada, y en estado provocaría un render por cada vuelta del reloj. */
   const escalonPrevio = useRef<Record<number, number | null>>({})
-  const [conSonido, setConSonido] = useState(true)
-  /* Lo que prefiera este entrenador se lee DESPUÉS de montar, no al crear el
-     estado: en el servidor no hay localStorage, así que leerlo en el render
-     daría una cosa en el HTML y otra al hidratar. La regla del compilador avisa
-     de poner estado en un efecto, y aquí es justo lo que toca. */
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setConSonido(pitidoEncendido()) }, [])
   const [ahora, setAhora] = useState(() => Date.now())
 
   // Al cambiar de test se tiran los relojes: un tiempo arrastrado de otro test
@@ -126,7 +120,7 @@ export default function InstrumentosTest({
     }
   }
 
-  /* Un pitido al cambiar de escalón.
+  /* Un pitido (y una vibración) al cambiar de escalón.
      Cantando «8,5… 9,0…» hay que mirar el reloj, y mirar el reloj es no mirar a
      los atletas, que es cuando se ve quién se descuelga. El pitido le devuelve
      los ojos.
@@ -140,7 +134,7 @@ export default function InstrumentosTest({
       if (h.tipo !== 'secuenciador') return
       const va = corriendo(crono(i))
       const n = escalon(h, i).numero
-      if (debePitar(escalonPrevio.current[i], n, va)) pitar()
+      if (debePitar(escalonPrevio.current[i], n, va)) avisarEscalon()
       escalonPrevio.current[i] = va ? n : null
     })
   })
@@ -372,14 +366,9 @@ export default function InstrumentosTest({
             const e = crono(i)
             const s = escalon(h, i)
             return (<>
-              {/* El pitido se puede apagar: hay pistas donde molesta, y una app
-                  que suena sin que puedas callarla se acaba dejando de usar. */}
-              <button type="button"
-                onClick={() => { const v = !conSonido; setConSonido(v); ponPitido(v); if (v) { despertarAudio(); pitar() } }}
-                className="self-center text-[11.5px] text-gray-500 hover:text-gray-300 transition"
-                title={conSonido ? "Suena al cambiar de escalón" : "Sin sonido"}>
-                {conSonido ? "🔊 Pita al cambiar de escalón" : "🔇 Sin sonido"}
-              </button>
+              {/* El pitido y la vibración se pueden apagar: hay pistas donde
+                  molestan. */}
+              <InterruptoresAviso />
               <div className="flex items-center justify-center gap-7 flex-wrap">
                 <div className="text-center">
                   <div className="font-mono tabular-nums text-4xl font-semibold leading-none">{s.numero}</div>

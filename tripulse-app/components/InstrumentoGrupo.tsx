@@ -30,7 +30,8 @@ import {
   enSegundos, enMinutos, escalonEn, type EstadoCrono,
 } from '@/lib/dirigir-cronometro'
 import { herramientasDe, avisoDe, valeEnGrupo, sueltosDe, arranqueDe, type Herramienta } from '@/lib/herramientas-test'
-import { debePitar, pitar, despertarAudio, pitidoEncendido, ponPitido } from '@/lib/pitido'
+import { debePitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
+import InterruptoresAviso from '@/components/InterruptoresAviso'
 
 export interface Atleta {
   id: number
@@ -59,13 +60,6 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
   const [cronos, setCronos] = useState<Record<number, EstadoCrono>>({})
   /* Ver InstrumentosTest: el escalón anterior va en una ref para no repintar. */
   const escalonPrevio = useRef<Record<number, number | null>>({})
-  const [conSonido, setConSonido] = useState(true)
-  /* Lo que prefiera este entrenador se lee DESPUÉS de montar, no al crear el
-     estado: en el servidor no hay localStorage, así que leerlo en el render
-     daría una cosa en el HTML y otra al hidratar. La regla del compilador avisa
-     de poner estado en un efecto, y aquí es justo lo que toca. */
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setConSonido(pitidoEncendido()) }, [])
   const [ahora, setAhora] = useState(() => Date.now())
 
   useEffect(() => { setCronos({}) }, [claveTest])
@@ -101,7 +95,7 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
       if (h.tipo !== 'secuenciador') return
       const va = corriendo(crono(i))
       const n = escalon(h, i).numero
-      if (debePitar(escalonPrevio.current[i], n, va)) pitar()
+      if (debePitar(escalonPrevio.current[i], n, va)) avisarEscalon()
       escalonPrevio.current[i] = va ? n : null
     })
   })
@@ -192,13 +186,7 @@ export default function InstrumentoGrupo({ claveTest, protocolo, atletas, captur
             const e = crono(i)
             const s = h.tipo === 'secuenciador' ? escalon(h, i) : null
             return (<>
-              {s && (
-                <button type="button"
-                  onClick={() => { const v = !conSonido; setConSonido(v); ponPitido(v); if (v) { despertarAudio(); pitar() } }}
-                  className="self-center text-[11.5px] text-gray-500 hover:text-gray-300 transition">
-                  {conSonido ? "🔊 Pita al cambiar de escalón" : "🔇 Sin sonido"}
-                </button>
-              )}
+              {s && <InterruptoresAviso />}
               {s ? (
                 <div className="flex items-center justify-center gap-7 flex-wrap">
                   <div className="text-center">
