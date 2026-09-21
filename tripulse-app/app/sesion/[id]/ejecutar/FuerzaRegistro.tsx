@@ -2,11 +2,12 @@
 import { useState } from 'react'
 import { controlDe, textoControl } from '@/lib/control-esfuerzo'
 import {
-  seriesPrincipales, resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
+  resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
 } from '@/lib/modo-mejora'
 import { mmss } from '@/lib/duracion-carga'
 import { cuantoPorSerie } from '@/lib/cardio-fuerza'
 import { textoEncadenado } from '@/lib/tarea-vista'
+import type { TareaEjec, EjercicioEjec, SerieEnCurso, CampoSerie, HistorialFuerza } from './tipos'
 
 const segAMmss = mmss
 
@@ -19,13 +20,12 @@ function esYoutubeShort(url: string) {
   return /youtube\.com\/shorts\//.test(url)
 }
 
-export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, updateSerieFuerza, getSerieFuerza, historial }: {
-  tarea: any
-  ejercicios: any[]
-  seriesFuerza: Record<number, any[]>
-  updateSerieFuerza: (ejId: number, numSerie: number, ejNum: number, campo: string, valor: any) => void
-  getSerieFuerza: (ejId: number, numSerie: number, ejNum: number) => any
-  historial?: Record<string, { dias: number; series: any[] }>   // "modo mejora": última vez por nombre
+export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, getSerieFuerza, historial }: {
+  tarea: TareaEjec
+  ejercicios: EjercicioEjec[]
+  updateSerieFuerza: (ejId: number, numSerie: number, ejNum: number, campo: CampoSerie, valor: string | boolean) => void
+  getSerieFuerza: (ejId: number, numSerie: number, ejNum: number) => Partial<SerieEnCurso>
+  historial?: HistorialFuerza   // "modo mejora": última vez por nombre
 }) {
   const [modalVideo, setModalVideo] = useState<string | null>(null)
 
@@ -76,7 +76,6 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
            enseña exactamente lo mismo, y escribirlo dos veces acabaría con las
            dos pantallas diciendo cosas distintas de la misma serie. */
         const prev = historial?.[ej.nombre]
-        const seriesPrev = seriesPrincipales(prev?.series)
         const resumenPrev = resumenUltimaVez(prev?.series, porTiempo)
         /* `ctrlPrevio`, no `ctrl`: arriba ya hay un `ctrl` que es el control que se
            PRESCRIBE hoy. Son dos cosas distintas y pisarlas confundiría la
@@ -114,7 +113,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 <span className="text-gray-400 text-xs">{ej.grupo_muscular}</span>
               </div>
               {ej.video && (
-                <button onClick={() => setModalVideo(ej.video)}
+                <button onClick={() => setModalVideo(ej.video ?? null)}
                   className="inline-flex items-center gap-1.5 mt-2 bg-red-900 hover:bg-red-800 text-red-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium transition">
                   <span>▶</span> Ver vídeo
                 </button>
@@ -175,7 +174,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
                           {completada ? '✓' : numSerie}
                         </button>
-                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : (ej.intensidad || 'Kg')}
+                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : (ej.intensidad ? String(ej.intensidad) : 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
                         {porTiempo ? (
@@ -185,7 +184,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             title="Segundos que aguantaste esta serie"
                             className={inputCls} />
                         ) : (
-                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (ej.repeticiones || 'Reps')}
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (ej.repeticiones ? String(ej.repeticiones) : 'Reps')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
@@ -220,8 +219,8 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                         <div className="grid grid-cols-2 gap-2">
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-400 mb-2 truncate font-medium">{ej.nombre}</p>
-                            <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad || 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad ? String(ej.intensidad) : 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones ? String(ej.repeticiones) : 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
                             {ctrl && <input type="number" min="0" max={ctrl.max} value={s1.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)} className={inputCls} />}
                           </div>
                           <div className="bg-gray-700 rounded-lg p-2">

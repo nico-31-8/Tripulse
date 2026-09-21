@@ -1,13 +1,14 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useCallback, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
 import { mmss } from '@/lib/duracion-carga'
-import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias } from '@/lib/referencia-zona'
+import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
-import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia } from '@/lib/contexto-sesion'
+import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia, type MesoCtx, type MicroCtx } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
+import type { SesionEjec, TareaEjec, EjercicioEjec, SerieEnCurso, CampoSerie, HistorialFuerza } from './tipos'
 import { cargaZona } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
@@ -16,7 +17,7 @@ import { rpeDeSesion } from '@/lib/rpe-sesion'
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
-import { serieEscrita, seriesHechas } from '@/lib/serie-hecha'
+import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
 
 const segAMmss = mmss
 
@@ -38,7 +39,7 @@ const COLOR_ZONA: Record<string, string> = {
 }
 
 // Clase de color de la tarjeta según zona (Z1–Z7 directo; siglas Zonas 2 por nivel equivalente).
-function claseZona(zona: string): string {
+function claseZona(zona: string | null | undefined): string {
   if (!zona) return 'bg-gray-900 border-gray-700'
   return COLOR_ZONA[zona] || COLOR_ZONA['Z' + cargaZona(zona).nivel] || 'bg-gray-900 border-gray-700'
 }
@@ -54,8 +55,8 @@ function claseZona(zona: string): string {
 export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id } = use(params)
-  const [sesion, setSesion] = useState<any>(null)
-  const [tareas, setTareas] = useState<any[]>([])
+  const [sesion, setSesion] = useState<SesionEjec | null>(null)
+  const [tareas, setTareas] = useState<TareaEjec[]>([])
   // 'Brick' es la etiqueta de la sesión; el deporte real lo pone cada bloque (tarea).
   const esBrick = sesion?.disciplina === 'Brick'
   // Feedback por bloque de un brick (el dolor y las notas siguen siendo del día).
@@ -66,18 +67,19 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   // «← Plan» de aquí dentro, para consultarla a media sesión.
   const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('ejecutar')
   const [tareaActual, setTareaActual] = useState(0)
-  const [resultados, setResultados] = useState<Record<number, any>>({})
+  /* Por tarea, lo escrito en cada serie de resistencia: 'serie_0', 'serie_1'… */
+  const [resultados, setResultados] = useState<Record<number, Record<string, SerieEscrita>>>({})
   const [loading, setLoading] = useState(true)
-  const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, any[]>>({})
+  const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, EjercicioEjec[]>>({})
   const [guardando, setGuardando] = useState(false)
-  const [tests, setTests] = useState<any>(null)
+  const [tests, setTests] = useState<Tests | null>(null)
   const [fcMax, setFcMax] = useState(0)
   const [fcReposo, setFcReposo] = useState(0)
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
   const [otraSesionHoy, setOtraSesionHoy] = useState(false)
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
   // Modo mejora: última ejecución de cada ejercicio de fuerza, indexada por nombre.
-  const [historialFuerza, setHistorialFuerza] = useState<Record<string, { dias: number; series: any[] }>>({})
+  const [historialFuerza, setHistorialFuerza] = useState<HistorialFuerza>({})
 
   // Post sesión
   const [rpe, setRpe] = useState(5)
@@ -96,9 +98,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [duracionRealInput, setDuracionRealInput] = useState('')
   const [medida, setMedida] = useState<DuracionMedida | null>(null)
 
-  useEffect(() => { cargarDatos() }, [id])
-
-  const cargarDatos = async () => {
+  const cargarDatos = useCallback(async () => {
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
     // El reloj arranca al ENTRAR, porque ahora se entra directo a entrenar (antes lo
@@ -144,16 +144,16 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     if (depIdLocal) {
       // Los ritmos objetivo por zona: salen siempre que haya test, planificada o libre.
       setTests(dep?.tests || {})
-      setPesoDeportista((an.data as any)?.peso || null)
+      setPesoDeportista((an.data as { peso?: number | null } | null)?.peso || null)
       setFcMax(dep?.fcMax || 0)
       setFcReposo(dep?.fcReposo || 0)
 
       // Contexto de recuperación, ya sin consultas: lógica pura sobre las listas.
-      const listaMesos = (mesos.data || []) as any[]
-      const listaMicros = (micros.data || []) as any[]
+      const listaMesos = (mesos.data || []) as MesoCtx[]
+      const listaMicros = (micros.data || []) as MicroCtx[]
       setDiasHastaComp(diasHastaCompeticion(
         ses.fecha_sesion, microsDelPlan(ses.id_microciclo, listaMesos, listaMicros)))
-      setOtraSesionHoy(hayOtraSesionEseDia((mismoDia.data || []) as any[], Number(id)))
+      setOtraSesionHoy(hayOtraSesionEseDia((mismoDia.data || []) as { id: number; estado: string | null }[], Number(id)))
     }
     // Si el entrenador manda un drill, el deportista tiene que ver cuál es y cómo se
     // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
@@ -164,15 +164,15 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     if (!tar.data || !tar.data.length) setFase('preview')
     // Cargar ejercicios de todas las tareas
     if (tar.data && tar.data.length > 0) {
-      const tareaIds = (tar.data as any[]).map((t: any) => t.id)
+      const tareaIds = (tar.data as TareaEjec[]).map(t => t.id)
       /* El vídeo NO sale de la copia guardada, sale de la biblioteca. Ver
          lib/video-ejercicio: la copia se hacía al prescribir, así que un vídeo
          añadido después no llegaba nunca al atleta. */
       const { data: ejsCrudos } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
-      const ejs = await conVideos(ejsCrudos, supabase)
-      const ejMap: Record<number, any[]> = {}
+      const ejs = await conVideos(ejsCrudos as EjercicioEjec[] | null, supabase)
+      const ejMap: Record<number, EjercicioEjec[]> = {}
       tareaIds.forEach((tid: number) => { ejMap[tid] = [] })
-      ejs?.forEach((e: any) => {
+      ejs.forEach(e => {
         if (!ejMap[e.id_tarea]) ejMap[e.id_tarea] = []
         ejMap[e.id_tarea].push(e)
       })
@@ -180,8 +180,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
 
       // Modo mejora: la última vez que se hizo cada ejercicio (por nombre + deportista).
       if (depIdLocal && ejs && ejs.length) {
-        const nombres = [...new Set(ejs.map((e: any) => e.nombre).filter(Boolean))] as string[]
-        const hist: Record<string, { dias: number; series: any[] }> = {}
+        const nombres = [...new Set(ejs.map(e => e.nombre).filter(Boolean))]
+        const hist: HistorialFuerza = {}
         await Promise.all(nombres.map(async (nombre) => {
           const { data } = await supabase.rpc('ultima_ejecucion_fuerza', { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
           if (data && data.length) {
@@ -193,11 +193,17 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       }
     }
     setLoading(false)
-  }
+  }, [id])
 
-  const [seriesFuerza, setSeriesFuerza] = useState<Record<number, any[]>>({})
+  /* La regla del compilador ve una llamada que acaba en `setState` y avisa,
+     pero el estado se pone DESPUÉS de que conteste la base, que es el caso que
+     ella misma admite. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { cargarDatos() }, [cargarDatos])
 
-  const updateSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number, campo: string, valor: any) => {
+  const [seriesFuerza, setSeriesFuerza] = useState<Record<number, SerieEnCurso[]>>({})
+
+  const updateSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number, campo: CampoSerie, valor: string | boolean) => {
     setSeriesFuerza(prev => {
       const key = ejercicioId
       const arr = prev[key] ? [...prev[key]] : []
@@ -208,11 +214,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     })
   }
 
-  const getSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number) => {
+  const getSerieFuerza = (ejercicioId: number, numSerie: number, ejNum: number): Partial<SerieEnCurso> => {
     return seriesFuerza[ejercicioId]?.find(s => s.numero_serie === numSerie && s.ejercicio_numero === ejNum) || {}
   }
 
-  const updateResultado = (tareaId: number, campo: string, valor: string) => {
+  const updateResultado = (tareaId: number, campo: string, valor: SerieEscrita) => {
     setResultados(prev => ({ ...prev, [tareaId]: { ...prev[tareaId], [campo]: valor } }))
   }
 
@@ -220,8 +226,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     setGuardando(true)
     // Guardar series de fuerza
     // Lookup de ejercicios para recuperar el kg planificado de cada escalón de un drop set.
-    const ejById: Record<number, any> = {}
-    Object.values(ejerciciosPorTarea).flat().forEach((e: any) => { ejById[e.id] = e })
+    const ejById: Record<number, EjercicioEjec> = {}
+    Object.values(ejerciciosPorTarea).flat().forEach(e => { ejById[e.id] = e })
 
     const ejIdsTocados = Object.keys(seriesFuerza).map(Number)
     if (ejIdsTocados.length) {
@@ -236,7 +242,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
 
     // Un solo insert en vez de uno por serie: una sesión de fuerza de 4 ejercicios
     // × 4 series eran 16 viajes de red seguidos.
-    const filasSeries: any[] = []
+    const filasSeries: {
+      id_ejercicio: number; numero_serie: number; peso_real: number | null; repeticiones_reales: number | null
+      tiempo_real: number | null; control_real: number | null; control_tipo: string | null
+      completada: boolean; ejercicio_numero: number
+    }[] = []
     for (const [ejId, series] of Object.entries(seriesFuerza)) {
       const rawDrop = ejById[Number(ejId)]?.escalones_drop
       const escalonesDrop = rawDrop ? String(rawDrop).split(',').map((s: string) => s.trim()) : null
@@ -320,7 +330,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       if (esBrick) {
         // Cada bloque guarda SU esfuerzo, que es lo que deja al SICAT distinguir
         // si el coste vino de la bici o de la carrera.
-        await Promise.all(tareas.map((t: any) => supabase.from('tarea').update({
+        await Promise.all(tareas.map(t => supabase.from('tarea').update({
           ...delDia,
           rpe_reportado: postBloques[t.id]?.rpe ?? rpe,
           sensacion_tecnica: postBloques[t.id]?.sensacion ?? sensacion,
@@ -378,17 +388,17 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     return 'bg-orange-600'
   }
 
-  const getTipoMedicion = (tarea: any) => {
+  const getTipoMedicion = (tarea: TareaEjec) => {
     if (tarea.p_duracion?.[0]) return 'duracion'
     if (tarea.p_distancia?.[0]) return 'distancia'
     if (tarea.p_repeticiones?.[0]) return 'repeticiones'
     return null
   }
 
-  const getObjetivo = (tarea: any) => {
-    if (tarea.p_duracion?.[0]) return segAMmss(tarea.p_duracion[0].tiempo_planeado) + ' min'
+  const getObjetivo = (tarea: TareaEjec) => {
+    if (tarea.p_duracion?.[0]) return segAMmss(tarea.p_duracion[0].tiempo_planeado || 0) + ' min'
     if (tarea.p_distancia?.[0]) {
-      const m = tarea.p_distancia[0].metros_planeados
+      const m = tarea.p_distancia[0].metros_planeados || 0
       return m >= 1000 ? (m/1000).toFixed(1) + ' km' : m + ' m'
     }
     if (tarea.p_repeticiones?.[0]) return tarea.p_repeticiones[0].repeticiones_planteadas + ' reps'
@@ -414,7 +424,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           {sesion.notas_entrenador && (
             <div className="bg-gray-900 rounded-xl p-4 mt-3 border border-gray-700">
               <p className="text-xs text-gray-500 mb-1">Notas del entrenador</p>
-              <p className="text-gray-300 text-sm italic">"{sesion.notas_entrenador}"</p>
+              <p className="text-gray-300 text-sm italic">&quot;{sesion.notas_entrenador}&quot;</p>
             </div>
           )}
         </div>
@@ -472,7 +482,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       </main>
     )
     const tipo = getTipoMedicion(tarea)
-    const r = resultados[tarea?.id] || {}
+    const r: Record<string, SerieEscrita> = resultados[tarea.id] || {}
     const esUltima = tareaActual === tareas.length - 1
 
     return (
@@ -576,7 +586,6 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               <FuerzaRegistro
                 tarea={tarea}
                 ejercicios={ejerciciosPorTarea[tarea?.id] || []}
-                seriesFuerza={seriesFuerza}
                 updateSerieFuerza={updateSerieFuerza}
                 getSerieFuerza={getSerieFuerza}
                 historial={historialFuerza}
@@ -594,7 +603,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             <div className="flex flex-col gap-3">
               {Array.from({ length: vecesDe(tarea) }, (_, serieIdx) => {
                 const serieKey = 'serie_' + serieIdx
-                const serieData = r[serieKey] || {}
+                const serieData: SerieEscrita = r[serieKey] || {}
                 const completada = serieData.completada
                 return (
                   <div key={serieIdx} className={'rounded-xl p-4 border transition ' + (completada ? 'bg-green-900 border-green-600' : 'bg-gray-800 border-gray-700')}>
@@ -609,7 +618,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                       {tipo === 'duracion' && (
                         <div>
                           <label className="text-gray-400 text-xs mb-1 block">Tiempo (mm:ss)</label>
-                          <input type="text" placeholder={tarea?.p_duracion?.[0] ? segAMmss(tarea.p_duracion[0].tiempo_planeado) : '—'}
+                          <input type="text" placeholder={tarea?.p_duracion?.[0] ? segAMmss(tarea.p_duracion[0].tiempo_planeado || 0) : '—'}
                             value={serieData.tiempo || ''}
                             onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, tiempo: e.target.value })}
                             className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-orange-500" />
@@ -618,7 +627,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                       {tipo === 'distancia' && (
                         <div>
                           <label className="text-gray-400 text-xs mb-1 block">Metros</label>
-                          <input type="number" placeholder={tarea?.p_distancia?.[0]?.metros_planeados}
+                          <input type="number" placeholder={tarea?.p_distancia?.[0]?.metros_planeados?.toString()}
                             value={serieData.metros || ''}
                             onChange={e => updateResultado(tarea.id, serieKey, { ...serieData, metros: e.target.value })}
                             className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-orange-500" />
@@ -724,7 +733,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           {notasPost && (
             <div className="mt-3 bg-gray-800 rounded-lg p-3">
               <p className="text-gray-500 text-xs mb-1">Tus notas</p>
-              <p className="text-gray-300 text-sm italic">"{notasPost}"</p>
+              <p className="text-gray-300 text-sm italic">&quot;{notasPost}&quot;</p>
             </div>
           )}
         </div>
@@ -767,11 +776,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <h3 className="font-bold mb-3 text-gray-300">Tareas — Planificado vs Real</h3>
         <div className="flex flex-col gap-3 mb-6">
           {tareas.map((t, i) => {
-            const r = resultados[t.id] || {}
+            const r: Record<string, SerieEscrita> = resultados[t.id] || {}
             const pd = t.p_distancia?.[0]
             const pu = t.p_duracion?.[0]
             const pr = t.p_repeticiones?.[0]
-            const s0 = r['serie_0'] || {}
+            const s0: SerieEscrita = r['serie_0'] || {}
             /* De las dos tablas: un bloque por tiempo también trae intensidad. */
             const ritmoObj = ritmoObjetivoTexto(intensidadGuardada(t), t.disciplina || sesion?.disciplina)
             // El par de cajas —objetivo y real— se titulan con lo que se mandó,
@@ -881,14 +890,14 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           {esBrick ? (
             <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
               <p className="text-purple-300 text-sm font-semibold">🔀 ¿Cómo fue cada parte?</p>
-              {tareas.map((t: any, i: number) => {
+              {tareas.map((t, i) => {
                 const b = postBloques[t.id] || { rpe: 5, sensacion: 3 }
                 const set = (campo: 'rpe' | 'sensacion', v: number) =>
                   setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
                 return (
                   <div key={t.id} className="bg-gray-900 rounded-lg p-4 flex flex-col gap-3">
                     <p className="text-white text-sm font-bold">
-                      {EMOJI_BLOQUE[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                      {EMOJI_BLOQUE[t.disciplina ?? ''] || ''} {i + 1} · {t.disciplina || '—'}
                       {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5 text-xs">{t.zona_entrenamiento}</span>}
                     </p>
                     <div>

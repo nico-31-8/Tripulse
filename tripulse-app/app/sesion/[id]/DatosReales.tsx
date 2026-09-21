@@ -1,10 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { mmss } from '@/lib/duracion-carga'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
-import { tieneDatos } from '@/lib/serie-hecha'
+import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
@@ -19,16 +19,44 @@ function segAMmss(seg: number): string {
   return mmss(seg)
 }
 
+/* Lo que se lee de cada tabla. Tipos comprobados contra la base. */
+interface EjercicioFila {
+  id: number
+  id_tarea: number
+  nombre: string
+  ejercicio_encadenado_nombre?: string | null
+}
+
+interface SerieFila extends SerieConDatos {
+  id: number
+  id_ejercicio: number
+  ejercicio_numero: number | null
+  control_tipo: string | null
+  /** El RIR de antes de `control_real`. Solo lo traen las series viejas. */
+  rir_real: number | null
+}
+
+interface TareaFila {
+  id: number
+  disciplina: string | null
+  zona_entrenamiento: string | null
+  rpe_reportado: number | null
+  sensacion_tecnica: number | null
+  fc_media: number | null
+  dolor_muscular: number | null
+  notas_post: string | null
+  sensacion_general: string | null
+  p_distancia: { metros_reales: number | null }[] | null
+  p_duracion: { tiempo_real: number | null }[] | null
+  ejercicios: EjercicioFila[]
+}
+
 export default function DatosReales({ sesionId, disciplina }: { sesionId: number, disciplina: string }) {
-  const [tareas, setTareas] = useState<any[]>([])
-  const [seriesReales, setSeriesReales] = useState<any[]>([])
+  const [tareas, setTareas] = useState<TareaFila[]>([])
+  const [seriesReales, setSeriesReales] = useState<SerieFila[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    cargar()
-  }, [sesionId])
-
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     const { data: tar } = await supabase
       .from('tarea')
       .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
@@ -53,7 +81,13 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
       }
     }
     setLoading(false)
-  }
+  }, [sesionId])
+
+  /* La regla del compilador ve una llamada que acaba en `setState` y avisa,
+     pero el estado se pone DESPUÉS de que conteste la base, que es el caso que
+     ella misma admite. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { cargar() }, [cargar])
 
   const tienePostSesion = tareas.some(t =>
     t.rpe_reportado || t.fc_media || t.sensacion_tecnica || t.dolor_muscular
@@ -89,7 +123,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
             {tareas.map((t, i) => (
               <div key={t.id} className="bg-gray-900/60 rounded-lg p-3 flex items-center gap-3 flex-wrap">
                 <span className="text-white text-xs font-bold">
-                  {EMOJI[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                  {EMOJI[t.disciplina ?? ''] || ''} {i + 1} · {t.disciplina || '—'}
                 </span>
                 {t.zona_entrenamiento && <span className="text-gray-500 text-xs">{t.zona_entrenamiento}</span>}
                 <div className="flex gap-4 ml-auto text-xs">
@@ -105,7 +139,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
             // la transición se sufrió más, el brick está haciendo su trabajo.
             const conRpe = tareas.filter(t => t.rpe_reportado != null)
             if (conRpe.length < 2) return null
-            const salto = conRpe[conRpe.length - 1].rpe_reportado - conRpe[0].rpe_reportado
+            const salto = Number(conRpe[conRpe.length - 1].rpe_reportado) - Number(conRpe[0].rpe_reportado)
             if (salto === 0) return null
             return (
               <p className="text-xs text-gray-500 mt-3">
@@ -149,7 +183,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
             )}
           </div>
           {tareas.find(t => t.notas_post) && (
-            <p className="text-gray-400 text-sm mt-3 italic">"{tareas.find(t => t.notas_post)?.notas_post}"</p>
+            <p className="text-gray-400 text-sm mt-3 italic">&quot;{tareas.find(t => t.notas_post)?.notas_post}&quot;</p>
           )}
         </div>
       )}
@@ -207,13 +241,13 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
           <p className="font-medium text-gray-300 mb-3 text-sm">Series realizadas</p>
           <div className="flex flex-col gap-4">
             {tareas.map(t => {
-              const ejsConSeries = t.ejercicios.filter((ej: any) =>
+              const ejsConSeries = t.ejercicios.filter(ej =>
                 seriesReales.some(sr => sr.id_ejercicio === ej.id)
               )
               if (!ejsConSeries.length) return null
               return (
                 <div key={t.id}>
-                  {ejsConSeries.map((ej: any) => {
+                  {ejsConSeries.map(ej => {
                     const srEj = seriesReales.filter(sr => sr.id_ejercicio === ej.id)
                     return (
                       <div key={ej.id} className="mb-3">
@@ -226,8 +260,8 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                                 <th className="text-center py-1 px-2">Kg</th>
                                 {/* La cabecera sale de lo que se anotó, no de un rótulo
                                     fijo: un RPE bajo el título «RIR» es un dato mal leído. */}
-                                <th className="text-center py-1 px-2">{srEj.some((sr: any) => sr.tiempo_real != null) ? 'Seg' : 'Reps'}</th>
-                                <th className="text-center py-1 px-2">{controlDe(srEj.find((sr: any) => sr.control_tipo)?.control_tipo).corto}</th>
+                                <th className="text-center py-1 px-2">{srEj.some(sr => sr.tiempo_real != null) ? 'Seg' : 'Reps'}</th>
+                                <th className="text-center py-1 px-2">{controlDe(srEj.find(sr => sr.control_tipo)?.control_tipo).corto}</th>
                                 <th className="text-center py-1 px-2">Estado</th>
                               </tr>
                             </thead>
@@ -235,7 +269,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                               {/* «Hecha» si la marcó o si anotó algo: casi nadie toca el
                                   circulito, y un «—» al lado de 40 kg decía que no la hizo.
                                   La regla es la de lib/serie-hecha. */}
-                              {srEj.filter(sr => sr.ejercicio_numero === 1).map((sr: any) => (
+                              {srEj.filter(sr => sr.ejercicio_numero === 1).map(sr => (
                                 <tr key={sr.id} className={'border-b border-gray-800 ' + (tieneDatos(sr) ? 'bg-green-900/20' : '')}>
                                   <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                   <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
@@ -253,7 +287,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                             <p className="text-xs text-orange-300 mb-1">+ {textoEncadenado(ej)}</p>
                             <table className="w-full text-xs">
                               <tbody>
-                                {srEj.filter(sr => sr.ejercicio_numero === 2).map((sr: any) => (
+                                {srEj.filter(sr => sr.ejercicio_numero === 2).map(sr => (
                                   <tr key={sr.id} className="border-b border-gray-800">
                                     <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                     <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
