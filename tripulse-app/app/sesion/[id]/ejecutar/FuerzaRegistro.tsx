@@ -204,7 +204,10 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                       </div>
                     )}
 
-                    {/* Superserie / Complex */}
+                    {/* Superserie / Complex. El RIR de aquí y el del drop set se
+                        escribían en `rir_real`, que al guardar no se lee: se perdía
+                        siempre. Ahora va a `control_real`, como en una serie
+                        normal, y en la escala que se prescribió. */}
                     {tieneEj2 && (
                       <div className="p-3">
                         <div className="flex justify-between items-center mb-2">
@@ -219,13 +222,13 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                             <p className="text-xs text-orange-400 mb-2 truncate font-medium">{ej.nombre}</p>
                             <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad || 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
                             <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" min="0" max="4" value={s1.rir_real || ''} placeholder="RIR" onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'rir_real', e.target.value)} className={inputCls} />
+                            {ctrl && <input type="number" min="0" max={ctrl.max} value={s1.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)} className={inputCls} />}
                           </div>
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-300 mb-2 truncate font-medium">{ej.ejercicio_encadenado_nombre}</p>
                             <input type="number" value={s2.peso_real || ''} placeholder="Kg" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
                             <input type="number" value={s2.repeticiones_reales || ''} placeholder="Reps" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" min="0" max="4" value={s2.rir_real || ''} placeholder="RIR" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'rir_real', e.target.value)} className={inputCls} />
+                            {ctrl && <input type="number" min="0" max={ctrl.max} value={s2.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'control_real', e.target.value)} className={inputCls} />}
                           </div>
                         </div>
                       </div>
@@ -245,7 +248,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                           {escalones.map((kg: string, eIdx: number) => {
                             const sd = getSerieFuerza(ej.id, numSerie, eIdx + 1)
                             return (
-                              <div key={eIdx} className="grid grid-cols-3 gap-2 items-center">
+                              <div key={eIdx} className={'grid gap-2 items-center ' + (ctrl ? 'grid-cols-3' : 'grid-cols-2')}>
                                 <div className="bg-yellow-900/50 rounded-lg px-2 py-2 text-center">
                                   <p className="text-xs text-yellow-400">Escalón {eIdx + 1}</p>
                                   <p className="text-sm font-bold">{kg} kg</p>
@@ -253,9 +256,11 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                                 <input type="number" value={sd.repeticiones_reales || ''} placeholder="Reps"
                                   onChange={e => updateSerieFuerza(ej.id, numSerie, eIdx + 1, 'repeticiones_reales', e.target.value)}
                                   className={inputCls} />
-                                <input type="number" min="0" max="4" value={sd.rir_real || ''} placeholder="RIR"
-                                  onChange={e => updateSerieFuerza(ej.id, numSerie, eIdx + 1, 'rir_real', e.target.value)}
-                                  className={inputCls} />
+                                {ctrl && (
+                                  <input type="number" min="0" max={ctrl.max} value={sd.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda}
+                                    onChange={e => updateSerieFuerza(ej.id, numSerie, eIdx + 1, 'control_real', e.target.value)}
+                                    className={inputCls} />
+                                )}
                               </div>
                             )
                           })}

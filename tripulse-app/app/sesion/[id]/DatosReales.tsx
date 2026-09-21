@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { mmss } from '@/lib/duracion-carga'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
+import { tieneDatos } from '@/lib/serie-hecha'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
@@ -231,13 +232,16 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                               </tr>
                             </thead>
                             <tbody>
+                              {/* «Hecha» si la marcó o si anotó algo: casi nadie toca el
+                                  circulito, y un «—» al lado de 40 kg decía que no la hizo.
+                                  La regla es la de lib/serie-hecha. */}
                               {srEj.filter(sr => sr.ejercicio_numero === 1).map((sr: any) => (
-                                <tr key={sr.id} className={'border-b border-gray-800 ' + (sr.completada ? 'bg-green-900/20' : '')}>
+                                <tr key={sr.id} className={'border-b border-gray-800 ' + (tieneDatos(sr) ? 'bg-green-900/20' : '')}>
                                   <td className="py-1.5 px-2 font-medium">{sr.numero_serie}</td>
                                   <td className="py-1.5 px-2 text-center text-yellow-400">{sr.peso_real ? sr.peso_real + ' kg' : '—'}</td>
                                   <td className="py-1.5 px-2 text-center text-blue-400">{sr.tiempo_real != null ? sr.tiempo_real : (sr.repeticiones_reales || '—')}</td>
                                   <td className="py-1.5 px-2 text-center text-gray-400">{sr.control_real ?? sr.rir_real ?? '—'}</td>
-                                  <td className="py-1.5 px-2 text-center">{sr.completada ? '✓' : '—'}</td>
+                                  <td className="py-1.5 px-2 text-center">{tieneDatos(sr) ? '✓' : '—'}</td>
                                 </tr>
                               ))}
                             </tbody>

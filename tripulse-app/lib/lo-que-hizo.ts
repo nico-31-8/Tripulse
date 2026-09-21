@@ -20,12 +20,14 @@
 // series con el peso puesto llegan con `completada = false`: el atleta rellena
 // los kilos y no toca el circulito. Fiarse de `completada` decía «0 de 2» de
 // una sesión que sí hizo, que es la peor mentira que puede contar esta pantalla.
+// La regla vive en lib/serie-hecha: la usan también otras pantallas.
 //
 // NO ANOTÓ NADA ≠ HIZO CERO. Una tarea sin nada anotado devuelve `null`, y la
 // pantalla lo dice con esas palabras. Un «0 kg» se leería como que no levantó.
 
 import { seriesPrincipales, controlUltimaVez, type SerieHecha } from './modo-mejora'
 import { vecesDe } from './bloques-tarea'
+import { tieneDatos, seriesHechas } from './serie-hecha'
 import { mmss } from './duracion-carga'
 import type { CampoTarea } from './tarea-vista'
 
@@ -54,15 +56,6 @@ const num = (v: unknown): number => {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
 }
-
-/**
- * Si esta serie la hizo: marcada, o con cualquier dato anotado.
- *
- * Lo segundo es lo normal: el atleta pone los kilos y no marca el circulito.
- */
-export const tieneDatos = (s: SerieRealizada): boolean =>
-  s.completada === true ||
-  [s.peso_real, s.repeticiones_reales, s.tiempo_real, s.metros_reales, s.control_real].some(v => num(v) > 0)
 
 /**
  * Las series que anotó para ESTA tarea.
@@ -124,13 +117,13 @@ export function camposHechos(t: TareaVistaHecha, series: SerieRealizada[] | null
 
   /* FUERZA, incluida la línea de cardio: series por ejercicio. */
   if (t?.disciplina === 'Fuerza') {
+    if (!suyas.length) return null
     const principal = seriesPrincipales(suyas)
-    if (!principal.length) return null
     const esCardio = ej?.tipo_serie === 'Cardio'
     const porTiempo = esCardio || !!t?.p_duracion?.[0]?.tiempo_planeado
     const campos: CampoTarea[] = []
     if (!esCardio && ej?.grupo_muscular) campos.push({ k: 'Grupo', v: ej.grupo_muscular })
-    campos.push({ k: 'Series', v: deCuantas(principal.length, num(ej?.series ?? t?.series)) })
+    campos.push({ k: 'Series', v: deCuantas(seriesHechas(suyas), num(ej?.series ?? t?.series)) })
     if (porTiempo) {
       campos.push({ k: 'Tiempo', v: valoresEnCasilla(principal.map(s => num(s.tiempo_real)), segundos), destaca: true })
     } else {
@@ -158,7 +151,7 @@ export function camposHechos(t: TareaVistaHecha, series: SerieRealizada[] | null
   const porSerie = suyas.map(serieResistencia).filter(Boolean)
   const campos: CampoTarea[] = []
   if (porSerie.length) {
-    campos.push({ k: 'Series', v: deCuantas(suyas.length, vecesDe(t)) })
+    campos.push({ k: 'Series', v: deCuantas(seriesHechas(suyas), vecesDe(t)) })
     campos.push({ k: 'Hecho', v: porSerie.join(' · '), destaca: true })
   } else {
     const m = num(t?.p_distancia?.[0]?.metros_reales)

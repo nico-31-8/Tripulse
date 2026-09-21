@@ -16,6 +16,36 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
+### Una serie cuenta como hecha aunque no se marque
+
+Cada serie tiene un circulito para marcarla, y casi nadie lo pulsa: de todas
+las series apuntadas hasta hoy, **casi 9 de cada 10 tienen los kilos puestos y el
+circulito sin marcar**. Varias pantallas contaban solo el circulito, así que
+decían que no se habían hecho series que sí se hicieron.
+
+Ahora una serie está hecha **si se marcó o si tiene algo anotado** (kilos,
+repeticiones, tiempo, esfuerzo…). Es la misma regla en todas partes:
+
+- **Ficha de la sesión → Series realizadas**: la columna *Estado* sale ✓ en
+  las series con datos. Antes salía «—» al lado de 40 kg.
+- **Resumen al terminar una sesión de fuerza**: la casilla *Series
+  completadas* decía **0/3 en todas las tareas de fuerza**, se marcaran o no,
+  porque miraba donde se anotan las series de carrera o bici. Ahora cuenta las
+  de verdad.
+- **Resumen y contador de las series de carrera, bici o natación**: una serie
+  con el tiempo o el ritmo escritos ya cuenta, aunque no se pulsara «Marcar».
+
+### El RIR de superseries y drop sets ya se guarda
+
+En una **superserie**, un **complex** o un **drop set**, el esfuerzo que
+anotaba el atleta en cada serie **no se guardaba nunca**: se escribía, pero al
+cerrar la sesión se perdía. Ahora se guarda como el de una serie normal, en la
+escala que prescribiste (RIR o RPE, ya no siempre RIR). Si controlas por
+velocidad o por %1RM no se le pide, igual que en el resto de series.
+
+Lo anotado antes de hoy en esos tipos de serie no se puede recuperar: nunca
+llegó a guardarse.
+
 ### Ver lo que hizo la semana pasada al prescribir la de esta
 
 En el panel **La semana** de la ficha de sesión, cuando abres una sesión que

@@ -15,7 +15,7 @@
 // lib/formula.ts y lib/test-definicion.ts, con sus tests. Aquí solo hay
 // pantalla y consultas: si algo calcula, es que está en el sitio equivocado.
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
@@ -121,7 +121,7 @@ export default function TestsPropiosPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
   const [tests, setTests] = useState<FilaTest[]>([])
-  const [deportistas, setDeportistas] = useState<any[]>([])
+  const [deportistas, setDeportistas] = useState<{ id: number; nombre: string }[]>([])
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
 
   /* Una sola pantalla con tres caras, en vez de tres rutas. Así el test que
@@ -154,9 +154,7 @@ export default function TestsPropiosPage() {
      repetirlo con el atleta ya cansado. No se bloquea nada, se PREGUNTA. */
   const bloqueo = useBloqueoDeSalida(relojEnMarcha)
 
-  useEffect(() => { arrancar() }, [])
-
-  const arrancar = async () => {
+  const arrancar = useCallback(async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
@@ -165,12 +163,13 @@ export default function TestsPropiosPage() {
         .eq('archivado', false).order('created_at', { ascending: false }),
       supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
     ])
-    const ids = (defs || []).map((d: any) => d.id)
+    const filas = (defs || []) as { id: number; nombre: string; deporte: string; modelo?: unknown }[]
+    const ids = filas.map(d => d.id)
     /* Cuántas mediciones tiene cada uno, en UNA consulta y no una por test:
        con diez tests serían diez viajes para pintar un contador. */
     const { data: meds } = ids.length
       ? await supabase.from('test_medicion').select('id_definicion').in('id_definicion', ids)
-      : { data: [] as any[] }
+      : { data: [] as { id_definicion: number }[] }
     const cuenta: Record<number, number> = {}
     for (const m of meds || []) cuenta[m.id_definicion] = (cuenta[m.id_definicion] || 0) + 1
 
@@ -179,13 +178,20 @@ export default function TestsPropiosPage() {
        vacíos, así que aquí saldría como un test sin nada dentro: el entrenador
        lo abriría, lo vería vacío y acabaría "arreglando" algo que no está roto.
        Mientras los dos modelos convivan, cada uno enseña los suyos. */
-    setTests((defs || []).filter(d => !(d as { modelo?: unknown }).modelo).map((d: any) => ({
+    setTests(filas.filter(d => !d.modelo).map(d => ({
       id: d.id, nombre: d.nombre, deporte: d.deporte,
       def: leerDefinicion(d), mediciones: cuenta[d.id] || 0,
     })))
     setDeportistas(deps || [])
     setCargando(false)
-  }
+  }, [router])
+
+  /* Se pide al montar, y otra vez a mano tras guardar o archivar. La regla del
+     compilador ve una llamada que acaba en `setState` y avisa, pero el estado
+     se pone DESPUÉS de que conteste la base, que es el caso que ella misma
+     admite (igual que en /laboratorio). */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { arrancar() }, [arrancar])
 
   const decir = (tipo: 'ok' | 'mal', texto: string) => {
     setAviso({ tipo, texto })
@@ -212,7 +218,7 @@ export default function TestsPropiosPage() {
     return {
       ...d,
       campos: d.campos.map((c, k) => k === i ? { ...c, clave: nuevo } : c),
-      resultados: d.resultados.map((r, k) => ({
+      resultados: d.resultados.map(r => ({
         ...r, formula: renombrarEn([r.formula], 'var', viejo, nuevo)[0] ?? r.formula,
       })),
     }
@@ -231,7 +237,7 @@ export default function TestsPropiosPage() {
     }],
   }))
 
-  const parcheR = (i: number, cambios: any) => setDef(d => ({
+  const parcheR = (i: number, cambios: Partial<ResultadoTest>) => setDef(d => ({
     ...d, resultados: d.resultados.map((r, k) => k === i ? { ...r, ...cambios } : r),
   }))
 
@@ -297,7 +303,8 @@ export default function TestsPropiosPage() {
     const { data } = await supabase.from('test_medicion')
       .select('fecha, datos').eq('id_definicion', idDef).eq('id_deportista', idDep)
       .order('fecha', { ascending: false })
-    setMediciones((data || []).map((m: any) => ({ fecha: m.fecha, datos: m.datos || {} })))
+    const filas = (data || []) as { fecha: string; datos: Record<string, unknown> | null }[]
+    setMediciones(filas.map(m => ({ fecha: m.fecha, datos: m.datos || {} })))
   }
 
   /**
@@ -610,7 +617,7 @@ export default function TestsPropiosPage() {
                         {/* Agrupado, porque el grupo ES el concepto: todo lo de
                             arriba es un número del que se pueden colgar zonas,
                             sea un umbral o una marca suya. */}
-                        <select className={campo} value={r.ancla} onChange={e => parcheR(i, { ancla: e.target.value })}>
+                        <select className={campo} value={r.ancla} onChange={e => parcheR(i, { ancla: e.target.value as Ancla })}>
                           <optgroup label="Referencias — se les pueden colgar zonas">
                             {ANCLAS_REFERENCIA.map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
                           </optgroup>

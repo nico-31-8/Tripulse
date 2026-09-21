@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { seriesDeTarea, camposHechos, valoresEnCasilla, tieneDatos, type SerieRealizada } from './lo-que-hizo'
+import { seriesDeTarea, camposHechos, valoresEnCasilla, type SerieRealizada } from './lo-que-hizo'
 
 const valor = (campos: { k: string; v: string }[] | null, k: string) => campos?.find(c => c.k === k)?.v
 
@@ -42,20 +42,6 @@ describe('lo que anota un atleta de verdad: solo el peso', () => {
   it('con peso decimal, tal cual', () => {
     const curl = camposHechos(sentadilla, [serie(1, { peso_real: '22.5' }), serie(2, { peso_real: '22.5' })])
     expect(valor(curl, 'Carga')).toBe('22.5 kg')
-  })
-})
-
-describe('cuándo una serie está hecha', () => {
-  it('con cualquier dato anotado, o marcada', () => {
-    expect(tieneDatos({ peso_real: 40, completada: false })).toBe(true)
-    expect(tieneDatos({ repeticiones_reales: 10 })).toBe(true)
-    expect(tieneDatos({ tiempo_real: 45 })).toBe(true)
-    expect(tieneDatos({ completada: true })).toBe(true)
-  })
-
-  it('sin nada y sin marcar, no', () => {
-    expect(tieneDatos({ completada: false })).toBe(false)
-    expect(tieneDatos({ peso_real: null, repeticiones_reales: null })).toBe(false)
   })
 })
 
@@ -108,6 +94,15 @@ describe('lo que hizo en fuerza, cuando lo anota todo', () => {
     ])
     expect(valor(s, 'Carga')).toBe('60 kg')
     expect(valor(s, 'Encadenado')).toBe('20 kg · 12 reps')
+  })
+
+  /* Si solo anotó el segundo ejercicio, la serie la hizo igual: no es «no
+     anotó nada». */
+  it('una superserie con solo el encadenado anotado también cuenta', () => {
+    const s = camposHechos(t, [serie(1, { peso_real: 20, ejercicio_numero: 2 })])
+    expect(valor(s, 'Series')).toBe('1 de 3')
+    expect(valor(s, 'Carga')).toBe('—')
+    expect(valor(s, 'Encadenado')).toBe('20 kg')
   })
 
   it('si no anotó nada, lo dice en vez de enseñar ceros', () => {

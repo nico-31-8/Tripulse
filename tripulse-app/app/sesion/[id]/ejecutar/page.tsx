@@ -16,6 +16,7 @@ import { rpeDeSesion } from '@/lib/rpe-sesion'
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
+import { serieEscrita, seriesHechas } from '@/lib/serie-hecha'
 
 const segAMmss = mmss
 
@@ -650,10 +651,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 )
               })}
             </div>
-            {/* Resumen rápido */}
+            {/* Resumen rápido. Cuenta la serie si la marcó o si escribió algo en
+                ella (lib/serie-hecha): casi nadie pulsa «Marcar». */}
             <div className="mt-3 pt-3 border-t border-gray-700">
               <p className="text-xs text-gray-500">
-                {Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length} / {vecesDe(tarea)} series completadas
+                {Object.keys(r).filter(k => k.startsWith('serie_') && serieEscrita(r[k])).length} / {vecesDe(tarea)} series completadas
               </p>
             </div>
           </div>
@@ -776,8 +778,19 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             // no con la disciplina: si el objetivo era el pulso, «Ritmo real»
             // pedía otra cosa distinta de la prescrita.
             const medida = queSeMide(ritmoObj, t.disciplina || sesion?.disciplina)
-            const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
-            const totalSeries = vecesDe(t)
+            /* Las de fuerza no pasan por `resultados`: se anotan serie a serie por
+               ejercicio. Contarlas de ahí daba «0/3» en TODAS las tareas de
+               fuerza, las hubiera hecho o no. Hecha = marcada o con algo
+               anotado (lib/serie-hecha); y 3 si no se dijo cuántas, como en
+               el registro. */
+            const ejsT = ejerciciosPorTarea[t.id] || []
+            const esFuerzaT = t.disciplina === 'Fuerza' || sesion.disciplina === 'Fuerza'
+            const seriesCompletadas = esFuerzaT
+              ? ejsT.reduce((a, e) => a + seriesHechas(seriesFuerza[e.id]), 0)
+              : Object.keys(r).filter(k => k.startsWith('serie_') && serieEscrita(r[k])).length
+            const totalSeries = esFuerzaT && ejsT.length
+              ? ejsT.reduce((a, e) => a + (Number(e.series) || 3), 0)
+              : vecesDe(t)
 
             return (
               <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
