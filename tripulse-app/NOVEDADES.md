@@ -16,7 +16,7 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
-### Los tests escalonados suenan más fuerte, y vibran al cambiar de escalón
+### Los tests escalonados suenan más fuerte, vibran y destellan al cambiar de escalón
 
 En los tests con escalones (Montreal, rampas, course navette…), el aviso de
 cambio de escalón era un pitido flojo que costaba oír en pista. Ahora:
@@ -26,18 +26,20 @@ cambio de escalón era un pitido flojo que costaba oír en pista. Ahora:
   pitidos de los tests, también los del ritmo y el «queda poco».
 - **El cambio de escalón son dos pitidos seguidos**, para que no se confunda
   con los demás.
-- **Y el móvil vibra** dos veces a la vez. Al lado del botón del sonido hay
-  otro, *📳 Vibra al cambiar de escalón*, para apagarlo. Los dos se acuerdan de
-  lo que elegiste en ese móvil.
-- Al encender cualquiera de los dos, suena o vibra una vez, para comprobar que
-  el volumen está bien.
+- **El móvil vibra** dos veces a la vez.
+- **Y la pantalla destella**: se tiñe de naranja medio segundo y se desvanece.
+  Se ve de reojo, sin tener que leer los números, y deja verlos a través.
+- Al lado del botón del sonido están *📳 Vibra* y *💡 Destella*, para apagar
+  cada uno por su lado. Se acuerdan de lo que elegiste en ese móvil, y al
+  encender cualquiera avisa una vez para que lo compruebes.
 
 **En iPhone no hay vibración**: Safari no deja vibrar a ninguna web, así que
-el botón no aparece. Y si en un iPhone no se oye nada, mira que no esté puesto
-el interruptor de silencio: puede callar los sonidos del navegador.
+ese botón no aparece. Para eso está el destello, que sí funciona en iPhone. Y
+si en un iPhone no se oye nada, mira que no esté puesto el interruptor de
+silencio: puede callar los sonidos del navegador.
 
 En el laboratorio, el botón de cada bloque ahora dice *Avisa al cambiar*: si lo
-apagas, ese bloque no pita ni vibra al cambiar de escalón.
+apagas, ese bloque no pita, ni vibra, ni destella al cambiar de escalón.
 
 ### Nueva categoría de ejercicios: Complejos
 

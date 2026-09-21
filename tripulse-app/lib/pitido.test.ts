@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { debePitar, vibrar, puedeVibrar, vibracionEncendida, ponVibracion, PATRON_ESCALON } from './pitido'
+import {
+  debePitar, vibrar, puedeVibrar, vibracionEncendida, ponVibracion, PATRON_ESCALON,
+  destellar, destelloEncendido, ponDestello,
+} from './pitido'
 
 describe('cuándo suena el cambio de escalón', () => {
   it('suena al pasar de un escalón al siguiente', () => {
@@ -75,9 +78,57 @@ describe('la vibración del cambio de escalón', () => {
     expect(() => vibrar()).not.toThrow()
   })
 
-  it('sin localStorage (ventana privada), sigue encendida', () => {
+  it('sin localStorage (ventana privada), sigue encendida la vibración', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('bloqueado') }, setItem: () => { throw new Error('bloqueado') } })
     expect(vibracionEncendida()).toBe(true)
     expect(() => ponVibracion(false)).not.toThrow()
+  })
+})
+
+/** Un documento de mentira: lo justo para ver si se pinta la capa. */
+function documento() {
+  const pintadas: { style: Record<string, string>; quitada: boolean }[] = []
+  return {
+    pintadas,
+    doc: {
+      body: { appendChild: (c: { style: Record<string, string>; quitada: boolean }) => { pintadas.push(c) } },
+      createElement: () => {
+        const c = { style: {} as Record<string, string>, quitada: false, setAttribute: () => {}, animate: () => ({}), remove: () => { c.quitada = true } }
+        return c
+      },
+    },
+  }
+}
+
+describe('el destello del cambio de escalón', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+
+  it('pinta una capa que no bloquea los toques y se quita sola', () => {
+    vi.useFakeTimers()
+    const { pintadas, doc } = documento()
+    vi.stubGlobal('document', doc)
+    vi.stubGlobal('localStorage', almacen())
+    destellar()
+    expect(pintadas).toHaveLength(1)
+    expect(pintadas[0].style.pointerEvents).toBe('none')
+    expect(pintadas[0].style.position).toBe('fixed')
+    vi.advanceTimersByTime(1000)
+    expect(pintadas[0].quitada).toBe(true)
+  })
+
+  it('encendido por defecto, y apagado no pinta nada', () => {
+    const { pintadas, doc } = documento()
+    vi.stubGlobal('document', doc)
+    vi.stubGlobal('localStorage', almacen())
+    expect(destelloEncendido()).toBe(true)
+    ponDestello(false)
+    destellar()
+    expect(pintadas).toHaveLength(0)
+  })
+
+  /* En el servidor no hay documento: llamarlo ahí no puede romper la página. */
+  it('sin documento, ni lo intenta ni falla', () => {
+    vi.stubGlobal('localStorage', almacen())
+    expect(() => destellar()).not.toThrow()
   })
 })

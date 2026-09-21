@@ -1847,7 +1847,7 @@ function Pasar({
       )}
 
       {(cronos.length > 0 || escalonados.length > 0) && (
-        <InterruptoresAviso textoSonido="Suena" conVibracion={escalonados.length > 0} className="mt-3" />
+        <InterruptoresAviso textoSonido="Suena" hayEscalones={escalonados.length > 0} className="mt-3" />
       )}
 
       {escalonados.map(bl => {

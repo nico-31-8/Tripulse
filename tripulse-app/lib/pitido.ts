@@ -19,7 +19,12 @@
 //
 // Y VIBRA. Con el móvil en la mano o en el bolsillo, el cambio de escalón se
 // nota aunque haya ruido. Solo en Android: Safari (iPhone) no deja vibrar desde
-// una web, y ahí el interruptor ni aparece.
+// una web, y ahí el interruptor ni aparece. El truco que daba un «tic» en
+// iPhone lo cerró Apple en iOS 26.5: ahora solo responde a un dedo de verdad.
+//
+// Y DESTELLA. Para el iPhone, y para quien tenga el móvil en la mano sin mirar
+// los números: la pantalla se tiñe de naranja medio segundo y se desvanece. Se
+// ve de reojo.
 //
 // LOS NAVEGADORES NO DEJAN SONAR SIN UNA PULSACIÓN, y es una norma razonable:
 // si no, cualquier página pitaría sola. Por eso el audio se despierta en el
@@ -172,11 +177,66 @@ export function sonarEscalon(): void {
   pitar(880, 200, 2)
 }
 
+// ============================================================
+// El destello
+// ============================================================
+
+const CLAVE_DESTELLO = 'tp_destello_tests'
+
+/** Si el destello está encendido. Encendido por defecto, como el resto. */
+export function destelloEncendido(): boolean {
+  try { return localStorage.getItem(CLAVE_DESTELLO) !== 'no' } catch { return true }
+}
+
+export function ponDestello(encendido: boolean): void {
+  try { localStorage.setItem(CLAVE_DESTELLO, encendido ? 'si' : 'no') } catch { /* modo privado */ }
+}
+
+/** Cuánto dura el destello, en ms. */
+export const DURACION_DESTELLO = 650
+
 /**
- * Lo que pasa al cambiar de escalón, en todas las pantallas: dos pitidos y dos
- * vibraciones. Cada una se calla por su lado si el entrenador la ha apagado.
+ * La pantalla se tiñe de naranja y se desvanece.
+ *
+ * Se pinta a mano sobre el documento y no con React: así vale igual en las tres
+ * pantallas sin que cada una tenga que reservarle un sitio. No bloquea nada
+ * (pointer-events: none) y deja ver los números a través, para no tapar el
+ * escalón justo cuando cambia.
+ *
+ * Con «reducir movimiento» activado en el móvil no hay fundido: aparece y
+ * desaparece de golpe, que sigue avisando sin animar nada.
+ */
+export function destellar(): void {
+  if (!destelloEncendido()) return
+  if (typeof document === 'undefined' || !document.body) return
+  try {
+    const quieto = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const capa = document.createElement('div')
+    capa.setAttribute('aria-hidden', 'true')
+    Object.assign(capa.style, {
+      position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '9999',
+      background: '#fb923c', opacity: quieto ? '0.7' : '0',
+    })
+    document.body.appendChild(capa)
+    /* El fundido con la API de animaciones y no con una transición de CSS: la
+       transición necesita que el navegador pinte la capa opaca en un fotograma
+       y la cambie en el siguiente, y eso depende de cuándo le toque pintar. */
+    if (!quieto && typeof capa.animate === 'function') {
+      capa.animate([{ opacity: 0.7 }, { opacity: 0 }], { duration: DURACION_DESTELLO, easing: 'ease-out' })
+    }
+    /* Se quita por reloj y no al acabar la animación: con la pantalla apagada
+       la animación no termina nunca, y la capa se quedaría puesta. */
+    setTimeout(() => capa.remove(), quieto ? 400 : DURACION_DESTELLO + 50)
+  } catch { /* sin destello, el test sigue */ }
+}
+
+/**
+ * Lo que pasa al cambiar de escalón, en todas las pantallas: dos pitidos, dos
+ * vibraciones y un destello. Cada uno se calla por su lado si el entrenador lo
+ * ha apagado.
  */
 export function avisarEscalon(): void {
   sonarEscalon()
   vibrar()
+  destellar()
 }
