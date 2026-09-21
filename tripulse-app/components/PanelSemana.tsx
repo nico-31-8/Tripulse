@@ -19,7 +19,7 @@
 // cual. La conversión es la MISMA que usa el botón de editar (lib/copiar-tarea);
 // lo único que cambia es que no lleva `idTarea`, así que la sesión de origen no
 // se toca.
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   lunesDe, diasDeLaSemana, resumenDeSemana, etiquetaDeSemana, puedeCopiarse,
@@ -30,6 +30,7 @@ import { vistaDeTarea, zonasDeSesion } from '@/lib/tarea-vista'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { sumarDias } from '@/lib/desplazar'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
+import { camposHechos, seriesDeTarea, type SerieRealizada } from '@/lib/lo-que-hizo'
 
 /* Los mismos colores de disciplina que el calendario y el panel del deportista. */
 const COLOR_DISC: Record<string, string> = {
@@ -59,7 +60,7 @@ interface Props {
 
 const SELECT_TAREA =
   '*, p_duracion(*), p_distancia(*), p_repeticiones(*), ' +
-  'ejercicios(nombre, series, repeticiones, tipo_serie, ejercicio_encadenado_nombre, ' +
+  'ejercicios(id, nombre, series, repeticiones, tipo_serie, ejercicio_encadenado_nombre, ' +
   'ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, ' +
   'escalones_drop, grupo_muscular, intensidad, control_tipo, ' +
   'control_valor, notas_ejecucion, ' +
@@ -78,6 +79,12 @@ export default function PanelSemana({
   const [abierta, setAbierta] = useState<number | null>(null)
   const [cargando, setCargando] = useState(true)
   const [copiada, setCopiada] = useState<string | null>(null)
+  /* LO QUE HIZO. En una sesión hecha, el botón cambia las tarjetas entre lo
+     que se prescribió y lo que el atleta anotó. Se queda puesto al saltar de
+     sesión: comparar el lunes con el jueves es justo para lo que sirve. */
+  const [verHecho, setVerHecho] = useState(false)
+  const [hechas, setHechas] = useState<Record<number, SerieRealizada[]>>({})
+  const hechasPedidas = useRef<Set<number>>(new Set())
 
   const sesionEsDeFuerza = esDisciplinaDeFuerza(disciplinaSesion)
 
@@ -146,6 +153,36 @@ export default function PanelSemana({
   const resumen = resumenDeSemana(dias)
   const etiqueta = etiquetaDeSemana(lunes, micros)
   const sesionAbierta = sesiones.find(s => s.id === abierta) || null
+  const abiertaHecha = sesionAbierta?.estado === 'Realizada'
+
+  /* Lo anotado se pide AL ABRIR una sesión hecha, y una sola vez: la mayoría de
+     las que se abren aquí no están hechas, y traer las series de toda la
+     semana para enseñar una sería pedir de más.
+
+     Por dos lados, porque se guardan por dos lados: en fuerza cuelgan del
+     ejercicio y en resistencia de la tarea. Una fila que venga por los dos
+     se queda una vez: repetida, la serie saldría dos veces en «Hecho». */
+  useEffect(() => {
+    const s = sesiones.find(x => x.id === abierta)
+    if (!s || s.estado !== 'Realizada' || hechasPedidas.current.has(s.id)) return
+    hechasPedidas.current.add(s.id)
+    const tareas = (s.tareas || []) as { id?: number; ejercicios?: { id?: number }[] }[]
+    const idsTarea = tareas.map(t => t.id).filter(Boolean)
+    const idsEj = tareas.flatMap(t => (t.ejercicios || []).map(e => e.id)).filter(Boolean)
+    ;(async () => {
+      const [porEj, porTarea] = await Promise.all([
+        idsEj.length
+          ? supabase.from('series_realizadas').select('id, id_ejercicio, id_tarea, numero_serie, peso_real, repeticiones_reales, tiempo_real, metros_reales, control_real, control_tipo, ejercicio_numero, completada').in('id_ejercicio', idsEj)
+          : Promise.resolve({ data: [] as SerieRealizada[] }),
+        idsTarea.length
+          ? supabase.from('series_realizadas').select('id, id_ejercicio, id_tarea, numero_serie, peso_real, repeticiones_reales, tiempo_real, metros_reales, control_real, control_tipo, ejercicio_numero, completada').in('id_tarea', idsTarea)
+          : Promise.resolve({ data: [] as SerieRealizada[] }),
+      ])
+      const unicas = new Map<number, SerieRealizada>()
+      for (const f of [...(porEj.data || []), ...(porTarea.data || [])] as (SerieRealizada & { id: number })[]) unicas.set(f.id, f)
+      setHechas(h => ({ ...h, [s.id]: [...unicas.values()] }))
+    })()
+  }, [abierta, sesiones])
 
   const mover = (n: number) => { setLunes(l => sumarDias(l, n * 7)); setAbierta(null) }
 
@@ -287,6 +324,24 @@ export default function PanelSemana({
                       aria-label="Ver la sesión siguiente de la semana"
                       title={siguiente ? 'Ir a ' + comoSeLlama(dias, siguiente) : 'No hay ninguna después en esta semana'}
                       className={flechaBtn}>›</button>
+
+                    {/* LO QUE PRESCRIBÍ ⇄ LO QUE HIZO. Solo en una sesión hecha:
+                        en una pendiente no hay nada que comparar. */}
+                    {abiertaHecha && (
+                      <div role="group" aria-label="Qué enseñar de esta sesión"
+                        className="flex rounded-lg border border-gray-700 overflow-hidden ml-1">
+                        <button onClick={() => setVerHecho(false)} aria-pressed={!verHecho}
+                          className={'text-[11px] font-semibold px-2.5 py-1 transition ' +
+                            (!verHecho ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300')}>
+                          Prescrito
+                        </button>
+                        <button onClick={() => setVerHecho(true)} aria-pressed={verHecho}
+                          className={'text-[11px] font-semibold px-2.5 py-1 border-l border-gray-700 transition ' +
+                            (verHecho ? 'bg-green-500/15 text-green-300' : 'text-gray-500 hover:text-gray-300')}>
+                          Lo que hizo
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {copiables.length > 0 && (
@@ -319,6 +374,12 @@ export default function PanelSemana({
                   {tareas.map((t: any, i: number) => {
                     const v = vistaDeTarea(t, tests, fcMax)
                     const cabe = puedeCopiarse(t, sesionEsDeFuerza)
+                    const mirandoHecho = abiertaHecha && verHecho
+                    const anotadas = sesionAbierta ? hechas[sesionAbierta.id] : undefined
+                    /* undefined = todavía no ha llegado; null = no anotó nada. Son
+                       dos cosas distintas y se dicen distinto. */
+                    const hecho = mirandoHecho && anotadas ? camposHechos(t, seriesDeTarea(t, anotadas)) : null
+                    const campos = mirandoHecho ? (hecho || []) : v.campos
                     return (
                       <div key={t.id ?? i}
                         className={'rounded-xl border border-gray-800 bg-gray-950/70 px-3 py-2.5 hover:border-gray-700 transition' + (i ? ' mt-1.5' : '')}>
@@ -332,11 +393,17 @@ export default function PanelSemana({
                             </div>
                           </div>
                         </div>
+                        {mirandoHecho && !anotadas && (
+                          <p className="text-[11.5px] text-gray-500 m-0 px-1">Cargando lo que anotó…</p>
+                        )}
+                        {mirandoHecho && anotadas && !hecho && (
+                          <p className="text-[11.5px] text-gray-500 m-0 px-1 italic">No anotó nada en esta tarea.</p>
+                        )}
                         <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(94px,1fr))' }}>
-                          {v.campos.map(c => (
+                          {campos.map(c => (
                             <div key={c.k} className="bg-white/[0.028] rounded-md px-2 py-1 min-w-0">
                               <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">{c.k}</span>
-                              <span className={'text-[12.5px] font-semibold tabular-nums break-words ' + (c.destaca ? 'text-orange-400' : '')}>{c.v}</span>
+                              <span className={'text-[12.5px] font-semibold tabular-nums break-words ' + (c.destaca ? (mirandoHecho ? 'text-green-300' : 'text-orange-400') : '')}>{c.v}</span>
                             </div>
                           ))}
                         </div>
@@ -369,7 +436,9 @@ export default function PanelSemana({
 
                 <div className="px-3.5 py-2 border-t border-gray-800 bg-black/20">
                   <p className="text-[11px] text-gray-500 m-0">
-                    Copiar te deja la tarea como fila nueva abajo, sin guardar. La revisas y le das a ✓. Esta sesión no se toca.
+                    {abiertaHecha && verHecho
+                      ? 'Estás viendo lo que anotó. Copiar copia lo que prescribiste: ajusta el peso con esto al revisarla abajo.'
+                      : 'Copiar te deja la tarea como fila nueva abajo, sin guardar. La revisas y le das a ✓. Esta sesión no se toca.'}
                   </p>
                 </div>
               </div>

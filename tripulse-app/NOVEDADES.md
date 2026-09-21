@@ -16,6 +16,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
+### Ver lo que hizo la semana pasada al prescribir la de esta
+
+En el panel **La semana** de la ficha de sesión, cuando abres una sesión que
+ya está **hecha**, aparece un botón al lado del título: **Prescrito · Lo que
+hizo**.
+
+Con **Lo que hizo**, cada tarea enseña lo que anotó el deportista **en las
+mismas casillas** que la prescripción: series, repeticiones, **carga** y
+control. Así pasas de «Carga —» a «Carga 40 kg» y sabes cuánto ponerle esta
+semana sin salir de la sesión que estás montando.
+
+- Si puso el mismo peso en todas las series, sale una vez («40 kg»); si lo fue
+  cambiando, serie a serie («60 · 60 · 62,5 kg»).
+- Lo que **no anotó** sale como «—». No es un cero: es que no lo apuntó. Y si
+  no anotó nada en una tarea, lo dice.
+- Una serie cuenta como hecha **si tiene algo anotado**, aunque no la marcara.
+  Es lo normal: muchos atletas ponen los kilos y no tocan el circulito.
+- En resistencia enseña los metros y tiempos de cada serie, o lo que dejó al
+  cerrar la sesión, y el RPE.
+
+«Copiar» sigue copiando lo que **prescribiste**: lo anotado está para que
+ajustes el peso al revisarla abajo.
+
 ### Series en bloques: 3 × (2 × 400)
 
 Hasta ahora una tarea era «series × algo» con **un solo descanso**. Un 3×2×400
