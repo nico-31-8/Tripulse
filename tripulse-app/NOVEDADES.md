@@ -16,6 +16,30 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
+### Nueva categoría de ejercicios: Complejos
+
+Al prescribir fuerza, el desplegable **Grupo** tiene una categoría nueva,
+**Complejos**: los levantamientos de cuerpo entero que llevan la carga de abajo
+arriba. Trae 20 ejercicios, cada uno con su descripción, los pasos y una dosis
+orientativa:
+
+- **Con barra**: arrancada, arrancada de fuerza, arrancada colgada, cargada,
+  cargada de fuerza, cargada colgada, tirón de cargada, dos tiempos, envión en
+  tijera, cargada y press, y thruster.
+- **Con mancuerna**: arrancada a una mano, cargada, cargada y press, thruster,
+  devil press, man maker y del suelo a overhead.
+- **Con kettlebell**: arrancada, y cargada y press.
+
+Se prescriben como una serie normal. No hay que confundirlos con el tipo de
+serie **Complex**, que encadena dos ejercicios en la misma serie.
+
+- En el **buscador de ejercicios** (la lupa) hay un filtro nuevo, *Complejos*.
+- En la **biblioteca de fuerza** son una etiqueta más. Si marcas un ejercicio
+  como *Complejos*, pasa a salir en ese grupo al prescribir; si se la quitas,
+  vuelve a su grupo de siempre.
+- En el **reparto de series por grupo** de la semana salen como un grupo propio.
+- Van **sin vídeo**: se lo puedes poner desde la lupa o desde la biblioteca.
+
 ### Una serie cuenta como hecha aunque no se marque
 
 Cada serie tiene un circulito para marcarla, y casi nadie lo pulsa: de todas

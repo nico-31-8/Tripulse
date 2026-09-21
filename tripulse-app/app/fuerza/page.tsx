@@ -3,8 +3,11 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { COMPLEJOS, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
 
-const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab']
+/* Complejos: arrancada, cargada, del suelo a overhead… Es una etiqueta más,
+   pero además decide el grupo con el que sale al prescribir (lib/grupo-ejercicio). */
+const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab', COMPLEJOS]
 const DISCIPLINAS = ['Natación', 'Ciclismo', 'Carrera']
 const REGIONES = [
   'Cuádriceps', 'Isquiotibiales', 'Glúteos', 'Cadera y aductores', 'Rodilla',
@@ -33,6 +36,7 @@ const CLASE_TIPO: Record<string, string> = {
   'Movilidad': 'bg-purple-900 text-purple-300',
   'Técnica': 'bg-blue-900 text-blue-300',
   'Rehab': 'bg-red-900 text-red-300',
+  [COMPLEJOS]: 'bg-amber-900 text-amber-300',
 }
 
 const CLAVE_ADMIN = 'fuerza25'
@@ -116,7 +120,7 @@ export default function FuerzaPage() {
   const guardarEjercicio = async (e: React.FormEvent) => {
     e.preventDefault()
     setGuardando(true)
-    const grupo = aRegion[0] || (aTipo.includes('Movilidad') ? 'Movilidad y flexibilidad' : 'Otros')
+    const grupo = grupoAlCrear(aTipo, aRegion)
     await supabase.from('ejercicios_biblioteca').insert({
       nombre, grupo_muscular: grupo, url_video: urlVideo || null,
       descripcion: descripcion || null, ejecucion: ejecucion || null,
@@ -141,10 +145,13 @@ export default function FuerzaPage() {
   const guardarEdicion = async (e: React.FormEvent) => {
     e.preventDefault()
     setGuardandoEdit(true)
+    /* El grupo solo se toca si entra o sale de Complejos: si no, se respeta. */
+    const grupo = grupoAlEditar(ejercicioEditando.grupo_muscular, eTipo, eRegion)
     await supabase.from('ejercicios_biblioteca').update({
       nombre: editNombre, url_video: editVideo || null,
       descripcion: editDescripcion || null, ejecucion: editEjecucion || null,
       tipo: eTipo, region: eRegion, disciplina: eDisc, momento: eMomento, lesion: eLesion,
+      ...(grupo ? { grupo_muscular: grupo } : {}),
     }).eq('id', ejercicioEditando.id)
     setEjercicioEditando(null)
     setGuardandoEdit(false)

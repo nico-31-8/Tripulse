@@ -27,6 +27,7 @@ import {
   EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, gruposExistentes, crearEjercicioPropio,
   editarEjercicioPropio, borrarEjercicioPropio, esMio, type EjercicioNuevo,
 } from '@/lib/ejercicio-propio'
+import { COMPLEJOS } from '@/lib/grupo-ejercicio'
 
 export interface EjercicioBib {
   id: number
@@ -48,6 +49,7 @@ const FILTROS: { id: string; et: string; test: (e: EjercicioBib) => boolean }[] 
   { id: 'inf', et: 'Tren inferior', test: e => /cuádriceps|cuadriceps|isquio|glúteo|gluteo|cadera|rodilla|tobillo/i.test(e.grupo_muscular || '') },
   { id: 'sup', et: 'Tren superior', test: e => /pectoral|espalda|hombro|bíceps|biceps|tríceps|triceps|cuello/i.test(e.grupo_muscular || '') },
   { id: 'esp', et: 'Específico', test: e => /específico|especifico/i.test(e.grupo_muscular || '') },
+  { id: 'comp', et: 'Complejos', test: e => e.grupo_muscular === COMPLEJOS },
 ]
 
 const sinTildes = (s: string) =>
