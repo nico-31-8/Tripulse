@@ -15,6 +15,7 @@ import { rpeDeSesion } from '@/lib/rpe-sesion'
 
 const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
+import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 
 const segAMmss = mmss
 
@@ -431,7 +432,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 <span className="text-xs text-gray-400">{t.disciplina}</span>
               </div>
               <div className="flex gap-4 text-sm">
-                {t.series && <span>🔁 {t.series} series</span>}
+                {t.series && <span>🔁 {hayBloques(t) ? bloquesDe(t) + ' × ' + t.series : t.series} series</span>}
                 <span>🎯 {getObjetivo(t)}</span>
                 {t.descanso_segundos && <span>⏸ {segAMmss(t.descanso_segundos)}</span>}
               </div>
@@ -514,7 +515,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               {tarea?.series && (
                 <div className="bg-black/30 rounded-lg p-2">
                   <p className="text-xs text-gray-400">Series</p>
-                  <p className="font-bold text-lg">{tarea.series}</p>
+                  <p className="font-bold text-lg">{hayBloques(tarea) ? bloquesDe(tarea) + ' × ' + tarea.series : tarea.series}</p>
                 </div>
               )}
               <div className="bg-black/30 rounded-lg p-2">
@@ -587,10 +588,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
             <div className="flex justify-between items-center mb-4">
               <p className="font-medium text-gray-300">Registro por serie (opcional)</p>
-              <span className="text-xs text-gray-500">{tarea?.series || 1} series</span>
+              <span className="text-xs text-gray-500">{vecesDe(tarea)} series</span>
             </div>
             <div className="flex flex-col gap-3">
-              {Array.from({ length: tarea?.series || 1 }, (_, serieIdx) => {
+              {Array.from({ length: vecesDe(tarea) }, (_, serieIdx) => {
                 const serieKey = 'serie_' + serieIdx
                 const serieData = r[serieKey] || {}
                 const completada = serieData.completada
@@ -652,7 +653,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             {/* Resumen rápido */}
             <div className="mt-3 pt-3 border-t border-gray-700">
               <p className="text-xs text-gray-500">
-                {Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length} / {tarea?.series || 1} series completadas
+                {Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length} / {vecesDe(tarea)} series completadas
               </p>
             </div>
           </div>
@@ -776,7 +777,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             // pedía otra cosa distinta de la prescrita.
             const medida = queSeMide(ritmoObj, t.disciplina || sesion?.disciplina)
             const seriesCompletadas = Object.keys(r).filter(k => k.startsWith('serie_') && r[k]?.completada).length
-            const totalSeries = t.series || 1
+            const totalSeries = vecesDe(t)
 
             return (
               <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">

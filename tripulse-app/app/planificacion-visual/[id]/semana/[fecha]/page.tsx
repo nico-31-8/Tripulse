@@ -156,7 +156,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
 
     // ---- Ronda 2: los bloques de cada sesión ----
     const { data: tareasData } = await supabase.from('tarea')
-      .select('id, id_sesion, series, zona_entrenamiento, disciplina, orden')
+      .select('id, id_sesion, zona_entrenamiento, disciplina, orden')
       .in('id_sesion', sesiones_cargadas.map(s => s.id)).order('orden')
 
     // Para la tarjeta: simple/compleja + siglas, y en un brick la secuencia de

@@ -17,6 +17,7 @@ import { vivas } from '@/lib/papelera'
 import { aISO } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConectarReloj'
+import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
@@ -121,7 +122,7 @@ export default function DashboardDeportista() {
 
       const idsHoy = sesHoy.map(s => s.id)
       if (idsHoy.length) {
-        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden').in('id_sesion', idsHoy).order('orden')
+        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden, bloques, descanso_bloques_segundos').in('id_sesion', idsHoy).order('orden')
         const tarIds = (tar || []).map((t: any) => t.id)
         const [pd, pdur] = await Promise.all([
           tarIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tarIds) : { data: [] },
@@ -187,6 +188,10 @@ export default function DashboardDeportista() {
 
   const stepTexto = (t: any) => {
     const cant = t.metros ? t.metros + ' m' : t.seg ? (t.seg >= 60 ? Math.round(t.seg / 60) + ' min' : t.seg + ' s') : ''
+    /* En bloques se lee «3 × (2 × 400 m)»: sin los paréntesis, el atleta vería
+       seis 400 seguidos y se saltaría el descanso largo. El texto es de
+       lib/bloques-tarea, como la cuenta. */
+    if (cant && hayBloques(t)) return repeticionTexto(t, cant)
     const series = t.series && t.series > 1 ? t.series + '× ' : ''
     return (series + cant).trim() || 'Bloque'
   }

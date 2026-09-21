@@ -6,6 +6,7 @@ import {
   calcularDuracionEstimada,
   type TestsDeportista, type ResultadoDuracion, type OpcionesDuracion,
 } from './duracion'
+import { SELECT_EJERCICIOS_CONTEO } from './cardio-fuerza'
 
 export async function estimarDuraciones(
   supabase: any,
@@ -29,7 +30,7 @@ export async function estimarDuraciones(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos')
+    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos')
     .in('id_sesion', sesionIds)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
@@ -40,7 +41,7 @@ export async function estimarDuraciones(
     ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds)
     : { data: [] }
   const { data: ejs } = tareaIds.length
-    ? await supabase.from('ejercicios').select('id_tarea, repeticiones').in('id_tarea', tareaIds)
+    ? await supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds)
     : { data: [] }
 
   for (const sid of sesionIds) {
@@ -49,6 +50,8 @@ export async function estimarDuraciones(
       disciplina: t.disciplina,
       series: t.series,
       descanso_segundos: t.descanso_segundos,
+      bloques: t.bloques,
+      descanso_bloques_segundos: t.descanso_bloques_segundos,
       zona_entrenamiento: t.zona_entrenamiento,
       p_distancia: (dists || []).filter((d: any) => d.id_tarea === t.id),
       p_duracion: (durs || []).filter((d: any) => d.id_tarea === t.id),

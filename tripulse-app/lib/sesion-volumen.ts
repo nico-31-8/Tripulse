@@ -18,6 +18,7 @@ import { calcularDuracionEstimada } from './duracion'
 import type { TestsDeportista, ResultadoDuracion } from './duracion'
 import { cargaDeTarea } from './prescripcion-zona'
 import { metrosDeCardio } from './cardio-fuerza'
+import { vecesDe } from './bloques-tarea'
 
 export interface TareaCruda {
   id: number
@@ -26,6 +27,9 @@ export interface TareaCruda {
   disciplina?: string | null
   zona_entrenamiento?: string | null
   descanso_segundos?: number | null
+  /** En bloques: 3 × (2 × 400). Ver lib/bloques-tarea. */
+  bloques?: number | null
+  descanso_bloques_segundos?: number | null
 }
 
 export interface Distancia { id_tarea: number; metros_planeados?: number | null }
@@ -90,7 +94,11 @@ export function conVolumen(
     const suyas = tareasDe.get(s.id) || []
     let metros = 0, seg = 0
     const tareasDur = suyas.map(t => {
-      const series = t.series || 1
+      /* Series POR bloques: 3 × (2 × 400) son seis 400, 2.400 m y no 800. La
+         cuenta es de `vecesDe` y no de aquí: si cada sitio multiplicara a su
+         manera, uno se olvidaría de los bloques y el volumen saldría a un
+         tercio sin que nada fallara. */
+      const series = vecesDe(t)
       const d = dist.get(t.id) || []
       const u = dur.get(t.id) || []
       metros += (d[0]?.metros_planeados || 0) * series
@@ -108,6 +116,8 @@ export function conVolumen(
         disciplina: t.disciplina,
         series: t.series,
         descanso_segundos: t.descanso_segundos,
+        bloques: t.bloques,
+        descanso_bloques_segundos: t.descanso_bloques_segundos,
         zona_entrenamiento: t.zona_entrenamiento,
         p_distancia: d,
         p_duracion: u,

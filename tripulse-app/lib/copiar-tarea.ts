@@ -44,6 +44,16 @@ export interface FilaResistencia {
   comentario: string
   esTecnica: boolean
   tecnicaId: string
+  /**
+   * El botón 🔁 de la fila: la tarea en bloques, 3 × (2 × 400).
+   *
+   * Opcionales a propósito: apagado es el estado normal, y una fila que no los
+   * trae —las de antes, las que vienen de una plantilla— es una tarea sin
+   * bloques, que es exactamente lo que era.
+   */
+  enBloques?: boolean
+  bloques?: string
+  descansoBloques?: string
   guardado?: boolean
   /** Si viene, la fila EDITA esa tarea en vez de crear una nueva. */
   idTarea?: number
@@ -148,6 +158,11 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     // propia — si hubiera dos, se contradirían.
     esTecnica: !!t.tecnica_id,
     tecnicaId: t.tecnica_id ? String(t.tecnica_id) : '',
+    /* Vuelve encendido si estaba en bloques, para poder editarlo; y al
+       duplicar, la copia sale en bloques igual que la original. */
+    enBloques: Number(t.bloques) > 1,
+    bloques: Number(t.bloques) > 1 ? String(t.bloques) : '',
+    descansoBloques: t.descanso_bloques_segundos != null ? String(t.descanso_bloques_segundos) : '',
   }
 }
 

@@ -8,6 +8,7 @@
 import { cargaZona } from './zonas'
 import { usuarioActual } from './sesion'
 import type { BloqueP } from './plantillas'
+import { vecesDe } from './bloques-tarea'
 
 export interface PlantillaPropia {
   id: number
@@ -48,7 +49,12 @@ export function bloquesDesdeTareas(tareas: any[]): BloqueP[] {
       const metros = t.p_distancia?.[0]?.metros_planeados ?? null
       const segundos = t.p_duracion?.[0]?.tiempo_planeado ?? null
       const b: BloqueP = { zona: t.zona_entrenamiento }
-      if (t.series && t.series > 1) b.series = t.series
+      /* Una plantilla no tiene bloques, así que 3 × (2 × 400) entra como
+         6 × 400: el volumen sale el mismo —2.400 m, que es lo que no puede
+         mentir— y lo que se pierde es el descanso largo entre bloques, que
+         este formato no sabe guardar. Mejor eso que una plantilla de 800 m. */
+      const veces = vecesDe(t)
+      if (veces > 1) b.series = veces
       if (metros) b.metros = metros
       else if (segundos) b.segundos = segundos
       if (t.descanso_segundos) b.descansoSeg = t.descanso_segundos

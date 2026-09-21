@@ -6,6 +6,7 @@
 // números: si una contara el total y la otra el valor por serie, comparar dos
 // sesiones daría una conclusión falsa — que es justo para lo que sirve el panel.
 import { cuantoPorSerie } from './cardio-fuerza'
+import { vecesDe, hayBloques, bloquesDe } from './bloques-tarea'
 import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
@@ -22,9 +23,9 @@ export function valorPorSerie(t: any): string {
   return '—'
 }
 
-/** Lo que suma la tarea entera: el valor por serie × las series. */
+/** Lo que suma la tarea entera: el valor por serie × las series × los bloques. */
 export function totalDeTarea(t: any): string {
-  const series = t?.series || 1
+  const series = vecesDe(t)
   const seg = t?.p_duracion?.[0]?.tiempo_planeado
   if (seg) {
     const total = seg * series
@@ -130,9 +131,14 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
   const ref = referenciaDeZona(zona, disciplina, tests, fcMax, fcReposo)
   const campos: CampoTarea[] = [
     { k: 'Series', v: t?.series != null ? String(t.series) : '1' },
+    /* Solo si va en bloques: si no, dos campos vacíos en cada tarea serían
+       justo el ruido que el entrenador pidió que no hubiera. */
+    ...(hayBloques(t) ? [{ k: 'Bloques', v: String(bloquesDe(t)) }] : []),
     { k: 'Por serie', v: valorPorSerie(t) },
     { k: 'Total', v: totalDeTarea(t), destaca: true },
     { k: 'Descanso', v: descanso },
+    ...(hayBloques(t) && t?.descanso_bloques_segundos
+      ? [{ k: 'Entre bloques', v: segAMmss(t.descanso_bloques_segundos) }] : []),
   ]
   // El ritmo solo si el atleta tiene el test que toca. Sin test no se enseña un
   // número inventado; se enseña el porcentaje, que sí es cierto.

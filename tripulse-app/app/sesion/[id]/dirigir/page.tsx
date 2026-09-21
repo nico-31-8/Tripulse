@@ -31,17 +31,19 @@ import {
   reloj, relojCorto, filasDe, hechas, notasDe, avisoAlSalir, conNota, type Estado,
 } from '@/lib/dirigir-sesion'
 
+import { vecesDe, repeticionTexto } from '@/lib/bloques-tarea'
+
 const EMOJI: Record<string, string> = { Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
 
 /** Qué se le pidió a esta tarea, para leerlo de un vistazo. */
 function objetivoDe(t: any): string {
-  const series = t.series > 1 ? t.series + ' × ' : ''
+  /* En bloques: «3 × (2 × 400 m)». El texto es de lib/bloques-tarea. */
   const m = t.p_distancia?.[0]?.metros_planeados
-  if (m) return series + (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
+  if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
-  if (seg) return series + Math.round(seg / 60) + ' min'
+  if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
   const reps = t.ejercicios?.[0]?.repeticiones
-  if (reps) return series + reps + ' reps'
+  if (reps) return repeticionTexto(t, reps + ' reps')
   return t.series ? t.series + ' series' : '—'
 }
 
@@ -100,7 +102,7 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
     /* Un reloj por tarea, con tantas series como se prescribieron. Mínimo una:
        un bloque continuo también se cronometra, solo que tiene una sola. */
     const iniciales: Record<number, Estado> = {}
-    lista.forEach((t: any) => { iniciales[t.id] = estadoInicial(Math.max(1, t.series || 1)) })
+    lista.forEach((t: any) => { iniciales[t.id] = estadoInicial(vecesDe(t)) })
     setRelojes(iniciales)
     setCargando(false)
   }

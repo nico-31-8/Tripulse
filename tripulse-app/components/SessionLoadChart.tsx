@@ -2,6 +2,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { cargaZona } from '@/lib/zonas'
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
+import { vecesDe } from '@/lib/bloques-tarea'
 
 // Nivel de intensidad 1–7 de la zona (Z1–Z7 o sigla Zonas 2), vía catálogo.
 function parseZonaNum(str: string): number {
@@ -16,11 +17,11 @@ function estimarDurMin(t: any): number {
     const pace = [6, 5.5, 5, 4.5, 4, 3.5, 3][parseZonaNum(t.zona_entrenamiento || '') - 1] || 5
     return Math.max(1, Math.round((metros / 1000) * pace))
   }
-  return Math.max(1, (t.series || 1) * 3)
+  return Math.max(1, vecesDe(t) * 3)
 }
 
 function calcularVolumenTotal(t: any): { valor: number, unidad: string } {
-  const series = t.series || 1
+  const series = vecesDe(t)
   const pd = t.p_duracion?.[0]?.tiempo_planeado
   if (pd && pd > 0) return { valor: Math.round((pd * series) / 60), unidad: 'min' }
   const metros = t.p_distancia?.[0]?.metros_planeados
@@ -32,7 +33,7 @@ function calcularVolumenTotal(t: any): { valor: number, unidad: string } {
 }
 
 function volumenParaAncho(t: any): number {
-  const series = t.series || 1
+  const series = vecesDe(t)
   const pd = t.p_duracion?.[0]?.tiempo_planeado
   if (pd && pd > 0) return Math.max(1, Math.round((pd * series) / 60))
   const metros = t.p_distancia?.[0]?.metros_planeados
@@ -104,7 +105,7 @@ export default function SessionLoadChart({ tareas }: { tareas: any[] }) {
   const rects: any[] = []
   bars.forEach((b, idx) => {
     const zona = { color: b.carga.color, nombre: b.carga.nombre }
-    const series = b.t.series && b.t.series > 1 ? b.t.series : 1
+    const series = vecesDe(b.t)
     const totalBW = b.volumen * pxPerMin
     const serieW = totalBW / series
     const bH = Math.round((b.zonaNum / 7) * chartH)

@@ -29,6 +29,7 @@ import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
 import { colocarBanda, filasBanda, columnasPorSemana } from '@/lib/banda-competiciones'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
+import { vecesDe } from '@/lib/bloques-tarea'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -1108,7 +1109,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     })
     if (!sessSem.length) { setDetalleSem({ sesiones: [], tareas: [], distancias: [], duraciones: [], ejercicios: [] }); setLoadingDetalle(false); return }
     const sesIds = sessSem.map((s: any) => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, disciplina, series').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, disciplina, series, bloques, descanso_bloques_segundos').in('id_sesion', sesIds)
     const tareaIds = (tareas || []).map((t: any) => t.id)
     const [{ data: dists }, { data: durs }, { data: ejers }] = await Promise.all([
       tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },
@@ -2492,7 +2493,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           const zona = t.zona_entrenamiento || 'Sin zona'
                           const dist = detalleSem.distancias.find((d: any) => d.id_tarea === t.id)
                           const dur = detalleSem.duraciones.find((d: any) => d.id_tarea === t.id)
-                          const vol = ((dist?.metros_planeados || 0) + (dur?.tiempo_planeado || 0)) * (t.series || 1)
+                          const vol = ((dist?.metros_planeados || 0) + (dur?.tiempo_planeado || 0)) * vecesDe(t)
                           zonas[zona] = (zonas[zona] || 0) + vol; totalVol += vol
                         })
                         const zonasOrdenadas = Object.entries(zonas).sort((a: any, b: any) => b[1] - a[1])

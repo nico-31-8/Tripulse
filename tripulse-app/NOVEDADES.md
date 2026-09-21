@@ -16,6 +16,41 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
+### Series en bloques: 3 × (2 × 400)
+
+Hasta ahora una tarea era «series × algo» con **un solo descanso**. Un 3×2×400
+no tenía dónde ir: o lo escribías como 6×400 —y perdías el descanso largo entre
+bloques, que es justo lo que hace distinta la sesión— o como tres tareas
+sueltas de 2×400.
+
+Ahora, en cada tarea de resistencia, delante de las series, hay un **🔁**.
+Apagado no hace nada ni ocupa sitio. Al pulsarlo aparecen solo dos casillas:
+**cuántos bloques** y el **descanso entre bloques** (el corto, entre series,
+sigue en su columna de siempre).
+
+**3 × ( 2 × 400 m ) ⏸ 3:00**
+
+Lo apagas y vuelve a ser una tarea normal. Se enciende **vacío**, sin ningún
+número puesto: hasta que no escribes cuántos bloques, no cambia nada.
+
+**Y cuenta en todas partes**: 3 × (2 × 400) son **2.400 m**, no 800 — en el
+calendario, en la página de volumen, en la carga y en el total de la tabla. La
+duración suma los descansos largos. El atleta lo ve como «3 × (2 × 400 m)» en
+su panel y al hacer la sesión, y tiene casilla para cada una de las seis series.
+Al dirigir, hay un cronómetro para cada una.
+
+Una limitación que conviene saber: si guardas una sesión con bloques **como
+plantilla**, entra como 6 × 400. El volumen es el mismo, pero las plantillas no
+saben guardar el descanso largo entre bloques.
+
+### Dos sitios donde el cardio de fuerza no contaba
+
+Las líneas de **Cardio** de las sesiones de fuerza no estaban sumando su
+duración en dos pantallas: el **dibujo de periodización** y la **página de
+volumen**. En el calendario sí contaban. Ya cuentan en las tres, así que en
+esas dos pantallas la carga de alguna sesión de fuerza **puede subir un poco**:
+es el cardio que antes se quedaba fuera.
+
 ### Un plan dibujado y sin «Generar» ya no se pierde
 
 El dibujo de periodización guarda solo, cada vez que tocas algo. Pero la

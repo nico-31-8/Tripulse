@@ -9,6 +9,7 @@ import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
+import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 
 function secAMinSeg(seg: number): string {
   const m = Math.floor(seg / 60)
@@ -210,7 +211,7 @@ export default function MisAnalisis() {
                         {t.disciplina && (
                           <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>
                         )}
-                        {t.series && <span className="text-gray-400 text-xs ml-auto">{t.series} series</span>}
+                        {t.series && <span className="text-gray-400 text-xs ml-auto">{hayBloques(t) ? bloquesDe(t) + ' × ' : ''}{t.series} series</span>}
                       </div>
 
                       <div className="p-4">

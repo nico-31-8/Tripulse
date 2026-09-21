@@ -18,6 +18,7 @@
 // pero no son la misma cosa.
 
 import { referenciaDeZona, type ReferenciasDeUno } from './referencia-zona'
+import { repeticionTexto } from './bloques-tarea'
 
 export interface SesionDia {
   id: number
@@ -180,9 +181,11 @@ export function detalleDeTarea(campos: { k: string; v: string }[] | null | undef
     return v && v !== '—' ? v : ''
   }
   const series = de('Series')
+  const bloques = de('Bloques')
   const porSerie = de('Por serie') || de('Tiempo') || de('Repeticiones')
   const total = de('Total')
 
+  if (porSerie && bloques) return repeticionTexto({ series: Number(series) || 1, bloques: Number(bloques) }, porSerie)
   if (porSerie) return series && series !== '1' ? series + ' × ' + porSerie : porSerie
   if (total) return total
   return series && series !== '1' ? series + ' series' : ''

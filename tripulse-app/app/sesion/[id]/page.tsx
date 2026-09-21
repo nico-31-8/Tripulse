@@ -41,6 +41,7 @@ import {
   posicionEnPlan, diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia,
 } from '@/lib/contexto-sesion'
 import { cargarReferencias } from '@/lib/referencia-zona'
+import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -107,7 +108,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     // aunque ahora avisa (onTareasCambian), guardar una plantilla incompleta es
     // silencioso y difícil de detectar. Aquí la fuente de verdad es la base de datos.
     const { data: frescas } = await supabase.from('tarea')
-      .select('orden, zona_entrenamiento, series, descanso_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados)')
+      .select('orden, zona_entrenamiento, series, descanso_segundos, bloques, descanso_bloques_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados)')
       .eq('id_sesion', id).order('orden')
     const bloques = bloquesDesdeTareas(frescas || [])
     if (!bloques.length) {
@@ -1268,7 +1269,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                             <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
                           </div>
                         </div>
-                        <p className="text-gray-300 text-sm">{t.series ? t.series+' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
+                        <p className="text-gray-300 text-sm">{t.series ? (hayBloques(t) ? bloquesDe(t) + ' × ' : '') + t.series + ' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
                         {mostrarMedicion(t) && <p className="text-blue-400 text-sm font-medium">{mostrarMedicion(t)}</p>}
                         {/* La intensidad prescrita tampoco salía aquí. La tarjeta
                             enseñaba zona, series, descanso y medición, y lo que

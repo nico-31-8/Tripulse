@@ -24,6 +24,7 @@ import {
 } from '@/lib/prescripcion-zona'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, type MedidaCardio } from '@/lib/cardio-fuerza'
+import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 
 /** Cuánto cardio pide una fila, en su unidad. Por tiempo acepta «30» y «1:30»,
     igual que la prescripción de fuerza. */
@@ -73,7 +74,8 @@ function mostrarValorGuardado(t: any): string {
 }
 
 function mostrarTotal(t: any): string {
-  const series = t.series || 1
+  /* Series × bloques: la cuenta es de lib/bloques-tarea. */
+  const series = vecesDe(t)
   if (t.p_duracion?.[0]?.tiempo_planeado) {
     const totalSeg = t.p_duracion[0].tiempo_planeado * series
     const min = Math.floor(totalSeg / 60)
@@ -609,6 +611,13 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       disciplina: f.disciplina,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+      /* EN BLOQUES solo si el botón está encendido Y dice más de uno. Apagado
+         se guarda null, también al editar: apagar el botón tiene que devolver
+         la tarea a como era, no dejar los bloques escondidos multiplicando el
+         volumen sin que se vean. */
+      bloques: f.enBloques && Number(f.bloques) > 1 ? Math.round(Number(f.bloques)) : null,
+      descanso_bloques_segundos: f.enBloques && Number(f.bloques) > 1 && f.descansoBloques
+        ? mmssASegundos(f.descansoBloques) : null,
       comentario: f.comentario || null,
       // La zona que se guarda es AER, no «técnica»: eso es lo que hace que el
       // trabajo técnico cuente como el volumen suave que realmente es.
@@ -1129,8 +1138,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           ) : (t.zona_entrenamiento || '—')}
                         </td>
                         <td className="py-2 px-2 text-gray-300">{t.disciplina || '—'}</td>
-                        <td className="py-2 px-2 text-gray-300">{t.series || '—'}</td>
-                        <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
+                        {/* En bloques se lee «3 × 2», y el descanso lleva también el
+                            largo: «1:00 · 3:00». Sin eso la fila guardada diría
+                            «2» y el total 2.400 m, y no cuadraría a la vista. */}
+                        <td className="py-2 px-2 text-gray-300">
+                          {hayBloques(t) ? <span title={bloquesDe(t) + ' bloques de ' + (t.series || 1) + ' series'}>{bloquesDe(t)} × {t.series || 1}</span> : (t.series || '—')}
+                        </td>
+                        <td className="py-2 px-2 text-gray-300">
+                          {t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}
+                          {hayBloques(t) && t.descanso_bloques_segundos ? <span className="text-gray-500" title="Entre bloques"> · {segAMmss(t.descanso_bloques_segundos)}</span> : null}
+                        </td>
                         <td className="py-2 px-2 text-blue-400 font-medium">{mostrarValorGuardado(t)}</td>
                         <td className="py-2 px-2 text-orange-400 font-medium">{mostrarTotal(t)}</td>
                         {/* LA COLUMNA SE LLAMA «Referencia / Intensidad» Y SOLO
@@ -1532,8 +1549,31 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         llegar a «reps» es peor que abrir una lista. */}
                     <td className="py-1.5 px-1.5">
                       <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
+                        {/* EN BLOQUES, A VOLUNTAD. No es algo que se use siempre, así
+                            que apagado es un 🔁 tenue y nada más. Encendido añade
+                            justo dos casillas: cuántos bloques y el descanso largo
+                            entre ellos. «3 × (2 × 400 m) ⏸ 3:00». */}
+                        <button type="button"
+                          /* Se enciende VACÍO, sin un número puesto. Con un «2» de
+                             serie, encenderlo y olvidarse de escribir doblaría el
+                             volumen sin que el entrenador lo hubiera decidido;
+                             vacío no multiplica nada hasta que se escribe. */
+                          onClick={() => parcheR(i, { enBloques: !f.enBloques })}
+                          title={f.enBloques ? 'En bloques — pulsa para volver a una tarea normal' : 'Repetir en bloques: 3 × (2 × 400)'}
+                          className={'flex-none text-sm px-1 rounded transition select-none ' +
+                            (f.enBloques ? 'text-orange-300 bg-orange-500/15' : 'text-gray-600 hover:text-gray-400')}>
+                          🔁
+                        </button>
+                        {f.enBloques && (
+                          <>
+                            <input type="number" min="2" value={f.bloques || ''}
+                              onChange={e => parcheR(i, { bloques: e.target.value })}
+                              className={inputBloque + ' w-[50px]'} placeholder="3" title="Cuántos bloques" />
+                            <span className="text-gray-500 flex-none select-none">× (</span>
+                          </>
+                        )}
                         <input type="number" value={f.series} onChange={e => updateR(i, 'series', e.target.value)}
-                          className={inputBloque + ' w-[56px]'} placeholder="4" title="Series" />
+                          className={inputBloque + ' w-[56px]'} placeholder="4" title={f.enBloques ? 'Series de cada bloque' : 'Series'} />
                         <span className="text-gray-500 flex-none select-none">×</span>
                         <input type="text" value={f.valorMedicion} onChange={e => updateR(i, 'valorMedicion', e.target.value)}
                           className={inputBloque + ' w-[76px]'} placeholder="1000" title="Cuánto en cada serie" />
@@ -1551,6 +1591,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           </optgroup>
                           <option value="reps">reps</option>
                         </select>
+                        {f.enBloques && (
+                          <>
+                            <span className="text-gray-500 flex-none select-none">)</span>
+                            <span className="text-gray-500 flex-none select-none" title="Descanso entre bloques">⏸</span>
+                            <input type="text" value={f.descansoBloques || ''}
+                              onChange={e => parcheR(i, { descansoBloques: e.target.value })}
+                              className={inputBloque + ' w-[62px]'} placeholder="3:00" title="Descanso entre bloques — el corto, entre series, va en su columna" />
+                          </>
+                        )}
                         <span className="text-gray-500 flex-none select-none">@</span>
                         {/* El ritmo/vatios de la zona sale de fantasma, igual que el
                             «≈ 82,5 kg» del %1RM en fuerza. getRef solo devuelve `ritmo`

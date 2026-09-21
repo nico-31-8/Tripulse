@@ -27,22 +27,23 @@ import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
+import { repeticionTexto } from '@/lib/bloques-tarea'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
 // delante si son varias («4 × 400 m»).
 function objetivoTarea(t: any): string {
-  const series = t.series > 1 ? t.series + ' × ' : ''
+  /* En bloques: «3 × (2 × 400 m)». El texto es de lib/bloques-tarea. */
   const m = t.p_distancia?.[0]?.metros_planeados
-  if (m) return series + (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
+  if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
-  if (seg) return series + Math.round(seg / 60) + ' min'
+  if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
   const reps = t.p_repeticiones?.[0]?.repeticiones_planteadas
-  if (reps) return series + reps + ' reps'
+  if (reps) return repeticionTexto(t, reps + ' reps')
   // Fuerza: las repeticiones están en el ejercicio, no en la tarea.
   const repsEj = t.ejercicios?.[0]?.repeticiones
-  if (repsEj) return series + repsEj + ' reps'
+  if (repsEj) return repeticionTexto(t, repsEj + ' reps')
   return t.series ? t.series + ' series' : '—'
 }
 

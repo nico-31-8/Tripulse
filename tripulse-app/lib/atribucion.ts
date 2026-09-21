@@ -197,7 +197,7 @@ export async function cargarBloques(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado')
+    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado, bloques, descanso_bloques_segundos')
     .in('id_sesion', ids)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
@@ -216,6 +216,8 @@ export async function cargarBloques(
     disciplina: t.disciplina,
     series: t.series,
     descanso_segundos: t.descanso_segundos,
+    bloques: t.bloques,
+    descanso_bloques_segundos: t.descanso_bloques_segundos,
     zona_entrenamiento: t.zona_entrenamiento,
     rpe_reportado: t.rpe_reportado,
     p_distancia: (dists.data || []).filter((d: any) => d.id_tarea === t.id),

@@ -26,6 +26,7 @@ import { miembrosDe, type MiembroGrupo } from '@/lib/grupos'
 
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
 import { reloj, relojCorto } from '@/lib/dirigir-sesion'
+import { vecesDe, hayBloques, bloquesDe, seriesTarea } from '@/lib/bloques-tarea'
 import {
   estadoGrupoInicial, darSalida, marcar, desmarcar, siguienteSerie, pararGrupo,
   msComun, dentro, filasDeAtleta, horquilla, marcasTotales, type EstadoGrupo,
@@ -85,7 +86,7 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
     const sesIds = (ses || []).map((s: any) => s.id)
     const { data: tareas } = sesIds.length
       ? await supabase.from('tarea')
-        .select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, p_distancia(*), p_duracion(*)')
+        .select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, p_distancia(*), p_duracion(*)')
         .in('id_sesion', sesIds).order('orden')
       : { data: [] as any[] }
 
@@ -104,10 +105,10 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
     setConSesion(filas)
     const t0 = filas.length ? primeraDe.get(filas[0].idSesion) : null
     setTarea(t0 || null)
-    setE(estadoGrupoInicial(filas.map(f => f.id_deportista), Math.max(1, t0?.series || 1)))
+    setE(estadoGrupoInicial(filas.map(f => f.id_deportista), vecesDe(t0)))
   }
 
-  const nSeries = Math.max(1, tarea?.series || 1)
+  const nSeries = vecesDe(tarea)
   const ultimaSerie = e.serie >= nSeries - 1
   const prescrito = (tarea?.descanso_segundos as number | null) ?? null
 
@@ -167,7 +168,7 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-bold tracking-tight m-0 truncate">{grupo?.nombre} · {conSesion.length} atletas</p>
             <p className="text-[11.5px] text-gray-500 m-0 truncate">
-              {tarea ? (tarea.disciplina || '') : ''}{tarea?.series > 1 ? ' · ' + tarea.series + ' series' : ''}
+              {tarea ? (tarea.disciplina || '') : ''}{vecesDe(tarea) > 1 ? ' · ' + (hayBloques(tarea) ? bloquesDe(tarea) + ' × ' + seriesTarea(tarea) + ' series' : tarea.series + ' series') : ''}
               {prescrito ? ' · ' + prescrito + ' s rec' : ''}
             </p>
           </div>

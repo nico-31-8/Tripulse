@@ -19,6 +19,7 @@ import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS
 import { leerCopia } from './prescripcion-zona'
 import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
+import { vecesDe, descansoTotalDe } from './bloques-tarea'
 import type { Sexo } from './tests-campo'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
@@ -47,6 +48,9 @@ export interface TareaDuracion {
   disciplina?: string | null
   series?: number | null
   descanso_segundos?: number | null
+  /** En bloques: 3 × (2 × 400). Ver lib/bloques-tarea. */
+  bloques?: number | null
+  descanso_bloques_segundos?: number | null
   zona_entrenamiento?: string | null
   /** La copia congelada, si la tarea se prescribió con una zona propia. */
   zona_copia?: unknown
@@ -263,8 +267,12 @@ export function calcularDuracionEstimada(
 
     const trabajoSerie = segTrabajoPorSerie(t, tests, conReferencia)
     if (trabajoSerie != null) {
-      const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
-      segundos += trabajoSerie.seg * series + descanso
+      /* EN BLOQUES, el trabajo se hace series × bloques veces y el descanso
+         tiene dos tamaños: el corto dentro de cada bloque y el largo entre
+         bloques. Las dos cuentas son de lib/bloques-tarea, que es el único
+         sitio que sabe qué es un bloque. Sin bloques dan exactamente lo de
+         antes: series × trabajo + (series − 1) × descanso. */
+      segundos += trabajoSerie.seg * vecesDe(t) + descansoTotalDe(t)
       algunaEstimada = true
       /* Se estimó, pero con un ritmo que no es suyo: sigue haciendo falta el
          test y hay que decirlo donde se enseñe el número. */
