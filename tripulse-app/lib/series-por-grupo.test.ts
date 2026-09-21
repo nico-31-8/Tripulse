@@ -250,3 +250,20 @@ describe('total y porcentajes', () => {
     expect(porcentajeDe(2, 8)).toBe(25)
   })
 })
+
+/* Una línea de cardio no tiene grupo muscular, y antes caía en «Sin
+   clasificar»: cuatro series de remo salían como cuatro series de fuerza. */
+describe('las líneas de cardio', () => {
+  it('no cuentan como series de fuerza', () => {
+    const g = seriesPorGrupo([
+      { grupo_muscular: 'Piernas', series: 4 },
+      { grupo_muscular: null, series: 4, tipo_serie: 'Cardio', cardio_modo: 'remo' },
+    ])
+    expect(g.map(x => x.grupo)).toEqual(['Piernas'])
+  })
+
+  it('un ejercicio sin grupo que NO es cardio sigue en «Sin clasificar»', () => {
+    const g = seriesPorGrupo([{ grupo_muscular: null, series: 3 }])
+    expect(g[0].grupo).toBe(SIN_CLASIFICAR)
+  })
+})

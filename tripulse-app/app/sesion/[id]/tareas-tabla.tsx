@@ -23,13 +23,8 @@ import {
   tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
 } from '@/lib/prescripcion-zona'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
-import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, type MedidaCardio } from '@/lib/cardio-fuerza'
+import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, valorCardioDeFila as valorCardioDe, type MedidaCardio } from '@/lib/cardio-fuerza'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
-
-/** Cuánto cardio pide una fila, en su unidad. Por tiempo acepta «30» y «1:30»,
-    igual que la prescripción de fuerza. */
-const valorCardioDe = (f: { cardioMedida: string; cardioValor: string }): number =>
-  f.cardioMedida === 'segundos' ? mmssASegundos(f.cardioValor) : Number(f.cardioValor)
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
@@ -885,9 +880,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   }
 
   const guardarFilaF = async (i: number) => {
-    // El botón está deshabilitado en este caso; la guarda se queda por si acaso,
-    // y callada como estaba: aquí no hay nada que contarle a nadie.
-    if (!filasF[i]?.ejercicioSelId && !filasF[i]?.idTarea) return
+    /* La misma regla que el botón y que «Guardar todas»: `estadoFuerza`. Aquí
+       decía «hace falta ejercicio» por su cuenta, y una línea de cardio —que
+       no lleva ejercicio de biblioteca— salía por esta puerta sin decir nada. */
+    if (!filasF[i] || estadoFuerza(filasF[i]) !== 'lista') return
     setLoading(true)
     try {
       const r = await escribirFilaF(filasF[i], ultimoOrden(tareasGuardadas) + 1)   // ver guardarFilaR
@@ -1959,7 +1955,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                   <td className="py-1 px-1">
                     <div className="flex gap-1">
-                      <button onClick={() => guardarFilaF(i)} disabled={loading || (f.tipoSerie === 'Cardio' ? !(modalidadDe(f.cardioModo) && valorCardioDe(f) > 0) : (!f.ejercicioSelId && !f.idTarea))}
+                      <button onClick={() => guardarFilaF(i)} disabled={loading || estadoFuerza(f) !== 'lista'}
                         title={f.idTarea ? 'Guardar los cambios' : 'Guardar'}
                         className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
                       <button onClick={() => setFilasF(prev => prev.filter((_, idx) => idx !== i))}

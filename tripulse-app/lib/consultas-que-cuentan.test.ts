@@ -101,6 +101,19 @@ describe('las consultas que cuentan', () => {
     expect(malas).toEqual([])
   })
 
+  /* Las series por grupo muscular: una línea de cardio no tiene grupo, y sin
+     saber que es cardio caía en «Sin clasificar» como si fueran series de
+     fuerza. Quien cuente series por grupo tiene que poder distinguirla. */
+  it('toda consulta a ejercicios que cuenta series por grupo sabe distinguir el cardio', () => {
+    const malas = consultasA('ejercicios')
+      .filter(c => !c.columnas.trim().startsWith('*'))
+      .filter(c => /\bgrupo_muscular\b/.test(c.columnas) && /\bseries\b/.test(c.columnas))
+      .filter(c => !/\btipo_serie\b/.test(c.columnas) && !/\bcardio_modo\b/.test(c.columnas))
+      .filter(c => !EJERCICIOS_SIN_CARDIO[c.fichero])
+      .map(c => c.fichero + ' → ' + c.columnas)
+    expect(malas).toEqual([])
+  })
+
   it('la lista compartida del cardio trae todo lo que hace falta para contar', () => {
     for (const col of ['id_tarea', 'repeticiones', 'cardio_modo', 'cardio_medida', 'cardio_valor', 'cardio_zona']) {
       expect(SELECT_EJERCICIOS_CONTEO).toContain(col)

@@ -227,3 +227,48 @@ describe('el parte que se le enseña al entrenador', () => {
     expect(hayQueContarlo(parte({ fallidas: [{ i: 0, fila: {}, error: 'x' }] }))).toBe(true)
   })
 })
+
+/* UNA LÍNEA DE CARDIO NO LLEVA EJERCICIO DE BIBLIOTECA. Antes de esto no
+   estaba nunca «lista»: su botón se activaba, se pulsaba y no pasaba nada, y
+   «Guardar todas» la contaba como incompleta. Era lo mismo decidido en tres
+   sitios, y solo se había cambiado uno. */
+describe('una línea de cardio', () => {
+  const cardio = (extra: Partial<FilaFuerza> = {}) => filaF({ tipoSerie: 'Cardio', ...extra })
+
+  it('con modalidad y cantidad está lista, sin ejercicio de biblioteca', () => {
+    expect(estadoFuerza(cardio({ cardioModo: 'remo', cardioValor: '300' }))).toBe('lista')
+  })
+
+  it('por tiempo acepta «1:30», igual que al guardar', () => {
+    expect(estadoFuerza(cardio({ cardioModo: 'assault', cardioMedida: 'segundos', cardioValor: '1:30' }))).toBe('lista')
+  })
+
+  it('a medias se cuenta y se dice', () => {
+    expect(estadoFuerza(cardio({ cardioModo: 'remo' }))).toBe('incompleta')
+    expect(estadoFuerza(cardio({ cardioValor: '300' }))).toBe('incompleta')
+    expect(estadoFuerza(cardio({ cardioModo: 'teletransporte', cardioValor: '300' }))).toBe('incompleta')
+  })
+
+  it('recién añadida y sin tocar, se salta sin ruido', () => {
+    expect(estadoFuerza(cardio())).toBe('vacia')
+  })
+
+  it('una ya guardada siempre se puede volver a guardar', () => {
+    expect(estadoFuerza(cardio({ idTarea: 7 }))).toBe('lista')
+  })
+
+  it('«Guardar todas» la escribe', async () => {
+    const escritas: FilaFuerza[] = []
+    const escribir = vi.fn(async (f: FilaFuerza) => { escritas.push(f); return { creada: true } })
+    const p = await guardarEnOrden([cardio({ cardioModo: 'remo', cardioValor: '300' })], 0, estadoFuerza, escribir)
+    expect(escribir).toHaveBeenCalledTimes(1)
+    expect(p.guardadas.length).toBe(1)
+    expect(p.incompletas.length).toBe(0)
+  })
+
+  /* Y la fuerza de siempre, igual que antes. */
+  it('una fila de fuerza sigue necesitando ejercicio', () => {
+    expect(estadoFuerza(filaF({ series: '4' }))).toBe('incompleta')
+    expect(estadoFuerza(filaF({ ejercicioSelId: '12' }))).toBe('lista')
+  })
+})

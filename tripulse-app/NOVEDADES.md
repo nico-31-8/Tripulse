@@ -43,6 +43,17 @@ Una limitación que conviene saber: si guardas una sesión con bloques **como
 plantilla**, entra como 6 × 400. El volumen es el mismo, pero las plantillas no
 saben guardar el descanso largo entre bloques.
 
+### Las líneas de cardio ya se pueden guardar
+
+Al elegir **Cardio** en una sesión de fuerza, el botón de guardar se encendía
+pero **al pulsarlo no pasaba nada**, y «Guardar todas» la contaba como
+incompleta. La app seguía pidiendo un ejercicio de la biblioteca, que una línea
+de cardio no tiene. Ya se guarda en los dos casos.
+
+Y de paso: una línea de cardio ya **no cuenta como series de fuerza** en el
+volumen por grupo muscular. Antes, al no tener grupo, caía en «Sin clasificar»:
+cuatro series de remo aparecían como cuatro series de fuerza.
+
 ### Dos sitios donde el cardio de fuerza no contaba
 
 Las líneas de **Cardio** de las sesiones de fuerza no estaban sumando su

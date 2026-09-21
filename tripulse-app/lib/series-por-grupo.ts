@@ -30,6 +30,9 @@ export const SIN_CLASIFICAR = 'Sin clasificar'
 export interface EjercicioSeries {
   grupo_muscular?: string | null
   series?: number | null
+  /** Para saber si es una línea de cardio, que no son series de fuerza. */
+  tipo_serie?: string | null
+  cardio_modo?: string | null
 }
 
 export interface GrupoSeries {
@@ -71,6 +74,11 @@ export function seriesPorGrupo(
   const semanas = Math.max(1, (Number(diasDelPeriodo) || 7) / 7)
   const mapa = new Map<string, number>()
   for (const e of ejercicios || []) {
+    /* UNA LÍNEA DE CARDIO NO SON SERIES DE FUERZA. No tiene grupo muscular, así
+       que caía en «Sin clasificar»: cuatro series de remo salían como cuatro
+       series de fuerza sin clasificar en el volumen por músculo. Su trabajo ya
+       cuenta donde toca, en la duración y la carga. */
+    if (e?.tipo_serie === 'Cardio' || e?.cardio_modo) continue
     const grupo = (e?.grupo_muscular || '').trim() || SIN_CLASIFICAR
     const n = Number(e?.series)
     mapa.set(grupo, (mapa.get(grupo) || 0) + (Number.isFinite(n) && n > 0 ? n : 0))
@@ -108,7 +116,7 @@ export async function cargarSeriesDeGrupos(
   if (!idsTarea.length) return []
 
   const { data: ejs } = await sb.from('ejercicios')
-    .select('grupo_muscular, series').in('id_tarea', idsTarea)
+    .select('grupo_muscular, series, tipo_serie').in('id_tarea', idsTarea)
 
   return seriesPorGrupo(ejs || [], dias)
 }

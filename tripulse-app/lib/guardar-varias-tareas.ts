@@ -23,6 +23,7 @@
 // cualquier orden. Lanzarlas en paralelo iría más rápido y llegarían barajadas.
 
 import type { FilaFuerza, FilaResistencia } from './copiar-tarea'
+import { filaCardioCompleta } from './cardio-fuerza'
 
 /**
  * Si una fila se puede guardar.
@@ -44,6 +45,19 @@ const algo = (...vs: (string | undefined)[]) => vs.some(v => !!(v || '').trim())
  * `ejercicios`. Exigírselo dejaría sin poder guardar algo que ya se podía.
  */
 export function estadoFuerza(f: FilaFuerza): Estado {
+  /* UNA LÍNEA DE CARDIO NO TIENE EJERCICIO DE BIBLIOTECA: lo que necesita es
+     modalidad y cantidad. Sin esta rama, la fila no estaba nunca «lista», así
+     que ni su botón ni «Guardar todas» la escribían: el botón se activaba, se
+     pulsaba, y no pasaba nada.
+
+     Y ESTA ES LA ÚNICA REGLA. El botón de la fila y su guardado la preguntan
+     aquí en vez de decidirlo cada uno: eran tres sitios diciendo lo mismo,
+     al añadir el cardio se cambió uno solo, y los otros dos lo tiraban. */
+  if (f.tipoSerie === 'Cardio') {
+    if (f.idTarea || filaCardioCompleta(f)) return 'lista'
+    return algo(f.cardioModo, f.cardioValor, f.cardioZona, f.cardioObjetivo, f.series, f.descanso, f.comentario)
+      ? 'incompleta' : 'vacia'
+  }
   if (f.ejercicioSelId || f.idTarea) return 'lista'
   return algo(f.grupoMuscularSel, f.series, f.repsFuerza, f.kgFuerza, f.rir,
     f.descanso, f.comentario, f.ejercicioSelId2, f.escalonDrop, f.zonaFuerzaTarea)

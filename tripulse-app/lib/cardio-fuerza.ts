@@ -31,6 +31,7 @@
 // cuenta a qué disciplina pertenece un ski erg, acabarían decidiendo distinto.
 
 import { ZONAS_RESISTENCIA } from './zonas'
+import { mmssASegundos } from './medicion'
 
 export type MedidaCardio = 'metros' | 'segundos'
 /** Las tres que el resto de la aplicación sabe contar. `null` = ninguna. */
@@ -173,6 +174,20 @@ export function textoCardio(c: CardioPrescrito | null | undefined): string {
   const obj = c?.objetivo ? ' @ ' + c.objetivo : ''
   return (m?.nombre || '') + ' ' + cuanto + zona + obj
 }
+
+/**
+ * Cuánto cardio pide una fila de la tabla, en su unidad.
+ *
+ * Por tiempo acepta «30» y «1:30», igual que la prescripción de fuerza. Lo usan
+ * la tabla al guardar y las reglas de si una fila se puede guardar: con dos
+ * lecturas distintas, «1:30» podría valer para una y no para la otra.
+ */
+export const valorCardioDeFila = (f: { cardioMedida?: string; cardioValor?: string }): number =>
+  f.cardioMedida === 'segundos' ? mmssASegundos(f.cardioValor || '') : Number(f.cardioValor)
+
+/** Si una fila de cardio tiene lo imprescindible: modalidad y cantidad. */
+export const filaCardioCompleta = (f: { cardioModo?: string; cardioMedida?: string; cardioValor?: string }): boolean =>
+  !!modalidadDe(f.cardioModo) && valorCardioDeFila(f) > 0
 
 /**
  * Las columnas del cardio, para los `select` que las piden a mano.
