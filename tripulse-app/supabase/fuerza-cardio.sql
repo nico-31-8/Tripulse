@@ -1,5 +1,5 @@
 /* ============================================================
-   Cardio encadenado a un ejercicio de fuerza
+   Lineas de cardio dentro de una sesion de fuerza
    ============================================================
 
    EL PROBLEMA
@@ -15,7 +15,8 @@
 
    LA SOLUCIÓN
 
-   Un tipo de serie nuevo, «Cardio», y cinco columnas para lo que se encadena.
+   Un tipo de serie nuevo, «Cardio», que es la linea entera (no se encadena a
+   ningun ejercicio), y cinco columnas para describirla.
    No se reutilizan las del encadenado que ya existen: meter metros dentro de
    `encadenado_repeticiones` es mentir sobre lo que guarda una columna, que es
    exactamente el fallo del RIR guardado como texto dentro de las notas.

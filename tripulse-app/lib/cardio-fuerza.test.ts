@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   MODALIDADES_CARDIO, modalidadDe, hayCardio, medidaDe,
-  segundosDeCardio, metrosDeCardio, metrosSeQuedanFuera, textoCardio,
+  segundosDeCardio, metrosDeCardio, metrosSeQuedanFuera, textoCardio, cuantoPorSerie,
 } from './cardio-fuerza'
 
 describe('el catálogo de modalidades', () => {
@@ -126,5 +126,34 @@ describe('cómo se lee', () => {
   it('sin cardio no hay texto', () => {
     expect(textoCardio({ modo: 'remo' })).toBe('')
     expect(textoCardio(null)).toBe('')
+  })
+})
+
+describe('cuánto por serie', () => {
+  /* Un solo formato para la columna de la tabla, la ficha, la ejecución y el
+     nombre de la línea: formateado en cada sitio, un día la tabla diría «90 s»
+     y la ficha «1:30» de la misma serie. */
+  it('metros y kilómetros', () => {
+    expect(cuantoPorSerie({ modo: 'remo', valor: 300 })).toBe('300 m')
+    expect(cuantoPorSerie({ modo: 'cinta', valor: 1500 })).toBe('1,5 km')
+  })
+
+  it('segundos, minutos justos y minutos con segundos', () => {
+    expect(cuantoPorSerie({ modo: 'assault', valor: 45, medida: 'segundos' })).toBe('45 s')
+    expect(cuantoPorSerie({ modo: 'assault', valor: 120, medida: 'segundos' })).toBe('2 min')
+    expect(cuantoPorSerie({ modo: 'assault', valor: 90, medida: 'segundos' })).toBe('1:30')
+    expect(cuantoPorSerie({ modo: 'assault', valor: 65, medida: 'segundos' })).toBe('1:05')
+  })
+
+  it('sin cantidad, nada', () => {
+    expect(cuantoPorSerie({ modo: 'remo' })).toBe('')
+    expect(cuantoPorSerie(null)).toBe('')
+  })
+
+  /* El nombre de la línea usa el mismo formato: si no, «Remo 1:30» en el
+     nombre y «90 s» en la columna de al lado. */
+  it('el nombre de la línea dice lo mismo que la columna', () => {
+    const c = { modo: 'assault', valor: 90, medida: 'segundos' }
+    expect(textoCardio(c)).toContain(cuantoPorSerie(c))
   })
 })

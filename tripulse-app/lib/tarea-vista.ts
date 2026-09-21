@@ -5,7 +5,7 @@
 // semana, en la previa de otra sesión. Las dos tienen que leer los mismos
 // números: si una contara el total y la otra el valor por serie, comparar dos
 // sesiones daría una conclusión falsa — que es justo para lo que sirve el panel.
-import { textoCardio } from './cardio-fuerza'
+import { cuantoPorSerie } from './cardio-fuerza'
 import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
@@ -80,6 +80,27 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
   const comentario = t?.comentario || ''
   const descanso = t?.descanso_segundos != null ? segAMmss(t.descanso_segundos) : '—'
 
+  /* UNA LÍNEA DE CARDIO no es un ejercicio: sin grupo, sin carga y sin RIR.
+     Con los campos de fuerza saldría «Carga — · Control —», que es ruido, y
+     faltaría justo lo que importa: cuánto, a qué zona y a qué ritmo. */
+  if (esFuerza && ej.tipo_serie === 'Cardio') {
+    const porSerie = cuantoPorSerie({ modo: ej.cardio_modo, medida: ej.cardio_medida, valor: ej.cardio_valor }) || '—'
+    return {
+      titulo: ej.nombre || comentario || 'Cardio',
+      zona, nombreZona, disciplina: 'Fuerza', esFuerza: true,
+      campos: [
+        { k: 'Tipo', v: 'Cardio' },
+        { k: 'Series', v: String(ej.series ?? t.series ?? '—') },
+        { k: 'Por serie', v: porSerie, destaca: true },
+        { k: 'Zona', v: ej.cardio_zona || '—', destaca: true },
+        { k: 'Objetivo', v: ej.cardio_objetivo || '—' },
+        { k: 'Descanso', v: descanso },
+      ],
+      comentario,
+      encadenado: '',
+    }
+  }
+
   if (esFuerza) {
     const porTiempo = !!t?.p_duracion?.[0]?.tiempo_planeado
     return {
@@ -152,11 +173,6 @@ export function zonasDeSesion(tareas: any[]): string[] {
  * sus números se siguen viendo donde siempre, dentro de las notas.
  */
 export function textoEncadenado(ej: any): string {
-  /* El cardio se encadena por el mismo sitio, así que se lee por el mismo
-     sitio: las cinco pantallas que pintan «+ ...» no tienen que enterarse de
-     que hay dos clases de encadenado. */
-  const cardio = textoCardio({ modo: ej?.cardio_modo, medida: ej?.cardio_medida, valor: ej?.cardio_valor, zona: ej?.cardio_zona, objetivo: ej?.cardio_objetivo })
-  if (cardio) return cardio
   const nombre = ej?.ejercicio_encadenado_nombre
   if (!nombre) return ''
   const ser = ej.encadenado_series

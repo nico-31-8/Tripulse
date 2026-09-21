@@ -1,11 +1,15 @@
 // ============================================================
-// El cardio encadenado a un ejercicio de fuerza
+// Una línea de cardio dentro de una sesión de fuerza
 // ============================================================
 //
-// QUÉ ES. Una sesión de fuerza en la que, pegado a cada serie, va un trozo de
-// cardio: sentadilla 4×6 + 300 m de remo, press + 30 s de assault bike. Se
-// prescribe con el tipo de serie «Cardio», igual que Superserie o Complex
-// encadenan un segundo ejercicio.
+// QUÉ ES. Una línea más de la sesión de fuerza, que en vez de un ejercicio
+// lleva cardio: 4 × 300 m de remo en AEM, 6 × 30 s de assault bike. Se elige
+// en el mismo desplegable que Superserie o Complex, pero NO se encadena a nada:
+// es la línea entera, con su modalidad, su cantidad, su zona y su «@».
+//
+// Primero se hizo como un encadenado, pegado a un ejercicio de fuerza, y el
+// entrenador lo rechazó al verlo: salía doble, como una superserie, cuando lo
+// que quería era una línea sola. Por eso no hay ejercicio de biblioteca detrás.
 //
 // Y CUENTA. Ese cardio no es un adorno de la hoja: son minutos que el atleta
 // pasa trabajando, así que entra en la duración estimada de la sesión y, por
@@ -74,7 +78,7 @@ export const MODALIDADES_CARDIO: Modalidad[] = [
 export const modalidadDe = (id: string | null | undefined): Modalidad | null =>
   id ? MODALIDADES_CARDIO.find(m => m.id === id) || null : null
 
-/** Lo que se guarda de un cardio encadenado. */
+/** Lo que se guarda de una línea de cardio. */
 export interface CardioPrescrito {
   modo?: string | null
   medida?: string | null
@@ -142,14 +146,29 @@ export function metrosDeCardio(
 export const metrosSeQuedanFuera = (c: CardioPrescrito | null | undefined): boolean =>
   hayCardio(c) && medidaDe(c) === 'metros' && !modalidadDe(c?.modo)?.disciplina
 
+/**
+ * Cuánto por serie, como se lee: «300 m», «1,5 km», «45 s», «2 min», «1:30».
+ *
+ * UN SOLO SITIO. Lo enseñan el nombre de la línea, la columna de la tabla, la
+ * ficha de detalle y la pantalla de ejecución; formateado en cada una, un día
+ * la tabla diría «90 s» y la ficha «1:30» de la misma serie.
+ */
+export function cuantoPorSerie(c: CardioPrescrito | null | undefined): string {
+  const valor = Number(c?.valor)
+  if (!(valor > 0)) return ''
+  if (medidaDe(c) === 'metros') {
+    return valor >= 1000 ? (valor / 1000).toString().replace('.', ',') + ' km' : valor + ' m'
+  }
+  if (valor < 60) return valor + ' s'
+  if (valor % 60 === 0) return valor / 60 + ' min'
+  return Math.floor(valor / 60) + ':' + String(valor % 60).padStart(2, '0')
+}
+
 /** «Remo 300 m · AEM» — cómo se lee en la hoja. */
 export function textoCardio(c: CardioPrescrito | null | undefined): string {
   if (!hayCardio(c)) return ''
   const m = modalidadDe(c?.modo)
-  const valor = Number(c?.valor)
-  const cuanto = medidaDe(c) === 'segundos'
-    ? (valor >= 60 && valor % 60 === 0 ? valor / 60 + ' min' : valor + ' s')
-    : (valor >= 1000 ? (valor / 1000).toString().replace('.', ',') + ' km' : valor + ' m')
+  const cuanto = cuantoPorSerie(c)
   const zona = c?.zona && ZONAS_RESISTENCIA.some(z => z.sigla === c.zona) ? ' · ' + c.zona : ''
   const obj = c?.objetivo ? ' @ ' + c.objetivo : ''
   return (m?.nombre || '') + ' ' + cuanto + zona + obj

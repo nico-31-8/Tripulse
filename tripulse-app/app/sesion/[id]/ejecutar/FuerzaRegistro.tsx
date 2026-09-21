@@ -5,6 +5,7 @@ import {
   seriesPrincipales, resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
 } from '@/lib/modo-mejora'
 import { mmss } from '@/lib/duracion-carga'
+import { cuantoPorSerie } from '@/lib/cardio-fuerza'
 import { textoEncadenado } from '@/lib/tarea-vista'
 
 const segAMmss = mmss
@@ -64,6 +65,10 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
         const tipoSerie = ej.tipo_serie || 'Normal'
         const tieneEj2 = tipoSerie === 'Superserie' || tipoSerie === 'Complex'
         const esDropSet = tipoSerie === 'Drop set'
+        /* Una línea de cardio no tiene kilos, ni repeticiones, ni RIR: pedírselos
+           al atleta sería una casilla de más por serie que no significa nada. */
+        const esCardio = tipoSerie === 'Cardio'
+        const cuantoCardio = esCardio ? cuantoPorSerie({ modo: ej.cardio_modo, medida: ej.cardio_medida, valor: ej.cardio_valor }) : ''
         const escalones = esDropSet && ej.escalones_drop ? ej.escalones_drop.split(',').map((s: string) => s.trim()) : []
 
         /* Modo mejora: qué hizo la última vez. La lógica vive en lib/modo-mejora
@@ -101,10 +106,8 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                     {tipoSerie}
                   </span>
                   <span className="font-bold text-white">{ej.nombre}</span>
-                  {/* El cardio sale por aquí porque `textoEncadenado` ya lo
-                      contempla: para esta pantalla, encadenado es encadenado. */}
-                  {(ej.ejercicio_encadenado_nombre || ej.cardio_modo) && (
-                    <span className={(ej.cardio_modo ? 'text-sky-400' : 'text-orange-400') + ' text-sm'}> + {textoEncadenado(ej)}</span>
+                  {ej.ejercicio_encadenado_nombre && (
+                    <span className="text-orange-400 text-sm"> + {textoEncadenado(ej)}</span>
                   )}
                   {superado && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white align-middle">✓ superado</span>}
                 </div>
@@ -123,7 +126,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
               </div>
               {/* Modo mejora: la última vez que hiciste este ejercicio, para superarlo. */}
-              {prev && resumenPrev && (
+              {prev && resumenPrev && !esCardio && (
                 <div className="flex items-center gap-2 mt-2 text-xs bg-gray-800/80 border border-gray-700 rounded-lg px-2.5 py-1.5 flex-wrap">
                   <span className="text-orange-400 font-semibold">📊 Última vez</span>
                   <span className="text-gray-500">{prev.dias === 0 ? 'hoy' : prev.dias === 1 ? 'ayer' : `hace ${prev.dias} d`}</span>
@@ -144,8 +147,28 @@ export default function FuerzaRegistro({ tarea, ejercicios, seriesFuerza, update
                 return (
                   <div key={serieIdx} className={'rounded-xl border transition ' + (completada ? 'bg-green-900/30 border-green-700' : 'bg-gray-800 border-gray-700')}>
                     
+                    {/* Cardio: marcarla hecha y, si se mandó por metros, cuánto
+                        tardó. Por tiempo el tiempo ya es la prescripción, así que
+                        no hay nada que anotar. */}
+                    {esCardio && (
+                      <div className="flex gap-3 items-center p-3">
+                        <button onClick={() => updateSerieFuerza(ej.id, numSerie, 1, 'completada', !completada)}
+                          className={'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition flex-none ' +
+                            (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
+                          {completada ? '✓' : numSerie}
+                        </button>
+                        <span className="text-sky-300 text-sm font-medium flex-none">{cuantoCardio}</span>
+                        {ej.cardio_medida !== 'segundos' && (
+                          <input type="number" value={s1.tiempo_real || ''} placeholder="Tiempo (s)"
+                            onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'tiempo_real', e.target.value)}
+                            title="Segundos que tardaste en hacerlo"
+                            className={inputCls + ' max-w-[140px]'} />
+                        )}
+                      </div>
+                    )}
+
                     {/* Normal */}
-                    {!esDropSet && !tieneEj2 && (
+                    {!esDropSet && !tieneEj2 && !esCardio && (
                       <div className="grid grid-cols-4 gap-2 items-center p-3">
                         <button onClick={() => updateSerieFuerza(ej.id, numSerie, 1, 'completada', !completada)}
                           className={'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition ' +

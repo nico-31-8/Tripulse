@@ -59,7 +59,7 @@ export interface TareaDuracion {
 /** Lo que se mira de un ejercicio de fuerza para saber cuánto dura. */
 export interface EjercicioDuracion {
   repeticiones?: number | null
-  /** El cardio encadenado, si el tipo de serie es «Cardio». */
+  /** La línea de cardio, si el tipo de serie es «Cardio». */
   cardio_modo?: string | null
   cardio_medida?: string | null
   cardio_valor?: number | null
@@ -167,7 +167,7 @@ function velNatacion(zona: string | null | undefined, css: number, copia?: Copia
 }
 
 /**
- * Cuánto dura UNA vez el cardio encadenado a este ejercicio, en segundos.
+ * Cuánto dura UNA serie de esta línea de cardio, en segundos.
  *
  * El ritmo sale del atleta cuando la modalidad ES una disciplina suya —la
  * cinta se corre al ritmo al que corre él, no al de una tabla— y de la regla
@@ -245,10 +245,10 @@ export function calcularDuracionEstimada(
       if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
       else if (isoSeg > 0) trabajo = series * isoSeg
 
-      /* EL CARDIO ENCADENADO SON MINUTOS DE VERDAD. Un 4×6 con 300 m de remo
-         pegados a cada serie no dura lo que dura el 4×6: dura seis minutos
-         más. Si no se sumaran, la sesión saldría corta y, detrás de ella, la
-         carga — que es lo que el entrenador mira para decidir la semana. */
+      /* EL CARDIO SON MINUTOS DE VERDAD. Una línea de 4 × 300 m de remo no
+         tiene repeticiones ni segundos de fuerza, así que sin esto contaría
+         cero: la sesión saldría seis minutos corta y, detrás de ella, la carga
+         — que es lo que el entrenador mira para decidir la semana. */
       const cardio = (t.ejercicios || []).reduce((acc, e) => acc + (segCardioPorSerie(e, tests) || 0), 0)
       if (cardio > 0) trabajo += series * cardio
 

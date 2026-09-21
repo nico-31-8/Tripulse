@@ -23,7 +23,12 @@ import {
   tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
 } from '@/lib/prescripcion-zona'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
-import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, type MedidaCardio } from '@/lib/cardio-fuerza'
+import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, type MedidaCardio } from '@/lib/cardio-fuerza'
+
+/** Cuánto cardio pide una fila, en su unidad. Por tiempo acepta «30» y «1:30»,
+    igual que la prescripción de fuerza. */
+const valorCardioDe = (f: { cardioMedida: string; cardioValor: string }): number =>
+  f.cardioMedida === 'segundos' ? mmssASegundos(f.cardioValor) : Number(f.cardioValor)
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
@@ -703,8 +708,78 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setLoading(false)
   }
 
+  /**
+   * Una línea de cardio dentro de una sesión de fuerza.
+   *
+   * CAMINO PROPIO, y no una rama más dentro de `escribirFilaF`: allí todo gira
+   * alrededor del ejercicio de la biblioteca —su id, su vídeo, su grupo
+   * muscular, las repeticiones— y un cardio no tiene nada de eso. Meterlo ahí
+   * a base de `if` habría puesto en riesgo el guardado de fuerza de siempre
+   * para añadir algo que no se le parece.
+   *
+   * Se guarda igual que un ejercicio (una fila en `ejercicios` colgando de la
+   * tarea) para que TODO lo que ya lee ejercicios —la ficha, el briefing, la
+   * ejecución, la duración— lo encuentre sin cambiar de sitio. El `nombre` es
+   * la frase entera, «Remo 300 m · AEM»: es la prescripción congelada, como el
+   * nombre de cualquier ejercicio, y así cada pantalla que ya pinta el nombre
+   * lo enseña bien sin tener que enterarse de que existe el cardio.
+   */
+  const escribirCardio = async (f: FilaFuerza, orden: number): Promise<{ error?: string; creada?: boolean }> => {
+    const m = modalidadDe(f.cardioModo)
+    const valor = valorCardioDe(f)
+    if (!m) return { error: 'Elige la modalidad del cardio' }
+    if (!(valor > 0)) return { error: 'Pon cuánto cardio: metros o tiempo por serie' }
+    const cardio = {
+      modo: m.id, medida: f.cardioMedida, valor,
+      zona: f.cardioZona || null, objetivo: f.cardioObjetivo || null,
+    }
+    const campos = {
+      disciplina: 'Fuerza',
+      zona_entrenamiento: (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null,
+      series: f.series ? Number(f.series) : null,
+      descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+      comentario: f.comentario || null,
+    }
+
+    let idTarea = f.idTarea
+    if (idTarea) {
+      const { error } = await supabase.from('tarea').update(campos).eq('id', idTarea)
+      if (error) return { error: 'Error al guardar el cardio: ' + error.message }
+      /* Se reescribe entero, como en fuerza. Y se borran también las
+         mediciones: si esta línea fue antes un ejercicio por tiempo, su
+         `p_duracion` se quedaría y la sesión contaría dos veces. */
+      await supabase.from('ejercicios').delete().eq('id_tarea', idTarea)
+      await supabase.from('p_duracion').delete().eq('id_tarea', idTarea)
+      await supabase.from('p_repeticiones').delete().eq('id_tarea', idTarea)
+    } else {
+      const { data, error } = await supabase.from('tarea')
+        .insert({ id_sesion: sesionId, ...campos, orden }).select().single()
+      if (error || !data) return { error: 'Error al guardar el cardio: ' + (error?.message || 'sin respuesta') }
+      idTarea = data.id
+    }
+
+    const { error: errEj } = await supabase.from('ejercicios').insert({
+      id_tarea: idTarea,
+      ejercicio_id: null,
+      nombre: textoCardio(cardio),
+      grupo_muscular: null,
+      series: f.series ? Number(f.series) : null,
+      descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
+      notas_ejecucion: f.comentario || '',
+      tipo_serie: 'Cardio',
+      cardio_modo: cardio.modo,
+      cardio_medida: cardio.medida,
+      cardio_valor: cardio.valor,
+      cardio_zona: cardio.zona,
+      cardio_objetivo: cardio.objetivo,
+    })
+    if (errEj) return { error: 'Error al guardar el cardio: ' + errEj.message }
+    return { creada: !f.idTarea }
+  }
+
   /* Igual que `escribirFilaR`: escribe y calla. Ver el comentario de allí. */
   const escribirFilaF = async (f: FilaFuerza, orden: number): Promise<{ error?: string; creada?: boolean }> => {
+    if (f.tipoSerie === 'Cardio') return escribirCardio(f, orden)
     // Crear exige ejercicio. EDITAR no: las tareas de fuerza que vienen de una
     // plantilla o del planificador llevan el ejercicio en el comentario y no
     // tienen fila en `ejercicios`, y antes esas sí se podían editar. Exigirlo
@@ -717,11 +792,6 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const esTiempo = f.medida === 'tiempo'
     // Acepta «45» y «1:30»: mmssASegundos ya distingue por los dos puntos.
     const segundos = esTiempo ? mmssASegundos(f.repsFuerza) : 0
-    /* Cardio SOLO si el tipo de serie lo es Y está completo. Media prescripción
-       —una modalidad sin cantidad— no se puede hacer ni contar, y guardarla la
-       metería en la duración como un cero sin que nada fallara. */
-    const esCardio = f.tipoSerie === 'Cardio' &&
-      !!modalidadDe(f.cardioModo) && Number(f.cardioValor) > 0
     const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
     const campos = {
       disciplina: 'Fuerza',
@@ -788,14 +858,6 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         encadenado_repeticiones: ejBib2 && f.repsFuerza2 ? Number(f.repsFuerza2) : null,
         encadenado_intensidad: ejBib2 && f.kgFuerza2 ? Number(f.kgFuerza2) : null,
         escalones_drop: f.escalonDrop || null,
-        /* El cardio encadenado. La modalidad se valida contra el catálogo: una
-           guardada a mano que ya no exista entraría sin disciplina ni regla de
-           tiempo y se colaría en la duración como un cero. */
-        cardio_modo: esCardio ? f.cardioModo : null,
-        cardio_medida: esCardio ? f.cardioMedida : null,
-        cardio_valor: esCardio ? Number(f.cardioValor) : null,
-        cardio_zona: esCardio ? (f.cardioZona || null) : null,
-        cardio_objetivo: esCardio ? (f.cardioObjetivo || null) : null,
         url_video: ejBib.url_video || null,
       })
       /* Este insert no miraba su error. Si fallaba, la tarea se guardaba y el
@@ -1009,8 +1071,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             <div className="flex flex-col gap-0.5">
                               {t.ejercicios.map((ej: any) => (
                                 <div key={ej.id} className="flex items-center gap-1.5">
-                                  {ej.tipo_serie && ej.tipo_serie !== 'Normal' && <span className="text-xs bg-orange-900 text-orange-300 px-1.5 rounded">{ej.tipo_serie}</span>}
-                                  <span className="text-sm">{ej.nombre}</span>
+                                  {ej.tipo_serie && ej.tipo_serie !== 'Normal' && <span className={'text-xs px-1.5 rounded ' + (ej.tipo_serie === 'Cardio' ? 'bg-sky-900 text-sky-300' : 'bg-orange-900 text-orange-300')}>{ej.tipo_serie}</span>}
+                                  {/* Una línea de cardio se lee como una de fuerza: aquí QUÉ
+                                      y a qué zona, y el cuánto y el @ en sus columnas. */}
+                                  <span className="text-sm">{ej.tipo_serie === 'Cardio' && ej.cardio_modo
+                                    ? (modalidadDe(ej.cardio_modo)?.nombre || ej.nombre) + (ej.cardio_zona ? ' · ' + ej.cardio_zona : '')
+                                    : ej.nombre}</span>
                                   {textoEncadenado(ej) && <span className="text-orange-400 text-xs">+ {textoEncadenado(ej)}</span>}
                                 </div>
                               ))}
@@ -1018,8 +1084,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           ) : t.comentario || '—'}
                         </td>
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
-                        <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.repeticiones ? t.ejercicios[0].repeticiones + ' reps' : mostrarValorGuardado(t)}</td>
-                        <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
+                        <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
+                          ? (cuantoPorSerie({ modo: t.ejercicios[0].cardio_modo, medida: t.ejercicios[0].cardio_medida, valor: t.ejercicios[0].cardio_valor }) || '—')
+                          : t.ejercicios?.[0]?.repeticiones ? t.ejercicios[0].repeticiones + ' reps' : mostrarValorGuardado(t)}</td>
+                        <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
+                          ? (t.ejercicios[0].cardio_objetivo ? '@ ' + t.ejercicios[0].cardio_objetivo : '—')
+                          : t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
                         {/* El valor se guarda en `control_valor` + `control_tipo`.
                             Aquí se leía con una expresión regular sobre el texto de
                             las notas —«RIR: 2»—, que es donde vivía ANTES de que
@@ -1663,6 +1733,35 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     </div>
                   </td>
                   <td className="py-1.5 px-1.5">
+                    {/* CARDIO ES LA LÍNEA ENTERA, NO UN ENCADENADO. Se eligió en el
+                        mismo desplegable que Superserie y Complex, pero no se parece
+                        a ellos: no hay ejercicio de la biblioteca ni grupo muscular
+                        detrás. Donde en fuerza va el ejercicio, aquí va QUÉ se hace
+                        y a qué intensidad. */}
+                    {f.tipoSerie === 'Cardio' ? (
+                      <div className="flex gap-1.5">
+                        <select value={f.cardioModo}
+                          onChange={e => {
+                            const m = modalidadDe(e.target.value)
+                            /* La unidad natural va EN EL MISMO PARCHE que la
+                               modalidad —en dos llamadas seguidas la segunda
+                               pisaría a la primera (ver `parcheF`)— y solo si
+                               todavía no había nada escrito. */
+                            parcheF(i, f.cardioValor
+                              ? { cardioModo: e.target.value }
+                              : { cardioModo: e.target.value, cardioMedida: (m?.medida || 'metros') as MedidaCardio })
+                          }}
+                          className={campoBase + ' basis-[60%] min-w-[150px]'} title="Modalidad">
+                          <option value="">Modalidad…</option>
+                          {MODALIDADES_CARDIO.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                        </select>
+                        <select value={f.cardioZona} onChange={e => updateF(i, 'cardioZona', e.target.value)}
+                          className={campoBase + ' basis-[40%] min-w-[96px]'} title="Zona">
+                          <option value="">Zona…</option>
+                          {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
+                        </select>
+                      </div>
+                    ) : (
                     <div className="flex flex-col gap-1.5">
                       {/* El ejercicio manda sobre el grupo muscular: es lo que se lee
                           para saber qué es. El grupo es un filtro para encontrarlo y
@@ -1722,66 +1821,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           <input type="text" value={f.escalonDrop} onChange={e => updateF(i, 'escalonDrop', e.target.value)} className={inputCls} placeholder="80,60,40" />
                         </div>
                       )}
-                      {/* EL CARDIO ENCADENADO. Se lee como una frase, igual que la
-                          prescripción de fuerza: «Remo · 300 m · AEM @ 2:00/500».
-                          La medida arranca en la de la modalidad —un remo se manda
-                          en metros y un assault bike en segundos— pero se puede
-                          cambiar: el botón enseña la unidad de AHORA. */}
-                      {f.tipoSerie === 'Cardio' && (
-                        <div className="border-t border-sky-800 pt-1 mt-1">
-                          <p className="text-sky-400 text-xs mb-1">+ Cardio por serie:</p>
-                          <div className="flex gap-1.5 flex-wrap items-center">
-                            <select value={f.cardioModo}
-                              onChange={e => {
-                                const m = modalidadDe(e.target.value)
-                                /* La medida por defecto va EN EL MISMO PARCHE que la
-                                   modalidad: en dos llamadas seguidas la segunda
-                                   pisaría a la primera (ver `parcheF`). Y solo se
-                                   impone si no había nada escrito todavía. */
-                                parcheF(i, f.cardioValor
-                                  ? { cardioModo: e.target.value }
-                                  : { cardioModo: e.target.value, cardioMedida: (m?.medida || 'metros') as MedidaCardio })
-                              }}
-                              className={campoBase + ' flex-none w-[146px]'} title="Modalidad">
-                              <option value="">Modalidad…</option>
-                              {MODALIDADES_CARDIO.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                            </select>
-                            <input type="number" value={f.cardioValor}
-                              onChange={e => updateF(i, 'cardioValor', e.target.value)}
-                              className={inputBloque + ' w-[74px]'}
-                              placeholder={f.cardioMedida === 'segundos' ? '30' : '300'}
-                              title={f.cardioMedida === 'segundos' ? 'Segundos por serie' : 'Metros por serie'} />
-                            <button type="button"
-                              onClick={() => updateF(i, 'cardioMedida', f.cardioMedida === 'segundos' ? 'metros' : 'segundos')}
-                              title={f.cardioMedida === 'segundos' ? 'Ahora va por tiempo — pulsa para pasar a metros' : 'Ahora va por metros — pulsa para pasar a tiempo'}
-                              className={botonBloque(f.cardioMedida === 'segundos')}>
-                              {f.cardioMedida === 'segundos' ? 'seg' : 'm'}
-                            </button>
-                            <select value={f.cardioZona} onChange={e => updateF(i, 'cardioZona', e.target.value)}
-                              className={campoBase + ' flex-none w-[92px]'} title="Zona del cardio">
-                              <option value="">Zona…</option>
-                              {ZONAS_RESISTENCIA.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla}</option>)}
-                            </select>
-                            <span className="text-gray-500 flex-none select-none">@</span>
-                            <input type="text" value={f.cardioObjetivo}
-                              onChange={e => updateF(i, 'cardioObjetivo', e.target.value)}
-                              className={inputBloque + ' w-[104px]'} placeholder="2:00/500"
-                              title="Ritmo, potencia o vatios objetivo" />
-                          </div>
-                          {/* SE DICE DÓNDE ACABAN SUS METROS. Suma siempre en
-                              duración y carga; los metros solo entran en el volumen
-                              de una disciplina cuando la modalidad ES esa disciplina
-                              bajo techo. Callarlo dejaría al entrenador creyendo que
-                              su volumen de carrera incluye el remo. */}
-                          {metrosSeQuedanFuera({ modo: f.cardioModo, medida: f.cardioMedida, valor: Number(f.cardioValor) }) && (
-                            <p className="text-gray-500 text-[11px] leading-snug mt-1">
-                              Cuenta en duración y en carga. Sus metros no entran en el volumen de carrera,
-                              ciclismo ni natación: no son comparables.
-                            </p>
-                          )}
-                        </div>
-                      )}
                     </div>
+                    )}
                   </td>
                   {/* LA PRESCRIPCIÓN, EN UN BLOQUE.
                       Las cuatro casillas eran cuatro columnas sueltas y había que
@@ -1793,6 +1834,41 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       siguiente: un <select> por fila serían seis desplegables de ruido
                       en una sesión de seis ejercicios. */}
                   <td className="py-1.5 px-1.5">
+                    {/* La prescripción del cardio se escribe como la de fuerza, en
+                        el mismo bloque: «4 × 300 m @ 2:00/500» se lee igual que
+                        «4 × 8 @ 75% · RIR 2». Por tiempo acepta «30» y «1:30». */}
+                    {f.tipoSerie === 'Cardio' ? (
+                    <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
+                      <input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)}
+                        className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
+                      <span className="text-gray-500 flex-none select-none">×</span>
+                      <input type={f.cardioMedida === 'segundos' ? 'text' : 'number'} value={f.cardioValor}
+                        onChange={e => updateF(i, 'cardioValor', e.target.value)}
+                        className={inputBloque + ' w-[74px]'}
+                        placeholder={f.cardioMedida === 'segundos' ? '1:30' : '300'}
+                        title={f.cardioMedida === 'segundos' ? 'Tiempo por serie — segundos o mm:ss' : 'Metros por serie'} />
+                      <button type="button"
+                        onClick={() => updateF(i, 'cardioMedida', f.cardioMedida === 'segundos' ? 'metros' : 'segundos')}
+                        title={f.cardioMedida === 'segundos' ? 'Ahora va por tiempo — pulsa para pasar a metros' : 'Ahora va por metros — pulsa para pasar a tiempo'}
+                        className={botonBloque(f.cardioMedida === 'segundos')}>
+                        {f.cardioMedida === 'segundos' ? 'seg' : 'm'}
+                      </button>
+                      <span className="text-gray-500 flex-none select-none">@</span>
+                      <input type="text" value={f.cardioObjetivo}
+                        onChange={e => updateF(i, 'cardioObjetivo', e.target.value)}
+                        className={inputBloque + ' w-[110px]'} placeholder="2:00/500"
+                        title="Ritmo, potencia o vatios objetivo" />
+                      {/* DÓNDE ACABAN SUS METROS, sin partir la línea en dos. Suma
+                          siempre en duración y carga; los metros solo entran en el
+                          volumen de una disciplina cuando la modalidad ES esa
+                          disciplina bajo techo. Callarlo dejaría al entrenador
+                          creyendo que su volumen de carrera incluye el remo. */}
+                      {metrosSeQuedanFuera({ modo: f.cardioModo, medida: f.cardioMedida, valor: valorCardioDe(f) }) && (
+                        <span className="text-gray-500 text-xs flex-none cursor-help select-none"
+                          title="Cuenta en duración y en carga. Sus metros no entran en el volumen de carrera, ciclismo ni natación: no son comparables.">ⓘ</span>
+                      )}
+                    </div>
+                    ) : (
                     <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
                       <input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)}
                         className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
@@ -1828,12 +1904,13 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {controlDe(f.controlTipo).corto}
                       </button>
                     </div>
+                    )}
                   </td>
                   <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
                   <td className="py-1 px-1">
                     <div className="flex gap-1">
-                      <button onClick={() => guardarFilaF(i)} disabled={loading || (!f.ejercicioSelId && !f.idTarea)}
+                      <button onClick={() => guardarFilaF(i)} disabled={loading || (f.tipoSerie === 'Cardio' ? !(modalidadDe(f.cardioModo) && valorCardioDe(f) > 0) : (!f.ejercicioSelId && !f.idTarea))}
                         title={f.idTarea ? 'Guardar los cambios' : 'Guardar'}
                         className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
                       <button onClick={() => setFilasF(prev => prev.filter((_, idx) => idx !== i))}

@@ -14,6 +14,57 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 21 de septiembre de 2026 · Periodización y fuerza
+
+### Un plan dibujado y sin «Generar» ya no se pierde
+
+El dibujo de periodización guarda solo, cada vez que tocas algo. Pero la
+pantalla de entrada solo miraba si había un plan **ya generado**. Así que si
+dibujabas macrociclos, mesociclos y semanas, salías sin darle a «Generar
+planificación» y volvías, **te ofrecía empezar de cero**, con tu dibujo guardado
+detrás sin que nada lo enseñara. Y en cuanto dibujabas el primer bloque nuevo,
+se escribía encima.
+
+Ahora, si hay un dibujo a medias, al entrar te sale **«Seguir con el dibujo
+guardado»**, con cuántos bloques tiene y cuándo lo dejaste. Y si aun así eliges
+empezar de cero, **te avisa** de que ese dibujo se perderá.
+
+Lo que no cambia: el dibujo se guarda solo, pero para que el **calendario** y la
+**vista de mesociclo** lo vean hay que darle a **«Generar planificación»**. Eso
+sigue siendo a propósito un paso tuyo, porque acortar un bloque puede sacar
+sesiones del plan, y eso no debe pasar solo mientras arrastras.
+
+### Cardio dentro de una sesión de fuerza
+
+Hasta ahora una sesión era de fuerza **o** de resistencia, así que no había forma
+de meter lo más normal de un gimnasio: unas series de remo, de assault bike o de
+cinta entre ejercicios.
+
+Ahora, en el tipo de serie —donde están Superserie, Drop set y Complex— hay
+**Cardio**. Al elegirlo, esa línea deja de ser un ejercicio y pasa a ser cardio,
+**en una sola línea**:
+
+**Cardio · Remo · AEM · 4 × 300 m @ 2:00/500 · descanso 2:00**
+
+- **Modalidad**: remo, ski erg, assault bike, elíptica, comba, trineo,
+  escalera, cinta, carrera, rodillo, ciclismo o natación.
+- **Por metros o por tiempo**, con el botón `m / seg`. Cada modalidad arranca
+  en la suya: el remo en metros, el assault bike en segundos.
+- **Zona e intensidad**: la zona de resistencia y el «@» con el ritmo, la
+  potencia o los vatios que quieras.
+
+**Y cuenta.** Esos minutos entran en la **duración** de la sesión y en su
+**carga**. Los **metros**, en cambio, solo entran en el volumen de carrera,
+ciclismo o natación cuando la modalidad **es** esa disciplina: la cinta suma a
+carrera y el rodillo a ciclismo, pero **5.000 m de remo no se suman a los metros
+de correr**, porque no son comparables y te estropearían el volumen de la
+semana. Cuando pasa eso, al lado de la línea sale una **ⓘ** que lo explica.
+
+El deportista, al hacer la sesión, ve la línea de cardio sin casillas de kilos ni
+de RIR: la marca hecha y, si era por metros, puede apuntar cuánto tardó.
+
+---
+
 ## 20 de septiembre de 2026 · Tests propios y Laboratorio
 
 ### La flecha de las gráficas iba al revés en dos casos
