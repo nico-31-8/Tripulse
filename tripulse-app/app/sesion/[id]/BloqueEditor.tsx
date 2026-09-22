@@ -8,6 +8,7 @@
 // cardio con las modalidades y zonas de siempre. Qué es un bloque y cómo se
 // guarda: lib/bloque-formato y lib/bloque-borrador.
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
+import SelectorGrupo from '@/components/SelectorGrupo'
 import {
   FORMATOS, MEDIDAS, QUE_SE_APUNTA, duracionBloque, type Formato, type LineaBloque, type MedidaLinea,
 } from '@/lib/bloque-formato'
@@ -40,7 +41,6 @@ export default function BloqueEditor({
   const cfg = configDeBorrador(bloque)
   const conCantidad = pideCantidad(bloque.formato, cfg)
   const falta = faltaEnBloque(bloque)
-  const grupos = [...new Set(biblioteca.map(e => e.grupo_muscular).filter((g): g is string => !!g))]
   const d = duracionBloque(bloque.formato, cfg,
     filasDeBloque(bloque, biblioteca, { disciplina: '', zona: null }).ejercicios as LineaBloque[])
 
@@ -164,10 +164,9 @@ export default function BloqueEditor({
                   </div>
                 ) : (
                   <div className="flex gap-1.5 min-w-0 items-center">
-                    <select value={l.grupo} onChange={e => cambiaLinea(i, { grupo: e.target.value, ejercicioId: '' })} className={campo + ' basis-[42%]'} title="Grupo">
-                      <option value="">Grupo…</option>
-                      {grupos.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
+                    <SelectorGrupo ejercicios={biblioteca} valor={l.grupo} vacio="Grupo…" title="Grupo"
+                      onCambio={v => cambiaLinea(i, { grupo: v, ejercicioId: '' })}
+                      className={campo + ' basis-[42%]'} />
                     <select value={l.ejercicioId} onChange={e => cambiaLinea(i, { ejercicioId: e.target.value })} className={campo + ' flex-1'} title="Ejercicio" disabled={!l.grupo}>
                       <option value="">{l.grupo ? 'Ejercicio…' : 'Elige grupo'}</option>
                       {biblioteca.filter(e => e.grupo_muscular === l.grupo).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}

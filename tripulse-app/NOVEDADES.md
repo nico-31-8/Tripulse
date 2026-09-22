@@ -16,6 +16,40 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 22 de septiembre de 2026 · Híbrido y disciplinas por deportista
 
+### El grupo muscular, por familias
+
+El desplegable de **Grupo muscular** tenía 22 grupos seguidos por orden
+alfabético, con «Complejos» entre «Ciclismo — específico» y «Core y
+estabilidad». Ahora sale partido, con una cabecera por familia:
+
+- **Tren inferior** · cuádriceps, isquiotibiales, glúteos, cadera, rodilla, tobillo
+- **Tren superior** · pectoral, espalda alta, hombro, bíceps, tríceps, cuello
+- **Core y tronco** · core y estabilidad, espalda baja
+- **Específico del deporte** · natación, ciclismo, carrera
+- **Funcional y complejos**
+- **Movilidad**
+- **Otros**
+
+Las cabeceras **no se pueden elegir**: solo parten la lista. Si bajas con las
+flechas o escribes las primeras letras, se las salta como siempre. En el móvil
+salen también, en la rueda de elegir.
+
+**No cambia nada de lo que ya tenías.** Eliges el mismo grupo de siempre, se
+guarda lo mismo, y el reparto de series por grupo muscular de la semana cuenta
+exactamente igual. La familia solo existe en pantalla.
+
+Está en los seis sitios donde se elige un grupo: la tabla de fuerza, lo que
+fijas en «Por defecto en esta sesión», el ejercicio encadenado de una
+superserie, el editor de bloques, el modal de la ficha y el alta de un
+ejercicio nuevo desde la lupa.
+
+Los **filtros de la lupa** dicen ahora lo mismo que el desplegable. De paso se
+arregló un despiste: «Espalda baja» salía al filtrar por *Tren superior*, por
+llevar la palabra «espalda».
+
+Un ejercicio que te crees tú con un grupo que no encaje en ninguna familia sale
+en **Otros**: no desaparece ninguno de la lista.
+
 ### Bloques: rondas, AMRAP, EMOM, for time y Tabata
 
 Para programar un HYROX o un WOD tal cual. En las sesiones de **Fuerza** y

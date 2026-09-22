@@ -28,6 +28,7 @@ import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
 import BloqueEditor from './BloqueEditor'
 import ResumenBloque from '@/components/ResumenBloque'
+import SelectorGrupo from '@/components/SelectorGrupo'
 import { esBloque, FORMATOS, type Formato } from '@/lib/bloque-formato'
 import {
   bloqueVacio, bloqueDesdeTarea, bloqueDesdeSueltas, sueltasDesdeBloque, filasDeBloque, faltaEnBloque,
@@ -1383,11 +1384,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             {esFuerza ? (
               <>
                 {rotulado('Grupo muscular',
-                  <select value={defectos.fuerza.grupoMuscular || ''} className={campoDefecto(defectos.fuerza.grupoMuscular)}
-                    onChange={e => cambiarDefecto('fuerza', 'grupoMuscular', e.target.value)}>
-                    <option value="">Sin fijar</option>
-                    {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
-                  </select>)}
+                  <SelectorGrupo ejercicios={ejerciciosBiblioteca} vacio="Sin fijar"
+                    valor={defectos.fuerza.grupoMuscular || ''} className={campoDefecto(defectos.fuerza.grupoMuscular)}
+                    onCambio={v => cambiarDefecto('fuerza', 'grupoMuscular', v)} />)}
                 {rotulado('Tipo de serie',
                   <select value={defectos.fuerza.tipoSerie || ''} className={campoDefecto(defectos.fuerza.tipoSerie)}
                     onChange={e => cambiarDefecto('fuerza', 'tipoSerie', e.target.value)}>
@@ -1973,10 +1972,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           para saber qué es. El grupo es un filtro para encontrarlo y
                           puede recortarse sin perder nada. */}
                       <div className="flex gap-1.5">
-                        <select value={f.grupoMuscularSel} onChange={e => updateF(i, 'grupoMuscularSel', e.target.value)} className={campoBase + ' basis-[42%] min-w-[120px]'}>
-                          <option value="">Grupo muscular</option>
-                          {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
-                        </select>
+                        <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={f.grupoMuscularSel}
+                          onCambio={v => updateF(i, 'grupoMuscularSel', v)}
+                          className={campoBase + ' basis-[42%] min-w-[120px]'} />
                         {f.grupoMuscularSel && (
                           <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={campoBase + ' basis-[58%] min-w-[190px]'}>
                             <option value="">Ejercicio</option>
@@ -1999,10 +1997,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
                           <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>
-                          <select value={f.grupoMuscular2} onChange={e => updateF(i, 'grupoMuscular2', e.target.value)} className={inputCls}>
-                            <option value="">Grupo muscular</option>
-                            {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g as string} value={g as string}>{g as string}</option>)}
-                          </select>
+                          <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={f.grupoMuscular2}
+                            onCambio={v => updateF(i, 'grupoMuscular2', v)} className={inputCls} />
                           {f.grupoMuscular2 && (
                             <select value={f.ejercicioSelId2} onChange={e => updateF(i, 'ejercicioSelId2', e.target.value)} className={inputCls + ' mt-1'}>
                               <option value="">Ejercicio 2</option>

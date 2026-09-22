@@ -24,10 +24,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { partirInstrucciones } from '@/lib/instrucciones'
 import {
-  EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, gruposExistentes, crearEjercicioPropio,
+  EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, crearEjercicioPropio,
   editarEjercicioPropio, borrarEjercicioPropio, esMio, type EjercicioNuevo,
 } from '@/lib/ejercicio-propio'
-import { COMPLEJOS, FUNCIONAL } from '@/lib/grupo-ejercicio'
+import { FAMILIAS, esDeFamilia } from '@/lib/familias-grupo'
+import SelectorGrupo from '@/components/SelectorGrupo'
 
 export interface EjercicioBib {
   id: number
@@ -40,17 +41,19 @@ export interface EjercicioBib {
   id_deportista?: number | null
 }
 
-/* Los filtros salen de cómo la biblioteca YA está ordenada, no de etiquetas
-   nuevas: un ejercicio nunca se queda fuera de todos por no estar etiquetado. */
+/* Los chips son las MISMAS familias que parten el desplegable de grupo
+   muscular (lib/familias-grupo). Vivían aquí, a mano, y solo servían para esto:
+   si allí pone «Core y tronco» y aquí «Core», son dos clasificaciones que se
+   parecen. Sacarlas de aquí arregló además un despiste: «Espalda baja» caía en
+   Tren superior por llevar la palabra «espalda».
+   Un ejercicio nunca se queda fuera de todos los chips: lo que no encaja en
+   ninguna familia cae en «Otros». */
 const FILTROS: { id: string; et: string; test: (e: EjercicioBib) => boolean }[] = [
   { id: 'todo', et: 'Todo', test: () => true },
-  { id: 'mov', et: 'Movilidad', test: e => /movilidad/i.test(e.grupo_muscular || '') },
-  { id: 'core', et: 'Core', test: e => /core/i.test(e.grupo_muscular || '') },
-  { id: 'inf', et: 'Tren inferior', test: e => /cuádriceps|cuadriceps|isquio|glúteo|gluteo|cadera|rodilla|tobillo/i.test(e.grupo_muscular || '') },
-  { id: 'sup', et: 'Tren superior', test: e => /pectoral|espalda|hombro|bíceps|biceps|tríceps|triceps|cuello/i.test(e.grupo_muscular || '') },
-  { id: 'esp', et: 'Específico', test: e => /específico|especifico/i.test(e.grupo_muscular || '') },
-  { id: 'comp', et: 'Complejos', test: e => e.grupo_muscular === COMPLEJOS },
-  { id: 'func', et: 'Funcional', test: e => e.grupo_muscular === FUNCIONAL },
+  ...FAMILIAS.map(f => ({
+    id: f.id, et: f.corta,
+    test: (e: EjercicioBib) => esDeFamilia(f.id, e.grupo_muscular),
+  })),
 ]
 
 const sinTildes = (s: string) =>
@@ -355,12 +358,10 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
 
                     <label className="flex flex-col gap-1.5">
                       <span className="text-gray-400 text-[12.5px]">De qué es</span>
-                      <select value={creando.grupoMuscular}
-                        onChange={ev => setCreando({ ...creando, grupoMuscular: ev.target.value })}
-                        className="bg-gray-800 border border-gray-700 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-                        <option value="">Sin clasificar</option>
-                        {gruposExistentes(ejercicios).map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
+                      <SelectorGrupo ejercicios={ejercicios} vacio="Sin clasificar"
+                        valor={creando.grupoMuscular}
+                        onCambio={v => setCreando({ ...creando, grupoMuscular: v })}
+                        className="bg-gray-800 border border-gray-700 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
                       {/* Este campo no es adorno: el reparto de series de la
                           semana que mira el entrenador agrupa por esta cadena. */}
                       <span className="text-gray-600 text-[11px] leading-snug">

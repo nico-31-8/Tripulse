@@ -10,6 +10,7 @@ import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
 import PanelSemana from '@/components/PanelSemana'
+import SelectorGrupo from '@/components/SelectorGrupo'
 import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
@@ -1073,10 +1074,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <select value={grupoMuscularSel} onChange={e => { setGrupoMuscularSel(e.target.value); setEjercicioSel(null) }} className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500">
-                    <option value="">Grupo muscular</option>
-                    {[...new Set(ejerciciosBiblioteca.map(e => e.grupo_muscular))].map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
+                  <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={grupoMuscularSel}
+                    onCambio={v => { setGrupoMuscularSel(v); setEjercicioSel(null) }}
+                    className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
                   {/* El grupo se pone también: si no, el desplegable de abajo
                       enseñaría una lista que no contiene lo que acabas de elegir. */}
                   <BuscadorEjercicios
@@ -1088,10 +1088,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 {(tipoSerie === 'Superserie' || tipoSerie === 'Complex') && ejercicioSel && (
                   <div className="bg-gray-800 rounded-xl p-4 border border-orange-500/50">
                     <p className="text-orange-400 text-sm font-medium mb-3">+ Ejercicio encadenado</p>
-                    <select value={grupoMuscular2} onChange={e => { setGrupoMuscular2(e.target.value); setEjercicioSel2(null) }} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2">
-                      <option value="">Grupo muscular</option>
-                      {[...new Set(ejerciciosBiblioteca.map((e: any) => e.grupo_muscular))].map((g: any) => <option key={g as string} value={g as string}>{g as string}</option>)}
-                    </select>
+                    <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={grupoMuscular2}
+                      onCambio={v => { setGrupoMuscular2(v); setEjercicioSel2(null) }}
+                      className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2" />
                     {grupoMuscular2 && (
                       <select value={ejercicioSel2?.id || ''} onChange={e => setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => ej.id === Number(e.target.value)) || null)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
                         <option value="">Selecciona ejercicio</option>
