@@ -30,7 +30,7 @@ export async function estimarDuraciones(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos')
+    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
     .in('id_sesion', sesionIds)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
@@ -52,6 +52,9 @@ export async function estimarDuraciones(
       descanso_segundos: t.descanso_segundos,
       bloques: t.bloques,
       descanso_bloques_segundos: t.descanso_bloques_segundos,
+      /* Sin el formato, un AMRAP 12′ contaría cero minutos. */
+      formato: t.formato,
+      formato_config: t.formato_config,
       zona_entrenamiento: t.zona_entrenamiento,
       p_distancia: (dists || []).filter((d: any) => d.id_tarea === t.id),
       p_duracion: (durs || []).filter((d: any) => d.id_tarea === t.id),

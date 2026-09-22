@@ -114,8 +114,46 @@ describe('las consultas que cuentan', () => {
     expect(malas).toEqual([])
   })
 
+  /* UN BLOQUE (AMRAP 12′, 4 rondas…) dura lo que dice su formato. Una consulta
+     que pida las series y no el formato cuenta el bloque como una tarea sin
+     series: cero minutos, y la carga de la sesión corta sin avisar. */
+  it('toda consulta a tarea que pide series pide también el formato del bloque', () => {
+    const malas = consultasA('tarea')
+      .filter(c => !c.columnas.trim().startsWith('*'))
+      .filter(c => /\bseries\b/.test(c.columnas) && !(/\bformato\b/.test(c.columnas) && /\bformato_config\b/.test(c.columnas)))
+      .filter(c => !TAREA_SIN_BLOQUES[c.fichero])
+      .map(c => c.fichero + ' → ' + c.columnas)
+    expect(malas).toEqual([])
+  })
+
+  /* Las líneas de un bloque se miden en metros, segundos o calorías, y eso va
+     en `medida` y `cantidad`: sin ellas, 200 m de paseo del granjero no son nada. */
+  it('toda consulta a ejercicios que pide repeticiones pide también la cantidad de las líneas', () => {
+    const malas = consultasA('ejercicios')
+      .filter(c => !c.columnas.trim().startsWith('*'))
+      .filter(c => /\brepeticiones\b/.test(c.columnas) && !(/\bmedida\b/.test(c.columnas) && /\bcantidad\b/.test(c.columnas)))
+      .filter(c => !EJERCICIOS_SIN_CARDIO[c.fichero])
+      .map(c => c.fichero + ' → ' + c.columnas)
+    expect(malas).toEqual([])
+  })
+
+  /* El mismo olvido, un paso después: la consulta trae el formato, pero una
+     copia campo a campo de la tarea (para calcular la duración) no lo pasa, y
+     el bloque vuelve a contar cero. Donde se copian los bloques de series, se
+     tienen que copiar también el formato y su configuración. */
+  it('toda copia campo a campo de una tarea que pasa los bloques pasa también el formato', () => {
+    const malas: string[] = []
+    for (const f of ficheros()) {
+      const texto = fs.readFileSync(f, 'utf8')
+      const bloques = (texto.match(/descanso_bloques_segundos:\s*t\.descanso_bloques_segundos/g) || []).length
+      const formato = (texto.match(/formato_config:\s*t\.formato_config/g) || []).length
+      if (bloques > formato) malas.push(path.relative(RAIZ, f).split(path.sep).join('/'))
+    }
+    expect(malas).toEqual([])
+  })
+
   it('la lista compartida del cardio trae todo lo que hace falta para contar', () => {
-    for (const col of ['id_tarea', 'repeticiones', 'cardio_modo', 'cardio_medida', 'cardio_valor', 'cardio_zona']) {
+    for (const col of ['id_tarea', 'repeticiones', 'cardio_modo', 'cardio_medida', 'cardio_valor', 'cardio_zona', 'medida', 'cantidad', 'orden']) {
       expect(SELECT_EJERCICIOS_CONTEO).toContain(col)
     }
   })

@@ -11,6 +11,7 @@ import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
 import { controlDeEjercicio } from './control-esfuerzo'
+import { esBloque, leerConfig, ordenarLineas, textoFormato, textoLinea, QUE_SE_APUNTA, type Formato, type LineaBloque } from './bloque-formato'
 
 /** Lo que se hace en CADA serie: «400 m», «5:00 min», «8 reps». */
 export function valorPorSerie(t: any): string {
@@ -73,6 +74,24 @@ export interface VistaTarea {
  * ya la línea de debajo.
  */
 export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: number = 0): VistaTarea {
+  /* UN BLOQUE se lee por su formato y sus líneas, no por su primer ejercicio:
+     «AMRAP 12′» de titular y una casilla por línea. Leído como una línea suelta
+     saldría solo el primer ejercicio y sin decir que va en ronda con los otros. */
+  if (esBloque(t)) {
+    const formato = t.formato as Formato
+    const lineas = ordenarLineas(t.ejercicios as LineaBloque[] | null)
+    return {
+      titulo: textoFormato(formato, leerConfig(t.formato_config)),
+      zona: t?.zona_entrenamiento || '', nombreZona: nombreDeZona(t?.zona_entrenamiento),
+      disciplina: t?.disciplina || '', esFuerza: true,
+      campos: [
+        ...lineas.map((l, i) => ({ k: String(i + 1), v: textoLinea(l, formato) })),
+        { k: 'Apunta', v: QUE_SE_APUNTA[formato] },
+      ],
+      comentario: t?.comentario || '',
+      encadenado: '',
+    }
+  }
   const ej = t?.ejercicios?.[0]
   const esFuerza = !!ej
   const zona = t?.zona_entrenamiento || ''

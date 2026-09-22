@@ -60,7 +60,7 @@ interface Props {
 
 const SELECT_TAREA =
   '*, p_duracion(*), p_distancia(*), p_repeticiones(*), ' +
-  'ejercicios(id, nombre, series, repeticiones, tipo_serie, ejercicio_encadenado_nombre, ' +
+  'ejercicios(id, nombre, series, repeticiones, medida, cantidad, orden, tipo_serie, ejercicio_encadenado_nombre, ' +
   'ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, ' +
   'escalones_drop, grupo_muscular, intensidad, control_tipo, ' +
   'control_valor, notas_ejecucion, ' +

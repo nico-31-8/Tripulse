@@ -23,9 +23,16 @@ import {
   tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
 } from '@/lib/prescripcion-zona'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
-import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, valorCardioDeFila as valorCardioDe, type MedidaCardio } from '@/lib/cardio-fuerza'
+import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, valorCardioDeFila as valorCardioDe } from '@/lib/cardio-fuerza'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
+import BloqueEditor from './BloqueEditor'
+import ResumenBloque from '@/components/ResumenBloque'
+import { esBloque, FORMATOS, type Formato } from '@/lib/bloque-formato'
+import {
+  bloqueVacio, bloqueDesdeTarea, bloqueDesdeSueltas, sueltasDesdeBloque, filasDeBloque, faltaEnBloque,
+  type BloqueBorrador,
+} from '@/lib/bloque-borrador'
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
@@ -129,6 +136,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      atajos de unidad y solo ahí. null = ninguna. */
   const [atajosEn, setAtajosEn] = useState<number | null>(null)
   const [filasF, setFilasF] = useState<FilaFuerza[]>([])
+  /* Bloques con formato (rondas, AMRAP, EMOM…) en borrador. Ver BloqueEditor. */
+  const [bloquesB, setBloquesB] = useState<BloqueBorrador[]>([])
+  const [errorBloque, setErrorBloque] = useState<Record<string, string>>({})
+  const [guardandoBloque, setGuardandoBloque] = useState<string | null>(null)
+  /* Líneas sueltas marcadas para agruparlas en un bloque. */
+  const [marcadas, setMarcadas] = useState<number[]>([])
   const [tests, setTests] = useState<any>({})
   const [fcMax, setFcMax] = useState(0)
   // Su FC de reposo: con ella las pulsaciones salen por Karvonen (ver
@@ -282,6 +295,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      hace que copiar desde el panel de la semana no toque la otra sesión.
      Antes esta función tenía el mapeo entero escrito a mano; ahora hay uno. */
   const abrirEditarTarea = (t: any) => {
+    /* Un bloque se edita en su editor, con todas sus líneas. */
+    if (esBloque(t)) {
+      setBloquesB(prev => prev.some(b => b.idTarea === t.id) ? prev : [...prev,
+        bloqueDesdeTarea(t, { copia: false, orden: t.orden ?? 1, biblioteca: ejerciciosBiblioteca })])
+      return
+    }
     if (esFuerza) {
       setFilasF(prev => prev.some(f => f.idTarea === t.id) ? prev : [...prev,
         filaFuerzaDesde(t, {
@@ -308,6 +327,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
    * ninguna ambigüedad: son dos tareas distintas.
    */
   const duplicarTarea = (t: any) => {
+    if (esBloque(t)) {
+      setBloquesB(prev => [...prev, bloqueDesdeTarea(t, {
+        copia: true, orden: ultimoOrden(tareasGuardadas) + prev.length + 1, biblioteca: ejerciciosBiblioteca,
+      })])
+      return
+    }
     if (esFuerza) {
       setFilasF(prev => [...prev, filaFuerzaDesde(t, {
         base: nuevaFilaF(), orden: tareasGuardadas.length + prev.length + 1,
@@ -331,7 +356,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     if (esFuerza && !ejerciciosBiblioteca.length) return
     const base = tareasGuardadas.length
     if (esFuerza) {
-      setFilasF(prev => [...prev, ...copiar.tareas.map((t, k) =>
+      /* Los bloques llegan a su editor; las líneas sueltas, como siempre. */
+      const bloquesC = copiar.tareas.filter(t => esBloque(t))
+      const sueltasC = copiar.tareas.filter(t => !esBloque(t))
+      if (bloquesC.length) setBloquesB(prev => [...prev, ...bloquesC.map((t, k) =>
+        bloqueDesdeTarea(t, { copia: true, orden: base + prev.length + k + 1, biblioteca: ejerciciosBiblioteca }))])
+      setFilasF(prev => [...prev, ...sueltasC.map((t, k) =>
         filaFuerzaDesde(t, {
           base: nuevaFilaF(), orden: base + prev.length + k + 1,
           copia: true, ejerciciosBiblioteca,
@@ -345,7 +375,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   /** Las que están abiertas abajo no se pintan arriba. */
   const editandose = new Set<number>([
-    ...filasR.map(f => f.idTarea), ...filasF.map(f => f.idTarea),
+    ...filasR.map(f => f.idTarea), ...filasF.map(f => f.idTarea), ...bloquesB.map(b => b.idTarea),
   ].filter((x): x is number => x != null))
 
   /* Traducir zona → ritmo/vatios/pulsaciones vive en lib/referencia-zona: lo
@@ -881,6 +911,102 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     return { creada: !f.idTarea }
   }
 
+  // ---------- BLOQUES CON FORMATO ----------
+
+  const nuevoBloque = (formato: Formato) =>
+    setBloquesB(prev => [...prev, bloqueVacio(formato, ultimoOrden(tareasGuardadas) + filasF.length + prev.length + 1)])
+
+  /** Borra una tarea y lo que cuelga de ella. Sin preguntar: ya lo ha hecho quien llama. */
+  const borrarEnSilencio = async (tareaId: number) => {
+    await supabase.from('p_distancia').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_duracion').delete().eq('id_tarea', tareaId)
+    await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaId)
+    await supabase.from('ejercicios').delete().eq('id_tarea', tareaId)
+    await supabase.from('tarea').delete().eq('id', tareaId)
+  }
+
+  /**
+   * Guarda un bloque: su tarea y una fila de `ejercicios` por línea
+   * (lib/bloque-borrador). Al editar, las líneas se reescriben enteras, como en
+   * fuerza: parchearlas una a una dejaría mezclas imposibles al cambiar de
+   * formato. Si viene de agrupar, las sueltas que sustituye se borran SOLO
+   * cuando el bloque ya ha entrado.
+   */
+  const guardarBloque = async (b: BloqueBorrador) => {
+    const falta = faltaEnBloque(b)
+    if (falta) { setErrorBloque(e => ({ ...e, [b.clave]: falta })); return }
+    setGuardandoBloque(b.clave)
+    setErrorBloque(e => ({ ...e, [b.clave]: '' }))
+    const zona = (modoFuerza === 'compleja' ? b.zonaFuerzaTarea : zonaFuerza) || null
+    const { tarea, ejercicios } = filasDeBloque(b, ejerciciosBiblioteca, { disciplina: disciplinaDeTareaFuerza(disciplinaSesion), zona })
+    let idTarea = b.idTarea
+    let fallo = ''
+    if (idTarea) {
+      const { error } = await supabase.from('tarea').update(tarea).eq('id', idTarea)
+      if (error) fallo = error.message
+      else {
+        await supabase.from('ejercicios').delete().eq('id_tarea', idTarea)
+        await supabase.from('p_duracion').delete().eq('id_tarea', idTarea)
+        await supabase.from('p_repeticiones').delete().eq('id_tarea', idTarea)
+      }
+    } else {
+      const orden = b.reemplaza?.length ? b.orden : ultimoOrden(tareasGuardadas) + 1
+      const { data, error } = await supabase.from('tarea').insert({ id_sesion: sesionId, ...tarea, orden }).select().single()
+      if (error || !data) fallo = error?.message || 'sin respuesta'
+      else idTarea = data.id
+    }
+    if (!fallo && idTarea) {
+      const { error } = await supabase.from('ejercicios').insert(ejercicios.map(e => ({ ...e, id_tarea: idTarea })))
+      if (error) fallo = error.message
+    }
+    if (!fallo && b.reemplaza?.length) for (const id of b.reemplaza) await borrarEnSilencio(id)
+    setGuardandoBloque(null)
+    if (fallo) { setErrorBloque(e => ({ ...e, [b.clave]: 'No se ha guardado: ' + fallo })); return }
+    await cargarDatos()
+    setBloquesB(prev => prev.filter(x => x.clave !== b.clave))
+    onTareasCambian?.()
+  }
+
+  /**
+   * Soltar: el bloque vuelve a ser líneas sueltas, en su mismo sitio, con
+   * tantas series como veces se hacía cada una. Lo contrario de agrupar.
+   * Comparten su número de orden y las ordena el id, que es el de creación.
+   */
+  const soltarBloque = async (t: Parameters<typeof sueltasDesdeBloque>[0] & { id: number; orden?: number | null }) => {
+    const filas = sueltasDesdeBloque(t)
+    if (!confirm('El bloque se convierte en ' + filas.length + (filas.length === 1 ? ' línea suelta' : ' líneas sueltas') +
+      ', con tantas series como veces se hacía cada una. ¿Seguir?')) return
+    setLoading(true)
+    for (const f of filas) {
+      const { data, error } = await supabase.from('tarea').insert({ id_sesion: sesionId, ...f.tarea, orden: t.orden ?? 1 }).select().single()
+      if (error || !data) {
+        setLoading(false)
+        alert('No se ha podido soltar: ' + (error?.message || 'sin respuesta') + '. El bloque sigue como estaba.')
+        await cargarDatos()
+        return
+      }
+      await supabase.from('ejercicios').insert({ ...f.ejercicio, id_tarea: data.id })
+      const ej = f.ejercicio as { medida?: string | null; cantidad?: number | null; repeticiones?: number | null }
+      if (ej.medida === 'seg' && Number(ej.cantidad) > 0) {
+        await supabase.from('p_duracion').insert({ id_tarea: data.id, tiempo_planeado: Math.round(Number(ej.cantidad)) })
+      } else if (ej.repeticiones) {
+        await supabase.from('p_repeticiones').insert({ id_tarea: data.id, repeticiones_planteadas: ej.repeticiones })
+      }
+    }
+    await borrarEnSilencio(t.id)
+    await cargarDatos()
+    setLoading(false)
+    onTareasCambian?.()
+  }
+
+  /** Agrupar las líneas sueltas marcadas en un bloque nuevo (no se borra nada hasta guardarlo). */
+  const agrupar = (formato: Formato) => {
+    const elegidas = tareasGuardadas.filter(t => marcadas.includes(t.id) && !esBloque(t))
+    if (!elegidas.length) return
+    setBloquesB(prev => [...prev, bloqueDesdeSueltas(elegidas, formato, ejerciciosBiblioteca)])
+    setMarcadas([])
+  }
+
   const guardarFilaF = async (i: number) => {
     /* La misma regla que el botón y que «Guardar todas»: `estadoFuerza`. Aquí
        decía «hace falta ejercicio» por su cuenta, y una línea de cardio —que
@@ -1013,6 +1139,19 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       {/* TAREAS GUARDADAS */}
       {tareasGuardadas.length > 0 && (
         <div className="mb-4 overflow-x-auto">
+          {marcadas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-pink-500/10 border border-pink-500/30 text-sm text-gray-300">
+              <b className="text-pink-300">{marcadas.length === 1 ? '1 línea marcada' : marcadas.length + ' líneas marcadas'}</b>
+              <span>→ agrupar en un bloque:</span>
+              {FORMATOS.map(f => (
+                <button key={f.id} type="button" onClick={() => agrupar(f.id)}
+                  className="px-3 py-1 rounded-full border border-gray-700 bg-gray-800 hover:border-pink-400 hover:text-pink-300 text-xs font-semibold transition">
+                  {f.nombre}
+                </button>
+              ))}
+              <button type="button" onClick={() => setMarcadas([])} className="text-xs text-gray-500 hover:text-white ml-1">Cancelar</button>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-400 text-xs border-b border-gray-700">
@@ -1068,10 +1207,30 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <td className="py-2 px-2 text-orange-400 font-bold whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
                         {!esDeportista && <span className="text-gray-500 hover:text-orange-400 text-xl leading-none cursor-grab active:cursor-grabbing select-none" title="Arrastra para reordenar">⠿</span>}
+                        {!esDeportista && esFuerza && !esBloque(t) && (
+                          <input type="checkbox" checked={marcadas.includes(t.id)}
+                            onChange={e => setMarcadas(m => e.target.checked ? [...m, t.id] : m.filter(x => x !== t.id))}
+                            className="w-3.5 h-3.5 accent-pink-400" title="Marcar para agrupar en un bloque" />
+                        )}
                         {i + 1}
                       </span>
                     </td>
-                    {esFuerza ? (
+                    {esBloque(t) ? (
+                      <>
+                        <td colSpan={6} className="py-2 px-2"><ResumenBloque t={t} /></td>
+                        <td className="py-2 px-2 text-gray-400 text-xs">{t.comentario || '—'}</td>
+                        {!esDeportista && (
+                          <td className="py-2 px-2">
+                            <div className="flex gap-1">
+                              <button onClick={() => abrirEditarTarea(t)} title="Editar el bloque" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => duplicarTarea(t)} title="Duplicar el bloque" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
+                              <button onClick={() => soltarBloque(t)} title="Soltar: sus líneas vuelven a ser sueltas" className="text-gray-500 hover:text-pink-300 text-xs px-1.5 py-1 rounded transition">⤓</button>
+                              <button onClick={() => borrarTarea(t.id)} title="Borrar el bloque" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
+                            </div>
+                          </td>
+                        )}
+                      </>
+                    ) : esFuerza ? (
                       <>
                         <td className="py-2 px-2 text-white">
                           {t.ejercicios?.[0] ? (
@@ -1796,7 +1955,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                todavía no había nada escrito. */
                             parcheF(i, f.cardioValor
                               ? { cardioModo: e.target.value }
-                              : { cardioModo: e.target.value, cardioMedida: (m?.medida || 'metros') as MedidaCardio })
+                              : { cardioModo: e.target.value, cardioMedida: m?.medida === 'segundos' ? 'segundos' : 'metros' })
                           }}
                           className={campoBase + ' basis-[60%] min-w-[150px]'} title="Modalidad">
                           <option value="">Modalidad…</option>
@@ -2004,11 +2163,53 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         </div>
       )}
 
-      {!esDeportista && (
-        <button onClick={() => esFuerza ? setFilasF(prev => [...prev, nuevaFilaF()]) : setFilasR(prev => [...prev, nuevaFilaR()])}
+      {esFuerza && bloquesB.map(b => (
+        <BloqueEditor key={b.clave} bloque={b} biblioteca={ejerciciosBiblioteca}
+          onCambio={nb => setBloquesB(prev => prev.map(x => x.clave === b.clave ? nb : x))}
+          onGuardar={() => guardarBloque(b)}
+          onQuitar={() => setBloquesB(prev => prev.filter(x => x.clave !== b.clave))}
+          guardando={guardandoBloque === b.clave} error={errorBloque[b.clave]}
+          modoCompleja={modoFuerza === 'compleja'} onBibliotecaCambia={cargarDatos} />
+      ))}
+
+      {!esDeportista && !esFuerza && (
+        <button onClick={() => setFilasR(prev => [...prev, nuevaFilaR()])}
           className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
-          <span>+</span> Añadir {esFuerza ? 'ejercicio' : 'tarea'}
+          <span>+</span> Añadir tarea
         </button>
+      )}
+
+      {/* LÍNEA O BLOQUE. En fuerza (y en híbrido) se elige aquí qué se añade:
+          una línea con sus series, como siempre, o un bloque de varias líneas
+          que se hacen juntas. Lo ya escrito se puede agrupar o soltar después. */}
+      {!esDeportista && esFuerza && (
+        <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/60 p-3.5">
+          <p className="text-sm font-semibold text-white mb-2.5 mt-0">Añadir a la sesión</p>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1.4fr] gap-2.5">
+            <button type="button" onClick={() => setFilasF(prev => [...prev, nuevaFilaF()])}
+              className="text-left rounded-xl border border-gray-700 bg-gray-800/60 hover:border-orange-500 px-3.5 py-3 transition">
+              <span className="block font-semibold text-white text-sm">Una línea</span>
+              <span className="block text-xs text-gray-400 mt-0.5">Un ejercicio o un cardio con sus propias series, como siempre.</span>
+              <span className="block text-[11.5px] text-gray-500 mt-1 font-mono">4 × 5 sentadilla @ 80 kg · RIR 2</span>
+            </button>
+            <div className="rounded-xl border border-gray-700 bg-gray-800/60 px-3.5 py-3">
+              <span className="block font-semibold text-white text-sm">Un bloque</span>
+              <span className="block text-xs text-gray-400 mt-0.5">Varias líneas que se hacen juntas. Elige cómo:</span>
+              <span className="block text-[11.5px] text-gray-500 mt-1 font-mono">4 rondas: 1 km + 20 wall balls + 50 m trineo</span>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {FORMATOS.map(f => (
+                  <button key={f.id} type="button" onClick={() => nuevoBloque(f.id)}
+                    className="px-3 py-1 rounded-full border border-gray-700 bg-gray-800 hover:border-pink-400 hover:text-pink-300 text-xs font-semibold text-gray-300 transition">
+                    + {f.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {tareasGuardadas.some(t => !esBloque(t)) && (
+            <p className="text-xs text-gray-500 mt-2.5 mb-0">¿Ya tienes líneas sueltas escritas? Márcalas arriba (la casilla junto al número) y agrúpalas en un bloque sin volver a escribirlas.</p>
+          )}
+        </div>
       )}
 
     </div>

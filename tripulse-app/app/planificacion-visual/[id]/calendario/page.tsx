@@ -260,7 +260,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
     // ---- Ronda 2: las tareas de esas sesiones ----
     const { data: tareas } = await supabase.from('tarea')
-      .select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos, bloques, descanso_bloques_segundos')
+      .select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
       .in('id_sesion', sesiones.map(x => x.id))
 
     const tareaIds = (tareas || []).map(t => t.id)
@@ -379,6 +379,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
            dejaba un 2 × 400 en el día de destino. */
         bloques: tarea.bloques ?? null,
         descanso_bloques_segundos: tarea.descanso_bloques_segundos ?? null,
+        /* Y el formato de un bloque (AMRAP…): sin él llegaría como líneas sueltas sin series. */
+        formato: tarea.formato ?? null,
+        formato_config: tarea.formato_config ?? null,
         comentario: tarea.comentario,
         orden: tarea.orden,
       }).select().single()

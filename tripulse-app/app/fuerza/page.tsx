@@ -3,11 +3,11 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { COMPLEJOS, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
+import { COMPLEJOS, FUNCIONAL, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
 
 /* Complejos: arrancada, cargada, del suelo a overhead… Es una etiqueta más,
    pero además decide el grupo con el que sale al prescribir (lib/grupo-ejercicio). */
-const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab', COMPLEJOS]
+const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab', COMPLEJOS, FUNCIONAL]
 const DISCIPLINAS = ['Natación', 'Ciclismo', 'Carrera']
 const REGIONES = [
   'Cuádriceps', 'Isquiotibiales', 'Glúteos', 'Cadera y aductores', 'Rodilla',
@@ -37,6 +37,7 @@ const CLASE_TIPO: Record<string, string> = {
   'Técnica': 'bg-blue-900 text-blue-300',
   'Rehab': 'bg-red-900 text-red-300',
   [COMPLEJOS]: 'bg-amber-900 text-amber-300',
+  [FUNCIONAL]: 'bg-cyan-900 text-cyan-300',
 }
 
 const CLAVE_ADMIN = 'fuerza25'

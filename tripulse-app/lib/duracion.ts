@@ -21,6 +21,7 @@ import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
 import { vecesDe, descansoTotalDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
+import { esBloque, duracionBloque, leerConfig, ordenarLineas, type Formato, type LineaBloque } from './bloque-formato'
 import type { Sexo } from './tests-campo'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
@@ -59,6 +60,9 @@ export interface TareaDuracion {
   p_duracion?: { tiempo_planeado?: number | null }[] | null
   p_repeticiones?: { repeticiones_planteadas?: number | null }[] | null
   ejercicios?: EjercicioDuracion[] | null
+  /** Si es un bloque con formato (rondas, AMRAP…): ver lib/bloque-formato. */
+  formato?: string | null
+  formato_config?: unknown
 }
 
 /** Lo que se mira de un ejercicio de fuerza para saber cuánto dura. */
@@ -69,6 +73,10 @@ export interface EjercicioDuracion {
   cardio_medida?: string | null
   cardio_valor?: number | null
   cardio_zona?: string | null
+  /** Las líneas de un bloque: su medida, su cantidad y su orden. */
+  medida?: string | null
+  cantidad?: number | string | null
+  orden?: number | null
 }
 
 export interface TestsDeportista {
@@ -240,6 +248,21 @@ export function calcularDuracionEstimada(
   let ejerciciosFuerza = 0   // nº de tareas de fuerza estimadas (para transiciones)
 
   for (const t of tareas) {
+    /* UN BLOQUE (AMRAP 12′, 4 rondas…) dura lo que dice su formato, no series ×
+       reps: sus líneas no llevan series. La cuenta es de lib/bloque-formato, y el
+       cardio de dentro sale al ritmo del atleta, como en una línea suelta. */
+    if (esBloque(t)) {
+      const d = duracionBloque(t.formato as Formato, leerConfig(t.formato_config),
+        ordenarLineas(t.ejercicios as LineaBloque[] | null),
+        l => segCardioPorSerie(l as EjercicioDuracion, tests))
+      if (d.segundos > 0) {
+        segundos += d.segundos
+        ejerciciosFuerza++
+        algunaEstimada = true
+      }
+      continue
+    }
+
     const series = t.series && t.series > 0 ? t.series : 1
 
     // Fuerza (e Híbrido): reps × tempo (normal) o series × segundos (isométrico)

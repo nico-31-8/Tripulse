@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { COMPLEJOS, esComplejo, grupoAlCrear, grupoAlEditar } from './grupo-ejercicio'
+import { COMPLEJOS, FUNCIONAL, esComplejo, grupoAlCrear, grupoAlEditar } from './grupo-ejercicio'
 
 describe('el grupo de un ejercicio nuevo', () => {
   it('un complejo va a Complejos aunque tenga regiones', () => {
@@ -31,6 +31,18 @@ describe('el grupo al editar', () => {
   it('si no entra ni sale de Complejos, no se toca', () => {
     expect(grupoAlEditar('Natación — específico', ['Fuerza'], [])).toBeNull()
     expect(grupoAlEditar(COMPLEJOS, ['Fuerza', COMPLEJOS], ['Hombro'])).toBeNull()
+  })
+})
+
+describe('el grupo Funcional (estaciones de HYROX, gimnásticos)', () => {
+  it('funciona igual que Complejos', () => {
+    expect(grupoAlCrear(['Fuerza', FUNCIONAL], ['Cuádriceps'])).toBe(FUNCIONAL)
+    expect(grupoAlEditar('Cuádriceps', ['Fuerza', FUNCIONAL], ['Cuádriceps'])).toBe(FUNCIONAL)
+    expect(grupoAlEditar(FUNCIONAL, ['Fuerza'], ['Cuádriceps'])).toBe('Cuádriceps')
+  })
+
+  it('pasar de Complejos a Funcional cambia el grupo', () => {
+    expect(grupoAlEditar(COMPLEJOS, ['Fuerza', FUNCIONAL], [])).toBe(FUNCIONAL)
   })
 })
 

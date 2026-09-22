@@ -43,6 +43,8 @@ import {
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
+import { esBloque } from '@/lib/bloque-formato'
+import ResumenBloque from '@/components/ResumenBloque'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -109,7 +111,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     // aunque ahora avisa (onTareasCambian), guardar una plantilla incompleta es
     // silencioso y difícil de detectar. Aquí la fuente de verdad es la base de datos.
     const { data: frescas } = await supabase.from('tarea')
-      .select('orden, zona_entrenamiento, series, descanso_segundos, bloques, descanso_bloques_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados)')
+      .select('orden, zona_entrenamiento, series, descanso_segundos, bloques, descanso_bloques_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados), formato, formato_config')
       .eq('id_sesion', id).order('orden')
     const bloques = bloquesDesdeTareas(frescas || [])
     if (!bloques.length) {
@@ -297,7 +299,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
       // sesiones anteriores a que el control tuviera columnas propias.
       ordenarTareasQuery(
-        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id)),
+        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, medida, cantidad, orden, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id)),
     ])
 
     setSesion(ses)
@@ -1267,12 +1269,16 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                             {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>}
                           </div>
                           <div className="flex gap-1">
-                            <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>
+                            {/* Un bloque se edita en la tabla: este formulario no sabe de bloques. */}
+                            {esBloque(t)
+                              ? <button onClick={() => setVistaTabla(true)} title="Los bloques se editan en la vista de tabla" className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️ en la tabla</button>
+                              : <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>}
                             <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
                           </div>
                         </div>
                         <p className="text-gray-300 text-sm">{t.series ? (hayBloques(t) ? bloquesDe(t) + ' × ' : '') + t.series + ' series' : ''}{t.series && t.descanso_segundos ? ' · '+t.descanso_segundos+'s' : ''}</p>
                         {mostrarMedicion(t) && <p className="text-blue-400 text-sm font-medium">{mostrarMedicion(t)}</p>}
+                        {esBloque(t) && <div className="mt-1"><ResumenBloque t={t} /></div>}
                         {/* La intensidad prescrita tampoco salía aquí. La tarjeta
                             enseñaba zona, series, descanso y medición, y lo que
                             habías mandado —«140-150 ppm»— solo se veía volviendo a

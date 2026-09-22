@@ -28,6 +28,8 @@ import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
 import { repeticionTexto } from '@/lib/bloques-tarea'
+import { esBloque } from '@/lib/bloque-formato'
+import ResumenBloque from '@/components/ResumenBloque'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
@@ -305,6 +307,13 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
             </span>
             <div className="flex flex-col gap-2 mt-2.5">
               {tareas.map(t => {
+                /* Un bloque se lee entero: su formato y todas sus líneas. */
+                if (esBloque(t)) return (
+                  <div key={t.id} className="border border-white/[0.075] rounded-[13px] bg-[#0e1218] px-3.5 py-3">
+                    <ResumenBloque t={t} conApunta={!realizada} />
+                    {t.comentario && <p className="text-[11.5px] text-gray-400 italic leading-snug mt-1.5 mb-0">{t.comentario}</p>}
+                  </div>
+                )
                 const zc = cargaDeTarea(t).color
                 const disc = t.disciplina || sesion.disciplina
                 /* El ritmo GUARDADO manda sobre el calculado.

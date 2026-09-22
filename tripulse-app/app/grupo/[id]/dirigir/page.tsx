@@ -86,7 +86,7 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
     const sesIds = (ses || []).map((s: any) => s.id)
     const { data: tareas } = sesIds.length
       ? await supabase.from('tarea')
-        .select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, p_distancia(*), p_duracion(*)')
+        .select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, p_distancia(*), p_duracion(*), formato, formato_config')
         .in('id_sesion', sesIds).order('orden')
       : { data: [] as any[] }
 

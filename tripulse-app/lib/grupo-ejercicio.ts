@@ -15,19 +15,32 @@
 // No confundir con el TIPO DE SERIE «Complex» de la prescripción, que encadena
 // dos ejercicios en una misma serie. Un ejercicio del grupo Complejos se
 // prescribe como una serie normal.
+//
+// FUNCIONAL, lo mismo: las estaciones de HYROX y los gimnásticos de CrossFit
+// (wall balls, burpees, toes to bar…). Se añadió con los bloques con formato,
+// para poder elegirlos de la biblioteca dentro de un AMRAP o un EMOM.
 
 export const COMPLEJOS = 'Complejos'
+export const FUNCIONAL = 'Funcional'
+
+/** Las etiquetas de `tipo` que además son el grupo con el que sale al prescribir. */
+export const GRUPOS_DE_ETIQUETA = [COMPLEJOS, FUNCIONAL]
+
+/** El grupo que manda la etiqueta, o null si no lleva ninguna de esas. */
+export const grupoDeEtiqueta = (tipo: string[] | null | undefined): string | null =>
+  GRUPOS_DE_ETIQUETA.find(g => (tipo || []).includes(g)) ?? null
 
 /** Si lleva la etiqueta de Complejos. */
 export const esComplejo = (tipo: string[] | null | undefined): boolean =>
   (tipo || []).includes(COMPLEJOS)
 
 /**
- * El grupo de un ejercicio nuevo: Complejos si lo es; si no, su primera región,
- * y si no tiene región, Movilidad u Otros según el tipo.
+ * El grupo de un ejercicio nuevo: Complejos o Funcional si lo es; si no, su
+ * primera región, y si no tiene región, Movilidad u Otros según el tipo.
  */
 export function grupoAlCrear(tipo: string[] | null | undefined, region: string[] | null | undefined): string {
-  if (esComplejo(tipo)) return COMPLEJOS
+  const g = grupoDeEtiqueta(tipo)
+  if (g) return g
   const primera = (region || [])[0]
   if (primera) return primera
   return (tipo || []).includes('Movilidad') ? 'Movilidad y flexibilidad' : 'Otros'
@@ -46,9 +59,9 @@ export function grupoAlEditar(
   tipo: string[] | null | undefined,
   region: string[] | null | undefined,
 ): string | null {
-  const era = anterior === COMPLEJOS
-  const es = esComplejo(tipo)
-  if (es && !era) return COMPLEJOS
+  const era = GRUPOS_DE_ETIQUETA.includes(anterior || '') ? anterior : null
+  const es = grupoDeEtiqueta(tipo)
+  if (es && es !== era) return es
   if (era && !es) return grupoAlCrear(tipo, region)
   return null
 }

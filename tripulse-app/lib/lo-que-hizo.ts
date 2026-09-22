@@ -28,6 +28,7 @@
 import { seriesPrincipales, controlUltimaVez, type SerieHecha } from './modo-mejora'
 import { vecesDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
+import { esBloque, leerConfig, leerResultado, textoResultado, type Formato } from './bloque-formato'
 import { tieneDatos, seriesHechas } from './serie-hecha'
 import { mmss } from './duracion-carga'
 import type { CampoTarea } from './tarea-vista'
@@ -43,6 +44,10 @@ export interface SerieRealizada extends SerieHecha {
 /** Lo que se mira de una tarea para colocar lo que hizo. */
 export interface TareaVistaHecha {
   id?: number | null
+  /** Si es un bloque, lo que se hizo es su resultado (lib/bloque-formato). */
+  formato?: string | null
+  formato_config?: unknown
+  resultado?: unknown
   disciplina?: string | null
   series?: number | null
   bloques?: number | null
@@ -113,6 +118,12 @@ function serieResistencia(s: SerieRealizada): string {
  * que poder decirlo sin inventarse ceros.
  */
 export function camposHechos(t: TareaVistaHecha, series: SerieRealizada[] | null | undefined): CampoTarea[] | null {
+  /* Un bloque no se anota serie a serie: lo hecho es su resultado. */
+  if (esBloque(t)) {
+    const r = leerResultado(t.resultado)
+    const texto = r ? textoResultado(t.formato as Formato, r, leerConfig(t.formato_config)) : ''
+    return texto ? [{ k: 'Resultado', v: texto, destaca: true }] : null
+  }
   const suyas = (series || []).filter(tieneDatos)
   const ej = t?.ejercicios?.[0]
 

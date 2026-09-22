@@ -25,6 +25,8 @@
 //   SIN SERIES CUENTA 0, NO 1. Contar una desconocida como una es inventarse un
 //   dato. El grupo sigue apareciendo, así que el hueco se ve en vez de taparse.
 
+import { leerConfig, leerResultado, ordenarLineas, seriesDeLinea, type LineaBloque } from './bloque-formato'
+
 export const SIN_CLASIFICAR = 'Sin clasificar'
 
 export interface EjercicioSeries {
@@ -97,6 +99,27 @@ export function seriesPorGrupo(
  * Solo sesiones REALIZADAS: esto es lo que se ha hecho, no lo que hay puesto en
  * el calendario. Y de la papelera no sale nada, igual que en el resto de la app.
  */
+/**
+ * En un AMRAP hecho, las series de cada línea son las rondas que hizo el
+ * atleta, no las que se estimaron al programarlo: lo guardado en `series` es
+ * esa estimación, y el resultado es lo que de verdad pasó. En el resto de
+ * formatos lo guardado ya es exacto (4 rondas son 4 rondas).
+ */
+export function conRondasHechas(
+  tareas: { id: number; formato?: string | null; formato_config?: unknown; resultado?: unknown }[],
+  ejs: (EjercicioSeries & { id_tarea?: number | null; id?: number | null; orden?: number | null })[],
+): EjercicioSeries[] {
+  const amrap = new Map(tareas.filter(t => t.formato === 'amrap' && leerResultado(t.resultado)).map(t => [t.id, t]))
+  if (!amrap.size) return ejs
+  return ejs.map(e => {
+    const t = e.id_tarea != null ? amrap.get(e.id_tarea) : undefined
+    if (!t) return e
+    const lineas = ordenarLineas(ejs.filter(x => x.id_tarea === t.id) as LineaBloque[])
+    const i = lineas.findIndex(l => l.id === e.id)
+    return { ...e, series: seriesDeLinea('amrap', leerConfig(t.formato_config), lineas, Math.max(0, i), leerResultado(t.resultado)) }
+  })
+}
+
 export async function cargarSeriesDeGrupos(
   sb: any,
   idDeportista: number,
@@ -111,14 +134,14 @@ export async function cargarSeriesDeGrupos(
   const ids = (ses || []).filter((s: any) => !s.eliminada).map((s: any) => s.id)
   if (!ids.length) return []
 
-  const { data: tareas } = await sb.from('tarea').select('id').in('id_sesion', ids)
+  const { data: tareas } = await sb.from('tarea').select('id, formato, formato_config, resultado').in('id_sesion', ids)
   const idsTarea = (tareas || []).map((t: any) => t.id)
   if (!idsTarea.length) return []
 
   const { data: ejs } = await sb.from('ejercicios')
-    .select('grupo_muscular, series, tipo_serie').in('id_tarea', idsTarea)
+    .select('id, id_tarea, orden, grupo_muscular, series, tipo_serie, cardio_modo').in('id_tarea', idsTarea)
 
-  return seriesPorGrupo(ejs || [], dias)
+  return seriesPorGrupo(conRondasHechas(tareas || [], ejs || []), dias)
 }
 
 /**

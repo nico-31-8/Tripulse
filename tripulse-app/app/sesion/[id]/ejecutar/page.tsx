@@ -19,6 +19,9 @@ import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import BloqueRegistro from './BloqueRegistro'
+import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
+import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
 
 const segAMmss = mmss
 
@@ -81,6 +84,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [diasHastaComp, setDiasHastaComp] = useState<number | null>(null)
   // Modo mejora: última ejecución de cada ejercicio de fuerza, indexada por nombre.
   const [historialFuerza, setHistorialFuerza] = useState<HistorialFuerza>({})
+  /* Los bloques (AMRAP, for time…): lo que apunta el atleta y su última vez. */
+  const [resultadosBloque, setResultadosBloque] = useState<Record<number, ResultadoBloque>>({})
+  const [ultimasBloque, setUltimasBloque] = useState<Record<number, UltimaVezBloque | null>>({})
 
   // Post sesión
   const [rpe, setRpe] = useState(5)
@@ -160,6 +166,15 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
     const tarConTecnica = await conTecnica(tar.data)
     setTareas(tarConTecnica)
+    /* Si ya se hizo, el resultado de cada bloque vuelve a su casilla; y se busca
+       la última vez que hizo cada uno, para que tenga algo que superar. */
+    const bloquesSes = ((tar.data || []) as TareaEjec[]).filter(t => esBloque(t))
+    if (bloquesSes.length) {
+      const previos: Record<number, ResultadoBloque> = {}
+      for (const t of bloquesSes) { const r = leerResultado(t.resultado); if (r) previos[t.id] = r }
+      setResultadosBloque(previos)
+      if (depIdLocal) cargarUltimasVeces(supabase, depIdLocal, String(ses.fecha_sesion).slice(0, 10), bloquesSes).then(setUltimasBloque)
+    }
     // Se entra directo a entrenar, pero si no hay nada que registrar eso sería una
     // pantalla vacía: en ese caso se abre por el plan, que sí explica que está vacío.
     if (!tar.data || !tar.data.length) setFase('preview')
@@ -281,6 +296,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     }
     if (filasSeries.length) await supabase.from('series_realizadas').insert(filasSeries)
 
+    /* El resultado de cada bloque: es lo que se compara la próxima vez. */
+    for (const [idT, res] of Object.entries(resultadosBloque)) {
+      if (leerResultado(res)) await supabase.from('tarea').update({ resultado: res }).eq('id', Number(idT))
+    }
+
     // Guardar resultados de cada tarea con detalle por series
     for (const tarea of tareas) {
       const r = resultados[tarea.id]
@@ -397,6 +417,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   }
 
   const getObjetivo = (tarea: TareaEjec) => {
+    if (esBloque(tarea)) return textoFormato(tarea.formato as Formato, leerConfig(tarea.formato_config))
     if (tarea.p_duracion?.[0]) return segAMmss(tarea.p_duracion[0].tiempo_planeado || 0) + ' min'
     if (tarea.p_distancia?.[0]) {
       const m = tarea.p_distancia[0].metros_planeados || 0
@@ -581,8 +602,19 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
             {tarea?.comentario && <p className="text-gray-300 text-sm mt-3 italic">{tarea.comentario}</p>}
           </div>
 
+          {/* UN BLOQUE (AMRAP, EMOM…): su reloj y su resultado, no serie a serie. */}
+          {tarea && esBloque(tarea) && (
+            <div className="mb-6">
+              <BloqueRegistro key={tarea.id}
+                tarea={{ ...tarea, ejercicios: ejerciciosPorTarea[tarea.id]?.length ? ejerciciosPorTarea[tarea.id] : tarea.ejercicios }}
+                resultado={resultadosBloque[tarea.id] || null}
+                onResultado={res => setResultadosBloque(prev => ({ ...prev, [tarea.id]: res }))}
+                ultima={ultimasBloque[tarea.id]} />
+            </div>
+          )}
+
           {/* FUERZA: Registro por ejercicio y serie */}
-          {tarea && (esDisciplinaDeFuerza(tarea.disciplina) || esDisciplinaDeFuerza(sesion.disciplina)) && (
+          {tarea && !esBloque(tarea) && (esDisciplinaDeFuerza(tarea.disciplina) || esDisciplinaDeFuerza(sesion.disciplina)) && (
             <div className="flex flex-col gap-4 mb-6">
               <FuerzaRegistro
                 tarea={tarea}
@@ -777,6 +809,22 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <h3 className="font-bold mb-3 text-gray-300">Tareas — Planificado vs Real</h3>
         <div className="flex flex-col gap-3 mb-6">
           {tareas.map((t, i) => {
+            /* Un bloque se resume con su resultado. */
+            if (esBloque(t)) {
+              const rb = resultadosBloque[t.id]
+              const cfgT = leerConfig(t.formato_config)
+              return (
+                <div key={t.id} className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-800 flex items-center gap-2 flex-wrap">
+                    <span className="text-orange-400 font-bold text-sm">#{i+1}</span>
+                    <span className="text-xs font-semibold text-pink-300">{textoFormato(t.formato as Formato, cfgT)}</span>
+                    <span className={'ml-auto text-xs ' + (rb ? 'text-green-400' : 'text-gray-500')}>
+                      {rb ? '✓ ' + textoResultado(t.formato as Formato, rb, cfgT) : 'Sin resultado apuntado'}
+                    </span>
+                  </div>
+                </div>
+              )
+            }
             const r: Record<string, SerieEscrita> = resultados[t.id] || {}
             const pd = t.p_distancia?.[0]
             const pu = t.p_duracion?.[0]

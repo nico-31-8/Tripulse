@@ -26,6 +26,8 @@ export interface SesionEjec {
 export interface TareaEjec extends TareaDuracion {
   id: number
   comentario?: string | null
+  /** Si es un bloque: lo que apuntó el atleta (lib/bloque-formato). */
+  resultado?: unknown
   /** El drill, si lo que se mandó es técnica (lo añade `conTecnica`). */
   tecnica?: { nombre: string; descripcion?: string | null; ejecucion?: string | null; url_video?: string | null } | null
   p_distancia?: { metros_planeados?: number | null; metros_reales?: number | null; ritmo_objetivo?: string | null }[] | null

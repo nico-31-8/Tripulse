@@ -33,7 +33,12 @@
 import { ZONAS_RESISTENCIA } from './zonas'
 import { mmssASegundos } from './medicion'
 
-export type MedidaCardio = 'metros' | 'segundos'
+/* 'calorias' es lo normal en remo, ski o assault en CrossFit y HYROX («15 cal
+   de remo»). Solo se ofrece dentro de un bloque (lib/bloque-formato). */
+export type MedidaCardio = 'metros' | 'segundos' | 'calorias'
+
+/** Segundos por caloría en máquina: regla gruesa, como msAprox, para estimar. */
+export const SEG_POR_CAL_MAQUINA = 4
 /** Las tres que el resto de la aplicación sabe contar. `null` = ninguna. */
 export type DisciplinaCardio = 'Carrera' | 'Ciclismo' | 'Natacion' | null
 
@@ -100,7 +105,7 @@ export const hayCardio = (c: CardioPrescrito | null | undefined): boolean =>
   !!modalidadDe(c?.modo) && Number(c?.valor) > 0
 
 export const medidaDe = (c: CardioPrescrito | null | undefined): MedidaCardio =>
-  c?.medida === 'segundos' ? 'segundos' : 'metros'
+  c?.medida === 'segundos' ? 'segundos' : c?.medida === 'calorias' ? 'calorias' : 'metros'
 
 /**
  * Cuánto dura UNA vez ese cardio, en segundos.
@@ -118,6 +123,7 @@ export function segundosDeCardio(
   if (!hayCardio(c)) return null
   const valor = Number(c?.valor)
   if (medidaDe(c) === 'segundos') return valor
+  if (medidaDe(c) === 'calorias') return Math.round(valor * SEG_POR_CAL_MAQUINA)
 
   const m = modalidadDe(c?.modo)
   const ms = m?.disciplina && Number(msDeLaDisciplina) > 0 ? Number(msDeLaDisciplina) : m?.msAprox
@@ -160,6 +166,7 @@ export function cuantoPorSerie(c: CardioPrescrito | null | undefined): string {
   if (medidaDe(c) === 'metros') {
     return valor >= 1000 ? (valor / 1000).toString().replace('.', ',') + ' km' : valor + ' m'
   }
+  if (medidaDe(c) === 'calorias') return valor + ' cal'
   if (valor < 60) return valor + ' s'
   if (valor % 60 === 0) return valor / 60 + ' min'
   return Math.floor(valor / 60) + ':' + String(valor % 60).padStart(2, '0')
@@ -198,4 +205,4 @@ export const filaCardioCompleta = (f: { cardioModo?: string; cardioMedida?: stri
  * salga corto en una pantalla y bien en la de al lado.
  */
 export const SELECT_EJERCICIOS_CONTEO =
-  'id_tarea, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona' as const
+  'id_tarea, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden' as const

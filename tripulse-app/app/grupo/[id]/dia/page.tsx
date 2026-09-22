@@ -58,7 +58,7 @@ export default function HojaDelDia({ params }: { params: Promise<{ id: string }>
     const sesIds = sesiones.map((s: any) => s.id)
     const { data: tareas } = sesIds.length
       ? await supabase.from('tarea')
-        .select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, tecnica_id')
+        .select('id, id_sesion, orden, zona_entrenamiento, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, tecnica_id, formato, formato_config')
         .in('id_sesion', sesIds).order('orden')
       : { data: [] as any[] }
 

@@ -197,7 +197,7 @@ export async function cargarBloques(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado, bloques, descanso_bloques_segundos')
+    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado, bloques, descanso_bloques_segundos, formato, formato_config')
     .in('id_sesion', ids)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
@@ -218,6 +218,9 @@ export async function cargarBloques(
     descanso_segundos: t.descanso_segundos,
     bloques: t.bloques,
     descanso_bloques_segundos: t.descanso_bloques_segundos,
+    /* Sin el formato, un AMRAP 12′ contaría cero minutos. */
+    formato: t.formato,
+    formato_config: t.formato_config,
     zona_entrenamiento: t.zona_entrenamiento,
     rpe_reportado: t.rpe_reportado,
     p_distancia: (dists.data || []).filter((d: any) => d.id_tarea === t.id),

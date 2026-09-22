@@ -6,6 +6,8 @@ import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
 import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { esBloque, leerResultado } from '@/lib/bloque-formato'
+import ResumenBloque from '@/components/ResumenBloque'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 
@@ -50,6 +52,10 @@ interface TareaFila {
   p_distancia: { metros_reales: number | null }[] | null
   p_duracion: { tiempo_real: number | null }[] | null
   ejercicios: EjercicioFila[]
+  /** Si es un bloque: su formato y lo que apuntó el atleta. */
+  formato?: string | null
+  formato_config?: unknown
+  resultado?: unknown
 }
 
 export default function DatosReales({ sesionId, disciplina }: { sesionId: number, disciplina: string }) {
@@ -98,6 +104,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
     t.p_distancia?.[0]?.metros_reales ||
     t.p_duracion?.[0]?.tiempo_real ||
     t.sensacion_general ||
+    !!leerResultado(t.resultado) ||
     seriesReales.length > 0
   )
 
@@ -232,6 +239,16 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Los bloques (AMRAP, for time…): lo que se apunta es su resultado. */}
+      {tareas.some(t => esBloque(t)) && (
+        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+          <p className="font-medium text-gray-300 mb-3 text-sm">Bloques</p>
+          <div className="flex flex-col gap-3">
+            {tareas.filter(t => esBloque(t)).map(t => <ResumenBloque key={t.id} t={t} conApunta={false} />)}
           </div>
         </div>
       )}

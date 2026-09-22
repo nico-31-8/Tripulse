@@ -232,7 +232,7 @@ export default function VolumenPage() {
     setAdherenciaSem(adh)
 
     const sesIds = sesiones.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config').in('id_sesion', sesIds)
     const tareaIds = tareas?.map(t => t.id) || []
 
     // Los tres tipos de parámetro no dependen unos de otros: van juntos.
@@ -240,7 +240,7 @@ export default function VolumenPage() {
       ? await Promise.all([
           supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
           supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-          supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona').in('id_tarea', tareaIds),
+          supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden').in('id_tarea', tareaIds),
         ])
       : [{ data: [] }, { data: [] }, { data: [] }]
 
@@ -261,6 +261,9 @@ export default function VolumenPage() {
       descanso_segundos: t.descanso_segundos,
       bloques: t.bloques,
       descanso_bloques_segundos: t.descanso_bloques_segundos,
+      /* Sin el formato, un AMRAP 12′ contaría cero minutos. */
+      formato: t.formato,
+      formato_config: t.formato_config,
       zona_entrenamiento: t.zona_entrenamiento,
       p_distancia: (distancias || []).filter((d: any) => d.id_tarea === t.id),
       p_duracion: (duraciones || []).filter((d: any) => d.id_tarea === t.id),

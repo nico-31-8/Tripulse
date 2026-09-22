@@ -122,7 +122,7 @@ export default function DashboardDeportista() {
 
       const idsHoy = sesHoy.map(s => s.id)
       if (idsHoy.length) {
-        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden, bloques, descanso_bloques_segundos').in('id_sesion', idsHoy).order('orden')
+        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden, bloques, descanso_bloques_segundos, formato, formato_config').in('id_sesion', idsHoy).order('orden')
         const tarIds = (tar || []).map((t: any) => t.id)
         const [pd, pdur] = await Promise.all([
           tarIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tarIds) : { data: [] },

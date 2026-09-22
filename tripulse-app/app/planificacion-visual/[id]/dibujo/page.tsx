@@ -1110,7 +1110,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     })
     if (!sessSem.length) { setDetalleSem({ sesiones: [], tareas: [], distancias: [], duraciones: [], ejercicios: [] }); setLoadingDetalle(false); return }
     const sesIds = sessSem.map((s: any) => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, disciplina, series, bloques, descanso_bloques_segundos').in('id_sesion', sesIds)
+    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, disciplina, series, bloques, descanso_bloques_segundos, formato, formato_config').in('id_sesion', sesIds)
     const tareaIds = (tareas || []).map((t: any) => t.id)
     const [{ data: dists }, { data: durs }, { data: ejers }] = await Promise.all([
       tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },

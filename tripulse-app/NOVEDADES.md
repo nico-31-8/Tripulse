@@ -16,6 +16,55 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 22 de septiembre de 2026 · Híbrido y disciplinas por deportista
 
+### Bloques: rondas, AMRAP, EMOM, for time y Tabata
+
+Para programar un HYROX o un WOD tal cual. En las sesiones de **Fuerza** y
+**Híbrido**, debajo de la tabla, **Añadir a la sesión** te deja elegir:
+
+- **Una línea**: un ejercicio o un cardio con sus propias series, como siempre.
+- **Un bloque**: varias líneas que se hacen juntas. Eliges el formato:
+  - **Rondas**: «4 rondas de 1 km + 20 wall balls + 50 m de trineo, 2:00 entre rondas».
+  - **AMRAP**: tantas rondas como pueda en X minutos.
+  - **EMOM**: cada minuto (o cada lo que digas) durante X minutos. Puede
+    **alternar**: el minuto 1 la primera línea, el 2 la segunda…
+  - **For time**: con esquema de repeticiones (21-15-9) o rondas, y un límite.
+  - **Tabata**: 20″ de trabajo y 10″ de pausa × 8, por cada línea.
+
+Las líneas del bloque **se eligen de la biblioteca** (grupo, ejercicio o la
+lupa) y el cardio con sus modalidades y zonas. Cada línea va en
+**repeticiones, segundos, metros o calorías**, con kilos si hace falta: un
+paseo del granjero son 200 m @ 24 kg, y el remo puede ir en calorías. Las
+líneas no llevan series: las pone el bloque.
+
+- **Agrupar**: si ya tienes líneas sueltas escritas, márcalas (la casilla junto
+  al número) y agrúpalas en un bloque sin volver a escribirlas. Nada se borra
+  hasta que guardas el bloque.
+- **Soltar** (⤓): un bloque vuelve a ser líneas sueltas, con tantas series como
+  veces se hacía cada una.
+- **Duración y carga**: en AMRAP, EMOM y Tabata, la del formato; en rondas y
+  for time se estima (y lo dice). La carga sigue siendo RPE × duración.
+- **Series por grupo muscular**: cada línea cuenta una por ronda; en un AMRAP,
+  las rondas que hizo el atleta.
+- **Metros**: los kilómetros de carrera de un bloque cuentan como carrera
+  (4 rondas de 1 km son 4 km).
+
+**Lo que ve el atleta**: un reloj para cada formato —cuenta atrás en el AMRAP
+con un botón grande de «+1 ronda», el minuto en el que va y qué le toca en el
+EMOM, el cronómetro con el 21-15-9 tachándose en el for time, el descanso entre
+rondas que arranca solo—. Pita, vibra y destella en cada cambio. Y apunta **el
+resultado del bloque** (tiempo, rondas + repeticiones, minutos completados…),
+que es lo que se guarda. Puede apuntarlo sin usar el reloj. Debajo le sale **la
+última vez** que hizo ese mismo bloque, para superarla, y tú lo ves en la ficha
+de la sesión y en **La semana** con «Lo que hizo».
+
+**Nuevo grupo en la biblioteca: Funcional.** Wall balls, burpees, burpee broad
+jump, zancadas con saco, toes to bar, handstand push-up y muscle-up. Las
+dominadas, el box jump, el trineo, el paseo del granjero, el swing y los
+Complejos ya estaban.
+
+Todavía no: en **dirigir a pie de pista** el bloque sale con su nombre pero sin
+su reloj propio, y no hay pesos Rx/Scaled ni categorías de HYROX.
+
 ### Nueva disciplina: Híbrido ⚡
 
 Para el entrenamiento tipo **HYROX**: fuerza y cardio en la misma sesión. Sale

@@ -32,11 +32,14 @@ import {
 } from '@/lib/dirigir-sesion'
 
 import { vecesDe, repeticionTexto } from '@/lib/bloques-tarea'
+import { esBloque, leerConfig, textoFormato, type Formato } from '@/lib/bloque-formato'
 
 const EMOJI: Record<string, string> = { Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
 /** Qué se le pidió a esta tarea, para leerlo de un vistazo. */
 function objetivoDe(t: any): string {
+  /* Un bloque con formato (AMRAP…) se dice por su formato. */
+  if (esBloque(t)) return textoFormato(t.formato as Formato, leerConfig(t.formato_config))
   /* En bloques: «3 × (2 × 400 m)». El texto es de lib/bloques-tarea. */
   const m = t.p_distancia?.[0]?.metros_planeados
   if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
@@ -236,7 +239,7 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
           return (
             <div key={t.id} className="tp-card overflow-hidden">
               <div className="px-3.5 pt-3 pb-2 flex items-baseline gap-2 flex-wrap">
-                <strong className="text-[14.5px] tracking-tight">{ej?.nombre || objetivoDe(t)}</strong>
+                <strong className="text-[14.5px] tracking-tight">{esBloque(t) ? objetivoDe(t) : (ej?.nombre || objetivoDe(t))}</strong>
                 {t.zona_entrenamiento && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                     style={{ color: zc, background: `color-mix(in oklab, ${zc} 17%, transparent)` }}>
@@ -244,7 +247,7 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
                   </span>
                 )}
                 <span className="text-[11.5px] text-gray-500 font-mono">
-                  {ej ? objetivoDe(t) : ''}{prescrito ? (ej ? ' · ' : '') + prescrito + ' s rec' : ''}
+                  {ej && !esBloque(t) ? objetivoDe(t) : ''}{prescrito ? (ej && !esBloque(t) ? ' · ' : '') + prescrito + ' s rec' : ''}
                 </span>
               </div>
 

@@ -19,6 +19,7 @@ import type { TestsDeportista, ResultadoDuracion } from './duracion'
 import { cargaDeTarea } from './prescripcion-zona'
 import { metrosDeCardio } from './cardio-fuerza'
 import { vecesDe } from './bloques-tarea'
+import { esBloque, leerConfig, ordenarLineas, seriesDeLinea, type Formato } from './bloque-formato'
 
 export interface TareaCruda {
   id: number
@@ -30,6 +31,9 @@ export interface TareaCruda {
   /** En bloques: 3 × (2 × 400). Ver lib/bloques-tarea. */
   bloques?: number | null
   descanso_bloques_segundos?: number | null
+  /** Si es un bloque con formato: ver lib/bloque-formato. */
+  formato?: string | null
+  formato_config?: unknown
 }
 
 export interface Distancia { id_tarea: number; metros_planeados?: number | null }
@@ -43,6 +47,11 @@ export interface Ejercicio {
   cardio_medida?: string | null
   cardio_valor?: number | null
   cardio_zona?: string | null
+  /** Las líneas de un bloque: su medida, cantidad y orden. */
+  medida?: string | null
+  cantidad?: number | string | null
+  orden?: number | null
+  id?: number | null
 }
 
 export interface SesionConVolumen {
@@ -108,16 +117,23 @@ export function conVolumen(
          volumen semanal del atleta miente por defecto. Solo entran los de las
          modalidades que SON una disciplina: el remo cuenta en duración y en
          carga, pero sus metros no son metros de correr. */
-      for (const e of ejer.get(t.id) || []) {
-        const m = metrosDeCardio({ modo: e.cardio_modo, medida: e.cardio_medida, valor: e.cardio_valor }, series)
+      /* En un bloque, cada línea se hace las veces que diga el bloque (4 rondas
+         de 1 km son 4 km), no las series de la tarea, que un bloque no tiene. */
+      const lineas = ordenarLineas(ejer.get(t.id) || [])
+      const cfgB = esBloque(t) ? leerConfig(t.formato_config) : null
+      lineas.forEach((e, k) => {
+        const veces = cfgB ? seriesDeLinea(t.formato as Formato, cfgB, lineas, k) : series
+        const m = metrosDeCardio({ modo: e.cardio_modo, medida: e.cardio_medida, valor: e.cardio_valor }, veces)
         if (m) metros += m.metros
-      }
+      })
       return {
         disciplina: t.disciplina,
         series: t.series,
         descanso_segundos: t.descanso_segundos,
         bloques: t.bloques,
         descanso_bloques_segundos: t.descanso_bloques_segundos,
+        formato: t.formato,
+        formato_config: t.formato_config,
         zona_entrenamiento: t.zona_entrenamiento,
         p_distancia: d,
         p_duracion: u,
