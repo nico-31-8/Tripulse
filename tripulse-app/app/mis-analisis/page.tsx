@@ -23,6 +23,7 @@ const colorDisciplina = (d: string) => {
   if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
   if (d === 'Carrera') return 'bg-green-900 text-green-300'
   if (d === 'Fuerza') return 'bg-red-900 text-red-300'
+  if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
   return 'bg-purple-900 text-purple-300'
 }
 
@@ -31,6 +32,7 @@ const colorBar = (d: string) => {
   if (d === 'Ciclismo') return 'bg-yellow-500'
   if (d === 'Carrera') return 'bg-green-500'
   if (d === 'Fuerza') return 'bg-red-500'
+  if (d === 'Hibrido') return 'bg-pink-500'
   return 'bg-purple-500'
 }
 

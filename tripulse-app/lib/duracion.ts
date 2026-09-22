@@ -20,6 +20,7 @@ import { leerCopia } from './prescripcion-zona'
 import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
 import { vecesDe, descansoTotalDe } from './bloques-tarea'
+import { esDisciplinaDeFuerza } from './disciplinas'
 import type { Sexo } from './tests-campo'
 
 // Punto medio del % de intensidad por zona y disciplina (respecto a VAM / CSS).
@@ -241,8 +242,8 @@ export function calcularDuracionEstimada(
   for (const t of tareas) {
     const series = t.series && t.series > 0 ? t.series : 1
 
-    // Fuerza: reps × tempo (normal) o series × segundos (isométrico)
-    if (t.disciplina === 'Fuerza') {
+    // Fuerza (e Híbrido): reps × tempo (normal) o series × segundos (isométrico)
+    if (esDisciplinaDeFuerza(t.disciplina)) {
       const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + (e.repeticiones || 0), 0)
       const isoSeg = t.p_duracion?.[0]?.tiempo_planeado || 0
       let trabajo = 0

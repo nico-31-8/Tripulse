@@ -46,6 +46,17 @@ export function sugerirNutricion(
     ayunoApto: false, notas: '',
   }
 
+  /* Híbrido: la tabla de fuerza con cardio no se puede traducir a gramos por
+     hora como un rodaje, porque no hay zonas de resistencia que leer. Se dice,
+     en vez de callarlo o de copiar la nota de fuerza, que sería falsa en un
+     HYROX de una hora. */
+  if (disciplinaSesion === 'Hibrido') {
+    return {
+      ...vacio,
+      notas: 'Sesión híbrida (fuerza con cardio): la app no calcula el fueling durante. Si es larga e intensa, planifícalo a mano.',
+    }
+  }
+
   if (disciplinaSesion === 'Fuerza') {
     return {
       ...vacio,

@@ -62,6 +62,7 @@ const DISCS = [
   { key: 'Ciclismo', label: 'Ciclismo', color: '#fbbf24', unidad: 'km' },
   { key: 'Carrera', label: 'Carrera', color: '#4ade80', unidad: 'km' },
   { key: 'Fuerza', label: 'Fuerza', color: '#f87171', unidad: 'UA' },
+  { key: 'Hibrido', label: 'Híbrido', color: '#f472b6', unidad: 'UA' },
 ]
 
 const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }
@@ -148,7 +149,7 @@ export default function VolumenPage() {
   const [periodoSel, setPeriodoSel] = useState<string | null>(null)
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
   const [agrupCarga, setAgrupCarga] = useState<'sesion'|'semana'|'mes'>('semana')
-  const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza'])
+  const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Hibrido'])
   const [subVista, setSubVista] = useState<'barras'|'evolucion'>('barras')
   const [agrupEvol, setAgrupEvol] = useState<'semanas'|'meses'>('semanas')
   // El desglose por deporte arranca plegado: la gráfica combinada es la que se lee primero
@@ -291,6 +292,12 @@ export default function VolumenPage() {
     bloques.filter(b => b.disciplina === 'Fuerza').forEach(b => {
       minFuerza[b.id_sesion] = (minFuerza[b.id_sesion] || 0) + b.minutos
     })
+    /* El híbrido va en UA como la fuerza, pero en su propia columna: sumado a
+       Fuerza, el volumen de fuerza de un atleta de HYROX parecería el doble. */
+    const minHibrido: Record<number, number> = {}
+    bloques.filter(b => b.disciplina === 'Hibrido').forEach(b => {
+      minHibrido[b.id_sesion] = (minHibrido[b.id_sesion] || 0) + b.minutos
+    })
     // UA (RPE×min) por disciplina de BLOQUE, para repartir la carga de un brick entre sus
     // deportes reales. Una sesión normal queda toda bajo su única disciplina (= comportamiento
     // de antes); un brick (disciplina='Brick') se reparte y deja de "perderse" en las barras.
@@ -308,6 +315,7 @@ export default function VolumenPage() {
       const tareasSes = tareas?.filter(t => t.id_sesion === s.id) || []
       let natacion = 0, ciclismo = 0, carrera = 0
       const fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (minFuerza[s.id] || 0)
+      const hibrido = (s.rpe_reportado || s.rpe_estimado || 5) * (minHibrido[s.id] || 0)
       tareasSes.forEach(t => {
         const metros = distMap[t.id]
         const seg = durMap[t.id]
@@ -344,6 +352,7 @@ export default function VolumenPage() {
         Ciclismo: Math.round(ciclismo * 10) / 10,
         Carrera: Math.round(carrera * 10) / 10,
         Fuerza: Math.round(fuerza),
+        Hibrido: Math.round(hibrido),
         ua: Math.round((s.rpe_reportado || s.rpe_estimado || 5) * (minutosPorSesion[s.id] || 0)),
         minutos: minutosPorSesion[s.id] || 0,
         /* De dónde salen esos minutos, para poder decirlo. `origenMinutos` sin
@@ -360,11 +369,12 @@ export default function VolumenPage() {
     const diasMap: Record<string, any> = {}
     volSesion.forEach(s => {
       const k = s.fecha
-      if (!diasMap[k]) diasMap[k] = { fecha: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0 }
+      if (!diasMap[k]) diasMap[k] = { fecha: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, Hibrido: 0 }
       diasMap[k].Natacion += s.Natacion
       diasMap[k].Ciclismo += s.Ciclismo
       diasMap[k].Carrera += s.Carrera
       diasMap[k].Fuerza += s.Fuerza
+      diasMap[k].Hibrido += s.Hibrido
     })
     setDatosDias(Object.values(diasMap))
 
@@ -372,11 +382,12 @@ export default function VolumenPage() {
     const semanasMap: Record<string, any> = {}
     volSesion.forEach(s => {
       const k = getSemana(s.fecha)
-      if (!semanasMap[k]) semanasMap[k] = { semana: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0 }
+      if (!semanasMap[k]) semanasMap[k] = { semana: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, Hibrido: 0 }
       semanasMap[k].Natacion += s.Natacion
       semanasMap[k].Ciclismo += s.Ciclismo
       semanasMap[k].Carrera += s.Carrera
       semanasMap[k].Fuerza += s.Fuerza
+      semanasMap[k].Hibrido += s.Hibrido
     })
     setDatosSemanas(Object.values(semanasMap))
 

@@ -5,8 +5,9 @@ import { mmss } from '@/lib/duracion-carga'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
 import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
+import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
+const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 
 // Con qué se controló la serie. Las series antiguas no lo traen: eran RIR, que
 // era lo único que había.
@@ -103,7 +104,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
   if (loading) return null
   if (!tienePostSesion && !tieneDatosEjecucion) return null
 
-  const esFuerza = disciplina === 'Fuerza'
+  const esFuerza = esDisciplinaDeFuerza(disciplina)
   // 'Brick' es la etiqueta de la sesión: el deporte real lo pone cada bloque, y su
   // feedback también (ver el reporte por bloque en app/sesion/[id]/page.tsx).
   const esBrick = disciplina === 'Brick'

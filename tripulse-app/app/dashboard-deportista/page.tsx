@@ -20,7 +20,7 @@ import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConecta
 import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
+const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899' }
 /* Era `toISOString()`: pasa la hora LOCAL a UTC y luego se queda con el día.
    De madrugada, el panel del atleta enseñaba el día de ayer como «hoy» y la
    semana entera corrida. `aISO` se queda con el día que ve él. */

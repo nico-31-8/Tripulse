@@ -5,12 +5,14 @@ import { FILTRO_VIVAS } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tipoMicrociclo } from '@/lib/microciclo-tipos'
+import { TODAS, paraProgramar, etiquetaDisciplina } from '@/lib/disciplinas'
+import { useDisciplinasDeportista } from '@/lib/useDisciplinasDeportista'
 
 // Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
 // aquí no hay constructor. Sin bloques, su carga no se puede atribuir a ningún deporte
 // y desaparecería de volumen, carga y SICAT (ver lib/atribucion). Los bricks se crean
 // en planificación (bloques, calendario, semana o canvas).
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
+const DISCIPLINAS = TODAS.filter(d => d !== 'Brick')
 
 export default function PaginaMicrociclo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -28,6 +30,8 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
   const [notas, setNotas] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  /* Las que programa este deportista, para no ofrecerle lo que no hace. */
+  const suyas = useDisciplinasDeportista(microciclo?.id_deportista)
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -69,6 +73,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
     if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
     if (d === 'Carrera') return 'bg-green-900 text-green-300'
     if (d === 'Fuerza') return 'bg-red-900 text-red-300'
+    if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
     return 'bg-purple-900 text-purple-300'
   }
 
@@ -99,7 +104,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
             <h4 className="font-bold">Nueva sesion</h4>
             <select value={disciplina} onChange={e => setDisciplina(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
               <option value="">Disciplina</option>
-              {DISCIPLINAS.map(d => <option key={d} value={d}>{d}</option>)}
+              {paraProgramar({ disciplinas: suyas }, DISCIPLINAS, disciplina).map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
             </select>
             <div>
               <label className="text-gray-400 text-sm mb-1 block">Fecha de la sesion</label>

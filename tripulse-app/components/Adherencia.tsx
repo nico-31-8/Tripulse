@@ -98,6 +98,7 @@ export default function Adherencia({ depId }: Props) {
     'Ciclismo': 'bg-yellow-900 text-yellow-300',
     'Carrera': 'bg-green-900 text-green-300',
     'Fuerza': 'bg-red-900 text-red-300',
+    'Hibrido': 'bg-pink-900 text-pink-300',
     'Brick': 'bg-purple-900 text-purple-300',
   }
 

@@ -10,6 +10,7 @@ const DISCIPLINAS_COLORES: Record<string, string> = {
   'Carrera': '#4ade80',
   'Fuerza': '#f87171',
   'Brick': '#c084fc',
+  'Hibrido': '#f472b6',
 }
 
 const FASE_COLORES: Record<string, string> = {

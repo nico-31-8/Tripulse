@@ -14,10 +14,11 @@ import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
 
-const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
+const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
+import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
 
 const segAMmss = mmss
 
@@ -581,7 +582,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           </div>
 
           {/* FUERZA: Registro por ejercicio y serie */}
-          {tarea && (tarea.disciplina === 'Fuerza' || sesion.disciplina === 'Fuerza') && (
+          {tarea && (esDisciplinaDeFuerza(tarea.disciplina) || esDisciplinaDeFuerza(sesion.disciplina)) && (
             <div className="flex flex-col gap-4 mb-6">
               <FuerzaRegistro
                 tarea={tarea}
@@ -594,7 +595,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           )}
 
           {/* RESISTENCIA: Registro por series */}
-          {tarea && tarea.disciplina !== 'Fuerza' && sesion.disciplina !== 'Fuerza' && (
+          {tarea && !esDisciplinaDeFuerza(tarea.disciplina) && !esDisciplinaDeFuerza(sesion.disciplina) && (
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
             <div className="flex justify-between items-center mb-4">
               <p className="font-medium text-gray-300">Registro por serie (opcional)</p>
@@ -793,7 +794,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                anotado (lib/serie-hecha); y 3 si no se dijo cuántas, como en
                el registro. */
             const ejsT = ejerciciosPorTarea[t.id] || []
-            const esFuerzaT = t.disciplina === 'Fuerza' || sesion.disciplina === 'Fuerza'
+            const esFuerzaT = esDisciplinaDeFuerza(t.disciplina) || esDisciplinaDeFuerza(sesion.disciplina)
             const seriesCompletadas = esFuerzaT
               ? ejsT.reduce((a, e) => a + seriesHechas(seriesFuerza[e.id]), 0)
               : Object.keys(r).filter(k => k.startsWith('serie_') && serieEscrita(r[k])).length

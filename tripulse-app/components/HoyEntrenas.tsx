@@ -21,7 +21,7 @@ import { vivas } from '@/lib/papelera'
 import { filasDeHoy, resumenDeHoy, type FilaHoy, type GrupoDeEmision, type SesionHoy } from '@/lib/hoy-entrenador'
 
 const EMOJI: Record<string, string> = {
-  Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀',
+  Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡',
 }
 
 interface Props {

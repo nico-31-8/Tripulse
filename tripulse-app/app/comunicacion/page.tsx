@@ -13,7 +13,7 @@ const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 const COLOR_DISC: Record<string, string> = {
   'Natacion': '#60a5fa', 'Natación': '#60a5fa', 'Ciclismo': '#fbbf24',
-  'Carrera': '#4ade80', 'Fuerza': '#f87171', 'Brick': '#a855f7',
+  'Carrera': '#4ade80', 'Fuerza': '#f87171', 'Brick': '#a855f7', 'Hibrido': '#f472b6',
 }
 const discColor = (d: string) => COLOR_DISC[d] || '#94a3b8'
 

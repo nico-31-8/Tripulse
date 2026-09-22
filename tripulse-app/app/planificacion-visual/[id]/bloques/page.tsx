@@ -10,6 +10,7 @@ import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import { tiposDeMeso } from '@/lib/periodizacion'
+import { paraProgramar, TODAS, etiquetaDisciplina } from '@/lib/disciplinas'
 
 const COLOR_MESO: Record<string, string> = {
   'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
@@ -25,7 +26,7 @@ const COLOR_MICRO: Record<string, string> = {
 const COLOR_DISC: Record<string, string> = {
   'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
   'Ciclismo': 'bg-yellow-500', 'Carrera': 'bg-green-500',
-  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500',
+  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500', 'Hibrido': 'bg-pink-500',
 }
 const DIAS = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom']
 
@@ -645,7 +646,8 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
           <form onSubmit={guardarSesion} className="flex flex-col gap-4">
             <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
               <option value="">Disciplina</option>
-              <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
+              {/* Solo las que programa este deportista (su ficha). */}
+              {paraProgramar(deportista, TODAS, sesionDisc).map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
             </select>
             {sesionDisc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
             {sesionDisc !== 'Brick' && <input type="number" placeholder="Duracion en minutos (opcional)" value={sesionDuracion} onChange={e => setSesionDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}

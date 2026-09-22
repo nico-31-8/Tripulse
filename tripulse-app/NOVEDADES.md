@@ -14,6 +14,47 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 22 de septiembre de 2026 · Híbrido y disciplinas por deportista
+
+### Nueva disciplina: Híbrido ⚡
+
+Para el entrenamiento tipo **HYROX**: fuerza y cardio en la misma sesión. Sale
+junto a Natación, Ciclismo, Carrera, Fuerza y Brick al crear una sesión, y va
+en **rosa** en el calendario, el dibujo y las gráficas.
+
+- Se programa con **la misma tabla que Fuerza**: ejercicios, **Complejos**
+  (arrancada, cargada, thruster…) y **líneas de cardio** (carrera, remo, ski,
+  trineo, assault…) con sus metros o su tiempo y su zona.
+- Su carga sale del RPE y la duración, como la de fuerza, pero **cuenta
+  aparte**: en las gráficas de carga y volumen tiene su propia barra, sin
+  inflar la de Fuerza.
+- Sus ejercicios **sí cuentan** en el reparto de series por grupo muscular y en
+  «la última vez» del atleta.
+- Al terminarla, el atleta recibe la **recomendación de recuperación**, como
+  en carrera o bici: un HYROX de una hora vacía los depósitos.
+- La app **no calcula el fueling durante** una sesión híbrida (no hay zonas de
+  resistencia de las que sacarlo) y lo dice.
+
+### Cada deportista, sus disciplinas
+
+En la ficha del deportista, pestaña **Entrenamiento**, arriba del todo, eliges
+**qué disciplinas le programas**. A partir de ahí, al crearle una sesión (en
+el calendario, la semana, los bloques, el microciclo o el dibujo), **solo te
+salen esas**.
+
+- **Atajos de un toque**: Triatlón, Atletismo (carrera y fuerza), Natación
+  (natación y fuerza), Ciclismo (ciclismo y fuerza), HYROX (carrera, fuerza e
+  híbrido) y Todo.
+- O marca y desmarca una a una. Siempre tiene que quedar al menos una.
+- **Por defecto, todas**: a tus deportistas de siempre no les cambia nada
+  hasta que lo toques.
+- **No borra nada**: lo que ya tiene programado sigue ahí aunque desmarques
+  esa disciplina, y si editas una de esas sesiones, su disciplina se respeta.
+- **Solo afecta a tus menús**: el deportista puede seguir apuntándose
+  cualquier deporte por su cuenta.
+
+---
+
 ## 21 de septiembre de 2026 · Periodización y fuerza
 
 ### Los tests escalonados suenan más fuerte, vibran y destellan al cambiar de escalón

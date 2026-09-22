@@ -8,6 +8,7 @@ import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
+import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
 
 // Colores por tipo de mesociclo (hex, para estilos inline)
 const C_MESO: Record<string, string> = {
@@ -16,7 +17,7 @@ const C_MESO: Record<string, string> = {
   'Realización': '#ef4444', 'Realizacion': '#ef4444',
   'Recuperación': '#22c55e', 'Recuperacion': '#22c55e',
 }
-const C_DISC: Record<string, string> = { Natacion: '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7' }
+const C_DISC: Record<string, string> = { Natacion: '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899' }
 const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -150,7 +151,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
 
   const cambiarZona = async (sesId: number, sigla: string) => {
     const s = sesiones.find(x => x.id === sesId)
-    const esFuerza = s?.disciplina === 'Fuerza'
+    const esFuerza = esDisciplinaDeFuerza(s?.disciplina)
     setTareas(prev => prev.map(t => t.id_sesion === sesId ? { ...t, zona_entrenamiento: sigla } : t))
     if (esFuerza) setSesiones(prev => prev.map(x => x.id === sesId ? { ...x, zona_fuerza: sigla } : x))
     await supabase.from('tarea').update({ zona_entrenamiento: sigla }).eq('id_sesion', sesId)
@@ -226,7 +227,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   const unidades = tareas.map(t => {
     const s = sesById[t.id_sesion]; if (!s) return null
     let zona = t.zona_entrenamiento
-    if (!zona && s.disciplina === 'Fuerza') zona = s.zona_fuerza
+    if (!zona && esDisciplinaDeFuerza(s.disciplina)) zona = s.zona_fuerza
     if (!zona) return null
     return { disc: s.disciplina as string, zona: zona as string }
   }).filter(Boolean) as { disc: string; zona: string }[]
@@ -237,7 +238,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   const totalDatos = datos.length
   const sustantivo = fuente === 'chips' ? 'chips' : 'tareas'
   const modelZonas = (disc: string): string[] =>
-    disc === 'Fuerza' ? ZONAS_FUERZA.map(z => z.sigla)
+    esDisciplinaDeFuerza(disc) ? ZONAS_FUERZA.map(z => z.sigla)
       : sistemaZonas === 2 ? ZONAS_RESISTENCIA.map(z => z.sigla)
         : ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7']
 
@@ -314,7 +315,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                           {ses.map(s => {
                             const isSel = editMode && selSes === s.id
                             const zt = tareas.filter(t => t.id_sesion === s.id && t.zona_entrenamiento).map(t => t.zona_entrenamiento)
-                            const zs = zt.length ? [...new Set(zt)] : (s.disciplina === 'Fuerza' && s.zona_fuerza ? [s.zona_fuerza] : [])
+                            const zs = zt.length ? [...new Set(zt)] : (esDisciplinaDeFuerza(s.disciplina) && s.zona_fuerza ? [s.zona_fuerza] : [])
                             return (
                               <div key={s.id}
                                 draggable={editMode}
@@ -499,9 +500,9 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
         const s = sesiones.find(x => x.id === selSes)
         if (!s) return null
         const zt = [...new Set(tareas.filter(t => t.id_sesion === s.id && t.zona_entrenamiento).map(t => t.zona_entrenamiento))]
-        const zonasActuales = zt.length ? zt : (s.disciplina === 'Fuerza' && s.zona_fuerza ? [s.zona_fuerza] : [])
+        const zonasActuales = zt.length ? zt : (esDisciplinaDeFuerza(s.disciplina) && s.zona_fuerza ? [s.zona_fuerza] : [])
         const opciones = modelZonas(s.disciplina)
-        const sinTareas = zt.length === 0 && !(s.disciplina === 'Fuerza' && s.zona_fuerza)
+        const sinTareas = zt.length === 0 && !(esDisciplinaDeFuerza(s.disciplina) && s.zona_fuerza)
         const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
         const vh = typeof window !== 'undefined' ? window.innerHeight : 800
         return (
@@ -513,7 +514,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                 <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: (C_DISC[s.disciplina] || '#6b7280') + '30', color: C_DISC[s.disciplina] || '#9ca3af' }}>{s.disciplina}</span>
                 <button onClick={() => setSelSes(null)} className="text-gray-500 hover:text-white text-sm leading-none">✕</button>
               </div>
-              <p className="text-gray-400 text-xs mb-1.5">Cambiar zona{sistemaZonas === 2 && s.disciplina !== 'Fuerza' ? ' (Zonas 2)' : ''}</p>
+              <p className="text-gray-400 text-xs mb-1.5">Cambiar zona{sistemaZonas === 2 && !esDisciplinaDeFuerza(s.disciplina) ? ' (Zonas 2)' : ''}</p>
               {sinTareas ? (
                 <p className="text-gray-600 text-xs mb-3">Esta sesión no tiene tareas con zona. Añádelas desde la sesión.</p>
               ) : (

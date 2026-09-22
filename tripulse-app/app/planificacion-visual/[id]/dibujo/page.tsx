@@ -30,6 +30,7 @@ import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competici
 import { colocarBanda, filasBanda, columnasPorSemana } from '@/lib/banda-competiciones'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
+import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -47,7 +48,7 @@ const COLOR_ZONA: Record<string, string> = {
    «sin zona»: sin zona no hay color de zona, y es la disciplina la que dice si
    la sesión es de fuerza o de resistencia. */
 const COLOR_DISC_CHIP: Record<string, string> = {
-  Natacion: '#3B82F6', Natación: '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#F97316',
+  Natacion: '#3B82F6', Natación: '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#F97316', Hibrido: '#EC4899',
 }
 // Nombre completo de una zona (para tooltip), busca en resistencia y fuerza.
 const NOMBRE_ZONA = (sigla: string): string =>
@@ -251,7 +252,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
      sola (`zonaSelZona`) y el modal se cerraba al añadirla: una semana de seis
      sesiones eran seis vueltas de abrir, elegir deporte, elegir zona, añadir. */
   const [zonasSel, setZonasSel] = useState<string[]>([])
-  const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza'])
+  const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza','Hibrido'])
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -2145,7 +2146,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <div key={sz.id}
                               className="flex-shrink-0 flex flex-col items-center justify-center rounded border border-dashed relative overflow-hidden hover:border-orange-400 transition"
                               style={{ width: semanaW - 6, height: chipH, backgroundColor: '#6b728026', borderColor: '#9ca3af', lineHeight: 1 }}
-                              title={'Sesión de ' + (sz.disciplina === 'Fuerza' ? 'fuerza' : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
+                              title={'Sesión de ' + (esDisciplinaDeFuerza(sz.disciplina) ? etiquetaDisciplina(sz.disciplina).toLowerCase() : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
                               onClick={e => { e.stopPropagation(); if (sz.id_sesion) router.push('/sesion/' + sz.id_sesion) }}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
                               {showDisc ? (
@@ -2221,7 +2222,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {/* Leyenda disciplinas con filtro */}
                   <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-800/50 flex-wrap">
                     <span className="text-gray-600 text-xs mr-1">Filtro:</span>
-                    {[{l:'Natación',k:'Natacion',c:'#3B82F6'},{l:'Ciclismo',k:'Ciclismo',c:'#EAB308'},{l:'Carrera',k:'Carrera',c:'#22C55E'},{l:'Fuerza',k:'Fuerza',c:'#EF4444'}].map(d => {
+                    {[{l:'Natación',k:'Natacion',c:'#3B82F6'},{l:'Ciclismo',k:'Ciclismo',c:'#EAB308'},{l:'Carrera',k:'Carrera',c:'#22C55E'},{l:'Fuerza',k:'Fuerza',c:'#EF4444'},{l:'Híbrido',k:'Hibrido',c:'#EC4899'}].map(d => {
                       const act = filtroDisc.includes(d.k)
                       return (
                         <button key={d.k} onClick={() => setFiltroDisc(prev => prev.includes(d.k) ? prev.filter(x => x !== d.k) : [...prev, d.k])}
@@ -2268,8 +2269,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         <div>
                           <label className="text-gray-400 text-xs mb-1.5 block">Disciplina</label>
                           <div className="grid grid-cols-2 gap-1.5">
-                            {['Natacion','Ciclismo','Carrera','Fuerza','Brick'].map(d => {
-                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444',Brick:'#A855F7'}
+                            {/* Solo las que programa este deportista (su ficha). */}
+                            {paraProgramar(dep, TODAS, zonaSelDisc).map(d => {
+                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444',Brick:'#A855F7',Hibrido:'#EC4899'}
                               const sel = zonaSelDisc === d
                               // Cambiar de deporte vacía lo marcado: las zonas de fuerza no
                               // valen para resistencia, así que arrastrar la selección de un
@@ -2278,7 +2280,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                                 <button key={d} onClick={() => { setZonaSelDisc(d); setZonasSel([]) }}
                                   className={'py-2 rounded-lg text-xs font-medium transition border ' + (d === 'Brick' ? 'col-span-2' : '')}
                                   style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
-                                  {d === 'Natacion' ? 'Natación' : d === 'Brick' ? '🔀 Brick' : d}
+                                  {d === 'Brick' ? '🔀 Brick' : etiquetaDisciplina(d)}
                                 </button>
                               )
                             })}
@@ -2288,7 +2290,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             y el chip se lleva los bloques encima. */}
                         {zonaSelDisc === 'Brick' && <ConstructorBrick valor={zonaSelBrick} onChange={setZonaSelBrick} depId={Number(id)} />}
                         {zonaSelDisc !== 'Brick' && (() => {
-                          const esFuerza = zonaSelDisc === 'Fuerza'
+                          const esFuerza = esDisciplinaDeFuerza(zonaSelDisc)
                           const z2 = dep?.sistema_zonas === 2
                           const zonaList = z2
                             ? (esFuerza ? ZONAS_FUERZA.map(z => z.sigla) : ZONAS_RESISTENCIA.map(z => z.sigla))
@@ -2443,12 +2445,15 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         { discs: ['Ciclismo'], label: 'Ciclismo', color: '#EAB308', icon: '🚴' },
                         { discs: ['Carrera'], label: 'Carrera', color: '#22C55E', icon: '🏃' },
                         { discs: ['Fuerza'], label: 'Fuerza', color: '#EF4444', icon: '💪' },
-                      ] as { discs: string[]; label: string; color: string; icon: string }[]).map(({ discs, label, color, icon }) => {
+                        { discs: ['Hibrido'], label: 'Hibrido', color: '#EC4899', icon: '⚡' },
+                      ] as { discs: string[]; label: string; color: string; icon: string }[])
+                        .filter(x => x.label !== 'Hibrido' || detalleSem.sesiones.some((s: { disciplina?: string | null }) => s.disciplina === 'Hibrido'))
+                        .map(({ discs, label, color, icon }) => {
                         const sesDisc = detalleSem.sesiones.filter((s: any) => discs.includes(s.disciplina))
                         const tareasDisc = detalleSem.tareas.filter((t: any) => sesDisc.some((s: any) => s.id === t.id_sesion))
                         const minutos = sesDisc.reduce((a: number, s: any) => a + (s.duracion_minutos || 0), 0)
 
-                        if (label === 'Fuerza') {
+                        if (esDisciplinaDeFuerza(label)) {
                           /* La cuenta la hace lib/series-por-grupo, que es la
                              misma que usa /volumen. Estaban escritas dos veces
                              y no coincidían: aquí una fila sin número de series
@@ -2722,7 +2727,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       {/* Resumen por disciplina */}
                       {(() => {
                         const discs = ['Natacion', 'Natación', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick']
-                        const colores: Record<string, string> = { 'Natacion': '#3B82F6', 'Natación': '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#A855F7' }
+                        const colores: Record<string, string> = { 'Natacion': '#3B82F6', 'Natación': '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#A855F7', Hibrido: '#EC4899' }
                         const grupos: Record<string, any[]> = {}
                         sesionesProg.forEach(s => { const d = s.disciplina || 'Otro'; if (!grupos[d]) grupos[d] = []; grupos[d].push(s) })
                         return (

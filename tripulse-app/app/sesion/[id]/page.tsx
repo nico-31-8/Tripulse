@@ -42,6 +42,7 @@ import {
 } from '@/lib/contexto-sesion'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
+import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -397,7 +398,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setTareaEditandoId(t.id)
     setMostrarForm(true)
     setError('')
-    if (sesion?.disciplina === 'Fuerza') {
+    if (esDisciplinaDeFuerza(sesion?.disciplina)) {
       const ej = t.ejercicios?.[0]
       setGrupoMuscularSel(ej?.grupo_muscular || '')
       setEjercicioSel(ejerciciosBiblioteca.find(e => e.nombre === ej?.nombre) || null)
@@ -455,7 +456,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setError('')
     const orden = ultimoOrden(tareas) + 1
     const campos = {
-      disciplina: 'Fuerza',
+      disciplina: disciplinaDeTareaFuerza(sesion?.disciplina),
       series: seriesFuerza ? Number(seriesFuerza) : null,
       descanso_segundos: descansoFuerza ? Number(descansoFuerza) : null,
       comentario: configSerie || null,
@@ -604,6 +605,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
     if (d === 'Carrera') return 'bg-green-900 text-green-300'
     if (d === 'Fuerza') return 'bg-red-900 text-red-300'
+    if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
     return 'bg-purple-900 text-purple-300'
   }
 
@@ -826,7 +828,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
             {/* La configuración de la sesión sube aquí: era una caja propia de 60px que
                 solo llevaba un conmutador y un desplegable. */}
-            {sesion.disciplina === 'Fuerza' && (
+            {esDisciplinaDeFuerza(sesion.disciplina) && (
               <div className="flex items-center gap-2">
                 <div className="flex gap-1 bg-gray-800 rounded-lg p-1 border border-gray-700">
                   {['simple', 'compleja'].map(m => (
@@ -1050,13 +1052,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   setMostrarForm(true)
                   // El catálogo de técnica se pide al abrir el formulario, no al
                   // cargar la página: son 18 filas que no hacen falta hasta aquí.
-                  if (sesion.disciplina !== 'Fuerza' && !drillsTecnica.length) catalogoTecnica().then(setDrillsTecnica)
+                  if (!esDisciplinaDeFuerza(sesion.disciplina) && !drillsTecnica.length) catalogoTecnica().then(setDrillsTecnica)
                 }} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
                   {mostrarForm ? 'Cancelar' : '+ Nueva tarea'}
                 </button>
               </div>
             )}
-            {mostrarForm && sesion.disciplina === 'Fuerza' && (
+            {mostrarForm && esDisciplinaDeFuerza(sesion.disciplina) && (
               <form onSubmit={crearTareaFuerza} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
                 <h4 className="font-bold">{tareaEditandoId ? 'Editar ejercicio de fuerza' : 'Nuevo ejercicio de fuerza'}</h4>
                 <div>
@@ -1142,7 +1144,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               </form>
             )}
 
-            {mostrarForm && sesion.disciplina !== 'Fuerza' && (
+            {mostrarForm && !esDisciplinaDeFuerza(sesion.disciplina) && (
               <form onSubmit={crearTarea} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
                 <h4 className="font-bold">{tareaEditandoId ? 'Editar tarea' : 'Nueva tarea'}</h4>
                 <input type="text" placeholder="Zona (ej: Z2, Z4)" value={zona} onChange={e => setZona(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />

@@ -285,6 +285,7 @@ export default function CargaPage() {
       const uaCiclismo = uaPorDisc('Ciclismo')
       const uaCarrera = uaPorDisc('Carrera')
       const uaFuerza = uaPorDisc('Fuerza')
+      const uaHibrido = uaPorDisc('Hibrido')
 
       dias.push({
         fecha: label,
@@ -293,7 +294,8 @@ export default function CargaPage() {
         Ciclismo: Math.round(uaCiclismo),
         Carrera: Math.round(uaCarrera),
         Fuerza: Math.round(uaFuerza),
-        total: Math.round(uaNatacion + uaCiclismo + uaCarrera + uaFuerza),
+        Hibrido: Math.round(uaHibrido),
+        total: Math.round(uaNatacion + uaCiclismo + uaCarrera + uaFuerza + uaHibrido),
       })
     }
     return dias
@@ -423,7 +425,8 @@ export default function CargaPage() {
                       <Bar dataKey="Natacion" stackId="real" fill="#60a5fa" name="Natación" radius={[0,0,0,0]} />
                       <Bar dataKey="Ciclismo" stackId="real" fill="#fbbf24" name="Ciclismo" radius={[0,0,0,0]} />
                       <Bar dataKey="Carrera" stackId="real" fill="#4ade80" name="Carrera" radius={[0,0,0,0]} />
-                      <Bar dataKey="Fuerza" stackId="real" fill="#f87171" name="Fuerza" radius={[2,2,0,0]} />
+                      <Bar dataKey="Fuerza" stackId="real" fill="#f87171" name="Fuerza" radius={[0,0,0,0]} />
+                      <Bar dataKey="Hibrido" stackId="real" fill="#f472b6" name="Híbrido" radius={[2,2,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -435,7 +438,8 @@ export default function CargaPage() {
                     { key: 'Ciclismo', label: 'Ciclismo', color: 'text-yellow-400' },
                     { key: 'Carrera', label: 'Carrera', color: 'text-green-400' },
                     { key: 'Fuerza', label: 'Fuerza', color: 'text-red-400' },
-                  ].map(d => {
+                    { key: 'Hibrido', label: 'Híbrido', color: 'text-pink-400' },
+                  ].filter(d => d.key !== 'Hibrido' || datosDiarios.some(dia => dia.Hibrido > 0)).map(d => {
                     const total = datosDiarios.reduce((acc, dia) => acc + (dia[d.key] || 0), 0)
                     const diasActivos = datosDiarios.filter(dia => dia[d.key] > 0).length
                     return (

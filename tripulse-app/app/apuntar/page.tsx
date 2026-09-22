@@ -23,6 +23,7 @@ import {
   guardarRegistroResistencia, actualizarRegistroResistencia, type BloqueRegistro,
 } from '@/lib/registro-resistencia'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
+import { esDisciplinaDeFuerza, DISCIPLINAS_DE_FUERZA } from '@/lib/disciplinas'
 
 /* Aquí el atleta apunta lo que entrena por su cuenta, sea lo que sea.
    Es UNA sola puerta a propósito. Antes había dos: un modal que solo guardaba
@@ -154,7 +155,7 @@ export default function Apuntar() {
        cabecera; los ejercicios de cada una se traen al elegirla. */
     const listaQ = vivas(supabase.from('sesion')
       .select('id, fecha_sesion')
-      .eq('id_deportista', d.id).eq('disciplina', 'Fuerza').eq('estado', 'Realizada'))
+      .eq('id_deportista', d.id).in('disciplina', DISCIPLINAS_DE_FUERZA).eq('estado', 'Realizada'))
       .order('fecha_sesion', { ascending: false }).limit(12)
 
     const [bib, lista, refs] = await Promise.all([bibQ, listaQ, cargarReferencias(supabase, d.id)])
@@ -259,7 +260,7 @@ export default function Apuntar() {
     setRpe(String((hecha ? s.rpe_reportado : s.rpe_estimado) ?? ''))
     setNotas(s.notas_entrenador || '')
 
-    if (s.disciplina === 'Fuerza') setEjercicios(await ejerciciosDe(s.id))
+    if (esDisciplinaDeFuerza(s.disciplina)) setEjercicios(await ejerciciosDe(s.id))
     else setBloques(await bloquesDe(s.id))
   }
 

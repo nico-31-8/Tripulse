@@ -13,6 +13,7 @@ import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fec
 import { FILTRO_VIVAS } from './papelera'
 import { cargarBloques } from './atribucion'
 import { minutosCarga, cargaReal } from './duracion-carga'
+import { DEPORTES } from './disciplinas'
 
 // ---- Disciplinas (colores alineados con app/volumen/page.tsx) ----
 // 'Brick' está aquí solo para PINTAR (es la etiqueta de la sesión, morada en toda
@@ -24,8 +25,9 @@ export const DISC_META: Record<string, { label: string; color: string }> = {
   Carrera: { label: 'Carrera', color: '#4ade80' },
   Fuerza: { label: 'Fuerza', color: '#f87171' },
   Brick: { label: 'Brick', color: '#a855f7' },
+  Hibrido: { label: 'Híbrido', color: '#f472b6' },
 }
-const DISC_ORDEN = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
+const DISC_ORDEN = DEPORTES
 
 export interface MetricasPanel {
   /** `fiable`: hay historia suficiente (HISTORIA_MINIMA_FORMA) para creerse el TSB. */

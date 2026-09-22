@@ -18,6 +18,7 @@ const DISCIPLINAS = [
   { key: 'Ciclismo', label: '🚴 Ciclismo', color: '#facc15' },
   { key: 'Carrera', label: '🏃 Carrera', color: '#4ade80' },
   { key: 'Fuerza', label: '🏋️ Fuerza', color: '#f87171' },
+  { key: 'Hibrido', label: '⚡ Híbrido', color: '#f472b6' },
 ]
 
 // Recibe BLOQUES, no sesiones: un brick aporta a la bici y a la carrera por

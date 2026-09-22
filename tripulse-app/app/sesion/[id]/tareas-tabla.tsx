@@ -25,6 +25,7 @@ import {
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, valorCardioDeFila as valorCardioDe, type MedidaCardio } from '@/lib/cardio-fuerza'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
+import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
 import { atajosDe, aplicarAtajo, type AtajoIntensidad } from '@/lib/atajos-intensidad'
 import {
   estadoFuerza, estadoResistencia, cuantasListas, guardarEnOrden,
@@ -121,7 +122,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      una columna que todavía no está tumbaría la consulta ENTERA. */
   defectosIniciales?: unknown
 }) {
-  const esFuerza = disciplinaSesion === 'Fuerza'
+  /* Fuerza e Híbrido se programan con esta tabla (lib/disciplinas). */
+  const esFuerza = esDisciplinaDeFuerza(disciplinaSesion)
   const [filasR, setFilasR] = useState<FilaResistencia[]>([])
   /* Qué fila tiene el foco en su casilla de intensidad, para enseñar ahí los
      atajos de unidad y solo ahí. null = ninguna. */
@@ -738,7 +740,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       zona: f.cardioZona || null, objetivo: f.cardioObjetivo || null,
     }
     const campos = {
-      disciplina: 'Fuerza',
+      disciplina: disciplinaDeTareaFuerza(disciplinaSesion),
       zona_entrenamiento: (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
@@ -798,7 +800,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const segundos = esTiempo ? mmssASegundos(f.repsFuerza) : 0
     const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
     const campos = {
-      disciplina: 'Fuerza',
+      disciplina: disciplinaDeTareaFuerza(disciplinaSesion),
       zona_entrenamiento: zonaF,
       series: f.series ? Number(f.series) : null,
       descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,

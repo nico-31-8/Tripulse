@@ -22,7 +22,7 @@ import {
    Un color que hay que traducir no sirve de nada. */
 const COLOR_DISC: Record<string, string> = {
   Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308',
-  Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7',
+  Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899',
 }
 const colorDisc = (d?: string | null) => COLOR_DISC[d || ''] || '#6b7280'
 

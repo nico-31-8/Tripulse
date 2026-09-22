@@ -27,6 +27,7 @@
 
 import { seriesPrincipales, controlUltimaVez, type SerieHecha } from './modo-mejora'
 import { vecesDe } from './bloques-tarea'
+import { esDisciplinaDeFuerza } from './disciplinas'
 import { tieneDatos, seriesHechas } from './serie-hecha'
 import { mmss } from './duracion-carga'
 import type { CampoTarea } from './tarea-vista'
@@ -116,7 +117,7 @@ export function camposHechos(t: TareaVistaHecha, series: SerieRealizada[] | null
   const ej = t?.ejercicios?.[0]
 
   /* FUERZA, incluida la línea de cardio: series por ejercicio. */
-  if (t?.disciplina === 'Fuerza') {
+  if (esDisciplinaDeFuerza(t?.disciplina)) {
     if (!suyas.length) return null
     const principal = seriesPrincipales(suyas)
     const esCardio = ej?.tipo_serie === 'Cardio'

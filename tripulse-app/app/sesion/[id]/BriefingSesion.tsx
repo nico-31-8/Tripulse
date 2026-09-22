@@ -29,7 +29,7 @@ import { minutosEfectivos } from '@/lib/duracion-carga'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
 import { repeticionTexto } from '@/lib/bloques-tarea'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
+const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
 // delante si son varias («4 × 400 m»).

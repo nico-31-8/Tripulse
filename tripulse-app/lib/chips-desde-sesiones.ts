@@ -15,6 +15,7 @@
 // respeta los que sigan sin programar en vez de barrerlos.
 import { cargaZona } from './zonas'
 import { diasEntre } from './desplazar'
+import { esDisciplinaDeFuerza } from './disciplinas'
 import type { ChipZona } from './chips'
 
 export interface SesionParaChip {
@@ -46,7 +47,7 @@ export function zonasDeSesion(
 ): string[] {
   const deTareas = zonasTareas.filter((z): z is string => !!z && !!z.trim())
   if (deTareas.length) return deTareas
-  const propia = s.disciplina === 'Fuerza'
+  const propia = esDisciplinaDeFuerza(s.disciplina)
     ? (s.zona_fuerza || s.zona_resistencia)
     : (s.zona_resistencia || s.zona_fuerza)
   return propia && propia.trim() ? [propia] : []

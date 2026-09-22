@@ -15,6 +15,7 @@ import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import { delProveedor } from '@/lib/noches-reloj'
 import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
+import DisciplinasDeportista from '@/components/DisciplinasDeportista'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -32,11 +33,12 @@ const COLOR_DISC: Record<string, string> = {
   'Ciclismo': 'bg-yellow-900 text-yellow-300 border-yellow-700',
   'Carrera': 'bg-green-900 text-green-300 border-green-700',
   'Fuerza': 'bg-red-900 text-red-300 border-red-700',
+  'Hibrido': 'bg-pink-900 text-pink-300 border-pink-700',
   'Brick': 'bg-purple-900 text-purple-300 border-purple-700',
 }
 
 const ICONO_DISC: Record<string, string> = {
-  'Natacion': '🏊', 'Ciclismo': '🚴', 'Carrera': '🏃', 'Fuerza': '🏋️', 'Brick': '🔀'
+  'Natacion': '🏊', 'Ciclismo': '🚴', 'Carrera': '🏃', 'Fuerza': '🏋️', 'Brick': '🔀', 'Hibrido': '⚡'
 }
 
 
@@ -801,6 +803,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         {/* PESTAÑA SESIONES */}
         {pestana === 'entreno' && (
           <div className="flex flex-col gap-4">
+
+            {/* Lo primero: qué se le programa. Decide qué sale en todos los
+                menús de crear sesión de este deportista. */}
+            <DisciplinasDeportista idDeportista={Number(id)} valor={deportista.disciplinas}
+              onCambio={v => setDeportista((prev: Record<string, unknown>) => ({ ...prev, disciplinas: v }))} />
 
             {/* Resumen rápido */}
             {ultimasSesiones.length > 0 && (

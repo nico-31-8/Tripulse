@@ -12,6 +12,7 @@ import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } fro
 import type { ChipZona } from '@/lib/chips'
 import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
 import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
+import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 /* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
    Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
@@ -31,7 +32,7 @@ const COLOR_DISC: Record<string, string> = {
 }
 const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Natación: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
 // Para leer de un vistazo la secuencia de un brick en la tarjeta.
-const EMOJI_DISC: Record<string, string> = { Natacion: '🏊', Natación: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
+const EMOJI_DISC: Record<string, string> = { Natacion: '🏊', Natación: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 
 // Color de texto legible (oscuro/blanco) según la luminancia del fondo del chip.
 function txtSobre(hex: string): string {
@@ -284,7 +285,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     if (!microId) { setGuardando(false); return }
 
     const disciplina = chips[0].disciplina
-    const esFuerza = disciplina === 'Fuerza'
+    const esFuerza = esDisciplinaDeFuerza(disciplina)
     const compleja = chips.length > 1
     // Un chip de brick trae sus bloques del canvas: manda él, no la zona del chip.
     const chipBrick = chips.length === 1 && chips[0].disciplina === 'Brick' ? chips[0].brick : null
@@ -827,14 +828,14 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 <p className="text-2xl font-bold text-green-400">{sesiones.filter(s => s.estado === 'Realizada').length}/{sesiones.length}</p>
                 <p className="text-gray-500 text-xs">realizadas</p>
               </div>
-              {['Natacion','Natación','Ciclismo','Carrera','Fuerza'].map(d => {
+              {['Natacion','Natación','Ciclismo','Carrera','Fuerza','Hibrido'].map(d => {
                 const n = sesiones.filter(s => s.disciplina === d || s.disciplina === d).length
                 if (!n) return null
                 return (
                   <div key={d} className="flex items-center gap-1.5">
                     <div className={'w-2 h-2 rounded-full ' +
-                      (d.includes('Nat') ? 'bg-blue-400' : d === 'Ciclismo' ? 'bg-yellow-400' : d === 'Carrera' ? 'bg-green-400' : 'bg-red-400')} />
-                    <span className="text-gray-400 text-xs">{d}: <span className="text-white font-medium">{n}</span></span>
+                      (d.includes('Nat') ? 'bg-blue-400' : d === 'Ciclismo' ? 'bg-yellow-400' : d === 'Carrera' ? 'bg-green-400' : d === 'Hibrido' ? 'bg-pink-400' : 'bg-red-400')} />
+                    <span className="text-gray-400 text-xs">{etiquetaDisciplina(d)}: <span className="text-white font-medium">{n}</span></span>
                   </div>
                 )
               })}
@@ -857,7 +858,8 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
             <div className="flex flex-col gap-4">
               <select value={disc} onChange={e => setDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" required>
                 <option value="">Disciplina</option>
-                <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
+                {/* Solo las que programa este deportista (su ficha). */}
+                {paraProgramar(dep, TODAS, disc).map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
               </select>
               {disc === 'Brick' && <ConstructorBrick valor={brick} onChange={setBrick} depId={Number(id)} />}
               {disc !== 'Brick' && <input type="number" placeholder="Duracion en minutos (opcional)" value={duracion} onChange={e => setDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />}

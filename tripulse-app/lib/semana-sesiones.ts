@@ -167,10 +167,8 @@ export function puedeCopiarse(t: any, sesionEsDeFuerza: boolean): boolean {
   return tareaEsDeFuerza(t) === sesionEsDeFuerza
 }
 
-/** Las disciplinas que tienen tabla de fuerza. */
-export function esDisciplinaDeFuerza(disciplina: string | null | undefined): boolean {
-  return disciplina === 'Fuerza'
-}
+/** Las disciplinas que tienen tabla de fuerza: vive en lib/disciplinas. */
+export { esDisciplinaDeFuerza } from './disciplinas'
 
 /**
  * La sesión anterior y la siguiente dentro de la semana.

@@ -33,7 +33,7 @@ import {
 
 import { vecesDe, repeticionTexto } from '@/lib/bloques-tarea'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀' }
+const EMOJI: Record<string, string> = { Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
 /** Qué se le pidió a esta tarea, para leerlo de un vistazo. */
 function objetivoDe(t: any): string {

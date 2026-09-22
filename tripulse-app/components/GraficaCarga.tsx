@@ -6,15 +6,17 @@ import { lunesDe } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
 import { minutosCarga } from '@/lib/duracion-carga'
+import { DEPORTES } from '@/lib/disciplinas'
 
 // Solo deportes: un brick no es una disciplina, se reparte entre las suyas.
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
+const DISCIPLINAS = DEPORTES
 
 const DISC_COLORS: Record<string, string> = {
   'Natacion': '#60a5fa',
   'Ciclismo': '#facc15',
   'Carrera': '#4ade80',
   'Fuerza': '#f87171',
+  'Hibrido': '#f472b6',
 }
 
 const DISC_LABELS: Record<string, string> = {
@@ -22,6 +24,7 @@ const DISC_LABELS: Record<string, string> = {
   'Ciclismo': '🚴 Ciclismo',
   'Carrera': '🏃 Carrera',
   'Fuerza': '🏋️ Fuerza',
+  'Hibrido': '⚡ Híbrido',
 }
 
 function getEtiquetaSemana(lunes: string): string {

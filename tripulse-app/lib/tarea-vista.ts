@@ -88,7 +88,7 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
     const porSerie = cuantoPorSerie({ modo: ej.cardio_modo, medida: ej.cardio_medida, valor: ej.cardio_valor }) || '—'
     return {
       titulo: ej.nombre || comentario || 'Cardio',
-      zona, nombreZona, disciplina: 'Fuerza', esFuerza: true,
+      zona, nombreZona, disciplina: disciplina || 'Fuerza', esFuerza: true,
       campos: [
         { k: 'Tipo', v: 'Cardio' },
         { k: 'Series', v: String(ej.series ?? t.series ?? '—') },
@@ -106,7 +106,7 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
     const porTiempo = !!t?.p_duracion?.[0]?.tiempo_planeado
     return {
       titulo: ej.nombre || comentario || 'Ejercicio',
-      zona, nombreZona, disciplina: 'Fuerza', esFuerza: true,
+      zona, nombreZona, disciplina: disciplina || 'Fuerza', esFuerza: true,
       campos: [
         { k: 'Grupo', v: ej.grupo_muscular || '—' },
         { k: 'Tipo de serie', v: ej.tipo_serie || 'Normal' },

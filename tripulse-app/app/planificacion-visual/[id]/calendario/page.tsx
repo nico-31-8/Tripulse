@@ -29,6 +29,7 @@ import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta
 import { BotonGuiaZonas } from '@/components/GuiaZonas'
 import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
+import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -40,7 +41,7 @@ const DIAS_SEMANA = ['L','M','X','J','V','S','D']
 const COLOR_DISC: Record<string, string> = {
   'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
   'Ciclismo': 'bg-yellow-400', 'Carrera': 'bg-green-500',
-  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500',
+  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500', 'Hibrido': 'bg-pink-500',
 }
 
 const COLOR_DISC_FULL: Record<string, string> = {
@@ -49,6 +50,7 @@ const COLOR_DISC_FULL: Record<string, string> = {
   'Carrera': 'bg-green-800 text-green-200 hover:bg-green-700',
   'Fuerza': 'bg-red-800 text-red-200 hover:bg-red-700',
   'Brick': 'bg-purple-800 text-purple-200 hover:bg-purple-700',
+  'Hibrido': 'bg-pink-800 text-pink-200 hover:bg-pink-700',
 }
 
 function getDiasDelMes(año: number, mes: number) {
@@ -67,7 +69,7 @@ function getVolumenSesion(sesion: any): string {
   const min = sesion.duracion_minutos ? sesion.duracion_minutos + 'm' : ''
   const metros = sesion.metros_total || 0
   const seg = sesion.seg_total || 0
-  if (disc === 'Fuerza') return min
+  if (esDisciplinaDeFuerza(disc)) return min
   if (disc === 'Ciclismo') { if (seg > 0) return Math.floor(seg/60) + 'm'; return min }
   if (disc === 'Natacion' || disc === 'Carrera') {
     if (metros > 0) { const vol = metros >= 1000 ? (metros/1000).toFixed(1) + 'km' : metros + 'm'; return min ? min + ' · ' + vol : vol }
@@ -623,7 +625,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
 
   const guardarEdicionSesion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    const esF = sesionDisc === 'Fuerza'
+    const esF = esDisciplinaDeFuerza(sesionDisc)
     const esB = sesionDisc === 'Brick'
     // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
     const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
@@ -680,7 +682,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }
   const guardarSesion = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true)
-    const esF = sesionDisc === 'Fuerza'
+    const esF = esDisciplinaDeFuerza(sesionDisc)
     const esB = sesionDisc === 'Brick'
     // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
     const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
@@ -868,7 +870,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 ninguno de sus bloques. */}
             <div className="grid grid-cols-2 gap-y-2 gap-x-3 px-1 pb-1">
               {[...tiposEnPlan(mesos).map(t => [t.hex, t.tipo] as [string, string]),
-                ['#3b82f6','Natación'],['#eab308','Ciclismo'],['#22c55e','Carrera'],['#ef4444','Fuerza']].map(([c,l]) => (
+                ['#3b82f6','Natación'],['#eab308','Ciclismo'],['#22c55e','Carrera'],['#ef4444','Fuerza'],['#ec4899','Híbrido']].map(([c,l]) => (
                 <div key={l} className="flex items-center gap-2 text-[12px] text-gray-400">
                   <i className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: c }} />{l}
                 </div>
@@ -1775,9 +1777,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               <form onSubmit={guardarEdicionSesion} className="flex flex-col gap-3">
                 <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
                   <option value="">Disciplina</option>
-                  <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
+                  {/* Solo las que programa este deportista (su ficha). */}
+                  {paraProgramar(deportista, TODAS, sesionDisc).map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
                 </select>
-                {sesionDisc === 'Fuerza' && (
+                {esDisciplinaDeFuerza(sesionDisc) && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
@@ -1835,9 +1838,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               <form onSubmit={guardarSesion} className="flex flex-col gap-3">
                 <select value={sesionDisc} onChange={e => setSesionDisc(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required>
                   <option value="">Disciplina</option>
-                  <option>Natacion</option><option>Ciclismo</option><option>Carrera</option><option>Fuerza</option><option>Brick</option>
+                  {/* Solo las que programa este deportista (su ficha). */}
+                  {paraProgramar(deportista, TODAS, sesionDisc).map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
                 </select>
-                {sesionDisc === 'Fuerza' && (
+                {esDisciplinaDeFuerza(sesionDisc) && (
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-gray-400 text-xs">Tipo de sesión de fuerza</p>
