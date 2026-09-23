@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { seriesPorGrupo, totalSeries as sumaSeries } from '@/lib/series-por-grupo'
 import { useState, useEffect, use, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { semanasEntre, semanaQueContiene, hoyISO } from '@/lib/fechas'
+import { semanasEntre, semanaQueContiene, hoyISO, indiceDia, fechaLargaCompleta, lunesDe } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
@@ -28,7 +28,13 @@ import { alQuitarChip, borrarConSuChip } from '@/lib/devolver-al-pool'
 import { hayDibujoGuardado, pantallaDeEntrada } from '@/lib/entrada-dibujo'
 import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
-import { colocarBanda, filasBanda, columnasPorSemana } from '@/lib/banda-competiciones'
+import { colocarBanderas, filasBanda, ANCHO_BANDERA } from '@/lib/banda-competiciones'
+import { PRUEBAS, CATEGORIAS_PRUEBA } from '@/lib/pruebas'
+import { queLeFaltaComp, cambiosDeComp, type FormCompeticion } from '@/lib/competicion-editar'
+import { ordenarChips, abreGrupo } from '@/lib/orden-chips'
+import { limitesRedimension, redimensionar, type Borde } from '@/lib/redimensionar-ciclo'
+import { fotoDelDibujo, fotoDelPlan, loPendiente, type FotoPlan } from '@/lib/plan-pendiente'
+import IconoDisciplina from '@/components/IconoDisciplina'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
@@ -196,6 +202,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     return d.toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
   }
   const [modoEdicion, setModoEdicion] = useState(false)
+  /* Cómo era el plan del atleta la última vez que se miró o se generó. Lo que
+     se dibuje a partir de ahí está pendiente hasta que se pulse el botón. */
+  const [fotoPlan, setFotoPlan] = useState<FotoPlan | null>(null)
   const [fechaInicio, setFechaInicio] = useState('')
   const [totalSem, setTotalSem] = useState(24)
   const [macros, setMacros] = useState<MacroD[]>([])
@@ -216,6 +225,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [fDur, setFDur] = useState(4)
   const [fInt, setFInt] = useState(7)
   const [fComp, setFComp] = useState('')
+  /* La carrera cuya ficha está abierta, y el formulario si se está editando.
+     Se tipa aquí y no con `any` como el resto de la página: la ficha es lo
+     único que ESCRIBE en la competición, y un nombre de columna mal escrito no
+     daría error, simplemente no guardaría ese campo. */
+  const [compSel, setCompSel] = useState<{
+    id: number; nombre?: string | null; fecha?: string | null
+    tipo?: string | null; notas?: string | null; prioridad?: string | null
+  } | null>(null)
+  const [editComp, setEditComp] = useState<FormCompeticion | null>(null)
+  const [guardandoComp, setGuardandoComp] = useState(false)
   const [taperSug, setTaperSug] = useState<number[]>([])
   const [panelTab, setPanelTab] = useState('plan')
   const [generando, setGenerando] = useState(false)
@@ -261,6 +280,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const [exportando, setExportando] = useState(false)
   const dragBandRef = useRef<'macro' | 'meso' | null>(null)
   const movingBlockRef = useRef<{tipo: 'macro'|'meso', id: string, offsetSem: number} | null>(null)
+  /* Estirar o encoger por un borde. Va aparte de mover: el que mueve conserva
+     la duración y este la cambia, y los dos usan la misma previsualización. */
+  const resizeRef = useRef<{tipo: 'macro'|'meso', id: string, borde: Borde} | null>(null)
   const [movePreview, setMovePreview] = useState<{tipo: string, si: number, sf: number, id: string} | null>(null)
   const [mostrarCurva, setMostrarCurva] = useState(true)
   const [mostrarTendencia, setMostrarTendencia] = useState(false)
@@ -566,6 +588,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
          planificación. Con solo un dibujo guardado, lo que toca sigue siendo
          generarla por primera vez. */
       setModoEdicion(macsData.length > 0)
+      /* La foto del plan que hay AHORA en la base. Se compara con lo dibujado
+         para saber qué falta por generar (lib/plan-pendiente). */
+      setFotoPlan(fotoDelPlan(fi, macsData, mesosData, microsData))
 
       /* Y SOLO AQUÍ se abre el autoguardado. Si el cargador se cae antes, la
          bandera se queda en false y no se escribe nada: no guardar es un
@@ -690,6 +715,39 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      /* Estirar o encoger por un borde. El borde se PARA donde empezaría a
+         pisar al de al lado o a dejar fuera a un hijo, en vez de empujarlo o
+         de avisar con un diálogo (lib/redimensionar-ciclo). */
+      if (resizeRef.current) {
+        const { tipo, id, borde } = resizeRef.current
+        const wi = getWeekFromClientX(e.clientX)
+        if (tipo === 'macro') {
+          const mac = macrosRef.current.find(m => m.id === id)
+          if (mac) {
+            const lim = limitesRedimension(mac, borde, {
+              hermanos: macrosRef.current.filter(m => m.id !== id),
+              contiene: mesosRef.current.filter(me => me.macroId === id),
+              totalSem,
+            })
+            const r = redimensionar(mac, borde, wi, lim)
+            movePreviewRef.current = { tipo: 'macro', si: r.si, sf: r.sf, id }
+            setMovePreview({ tipo: 'macro', si: r.si, sf: r.sf, id })
+          }
+        } else {
+          const me = mesosRef.current.find(m => m.id === id)
+          if (me) {
+            const lim = limitesRedimension(me, borde, {
+              hermanos: mesosRef.current.filter(x => x.macroId === me.macroId && x.id !== id),
+              dentroDe: macrosRef.current.find(m => m.id === me.macroId) || null,
+              totalSem,
+            })
+            const r = redimensionar(me, borde, wi, lim)
+            movePreviewRef.current = { tipo: 'meso', si: r.si, sf: r.sf, id }
+            setMovePreview({ tipo: 'meso', si: r.si, sf: r.sf, id })
+          }
+        }
+        return
+      }
       // Mover bloque existente
       if (movingBlockRef.current) {
         const { tipo, id, offsetSem } = movingBlockRef.current
@@ -724,6 +782,21 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       setDragPreview({ band: dragBandRef.current, si, sf })
     }
     const onUp = () => {
+      // Confirmar el estirón
+      if (resizeRef.current) {
+        const { tipo, id } = resizeRef.current
+        const preview = movePreviewRef.current
+        if (preview) {
+          /* Solo cambia el bloque que se arrastra. Sus mesos no se mueven: los
+             límites ya impiden dejar a ninguno fuera. */
+          if (tipo === 'macro') setMacros(p => p.map(m => m.id === id ? { ...m, si: preview.si, sf: preview.sf } : m))
+          else setMesos(p => p.map(m => m.id === id ? { ...m, si: preview.si, sf: preview.sf } : m))
+        }
+        resizeRef.current = null
+        movePreviewRef.current = null
+        setMovePreview(null)
+        return
+      }
       // Confirmar movimiento de bloque
       if (movingBlockRef.current) {
         const { tipo, id } = movingBlockRef.current
@@ -846,18 +919,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   const compsDentro = compsReales
-    .map(c => ({ c, wi: semanaDeComp(c.fecha), nombre: String(c.nombre || '') }))
+    .map(c => ({ c, wi: semanaDeComp(c.fecha), dia: indiceDia(c.fecha), nombre: String(c.nombre || '') }))
     .filter(x => x.wi >= 0)
 
   const compsFuera = compsReales.filter(c => semanaDeComp(c.fecha) < 0)
 
-  /* La colocacion de las etiquetas (filas y borde derecho) vive en
-     `lib/banda-competiciones.ts`, con sus pruebas: si dos se pisan no falla
-     nada, solo queda una encima de otra y se lee mal la fecha. */
+  /* Dónde se planta cada bandera vive en `lib/banda-competiciones.ts`, con sus
+     pruebas: el día decide el sitio dentro de la semana, y ninguna se sale de
+     la suya —una de domingo asomando por la derecha parecería de la semana
+     siguiente—. */
   const anchoTotal = Math.max(totalSem * semanaW + LABEL_W, 600)
-  const bandaComps = colocarBanda(compsDentro, { semanaW, labelW: LABEL_W, anchoTotal })
-  const bandaFilas = filasBanda(bandaComps)
-  const columnasComp = columnasPorSemana(compsDentro, x => prioridadDe(x.c))
+  const banderas = colocarBanderas(compsDentro, { semanaW, labelW: LABEL_W })
+  const bandaFilas = filasBanda(banderas)
+
+  /* Lo dibujado que todavía no está en el plan del atleta. Se recalcula al
+     vuelo: son cuatro listas cortas. */
+  const pendiente = loPendiente(fotoDelDibujo(macros, mesos, sems), fotoPlan)
 
   /** La semana del lienzo en la que estamos hoy, o -1 si el plan no ha empezado o ya acabo. */
   const semanaDeHoy = fechaInicio ? semanaDeComp(hoyISO()) : -1
@@ -893,6 +970,48 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     if (!confirm('Borrar esta competicion? Desaparece tambien del calendario.')) return
     await supabase.from('competicion').delete().eq('id', compId)
     await recargarComps()
+  }
+
+  /* ── LA FICHA DE UNA CARRERA ───────────────────────────
+     Se abre al pulsar su bandera. Aquí es donde por fin se puede CORREGIR una
+     competición: hasta ahora, equivocarse en el nombre o en la fecha obligaba
+     a borrarla y volver a crearla, y con ella se iban la prueba y las notas
+     —que además no se veían en ninguna pantalla—. Ver lib/competicion-editar. */
+  const cerrarFicha = () => { setCompSel(null); setEditComp(null) }
+
+  const editarFicha = () => {
+    if (!compSel) return
+    setEditComp({
+      nombre: String(compSel.nombre || ''), fecha: String(compSel.fecha || '').slice(0, 10),
+      tipo: String(compSel.tipo || ''), notas: String(compSel.notas || ''),
+      prioridad: prioridadDe(compSel),
+    })
+  }
+
+  const guardarFicha = async () => {
+    if (!compSel || !editComp) return
+    const falta = queLeFaltaComp(editComp)
+    if (falta) { alert(falta); return }
+    setGuardandoComp(true)
+    const cambios = cambiosDeComp(editComp)
+    const { error } = await supabase.from('competicion').update(cambios).eq('id', compSel.id)
+    setGuardandoComp(false)
+    if (error) {
+      alert(/prioridad|column/i.test(error.message)
+        ? 'Falta ejecutar supabase/competicion-prioridad.sql en la base de datos.'
+        : 'No se ha podido guardar: ' + error.message)
+      return
+    }
+    /* La ficha se queda abierta con lo nuevo puesto: si se cerrara, no habría
+       forma de ver si el cambio entró sin volver a buscar la bandera. */
+    setCompSel({ ...compSel, ...cambios })
+    setEditComp(null)
+    await recargarComps()
+  }
+
+  const borrarDesdeFicha = async (compId: number) => {
+    await borrarCompReal(compId)
+    cerrarFicha()
   }
 
   const openCompModal = (wi: number) => {
@@ -1021,6 +1140,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       }
       setGenerado(true)
       setModoEdicion(true)
+      /* Lo que acaba de escribirse ES el dibujo, así que la foto del plan pasa
+         a ser esta y el aviso se apaga solo. */
+      setFotoPlan(fotoDelDibujo(macros, mesos, sems))
       const aviso = sueltas
         ? '\n\n' + sueltas + (sueltas === 1
           ? ' sesión estaba en una semana que ya no cabe: sigue en el calendario, pero fuera del plan.'
@@ -1596,13 +1718,44 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   ☰ Capas
                 </button>
                 <button onClick={() => setPantalla('elegir')} className="text-gray-500 hover:text-gray-300 text-xs transition px-2 py-1 rounded-lg hover:bg-gray-800">← Cambiar</button>
-                <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
+                {/* Tras generar, el botón se quedaba en «Ver planificación» para
+                    siempre: si después movías una barra no había forma de volver a
+                    generar sin recargar la página. Ahora, en cuanto hay algo
+                    pendiente, vuelve a ser el botón de generar. */}
+                <button onClick={generado && !pendiente.hay ? () => router.push('/planificacion-visual/' + id) : generar}
                   disabled={generando || (!generado && macros.length === 0)}
-                  className={'px-5 py-2 rounded-xl text-sm font-bold transition disabled:opacity-50 ' + (generado ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
-                  {generando ? 'Guardando...' : generado ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
+                  className={'px-5 py-2 rounded-xl text-sm font-bold transition disabled:opacity-50 ' + (generado && !pendiente.hay ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
+                  {generando ? 'Guardando...' : generado && !pendiente.hay ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
                 </button>
               </div>
             </div>
+
+            {/* EL AVISO DE LO QUE FALTA POR GENERAR.
+
+                El lienzo pone «Guardado 09:43» y es verdad —el DIBUJO está
+                guardado—, pero el plan del atleta no se toca hasta pulsar el
+                botón. Eso no se veía por ningún lado: se estiraba un mesociclo,
+                se leía «Guardado» y parecía hecho.
+
+                Sale pegado a la barra de arriba y no se va con el scroll, con el
+                mismo botón al lado para no tener que buscarlo. */}
+            {pendiente.hay && (
+              <div className="flex-shrink-0 bg-orange-500/15 border-b border-orange-500/40 px-4 py-2 flex items-center gap-3 flex-wrap">
+                <span className="text-orange-300 text-base leading-none" aria-hidden="true">⚠️</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-orange-200 text-[13px] font-semibold leading-snug">
+                    No te olvides de guardar los cambios de los ciclos.
+                  </p>
+                  <p className="text-orange-300/70 text-[12px] leading-snug">
+                    {pendiente.frase} Hasta que le des al botón, el calendario del atleta sigue como estaba.
+                  </p>
+                </div>
+                <button onClick={generar} disabled={generando}
+                  className="flex-shrink-0 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-[13px] font-bold px-4 py-2 rounded-xl transition">
+                  {generando ? 'Guardando…' : modoEdicion ? 'Actualizar planificación' : 'Generar planificación'}
+                </button>
+              </div>
+            )}
 
             <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto bg-gray-950">
               <div ref={contentRef} style={{ width: anchoTotal + 'px' }} className="relative select-none pb-4 bg-gray-950">
@@ -1621,25 +1774,48 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     Antes solo habia un emoji minusculo pegado al «S9», y para saber
                     QUE carrera era habia que pasar el raton por encima. Aqui se lee
                     el nombre y la fecha sin buscarlos. */}
-                {bandaComps.length > 0 && (
-                  <div className="relative bg-gray-950" style={{ height: 6 + bandaFilas * 27 }}>
+                {banderas.length > 0 && (
+                  <div className="relative bg-gray-950" style={{ height: 10 + bandaFilas * 24 }}>
                     <div className="absolute left-0 top-0 bottom-0 w-14 flex items-start pl-2 pt-1.5 z-20 pointer-events-none bg-gray-950">
                       {/* Menos separacion entre letras que en MACRO/MESO/MICRO: son cinco
                           letras y esta tiene ocho, y con la misma no cabe en los 56 px. */}
                       <span className="text-gray-600 font-bold tracking-wide" style={{ fontSize: 8 }}>CARRERAS</span>
                     </div>
-                    {bandaComps.map(({ item: { c }, left, fila }) => {
+                    {/* EL RAÍL. Sin una línea debajo, la bandera parece puesta a ojo;
+                        con ella se lee que está en un sitio concreto de la semana:
+                        al principio, en medio o al final. */}
+                    <div className="absolute pointer-events-none" style={{ left: LABEL_W, right: 0, bottom: 4, height: 1, background: '#1f2937' }} />
+                    {sems.map(s => (
+                      <div key={s.i} className="absolute pointer-events-none"
+                        style={{ left: LABEL_W + s.i * semanaW, bottom: 2, width: 1, height: 5, background: '#1f2937' }} />
+                    ))}
+                    {banderas.map(({ item: { c }, left, fila }) => {
                       const d = defDe(prioridadDe(c))
+                      const esA = prioridadDe(c) === 'A'
+                      /* El nombre escrito solo en las de objetivo: son una o dos por
+                         temporada y son las que mandan en el dibujo. Las demás lo
+                         dicen al pasar por encima, y al pulsarlas. */
+                      const aLaIzquierda = left > anchoTotal - 150
                       return (
-                        <div key={c.id} className="absolute flex items-center gap-1 px-1.5 rounded-md whitespace-nowrap z-10"
-                          style={{
-                            left, top: 3 + fila * 27, height: 24,
-                            backgroundColor: d.hex + '22', border: '1px solid ' + d.hex + '66',
-                          }}
-                          title={c.nombre + ' · ' + d.etiqueta + ' · ' + c.fecha}>
-                          <span style={{ fontSize: 11 }}>{d.simbolo}</span>
-                          <span className="font-semibold" style={{ fontSize: 10, color: d.hex }}>{c.nombre}</span>
-                          <span style={{ fontSize: 9, color: d.hex, opacity: 0.75 }}>{semLabel(c.fecha, 0)}</span>
+                        <div key={c.id}>
+                          <button onClick={() => { setCompSel(c); setEditComp(null) }}
+                            className="absolute z-10 hover:-translate-y-0.5 transition"
+                            style={{ left, bottom: 3 + fila * 24, width: ANCHO_BANDERA, height: 22 }}
+                            title={c.nombre + ' · ' + d.etiqueta + ' · ' + fechaLargaCompleta(c.fecha)}>
+                            <svg width={ANCHO_BANDERA} height="22" viewBox="0 0 17 22">
+                              <path d="M2.6 1.5v19.5" stroke={d.hex} strokeWidth="1.6" strokeLinecap="round" />
+                              <path d="M3.4 2.6h10l-2.5 3.3 2.5 3.3h-10z" fill={d.hex} fillOpacity={esA ? 1 : 0.5} stroke={d.hex} strokeWidth="1" />
+                            </svg>
+                          </button>
+                          {esA && (
+                            <span className="absolute font-semibold whitespace-nowrap pointer-events-none z-10"
+                              style={{
+                                fontSize: 10, color: d.hex, bottom: 8 + fila * 24,
+                                ...(aLaIzquierda ? { right: anchoTotal - left + 4 } : { left: left + ANCHO_BANDERA + 3 }),
+                              }}>
+                              {c.nombre}
+                            </span>
+                          )}
                         </div>
                       )
                     })}
@@ -1678,6 +1854,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         className="ml-auto flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/mac:text-white/80 hover:text-white transition text-sm leading-none pl-2">✏️</button>
                       <button onClick={e => { e.stopPropagation(); borrarMacro(mac.id) }}
                         className="flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/mac:text-white/80 hover:text-white transition text-base leading-none pl-2">x</button>
+                      {/* LAS AGARRADERAS, una en cada punta. Van en los 12 px de
+                          padding del bloque, así que no tapan ni el nombre ni los
+                          botones. El centro sigue sirviendo para mover. */}
+                      {(['ini', 'fin'] as Borde[]).map(borde => (
+                        <div key={borde} className="absolute inset-y-0 z-20 flex items-center justify-center"
+                          title={borde === 'ini' ? 'Arrastra para cambiar cuándo empieza' : 'Arrastra para cambiar cuándo acaba'}
+                          style={{ ...(borde === 'ini' ? { left: 0 } : { right: 0 }), width: 10, cursor: 'ew-resize', touchAction: 'none' }}
+                          onPointerDown={e => {
+                            e.stopPropagation(); e.preventDefault()
+                            resizeRef.current = { tipo: 'macro', id: mac.id, borde }
+                            movePreviewRef.current = { tipo: 'macro', si: mac.si, sf: mac.sf, id: mac.id }
+                            setMovePreview({ tipo: 'macro', si: mac.si, sf: mac.sf, id: mac.id })
+                          }}>
+                          <span className="rounded-full bg-white/25 sm:bg-white/0 sm:group-hover/mac:bg-white/60 transition" style={{ width: 3, height: 18 }} />
+                        </div>
+                      ))}
                       {/* Tooltip */}
                       <div className="absolute bottom-full left-0 mb-2 hidden group-hover/mac:block z-50 pointer-events-none">
                         <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-xl p-3 text-left min-w-48">
@@ -1691,8 +1883,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     </div>
                   ))}
                   {movePreview?.tipo === 'macro' && movePreview.id && (
-                    <div className="absolute inset-y-2 rounded-xl z-40 pointer-events-none"
-                      style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }} />
+                    <div className="absolute inset-y-2 rounded-xl z-40 pointer-events-none flex items-center justify-center"
+                      style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: '#EA580C40', border: '2px dashed #EA580C', opacity: 0.8 }}>
+                      <span className="text-orange-100 text-xs font-bold">{movePreview.sf - movePreview.si + 1} sem</span>
+                    </div>
                   )}
                   {dragPreview?.band === 'macro' && (
                     <div className="absolute inset-y-2 rounded-xl z-30 pointer-events-none flex items-center justify-center"
@@ -1743,6 +1937,21 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           className="ml-auto flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/meso:text-white/70 hover:text-white transition text-sm leading-none pl-2">✏️</button>
                         <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); borrarMeso(me.id) }}
                           className="flex-shrink-0 text-white/70 sm:text-white/0 sm:group-hover/meso:text-white/70 hover:text-white transition text-base leading-none pl-2">x</button>
+                        {/* Las agarraderas del meso: no se sale de su macro ni pisa
+                            al meso de al lado (lib/redimensionar-ciclo). */}
+                        {(['ini', 'fin'] as Borde[]).map(borde => (
+                          <div key={borde} className="absolute inset-y-0 z-20 flex items-center justify-center"
+                            title={borde === 'ini' ? 'Arrastra para cambiar cuándo empieza' : 'Arrastra para cambiar cuándo acaba'}
+                            style={{ ...(borde === 'ini' ? { left: 0 } : { right: 0 }), width: 9, cursor: 'ew-resize', touchAction: 'none' }}
+                            onPointerDown={e => {
+                              e.stopPropagation(); e.preventDefault()
+                              resizeRef.current = { tipo: 'meso', id: me.id, borde }
+                              movePreviewRef.current = { tipo: 'meso', si: me.si, sf: me.sf, id: me.id }
+                              setMovePreview({ tipo: 'meso', si: me.si, sf: me.sf, id: me.id })
+                            }}>
+                            <span className="rounded-full transition" style={{ width: 3, height: 14, backgroundColor: col }} />
+                          </div>
+                        ))}
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover/meso:block z-50 pointer-events-none">
                           <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-xl p-3 text-left min-w-48">
@@ -1761,8 +1970,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const me = mesos.find(m => m.id === movePreview.id)
                     const col = me ? (C_MESO[me.tipo] || '#EA580C') : '#EA580C'
                     return (
-                      <div className="absolute inset-y-1.5 rounded-lg z-40 pointer-events-none"
-                        style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: col + '30', border: '2px dashed ' + col }} />
+                      <div className="absolute inset-y-1.5 rounded-lg z-40 pointer-events-none flex items-center justify-center"
+                        style={{ left: LABEL_W + movePreview.si * semanaW + 1, width: (movePreview.sf - movePreview.si + 1) * semanaW - 2, backgroundColor: col + '30', border: '2px dashed ' + col }}>
+                        <span className="text-white/80 text-xs font-bold">{movePreview.sf - movePreview.si + 1} sem</span>
+                      </div>
                     )
                   })()}
                   {dragPreview?.band === 'meso' && (() => {
@@ -1811,14 +2022,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   })}
                 </div>
 
-                {/* LA MARCA DE LA SEMANA: la de una carrera, y la de hoy.
+                {/* LA MARCA DE LA SEMANA DE HOY.
 
-                    LLEGA HASTA AQUI Y NO MAS ABAJO. Antes cruzaba el lienzo entero,
-                    y con cinco carreras el dibujo quedaba a rayas: las columnas
-                    competian con las barras de carga y con los chips de zonas, que
-                    es lo que de verdad hay que mirar. Bajando solo hasta la fila de
-                    semanas se sigue viendo de un golpe en que semana cae la carrera
-                    —que era el motivo de la linea— sin ensuciar el resto.
+                    AQUI HABIA TAMBIEN UNA COLUMNA DE COLOR POR CARRERA, con su linea
+                    a la izquierda. Servia para saber en que semana caia cada una —en
+                    la epoca en que la carrera era una etiqueta flotando arriba—, pero
+                    con las banderas plantadas en su dia sobra: dice lo mismo dos
+                    veces y de las dos, la de color ensucia el dibujo.
 
                     Va POR ENCIMA de las filas pero sin capturar el raton, asi que se
                     puede seguir pintando y arrastrando debajo con normalidad. Encima
@@ -1828,16 +2038,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <div className="absolute top-0 bottom-0"
                       style={{ left: LABEL_W + semanaDeHoy * semanaW, width: semanaW, background: 'rgba(255,255,255,0.05)' }} />
                   )}
-                  {columnasComp.map(({ wi, comp }) => {
-                    const d = defDe(prioridadDe(comp.c))
-                    return (
-                      <div key={wi} className="absolute top-0 bottom-0"
-                        style={{
-                          left: LABEL_W + wi * semanaW, width: semanaW,
-                          background: d.hex + '12', borderLeft: '2px solid ' + d.hex + 'aa',
-                        }} />
-                    )
-                  })}
                 </div>
                 </div>
 
@@ -2155,48 +2355,53 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const rowH = Math.min(ROW_MAX, Math.max(ROW_MIN, idealH))
                     const chipH = Math.max(CHIP_MIN, Math.min(CHIP_MAX, Math.floor((rowH - PAD) / maxChips) - GAP))
                     const showDisc = chipH >= 22   // solo cabe la sub-etiqueta de disciplina si el chip es alto
+                    /* El icono del deporte solo si la columna da de sí: en una
+                       de 40 px, entre el icono y la zona no cabe la zona. */
+                    const showIcono = semanaW >= 52
+                    const iconoTam = Math.max(9, Math.min(13, chipH - 8))
                     return (
                   <div className="relative" style={{ height: rowH }}>
                     <div className="absolute left-0 top-0 bottom-0 w-14 flex items-center justify-center z-20 pointer-events-none bg-gray-950">
                       <span className="text-gray-500 text-xs font-bold tracking-widest" style={{writingMode:'vertical-rl',transform:'rotate(180deg)'}}>ZONAS</span>
                     </div>
                     {sems.map(s => {
-                      const sesEsta = sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina))
+                      /* Ordenados por deporte y, dentro de cada uno, de más duro a
+                         más suave (lib/orden-chips). Antes salían en el orden en que
+                         se habían creado, o sea en ninguno. */
+                      const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina)))
                       const C_ZONA = COLOR_ZONA
                       const DISC_LABEL: Record<string,string> = { Natacion:'Nat', Natación:'Nat', Ciclismo:'Cic', Carrera:'Car', Fuerza:'Fue', Brick:'Brk' }
                       return (
-                        <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col-reverse items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
+                        <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
                           onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonasSel([]) }}>
-                          {sesEsta.map(sz => (sz.sinZona || !sz.zona) ? (
+                          {sesEsta.map((sz, k) => (sz.sinZona || !sz.zona) ? (
                             /* UNA SESIÓN DEL CALENDARIO SIN ZONA. En gris y con el
                                borde a trazos, para que se vea que está y que le
                                falta algo. La disciplina, en su color: así se
                                distingue de un vistazo si es de fuerza o de
                                resistencia. Pulsarla lleva a la sesión a ponérsela. */
                             <div key={sz.id}
-                              className="flex-shrink-0 flex flex-col items-center justify-center rounded border border-dashed relative overflow-hidden hover:border-orange-400 transition"
-                              style={{ width: semanaW - 6, height: chipH, backgroundColor: '#6b728026', borderColor: '#9ca3af', lineHeight: 1 }}
+                              className="flex-shrink-0 flex items-center justify-center gap-1 px-1 rounded border border-dashed relative overflow-hidden hover:border-orange-400 transition"
+                              style={{ width: semanaW - 6, height: chipH, marginTop: abreGrupo(sesEsta, k) ? 5 : undefined, backgroundColor: '#6b728026', borderColor: '#9ca3af', lineHeight: 1 }}
                               title={'Sesión de ' + (esDisciplinaDeFuerza(sz.disciplina) ? etiquetaDisciplina(sz.disciplina).toLowerCase() : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
                               onClick={e => { e.stopPropagation(); if (sz.id_sesion) router.push('/sesion/' + sz.id_sesion) }}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
-                              {showDisc ? (
-                                <>
-                                  <span style={{ fontSize: 8, fontWeight: 600, color: '#d1d5db' }}>sin zona</span>
-                                  <span style={{ fontSize: 7, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
-                                </>
-                              ) : (
-                                <span style={{ fontSize: 8, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{(DISC_LABEL[sz.disciplina] || sz.disciplina) + ' ?'}</span>
+                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af'} />}
+                              <span style={{ fontSize: showDisc ? 8 : 7.5, fontWeight: 700, color: '#d1d5db' }}>{showDisc ? 'sin zona' : '?'}</span>
+                              {!showIcono && (
+                                <span style={{ fontSize: 7, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
                               )}
                             </div>
                           ) : (
                             <div key={sz.id}
-                              className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq overflow-hidden"
-                              style={{ width: semanaW - 6, height: chipH, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
+                              className="flex-shrink-0 flex items-center justify-center gap-1 px-1 rounded text-white font-bold border relative group/sq overflow-hidden"
+                              style={{ width: semanaW - 6, height: chipH, marginTop: abreGrupo(sesEsta, k) ? 5 : undefined, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
                               title={sz.hecho ? 'Ya programada en el calendario. Clic derecho para borrarla.' : (showDisc ? '' : (DISC_LABEL[sz.disciplina] || sz.disciplina))}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
                               {sz.hecho && <span className="absolute -top-1 -right-1 text-green-400 leading-none" style={{ fontSize: 9 }}>✓</span>}
-                              <span style={{ fontSize: showDisc ? 9 : 8, fontWeight: 700 }}>{sz.zona}</span>
+                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af'} />}
+                              <span style={{ fontSize: showDisc ? 9 : 8, fontWeight: 700, flex: 1, textAlign: 'center' }}>{sz.zona}</span>
                               {showDisc && <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>}
                               <span className="absolute inset-0 bg-red-500/0 group-hover/sq:bg-red-500/10 rounded transition pointer-events-none" />
                             </div>
@@ -2946,6 +3151,124 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
       )}
+
+      {/* FICHA DE UNA CARRERA — se abre al pulsar su bandera */}
+      {compSel && (() => {
+        const d = defDe(prioridadDe(compSel))
+        const wi = semanaDeComp(String(compSel.fecha || '').slice(0, 10))
+        return (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={e => { if (e.target === e.currentTarget) cerrarFicha() }}>
+            <div className="bg-gray-900 rounded-2xl border border-gray-700 p-6 w-full max-w-sm">
+              <div className="flex justify-between items-start gap-3">
+                <h3 className="font-bold text-xl flex items-center gap-2 min-w-0">
+                  <span className="flex-shrink-0">{d.simbolo}</span>
+                  <span className="truncate">{editComp ? 'Editar carrera' : compSel.nombre}</span>
+                </h3>
+                <button onClick={cerrarFicha} className="text-gray-400 hover:text-white text-2xl leading-none flex-shrink-0">x</button>
+              </div>
+
+              {!editComp ? (
+                <>
+                  <span className="inline-block text-[11px] px-2 py-0.5 rounded-full border mt-2 mb-3"
+                    style={{ color: d.hex, borderColor: d.hex + '66', background: d.hex + '1a' }}>{d.etiqueta}</span>
+                  <div className="text-[13.5px]">
+                    <div className="flex justify-between gap-3 py-1.5 border-t border-gray-800">
+                      <span className="text-gray-500">Cuándo</span><span>{fechaLargaCompleta(String(compSel.fecha).slice(0, 10))}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5 border-t border-gray-800">
+                      <span className="text-gray-500">En el lienzo</span>
+                      <span>{wi >= 0 ? 'semana ' + (wi + 1) : 'cae fuera del lienzo'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5 border-t border-gray-800">
+                      <span className="text-gray-500">Prueba</span>
+                      <span className={compSel.tipo ? '' : 'text-gray-600'}>{compSel.tipo || 'sin especificar'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5 border-t border-gray-800">
+                      <span className="text-gray-500">Taper</span><span>{d.taperTexto}</span>
+                    </div>
+                  </div>
+                  {/* LA NOTA, QUE NO SE VEÍA EN NINGUNA PANTALLA. Se escribe al crear la
+                      carrera desde el calendario y hasta ahora se quedaba ahí guardada. */}
+                  {compSel.notas && (
+                    <p className="mt-3 rounded-xl px-3 py-2.5 text-[13px]"
+                      style={{ background: d.hex + '14', border: '1px solid ' + d.hex + '40', color: '#fde68a' }}>{compSel.notas}</p>
+                  )}
+                  <div className="flex gap-2 mt-5">
+                    <button onClick={editarFicha}
+                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-[13px] transition">Editar</button>
+                    <button onClick={() => router.push('/planificacion-visual/' + id + '/semana/' + lunesDe(String(compSel.fecha).slice(0, 10)))}
+                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-[13px] transition">Ver la semana</button>
+                    <button onClick={() => borrarDesdeFicha(compSel.id)}
+                      className="flex-1 bg-gray-800 hover:bg-red-900/40 text-gray-400 hover:text-red-300 py-2.5 rounded-xl text-[13px] transition">Borrar</button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-3 mt-4">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-[12.5px]">Nombre</span>
+                    <input type="text" value={editComp.nombre} autoFocus
+                      onChange={e => setEditComp({ ...editComp, nombre: e.target.value })}
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-[12.5px]">Fecha</span>
+                    <input type="date" value={editComp.fecha}
+                      onChange={e => setEditComp({ ...editComp, fecha: e.target.value })}
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-[12.5px]">Prueba</span>
+                    {/* Se guarda el NOMBRE, no el id: es lo que ya hay escrito en las
+                        competiciones creadas desde el calendario. */}
+                    <select value={editComp.tipo || ''}
+                      onChange={e => setEditComp({ ...editComp, tipo: e.target.value })}
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500">
+                      <option value="">Sin especificar</option>
+                      {CATEGORIAS_PRUEBA.map(cat => (
+                        <optgroup key={cat} label={cat}>
+                          {PRUEBAS.filter(p => p.categoria === cat).map(p => (
+                            <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <div>
+                    <span className="text-gray-400 text-[12.5px] mb-1.5 block">Importancia</span>
+                    <div className="flex gap-1.5">
+                      {PRIORIDADES.map(pr => (
+                        <button type="button" key={pr.id} onClick={() => setEditComp({ ...editComp, prioridad: pr.id })}
+                          className={'flex-1 rounded-lg border px-2 py-2 text-[12px] transition ' +
+                            (editComp.prioridad === pr.id ? 'text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white')}
+                          style={editComp.prioridad === pr.id ? { borderColor: pr.hex, background: pr.hex + '22' } : undefined}>
+                          {pr.simbolo} {pr.etiqueta}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1.5">{defDe((editComp.prioridad || 'B') as Prioridad).taperTexto}</p>
+                  </div>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-gray-400 text-[12.5px]">Notas</span>
+                    <textarea rows={2} value={editComp.notas || ''}
+                      onChange={e => setEditComp({ ...editComp, notas: e.target.value })}
+                      placeholder="El objetivo, la hora de salida, lo que quieras acordarte."
+                      className="bg-gray-800 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 resize-y" />
+                  </label>
+                  <div className="flex gap-2 mt-1">
+                    <button onClick={guardarFicha} disabled={guardandoComp}
+                      className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 py-2.5 rounded-xl font-bold text-white text-[13px] transition">
+                      {guardandoComp ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button onClick={() => setEditComp(null)}
+                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-[13px] transition">Cancelar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* MODAL COMPETICION */}
       {modal === 'comp' && (

@@ -1,111 +1,75 @@
 import { describe, it, expect } from 'vitest'
-import { colocarBanda, filasBanda, anchoEtiqueta, columnasPorSemana } from './banda-competiciones'
+import { filasBanda, posicionBandera, colocarBanderas, ANCHO_BANDERA } from './banda-competiciones'
 
-/* 12 semanas de 62 px + 56 de margen = 800. Las medidas reales del lienzo. */
-const M = { semanaW: 62, labelW: 56, anchoTotal: 800 }
+describe('la bandera se planta en el día que cae', () => {
+  /* 90 px de semana, el ancho por defecto del lienzo. */
+  const B = { semanaW: 90, labelW: 56 }
+  const inicio = (wi: number) => B.labelW + wi * B.semanaW
 
-const c = (wi: number, nombre: string) => ({ wi, nombre })
-
-describe('colocarBanda', () => {
-  it('sin competiciones no ocupa ninguna fila', () => {
-    expect(filasBanda(colocarBanda([], M))).toBe(0)
+  it('el lunes a la izquierda y el domingo a la derecha, dentro de su semana', () => {
+    const lunes = posicionBandera({ wi: 2, dia: 0 }, B)
+    const domingo = posicionBandera({ wi: 2, dia: 6 }, B)
+    expect(lunes).toBeGreaterThanOrEqual(inicio(2))
+    expect(domingo).toBeLessThanOrEqual(inicio(3) - ANCHO_BANDERA)
+    expect(domingo - lunes).toBeGreaterThan(B.semanaW / 2)
   })
 
-  it('una sola va en la fila 0, en la columna de su semana', () => {
-    const [x] = colocarBanda([c(3, 'Ironman')], M)
-    expect(x.fila).toBe(0)
-    expect(x.left).toBe(56 + 3 * 62)
+  it('el miércoles cae por el medio', () => {
+    const x = posicionBandera({ wi: 0, dia: 2 }, B) - inicio(0)
+    expect(x).toBeGreaterThan(B.semanaW * 0.25)
+    expect(x).toBeLessThan(B.semanaW * 0.55)
   })
 
-  it('dos separadas comparten fila', () => {
-    const r = colocarBanda([c(0, 'A'), c(9, 'B')], M)
-    expect(r.map(x => x.fila)).toEqual([0, 0])
+  it('NUNCA se sale de su semana, ni con la columna estrecha', () => {
+    /* Si la de domingo asomara por la derecha parecería de la semana
+       siguiente, que es el único error que no se puede permitir aquí. */
+    for (const semanaW of [40, 62, 90, 160]) {
+      for (let dia = 0; dia <= 6; dia++) {
+        const x = posicionBandera({ wi: 3, dia }, { semanaW, labelW: 56 })
+        expect(x).toBeGreaterThanOrEqual(56 + 3 * semanaW)
+        expect(x + ANCHO_BANDERA).toBeLessThanOrEqual(56 + 4 * semanaW)
+      }
+    }
   })
 
-  it('dos en semanas seguidas NO se pisan: la segunda baja de fila', () => {
-    const r = colocarBanda([c(2, 'Triatlón Media Distancia Vitoria'), c(3, 'Acuatlón')], M)
-    expect(r.map(x => x.fila)).toEqual([0, 1])
-  })
-
-  it('tres pegadas usan tres filas', () => {
-    const r = colocarBanda([c(2, 'Uno largo de verdad'), c(3, 'Dos largo de verdad'), c(4, 'Tres largo')], M)
-    expect(filasBanda(r)).toBe(3)
-  })
-
-  it('reutiliza la fila 0 en cuanto vuelve a haber hueco', () => {
-    const r = colocarBanda([c(0, 'Uno'), c(1, 'Dos'), c(11, 'Tres')], M)
-    expect(r.map(x => x.fila)).toEqual([0, 1, 0])
-  })
-
-  it('las ordena por semana aunque lleguen desordenadas', () => {
-    const r = colocarBanda([c(9, 'Tarde'), c(1, 'Pronto')], M)
-    expect(r.map(x => x.item.nombre)).toEqual(['Pronto', 'Tarde'])
-  })
-
-  /* EL CASO QUE MOTIVA EL RECORTE: la carrera de la última semana. Sin él, la
-     etiqueta empieza en la última columna y se sale del lienzo por la derecha. */
-  it('la de la última semana no se sale del lienzo', () => {
-    const [x] = colocarBanda([c(11, 'Triatlón Media Distancia Vitoria')], M)
-    expect(x.left + x.ancho).toBeLessThanOrEqual(M.anchoTotal)
-    expect(x.left).toBeLessThan(56 + 11 * 62)
-  })
-
-  it('aunque el nombre sea larguísimo, nunca invade la columna de etiquetas', () => {
-    const [x] = colocarBanda([c(11, 'x'.repeat(400))], M)
-    expect(x.left).toBeGreaterThanOrEqual(M.labelW)
-  })
-
-  it('no modifica el array que recibe', () => {
-    const entrada = [c(9, 'Tarde'), c(1, 'Pronto')]
-    colocarBanda(entrada, M)
-    expect(entrada.map(x => x.nombre)).toEqual(['Tarde', 'Pronto'])
+  it('un día fuera de rango no descoloca nada', () => {
+    expect(posicionBandera({ wi: 0, dia: 99 }, B)).toBe(posicionBandera({ wi: 0, dia: 6 }, B))
+    expect(posicionBandera({ wi: 0, dia: -2 }, B)).toBe(posicionBandera({ wi: 0, dia: 0 }, B))
   })
 })
 
-describe('anchoEtiqueta', () => {
-  it('un nombre corto no baja del mínimo legible', () => {
-    expect(anchoEtiqueta('A')).toBe(96)
-    expect(anchoEtiqueta('')).toBe(96)
+describe('banderas que se pisarían', () => {
+  const B = { semanaW: 90, labelW: 56 }
+
+  it('dos carreras el mismo día suben una a la fila de arriba', () => {
+    const r = colocarBanderas([{ wi: 1, dia: 6, n: 'a' }, { wi: 1, dia: 6, n: 'b' }], B)
+    expect(r.map(x => x.fila).sort()).toEqual([0, 1])
   })
 
-  it('crece con el nombre', () => {
-    expect(anchoEtiqueta('Triatlón Media Distancia Vitoria')).toBeGreaterThan(anchoEtiqueta('10k'))
-  })
-})
-
-describe('columnasPorSemana', () => {
-  const p = (x: { pr: string }) => x.pr
-
-  it('una carrera, una columna', () => {
-    expect(columnasPorSemana([{ wi: 4, pr: 'B' }], p).map(x => x.wi)).toEqual([4])
+  it('dos lejos se quedan las dos abajo', () => {
+    const r = colocarBanderas([{ wi: 0, dia: 0, n: 'a' }, { wi: 4, dia: 3, n: 'b' }], B)
+    expect(r.every(x => x.fila === 0)).toBe(true)
   })
 
-  /* EL CASO REAL: cuatro carreras el mismo día pintaban cuatro columnas
-     translúcidas encima de la otra y esa semana salía casi opaca. */
-  it('cuatro en la misma semana dan UNA columna', () => {
-    const r = columnasPorSemana([
-      { wi: 9, pr: 'B' }, { wi: 9, pr: 'B' }, { wi: 9, pr: 'B' }, { wi: 9, pr: 'B' },
-    ], p)
-    expect(r).toHaveLength(1)
+  it('el sábado de una semana y el lunes de la siguiente no se tapan', () => {
+    const r = colocarBanderas([{ wi: 0, dia: 5, n: 'sab' }, { wi: 1, dia: 0, n: 'lun' }], B)
+    const [a, b] = r.sort((x, y) => x.left - y.left)
+    if (a.fila === b.fila) expect(b.left - a.left).toBeGreaterThanOrEqual(ANCHO_BANDERA)
   })
 
-  it('en una semana compartida manda la más importante', () => {
-    const r = columnasPorSemana([{ wi: 2, pr: 'C' }, { wi: 2, pr: 'A' }, { wi: 2, pr: 'B' }], p)
-    expect(r).toHaveLength(1)
-    expect(r[0].comp.pr).toBe('A')
+  it('sin carreras, ninguna fila', () => {
+    expect(colocarBanderas([], B)).toEqual([])
+    expect(filasBanda(colocarBanderas([], B))).toBe(0)
   })
 
-  it('el orden de llegada no cambia quién manda', () => {
-    const r = columnasPorSemana([{ wi: 2, pr: 'A' }, { wi: 2, pr: 'C' }], p)
-    expect(r[0].comp.pr).toBe('A')
+  it('la banda mide lo que la fila más alta', () => {
+    const r = colocarBanderas([{ wi: 1, dia: 6 }, { wi: 1, dia: 6 }, { wi: 5, dia: 2 }], B)
+    expect(filasBanda(r)).toBe(2)
   })
 
-  it('devuelve las semanas ordenadas', () => {
-    const r = columnasPorSemana([{ wi: 7, pr: 'B' }, { wi: 1, pr: 'B' }, { wi: 4, pr: 'B' }], p)
-    expect(r.map(x => x.wi)).toEqual([1, 4, 7])
-  })
-
-  it('sin carreras, sin columnas', () => {
-    expect(columnasPorSemana([] as { wi: number; pr: string }[], p)).toEqual([])
+  it('no toca el array que le dan', () => {
+    const entrada = [{ wi: 4, dia: 3 }, { wi: 1, dia: 0 }]
+    colocarBanderas(entrada, B)
+    expect(entrada.map(x => x.wi)).toEqual([4, 1])
   })
 })

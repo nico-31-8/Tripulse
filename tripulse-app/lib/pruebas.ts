@@ -17,7 +17,7 @@ export interface Prueba {
 }
 
 export const CATEGORIAS_PRUEBA = [
-  'Triatlón', 'Duatlón', 'Otros multideporte', 'Carrera', 'Natación', 'Ciclismo',
+  'Triatlón', 'Duatlón', 'Otros multideporte', 'Híbrido', 'Carrera', 'Natación', 'Ciclismo',
 ] as const
 
 const S = (disc: string, km: number | null, nota?: string): Segmento => ({ disc, km, nota })
@@ -75,6 +75,23 @@ export const PRUEBAS: Prueba[] = [
   { id: 'cic-xco', nombre: 'BTT Cross-country (XCO)', categoria: 'Ciclismo', aprox: true, segmentos: [S('BTT', null)] },
   { id: 'cic-xcm', nombre: 'BTT Maratón (XCM)', categoria: 'Ciclismo', aprox: true, segmentos: [S('BTT', null)] },
   { id: 'cic-ciclocross', nombre: 'Ciclocross', categoria: 'Ciclismo', aprox: true, segmentos: [S('Ciclismo', null)] },
+
+  /* ---- Híbrido (correr + estaciones de fuerza) ----
+     HYROX es SIEMPRE el mismo recorrido: 8 × 1 km de carrera alternando con 8
+     estaciones, en este orden — SkiErg 1000 m, empuje de trineo 50 m, arrastre
+     de trineo 50 m, burpee broad jump 80 m, remo 1000 m, paseo del granjero
+     200 m, zancadas con saco 100 m y wall balls. Lo que cambia entre categorías
+     es el peso y quién hace qué, no el recorrido.
+
+     Los kilos NO se guardan aquí a propósito: cambian por categoría, por sexo y
+     de una temporada a otra, y una tabla de pesos desactualizada dentro del
+     catálogo sería peor que no tenerla. Van en la nota de la competición. */
+  { id: 'hyrox-open', nombre: 'HYROX (individual)', categoria: 'Híbrido', segmentos: [S('Carrera', 8, '8 × 1 km'), S('Estaciones', null, '8, pesos estándar')] },
+  { id: 'hyrox-pro', nombre: 'HYROX Pro (individual)', categoria: 'Híbrido', segmentos: [S('Carrera', 8, '8 × 1 km'), S('Estaciones', null, '8, pesos altos')] },
+  { id: 'hyrox-doubles', nombre: 'HYROX Doubles (parejas)', categoria: 'Híbrido', segmentos: [S('Carrera', 8, '8 × 1 km, los dos'), S('Estaciones', null, '8, repartidas entre los dos')] },
+  { id: 'hyrox-pro-doubles', nombre: 'HYROX Pro Doubles (parejas)', categoria: 'Híbrido', segmentos: [S('Carrera', 8, '8 × 1 km, los dos'), S('Estaciones', null, '8 con pesos altos, repartidas')] },
+  { id: 'hyrox-relevo', nombre: 'HYROX Relevo (4 personas)', categoria: 'Híbrido', aprox: true, segmentos: [S('Carrera', 2, '2 × 1 km por persona'), S('Estaciones', null, '2 por persona')] },
+  { id: 'hyrox-adaptive', nombre: 'HYROX Adaptive', categoria: 'Híbrido', aprox: true, segmentos: [S('Carrera', 8, '8 × 1 km'), S('Estaciones', null, '8, adaptadas')] },
 ]
 
 export const pruebaPorId = (id: string | null | undefined): Prueba | null =>
@@ -83,6 +100,7 @@ export const pruebaPorId = (id: string | null | undefined): Prueba | null =>
 const EMOJI_DISC: Record<string, string> = {
   'Natación': '🏊', 'Ciclismo': '🚴', 'Carrera': '🏃',
   'BTT': '🚵', 'Trail': '⛰️', 'Esquí': '🎿', 'Nado-carrera': '🏊',
+  'Estaciones': '🏋️',
 }
 
 // "1,9" (coma decimal, sin decimales si es entero)

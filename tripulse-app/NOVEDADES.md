@@ -14,6 +14,112 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de septiembre de 2026 · El lienzo se lee mejor
+
+### El aviso de lo que falta por generar
+
+El lienzo pone «Guardado 09:43» arriba, y es verdad: **el dibujo** se guarda
+solo. Pero el **plan del atleta** —sus semanas y sus sesiones— no se toca hasta
+que pulsas «Generar planificación». Eso no se veía por ningún lado: estirabas un
+mesociclo, leías «Guardado» y parecía hecho.
+
+Ahora, en cuanto lo dibujado deja de coincidir con el plan, sale una **franja
+naranja** pegada a la barra de arriba: *«No te olvides de guardar los cambios de
+los ciclos»*, con lo que has cambiado —«has cambiado 1 macrociclo y la carga de
+3 semanas»— y el botón ahí mismo para no tener que buscarlo. Se apaga sola en
+cuanto generas.
+
+Compara de verdad el dibujo con el plan, no si has tocado algo: si mueves una
+barra y la devuelves a su sitio, el aviso desaparece. Y no cuenta las semanas
+que están fuera de todo mesociclo, porque esas no llegan a la base.
+
+De paso se arregla algo que molestaba: después de generar, el botón se quedaba
+en «Ver planificación» para siempre, así que si movías otra barra **no había
+forma de volver a generar sin recargar la página**. Ahora vuelve a ser el botón
+de generar en cuanto hay algo pendiente.
+
+### Estirar y encoger un macro o un meso arrastrando
+
+Para cambiar la duración de un bloque había que abrir su ficha y escribir el
+número de semanas. Ahora **se agarra un borde y se arrastra**: aparecen dos
+agarraderas, una en cada punta del bloque, y mientras arrastras se ve en
+discontinuo cómo va a quedar y cuántas semanas ocupa. El centro del bloque
+sigue sirviendo para moverlo entero, como hasta ahora.
+
+**El borde se para, no atropella.** Un macrociclo no puede comerse al de al
+lado ni encoger por debajo de sus propios mesociclos; un mesociclo no puede
+salirse de su macro ni pisar al mesociclo vecino. Cuando llegas a ese punto el
+borde deja de avanzar, así que arrastrar nunca se lleva nada por delante y no
+hay nada que deshacer.
+
+Esto cambia **el dibujo**, no el plan: las sesiones y las semanas de verdad se
+tocan al pulsar «Generar planificación», como siempre.
+
+Y no, un **microciclo** no se puede estirar: un microciclo es una semana. Lo
+que se cambia ahí es la fecha de inicio del plan o el número de semanas.
+
+### Los chips de la semana, ordenados y con el icono de su deporte
+
+Salían en el orden en que los habías creado, o sea en ninguno: en una semana de
+carga con once chips había que leerlos uno a uno para saber cuántos eran de
+fuerza. Ahora van **agrupados por deporte**, con un hueco entre grupos, y dentro
+de cada grupo **de más duro a más suave**, así que la sesión de calidad de la
+semana salta a la vista.
+
+El orden de arriba abajo es: **fuerza, híbrido, natación, ciclismo, brick y
+carrera**. Los chips «sin zona» cierran su grupo, no la columna: así se ve a qué
+deporte le falta ponerle la zona.
+
+Cada chip lleva además el **dibujo de su deporte** —las olas, la bici, el
+corredor, la mancuerna, las dos flechas del brick y el rayo del híbrido—. No es
+un emoji: a ese tamaño salen borrosos y cada móvil pinta el suyo. Si estrechas
+mucho las columnas, el dibujo se quita y vuelve la abreviatura.
+
+### Las carreras, en bandera
+
+Las etiquetas con el nombre entero se pisaban unas a otras y hacían pisos: con
+seis carreras, tres filas empujando el lienzo hacia abajo. Ahora cada carrera es
+una **bandera** del color de su importancia, todas en una sola fila.
+
+Y la bandera **se planta en el día que cae**: una carrera de domingo se ve al
+final de su semana y una de miércoles en el medio. Eso antes no se sabía sin
+abrir el calendario. El nombre se escribe solo en las de objetivo 🏆; las demás
+lo dicen al pasar el ratón por encima.
+
+Con eso **desaparecen las columnas de color** que marcaban la semana de cada
+carrera. Servían cuando la carrera era una etiqueta flotando arriba y había que
+saber a qué semana pertenecía; ahora la bandera ya está plantada en su sitio, y
+las columnas solo ponían rayas azules, grises y amarillas por encima del dibujo.
+La marca de la semana de HOY se queda.
+
+### La ficha de la carrera: por fin se puede corregir
+
+**Pulsa una bandera** y se abre su ficha: cuándo es (con el día de la semana),
+en qué semana del lienzo cae, qué prueba es, el taper que pide por su
+importancia y **las notas**. Desde ahí se va a la semana o se borra.
+
+Y sobre todo, **Editar**. Hasta hoy una competición no se podía corregir en
+ninguna pantalla: si te equivocabas en el nombre o en la fecha había que
+borrarla y crearla otra vez, y de paso se perdían la prueba y las notas. Ahora
+se cambian el nombre, la fecha, la prueba, la importancia y las notas sin salir
+de la ficha.
+
+Ojo con esto: **las notas que ya tenías escritas aparecen ahora**. Se guardaban
+al crear la carrera desde el calendario y no se veían en ninguna pantalla.
+
+### HYROX en el catálogo de pruebas
+
+Con la disciplina Híbrido tenía poco sentido que no se pudiera decir que una
+carrera es un HYROX. Hay una categoría nueva, **Híbrido**, con las seis
+categorías: individual, Pro, parejas (Doubles), Pro Doubles, relevo de cuatro y
+Adaptive. Todas son el mismo recorrido —8 × 1 km alternando con 8 estaciones—;
+lo que cambia es el peso y quién hace qué.
+
+Los kilos no se guardan en el catálogo a propósito: cambian por categoría, por
+sexo y de una temporada a otra. Para eso están las notas de la carrera.
+
+---
+
 ## 22 de septiembre de 2026 · Híbrido y disciplinas por deportista
 
 ### Los chips borrados que volvían
