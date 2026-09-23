@@ -17,8 +17,17 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [{
       userAgent: '*',
-      /* `/$` es solo la raíz: la portada. Sin el dólar valdría para todo. */
-      allow: ['/$', ...PUBLICAS.filter(p => p !== '/'), '/_next/'],
+      /* `/$` es solo la raíz: la portada. Sin el dólar valdría para todo.
+
+         Y OJO CON EL SITEMAP: es una dirección más, así que con todo cerrado se
+         quedaba fuera. Google iba a leerlo, no tenía permiso, y Search Console
+         respondía «No se ha podido obtener» sin decir por qué. Lo mismo con la
+         imagen de compartir. El robots.txt no hace falta abrirlo: los
+         rastreadores lo leen siempre. */
+      allow: [
+        '/$', ...PUBLICAS.filter(p => p !== '/'),
+        '/sitemap.xml', '/opengraph-image', '/favicon.ico', '/_next/',
+      ],
       disallow: '/',
     }],
     sitemap: SITIO + '/sitemap.xml',
