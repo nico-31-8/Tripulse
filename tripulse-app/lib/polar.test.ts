@@ -28,7 +28,12 @@ const ENTRENO = {
 
 describe('redirectPolar', () => {
   it('en producción usa SIEMPRE la registrada, entre por el dominio que entre', () => {
-    expect(redirectPolar('https://tripulse-eight.vercel.app')).toBe(REDIRECT_PRODUCCION)
+    expect(redirectPolar('https://tripulse-eight.vercel.app'))
+      .toBe('https://tripulse-eight.vercel.app/api/relojes/polar/callback')
+    expect(redirectPolar('https://tripulse.app')).toBe(REDIRECT_PRODUCCION)
+    /* Un dominio que NO esté dado de alta en Polar cae en el de siempre: si se
+       le mandara el suyo, Polar rechazaría la conexión entera. */
+    expect(redirectPolar('https://otro-sitio.example')).toBe(REDIRECT_PRODUCCION)
     expect(redirectPolar('https://otro-dominio.example.com')).toBe(REDIRECT_PRODUCCION)
   })
   it('en local, la de localhost con su puerto', () => {

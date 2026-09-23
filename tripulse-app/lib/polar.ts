@@ -27,15 +27,26 @@ export const POLAR = {
  * TIENE QUE SER IDÉNTICA, carácter a carácter, a la que está dada de alta en
  * admin.polaraccesslink.com: si no, Polar rechaza la conexión. Por eso no se
  * saca del dominio por el que haya entrado cada uno —el proyecto tiene varios—
- * sino que se fija aquí, y solo `localhost` usa la suya, para desarrollar.
+ * sino de esta lista corta, y solo `localhost` usa la suya, para desarrollar.
+ *
+ * LAS DOS ESTÁN DADAS DE ALTA EN EL PANEL. La app se mudó a tripulse.app el
+ * 23/09/2026 y la dirección vieja sigue viva, así que un entrenador puede
+ * empezar la conexión desde cualquiera de las dos. Se le devuelve a la MISMA
+ * por la que entró: mandarlo a la otra le sacaría de su sesión a mitad de la
+ * conexión, y desde algunas redes —la wifi de la universidad, sin ir más
+ * lejos— la vieja ni siquiera carga.
  */
-export const REDIRECT_PRODUCCION = 'https://tripulse-eight.vercel.app/api/relojes/polar/callback'
+export const REDIRECT_PRODUCCION = 'https://tripulse.app/api/relojes/polar/callback'
+
+/** Los dominios cuyo callback está registrado en Polar. */
+export const HOSTS_REGISTRADOS = ['tripulse.app', 'tripulse-eight.vercel.app'] as const
 
 export function redirectPolar(origen: string, forzada?: string | null): string {
   if (forzada && forzada.trim()) return forzada.trim()
   try {
     const u = new URL(origen)
     if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return u.origin + '/api/relojes/polar/callback'
+    if ((HOSTS_REGISTRADOS as readonly string[]).includes(u.hostname)) return u.origin + '/api/relojes/polar/callback'
   } catch { /* un origen raro no debe tumbar la conexión: se usa la de producción */ }
   return REDIRECT_PRODUCCION
 }

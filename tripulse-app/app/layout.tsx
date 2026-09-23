@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { SITIO } from '@/lib/sitio'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Sidebar from '../components/Sidebar'
@@ -22,9 +23,37 @@ const geistMono = Geist_Mono({
   preload: false,
 })
 
+/* Lo que ve Google y lo que sale al compartir el enlace.
+
+   `metadataBase` es la que convierte las rutas relativas de aquí abajo en
+   direcciones completas. Sin ella, la imagen de compartir se manda como
+   «/opengraph-image» a secas y ni WhatsApp ni Google saben de dónde bajarla.
+
+   El título llevaba «triatlon» sin tilde, y es lo primero que se lee en el
+   buscador. */
 export const metadata: Metadata = {
-  title: 'TRIPULSE',
-  description: 'Plataforma de entrenamiento para triatlon y fuerza',
+  metadataBase: new URL(SITIO),
+  title: {
+    default: 'TRIPULSE — Entrenamiento de triatlón y fuerza',
+    /* Las pantallas de dentro que pongan título saldrán como «Sesión · TRIPULSE». */
+    template: '%s · TRIPULSE',
+  },
+  description: 'Planifica la temporada entera de tus deportistas —natación, ciclismo, carrera y fuerza— y controla su carga real día a día.',
+  applicationName: 'TRIPULSE',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    locale: 'es_ES',
+    url: SITIO,
+    siteName: 'TRIPULSE',
+    title: 'TRIPULSE — Entrenamiento de triatlón y fuerza',
+    description: 'Planifica la temporada entera de tus deportistas y controla su carga real día a día.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'TRIPULSE — Entrenamiento de triatlón y fuerza',
+    description: 'Planifica la temporada entera de tus deportistas y controla su carga real día a día.',
+  },
 }
 
 export default function RootLayout({

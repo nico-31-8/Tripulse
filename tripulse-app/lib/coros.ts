@@ -44,17 +44,25 @@ export const VERSION_MCP = '2025-06-18'
 /** Las herramientas que interesan. Los nombres son los del README oficial. */
 export const HERRAMIENTAS_COROS = ['querySleepData', 'querySleepHrv', 'queryRestingHeartRate', 'querySportRecords'] as const
 
-export const REDIRECT_COROS_PRODUCCION = 'https://tripulse-eight.vercel.app/api/relojes/coros/callback'
+export const REDIRECT_COROS_PRODUCCION = 'https://tripulse.app/api/relojes/coros/callback'
+
+/** Los dominios por los que se puede entrar a producción. */
+export const HOSTS_COROS = ['tripulse.app', 'tripulse-eight.vercel.app'] as const
 
 /**
  * La dirección de vuelta. Con COROS cada conexión registra la suya, así que
  * localhost también sirve para desarrollar, sin tocar ningún panel.
+ *
+ * Se devuelve al deportista a la MISMA dirección por la que entró: la app se
+ * mudó a tripulse.app y la vieja sigue viva, así que mandarlo a la otra le
+ * sacaría de su sesión a mitad de la conexión.
  */
 export function redirectCoros(origen: string, forzada?: string | null): string {
   if (forzada && forzada.trim()) return forzada.trim()
   try {
     const u = new URL(origen)
     if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return u.origin + '/api/relojes/coros/callback'
+    if ((HOSTS_COROS as readonly string[]).includes(u.hostname)) return u.origin + '/api/relojes/coros/callback'
   } catch { /* un origen raro no debe tumbar la conexión */ }
   return REDIRECT_COROS_PRODUCCION
 }

@@ -14,6 +14,41 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de septiembre de 2026 · TRIPULSE tiene dirección propia
+
+### La app ahora está en tripulse.app
+
+Se acabó el `tripulse-eight.vercel.app`. **La dirección es
+[tripulse.app](https://tripulse.app)**, y también funciona escribiendo
+`www.tripulse.app`.
+
+**Los enlaces viejos siguen valiendo**: la dirección anterior te trae sola a la
+nueva. No hay que reenviar ninguna invitación ni cambiar ningún marcador.
+
+**Lo único que notarás: tendrás que entrar otra vez.** La sesión va atada a la
+dirección, así que la primera vez en `tripulse.app` te pedirá usuario y
+contraseña. Es una vez y ya está; no se pierde ningún dato.
+
+Por qué se ha hecho: además de quedar mejor en un correo, hay redes —la wifi de
+la universidad, por ejemplo— que bloquean los subdominios gratuitos de Vercel
+enteros, porque se usan mucho para montar páginas falsas. Desde esas redes la
+app no cargaba. Con dominio propio, sí.
+
+Los relojes siguen funcionando igual. **Polar** ya tiene registrada la dirección
+nueva, y **COROS** se da de alta solo en cada conexión.
+
+### Y de paso, lo que ve Google
+
+La portada ya se presenta como es debido: título y descripción propios (con la
+tilde de «triatlón», que llevaba tiempo sin ella) y una imagen para cuando
+alguien comparte el enlace por WhatsApp o por correo — antes salía el recuadro
+gris del enlace roto.
+
+Las pantallas de dentro de la app quedan **fuera** de Google a propósito: piden
+sesión y sin ella no son más que una pantalla en blanco.
+
+---
+
 ## 23 de septiembre de 2026 · El lienzo se lee mejor
 
 ### El aviso de lo que falta por generar
