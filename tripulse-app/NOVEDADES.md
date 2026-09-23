@@ -16,6 +16,30 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ## 22 de septiembre de 2026 · Híbrido y disciplinas por deportista
 
+### Los chips borrados que volvían
+
+En el lienzo de periodización, quitar con el clic derecho un chip **que ya
+estaba bajado al calendario** (los que llevan el ✓) lo hacía desaparecer de la
+pantalla… y volvía en cuanto salías y entrabas.
+
+No era que no se guardara. Los chips ya programados **se rehacen desde el
+calendario** cada vez que se abre el lienzo —se hizo así para que el dibujo no
+enseñe sesiones que ya no existen—, y la sesión seguía en su día. O sea que el
+gesto no borraba nada: solo lo parecía hasta la siguiente visita.
+
+Ahora, el clic derecho sobre uno de esos **pregunta** y manda su sesión a la
+**papelera**, de donde se puede recuperar. El chip se va con ella, y si era una
+sesión de varias unidades se van todos sus chips, no medio. Si la sesión estaba
+marcada como realizada, se te avisa antes: ahí no se va un hueco del plan, se
+van los datos de lo que hizo el atleta.
+
+Los chips **sueltos** —los que dibujaste y aún no has bajado a ningún día— se
+siguen quitando con el clic derecho de siempre, sin preguntar nada: esos no
+están en ninguna otra parte.
+
+Lo mismo vale para la **×** de la lista «Sesiones esta semana» del recuadro de
+zonas, que hacía exactamente lo mismo.
+
 ### El grupo muscular, por familias
 
 El desplegable de **Grupo muscular** tenía 22 grupos seguidos por orden

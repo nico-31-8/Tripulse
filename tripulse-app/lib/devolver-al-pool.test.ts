@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { devolverAlPool, chipsEnlazados, loQueSePierde , borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from './devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde , borrarConSuChip, borrarDelPool, borrarUnidadDelPool, alQuitarChip } from './devolver-al-pool'
 import type { ChipZona } from './chips'
 
 const chip = (o: Partial<ChipZona> & { id: string }): ChipZona =>
@@ -190,5 +190,40 @@ describe('borrar unidades del pool (el botón Eliminar de la semana)', () => {
       chip({ id: 'y1', grupo: 'g2' }),
     ]
     expect(borrarUnidadDelPool(conGrupo, 'g1', 0).map(c => c.id)).toEqual(['x3', 'x4', 'y1'])
+  })
+})
+
+describe('quitar un chip del lienzo', () => {
+  /* Los chips colocados se rehacen desde el calendario cada vez que se abre el
+     lienzo. O sea que quitar uno de la lista NO quitaba nada: volvía solo a la
+     siguiente visita, y el gesto quedaba mintiendo. */
+  it('uno suelto se va solo, sin preguntar nada', () => {
+    expect(alQuitarChip(chip({ id: 'a' }))).toEqual({ idSesion: null, pregunta: null })
+  })
+
+  it('uno colocado se lleva su sesión, y se pregunta antes', () => {
+    const r = alQuitarChip(chip({ id: 'a', hecho: true, id_sesion: 7, disciplina: 'Fuerza' }),
+      { fecha_sesion: '2026-09-23', disciplina: 'Fuerza', estado: 'Planificada' })
+    expect(r.idSesion).toBe(7)
+    expect(r.pregunta).toContain('miércoles 23 sep')
+    expect(r.pregunta).toContain('papelera')
+  })
+
+  it('si ya está hecha, se avisa de que se van los datos', () => {
+    const r = alQuitarChip(chip({ id: 'a', hecho: true, id_sesion: 7 }),
+      { fecha_sesion: '2026-09-23', estado: 'Realizada' })
+    expect(r.pregunta).toContain('realizada')
+  })
+
+  it('marcado como hecho pero sin sesión detrás: se va solo', () => {
+    /* «✓ Hechas» marca `hecho` sin crear sesión. Sin esto se quedaría sin poder
+       quitarse: no hay nada que mandar a la papelera. */
+    expect(alQuitarChip(chip({ id: 'a', hecho: true })).idSesion).toBeNull()
+  })
+
+  it('sin la sesión a mano, se pregunta igual pero sin fecha', () => {
+    const r = alQuitarChip(chip({ id: 'a', hecho: true, id_sesion: 7 }))
+    expect(r.idSesion).toBe(7)
+    expect(r.pregunta).toContain('calendario')
   })
 })

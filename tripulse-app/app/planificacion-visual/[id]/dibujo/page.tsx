@@ -24,6 +24,7 @@ import { diasEntre, sumarDias, aplicarDesplazamiento, aplicarDuracion } from '@/
 import { estimarDuraciones, cargaPlanificada, cargaReal } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { chipsDeSesiones, fusionarChips } from '@/lib/chips-desde-sesiones'
+import { alQuitarChip, borrarConSuChip } from '@/lib/devolver-al-pool'
 import { hayDibujoGuardado, pantallaDeEntrada } from '@/lib/entrada-dibujo'
 import { TIPOS_MICROCICLO, tipoMicrociclo } from '@/lib/microciclo-tipos'
 import { PRIORIDADES, prioridadDe, defDe, type Prioridad } from '@/lib/competicion-prioridad'
@@ -628,6 +629,36 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       alert('No se han podido rehacer: ' + e.message)
     }
     setReconstruyendo(false)
+  }
+
+  /**
+   * Quitar un chip del lienzo (clic derecho, o la × del resumen de la semana).
+   *
+   * Los tres sitios desde los que se quitaba un chip hacían lo mismo: sacarlo
+   * de la lista. Con uno suelto vale; con uno ya colocado no quitaba nada,
+   * porque los colocados se rehacen desde el calendario al abrir el lienzo y
+   * volvían todos. Ahora se van de verdad: su sesión a la papelera.
+   * La decisión y lo que se pregunta, en lib/devolver-al-pool.
+   */
+  const quitarChip = async (chip: ChipZona) => {
+    const ses = sesionesProg.find(s => s.id === chip.id_sesion)
+    const { idSesion, pregunta } = alQuitarChip(chip, ses)
+    if (!idSesion) { setSesZonas(prev => prev.filter(x => x.id !== chip.id)); return }
+    if (pregunta && !confirm(pregunta)) return
+
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', idSesion)
+    if (error) { alert('No se ha podido borrar la sesión: ' + error.message); return }
+
+    /* Se va CON su sesión, y con él los demás chips de la misma sesión: una
+       unidad compleja son varios chips y dejar los otros sueltos sería enseñar
+       media sesión que ya no existe. */
+    const quedan = borrarConSuChip(sesZonas, idSesion)
+    setSesZonas(quedan)
+    setSesionesProg(prev => prev.filter(s => s.id !== idSesion))
+    /* Se guarda ya, sin esperar al autoguardado de 1,5 s: la sesión ya está en
+       la papelera, y dejar el chip a medias en el borrador sería enseñarlo otra
+       vez al volver. */
+    if (puedeGuardar()) await guardarBorrador(macros, mesos, sems, fechaInicio, totalSem, quedan)
   }
 
   const iniciarNuevo = () => {
@@ -2148,7 +2179,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               style={{ width: semanaW - 6, height: chipH, backgroundColor: '#6b728026', borderColor: '#9ca3af', lineHeight: 1 }}
                               title={'Sesión de ' + (esDisciplinaDeFuerza(sz.disciplina) ? etiquetaDisciplina(sz.disciplina).toLowerCase() : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
                               onClick={e => { e.stopPropagation(); if (sz.id_sesion) router.push('/sesion/' + sz.id_sesion) }}
-                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
+                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
                               {showDisc ? (
                                 <>
                                   <span style={{ fontSize: 8, fontWeight: 600, color: '#d1d5db' }}>sin zona</span>
@@ -2162,8 +2193,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <div key={sz.id}
                               className="flex-shrink-0 flex flex-col items-center justify-center rounded text-white font-bold border relative group/sq overflow-hidden"
                               style={{ width: semanaW - 6, height: chipH, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
-                              title={sz.hecho ? 'Ya programada en el calendario' : (showDisc ? '' : (DISC_LABEL[sz.disciplina] || sz.disciplina))}
-                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSesZonas(prev => prev.filter(x => x.id !== sz.id)) }}>
+                              title={sz.hecho ? 'Ya programada en el calendario. Clic derecho para borrarla.' : (showDisc ? '' : (DISC_LABEL[sz.disciplina] || sz.disciplina))}
+                              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
                               {sz.hecho && <span className="absolute -top-1 -right-1 text-green-400 leading-none" style={{ fontSize: 9 }}>✓</span>}
                               <span style={{ fontSize: showDisc ? 9 : 8, fontWeight: 700 }}>{sz.zona}</span>
                               {showDisc && <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>}
@@ -2400,7 +2431,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                                       : <span className="text-white font-bold">{sz.zona}</span>}
                                     <span style={vacio ? { color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af', fontWeight: 700 } : undefined}
                                       className={vacio ? '' : 'text-gray-400'}>{DL[sz.disciplina] || sz.disciplina}</span>
-                                    <button onClick={() => setSesZonas(prev => prev.filter(x => x.id !== sz.id))} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
+                                    <button onClick={() => quitarChip(sz)} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
                                   </div>
                                 )
                               })}

@@ -25,6 +25,7 @@
 // que ya sería mentira— y el nuevo al lado.
 
 import type { ChipZona } from './chips'
+import { fechaLarga } from './fechas'
 
 export interface SesionQueVuelve {
   id: number
@@ -117,6 +118,44 @@ export function devolverAlPool(chips: ChipZona[], sesion: SesionQueVuelve, seman
  */
 export function borrarConSuChip(chips: ChipZona[], idSesion: number): ChipZona[] {
   return (chips || []).filter(z => z.id_sesion !== idSesion)
+}
+
+export interface QueSeQuita {
+  /** La sesión que hay que mandar a la papelera, o null si el chip va solo. */
+  idSesion: number | null
+  /** Lo que hay que preguntar antes, o null si no hay nada que preguntar. */
+  pregunta: string | null
+}
+
+/**
+ * Quitar un chip del lienzo de periodización: qué se lleva por delante.
+ *
+ * Un chip SUELTO se va y ya está: no existe en ninguna otra tabla.
+ *
+ * Uno COLOCADO es una sesión del calendario, y el lienzo rehace los colocados
+ * desde el calendario cada vez que se abre (lib/chips-desde-sesiones). O sea
+ * que quitarlo de la lista no quitaba nada: volvía solo a la siguiente visita y
+ * el clic derecho quedaba mintiendo. Por eso arrastra su sesión a la papelera,
+ * que es de donde se recupera si era un error.
+ *
+ * Se pregunta siempre antes, y si la sesión ya está hecha se dice: ahí no se va
+ * un hueco del plan, se van los datos de lo que el atleta hizo.
+ */
+export function alQuitarChip(
+  chip: ChipZona,
+  sesion?: { fecha_sesion?: string | null; disciplina?: string | null; estado?: string | null } | null,
+): QueSeQuita {
+  if (!chip?.hecho || !chip.id_sesion) return { idSesion: null, pregunta: null }
+  const que = (chip.disciplina || sesion?.disciplina || '').trim()
+  const cuando = fechaLarga(String(sesion?.fecha_sesion || '').slice(0, 10) || null)
+  const hecha = (sesion?.estado || '') === 'Realizada'
+  return {
+    idSesion: chip.id_sesion,
+    pregunta: 'Esto ya es una sesión' + (que ? ' de ' + que.toLowerCase() : '') +
+      (cuando ? ' del calendario (' + cuando.toLowerCase() + ')' : ' del calendario') + '.' +
+      (hecha ? ' Y está marcada como realizada: se va con los datos de lo que hizo.' : '') +
+      '\n\nSe manda a la papelera y desde ahí se puede recuperar. ¿La borro?',
+  }
 }
 
 /**
