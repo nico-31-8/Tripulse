@@ -14,6 +14,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 25 de septiembre de 2026 · Dos grupos menos en la biblioteca
+
+El desplegable de **grupo muscular** tenía dos grupos que sobraban:
+
+- **«Espalda alta»**, con un solo ejercicio, era el mismo sitio que «Espalda
+  alta y romboides», escrito de dos formas.
+- **«Otros»** guardaba cuatro ejercicios que se habían creado sin región.
+
+Cada uno se ha ido con sus hermanos: los dos remos a espalda alta y romboides,
+el tibial posterior a tobillo y pie, y los dos estiramientos de TFL a movilidad
+—que además estaban marcados como fuerza cuando son movilidad—. De paso, «Esitramiento
+del TFL 3» ya se llama bien.
+
+Ninguno de esos cinco se había usado nunca en una sesión, así que **no cambia
+ningún número de nadie**. La biblioteca pasa de 22 grupos a 20.
+
+**Y no volverán a aparecer.** El grupo de un ejercicio nuevo salía del nombre
+de su región, y las regiones se llaman más corto que los grupos: crear uno con
+región «Core» abría un grupo nuevo al lado de «Core y estabilidad». Ahora cada
+región va al grupo que ya existe.
+
+---
+
 ## 25 de septiembre de 2026 · La portada cuenta por fin lo que hay dentro
 
 La página pública de **tripulse.app** enseñaba seis cosas y ninguna pantalla de

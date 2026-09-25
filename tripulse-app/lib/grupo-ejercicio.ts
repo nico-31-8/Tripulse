@@ -35,14 +35,40 @@ export const esComplejo = (tipo: string[] | null | undefined): boolean =>
   (tipo || []).includes(COMPLEJOS)
 
 /**
- * El grupo de un ejercicio nuevo: Complejos o Funcional si lo es; si no, su
- * primera región, y si no tiene región, Movilidad u Otros según el tipo.
+ * EL GRIFO DE LOS GRUPOS GEMELOS.
+ *
+ * El grupo de un ejercicio nuevo sale de su primera REGIÓN, y las regiones de
+ * /fuerza se llaman más corto que los grupos de la biblioteca: «Rodilla» frente
+ * a «Rodilla (fortalecimiento)», «Core» frente a «Core y estabilidad». Sin esta
+ * tabla, el primer ejercicio que alguien creara con región «Core» abriría un
+ * grupo nuevo al lado del que ya existe, con los mismos ejercicios repartidos
+ * entre los dos y el desplegable creciendo solo.
+ *
+ * Pasó de verdad con «Espalda alta» frente a «Espalda alta y romboides», y se
+ * arregló a mano el 25/09/2026 (supabase/fusion-grupos-gemelos.sql). Esto es
+ * para no repetirlo.
+ */
+const GRUPO_DE_REGION: Record<string, string> = {
+  'Core': 'Core y estabilidad',
+  'Cuello': 'Cuello y cervical',
+  'Hombro': 'Hombro y manguito rotador',
+  'Rodilla': 'Rodilla (fortalecimiento)',
+  'Espalda alta': 'Espalda alta y romboides',
+}
+
+/**
+ * El grupo de un ejercicio nuevo: Complejos o Funcional si lo es; si no, el de
+ * su primera región, y si no tiene región, Movilidad u Otros según el tipo.
+ *
+ * «Otros» se queda como último recurso a propósito: un ejercicio sin región no
+ * tiene grupo, y meterlo a la fuerza en uno sería peor que decir que no se
+ * sabe. Es el cajón de los que hay que clasificar, no un error.
  */
 export function grupoAlCrear(tipo: string[] | null | undefined, region: string[] | null | undefined): string {
   const g = grupoDeEtiqueta(tipo)
   if (g) return g
   const primera = (region || [])[0]
-  if (primera) return primera
+  if (primera) return GRUPO_DE_REGION[primera] ?? primera
   return (tipo || []).includes('Movilidad') ? 'Movilidad y flexibilidad' : 'Otros'
 }
 
