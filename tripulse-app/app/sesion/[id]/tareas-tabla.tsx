@@ -29,6 +29,7 @@ import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas
 import BloqueEditor from './BloqueEditor'
 import ResumenBloque from '@/components/ResumenBloque'
 import SelectorGrupo from '@/components/SelectorGrupo'
+import SelectorEjercicio from '@/components/SelectorEjercicio'
 import { esBloque, FORMATOS, type Formato } from '@/lib/bloque-formato'
 import {
   bloqueVacio, bloqueDesdeTarea, bloqueDesdeSueltas, sueltasDesdeBloque, filasDeBloque, faltaEnBloque,
@@ -1972,15 +1973,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           para saber qué es. El grupo es un filtro para encontrarlo y
                           puede recortarse sin perder nada. */}
                       <div className="flex gap-1.5">
-                        <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={f.grupoMuscularSel}
-                          onCambio={v => updateF(i, 'grupoMuscularSel', v)}
-                          className={campoBase + ' basis-[42%] min-w-[120px]'} />
-                        {f.grupoMuscularSel && (
-                          <select value={f.ejercicioSelId} onChange={e => updateF(i, 'ejercicioSelId', e.target.value)} className={campoBase + ' basis-[58%] min-w-[190px]'}>
-                            <option value="">Ejercicio</option>
-                            {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscularSel).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                          </select>
-                        )}
+                        <SelectorEjercicio ejercicios={ejerciciosBiblioteca}
+                          grupo={f.grupoMuscularSel} ejercicioId={f.ejercicioSelId}
+                          onCambio={c => parcheF(i, { grupoMuscularSel: c.grupo, ejercicioSelId: c.ejercicioId })}
+                          claseGrupo={campoBase + ' basis-[42%] min-w-[120px]'}
+                          claseCaja="basis-[58%] min-w-[190px]"
+                          claseEjercicio={campoBase + ' w-full'} />
                         {/* El grupo se pone JUNTO al ejercicio y en un solo parche:
                             si se eligiera uno de otro grupo sin mover el desplegable
                             de arriba, el de abajo quedaría enseñando una lista que
@@ -1997,14 +1995,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
                           <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>
-                          <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={f.grupoMuscular2}
-                            onCambio={v => updateF(i, 'grupoMuscular2', v)} className={inputCls} />
-                          {f.grupoMuscular2 && (
-                            <select value={f.ejercicioSelId2} onChange={e => updateF(i, 'ejercicioSelId2', e.target.value)} className={inputCls + ' mt-1'}>
-                              <option value="">Ejercicio 2</option>
-                              {ejerciciosBiblioteca.filter(e => e.grupo_muscular === f.grupoMuscular2).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                            </select>
-                          )}
+                          <SelectorEjercicio ejercicios={ejerciciosBiblioteca}
+                            grupo={f.grupoMuscular2} ejercicioId={f.ejercicioSelId2}
+                            onCambio={c => parcheF(i, { grupoMuscular2: c.grupo, ejercicioSelId2: c.ejercicioId })}
+                            claseGrupo={inputCls}
+                            claseCaja="mt-1"
+                            claseEjercicio={inputCls} />
                           <div className="mt-1">
                             <BuscadorEjercicios
                               ejercicios={ejerciciosBiblioteca}

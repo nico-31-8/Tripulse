@@ -71,3 +71,27 @@ describe('la lista de grupos musculares no se copia', () => {
     expect([...permitidosSinUsar]).toEqual([])
   })
 })
+
+// ============================================================
+// Y tampoco se copia la lista de EJERCICIOS de un grupo
+// ============================================================
+// Cada pantalla filtraba la biblioteca por «grupo_muscular === el elegido» para
+// llenar su segundo desplegable. Eso obligaba a acertar el grupo, y la
+// biblioteca no ayuda: «Sentadilla» vive en tres grupos distintos y el «Paseo
+// del granjero» está en Core y estabilidad. Si te equivocabas de cajón, el
+// ejercicio no aparecía por ningún lado.
+//
+// LA REGLA. Para elegir un ejercicio se usa <SelectorEjercicio>, que busca con
+// lib/buscar-ejercicio y enseña aparte lo que está en otros grupos. Filtrar la
+// biblioteca a mano para pintar un desplegable hace saltar este test.
+describe('la lista de ejercicios de un grupo tampoco se copia', () => {
+  it('nadie filtra la biblioteca por grupo para pintar opciones', () => {
+    const culpables = ficheros()
+      .map(f => path.relative(RAIZ, f).split(path.sep).join('/'))
+      .filter(rel => {
+        const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8')
+        return /grupo_muscular\s*===/.test(src) && /<option/.test(src)
+      })
+    expect(culpables, 'Usa <SelectorEjercicio>: ' + culpables.join(', ')).toEqual([])
+  })
+})

@@ -14,6 +14,36 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 25 de septiembre de 2026 · Buscar un ejercicio sin saber su grupo
+
+Para poner un ejercicio había que acertar primero el **grupo**, y eso no
+siempre se sabe. Con tus propios datos: **«Sentadilla» está en tres grupos**
+—Cuádriceps, Cadera y aductores y Ciclismo — específico— y el **«Paseo del
+granjero» está en Core y estabilidad**. Si te equivocabas de cajón, el
+ejercicio no aparecía por ningún lado.
+
+**Lo que no cambia:** el desplegable de grupo sigue igual, y si eliges el grupo
+y pulsas el campo de al lado **sin escribir nada**, sale la lista de ese grupo
+como siempre. Dos clics, y sigues viendo lo que tienes.
+
+**Lo que se añade:** ese segundo campo **ahora se puede escribir**.
+
+- Escribe «granjero» sin elegir grupo y lo busca en toda la biblioteca,
+  diciéndote dónde está. Al elegirlo, **el grupo se rellena solo**.
+- Y si tienes un grupo puesto y buscas algo que está en otro, no se esconde:
+  sale abajo, separado, bajo **«también en otros grupos»**.
+
+Busca sin tildes ni mayúsculas, también dentro de la descripción —«lordosis»
+encuentra el psoas— y se maneja con el teclado: flechas para moverte y Enter
+para elegir. La lupa de siempre sigue donde estaba, para explorar la biblioteca
+entera, ver vídeos o dar de alta un ejercicio nuevo.
+
+De paso, tres ejercicios tenían un **espacio de más al final del nombre** y ya
+no. Uno de ellos se había usado en cuatro sesiones, así que el cambio se
+arrastró también al histórico: su progresión no se parte.
+
+---
+
 ## 25 de septiembre de 2026 · Dos grupos menos en la biblioteca
 
 El desplegable de **grupo muscular** tenía dos grupos que sobraban:

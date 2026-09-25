@@ -8,7 +8,7 @@
 // cardio con las modalidades y zonas de siempre. Qué es un bloque y cómo se
 // guarda: lib/bloque-formato y lib/bloque-borrador.
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
-import SelectorGrupo from '@/components/SelectorGrupo'
+import SelectorEjercicio from '@/components/SelectorEjercicio'
 import {
   FORMATOS, MEDIDAS, QUE_SE_APUNTA, duracionBloque, type Formato, type LineaBloque, type MedidaLinea,
 } from '@/lib/bloque-formato'
@@ -164,13 +164,12 @@ export default function BloqueEditor({
                   </div>
                 ) : (
                   <div className="flex gap-1.5 min-w-0 items-center">
-                    <SelectorGrupo ejercicios={biblioteca} valor={l.grupo} vacio="Grupo…" title="Grupo"
-                      onCambio={v => cambiaLinea(i, { grupo: v, ejercicioId: '' })}
-                      className={campo + ' basis-[42%]'} />
-                    <select value={l.ejercicioId} onChange={e => cambiaLinea(i, { ejercicioId: e.target.value })} className={campo + ' flex-1'} title="Ejercicio" disabled={!l.grupo}>
-                      <option value="">{l.grupo ? 'Ejercicio…' : 'Elige grupo'}</option>
-                      {biblioteca.filter(e => e.grupo_muscular === l.grupo).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                    </select>
+                    <SelectorEjercicio ejercicios={biblioteca} vacioGrupo="Grupo…"
+                      grupo={l.grupo} ejercicioId={l.ejercicioId}
+                      onCambio={c => cambiaLinea(i, { grupo: c.grupo, ejercicioId: c.ejercicioId })}
+                      claseGrupo={campo + ' basis-[42%]'}
+                      claseCaja="flex-1 min-w-0"
+                      claseEjercicio={campo + ' w-full'} />
                     <BuscadorEjercicios ejercicios={biblioteca} onBibliotecaCambia={onBibliotecaCambia}
                       onElegir={ej => cambiaLinea(i, { grupo: ej.grupo_muscular || '', ejercicioId: String(ej.id) })} />
                   </div>

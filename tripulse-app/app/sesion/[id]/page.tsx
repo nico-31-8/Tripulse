@@ -10,7 +10,7 @@ import TareasTabla from './tareas-tabla'
 import ResumenBrick from '@/components/ResumenBrick'
 import PanelPlantillas from '@/components/PanelPlantillas'
 import PanelSemana from '@/components/PanelSemana'
-import SelectorGrupo from '@/components/SelectorGrupo'
+import SelectorEjercicio from '@/components/SelectorEjercicio'
 import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
@@ -1074,11 +1074,19 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={grupoMuscularSel}
-                    onCambio={v => { setGrupoMuscularSel(v); setEjercicioSel(null) }}
-                    className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
-                  {/* El grupo se pone también: si no, el desplegable de abajo
-                      enseñaría una lista que no contiene lo que acabas de elegir. */}
+                  {/* Los dos campos apilados y la lupa al lado: el grupo sigue
+                      siendo el atajo, y el de abajo se puede escribir para buscar
+                      en toda la biblioteca cuando no sabes en qué grupo está. */}
+                  <div className="flex-1 flex flex-col gap-2">
+                    <SelectorEjercicio ejercicios={ejerciciosBiblioteca}
+                      grupo={grupoMuscularSel} ejercicioId={ejercicioSel?.id ? String(ejercicioSel.id) : ''}
+                      onCambio={c => {
+                        setGrupoMuscularSel(c.grupo)
+                        setEjercicioSel(ejerciciosBiblioteca.find((ej: any) => String(ej.id) === c.ejercicioId) || null)
+                      }}
+                      claseGrupo="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                      claseEjercicio="w-full bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
+                  </div>
                   <BuscadorEjercicios
                     ejercicios={ejerciciosBiblioteca}
                     onBibliotecaCambia={cargarDatos}
@@ -1088,15 +1096,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 {(tipoSerie === 'Superserie' || tipoSerie === 'Complex') && ejercicioSel && (
                   <div className="bg-gray-800 rounded-xl p-4 border border-orange-500/50">
                     <p className="text-orange-400 text-sm font-medium mb-3">+ Ejercicio encadenado</p>
-                    <SelectorGrupo ejercicios={ejerciciosBiblioteca} valor={grupoMuscular2}
-                      onCambio={v => { setGrupoMuscular2(v); setEjercicioSel2(null) }}
-                      className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2" />
-                    {grupoMuscular2 && (
-                      <select value={ejercicioSel2?.id || ''} onChange={e => setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => ej.id === Number(e.target.value)) || null)} className="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
-                        <option value="">Selecciona ejercicio</option>
-                        {ejerciciosBiblioteca.filter((ej: any) => ej.grupo_muscular === grupoMuscular2).map((ej: any) => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
-                      </select>
-                    )}
+                    <SelectorEjercicio ejercicios={ejerciciosBiblioteca}
+                      grupo={grupoMuscular2} ejercicioId={ejercicioSel2?.id ? String(ejercicioSel2.id) : ''}
+                      onCambio={c => {
+                        setGrupoMuscular2(c.grupo)
+                        setEjercicioSel2(ejerciciosBiblioteca.find((ej: any) => String(ej.id) === c.ejercicioId) || null)
+                      }}
+                      claseGrupo="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-2"
+                      claseEjercicio="bg-gray-700 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                     <div className="mt-2">
                       <BuscadorEjercicios
                         ejercicios={ejerciciosBiblioteca}
@@ -1112,12 +1119,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                     <p className="text-gray-500 text-xs mt-1">Separa los pesos con comas</p>
                   </div>
                 )}
-                {grupoMuscularSel && (
+                {ejercicioSel && (
                   <div>
-                    <select value={ejercicioSel?.id || ''} onChange={e => setEjercicioSel(ejerciciosBiblioteca.find(ej => ej.id === Number(e.target.value)) || null)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full" required>
-                      <option value="">Selecciona ejercicio</option>
-                      {ejerciciosBiblioteca.filter(ej => ej.grupo_muscular === grupoMuscularSel).map(ej => <option key={ej.id} value={ej.id}>{ej.nombre}</option>)}
-                    </select>
                     {ejercicioSel?.url_video && (
                       <button type="button" onClick={() => setModalVideoFuerza(ejercicioSel.url_video)} className="mt-2 flex items-center gap-2 text-red-400 hover:text-red-300 text-sm transition">
                         <span>▶</span> Ver video del ejercicio
