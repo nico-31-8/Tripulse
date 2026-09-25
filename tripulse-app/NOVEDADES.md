@@ -14,6 +14,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 25 de septiembre de 2026 · La portada cuenta por fin lo que hay dentro
+
+La página pública de **tripulse.app** enseñaba seis cosas y ninguna pantalla de
+la aplicación. Ahora lleva el **vídeo de presentación** (minuto y cuarto), los
+tres vídeos cortos de la planificación en movimiento, y cuenta también lo que se
+ha construido este año: híbrido y HYROX, el asistente, los relojes, la
+biblioteca de ejercicios, los tests y zonas propias, y los grupos.
+
+Hay además un **apartado para deportistas** —lo que ve el atleta—, quién hay
+detrás y cinco preguntas frecuentes. Y las cifras de la cabecera estaban viejas:
+decían «3 disciplinas» y «9 zonas», de cuando no existían el brick ni el híbrido
+ni las zonas propias.
+
+**Lo que cambia para ti:** el botón de arriba ya no lleva al registro, sino a
+escribirle a Nicolás. Estamos en beta y las cuentas se abren poco a poco. Crear
+cuenta sigue siendo posible desde el final de la página.
+
+Si quieres enseñarle TRIPULSE a un compañero, ahora **el enlace se explica solo**.
+
+---
+
 ## 25 de septiembre de 2026 · Vuelve «he olvidado la contraseña»
 
 ### Ya se puede recuperar la contraseña solo
