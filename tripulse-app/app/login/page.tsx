@@ -98,18 +98,24 @@ export default function Login() {
             ¿No tienes cuenta?{' '}
             <Link href="/registro" className="text-orange-400 hover:text-orange-300 transition">Regístrate</Link>
           </p>
-          {/* El enlace a /reset-password está quitado A PROPÓSITO, no olvidado.
-              La ruta sigue existiendo y funciona: lo que no funciona es el
-              correo. Supabase los manda por un buzón compartido de pruebas que
-              apenas envía unos pocos por hora y cae en spam, así que la pantalla
-              decía «email enviado» y no llegaba nada. Un botón que miente es
-              peor que no tenerlo: la persona se queda esperando en vez de pedir
-              ayuda.
+          {/* VUELVE A ESTAR (23/09/2026), y con él una condición cumplida.
 
-              Para devolverlo basta con volver a poner el Link de antes, en
-              cuanto haya un SMTP propio configurado. */}
-          <p className="text-center text-[13px] mt-2 text-gray-500 leading-relaxed">
-            ¿No puedes entrar? Escribe a tu entrenador y te devolvemos el acceso.
+              Estuvo quitado a propósito una temporada: Supabase mandaba estos
+              correos por un buzón compartido de pruebas que apenas envía unos
+              pocos por hora y caía en spam, así que la pantalla decía «email
+              enviado» y no llegaba nada. Un botón que miente es peor que no
+              tenerlo: la persona se queda esperando en vez de pedir ayuda.
+
+              Ahora salen por SMTP propio (Resend, desde send.tripulse.app), con
+              el remitente TRIPULSE. Si algún día se desconecta ese SMTP, esto
+              hay que volver a quitarlo. */}
+          <p className="text-center text-[13px] mt-4">
+            <Link href="/reset-password" className="text-gray-400 hover:text-orange-300 transition">
+              ¿Has olvidado la contraseña?
+            </Link>
+          </p>
+          <p className="text-center text-[12.5px] mt-2 text-gray-600 leading-relaxed">
+            Si tampoco te llega el correo, escribe a tu entrenador y te devolvemos el acceso.
           </p>
         </div>
       </div>

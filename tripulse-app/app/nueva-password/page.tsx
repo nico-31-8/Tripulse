@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import CrearPassword from '@/components/CrearPassword'
 import { errorAlEnviar } from '@/lib/password'
@@ -12,6 +12,35 @@ export default function NuevaPassword() {
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
   const [error, setError] = useState('')
+  const [caducado, setCaducado] = useState(false)
+
+  /* ── EL ENLACE DEL CORREO ENTRA POR AQUÍ ─────────────────
+     Hay dos formas de llegar a esta pantalla y las dos tienen que funcionar:
+
+     · La VIEJA: el correo llevaba al endpoint de Supabase, que verificaba y
+       redirigía aquí con la sesión ya hecha. Sigue valiendo para los enlaces
+       que se mandaron antes de este cambio.
+     · La NUEVA: el correo trae directamente a tripulse.app con un `token_hash`
+       y aquí se canjea. Se cambió porque el enlace anterior apuntaba a
+       `…supabase.co`, y un correo que dice venir de TRIPULSE y te manda a otro
+       dominio es la firma clásica del phishing: Gmail lo pintaba en rojo con
+       «este mensaje podría ser peligroso». Ahora el enlace es del mismo sitio
+       que el remitente.
+
+     Se lee de `window.location` y no con useSearchParams a propósito: esa
+     pantalla es de cliente y así no hace falta envolverla en un Suspense. */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const token_hash = p.get('token_hash')
+    if (!token_hash) return
+    const tipo = (p.get('type') || 'recovery') as 'recovery' | 'invite' | 'email'
+    supabase.auth.verifyOtp({ token_hash, type: tipo }).then(({ error }) => {
+      /* Un enlace caducado o ya usado no es un error del formulario: no hay
+         nada que rellenar, hay que pedir otro correo. */
+      if (error) setCaducado(true)
+      else window.history.replaceState({}, '', '/nueva-password')
+    })
+  }, [])
 
   const handleNuevaPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,7 +67,18 @@ export default function NuevaPassword() {
         <h1 className="text-3xl font-bold text-orange-500 mb-1">TRIPULSE</h1>
         <p className="text-gray-400 mb-6">Nueva contraseña</p>
 
-        {exito ? (
+        {caducado ? (
+          <div className="text-center py-6">
+            <div className="text-5xl mb-4">⏳</div>
+            <p className="font-bold text-white text-lg mb-2">Este enlace ya no vale</p>
+            <p className="text-gray-400 text-sm mb-5">
+              Los enlaces para cambiar la contraseña caducan, y solo se pueden usar una vez.
+            </p>
+            <a href="/reset-password" className="inline-block bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition">
+              Pedir uno nuevo
+            </a>
+          </div>
+        ) : exito ? (
           <div className="text-center py-6">
             <div className="text-5xl mb-4">✅</div>
             <p className="font-bold text-white text-lg mb-2">Contraseña actualizada</p>

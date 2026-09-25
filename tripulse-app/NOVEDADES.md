@@ -14,6 +14,26 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 25 de septiembre de 2026 · Vuelve «he olvidado la contraseña»
+
+### Ya se puede recuperar la contraseña solo
+
+En la pantalla de entrar vuelve a estar **«¿Has olvidado la contraseña?»**.
+Estuvo quitado a propósito una buena temporada, y por un motivo: los correos
+salían por un buzón compartido que apenas dejaba enviar unos pocos por hora y
+caían en spam, así que la pantalla decía «email enviado» y no llegaba nada. Un
+botón que miente es peor que no tenerlo.
+
+Ahora los correos **salen de TRIPULSE**, desde nuestro propio dominio, llegan a
+la bandeja de entrada y están escritos en castellano. El enlace lleva
+directamente a tripulse.app, dura una hora y solo se puede usar una vez; si se
+te pasa el plazo, la propia pantalla te deja pedir otro sin dar rodeos.
+
+Debajo del enlace se queda el recurso de siempre: si tampoco te llega el correo,
+escribe a tu entrenador y te devolvemos el acceso.
+
+---
+
 ## 23 de septiembre de 2026 · TRIPULSE tiene dirección propia
 
 ### La app ahora está en tripulse.app
