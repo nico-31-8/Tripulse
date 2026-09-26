@@ -8,7 +8,7 @@ import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
-import { colorDisciplina, cortoDisciplina, esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { colorDisciplina, cortoDisciplina, esDisciplinaDeFuerza, etiquetaDisciplina, TODAS } from '@/lib/disciplinas'
 
 // Colores por tipo de mesociclo (hex, para estilos inline)
 const C_MESO: Record<string, string> = {
@@ -17,7 +17,10 @@ const C_MESO: Record<string, string> = {
   'Realización': '#ef4444', 'Realizacion': '#ef4444',
   'Recuperación': '#22c55e', 'Recuperacion': '#22c55e',
 }
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
+/* TODAS las del catálogo, no cuatro escritas a mano: con la lista vieja una
+   sesión HÍBRIDA no aparecía en el desglose del mesociclo, igual que les pasó a
+   los bricks cuando se añadieron. */
+const DISCIPLINAS = TODAS
 const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 
@@ -381,7 +384,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                     const p = totalDatos ? Math.round(n / totalDatos * 100) : 0
                     return (
                       <div key={d} className="flex items-center gap-3">
-                        <span className="text-gray-300 text-sm w-24">{d}</span>
+                        <span className="text-gray-300 text-sm w-24">{etiquetaDisciplina(d)}</span>
                         <div className="flex-1 bg-gray-800 rounded-full h-5 overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: p + '%', backgroundColor: colorDisciplina(d) }} /></div>
                         <span className="text-gray-500 text-xs w-16 text-right">{n} {sustantivo}</span>
                         <span className="text-white font-bold text-sm w-12 text-right">{p}%</span>

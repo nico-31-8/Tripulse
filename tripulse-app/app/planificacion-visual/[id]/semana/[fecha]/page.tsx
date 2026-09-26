@@ -12,7 +12,7 @@ import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } fro
 import type { ChipZona } from '@/lib/chips'
 import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
 import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
-import { chipDisciplina, claseDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { chipDisciplina, claseDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 /* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
    Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
@@ -817,8 +817,11 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 <p className="text-2xl font-bold text-green-400">{sesiones.filter(s => s.estado === 'Realizada').length}/{sesiones.length}</p>
                 <p className="text-gray-500 text-xs">realizadas</p>
               </div>
-              {['Natacion','Natación','Ciclismo','Carrera','Fuerza','Hibrido'].map(d => {
-                const n = sesiones.filter(s => s.disciplina === d || s.disciplina === d).length
+              {/* TODAS: un brick es una sesión y cuenta. Y la comparación normaliza,
+                  que antes la lista llevaba «Natacion» y «Natación» como dos filas
+                  distintas y el filtro comparaba dos veces lo mismo. */}
+              {TODAS.map(d => {
+                const n = sesiones.filter(s => normalizar(s.disciplina) === d).length
                 if (!n) return null
                 return (
                   <div key={d} className="flex items-center gap-1.5">

@@ -11,7 +11,7 @@ import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
-import { etiquetaDisciplina, chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
+import { etiquetaDisciplina, chipDisciplina, claseDisciplina, DEPORTES } from '@/lib/disciplinas'
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
@@ -508,7 +508,7 @@ export default function MisSesiones() {
 
             {/* Leyenda */}
             <div className="flex gap-4 mt-4 flex-wrap">
-              {['Natacion','Ciclismo','Carrera','Fuerza','Hibrido'].filter(d => d !== 'Hibrido' || sesiones.some(s => s.disciplina === 'Hibrido')).map(d => (
+              {DEPORTES.filter(d => d !== 'Hibrido' || sesiones.some(s => s.disciplina === 'Hibrido')).map(d => (
                 <div key={d} className="flex items-center gap-1">
                   <div className={'w-3 h-3 rounded-full ' + claseDisciplina(d)} />
                   <span className="text-gray-400 text-xs">{etiquetaDisciplina(d)}</span>

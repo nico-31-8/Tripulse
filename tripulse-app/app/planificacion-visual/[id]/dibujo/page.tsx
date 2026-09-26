@@ -37,7 +37,7 @@ import { fotoDelDibujo, fotoDelPlan, loPendiente, type FotoPlan } from '@/lib/pl
 import IconoDisciplina from '@/components/IconoDisciplina'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
-import { colorDisciplina, cortoDisciplina, DEPORTES, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { colorDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -266,7 +266,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
      sola (`zonaSelZona`) y el modal se cerraba al añadirla: una semana de seis
      sesiones eran seis vueltas de abrir, elegir deporte, elegir zona, añadir. */
   const [zonasSel, setZonasSel] = useState<string[]>([])
-  const [filtroDisc, setFiltroDisc] = useState<string[]>(['Natacion','Ciclismo','Carrera','Fuerza','Hibrido'])
+  /* TODAS, incluido Brick: un chip es una sesión, y una sesión de brick tiene
+     su chip. Con la lista escrita a mano (los cinco deportes) el chip de un
+     brick se quedaba FUERA del filtro y no se dibujaba nunca, sin forma de
+     encenderlo. */
+  const [filtroDisc, setFiltroDisc] = useState<string[]>([...TODAS])
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -2344,7 +2348,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     // tiene (hasta un tope), y a partir de ahí los chips se encogen para que
                     // quepan todos sin solaparse con la gráfica de arriba ni obligar a scroll.
                     const CHIP_MAX = 28, CHIP_MIN = 13, GAP = 3, PAD = 8, ROW_MIN = 120, ROW_MAX = 300
-                    const maxChips = Math.max(1, ...sems.map(s => sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina)).length))
+                    const maxChips = Math.max(1, ...sems.map(s => sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(normalizar(sz.disciplina))).length))
                     const idealH = maxChips * (CHIP_MAX + GAP) + PAD
                     const rowH = Math.min(ROW_MAX, Math.max(ROW_MIN, idealH))
                     const chipH = Math.max(CHIP_MIN, Math.min(CHIP_MAX, Math.floor((rowH - PAD) / maxChips) - GAP))
@@ -2362,7 +2366,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       /* Ordenados por deporte y, dentro de cada uno, de más duro a
                          más suave (lib/orden-chips). Antes salían en el orden en que
                          se habían creado, o sea en ninguno. */
-                      const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina)))
+                      const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(normalizar(sz.disciplina))))
                       const C_ZONA = COLOR_ZONA
                       return (
                         <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
@@ -2451,7 +2455,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {/* Leyenda disciplinas con filtro */}
                   <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-800/50 flex-wrap">
                     <span className="text-gray-600 text-xs mr-1">Filtro:</span>
-                    {DEPORTES.map(k => ({ l: etiquetaDisciplina(k), k, c: colorDisciplina(k) })).map(d => {
+                    {TODAS.map(k => ({ l: etiquetaDisciplina(k), k, c: colorDisciplina(k) })).map(d => {
                       const act = filtroDisc.includes(d.k)
                       return (
                         <button key={d.k} onClick={() => setFiltroDisc(prev => prev.includes(d.k) ? prev.filter(x => x !== d.k) : [...prev, d.k])}

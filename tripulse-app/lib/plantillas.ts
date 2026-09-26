@@ -24,6 +24,7 @@
 //   · Natación → por DISTANCIA (es lo que controla el entrenador en la piscina).
 //   · Carrera  → por distancia (series) o tiempo (continuos).
 import { ZONAS_RESISTENCIA } from './zonas'
+import { TODAS } from './disciplinas'
 import { VARIANTES } from './plantillas-variantes'
 import type {
   NivelPlantilla, OrigenPlantilla, BloqueP, PlantillaSesion, VarianteSesion,
@@ -506,6 +507,18 @@ const CARRERA: PlantillaSesion[] = [
 ]
 
 export const PLANTILLAS: PlantillaSesion[] = [...NATACION, ...CICLISMO, ...CARRERA]
+
+/**
+ * Las disciplinas que TIENEN plantilla, sacadas de las plantillas de arriba.
+ *
+ * El desplegable «Deporte» de la sesión de grupo llevaba la lista escrita a
+ * mano. Ahora es un hecho, no una copia: si mañana se escriben plantillas de
+ * fuerza, el desplegable las ofrece solo; y si se quitan las de natación, deja
+ * de ofrecerla. En el orden del catálogo (lib/disciplinas), no en el de
+ * aparición aquí.
+ */
+export const DISCIPLINAS_CON_PLANTILLA: string[] =
+  TODAS.filter(d => PLANTILLAS.some(p => p.disciplina === d))
 
 // ------------------------------------------------------------
 // Helpers

@@ -22,7 +22,14 @@ import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { origenMinutos } from '@/lib/duracion-carga'
 import { cargarReferencias } from '@/lib/referencia-zona'
-import { chipDisciplina, colorDisciplina } from '@/lib/disciplinas'
+import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
+
+/* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
+   acumulador de abajo DESCARTA lo que no tenga casilla, así que una disciplina
+   que falte aquí desaparece de las barras y sigue contando en el total —las
+   barras dejan de sumar el total y nada avisa—. Le pasaba al híbrido en las
+   vistas de evolución por semanas y por meses. */
+const cuboDisc = (): Record<string, number> => Object.fromEntries(DEPORTES.map(d => [d, 0]))
 
 /** Minutos → "1h20" / "45′". */
 function fmtMinutos(min: number): string {
@@ -150,7 +157,9 @@ export default function VolumenPage() {
   const [periodoSel, setPeriodoSel] = useState<string | null>(null)
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
   const [agrupCarga, setAgrupCarga] = useState<'sesion'|'semana'|'mes'>('semana')
-  const [discsActivas, setDiscsActivas] = useState<string[]>(['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Hibrido'])
+  /* Los DEPORTES del catálogo: todos menos Brick, que no tiene volumen propio
+     —reparte sus minutos entre los deportes de sus bloques (lib/atribucion)—. */
+  const [discsActivas, setDiscsActivas] = useState<string[]>([...DEPORTES])
   const [subVista, setSubVista] = useState<'barras'|'evolucion'>('barras')
   const [agrupEvol, setAgrupEvol] = useState<'semanas'|'meses'>('semanas')
   // El desglose por deporte arranca plegado: la gráfica combinada es la que se lee primero
@@ -373,7 +382,7 @@ export default function VolumenPage() {
     const diasMap: Record<string, any> = {}
     volSesion.forEach(s => {
       const k = s.fecha
-      if (!diasMap[k]) diasMap[k] = { fecha: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, Hibrido: 0 }
+      if (!diasMap[k]) diasMap[k] = { fecha: k.slice(5), ...cuboDisc() }
       diasMap[k].Natacion += s.Natacion
       diasMap[k].Ciclismo += s.Ciclismo
       diasMap[k].Carrera += s.Carrera
@@ -386,7 +395,7 @@ export default function VolumenPage() {
     const semanasMap: Record<string, any> = {}
     volSesion.forEach(s => {
       const k = getSemana(s.fecha)
-      if (!semanasMap[k]) semanasMap[k] = { semana: k.slice(5), Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, Hibrido: 0 }
+      if (!semanasMap[k]) semanasMap[k] = { semana: k.slice(5), ...cuboDisc() }
       semanasMap[k].Natacion += s.Natacion
       semanasMap[k].Ciclismo += s.Ciclismo
       semanasMap[k].Carrera += s.Carrera
@@ -447,7 +456,7 @@ export default function VolumenPage() {
     const map: Record<string, any> = {}
     volSesionRaw.forEach(s => {
       const k = getSemana(s.fecha).slice(5)
-      if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
+      if (!map[k]) map[k] = { periodo: k, ...cuboDisc(), total: 0 }
       acumularCargaDisc(map[k], s)
     })
     return Object.values(map)
@@ -457,7 +466,7 @@ export default function VolumenPage() {
     const map: Record<string, any> = {}
     volSesionRaw.forEach(s => {
       const k = s.fecha.slice(0, 7)
-      if (!map[k]) map[k] = { periodo: k, Natacion: 0, Ciclismo: 0, Carrera: 0, Fuerza: 0, total: 0 }
+      if (!map[k]) map[k] = { periodo: k, ...cuboDisc(), total: 0 }
       acumularCargaDisc(map[k], s)
     })
     return Object.values(map)

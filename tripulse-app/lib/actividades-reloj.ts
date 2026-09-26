@@ -16,6 +16,8 @@
 // ninguna de las cuatro nuestras, y meterlos en la que se parezca ensuciaría la
 // carga de esa disciplina (mismo criterio que `disciplinaDePolar`).
 
+import { TODAS } from './disciplinas'
+
 export interface FilaMedicion {
   id?: number
   proveedor?: string | null
@@ -70,7 +72,10 @@ const positivo = (v: unknown): number | null => {
   return n != null && n > 0 ? n : null
 }
 
-const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
+/* Qué disciplinas se aceptan de un reloj: las del catálogo. Estaba escrita a
+   mano sin Híbrido, así que el día que la traducción del reloj devuelva un
+   entreno híbrido (un HYROX es lo que más se parece a lo que miden los relojes
+   nuevos) la actividad se quedaría SIN disciplina, en silencio. */
 
 /** La hora de un `inicio` tipo «2026-09-12T07:12:31.000». Sin zona: es la local del atleta. */
 export function horaDe(inicio: unknown): string | null {
@@ -93,7 +98,7 @@ export function actividadDeMedicion(fila: FilaMedicion): ActividadReloj | null {
     proveedor: texto(fila.proveedor) || 'reloj',
     fecha,
     hora: horaDe(d.inicio),
-    disciplina: disciplina && DISCIPLINAS.includes(disciplina) ? disciplina : null,
+    disciplina: disciplina && TODAS.includes(disciplina) ? disciplina : null,
     deporte: texto(d.deporte_detalle) || texto(d.deporte),
     minutos: positivo(d.duracion_min),
     metros: positivo(d.distancia_m),

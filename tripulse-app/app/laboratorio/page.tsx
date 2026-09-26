@@ -33,7 +33,8 @@ import {
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
-import { ANCLAS, ANCLAS_REFERENCIA, type Ancla } from '@/lib/test-definicion'
+import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
+import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
 import { puedeFijarLab, propuestaLab, origenDe } from '@/lib/lab-zonas'
 import { fijarZonas } from '@/lib/zonas-desde-test'
@@ -53,7 +54,6 @@ interface Atleta { id: number; nombre: string }
 interface Guardado { id: number; nombre: string; deporte: string; def: TestLab; mediciones: number }
 const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
-const DEPORTES = ['Carrera', 'Ciclismo', 'Natación', 'Fuerza', 'Otro']
 
 const campo = 'bg-gray-800 text-white text-[13px] rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 w-full border border-transparent'
 const campoAzul = campo.replace('border-transparent', 'border-blue-400/40')
@@ -680,7 +680,7 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
         <div>
           <label className={lab} htmlFor="lab-dep">Deporte</label>
           <select id="lab-dep" className={campo} value={test.deporte} onChange={e => mut(t => { t.deporte = e.target.value })}>
-            {DEPORTES.map(d => <option key={d}>{d}</option>)}
+            {DEPORTES_TEST.map(d => <option key={d} value={d}>{etiquetaDisciplina(d)}</option>)}
           </select>
         </div>
       </div>

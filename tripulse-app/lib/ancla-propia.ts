@@ -36,6 +36,7 @@
 // tan tranquilas. Así que la unidad se reconoce o no se ofrece el botón.
 
 import { DESTINOS, type Ancla as AnclaColumna, type Destino, type Propuesta } from './zonas-desde-test'
+import { normalizar } from './disciplinas'
 import { tipoDeAncla, type Ancla, type DefinicionTest, type ResultadoTest } from './test-definicion'
 import { calcularResultados } from './test-definicion'
 
@@ -57,10 +58,10 @@ const COLUMNA_DE: Record<string, AnclaColumna> = {
   Natacion: 'css',
 }
 
-const normalizaDeporte = (d: string): string => {
-  const s = String(d ?? '').trim()
-  return s.startsWith('Nat') ? 'Natacion' : s
-}
+/* «Natación» y «Natacion» conviven en la base; la regla la pone el catálogo.
+   Antes era `startsWith('Nat')`, que también habría dicho que «Natural» es
+   natación, y era la TERCERA copia de la misma regla en la app. */
+const normalizaDeporte = (d: string): string => normalizar(String(d ?? '').trim())
 
 const cabeColumna = (dep: string): AnclaColumna => COLUMNA_DE[dep]
 

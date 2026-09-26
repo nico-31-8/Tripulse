@@ -27,6 +27,8 @@ import {
   type Ancla, type CampoTest, type DefinicionTest, type InstrumentoCampo,
   type Medicion, type ResultadoTest, type SerieResultado,
 } from '@/lib/test-definicion'
+import { DEPORTES_TEST } from '@/lib/test-definicion'
+import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { renombrarEn, dependencias, FUNCIONES, type Bloque, type Funcion } from '@/lib/formula'
 import { herramientasPropias, seTomaConReloj } from '@/lib/herramientas-propias'
 import InstrumentosTest from '@/components/InstrumentosTest'
@@ -36,7 +38,6 @@ import { fijarZonas } from '@/lib/zonas-desde-test'
 
 const SIGNO: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', '(': '(', ')': ')' }
 const OPS = ['+', '-', '*', '/', '^', '(', ')']
-const DEPORTES = ['Carrera', 'Ciclismo', 'Natacion', 'Fuerza', 'Otro']
 
 /* El desplegable maneja textos y el test guarda objetos, así que la traducción
    va en un solo sitio y en los dos sentidos. */
@@ -487,7 +488,7 @@ export default function TestsPropiosPage() {
                   <label className={lab}>Deporte</label>
                   <select className={campo} value={def.deporte}
                     onChange={e => setDef(d => ({ ...d, deporte: e.target.value }))}>
-                    {DEPORTES.map(x => <option key={x}>{x}</option>)}
+                    {DEPORTES_TEST.map(x => <option key={x} value={x}>{etiquetaDisciplina(x)}</option>)}
                   </select>
                 </div>
               </div>

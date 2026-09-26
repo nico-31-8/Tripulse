@@ -29,6 +29,27 @@ import {
   camposSueltos, seriesQueUsa,
   type Bloque, type Funcion,
 } from './formula'
+import { HIBRIDO, TODAS } from './disciplinas'
+
+/** Lo que no es ninguno de los deportes del catálogo: un test de remo, una batería de saltos. */
+export const OTRO_DEPORTE = 'Otro'
+
+/**
+ * El deporte de un test propio: los del catálogo que se MIDEN, más «Otro».
+ *
+ * Brick e Híbrido quedan fuera a propósito: son formatos de sesión, no deportes
+ * con una marca que medir —un brick se cronometra por segmentos y un híbrido es
+ * fuerza con cardio—. Y «Otro» existe porque la columna es texto libre y el
+ * entrenador se inventa tests que no son de ninguno.
+ *
+ * SE GUARDA EL ID, NUNCA LA ETIQUETA. /laboratorio escribía «Natación» con tilde
+ * y /tests-propios «Natacion» sin ella, en la MISMA columna
+ * (`test_definicion.deporte`): la misma cosa con dos nombres en la base.
+ */
+export const DEPORTES_TEST: string[] = [
+  ...TODAS.filter(d => d !== 'Brick' && d !== HIBRIDO),
+  OTRO_DEPORTE,
+]
 
 export type Ancla = 'vo2max' | 'umbral' | 'umbral_aer' | 'sprint' | 'especifica' | 'nada'
 export type TipoAncla = 'referencia' | 'seguimiento'
