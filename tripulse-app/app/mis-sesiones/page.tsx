@@ -11,7 +11,7 @@ import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
-import { etiquetaDisciplina } from '@/lib/disciplinas'
+import { etiquetaDisciplina, chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
@@ -136,26 +136,6 @@ export default function MisSesiones() {
     const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
     if (error) { alert('No se pudo quitar: ' + error.message); return }
     await cargar()
-  }
-
-  const colorDisciplina = (d: string) => {
-    if (!d) return 'bg-gray-500'
-    if (d.includes('Nat')) return 'bg-blue-500'
-    if (d === 'Ciclismo') return 'bg-yellow-500'
-    if (d === 'Carrera') return 'bg-green-500'
-    if (d === 'Fuerza') return 'bg-red-500'
-    if (d === 'Hibrido') return 'bg-pink-500'
-    return 'bg-purple-500'
-  }
-
-  const colorDisciplinaTexto = (d: string) => {
-    if (!d) return 'bg-gray-700 text-gray-300'
-    if (d.includes('Nat')) return 'bg-blue-900 text-blue-300'
-    if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
-    if (d === 'Carrera') return 'bg-green-900 text-green-300'
-    if (d === 'Fuerza') return 'bg-red-900 text-red-300'
-    if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
-    return 'bg-purple-900 text-purple-300'
   }
 
   const estadoColor = (estado: string) => {
@@ -284,7 +264,7 @@ export default function MisSesiones() {
                       {sesionesDia.length > 0 && (
                         <div className="flex gap-2 flex-wrap justify-end">
                           {sesionesDia.map(s => (
-                            <span key={s.id} className={'text-xs px-2 py-1 rounded-full text-white ' + colorDisciplina(s.disciplina)}>{s.disciplina}</span>
+                            <span key={s.id} className={'text-xs px-2 py-1 rounded-full ' + chipDisciplina(s.disciplina)}>{s.disciplina}</span>
                           ))}
                         </div>
                       )}
@@ -411,7 +391,7 @@ export default function MisSesiones() {
                     {tieneSesion ? (
                       <div className="flex flex-col gap-1">
                         {sesionesDia.map(s => (
-                          <div key={s.id} className={'w-full h-1.5 rounded-full ' + colorDisciplina(s.disciplina)} />
+                          <div key={s.id} className={'w-full h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
                         ))}
                         <p className="text-xs text-gray-400 mt-1">{sesionesDia.length} sesión{sesionesDia.length > 1 ? 'es' : ''}</p>
                       </div>
@@ -448,7 +428,7 @@ export default function MisSesiones() {
                       {sesionesDia.map(s => (
                         <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                           <div className="flex items-center gap-3">
-                            <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
+                            <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
                             <div>
                               <p className="font-medium text-sm">{s.disciplina}</p>
                               <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
@@ -515,7 +495,7 @@ export default function MisSesiones() {
                     )}
                     <div className="flex flex-col gap-0.5">
                       {dia.sesiones.map((s: any) => (
-                        <div key={s.id} className={'w-full h-1.5 rounded-full ' + colorDisciplina(s.disciplina)} />
+                        <div key={s.id} className={'w-full h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
                       ))}
                     </div>
                     {tieneSesion && (
@@ -530,7 +510,7 @@ export default function MisSesiones() {
             <div className="flex gap-4 mt-4 flex-wrap">
               {['Natacion','Ciclismo','Carrera','Fuerza','Hibrido'].filter(d => d !== 'Hibrido' || sesiones.some(s => s.disciplina === 'Hibrido')).map(d => (
                 <div key={d} className="flex items-center gap-1">
-                  <div className={'w-3 h-3 rounded-full ' + colorDisciplina(d)} />
+                  <div className={'w-3 h-3 rounded-full ' + claseDisciplina(d)} />
                   <span className="text-gray-400 text-xs">{etiquetaDisciplina(d)}</span>
                 </div>
               ))}
@@ -573,8 +553,8 @@ export default function MisSesiones() {
                 <div key={s.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-2">
-                      <div className={'w-3 h-3 rounded-full flex-shrink-0 ' + colorDisciplina(s.disciplina)} />
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorDisciplinaTexto(s.disciplina)}`}>{s.disciplina}</span>
+                      <div className={'w-3 h-3 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${chipDisciplina(s.disciplina)}`}>{s.disciplina}</span>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${estadoColor(s.estado)}`}>{s.estado}</span>
                   </div>

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
 import { lunesDe } from '@/lib/fechas'
+import { chipDisciplina } from '@/lib/disciplinas'
 
 function colorCumplimiento(pct: number): string {
   if (pct >= 80) return 'bg-green-500'
@@ -92,16 +93,6 @@ export default function Adherencia({ depId }: Props) {
   const pctGlobal = totalPlan > 0 ? Math.round((totalReal / totalPlan) * 100) : 0
   const semSel = semanas.find(s => s.lunes === semanaSeleccionada)
 
-  const COLOR_DISC: Record<string, string> = {
-    'Natacion': 'bg-blue-900 text-blue-300',
-    'Natación': 'bg-blue-900 text-blue-300',
-    'Ciclismo': 'bg-yellow-900 text-yellow-300',
-    'Carrera': 'bg-green-900 text-green-300',
-    'Fuerza': 'bg-red-900 text-red-300',
-    'Hibrido': 'bg-pink-900 text-pink-300',
-    'Brick': 'bg-purple-900 text-purple-300',
-  }
-
   return (
     <div className="flex flex-col gap-6">
 
@@ -165,7 +156,7 @@ export default function Adherencia({ depId }: Props) {
             {semSel.sesiones.map((s: any) => (
               <div key={s.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5">
                 <div className="flex items-center gap-3">
-                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
+                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + chipDisciplina(s.disciplina)}>
                     {s.disciplina}
                   </span>
                   <span className="text-gray-400 text-sm">{s.fecha_sesion}</span>

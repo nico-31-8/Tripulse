@@ -24,13 +24,12 @@ import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { nombreReloj, datosListos } from '@/lib/relojes-catalogo'
+import { colorDisciplina, emojiDisciplina, etiquetaConEmoji, etiquetaDisciplina } from '@/lib/disciplinas'
 import {
   actividadesDeMediciones, nombreDeporte, distanciaTexto, ritmoTexto, totales,
   type ActividadReloj,
 } from '@/lib/actividades-reloj'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
-const COLOR: Record<string, string> = { Natacion: '#38bdf8', Ciclismo: '#fbbf24', Carrera: '#f87171', Fuerza: '#a78bfa' }
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -176,7 +175,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                 className={'text-[11.5px] font-semibold px-3 py-1.5 rounded-full border transition ' + (disciplina === k
                   ? 'bg-white/[0.1] text-white border-white/20'
                   : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>
-                {k === 'todas' ? 'Todas' : k === 'otras' ? 'Otros deportes' : (EMOJI[k] || '') + ' ' + k}
+                {k === 'todas' ? 'Todas' : k === 'otras' ? 'Otros deportes' : etiquetaConEmoji(k)}
                 {k !== 'todas' && <span className="text-gray-500 ml-1.5 tabular-nums">{porDisciplina[k]}</span>}
               </button>
             ))}
@@ -221,13 +220,13 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
 
                   <div className="flex flex-col gap-2">
                     {dellDia.map(a => {
-                      const color = COLOR[a.disciplina || ''] || '#6b7280'
+                      const color = colorDisciplina(a.disciplina)
                       const ritmo = ritmoTexto(a)
                       return (
                         <div key={a.id} className="tp-card p-4" style={{ ['--c' as string]: color } as React.CSSProperties}>
                           <div className="flex items-start gap-3">
                             <span className="w-9 h-9 rounded-xl grid place-items-center text-lg flex-shrink-0"
-                              style={{ background: color + '1f' }}>{EMOJI[a.disciplina || ''] || '⌚'}</span>
+                              style={{ background: color + '1f' }}>{emojiDisciplina(a.disciplina) || '⌚'}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2 flex-wrap">
                                 <p className="font-bold text-[15px]">{a.disciplina || 'Otro deporte'}</p>
@@ -261,7 +260,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                                 {sesiones[fecha].map(s => (
                                   <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
                                     className="text-[12px] px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] transition text-left">
-                                    {EMOJI[s.disciplina || ''] || '•'} {s.disciplina || 'Sesión'}
+                                    {emojiDisciplina(s.disciplina) || '•'} {etiquetaDisciplina(s.disciplina) || 'Sesión'}
                                     {s.zona ? <span className="text-gray-400"> · {s.zona}</span> : null}
                                     {s.minutos ? <span className="text-gray-500"> · {s.minutos} min</span> : null}
                                     {s.estado === 'Realizada' && <span className="text-green-400/90"> · hecha</span>}

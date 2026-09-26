@@ -31,13 +31,7 @@ import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { sumarDias } from '@/lib/desplazar'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import { camposHechos, seriesDeTarea, type SerieRealizada } from '@/lib/lo-que-hizo'
-
-/* Los mismos colores de disciplina que el calendario y el panel del deportista. */
-const COLOR_DISC: Record<string, string> = {
-  Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308',
-  Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899',
-}
-const colorDisc = (d?: string | null) => COLOR_DISC[d || ''] || '#6b7280'
+import { colorDisciplina } from '@/lib/disciplinas'
 
 const COLOR_ZONA: Record<string, string> = {}
 ;[...ZONAS_RESISTENCIA, ...ZONAS_FUERZA].forEach(z => { COLOR_ZONA[z.sigla] = z.color })
@@ -270,7 +264,7 @@ export default function PanelSemana({
                             : abierta === s.id ? 'border-orange-400 bg-gray-950 ring-1 ring-orange-400/30'
                             : 'border-gray-800 bg-gray-950/70 hover:border-gray-600 hover:bg-gray-800/50')}>
                         <span className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorDisc(s.disciplina) }} />
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorDisciplina(s.disciplina) }} />
                           <span className="text-[10.5px] font-semibold text-gray-300 truncate">{s.disciplina}</span>
                         </span>
                         {!!s.duracion_minutos && (
@@ -311,7 +305,7 @@ export default function PanelSemana({
                       title={anterior ? 'Ir a ' + comoSeLlama(dias, anterior) : 'No hay ninguna antes en esta semana'}
                       className={flechaBtn}>‹</button>
 
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: colorDisc(sesionAbierta.disciplina) }} />
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: colorDisciplina(sesionAbierta.disciplina) }} />
                     <strong className="text-[13.5px] font-semibold">
                       {dia?.nombre} {dia?.num} · {sesionAbierta.disciplina}
                     </strong>

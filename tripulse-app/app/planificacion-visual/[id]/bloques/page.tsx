@@ -10,7 +10,7 @@ import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import { tiposDeMeso } from '@/lib/periodizacion'
-import { paraProgramar, TODAS, etiquetaDisciplina } from '@/lib/disciplinas'
+import { paraProgramar, TODAS, etiquetaDisciplina, claseDisciplina } from '@/lib/disciplinas'
 
 const COLOR_MESO: Record<string, string> = {
   'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
@@ -22,11 +22,6 @@ const COLOR_MICRO: Record<string, string> = {
   'Carga': 'bg-orange-400',
   'Recuperación': 'bg-green-400', 'Recuperacion': 'bg-green-400',
   'Competición': 'bg-blue-400', 'Competicion': 'bg-blue-400',
-}
-const COLOR_DISC: Record<string, string> = {
-  'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
-  'Ciclismo': 'bg-yellow-500', 'Carrera': 'bg-green-500',
-  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500', 'Hibrido': 'bg-pink-500',
 }
 const DIAS = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom']
 
@@ -570,7 +565,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                       <div className="px-2 pb-2 flex flex-col gap-1">
                         {ses.map((s: any) => (
                           <button key={s.id} onClick={() => router.push('/sesion/'+s.id)}
-                            className={'w-full rounded-lg p-2 text-left hover:opacity-80 transition '+(COLOR_DISC[s.disciplina]||'bg-gray-700')}>
+                            className={'w-full rounded-lg p-2 text-left hover:opacity-80 transition '+claseDisciplina(s.disciplina)}>
                             <p className="text-white text-xs font-bold">{s.disciplina}</p>
                             <p className="text-white text-xs opacity-80">{s.duracion_minutos?s.duracion_minutos+'min':'—'}</p>
                           </button>

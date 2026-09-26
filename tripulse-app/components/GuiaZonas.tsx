@@ -18,16 +18,14 @@ import {
 } from '@/lib/zonas-explicacion'
 import { PLANTILLAS_FUERZA } from '@/lib/plantillas-fuerza'
 import type { DistanciaTri, Disciplina } from '@/lib/distribucion-zonas'
+import { etiquetaConEmoji } from '@/lib/disciplinas'
 
 export interface TestsAtleta { vam?: number | null; css?: number | null; ftp?: number | null }
 
 type Familia = 'resistencia' | 'fuerza'
 
-const DISCIPLINAS: { id: Disciplina; label: string }[] = [
-  { id: 'Carrera', label: '🏃 Carrera' },
-  { id: 'Ciclismo', label: '🚴 Ciclismo' },
-  { id: 'Natacion', label: '🏊 Natación' },
-]
+const DISCIPLINAS: { id: Disciplina; label: string }[] =
+  (['Carrera', 'Ciclismo', 'Natacion'] as Disciplina[]).map(id => ({ id, label: etiquetaConEmoji(id) }))
 
 interface Props {
   /** Con qué familia abre. Si llega `sigla`, se deduce de ella. */

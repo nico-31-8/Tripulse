@@ -9,13 +9,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from './ConstructorBrick'
+import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import {
   interferencia, factorConcatenacion, cargarBrick, guardarBrick, brickValido, rpeBrick,
   BRICK_VACIO, type BrickValor,
 } from '@/lib/bricks'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
-const NOMBRE: Record<string, string> = { Natacion: 'Natación', Ciclismo: 'Ciclismo', Carrera: 'Carrera', Fuerza: 'Fuerza' }
 
 interface Props {
   sesionId: number
@@ -120,14 +119,14 @@ export default function ResumenBrick({ sesionId, transiciones, editable = false,
               )}
               <div className="flex items-center gap-2.5 bg-gray-900/60 rounded-lg px-3 py-2">
                 <span className="text-gray-600 text-xs font-bold">{i + 1}</span>
-                <span>{EMOJI[b.disciplina]}</span>
-                <span className="text-white text-sm flex-1">{NOMBRE[b.disciplina] || b.disciplina}</span>
+                <span>{emojiDisciplina(b.disciplina)}</span>
+                <span className="text-white text-sm flex-1">{etiquetaDisciplina(b.disciplina)}</span>
                 {b.minutos > 0 && <span className="text-gray-400 text-xs">{b.minutos} min</span>}
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: col, color: '#0a0b0f' }}>{b.zona}</span>
               </div>
               {trans && factor > 1 && inter && (
                 <p className="text-[11px] text-orange-400/70 pl-4 pt-1">
-                  Cuesta ×{factor.toFixed(2).replace('.', ',')} por venir después de {NOMBRE[previo.disciplina].toLowerCase()} · {inter.porque}
+                  Cuesta ×{factor.toFixed(2).replace('.', ',')} por venir después de {etiquetaDisciplina(previo.disciplina).toLowerCase()} · {inter.porque}
                 </p>
               )}
             </div>

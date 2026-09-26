@@ -23,10 +23,7 @@ const CARPETAS = ['app', 'lib', 'components']
 /** Los ficheros donde comparar con 'Fuerza' es a propósito, y por qué. */
 const PUEDEN: Record<string, string> = {
   'app/apuntar/page.tsx': 'El formulario del deportista: él no crea sesiones híbridas, las programa el entrenador.',
-  'app/microciclo/[id]/page.tsx': 'Un color: Híbrido tiene su propia rama justo debajo.',
-  'app/mis-analisis/page.tsx': 'Colores: Híbrido tiene su propia rama justo debajo.',
-  'app/mis-sesiones/page.tsx': 'Colores: Híbrido tiene su propia rama justo debajo.',
-  'app/sesion/[id]/page.tsx': 'Un color (con rama propia para Híbrido) y la recuperación, que SÍ vale para un híbrido: un HYROX de una hora vacía los depósitos.',
+  'app/sesion/[id]/page.tsx': 'La recuperación, que SÍ vale para un híbrido: un HYROX de una hora vacía los depósitos.',
   'app/sesion/[id]/ejecutar/page.tsx': 'La recomendación de recuperación, que SÍ vale para un híbrido.',
   'app/volumen/page.tsx': 'Los minutos de fuerza, aparte: el híbrido tiene su propia columna para no inflar la fuerza.',
   'lib/nutricion.ts': 'Híbrido tiene su propia rama antes de la de fuerza.',

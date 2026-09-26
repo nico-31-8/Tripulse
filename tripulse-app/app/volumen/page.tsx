@@ -22,6 +22,7 @@ import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { origenMinutos } from '@/lib/duracion-carga'
 import { cargarReferencias } from '@/lib/referencia-zona'
+import { chipDisciplina, colorDisciplina } from '@/lib/disciplinas'
 
 /** Minutos → "1h20" / "45′". */
 function fmtMinutos(min: number): string {
@@ -58,11 +59,11 @@ const RANGOS = [
 ]
 
 const DISCS = [
-  { key: 'Natacion', label: 'Natación', color: '#60a5fa', unidad: 'm' },
-  { key: 'Ciclismo', label: 'Ciclismo', color: '#fbbf24', unidad: 'km' },
-  { key: 'Carrera', label: 'Carrera', color: '#4ade80', unidad: 'km' },
-  { key: 'Fuerza', label: 'Fuerza', color: '#f87171', unidad: 'UA' },
-  { key: 'Hibrido', label: 'Híbrido', color: '#f472b6', unidad: 'UA' },
+  { key: 'Natacion', label: 'Natación', color: colorDisciplina('Natacion'), unidad: 'm' },
+  { key: 'Ciclismo', label: 'Ciclismo', color: colorDisciplina('Ciclismo'), unidad: 'km' },
+  { key: 'Carrera', label: 'Carrera', color: colorDisciplina('Carrera'), unidad: 'km' },
+  { key: 'Fuerza', label: 'Fuerza', color: colorDisciplina('Fuerza'), unidad: 'UA' },
+  { key: 'Hibrido', label: 'Híbrido', color: colorDisciplina('Hibrido'), unidad: 'UA' },
 ]
 
 const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }
@@ -764,9 +765,9 @@ export default function VolumenPage() {
                       {/* Tarjetas de % cambio */}
                       <div className="grid grid-cols-3 gap-3">
                         {[
-                          { key: 'Natacion', label: 'Natación', color: '#60a5fa', unidad: 'm' },
-                          { key: 'Ciclismo', label: 'Ciclismo', color: '#fbbf24', unidad: 'km' },
-                          { key: 'Carrera', label: 'Carrera', color: '#4ade80', unidad: 'km' },
+                          { key: 'Natacion', label: 'Natación', color: colorDisciplina('Natacion'), unidad: 'm' },
+                          { key: 'Ciclismo', label: 'Ciclismo', color: colorDisciplina('Ciclismo'), unidad: 'km' },
+                          { key: 'Carrera', label: 'Carrera', color: colorDisciplina('Carrera'), unidad: 'km' },
                         ].map(d => {
                           const cambio = calcCambio(datosEvol, d.key)
                           const ultimoVal = datosEvol[datosEvol.length - 1]?.[d.key]
@@ -799,9 +800,9 @@ export default function VolumenPage() {
                               <YAxis stroke="#9ca3af" tick={{ fontSize: 10 }} />
                               <Tooltip contentStyle={tooltipStyle} />
                               <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
-                              <Line type="monotone" dataKey="Natacion" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 4 }} name="Natación (m)" connectNulls />
-                              <Line type="monotone" dataKey="Ciclismo" stroke="#fbbf24" strokeWidth={2.5} dot={{ r: 4 }} name="Ciclismo (km)" connectNulls />
-                              <Line type="monotone" dataKey="Carrera" stroke="#4ade80" strokeWidth={2.5} dot={{ r: 4 }} name="Carrera (km)" connectNulls />
+                              <Line type="monotone" dataKey="Natacion" stroke={colorDisciplina('Natacion')} strokeWidth={2.5} dot={{ r: 4 }} name="Natación (m)" connectNulls />
+                              <Line type="monotone" dataKey="Ciclismo" stroke={colorDisciplina('Ciclismo')} strokeWidth={2.5} dot={{ r: 4 }} name="Ciclismo (km)" connectNulls />
+                              <Line type="monotone" dataKey="Carrera" stroke={colorDisciplina('Carrera')} strokeWidth={2.5} dot={{ r: 4 }} name="Carrera (km)" connectNulls />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -1127,11 +1128,7 @@ export default function VolumenPage() {
                             <div key={i} className="flex justify-between items-center bg-gray-800 rounded-lg px-4 py-2">
                               <div className="flex items-center gap-3">
                                 <span className="text-gray-400 text-xs w-12">{s.fecha}</span>
-                                <span className={'text-xs px-2 py-0.5 rounded-full ' +
-                                  (s.disciplina === 'Natacion' ? 'bg-blue-900 text-blue-300' :
-                                   s.disciplina === 'Ciclismo' ? 'bg-yellow-900 text-yellow-300' :
-                                   s.disciplina === 'Carrera' ? 'bg-green-900 text-green-300' :
-                                   'bg-red-900 text-red-300')}>
+                                <span className={'text-xs px-2 py-0.5 rounded-full ' + chipDisciplina(s.disciplina)}>
                                   {s.disciplina}
                                 </span>
                                 <span className="text-gray-400 text-xs">{s.duracion} min · RPE {s.rpe}</span>

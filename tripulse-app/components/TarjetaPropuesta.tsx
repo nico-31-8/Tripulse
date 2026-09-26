@@ -9,12 +9,12 @@
 // calendario, donde el entrenador pulsa el día. Ese último clic es suyo siempre.
 import { useRouter } from 'next/navigation'
 import { cargaZona } from '@/lib/zonas'
+import { emojiDisciplina } from '@/lib/disciplinas'
 import {
   minutosPropuesta, metrosPropuesta, rpePropuesta, avisosPropuesta,
   type PropuestaSesion,
 } from '@/lib/propuesta-sesion'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️' }
 
 /** Donde se deja la propuesta para que la recoja el calendario. */
 export const LLAVE_PROPUESTA = 'tripulse_propuesta_ia'
@@ -56,7 +56,7 @@ export default function TarjetaPropuesta({ propuesta, depId, onCambiar, onDescar
   return (
     <div className="rounded-2xl border border-orange-500/30 bg-orange-500/[0.05] overflow-hidden mt-1">
       <div className="px-3.5 py-2.5 border-b border-orange-500/15 flex items-start gap-2.5">
-        <span className="text-base leading-none mt-0.5">{EMOJI[propuesta.disciplina] || '📋'}</span>
+        <span className="text-base leading-none mt-0.5">{emojiDisciplina(propuesta.disciplina) || '📋'}</span>
         <div className="min-w-0 flex-1">
           <p className="text-[13.5px] font-semibold tracking-tight leading-snug">{propuesta.nombre}</p>
           <p className="text-[11px] text-gray-500 tabular-nums">

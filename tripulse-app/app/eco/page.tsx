@@ -16,6 +16,7 @@ import { cargaZona } from '@/lib/zonas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
+import { colorDisciplina, cortoDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
@@ -23,11 +24,8 @@ const DISCIPLINAS = DISCIPLINAS_SICAT
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
 const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
-const ICONO_SOLO = (d: string) => d === 'Natacion' ? '🏊' : d === 'Ciclismo' ? '🚴' : '🏃'
-const COLOR_DISC: Record<string, string> = { Natacion: '#60a5fa', Ciclismo: '#fbbf24', Carrera: '#4ade80' }
 
-const iconoDisc = (d: string) => d === 'Natacion' ? '🏊 Nat' : d === 'Ciclismo' ? '🚴 Cic' : '🏃 Car'
-const nombreDisc = (d: string) => d === 'Natacion' ? 'natación' : d === 'Ciclismo' ? 'ciclismo' : 'carrera'
+const nombreDisc = (d: string) => etiquetaDisciplina(d).toLowerCase()
 function colMult(m: number) { return m < 0.8 ? '#22c55e' : m < 1.2 ? '#eab308' : m < 1.8 ? '#f97316' : '#ef4444' }
 
 // Conclusiones automáticas de la matriz de coste por zona (solo celdas fiables, n≥3).
@@ -85,7 +83,7 @@ function GraficaEquilibrio({ serie, sel }: { serie: PuntoTramo[]; sel: number })
           const pts = serie.map((p, i) => ({ x: x(i), y: p.puntos[d] != null ? y(p.puntos[d]!) : null }))
             .filter((q): q is { x: number; y: number } => q.y != null)
           if (!pts.length) return null
-          const col = COLOR_DISC[d] || '#94a3b8'
+          const col = colorDisciplina(d)
           return (
             <g key={d}>
               <polyline points={pts.map(q => `${q.x},${q.y}`).join(' ')} fill="none"
@@ -435,7 +433,7 @@ export default function EcoPage() {
   // distintas: el individual al máximo del atleta y el poblacional al máximo de la
   // tabla. Y el poblacional estaba escrito a mano (75/50/100); ahora se suma.
   const radarData = scores ? DISCIPLINAS.map(d => ({
-    disciplina: d === 'Natacion' ? 'Natación' : d,
+    disciplina: etiquetaDisciplina(d),
     Individual: scores[d]?.total || 0,
     Poblacional: totalEco(d),
   })) : []
@@ -570,7 +568,7 @@ export default function EcoPage() {
                     <div className="flex gap-5 items-end justify-center flex-wrap">
                       {DISCIPLINAS.map(d => {
                         const pts = p.puntos[d]
-                        const col2 = COLOR_DISC[d] || '#94a3b8'
+                        const col2 = colorDisciplina(d)
                         const antes = prev?.puntos[d] ?? null
                         const delta = pts != null && antes != null ? pts - antes : null
                         return (
@@ -591,7 +589,7 @@ export default function EcoPage() {
                                 </div>
                               )}
                             </div>
-                            <p className="text-[12px] font-semibold mt-2">{ICONO_SOLO(d)} {d === 'Natacion' ? 'Natación' : d}</p>
+                            <p className="text-[12px] font-semibold mt-2">{emojiDisciplina(d)} {etiquetaDisciplina(d)}</p>
                             <p className="text-[18px] font-bold tabular-nums mt-0.5" style={{ color: col2 }}>
                               {pts != null ? fmtPuntos(pts) : '—'}<span className="text-[11px] text-gray-600">/16</span>
                             </p>
@@ -621,8 +619,8 @@ export default function EcoPage() {
                             style={{ width: Math.min(100, dif / 12 * 100) + '%', background: col }} />
                         </div>
                         <p className="text-gray-500 text-[11px]">
-                          Del que más cuesta (<b style={{ color: COLOR_DISC[caro] }}>{caro === 'Natacion' ? 'Natación' : caro}</b>, {fmtPuntos(p.puntos[caro]!)})
-                          {' '}al que menos (<b style={{ color: COLOR_DISC[barato] }}>{barato === 'Natacion' ? 'Natación' : barato}</b>, {fmtPuntos(p.puntos[barato]!)})
+                          Del que más cuesta (<b style={{ color: colorDisciplina(caro) }}>{etiquetaDisciplina(caro)}</b>, {fmtPuntos(p.puntos[caro]!)})
+                          {' '}al que menos (<b style={{ color: colorDisciplina(barato) }}>{etiquetaDisciplina(barato)}</b>, {fmtPuntos(p.puntos[barato]!)})
                           {' '}hay <b className="text-gray-300">{fmtPuntos(dif)} puntos</b>.
                         </p>
                       </div>
@@ -652,12 +650,12 @@ export default function EcoPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
               {DISCIPLINAS.map(disc => {
                 const s = scores[disc]
-                const col = COLOR_DISC[disc] || '#94a3b8'
+                const col = colorDisciplina(disc)
                 return (
                   <div key={disc} className="tp-card p-6" style={{ ['--c' as any]: col }}>
                     <div className="flex items-center gap-2 mb-5">
-                      <span className="text-[15px]">{ICONO_SOLO(disc)}</span>
-                      <h3 className="font-semibold text-[15px] truncate">{disc === 'Natacion' ? 'Natación' : disc}</h3>
+                      <span className="text-[15px]">{emojiDisciplina(disc)}</span>
+                      <h3 className="font-semibold text-[15px] truncate">{etiquetaDisciplina(disc)}</h3>
                       <span className="text-gray-600 text-[11px] ml-auto flex-shrink-0">{s.sesiones} sesiones</span>
                     </div>
 
@@ -734,7 +732,7 @@ export default function EcoPage() {
                     <div className={pondZona ? '' : 'opacity-70'}>
                       <div className="grid gap-2 mt-5" style={{ gridTemplateColumns: '130px repeat(3, 1fr)' }}>
                         <div />
-                        {DISCIPLINAS.map(d => <div key={d} className="text-center text-[11.5px] font-semibold text-gray-400 pb-1.5">{iconoDisc(d)}</div>)}
+                        {DISCIPLINAS.map(d => <div key={d} className="text-center text-[11.5px] font-semibold text-gray-400 pb-1.5">{emojiDisciplina(d) + ' ' + cortoDisciplina(d)}</div>)}
                         {zonasOrden.map(z => (
                           <Fragment key={z}>
                             <div className="flex flex-col justify-center">

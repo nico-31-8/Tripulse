@@ -43,7 +43,7 @@ import {
 } from '@/lib/contexto-sesion'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
-import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza } from '@/lib/disciplinas'
+import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza, chipDisciplina } from '@/lib/disciplinas'
 import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 
@@ -602,16 +602,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setLoading(false)
   }
 
-  const colorDisciplina = (d: string) => {
-    if (!d) return 'bg-gray-700 text-gray-300'
-    if (d.includes('Nat')) return 'bg-blue-900 text-blue-300'
-    if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
-    if (d === 'Carrera') return 'bg-green-900 text-green-300'
-    if (d === 'Fuerza') return 'bg-red-900 text-red-300'
-    if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
-    return 'bg-purple-900 text-purple-300'
-  }
-
   const guardarDuracionManual = async () => {
     const val = duracionManualInput ? Number(duracionManualInput) : null
     await supabase.from('sesion').update({ duracion_minutos: val }).eq('id', id)
@@ -788,7 +778,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 Grupo · {nombreGrupo}
               </span>
             )}
-            <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
+            <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + chipDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
             <span className={'text-xs px-2.5 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}
 
@@ -1268,7 +1258,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             {t.zona_entrenamiento && <span className="text-orange-400 font-bold text-sm">{t.zona_entrenamiento}</span>}
-                            {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>}
+                            {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + chipDisciplina(t.disciplina)}>{t.disciplina}</span>}
                           </div>
                           <div className="flex gap-1">
                             {/* Un bloque se edita en la tabla: este formulario no sabe de bloques. */}

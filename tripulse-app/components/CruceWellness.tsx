@@ -17,14 +17,7 @@ import { useState } from 'react'
 import {
   sesionesPorDia, cruceDe, cargaDe, haceTexto, DIAS_VENTANA, type SesionCruce,
 } from '@/lib/wellness-sesiones'
-
-/* Los mismos colores de disciplina que el calendario y el panel de la semana.
-   Un color que hay que traducir no sirve de nada. */
-const COLOR_DISC: Record<string, string> = {
-  Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308',
-  Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899',
-}
-const colorDisc = (d?: string | null) => COLOR_DISC[d || ''] || '#6b7280'
+import { colorDisciplina } from '@/lib/disciplinas'
 
 const minutosDe = (s: SesionCruce) => s.duracion_real ?? s.duracion_minutos ?? null
 const rpeDe = (s: SesionCruce) => s.rpe_reportado ?? s.rpe_estimado ?? null
@@ -51,7 +44,7 @@ export default function CruceWellness({ registros, sesiones, tu = false, margenE
     <a key={s.id} href={'/sesion/' + s.id}
       className={'flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2 transition hover:border-orange-500/50 hover:bg-orange-500/[0.07]'
         + (apagada ? ' opacity-55 hover:opacity-100' : '')}>
-      <span className="w-[3px] self-stretch min-h-[24px] rounded-sm flex-none" style={{ background: colorDisc(s.disciplina) }} />
+      <span className="w-[3px] self-stretch min-h-[24px] rounded-sm flex-none" style={{ background: colorDisciplina(s.disciplina) }} />
       {etiqueta && <span className="text-[10.5px] text-gray-500 w-[62px] flex-none">{etiqueta}</span>}
       <span className="flex-1 min-w-0">
         <span className="text-[13px] font-semibold block truncate">{s.disciplina || 'Sesión'}</span>
@@ -93,7 +86,7 @@ export default function CruceWellness({ registros, sesiones, tu = false, margenE
                 <span className="flex gap-[2px] items-center min-h-[6px]">
                   {delDia.length > 0
                     ? delDia.slice(0, 4).map(x => (
-                        <span key={x.id} className="w-[5px] h-[5px] rounded-full" style={{ background: colorDisc(x.disciplina) }} />
+                        <span key={x.id} className="w-[5px] h-[5px] rounded-full" style={{ background: colorDisciplina(x.disciplina) }} />
                       ))
                     : <span className="w-2 h-[2px] rounded-sm bg-white/15" />}
                 </span>

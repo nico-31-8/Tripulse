@@ -8,7 +8,7 @@ import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
-import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { colorDisciplina, cortoDisciplina, esDisciplinaDeFuerza } from '@/lib/disciplinas'
 
 // Colores por tipo de mesociclo (hex, para estilos inline)
 const C_MESO: Record<string, string> = {
@@ -17,8 +17,6 @@ const C_MESO: Record<string, string> = {
   'Realización': '#ef4444', 'Realizacion': '#ef4444',
   'Recuperación': '#22c55e', 'Recuperacion': '#22c55e',
 }
-const C_DISC: Record<string, string> = { Natacion: '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899' }
-const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
 const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -327,9 +325,9 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                                 }}
                                 title={zs.length ? zs.map(z => infoZona(z).nombre).join(', ') : undefined}
                                 className={'rounded px-1.5 py-1 text-white transition ' + (editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer hover:brightness-125')}
-                                style={{ backgroundColor: (C_DISC[s.disciplina] || '#6b7280') + (s.estado === 'Realizada' ? 'ff' : '55'), borderLeft: '2px solid ' + (C_DISC[s.disciplina] || '#6b7280'), boxShadow: isSel ? '0 0 0 2px #fb923c' : undefined }}>
+                                style={{ backgroundColor: colorDisciplina(s.disciplina) + (s.estado === 'Realizada' ? 'ff' : '55'), borderLeft: '2px solid ' + colorDisciplina(s.disciplina), boxShadow: isSel ? '0 0 0 2px #fb923c' : undefined }}>
                                 <div className="flex items-center gap-1">
-                                  <span style={{ fontSize: 10 }} className="font-medium truncate">{DISC_CORTO[s.disciplina] || s.disciplina?.slice(0, 3)}</span>
+                                  <span style={{ fontSize: 10 }} className="font-medium truncate">{cortoDisciplina(s.disciplina)}</span>
                                   {s.origen === 'deportista' && <span style={{ fontSize: 9 }} title="Añadida por el atleta">🙋</span>}
                                   {s.estado === 'Realizada' && <span className="ml-auto text-green-300" style={{ fontSize: 9 }}>✓</span>}
                                 </div>
@@ -384,7 +382,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
                     return (
                       <div key={d} className="flex items-center gap-3">
                         <span className="text-gray-300 text-sm w-24">{d}</span>
-                        <div className="flex-1 bg-gray-800 rounded-full h-5 overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: p + '%', backgroundColor: C_DISC[d] }} /></div>
+                        <div className="flex-1 bg-gray-800 rounded-full h-5 overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: p + '%', backgroundColor: colorDisciplina(d) }} /></div>
                         <span className="text-gray-500 text-xs w-16 text-right">{n} {sustantivo}</span>
                         <span className="text-white font-bold text-sm w-12 text-right">{p}%</span>
                       </div>
@@ -459,9 +457,9 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
             <div className="flex flex-col gap-1.5">
               {porDisc.map(d => (
                 <div key={d.disc} className="flex items-center gap-2">
-                  <span className="text-gray-500 w-8" style={{ fontSize: 10 }}>{DISC_CORTO[d.disc]}</span>
+                  <span className="text-gray-500 w-8" style={{ fontSize: 10 }}>{cortoDisciplina(d.disc)}</span>
                   <div className="flex-1 bg-gray-800 rounded-full h-2.5 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: (d.n / maxDisc * 100) + '%', backgroundColor: C_DISC[d.disc] }} />
+                    <div className="h-full rounded-full" style={{ width: (d.n / maxDisc * 100) + '%', backgroundColor: colorDisciplina(d.disc) }} />
                   </div>
                   <span className="text-white font-bold w-4 text-right" style={{ fontSize: 10 }}>{d.n}</span>
                 </div>
@@ -511,7 +509,7 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
               style={{ left: Math.min(selPos.x, vw - 272), top: Math.min(selPos.y, vh - 240) }}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: (C_DISC[s.disciplina] || '#6b7280') + '30', color: C_DISC[s.disciplina] || '#9ca3af' }}>{s.disciplina}</span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: colorDisciplina(s.disciplina) + '30', color: colorDisciplina(s.disciplina) }}>{s.disciplina}</span>
                 <button onClick={() => setSelSes(null)} className="text-gray-500 hover:text-white text-sm leading-none">✕</button>
               </div>
               <p className="text-gray-400 text-xs mb-1.5">Cambiar zona{sistemaZonas === 2 && !esDisciplinaDeFuerza(s.disciplina) ? ' (Zonas 2)' : ''}</p>

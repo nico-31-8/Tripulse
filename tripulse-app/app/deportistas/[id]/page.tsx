@@ -16,6 +16,7 @@ import { delProveedor } from '@/lib/noches-reloj'
 import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import DisciplinasDeportista from '@/components/DisciplinasDeportista'
+import { chipDisciplina, colorDisciplina, emojiDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
@@ -28,18 +29,6 @@ function estadoTSB(tsb: number) {
   return { label: e.label, color: e.texto }
 }
 
-const COLOR_DISC: Record<string, string> = {
-  'Natacion': 'bg-blue-900 text-blue-300 border-blue-700',
-  'Ciclismo': 'bg-yellow-900 text-yellow-300 border-yellow-700',
-  'Carrera': 'bg-green-900 text-green-300 border-green-700',
-  'Fuerza': 'bg-red-900 text-red-300 border-red-700',
-  'Hibrido': 'bg-pink-900 text-pink-300 border-pink-700',
-  'Brick': 'bg-purple-900 text-purple-300 border-purple-700',
-}
-
-const ICONO_DISC: Record<string, string> = {
-  'Natacion': '🏊', 'Ciclismo': '🚴', 'Carrera': '🏃', 'Fuerza': '🏋️', 'Brick': '🔀', 'Hibrido': '⚡'
-}
 
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -544,9 +533,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               <h3 className="font-bold mb-4 text-orange-400">Últimos tests</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {[
-                  { k: '🏃 Carrera — VAM', t: tests.carrera, prev: tests.carreraPrev, campo: 'vam', u: 'km/h', c: '#4ade80' },
-                  { k: '🏊 Natación — CSS', t: tests.natacion, prev: tests.natacionPrev, campo: 'css', u: 'm/s', c: '#60a5fa' },
-                  { k: '🚴 Ciclismo — FTP', t: tests.ciclismo, prev: tests.ciclismoPrev, campo: 'ftp', u: 'W', c: '#fbbf24' },
+                  { k: '🏃 Carrera — VAM', t: tests.carrera, prev: tests.carreraPrev, campo: 'vam', u: 'km/h', c: colorDisciplina('Carrera') },
+                  { k: '🏊 Natación — CSS', t: tests.natacion, prev: tests.natacionPrev, campo: 'css', u: 'm/s', c: colorDisciplina('Natacion') },
+                  { k: '🚴 Ciclismo — FTP', t: tests.ciclismo, prev: tests.ciclismoPrev, campo: 'ftp', u: 'W', c: colorDisciplina('Ciclismo') },
                 ].map(({ k, t, prev, campo, u, c }) => {
                   // En estas tres métricas MÁS ALTO = MEJOR, por eso subir siempre es verde.
                   const delta = t && prev ? Math.round((t[campo] - prev[campo]) * 100) / 100 : null
@@ -599,7 +588,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   if (!zonasDisc.length) return null
                   return (
                     <div key={disc} className="mb-4">
-                      <p className="text-sm font-medium text-gray-300 mb-2">{disc === 'Natacion' ? '🏊 Natación' : disc === 'Ciclismo' ? '🚴 Ciclismo' : '🏃 Carrera'}</p>
+                      <p className="text-sm font-medium text-gray-300 mb-2">{etiquetaConEmoji(disc)}</p>
                       <div className="grid gap-1">
                         {zonasDisc.map(z => (
                           <div key={z.id} className="flex justify-between items-center bg-gray-800 rounded-lg px-3 py-2 text-xs">
@@ -716,9 +705,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 <p className="text-[10.5px] font-bold tracking-[.07em] uppercase text-gray-500 mb-3">Valoración técnica</p>
                 <div className="flex flex-col gap-4">
                   {[
-                    { l: '🏊 Natación', v: deportista.tec_natacion, c: '#60a5fa' },
-                    { l: '🚴 Ciclismo', v: deportista.tec_ciclismo, c: '#fbbf24' },
-                    { l: '🏃 Carrera', v: deportista.tec_carrera, c: '#4ade80' },
+                    { l: etiquetaConEmoji('Natacion'), v: deportista.tec_natacion, c: colorDisciplina('Natacion') },
+                    { l: etiquetaConEmoji('Ciclismo'), v: deportista.tec_ciclismo, c: colorDisciplina('Ciclismo') },
+                    { l: etiquetaConEmoji('Carrera'), v: deportista.tec_carrera, c: colorDisciplina('Carrera') },
                   ].map(({ l, v, c }) => (
                     <div key={l}>
                       <div className="flex justify-between text-[12.5px] mb-1.5">
@@ -757,7 +746,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                       <tbody>
                         {ecoScores.map(e => (
                           <tr key={e.id} className="border-t border-white/[0.05]">
-                            <td className="py-2">{e.disciplina === 'Natacion' ? '🏊 Natación' : e.disciplina === 'Ciclismo' ? '🚴 Ciclismo' : '🏃 Carrera'}</td>
+                            <td className="py-2">{etiquetaConEmoji(e.disciplina)}</td>
                             <td className="py-2 text-center tabular-nums">{e.puntuacion_f1}</td>
                             <td className="py-2 text-center tabular-nums">{e.puntuacion_f2}</td>
                             <td className="py-2 text-center tabular-nums">{e.puntuacion_f3}</td>
@@ -817,9 +806,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   <p className="text-gray-500 text-xs mt-1">Últimas sesiones</p>
                 </div>
                 {Object.entries(porDisc).map(([disc, count]) => (
-                  <div key={disc} className={'rounded-xl p-4 border text-center ' + (COLOR_DISC[disc] || 'bg-gray-900 border-gray-800')}>
+                  <div key={disc} className={'rounded-xl p-4 border text-center ' + chipDisciplina(disc)}>
                     <p className="text-2xl font-bold">{count as number}</p>
-                    <p className="text-xs mt-1 opacity-70">{ICONO_DISC[disc]} {disc}</p>
+                    <p className="text-xs mt-1 opacity-70">{etiquetaConEmoji(disc)}</p>
                   </div>
                 ))}
               </div>
@@ -852,9 +841,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                       className="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800 hover:border-orange-500 transition text-left w-full">
                       <div className="flex justify-between items-start gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-2xl">{ICONO_DISC[s.disciplina] || '🏃'}</span>
+                          <span className="text-2xl">{emojiDisciplina(s.disciplina) || '🏃'}</span>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={'text-xs px-2 py-0.5 rounded-full border ' + (COLOR_DISC[s.disciplina] || 'bg-gray-800 border-gray-700 text-gray-300')}>
+                            <span className={'text-xs px-2 py-0.5 rounded-full border ' + chipDisciplina(s.disciplina)}>
                               {s.disciplina}
                             </span>
                             <span className="text-gray-400 text-xs capitalize">

@@ -5,7 +5,7 @@ import { FILTRO_VIVAS } from '@/lib/papelera'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { tipoMicrociclo } from '@/lib/microciclo-tipos'
-import { TODAS, paraProgramar, etiquetaDisciplina } from '@/lib/disciplinas'
+import { TODAS, paraProgramar, etiquetaDisciplina, chipDisciplina } from '@/lib/disciplinas'
 import { useDisciplinasDeportista } from '@/lib/useDisciplinasDeportista'
 
 // Sin 'Brick': un brick necesita sus bloques (cada uno con su deporte y duración) y
@@ -68,15 +68,6 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
     setLoading(false)
   }
 
-  const colorDisciplina = (d: string) => {
-    if (d === 'Natacion') return 'bg-blue-900 text-blue-300'
-    if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
-    if (d === 'Carrera') return 'bg-green-900 text-green-300'
-    if (d === 'Fuerza') return 'bg-red-900 text-red-300'
-    if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
-    return 'bg-purple-900 text-purple-300'
-  }
-
   if (!microciclo) return <Cargando noExiste={noExiste} />
 
   return (
@@ -130,7 +121,7 @@ export default function PaginaMicrociclo({ params }: { params: Promise<{ id: str
               <a key={s.id} href={`/sesion/${s.id}`} className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-orange-500 transition block">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${colorDisciplina(s.disciplina)}`}>{s.disciplina}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${chipDisciplina(s.disciplina)}`}>{s.disciplina}</span>
                     <div>
                       <p className="font-medium">{s.fecha_sesion}</p>
                       <p className="text-gray-400 text-sm">{s.duracion_minutos ? `${s.duracion_minutos} min` : '—'} · RPE est: {s.rpe_estimado || '—'}</p>

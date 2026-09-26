@@ -13,20 +13,17 @@ import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fec
 import { FILTRO_VIVAS } from './papelera'
 import { cargarBloques } from './atribucion'
 import { minutosCarga, cargaReal } from './duracion-carga'
-import { DEPORTES } from './disciplinas'
+import { CATALOGO, DEPORTES } from './disciplinas'
 
-// ---- Disciplinas (colores alineados con app/volumen/page.tsx) ----
+// ---- Disciplinas ----
+// El nombre y el color salen del catálogo (lib/disciplinas): estaban copiados de
+// app/volumen/page.tsx, que a su vez los tenía copiados de otro sitio.
+//
 // 'Brick' está aquí solo para PINTAR (es la etiqueta de la sesión, morada en toda
 // la app). No entra en DISC_ORDEN: no es un deporte y su volumen se reparte entre
 // los deportes reales de sus bloques (ver lib/atribucion).
-export const DISC_META: Record<string, { label: string; color: string }> = {
-  Natacion: { label: 'Natación', color: '#60a5fa' },
-  Ciclismo: { label: 'Ciclismo', color: '#fbbf24' },
-  Carrera: { label: 'Carrera', color: '#4ade80' },
-  Fuerza: { label: 'Fuerza', color: '#f87171' },
-  Brick: { label: 'Brick', color: '#a855f7' },
-  Hibrido: { label: 'Híbrido', color: '#f472b6' },
-}
+export const DISC_META: Record<string, { label: string; color: string }> =
+  Object.fromEntries(CATALOGO.map(d => [d.id, { label: d.label, color: d.color }]))
 const DISC_ORDEN = DEPORTES
 
 export interface MetricasPanel {

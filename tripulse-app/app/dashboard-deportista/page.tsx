@@ -18,9 +18,9 @@ import { aISO } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConectarReloj'
 import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
+import { colorDisciplina } from '@/lib/disciplinas'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-const DISC_HEX: Record<string, string> = { Natacion: '#3b82f6', 'Natación': '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#ef4444', Brick: '#a855f7', Hibrido: '#ec4899' }
 /* Era `toISOString()`: pasa la hora LOCAL a UTC y luego se queda con el día.
    De madrugada, el panel del atleta enseñaba el día de ayer como «hoy» y la
    semana entera corrida. `aISO` se queda con el día que ve él. */
@@ -285,7 +285,7 @@ export default function DashboardDeportista() {
         {sesionesHoy.length > 0 ? (
           <div className="flex flex-col gap-3 mb-4">
             {sesionesHoy.map(s => {
-              const col = DISC_HEX[s.disciplina] || '#6b7280'
+              const col = colorDisciplina(s.disciplina)
               const steps = tareasPorSesion[s.id] || []
               return (
                 <div key={s.id} className="bg-gray-900 rounded-2xl border-[1.5px] border-orange-500 p-4">
@@ -342,7 +342,7 @@ export default function DashboardDeportista() {
                     {d.sesiones.length === 0
                       ? <span className="w-1.5 h-1.5 rounded-full border border-gray-700" />
                       : d.sesiones.slice(0, 3).map((s: any, i: number) => (
-                        <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: DISC_HEX[s.disciplina] || '#6b7280', opacity: s.estado === 'Realizada' ? 1 : 0.5 }} />
+                        <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorDisciplina(s.disciplina), opacity: s.estado === 'Realizada' ? 1 : 0.5 }} />
                       ))}
                   </div>
                 </button>

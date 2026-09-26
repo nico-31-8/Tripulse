@@ -15,6 +15,7 @@ import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/Pan
 import { contextosDe } from '@/lib/dirigir-tests'
 import { herramientasDe, avisoDe } from '@/lib/herramientas-test'
 import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/catalogo-tests'
+import { emojiDisciplina } from '@/lib/disciplinas'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
@@ -1357,7 +1358,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
                         {objetivos.filas.map((f, i) => (
                           <tr key={i} className="border-t border-gray-800/70">
                             <td className="px-3 py-3 whitespace-nowrap">
-                              <span className="font-semibold text-gray-200">{f.disc === 'Natación' ? '🏊' : f.disc === 'Ciclismo' ? '🚴' : '🏃'} {f.disc}</span>
+                              <span className="font-semibold text-gray-200">{emojiDisciplina(f.disc) || '🏃'} {f.disc}</span>
                               {f.km != null && <span className="text-gray-500 text-xs"> · {f.km} km</span>}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap">

@@ -4,15 +4,6 @@ import { supabase } from '@/lib/supabase'
 import { FILTRO_VIVAS } from '@/lib/papelera'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
 
-const DISCIPLINAS_COLORES: Record<string, string> = {
-  'Natacion': '#60a5fa',
-  'Ciclismo': '#facc15',
-  'Carrera': '#4ade80',
-  'Fuerza': '#f87171',
-  'Brick': '#c084fc',
-  'Hibrido': '#f472b6',
-}
-
 const FASE_COLORES: Record<string, string> = {
   'Acumulación': '#f97316',
   'Acumulacion': '#f97316',

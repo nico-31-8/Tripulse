@@ -27,16 +27,42 @@ export interface Disciplina {
   emoji: string
   /** El color de las gráficas y los puntos del calendario. */
   color: string
+  /**
+   * El MISMO color en clases de Tailwind, para lo que no se pinta con `style`:
+   *   · solido — el color tal cual: el punto del calendario, un fondo lleno.
+   *   · chip   — la etiqueta suave con su borde.
+   *   · boton  — la sesión que se pulsa, con su hover.
+   *
+   * ESCRITAS ENTERAS A PROPÓSITO. Tailwind busca los nombres de clase en el
+   * código fuente: una clase montada al vuelo ('bg-' + color + '-900') no
+   * llega nunca al CSS y el chip saldría sin color.
+   */
+  clases: { solido: string; chip: string; boton: string }
+  /** Tres letras, para las casillas donde no cabe el nombre (el calendario). */
+  corto: string
 }
 
-/** Todas, en el orden en que salen en los menús. */
+/**
+ * Todas, en el orden en que salen en los menús.
+ *
+ * `color` y `clases.solido` son el mismo color dicho de dos maneras
+ * (#60a5fa = bg-blue-400), y un test lo comprueba: si alguien cambia uno y no
+ * el otro, el punto del calendario y la barra de la gráfica dejarían de ser
+ * del mismo color sin que nada se rompiera.
+ */
 export const CATALOGO: Disciplina[] = [
-  { id: 'Natacion', label: 'Natación', emoji: '🏊', color: '#60a5fa' },
-  { id: 'Ciclismo', label: 'Ciclismo', emoji: '🚴', color: '#fbbf24' },
-  { id: 'Carrera', label: 'Carrera', emoji: '🏃', color: '#4ade80' },
-  { id: 'Fuerza', label: 'Fuerza', emoji: '🏋️', color: '#f87171' },
-  { id: 'Brick', label: 'Brick', emoji: '🔀', color: '#a855f7' },
-  { id: HIBRIDO, label: 'Híbrido', emoji: '⚡', color: '#f472b6' },
+  { id: 'Natacion', label: 'Natación', emoji: '🏊', color: '#60a5fa',
+    clases: { solido: 'bg-blue-400', chip: 'bg-blue-900 text-blue-300 border-blue-700', boton: 'bg-blue-800 text-blue-200 hover:bg-blue-700' }, corto: 'Nat' },
+  { id: 'Ciclismo', label: 'Ciclismo', emoji: '🚴', color: '#fbbf24',
+    clases: { solido: 'bg-amber-400', chip: 'bg-amber-900 text-amber-300 border-amber-700', boton: 'bg-amber-800 text-amber-200 hover:bg-amber-700' }, corto: 'Cic' },
+  { id: 'Carrera', label: 'Carrera', emoji: '🏃', color: '#4ade80',
+    clases: { solido: 'bg-green-400', chip: 'bg-green-900 text-green-300 border-green-700', boton: 'bg-green-800 text-green-200 hover:bg-green-700' }, corto: 'Car' },
+  { id: 'Fuerza', label: 'Fuerza', emoji: '🏋️', color: '#f87171',
+    clases: { solido: 'bg-red-400', chip: 'bg-red-900 text-red-300 border-red-700', boton: 'bg-red-800 text-red-200 hover:bg-red-700' }, corto: 'Fue' },
+  { id: 'Brick', label: 'Brick', emoji: '🔀', color: '#a855f7',
+    clases: { solido: 'bg-purple-500', chip: 'bg-purple-900 text-purple-300 border-purple-700', boton: 'bg-purple-800 text-purple-200 hover:bg-purple-700' }, corto: 'Brk' },
+  { id: HIBRIDO, label: 'Híbrido', emoji: '⚡', color: '#f472b6',
+    clases: { solido: 'bg-pink-400', chip: 'bg-pink-900 text-pink-300 border-pink-700', boton: 'bg-pink-800 text-pink-200 hover:bg-pink-700' }, corto: 'Hib' },
 ]
 
 export const TODAS: string[] = CATALOGO.map(d => d.id)
@@ -60,7 +86,47 @@ const info = (d: string | null | undefined): Disciplina | undefined =>
 
 export const etiquetaDisciplina = (d: string | null | undefined): string => info(d)?.label || d || ''
 export const emojiDisciplina = (d: string | null | undefined): string => info(d)?.emoji || ''
+
+/**
+ * «🏊 Natación»: el icono y el nombre juntos, que es como salen en casi todos
+ * los menús y leyendas. Estaba escrito a mano en una docena de sitios.
+ *
+ * Si la disciplina no está en el catálogo sale el nombre a secas, sin hueco
+ * delante: un espacio suelto al principio se ve.
+ */
+export const etiquetaConEmoji = (d: string | null | undefined): string => {
+  const i = info(d)
+  return i ? i.emoji + ' ' + i.label : (d || '')
+}
+
+/**
+ * Tres letras para donde no cabe el nombre. Si no está en el catálogo, el
+ * nombre tal cual: antes cada pantalla ponía su `|| s.disciplina` detrás.
+ */
+export const cortoDisciplina = (d: string | null | undefined): string => info(d)?.corto || d || ''
 export const colorDisciplina = (d: string | null | undefined): string => info(d)?.color || '#9ca3af'
+
+/**
+ * Lo de «no sé qué disciplina es» también lo decide este sitio.
+ *
+ * Cada pantalla tenía su propio gris de respaldo (#6b7280, #94a3b8, #9ca3af,
+ * bg-gray-400, bg-gray-500, bg-gray-700…), así que una sesión sin disciplina
+ * salía de un gris distinto en cada una.
+ */
+const DESCONOCIDA = {
+  solido: 'bg-gray-500',
+  chip: 'bg-gray-800 text-gray-300 border-gray-700',
+  boton: 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+}
+
+const clasesDe = (d: string | null | undefined) => info(d)?.clases ?? DESCONOCIDA
+
+/** El color tal cual: el punto del calendario, un fondo lleno. */
+export const claseDisciplina = (d: string | null | undefined): string => clasesDe(d).solido
+/** La etiqueta suave con su borde. */
+export const chipDisciplina = (d: string | null | undefined): string => clasesDe(d).chip
+/** La sesión que se pulsa, con su hover. */
+export const botonDisciplina = (d: string | null | undefined): string => clasesDe(d).boton
 
 /** Las que se programan con la tabla de fuerza. */
 export const DISCIPLINAS_DE_FUERZA = ['Fuerza', HIBRIDO]

@@ -6,16 +6,11 @@ import { hoyISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { colorDisciplina } from '@/lib/disciplinas'
 
 const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
 const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
 const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
-
-const COLOR_DISC: Record<string, string> = {
-  'Natacion': '#60a5fa', 'Natación': '#60a5fa', 'Ciclismo': '#fbbf24',
-  'Carrera': '#4ade80', 'Fuerza': '#f87171', 'Brick': '#a855f7', 'Hibrido': '#f472b6',
-}
-const discColor = (d: string) => COLOR_DISC[d] || '#94a3b8'
 
 export default function ComunicacionPage() {
   const router = useRouter()
@@ -253,9 +248,9 @@ export default function ComunicacionPage() {
                   {threadFbs.length > 0 && (
                     <div className="flex flex-col gap-2 mb-1">
                       {threadFbs.slice(0, 3).map(f => (
-                        <div key={f.tareaId} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + discColor(f.disciplina) }}>
+                        <div key={f.tareaId} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + colorDisciplina(f.disciplina) }}>
                           <div className="flex items-center gap-2 text-[11.5px] font-semibold text-gray-300">
-                            <span className="w-5 h-5 rounded-md grid place-items-center flex-shrink-0" style={{ background: discColor(f.disciplina) + '2e', color: discColor(f.disciplina) }}>
+                            <span className="w-5 h-5 rounded-md grid place-items-center flex-shrink-0" style={{ background: colorDisciplina(f.disciplina) + '2e', color: colorDisciplina(f.disciplina) }}>
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5h16v11H9l-4 3.5V16.5H4Z" /></svg>
                             </span>
                             Feedback · {f.disciplina} · {f.fecha}

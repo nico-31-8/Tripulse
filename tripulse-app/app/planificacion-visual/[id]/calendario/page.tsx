@@ -29,7 +29,7 @@ import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta
 import { BotonGuiaZonas } from '@/components/GuiaZonas'
 import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
-import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -37,21 +37,6 @@ const DIAS_SEMANA = ['L','M','X','J','V','S','D']
 // Los colores y los tipos de mesociclo viven en lib/periodizacion.ts: aquí había
 // un mapa que solo conocía los cuatro tipos del modelo ATR, y con cualquier otro
 // modelo el calendario entero se pintaba de gris.
-
-const COLOR_DISC: Record<string, string> = {
-  'Natacion': 'bg-blue-500', 'Natación': 'bg-blue-500',
-  'Ciclismo': 'bg-yellow-400', 'Carrera': 'bg-green-500',
-  'Fuerza': 'bg-red-500', 'Brick': 'bg-purple-500', 'Hibrido': 'bg-pink-500',
-}
-
-const COLOR_DISC_FULL: Record<string, string> = {
-  'Natacion': 'bg-blue-800 text-blue-200 hover:bg-blue-700',
-  'Ciclismo': 'bg-yellow-800 text-yellow-200 hover:bg-yellow-700',
-  'Carrera': 'bg-green-800 text-green-200 hover:bg-green-700',
-  'Fuerza': 'bg-red-800 text-red-200 hover:bg-red-700',
-  'Brick': 'bg-purple-800 text-purple-200 hover:bg-purple-700',
-  'Hibrido': 'bg-pink-800 text-pink-200 hover:bg-pink-700',
-}
 
 function getDiasDelMes(año: number, mes: number) {
   const primerDia = new Date(año, mes, 1)
@@ -873,7 +858,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 ninguno de sus bloques. */}
             <div className="grid grid-cols-2 gap-y-2 gap-x-3 px-1 pb-1">
               {[...tiposEnPlan(mesos).map(t => [t.hex, t.tipo] as [string, string]),
-                ['#3b82f6','Natación'],['#eab308','Ciclismo'],['#22c55e','Carrera'],['#ef4444','Fuerza'],['#ec4899','Híbrido']].map(([c,l]) => (
+                ...DEPORTES.map(d => [colorDisciplina(d), etiquetaDisciplina(d)] as [string, string])].map(([c,l]) => (
                 <div key={l} className="flex items-center gap-2 text-[12px] text-gray-400">
                   <i className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: c }} />{l}
                 </div>
@@ -997,7 +982,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <button key={d} onClick={() => setPlantDisc(d)}
                     className={'text-xs px-3 py-1.5 rounded-lg border transition ' +
                       (plantDisc === d ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600')}>
-                    {d === 'Natacion' ? '🏊 Natación' : d === 'Ciclismo' ? '🚴 Ciclismo' : '🏃 Carrera'}
+                    {etiquetaConEmoji(d)}
                   </button>
                 ))}
                 <div className="ml-auto flex gap-1 bg-gray-800/60 p-0.5 rounded-lg">
@@ -1279,7 +1264,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                         {!bloqueo && sesDia.length > 0 && (
                           <div className="sm:hidden flex flex-wrap gap-[3px] justify-center mt-0.5">
                             {sesDia.slice(0, 6).map(s => (
-                              <i key={s.id} className={'w-1.5 h-1.5 rounded-full ' + (COLOR_DISC_FULL[s.disciplina]?.split(' ')[0] || 'bg-gray-500')} />
+                              <i key={s.id} className={'w-1.5 h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
                             ))}
                           </div>
                         )}
@@ -1296,7 +1281,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                 onDragEnd={() => setArrastrando(null)}
                                 className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' +
                                   (arrastrando === s.id ? 'opacity-40 ' : '') +
-                                  (COLOR_DISC_FULL[s.disciplina] || 'bg-gray-700 text-gray-200 hover:bg-gray-600')}>
+                                  botonDisciplina(s.disciplina)}>
                                 {/* La ZONA ocupa el sitio de «Car»/«Fue», no se
                                     añade al lado: el color del chip ya dice el
                                     deporte, así que las tres letras eran la única
@@ -1403,7 +1388,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                           {ses.length > 0 && !comp && !bloqueo && (
                             <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center">
                               {ses.slice(0,3).map((s, i) => (
-                                <div key={i} className={'w-1.5 h-1.5 rounded-full ' + (COLOR_DISC[s.disciplina] || 'bg-gray-400')} />
+                                <div key={i} className={'w-1.5 h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
                               ))}
                             </div>
                           )}
@@ -1489,7 +1474,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="flex gap-1">{sesMicro.map(s => <div key={s.id} className={'w-2 h-2 rounded-full ' + (COLOR_DISC[s.disciplina] || 'bg-gray-500')} title={s.disciplina} />)}</div>
+                                <div className="flex gap-1">{sesMicro.map(s => <div key={s.id} className={'w-2 h-2 rounded-full ' + claseDisciplina(s.disciplina)} title={s.disciplina} />)}</div>
                                 {sesMicro.length > 0 && (
                                   <button onClick={e => { if (micro.fecha_inicio) copiarSemana(micro.fecha_inicio, e) }} className="bg-purple-900/50 hover:bg-purple-800 text-purple-300 text-xs px-2 py-1 rounded-lg transition" title="Copiar semana">📋</button>
                                 )}
@@ -1544,7 +1529,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 {getSesionesDia(fechaSel).map(s => (
                   <button key={s.id} onClick={() => router.push('/sesion/' + s.id)}
                     className="w-full flex items-center gap-3 rounded-xl border border-gray-700 bg-gray-800/60 hover:border-orange-500/50 px-3.5 py-3 text-left transition">
-                    <span className={'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + (COLOR_DISC_FULL[s.disciplina]?.split(' ')[0] || 'bg-gray-500')} />
+                    <span className={'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-semibold truncate">
                         {s.disciplina || 'Sesión'}

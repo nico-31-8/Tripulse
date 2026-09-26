@@ -8,18 +8,19 @@ import { factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
 import { serieForma, estadoTSB as estadoTSBBase, HISTORIA_MINIMA_FORMA, type NivelTSB } from '@/lib/panel-metricas'
+import { DEPORTES, colorDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 
 /* Mismo interruptor que /carga y /volumen: una sola clave para toda la app, o el
    entrenador activaría la ponderación en un módulo y la vería apagada en otro. */
 const LLAVE_POND = 'sicat_pond_zona'
 
-const DISCIPLINAS = [
-  { key: 'Natacion', label: '🏊 Natación', color: '#60a5fa' },
-  { key: 'Ciclismo', label: '🚴 Ciclismo', color: '#facc15' },
-  { key: 'Carrera', label: '🏃 Carrera', color: '#4ade80' },
-  { key: 'Fuerza', label: '🏋️ Fuerza', color: '#f87171' },
-  { key: 'Hibrido', label: '⚡ Híbrido', color: '#f472b6' },
-]
+/* Las del catálogo menos Brick, que reparte lo suyo entre sus bloques. Estaban
+   escritas a mano, y el amarillo de la bici no era el de las demás gráficas. */
+const DISCIPLINAS = DEPORTES.map(key => ({
+  key,
+  label: emojiDisciplina(key) + ' ' + etiquetaDisciplina(key),
+  color: colorDisciplina(key),
+}))
 
 // Recibe BLOQUES, no sesiones: un brick aporta a la bici y a la carrera por
 // separado, cada una con sus minutos reales (ver lib/atribucion).

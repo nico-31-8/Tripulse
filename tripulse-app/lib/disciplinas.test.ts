@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  HIBRIDO, TODAS, PERFILES, esDisciplinaDeFuerza, disciplinaDeTareaFuerza, disciplinasDe, paraProgramar,
-  perfilDe, alternar, guardarPerfil, etiquetaDisciplina, normalizar,
+  CATALOGO, HIBRIDO, TODAS, PERFILES, esDisciplinaDeFuerza, disciplinaDeTareaFuerza, disciplinasDe, paraProgramar,
+  perfilDe, alternar, guardarPerfil, etiquetaDisciplina, etiquetaConEmoji, cortoDisciplina, normalizar,
 } from './disciplinas'
 
 describe('qué se programa con la tabla de fuerza', () => {
@@ -108,5 +108,83 @@ describe('nombres', () => {
     expect(HIBRIDO).toBe('Hibrido')
     expect(etiquetaDisciplina(HIBRIDO)).toBe('Híbrido')
     expect(etiquetaDisciplina('Natación')).toBe('Natación')
+  })
+})
+
+// ============================================================
+// El color y las clases son el mismo color dicho de dos maneras
+// ============================================================
+// Cada disciplina lleva su color dos veces: en hex, para lo que se pinta con
+// `style` (gráficas, chips del dibujo), y en clases de Tailwind, para lo que se
+// pinta con `className` (el punto del calendario, las etiquetas). Tienen que
+// decir lo mismo: si no, el punto del calendario y la barra de la gráfica de la
+// misma sesión salen de colores distintos y nada se rompe al compilar.
+describe('el color hex y la clase de Tailwind coinciden', () => {
+  /** La paleta de Tailwind, solo los tonos que usa el catálogo. El oráculo. */
+  const HEX_DE_CLASE: Record<string, string> = {
+    'bg-blue-400': '#60a5fa',
+    'bg-amber-400': '#fbbf24',
+    'bg-green-400': '#4ade80',
+    'bg-red-400': '#f87171',
+    'bg-purple-500': '#a855f7',
+    'bg-pink-400': '#f472b6',
+  }
+
+  for (const d of CATALOGO) {
+    it(d.label + ': ' + d.clases.solido + ' es ' + d.color, () => {
+      expect(HEX_DE_CLASE[d.clases.solido], 'Añade ' + d.clases.solido + ' a la tabla de arriba con su hex').toBeDefined()
+      expect(HEX_DE_CLASE[d.clases.solido]).toBe(d.color)
+    })
+
+    /* Y los tres juegos de clases, del mismo color de Tailwind: el chip suave y
+       el botón son tonos del mismo, no otro color. */
+    it(d.label + ': el chip y el botón son del mismo color que el sólido', () => {
+      const color = d.clases.solido.match(/^bg-([a-z]+)-\d+$/)?.[1]
+      expect(color, 'El sólido tiene que ser una clase bg-color-tono').toBeTruthy()
+      for (const clase of (d.clases.chip + ' ' + d.clases.boton).split(' ')) {
+        expect(clase, clase + ' no es del color ' + color).toContain('-' + color + '-')
+      }
+    })
+  }
+
+  it('ninguna disciplina se queda sin clases', () => {
+    for (const d of CATALOGO) {
+      expect(d.clases.solido, d.label).toBeTruthy()
+      expect(d.clases.chip, d.label).toBeTruthy()
+      expect(d.clases.boton, d.label).toBeTruthy()
+    }
+  })
+})
+
+// ============================================================
+// El icono, el nombre y las tres letras
+// ============================================================
+describe('cómo se escribe una disciplina', () => {
+  it('«🏊 Natación»: el icono y el nombre juntos', () => {
+    expect(etiquetaConEmoji('Natacion')).toBe('🏊 Natación')
+    expect(etiquetaConEmoji('Natación')).toBe('🏊 Natación')
+    expect(etiquetaConEmoji(HIBRIDO)).toBe('⚡ Híbrido')
+  })
+
+  it('lo que no está en el catálogo sale sin hueco delante', () => {
+    /* Un espacio suelto al principio de la línea se ve. */
+    expect(etiquetaConEmoji('Remo')).toBe('Remo')
+    expect(etiquetaConEmoji(null)).toBe('')
+    expect(etiquetaConEmoji('')).toBe('')
+  })
+
+  it('las tres letras, y el nombre tal cual si no las tiene', () => {
+    expect(cortoDisciplina('Natacion')).toBe('Nat')
+    expect(cortoDisciplina('Natación')).toBe('Nat')
+    expect(cortoDisciplina(HIBRIDO)).toBe('Hib')
+    expect(cortoDisciplina('Remo')).toBe('Remo')
+    expect(cortoDisciplina(null)).toBe('')
+  })
+
+  it('ninguna disciplina comparte las tres letras con otra', () => {
+    /* Dos «Car» en la misma casilla no se distinguirían. */
+    const cortos = CATALOGO.map(d => d.corto)
+    expect(new Set(cortos).size).toBe(cortos.length)
+    for (const d of CATALOGO) expect(d.corto, d.label).toHaveLength(3)
   })
 })

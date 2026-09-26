@@ -42,14 +42,15 @@ import {
   type TestCampo, type Valores, type Disciplina, type CampoBruto,
 } from '@/lib/catalogo-tests'
 import { cargarGrupos, miembrosDe, type Grupo } from '@/lib/grupos'
+import { emojiDisciplina } from '@/lib/disciplinas'
 import {
   contextosDe, guardarTestsDeCampo, resumenDeTests, testsDeHoy, diasHastaCarreraA,
   type Contextos, type ResultadoGuardado,
 } from '@/lib/dirigir-tests'
 
-const EMOJI: Record<Disciplina, string> = {
-  Carrera: '🏃', Ciclismo: '🚴', 'Natación': '🏊', Fuerza: '🏋️', 'Triatlón': '🔀',
-}
+/* El icono sale del catálogo (lib/disciplinas). «Triatlón» se queda aquí: es
+   un tipo de test, no una disciplina que se programe. */
+const emojiTest = (d: Disciplina): string => d === 'Triatlón' ? '🔀' : emojiDisciplina(d)
 
 interface Deportista { id: number; nombre: string }
 
@@ -250,7 +251,7 @@ export default function DirigirTests() {
               <button key={g.disciplina} onClick={() => setDisciplina(g.disciplina)}
                 className={'px-3 py-1.5 rounded-lg text-sm font-medium transition ' +
                   (disciplina === g.disciplina ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-500 hover:text-white')}>
-                {EMOJI[g.disciplina]} {g.disciplina}
+                {emojiTest(g.disciplina)} {g.disciplina}
               </button>
             ))}
           </div>

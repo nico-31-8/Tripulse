@@ -19,10 +19,8 @@ import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { filasDeHoy, resumenDeHoy, type FilaHoy, type GrupoDeEmision, type SesionHoy } from '@/lib/hoy-entrenador'
+import { emojiDisciplina } from '@/lib/disciplinas'
 
-const EMOJI: Record<string, string> = {
-  Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡',
-}
 
 interface Props {
   /** Los atletas del entrenador. Vienen ya cargados por el panel. */
@@ -91,7 +89,7 @@ export default function HoyEntrenas({ deportistas }: Props) {
             className={'flex items-center gap-3 rounded-xl border px-3 py-2.5 transition '
               + (f.hecha ? 'border-white/[0.06] bg-white/[0.015] opacity-60'
                 : 'border-white/[0.08] bg-white/[0.025]')}>
-            <span className="text-xl leading-none flex-none">{EMOJI[f.disciplina] || '🏃'}</span>
+            <span className="text-xl leading-none flex-none">{emojiDisciplina(f.disciplina) || '🏃'}</span>
 
             <span className="flex-1 min-w-0">
               <span className="block text-[14px] font-semibold tracking-tight truncate">

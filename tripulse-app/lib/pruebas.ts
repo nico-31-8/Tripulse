@@ -2,6 +2,8 @@
 // Distancias oficiales de referencia (World Triathlon / World Aquatics / World Athletics / UCI).
 // Las marcadas `aprox` varían según organizador.
 
+import { CATALOGO } from './disciplinas'
+
 export interface Segmento {
   disc: string        // 'Natación' | 'Ciclismo' | 'Carrera' | 'BTT' | 'Trail' | 'Esquí' | 'Nado-carrera'
   km: number | null   // null = distancia variable / no aplica
@@ -97,8 +99,11 @@ export const PRUEBAS: Prueba[] = [
 export const pruebaPorId = (id: string | null | undefined): Prueba | null =>
   PRUEBAS.find(p => p.id === id) || null
 
+/* Los segmentos de una prueba van más allá de las disciplinas que se programan
+   (BTT, trail, esquí…), así que esos iconos viven aquí; los tres que también son
+   disciplinas salen del catálogo para no tener dos versiones del mismo icono. */
 const EMOJI_DISC: Record<string, string> = {
-  'Natación': '🏊', 'Ciclismo': '🚴', 'Carrera': '🏃',
+  ...Object.fromEntries(CATALOGO.map(d => [d.label, d.emoji])),
   'BTT': '🚵', 'Trail': '⛰️', 'Esquí': '🎿', 'Nado-carrera': '🏊',
   'Estaciones': '🏋️',
 }

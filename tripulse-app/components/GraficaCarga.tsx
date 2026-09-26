@@ -6,26 +6,10 @@ import { lunesDe } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { cargarBloques } from '@/lib/atribucion'
 import { minutosCarga } from '@/lib/duracion-carga'
-import { DEPORTES } from '@/lib/disciplinas'
+import { DEPORTES, colorDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 
 // Solo deportes: un brick no es una disciplina, se reparte entre las suyas.
 const DISCIPLINAS = DEPORTES
-
-const DISC_COLORS: Record<string, string> = {
-  'Natacion': '#60a5fa',
-  'Ciclismo': '#facc15',
-  'Carrera': '#4ade80',
-  'Fuerza': '#f87171',
-  'Hibrido': '#f472b6',
-}
-
-const DISC_LABELS: Record<string, string> = {
-  'Natacion': '🏊 Natación',
-  'Ciclismo': '🚴 Ciclismo',
-  'Carrera': '🏃 Carrera',
-  'Fuerza': '🏋️ Fuerza',
-  'Hibrido': '⚡ Híbrido',
-}
 
 function getEtiquetaSemana(lunes: string): string {
   const d = new Date(lunes)
@@ -156,7 +140,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
         <p className="text-gray-400 mb-2">{modo === 'dia' ? 'Día' : 'Semana'} {label}</p>
         {payload.filter((p: any) => p.value > 0).map((p: any) => (
           <div key={p.dataKey} className="flex justify-between gap-4">
-            <span style={{ color: p.fill }}>{DISC_LABELS[p.dataKey] || p.dataKey}</span>
+            <span style={{ color: p.fill }}>{etiquetaConEmoji(p.dataKey)}</span>
             <span className="text-white font-bold">{p.value} UAC</span>
           </div>
         ))}
@@ -185,8 +169,8 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
           <button key={disc} onClick={() => toggleDisc(disc)}
             className={'text-xs px-3 py-1.5 rounded-lg transition border ' +
               (disciplinasActivas.includes(disc) ? 'text-gray-900 border-transparent font-medium' : 'bg-gray-800 text-gray-500 border-gray-700')}
-            style={disciplinasActivas.includes(disc) ? { background: DISC_COLORS[disc], borderColor: DISC_COLORS[disc] } : {}}>
-            {DISC_LABELS[disc]}
+            style={disciplinasActivas.includes(disc) ? { background: colorDisciplina(disc), borderColor: colorDisciplina(disc) } : {}}>
+            {etiquetaConEmoji(disc)}
           </button>
         ))}
         <div className="ml-auto text-xs text-gray-500 flex items-center gap-1">
@@ -202,7 +186,7 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
           <ReferenceLine y={mediaTotal} stroke="#f97316" strokeDasharray="4 4" strokeWidth={1.5} />
           {disciplinasPresentes.filter(d => disciplinasActivas.includes(d)).map((disc, idx, arr) => (
-            <Bar key={disc} dataKey={disc} stackId="carga" fill={DISC_COLORS[disc]}
+            <Bar key={disc} dataKey={disc} stackId="carga" fill={colorDisciplina(disc)}
               radius={idx === arr.length - 1 ? [3,3,0,0] : [0,0,0,0]} />
           ))}
         </BarChart>
@@ -215,8 +199,8 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
           const porcentaje = totalGlobal > 0 ? Math.round((total / totalGlobal) * 100) : 0
           return (
             <div key={disc} className="bg-gray-800 rounded-lg p-2">
-              <p className="text-gray-500 text-xs">{DISC_LABELS[disc]}</p>
-              <p className="font-bold text-sm" style={{ color: DISC_COLORS[disc] }}>{total} UAC</p>
+              <p className="text-gray-500 text-xs">{etiquetaConEmoji(disc)}</p>
+              <p className="font-bold text-sm" style={{ color: colorDisciplina(disc) }}>{total} UAC</p>
               <p className="text-gray-600 text-xs">{porcentaje}% del total</p>
             </div>
           )

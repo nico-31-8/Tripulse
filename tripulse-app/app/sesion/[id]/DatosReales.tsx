@@ -5,11 +5,10 @@ import { mmss } from '@/lib/duracion-carga'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { controlDe } from '@/lib/control-esfuerzo'
 import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
-import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { esDisciplinaDeFuerza, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { esBloque, leerResultado } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 
 // Con qué se controló la serie. Las series antiguas no lo traen: eran RIR, que
 // era lo único que había.
@@ -131,7 +130,7 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
             {tareas.map((t, i) => (
               <div key={t.id} className="bg-gray-900/60 rounded-lg p-3 flex items-center gap-3 flex-wrap">
                 <span className="text-white text-xs font-bold">
-                  {EMOJI[t.disciplina ?? ''] || ''} {i + 1} · {t.disciplina || '—'}
+                  {emojiDisciplina(t.disciplina)} {i + 1} · {etiquetaDisciplina(t.disciplina) || '—'}
                 </span>
                 {t.zona_entrenamiento && <span className="text-gray-500 text-xs">{t.zona_entrenamiento}</span>}
                 <div className="flex gap-4 ml-auto text-xs">

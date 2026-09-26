@@ -35,6 +35,7 @@ import PlanificarMesociclo from '@/components/PlanificarMesociclo'
 import { aplicarBloques, bloquesPorClave, plantillasDe, opcionesDe } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis } from '@/lib/anamnesis-datos'
+import { colorDisciplina } from '@/lib/disciplinas'
 
 const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
 const FASES: FaseMacro[] = ['transicion', 'pg-inicial', 'pg-avanzada', 'pe-inicial', 'pe-avanzada', 'tapering']
@@ -399,7 +400,7 @@ export default function Planificador() {
                   {forma.bloques.filter(b => b.minutos > 0).map(b => (
                     <div key={b.bloque} title={`${b.etiqueta} · ${b.pct}%`}
                       className="flex items-center justify-center text-[11px] font-bold text-gray-950"
-                      style={{ width: `${b.pct}%`, background: COLOR_BLOQUE[b.bloque] }}>
+                      style={{ width: `${b.pct}%`, background: colorDisciplina(b.bloque) }}>
                       {b.pct >= 12 ? `${b.etiqueta} ${b.pct}%` : ''}
                     </div>
                   ))}
@@ -775,10 +776,6 @@ export default function Planificador() {
 // Piezas
 // ------------------------------------------------------------
 const selectCls = 'bg-gray-800 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-1 focus:ring-orange-500 border border-gray-700'
-
-const COLOR_BLOQUE: Record<string, string> = {
-  Natacion: '#3b82f6', Ciclismo: '#eab308', Carrera: '#22c55e', Fuerza: '#a855f7',
-}
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (

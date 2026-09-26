@@ -3,12 +3,10 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { colorDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 
-const DISCIPLINAS = [
-  { key: 'Natacion', icono: '🏊', color: 'text-blue-400' },
-  { key: 'Ciclismo', icono: '🚴', color: 'text-yellow-400' },
-  { key: 'Carrera', icono: '🏃', color: 'text-green-400' },
-]
+/* Las tres que se valoran en el mesociclo. El color y el icono, del catálogo. */
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera'].map(key => ({ key }))
 
 export default function PaginaMesociclo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -162,10 +160,10 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
                         const val = valoraciones.find(v => v.id_deportista === dep.id && v.disciplina === disc.key)
                         return (
                           <div key={disc.key} className="bg-gray-800 rounded-lg p-3">
-                            <p className="text-xs text-gray-500 mb-1">{disc.icono} {disc.key}</p>
+                            <p className="text-xs text-gray-500 mb-1">{emojiDisciplina(disc.key)} {etiquetaDisciplina(disc.key)}</p>
                             {val ? (
                               <>
-                                <p className={`text-xl font-bold ${disc.color}`}>{val.valoracion}<span className="text-gray-500 text-sm font-normal">/5</span></p>
+                                <p className="text-xl font-bold" style={{ color: colorDisciplina(disc.key) }}>{val.valoracion}<span className="text-gray-500 text-sm font-normal">/5</span></p>
                                 {val.notas && <p className="text-gray-500 text-xs mt-1 truncate">{val.notas}</p>}
                               </>
                             ) : (
@@ -200,8 +198,8 @@ export default function PaginaMesociclo({ params }: { params: Promise<{ id: stri
                       return (
                         <div key={disc.key} className="bg-gray-800 rounded-xl p-4">
                           <div className="flex items-center gap-2 mb-3">
-                            <span>{disc.icono}</span>
-                            <span className={`font-semibold text-sm ${disc.color}`}>{disc.key}</span>
+                            <span>{emojiDisciplina(disc.key)}</span>
+                            <span className="font-semibold text-sm" style={{ color: colorDisciplina(disc.key) }}>{etiquetaDisciplina(disc.key)}</span>
                             <span className="ml-auto text-orange-400 font-bold text-lg">{val.valoracion}/5</span>
                           </div>
                           <input

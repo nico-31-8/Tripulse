@@ -12,7 +12,7 @@ import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } fro
 import type { ChipZona } from '@/lib/chips'
 import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
 import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
-import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { chipDisciplina, claseDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 /* Tipo propio para marcar «lo que se arrastra es una sesión ya colocada».
    Va en minúsculas porque el navegador normaliza los tipos a minúscula: si se
@@ -22,17 +22,6 @@ const esArrastreDeSesion = (e: React.DragEvent) => e.dataTransfer.types.includes
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
-
-const COLOR_DISC: Record<string, string> = {
-  Natacion: 'bg-blue-900 text-blue-300', Natación: 'bg-blue-900 text-blue-300',
-  Ciclismo: 'bg-yellow-900 text-yellow-300',
-  Carrera: 'bg-green-900 text-green-300',
-  Fuerza: 'bg-red-900 text-red-300',
-  Brick: 'bg-purple-900 text-purple-300',
-}
-const DISC_CORTO: Record<string, string> = { Natacion: 'Nat', Natación: 'Nat', Ciclismo: 'Cic', Carrera: 'Car', Fuerza: 'Fue', Brick: 'Brk' }
-// Para leer de un vistazo la secuencia de un brick en la tarjeta.
-const EMOJI_DISC: Record<string, string> = { Natacion: '🏊', Natación: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 
 // Color de texto legible (oscuro/blanco) según la luminancia del fondo del chip.
 function txtSobre(hex: string): string {
@@ -654,7 +643,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                       style={{ backgroundColor: c.color + '20', borderColor: sel ? '#fb923c' : c.color, opacity: draggingChip === chip.id ? 0.4 : 1, boxShadow: sel ? '0 0 0 2px #fb923c' : undefined }}
                       title={c.nombre + ' · clic para seleccionar · arrástrala a un día'}>
                       <span className="font-bold text-sm" style={{ color: c.color }}>{chip.zona}</span>
-                      <span className="text-xs text-gray-400">{DISC_CORTO[chip.disciplina] || chip.disciplina}</span>
+                      <span className="text-xs text-gray-400">{cortoDisciplina(chip.disciplina)}</span>
                     </div>
                   )
                 }
@@ -670,7 +659,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                     style={{ borderColor: '#f97316', backgroundColor: '#f9731612', opacity: draggingChip === dragId ? 0.4 : 1 }}
                     title="Sesión compleja · arrástrala a un día">
                     <div className="flex items-center justify-between gap-3 mb-1.5">
-                      <span className="font-bold text-orange-400 uppercase tracking-wide" style={{ fontSize: 10 }}>Compleja · {DISC_CORTO[disc] || disc}</span>
+                      <span className="font-bold text-orange-400 uppercase tracking-wide" style={{ fontSize: 10 }}>Compleja · {cortoDisciplina(disc)}</span>
                       <span className="flex items-center gap-2">
                         <button onClick={e => { e.stopPropagation(); separar(u.grupo!) }}
                           className="text-gray-500 hover:text-orange-300 leading-none" style={{ fontSize: 13 }} title="Separar de nuevo">⊗</button>
@@ -758,10 +747,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                       style={{ opacity: draggingSesion === s.id ? 0.4 : 1 }}>
                       <button
                         onClick={() => router.push('/sesion/' + s.id)}
-                        className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
+                        className={'w-full text-left rounded-xl p-2.5 transition hover:opacity-90 cursor-grab active:cursor-grabbing ' + chipDisciplina(s.disciplina)}>
                         <div className="flex items-center justify-between gap-1.5">
                           <p className="text-xs font-bold truncate">
-                            {s.disciplina === 'Brick' ? '🔀 Brick' : s.disciplina}
+                            {s.disciplina === 'Brick' ? etiquetaConEmoji('Brick') : etiquetaDisciplina(s.disciplina)}
                             {s.origen === 'deportista' && <span className="ml-1" title="Añadida por el atleta">🙋</span>}
                           </p>
                           {s._zonas?.length > 0 && (
@@ -780,7 +769,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                                     {/* La flecha marca la transición: es lo que convierte dos bloques en un brick. */}
                                     {i > 0 && s.disciplina === 'Brick' && <span className="text-[9px] opacity-50">→</span>}
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ background: col, color: txtSobre(col) }}>
-                                      {s.disciplina === 'Brick' && EMOJI_DISC[b.disciplina] ? EMOJI_DISC[b.disciplina] + ' ' : ''}{b.zona}
+                                      {s.disciplina === 'Brick' && emojiDisciplina(b.disciplina) ? emojiDisciplina(b.disciplina) + ' ' : ''}{b.zona}
                                     </span>
                                   </span>
                                 )
@@ -833,8 +822,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 if (!n) return null
                 return (
                   <div key={d} className="flex items-center gap-1.5">
-                    <div className={'w-2 h-2 rounded-full ' +
-                      (d.includes('Nat') ? 'bg-blue-400' : d === 'Ciclismo' ? 'bg-yellow-400' : d === 'Carrera' ? 'bg-green-400' : d === 'Hibrido' ? 'bg-pink-400' : 'bg-red-400')} />
+                    <div className={'w-2 h-2 rounded-full ' + claseDisciplina(d)} />
                     <span className="text-gray-400 text-xs">{etiquetaDisciplina(d)}: <span className="text-white font-medium">{n}</span></span>
                   </div>
                 )

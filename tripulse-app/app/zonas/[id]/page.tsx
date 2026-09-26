@@ -5,6 +5,12 @@ import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { etiquetaConEmoji } from '@/lib/disciplinas'
+
+/* La pestaña viene en minúsculas (es lo que va en la URL) y la disciplina del
+   catálogo lleva mayúscula: esto traduce una en la otra. */
+const discDeTab = (t: string): string =>
+  t === 'carrera' ? 'Carrera' : t === 'natacion' ? 'Natacion' : t === 'ciclismo' ? 'Ciclismo' : 'Fuerza'
 
 function TablaZonas2({ disciplina, tests, fcMax }: { disciplina: string; tests: { vam?: number | null; ftp?: number | null; css?: number | null }; fcMax: number }) {
   return (
@@ -253,10 +259,11 @@ export default function PaginaZonas({ params }: { params: Promise<{ id: string }
           </div>
           <p className="text-gray-400 text-sm">Calculadas a partir de los tests mas recientes · FC max: {fcMax || '—'} ppm</p>
         </div>
+        {/* La pestaña en minúsculas es de la URL; el nombre y el icono, del catálogo. */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {tabsList.map(t => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-              {t === 'carrera' ? '🏃 Carrera' : t === 'natacion' ? '🏊 Natacion' : t === 'ciclismo' ? '🚴 Ciclismo' : '🏋️ Fuerza'}
+              {etiquetaConEmoji(discDeTab(t))}
             </button>
           ))}
         </div>

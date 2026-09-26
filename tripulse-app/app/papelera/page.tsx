@@ -5,12 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { soloPapelera } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-
-const COLOR_DISC: Record<string, string> = {
-  Natacion: 'bg-blue-900 text-blue-300', Natación: 'bg-blue-900 text-blue-300',
-  Ciclismo: 'bg-yellow-900 text-yellow-300', Carrera: 'bg-green-900 text-green-300',
-  Fuerza: 'bg-red-900 text-red-300', Brick: 'bg-purple-900 text-purple-300',
-}
+import { chipDisciplina } from '@/lib/disciplinas'
 
 export default function PapeleraPage() {
   const router = useRouter()
@@ -103,7 +98,7 @@ export default function PapeleraPage() {
           <div className="flex flex-col gap-3">
             {sesiones.map(s => (
               <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-4">
-                <span className={'text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ' + (COLOR_DISC[s.disciplina] || 'bg-gray-700 text-gray-300')}>
+                <span className={'text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ' + chipDisciplina(s.disciplina)}>
                   {s.disciplina}
                 </span>
                 <div className="flex-1 min-w-0">

@@ -23,7 +23,7 @@ import {
   guardarRegistroResistencia, actualizarRegistroResistencia, type BloqueRegistro,
 } from '@/lib/registro-resistencia'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
-import { esDisciplinaDeFuerza, DISCIPLINAS_DE_FUERZA } from '@/lib/disciplinas'
+import { esDisciplinaDeFuerza, DISCIPLINAS_DE_FUERZA, etiquetaConEmoji } from '@/lib/disciplinas'
 
 /* Aquí el atleta apunta lo que entrena por su cuenta, sea lo que sea.
    Es UNA sola puerta a propósito. Antes había dos: un modal que solo guardaba
@@ -58,12 +58,7 @@ const DESCANSO_POR_DEFECTO = 120
    distinta, y la atribución por bloque necesita eso para repartir la carga.
    Con una sola disciplina por sesión saldría todo como «Brick» y no contaría
    en ninguna. */
-const DISCIPLINAS = [
-  { v: 'Natacion', et: '🏊 Natación' },
-  { v: 'Ciclismo', et: '🚴 Ciclismo' },
-  { v: 'Carrera', et: '🏃 Carrera' },
-  { v: 'Fuerza', et: '🏋️ Fuerza' },
-]
+const DISCIPLINAS = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza'].map(v => ({ v, et: etiquetaConEmoji(v) }))
 
 const SIN_TESTS: Tests = { vam: 0, ftp: 0, css: 0 }
 

@@ -21,6 +21,8 @@
 // el móvil eso es pelearse con el cursor. Se inserta SOLO la unidad y el cursor
 // va delante, así que escribes «4:30» y queda «4:30 /km» sin tocar nada más.
 
+import { normalizar } from './disciplinas'
+
 export interface AtajoIntensidad {
   /** Lo que se lee en el botón. */
   etiqueta: string
@@ -68,10 +70,9 @@ const PORCENTAJE: Record<string, AtajoIntensidad> = {
   Natacion:  { etiqueta: '% CSS', texto: '% CSS', cursor: 0, ayuda: 'Porcentaje de tu CSS: 95–100% CSS' },
 }
 
-/** «Natación» y «Natacion» conviven en la base; aquí se tratan igual. */
+/** «Natación» y «Natacion» conviven en la base; la regla la pone el catálogo. */
 function normal(disciplina: string | null | undefined): string {
-  const d = String(disciplina || '').trim()
-  return d === 'Natación' ? 'Natacion' : d
+  return normalizar(String(disciplina || '').trim())
 }
 
 /**

@@ -14,6 +14,46 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 26 de septiembre de 2026 · Cada deporte, de su color en toda la app
+
+**Qué vas a notar.** El mismo deporte se pintaba de colores distintos según la
+pantalla, y algunos iconos y nombres tampoco cuadraban. Ahora cada deporte tiene
+**un color, un icono y un nombre**, los mismos en el calendario, en las
+gráficas, en el dibujo y en la ficha de la sesión.
+
+Así estaba antes, con ejemplos reales:
+
+- La **natación** tenía **cuatro azules** distintos según dónde la miraras.
+- El **brick** era naranja en los chips del dibujo y morado dos líneas más
+  abajo, en la misma pantalla.
+- La **carrera** salía **roja** en la ficha de una actividad del reloj y verde
+  en todo lo demás.
+- En el calendario, el punto de una sesión era de un azul en la vista de mes y
+  de otro en la de semana.
+- El **híbrido salía gris** («no sé qué es esto») en la papelera y en la vista
+  de la semana: cuando se añadió, a esos dos sitios se les olvidó.
+- La **fuerza** era 🏋️ en casi todas las pantallas y 💪 en «Mis tests» y en el
+  resumen de la semana del dibujo.
+- El nombre salía **«Natacion» sin tilde** en el resumen de la semana del dibujo
+  y en la pestaña de zonas del deportista.
+- En la ficha del deportista, cualquier deporte que no fuera natación o ciclismo
+  se etiquetaba como **«🏃 Carrera»**, aunque fuera otro.
+
+**Lo que cambia de lo que ya usabas.** Algunos tonos se mueven, porque ahora
+todos siguen al mismo patrón: el **ciclismo** pasa a un amarillo un poco más
+cálido, la **carrera** es verde en todas partes y la **fuerza**, roja. Y la
+etiqueta del deporte en «Mis sesiones» y en la pantalla de dirigir pasa a ser la
+misma etiqueta suave que ya veías en el resto de la app, en vez de un color
+fuerte con letra blanca.
+
+**Por qué importa más allá de la estética.** Cuando se añadió el híbrido hubo
+que ir pantalla por pantalla metiéndolo, y en las que se olvidaron salía gris
+sin que nada avisara. Ahora el color y el icono se deciden en un solo sitio, así
+que el próximo deporte que se añada aparece bien en toda la aplicación desde el
+primer día.
+
+---
+
 ## 25 de septiembre de 2026 · Buscar un ejercicio sin saber su grupo
 
 Para poner un ejercicio había que acertar primero el **grupo**, y eso no

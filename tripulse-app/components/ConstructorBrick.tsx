@@ -13,9 +13,8 @@ import {
   type BrickBloque, type BrickValor,
 } from '@/lib/bricks'
 import { calcularFactorBrick, clavePar, type FactorBrickResultado } from '@/lib/sicat-brick'
+import { emojiDisciplina, etiquetaConEmoji, etiquetaDisciplina } from '@/lib/disciplinas'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃' }
-const NOMBRE: Record<string, string> = { Natacion: 'Natación', Ciclismo: 'Ciclismo', Carrera: 'Carrera' }
 
 // Transiciones para N bloques: una entre cada par consecutivo (eso ES el brick).
 function transicionesPara(bloques: BrickBloque[], previas: BrickValor['transiciones']): BrickValor['transiciones'] {
@@ -84,14 +83,14 @@ export default function ConstructorBrick({ valor, onChange, depId = null }: Prop
           {valor.bloques.map((b, i) => (
             <span key={i} className="flex items-center gap-1.5 bg-gray-800 border border-gray-600 rounded-lg pl-2 pr-1 py-1.5 text-xs text-white">
               <span className="text-gray-500 font-bold">{i + 1}</span>
-              <span>{EMOJI[b.disciplina]} {NOMBRE[b.disciplina] || b.disciplina}</span>
+              <span>{etiquetaConEmoji(b.disciplina)}</span>
               <button type="button" onClick={() => quitar(i)} className="text-gray-500 hover:text-red-400 px-1 leading-none" aria-label="Quitar bloque">×</button>
             </span>
           ))}
           {DISCIPLINAS_BRICK.map(d => (
             <button type="button" key={d} onClick={() => añadir(d)}
               className="text-xs px-2.5 py-1.5 rounded-lg border border-dashed border-gray-600 text-gray-400 hover:border-orange-500 hover:text-orange-400 transition">
-              + {EMOJI[d]} {NOMBRE[d]}
+              + {etiquetaConEmoji(d)}
             </button>
           ))}
         </div>
@@ -106,7 +105,7 @@ export default function ConstructorBrick({ valor, onChange, depId = null }: Prop
           {ejemplos.length > 0 ? (
             <>
               <p className="text-gray-400 text-xs mb-2">
-                Ejemplos para {secuencia.map(d => NOMBRE[d]).join(' → ').toLowerCase()} · o edítalo libremente
+                Ejemplos para {secuencia.map(d => etiquetaDisciplina(d)).join(' → ').toLowerCase()} · o edítalo libremente
               </p>
               <div className="flex gap-2 flex-wrap">
                 {ejemplos.map(p => (
@@ -179,8 +178,8 @@ export default function ConstructorBrick({ valor, onChange, depId = null }: Prop
                 {/* Bloque */}
                 <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-2.5 py-2 border border-gray-700">
                   <span className="text-gray-500 text-xs font-bold w-3">{i + 1}</span>
-                  <span className="text-sm">{EMOJI[b.disciplina]}</span>
-                  <span className="text-white text-xs flex-1 truncate">{NOMBRE[b.disciplina] || b.disciplina}</span>
+                  <span className="text-sm">{emojiDisciplina(b.disciplina)}</span>
+                  <span className="text-white text-xs flex-1 truncate">{etiquetaDisciplina(b.disciplina)}</span>
                   <input type="number" min={1} value={b.minutos}
                     onChange={e => editar(i, 'minutos', Number(e.target.value))}
                     className="w-14 bg-gray-900 text-white px-1.5 py-1 rounded border border-gray-700 outline-none focus:border-orange-500 text-xs" />

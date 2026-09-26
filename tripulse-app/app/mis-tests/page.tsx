@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { TablaZonas2 } from '@/components/TablaZonas2'
+import { colorDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 
 export default function MisTests() {
   const router = useRouter()
@@ -32,11 +33,13 @@ export default function MisTests() {
     cargar()
   }, [])
 
+  /* `disc` es la disciplina del catálogo, que es quien pone el color; `key`
+     es la pestaña, en minúsculas, como se guarda en el estado. */
   const PESTANAS = [
-    { key: 'carrera', label: '🏃 Carrera', color: 'text-green-400' },
-    { key: 'natacion', label: '🏊 Natación', color: 'text-blue-400' },
-    { key: 'ciclismo', label: '🚴 Ciclismo', color: 'text-yellow-400' },
-    { key: 'fuerza', label: '💪 Fuerza', color: 'text-red-400' },
+    { key: 'carrera', disc: 'Carrera' },
+    { key: 'natacion', disc: 'Natacion' },
+    { key: 'ciclismo', disc: 'Ciclismo' },
+    { key: 'fuerza', disc: 'Fuerza' },
   ]
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
@@ -59,8 +62,9 @@ export default function MisTests() {
           {PESTANAS.map(p => (
             <button key={p.key} onClick={() => setPestana(p.key as any)}
               className={'px-4 py-2.5 text-sm font-medium transition border-b-2 ' +
-                (pestana === p.key ? 'border-orange-500 ' + p.color : 'border-transparent text-gray-400 hover:text-white')}>
-              {p.label}
+                (pestana === p.key ? 'border-orange-500' : 'border-transparent text-gray-400 hover:text-white')}
+              style={pestana === p.key ? { color: colorDisciplina(p.disc) } : undefined}>
+              {etiquetaConEmoji(p.disc)}
             </button>
           ))}
         </div>

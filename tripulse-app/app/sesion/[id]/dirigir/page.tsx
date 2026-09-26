@@ -33,8 +33,8 @@ import {
 
 import { vecesDe, repeticionTexto } from '@/lib/bloques-tarea'
 import { esBloque, leerConfig, textoFormato, type Formato } from '@/lib/bloque-formato'
+import { emojiDisciplina } from '@/lib/disciplinas'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', 'Natación': '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
 /** Qué se le pidió a esta tarea, para leerlo de un vistazo. */
 function objetivoDe(t: any): string {
@@ -209,7 +209,7 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
       <div className="max-w-lg mx-auto px-3.5 py-4 flex flex-col gap-3">
 
         <div className="tp-card p-[13px_15px] flex items-center gap-3">
-          <span className="text-2xl leading-none flex-none">{EMOJI[sesion.disciplina] || '🏃'}</span>
+          <span className="text-2xl leading-none flex-none">{emojiDisciplina(sesion.disciplina) || '🏃'}</span>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-bold tracking-tight m-0 truncate">{nombre || 'Sesión'}</p>
             <p className="text-[11.5px] text-gray-500 m-0">

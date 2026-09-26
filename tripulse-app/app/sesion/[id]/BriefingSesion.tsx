@@ -30,8 +30,8 @@ import { rpeDeSesion } from '@/lib/rpe-sesion'
 import { repeticionTexto } from '@/lib/bloques-tarea'
 import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
+import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 
-const EMOJI: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Brick: '🔀', Hibrido: '⚡' }
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
 // delante si son varias («4 × 400 m»).
@@ -223,7 +223,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         {/* Qué toca */}
         <div className="flex flex-col items-center text-center gap-1">
           <span className="text-[12.5px] font-bold tracking-[.1em] uppercase text-blue-300">
-            {EMOJI[sesion.disciplina] || ''} {sesion.disciplina}
+            {emojiDisciplina(sesion.disciplina)} {etiquetaDisciplina(sesion.disciplina)}
           </span>
           <span className="text-[13px] text-gray-500">{fechaLarga(sesion.fecha_sesion)}</span>
           {minutos ? (
@@ -479,7 +479,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                     return (
                       <div key={t.id} className="bg-gray-800 rounded-lg p-3 flex flex-col gap-2.5">
                         <p className="text-white text-xs font-bold">
-                          {EMOJI[t.disciplina] || ''} {i + 1} · {t.disciplina || '—'}
+                          {emojiDisciplina(t.disciplina)} {i + 1} · {etiquetaDisciplina(t.disciplina) || '—'}
                           {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5">{t.zona_entrenamiento}</span>}
                         </p>
                         <div>

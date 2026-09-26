@@ -10,30 +10,12 @@ import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
+import { chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
 
 function secAMinSeg(seg: number): string {
   const m = Math.floor(seg / 60)
   const s = Math.round(seg % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-const colorDisciplina = (d: string) => {
-  if (!d) return 'bg-gray-700 text-gray-300'
-  if (d.includes('Nat')) return 'bg-blue-900 text-blue-300'
-  if (d === 'Ciclismo') return 'bg-yellow-900 text-yellow-300'
-  if (d === 'Carrera') return 'bg-green-900 text-green-300'
-  if (d === 'Fuerza') return 'bg-red-900 text-red-300'
-  if (d === 'Hibrido') return 'bg-pink-900 text-pink-300'
-  return 'bg-purple-900 text-purple-300'
-}
-
-const colorBar = (d: string) => {
-  if (d.includes('Nat')) return 'bg-blue-500'
-  if (d === 'Ciclismo') return 'bg-yellow-500'
-  if (d === 'Carrera') return 'bg-green-500'
-  if (d === 'Fuerza') return 'bg-red-500'
-  if (d === 'Hibrido') return 'bg-pink-500'
-  return 'bg-purple-500'
 }
 
 export default function MisAnalisis() {
@@ -130,10 +112,10 @@ export default function MisAnalisis() {
                       className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left w-full">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                          <div className={'w-1 h-12 rounded-full flex-shrink-0 ' + colorBar(s.disciplina)} />
+                          <div className={'w-1 h-12 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(s.disciplina)}>{s.disciplina}</span>
+                              <span className={'text-xs px-2 py-0.5 rounded-full ' + chipDisciplina(s.disciplina)}>{s.disciplina}</span>
                               <span className="text-gray-400 text-xs">{s.fecha_sesion}</span>
                             </div>
                             <p className="text-gray-300 text-sm">
@@ -161,7 +143,7 @@ export default function MisAnalisis() {
             {/* Cabecera sesión seleccionada */}
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
               <div className="flex items-center gap-3 mb-4">
-                <span className={'text-xs px-2 py-1 rounded-full font-medium ' + colorDisciplina(sesionSel.disciplina)}>{sesionSel.disciplina}</span>
+                <span className={'text-xs px-2 py-1 rounded-full font-medium ' + chipDisciplina(sesionSel.disciplina)}>{sesionSel.disciplina}</span>
                 <span className="text-gray-400 text-sm">{sesionSel.fecha_sesion}</span>
                 <span className="text-green-400 text-xs bg-green-900 px-2 py-0.5 rounded-full">Realizada</span>
               </div>
@@ -211,7 +193,7 @@ export default function MisAnalisis() {
                           <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full">{t.zona_entrenamiento}</span>
                         )}
                         {t.disciplina && (
-                          <span className={'text-xs px-2 py-0.5 rounded-full ' + colorDisciplina(t.disciplina)}>{t.disciplina}</span>
+                          <span className={'text-xs px-2 py-0.5 rounded-full ' + chipDisciplina(t.disciplina)}>{t.disciplina}</span>
                         )}
                         {t.series && <span className="text-gray-400 text-xs ml-auto">{hayBloques(t) ? bloquesDe(t) + ' × ' : ''}{t.series} series</span>}
                       </div>

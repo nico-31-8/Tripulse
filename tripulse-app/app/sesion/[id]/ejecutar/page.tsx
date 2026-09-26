@@ -14,11 +14,10 @@ import { conTecnica } from '@/lib/tecnica'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
 
-const EMOJI_BLOQUE: Record<string, string> = { Natacion: '🏊', Ciclismo: '🚴', Carrera: '🏃', Fuerza: '🏋️', Hibrido: '⚡' }
 import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
-import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { esDisciplinaDeFuerza, chipDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
@@ -402,13 +401,6 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
   if (!sesion) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Sesión no encontrada</div>
 
-  const colorDisciplina = (d: string) => {
-    if (d?.includes('Nat')) return 'bg-blue-600'
-    if (d === 'Ciclismo') return 'bg-yellow-600'
-    if (d === 'Carrera') return 'bg-green-600'
-    return 'bg-orange-600'
-  }
-
   const getTipoMedicion = (tarea: TareaEjec) => {
     if (tarea.p_duracion?.[0]) return 'duracion'
     if (tarea.p_distancia?.[0]) return 'distancia'
@@ -437,7 +429,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
 
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
         <div className="mb-6">
-          <span className={'text-xs px-3 py-1 rounded-full text-white font-medium ' + colorDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
+          <span className={'text-xs px-3 py-1 rounded-full font-medium ' + chipDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
           <h2 className="text-2xl font-bold mt-2">{sesion.fecha_sesion}</h2>
           <div className="flex gap-4 text-gray-400 text-sm mt-1">
             {sesion.duracion_minutos && <span>⏱ {sesion.duracion_minutos} min</span>}
@@ -946,7 +938,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                 return (
                   <div key={t.id} className="bg-gray-900 rounded-lg p-4 flex flex-col gap-3">
                     <p className="text-white text-sm font-bold">
-                      {EMOJI_BLOQUE[t.disciplina ?? ''] || ''} {i + 1} · {t.disciplina || '—'}
+                      {emojiDisciplina(t.disciplina)} {i + 1} · {etiquetaDisciplina(t.disciplina) || '—'}
                       {t.zona_entrenamiento && <span className="text-gray-500 font-medium ml-1.5 text-xs">{t.zona_entrenamiento}</span>}
                     </p>
                     <div>

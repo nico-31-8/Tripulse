@@ -16,6 +16,7 @@ import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
 import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, progresionACWR, HISTORIA_MINIMA_FORMA, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { colorDisciplina, DEPORTES, etiquetaDisciplina } from '@/lib/disciplinas'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -422,30 +423,25 @@ export default function CargaPage() {
                       <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
                       <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
                       <Bar dataKey="planificada" fill="#ffffff" fillOpacity={0.08} name="Planificada" radius={[2,2,0,0]} />
-                      <Bar dataKey="Natacion" stackId="real" fill="#60a5fa" name="Natación" radius={[0,0,0,0]} />
-                      <Bar dataKey="Ciclismo" stackId="real" fill="#fbbf24" name="Ciclismo" radius={[0,0,0,0]} />
-                      <Bar dataKey="Carrera" stackId="real" fill="#4ade80" name="Carrera" radius={[0,0,0,0]} />
-                      <Bar dataKey="Fuerza" stackId="real" fill="#f87171" name="Fuerza" radius={[0,0,0,0]} />
-                      <Bar dataKey="Hibrido" stackId="real" fill="#f472b6" name="Híbrido" radius={[2,2,0,0]} />
+                      <Bar dataKey="Natacion" stackId="real" fill={colorDisciplina('Natacion')} name="Natación" radius={[0,0,0,0]} />
+                      <Bar dataKey="Ciclismo" stackId="real" fill={colorDisciplina('Ciclismo')} name="Ciclismo" radius={[0,0,0,0]} />
+                      <Bar dataKey="Carrera" stackId="real" fill={colorDisciplina('Carrera')} name="Carrera" radius={[0,0,0,0]} />
+                      <Bar dataKey="Fuerza" stackId="real" fill={colorDisciplina('Fuerza')} name="Fuerza" radius={[0,0,0,0]} />
+                      <Bar dataKey="Hibrido" stackId="real" fill={colorDisciplina('Hibrido')} name="Híbrido" radius={[2,2,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* Resumen del mes */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { key: 'Natacion', label: 'Natación', color: 'text-blue-400' },
-                    { key: 'Ciclismo', label: 'Ciclismo', color: 'text-yellow-400' },
-                    { key: 'Carrera', label: 'Carrera', color: 'text-green-400' },
-                    { key: 'Fuerza', label: 'Fuerza', color: 'text-red-400' },
-                    { key: 'Hibrido', label: 'Híbrido', color: 'text-pink-400' },
-                  ].filter(d => d.key !== 'Hibrido' || datosDiarios.some(dia => dia.Hibrido > 0)).map(d => {
+                  {DEPORTES.map(key => ({ key, label: etiquetaDisciplina(key) }))
+                    .filter(d => d.key !== 'Hibrido' || datosDiarios.some(dia => dia.Hibrido > 0)).map(d => {
                     const total = datosDiarios.reduce((acc, dia) => acc + (dia[d.key] || 0), 0)
                     const diasActivos = datosDiarios.filter(dia => dia[d.key] > 0).length
                     return (
                       <div key={d.key} className="tp-card p-4">
                         <p className="text-xs text-gray-500 mb-1">{d.label}</p>
-                        <p className={'text-xl font-bold ' + d.color}>{Math.round(total)} UA</p>
+                        <p className="text-xl font-bold" style={{ color: colorDisciplina(d.key) }}>{Math.round(total)} UA</p>
                         <p className="text-xs text-gray-600 mt-1">{diasActivos} días activos</p>
                       </div>
                     )

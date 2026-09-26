@@ -37,7 +37,7 @@ import { fotoDelDibujo, fotoDelPlan, loPendiente, type FotoPlan } from '@/lib/pl
 import IconoDisciplina from '@/components/IconoDisciplina'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
-import { esDisciplinaDeFuerza, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { colorDisciplina, cortoDisciplina, DEPORTES, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -50,12 +50,6 @@ const COLOR_ZONA: Record<string, string> = {
   ...Object.fromEntries(ZONAS_CLASICAS.map(z => [z.sigla, z.color])),
   ...Object.fromEntries(ZONAS_RESISTENCIA.map(z => [z.sigla, z.color])),
   ...Object.fromEntries(ZONAS_FUERZA.map(z => [z.sigla, z.color])),
-}
-/* El color de cada disciplina, el mismo del filtro de abajo. Lo usan los chips
-   «sin zona»: sin zona no hay color de zona, y es la disciplina la que dice si
-   la sesión es de fuerza o de resistencia. */
-const COLOR_DISC_CHIP: Record<string, string> = {
-  Natacion: '#3B82F6', Natación: '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#F97316', Hibrido: '#EC4899',
 }
 // Nombre completo de una zona (para tooltip), busca en resistencia y fuerza.
 const NOMBRE_ZONA = (sigla: string): string =>
@@ -2370,7 +2364,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                          se habían creado, o sea en ninguno. */
                       const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(sz.disciplina)))
                       const C_ZONA = COLOR_ZONA
-                      const DISC_LABEL: Record<string,string> = { Natacion:'Nat', Natación:'Nat', Ciclismo:'Cic', Carrera:'Car', Fuerza:'Fue', Brick:'Brk' }
                       return (
                         <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
@@ -2387,22 +2380,22 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               title={'Sesión de ' + (esDisciplinaDeFuerza(sz.disciplina) ? etiquetaDisciplina(sz.disciplina).toLowerCase() : 'resistencia' + (sz.disciplina ? ' (' + sz.disciplina.toLowerCase() + ')' : '')) + ' sin zona. Pulsa para ponérsela.'}
                               onClick={e => { e.stopPropagation(); if (sz.id_sesion) router.push('/sesion/' + sz.id_sesion) }}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
-                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af'} />}
+                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={colorDisciplina(sz.disciplina)} />}
                               <span style={{ fontSize: showDisc ? 8 : 7.5, fontWeight: 700, color: '#d1d5db' }}>{showDisc ? 'sin zona' : '?'}</span>
                               {!showIcono && (
-                                <span style={{ fontSize: 7, fontWeight: 700, color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af' }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>
+                                <span style={{ fontSize: 7, fontWeight: 700, color: colorDisciplina(sz.disciplina) }}>{cortoDisciplina(sz.disciplina)}</span>
                               )}
                             </div>
                           ) : (
                             <div key={sz.id}
                               className="flex-shrink-0 flex items-center justify-center gap-1 px-1 rounded text-white font-bold border relative group/sq overflow-hidden"
                               style={{ width: semanaW - 6, height: chipH, marginTop: abreGrupo(sesEsta, k) ? 5 : undefined, backgroundColor: (C_ZONA[sz.zona] || '#888') + '30', borderColor: C_ZONA[sz.zona] || '#888', fontSize: 8, opacity: sz.hecho ? 0.55 : 1, lineHeight: 1 }}
-                              title={sz.hecho ? 'Ya programada en el calendario. Clic derecho para borrarla.' : (showDisc ? '' : (DISC_LABEL[sz.disciplina] || sz.disciplina))}
+                              title={sz.hecho ? 'Ya programada en el calendario. Clic derecho para borrarla.' : (showDisc ? '' : cortoDisciplina(sz.disciplina))}
                               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); quitarChip(sz) }}>
                               {sz.hecho && <span className="absolute -top-1 -right-1 text-green-400 leading-none" style={{ fontSize: 9 }}>✓</span>}
-                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af'} />}
+                              {showIcono && <IconoDisciplina disciplina={sz.disciplina} tam={iconoTam} color={colorDisciplina(sz.disciplina)} />}
                               <span style={{ fontSize: showDisc ? 9 : 8, fontWeight: 700, flex: 1, textAlign: 'center' }}>{sz.zona}</span>
-                              {showDisc && <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{DISC_LABEL[sz.disciplina] || sz.disciplina}</span>}
+                              {showDisc && <span style={{ fontSize: 7, color: C_ZONA[sz.zona] || '#888', fontWeight: 600 }}>{cortoDisciplina(sz.disciplina)}</span>}
                               <span className="absolute inset-0 bg-red-500/0 group-hover/sq:bg-red-500/10 rounded transition pointer-events-none" />
                             </div>
                           ))}
@@ -2458,7 +2451,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {/* Leyenda disciplinas con filtro */}
                   <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-800/50 flex-wrap">
                     <span className="text-gray-600 text-xs mr-1">Filtro:</span>
-                    {[{l:'Natación',k:'Natacion',c:'#3B82F6'},{l:'Ciclismo',k:'Ciclismo',c:'#EAB308'},{l:'Carrera',k:'Carrera',c:'#22C55E'},{l:'Fuerza',k:'Fuerza',c:'#EF4444'},{l:'Híbrido',k:'Hibrido',c:'#EC4899'}].map(d => {
+                    {DEPORTES.map(k => ({ l: etiquetaDisciplina(k), k, c: colorDisciplina(k) })).map(d => {
                       const act = filtroDisc.includes(d.k)
                       return (
                         <button key={d.k} onClick={() => setFiltroDisc(prev => prev.includes(d.k) ? prev.filter(x => x !== d.k) : [...prev, d.k])}
@@ -2507,7 +2500,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           <div className="grid grid-cols-2 gap-1.5">
                             {/* Solo las que programa este deportista (su ficha). */}
                             {paraProgramar(dep, TODAS, zonaSelDisc).map(d => {
-                              const C: Record<string,string> = {Natacion:'#3B82F6',Ciclismo:'#EAB308',Carrera:'#22C55E',Fuerza:'#EF4444',Brick:'#A855F7',Hibrido:'#EC4899'}
                               const sel = zonaSelDisc === d
                               // Cambiar de deporte vacía lo marcado: las zonas de fuerza no
                               // valen para resistencia, así que arrastrar la selección de un
@@ -2515,8 +2507,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                               return (
                                 <button key={d} onClick={() => { setZonaSelDisc(d); setZonasSel([]) }}
                                   className={'py-2 rounded-lg text-xs font-medium transition border ' + (d === 'Brick' ? 'col-span-2' : '')}
-                                  style={sel ? {backgroundColor:C[d]+'40',borderColor:C[d],color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
-                                  {d === 'Brick' ? '🔀 Brick' : etiquetaDisciplina(d)}
+                                  style={sel ? {backgroundColor:colorDisciplina(d)+'40',borderColor:colorDisciplina(d),color:'white'} : {backgroundColor:'#1f2937',borderColor:'#374151',color:'#9ca3af'}}>
+                                  {etiquetaConEmoji(d)}
                                 </button>
                               )
                             })}
@@ -2626,7 +2618,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <div className="flex flex-wrap gap-1.5">
                               {sesZonas.filter(sz => sz.semana === popupZona.semana).map(sz => {
                                 const CZ = COLOR_ZONA
-                                const DL: Record<string,string> = {Natacion:'Nat',Natación:'Nat',Ciclismo:'Cic',Carrera:'Car',Fuerza:'Fue',Brick:'Brk'}
                                 const vacio = sz.sinZona || !sz.zona
                                 return (
                                   <div key={sz.id} className={'flex items-center gap-1 rounded-lg px-2 py-1 border text-xs ' + (vacio ? 'border-dashed' : '')}
@@ -2634,8 +2625,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                                     {vacio
                                       ? <span className="text-gray-300 italic">sin zona</span>
                                       : <span className="text-white font-bold">{sz.zona}</span>}
-                                    <span style={vacio ? { color: COLOR_DISC_CHIP[sz.disciplina] || '#9ca3af', fontWeight: 700 } : undefined}
-                                      className={vacio ? '' : 'text-gray-400'}>{DL[sz.disciplina] || sz.disciplina}</span>
+                                    <span style={vacio ? { color: colorDisciplina(sz.disciplina), fontWeight: 700 } : undefined}
+                                      className={vacio ? '' : 'text-gray-400'}>{cortoDisciplina(sz.disciplina)}</span>
                                     <button onClick={() => quitarChip(sz)} className="text-gray-600 hover:text-red-400 transition ml-0.5">×</button>
                                   </div>
                                 )
@@ -2677,11 +2668,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   ) : (
                     <div className="grid grid-cols-4 gap-3">
                       {([
-                        { discs: ['Natacion', 'Natación'], label: 'Natacion', color: '#3B82F6', icon: '🏊' },
-                        { discs: ['Ciclismo'], label: 'Ciclismo', color: '#EAB308', icon: '🚴' },
-                        { discs: ['Carrera'], label: 'Carrera', color: '#22C55E', icon: '🏃' },
-                        { discs: ['Fuerza'], label: 'Fuerza', color: '#EF4444', icon: '💪' },
-                        { discs: ['Hibrido'], label: 'Hibrido', color: '#EC4899', icon: '⚡' },
+                        { discs: ['Natacion', 'Natación'], label: 'Natacion', color: colorDisciplina('Natacion'), icon: emojiDisciplina('Natacion') },
+                        { discs: ['Ciclismo'], label: 'Ciclismo', color: colorDisciplina('Ciclismo'), icon: emojiDisciplina('Ciclismo') },
+                        { discs: ['Carrera'], label: 'Carrera', color: colorDisciplina('Carrera'), icon: emojiDisciplina('Carrera') },
+                        { discs: ['Fuerza'], label: 'Fuerza', color: colorDisciplina('Fuerza'), icon: emojiDisciplina('Fuerza') },
+                        { discs: ['Hibrido'], label: 'Hibrido', color: colorDisciplina(HIBRIDO), icon: emojiDisciplina(HIBRIDO) },
                       ] as { discs: string[]; label: string; color: string; icon: string }[])
                         .filter(x => x.label !== 'Hibrido' || detalleSem.sesiones.some((s: { disciplina?: string | null }) => s.disciplina === 'Hibrido'))
                         .map(({ discs, label, color, icon }) => {
@@ -2702,7 +2693,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             <div key={label} className="bg-gray-800 rounded-xl p-3">
                               <div className="flex items-center gap-1.5 mb-2">
                                 <span>{icon}</span>
-                                <span className="text-white text-xs font-bold">{label}</span>
+                                <span className="text-white text-xs font-bold">{etiquetaDisciplina(label)}</span>
                               </div>
                               {sesDisc.length === 0 ? <p className="text-gray-600 text-xs">Sin sesiones</p> : (
                                 <>
@@ -2743,7 +2734,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                           <div key={label} className="bg-gray-800 rounded-xl p-3">
                             <div className="flex items-center gap-1.5 mb-2">
                               <span>{icon}</span>
-                              <span className="text-white text-xs font-bold">{label}</span>
+                              <span className="text-white text-xs font-bold">{etiquetaDisciplina(label)}</span>
                             </div>
                             {sesDisc.length === 0 ? <p className="text-gray-600 text-xs">Sin sesiones</p> :
                             totalVol === 0 ? <p className="text-gray-500 text-xs">{sesDisc.length} ses · sin tareas con volumen</p> : (
@@ -2962,8 +2953,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     <div className="flex flex-col gap-3">
                       {/* Resumen por disciplina */}
                       {(() => {
-                        const discs = ['Natacion', 'Natación', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick']
-                        const colores: Record<string, string> = { 'Natacion': '#3B82F6', 'Natación': '#3B82F6', Ciclismo: '#EAB308', Carrera: '#22C55E', Fuerza: '#EF4444', Brick: '#A855F7', Hibrido: '#EC4899' }
                         const grupos: Record<string, any[]> = {}
                         sesionesProg.forEach(s => { const d = s.disciplina || 'Otro'; if (!grupos[d]) grupos[d] = []; grupos[d].push(s) })
                         return (
@@ -2972,7 +2961,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             {Object.entries(grupos).map(([disc, sess]) => {
                                 const minutos = sess.reduce((a, s) => a + (s.duracion_minutos || 0), 0)
                                 const realizadas = sess.filter(s => s.estado === 'Realizada' || s.rpe_reportado).length
-                                const col = colores[disc] || '#6B7280'
+                                const col = colorDisciplina(disc)
                                 return (
                                   <div key={disc} className="bg-gray-800 rounded-xl p-3">
                                     <div className="flex items-center gap-2 mb-1.5">

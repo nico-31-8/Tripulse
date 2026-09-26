@@ -27,6 +27,7 @@ import {
   type DistanciaTri, type FaseMacro, type Disciplina, type FranjaReparto,
 } from './distribucion-zonas'
 import { fuerzaDeFase } from './plantillas-fuerza'
+import { etiquetaDisciplina } from './disciplinas'
 
 export type NivelAtleta = 'principiante' | 'intermedio' | 'avanzado' | 'elite'
 
@@ -35,9 +36,9 @@ export type Bloque = Disciplina | 'Fuerza'
 
 export const BLOQUES: Bloque[] = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 
-export const ETIQUETA_BLOQUE: Record<Bloque, string> = {
-  Natacion: 'Natación', Ciclismo: 'Ciclismo', Carrera: 'Carrera', Fuerza: 'Fuerza',
-}
+/* El nombre sale del catálogo (lib/disciplinas): estaba copiado aquí. */
+export const ETIQUETA_BLOQUE: Record<Bloque, string> =
+  Object.fromEntries(BLOQUES.map(b => [b, etiquetaDisciplina(b)])) as Record<Bloque, string>
 
 // ------------------------------------------------------------
 // Reparto de volumen entre disciplinas — B1-04 Principio 5
