@@ -14,6 +14,38 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · El «3:60» de los ritmos
+
+Un ritmo de «3:60» no existe: son 4:00. Y salía, en siete sitios.
+
+**Qué pasaba.** El minutero y el segundero se calculaban por separado, y los
+segundos se redondeaban **sin avisar al minuto**. Un ritmo de 239,7 segundos por
+kilómetro se escribía «3:60» en vez de «4:00». No era raro: le tocaba a **uno de
+cada ciento veinte ritmos**, y a los ritmos les salen decimales siempre, porque
+se calculan dividiendo.
+
+Dónde lo has podido ver:
+
+- Las **zonas del deportista** (`/zonas`): el ritmo de cada zona.
+- **Mis tests**: el rango de ritmo de cada zona.
+- **Mis análisis**: la duración de cada pareja de la sesión.
+- El **«@»** de la prescripción: el ritmo objetivo y su rango.
+- Las **fichas de test**: el «4:12 /km» que sale de la VAM y el «1:20 /100m» que
+  sale del CSS.
+- El texto del **tramo en el editor de sesión**.
+
+Y en el otro extremo, en algún sitio salía «1:30.5», con decimales, porque ahí
+no se redondeaba nada.
+
+**Ya no puede pasar.** El minuto y el segundo se escriben en un solo sitio, que
+redondea el total y deja que el minuto se lleve el acarreo. Hay una prueba que
+recorre todas las VAM de 10 a 25 km/h y todos los CSS de 0,8 a 2,0 m/s
+comprobando que ningún ritmo escribe algo imposible.
+
+Si tenías una captura con un «3:60», ya puedes tirarla.
+
+---
+
 ## 27 de septiembre de 2026 · Tres cosas que no contaban: bricks, híbridos y la barra que no sumaba
 
 Repaso a fondo de la aplicación. Esta primera tanda buscaba una cosa concreta —los
