@@ -10,6 +10,7 @@
 
 import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
 import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fechas'
+import { horasMinutos } from './medicion'
 import { FILTRO_VIVAS } from './papelera'
 import { cargarBloques } from './atribucion'
 import { minutosCarga, cargaReal } from './duracion-carga'
@@ -498,11 +499,5 @@ const VIVAS = FILTRO_VIVAS
   return { carga, tendencia, proxima, volumen, indices, tests: { ultima: ultimaTest }, semana, agenda, general }
 }
 
-// Formatea minutos como "1h20" / "45′".
-export function fmtMin(min: number): string {
-  if (min <= 0) return '0'
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (h === 0) return m + '′'
-  return h + 'h' + (m ? String(m).padStart(2, '0') : '')
-}
+// Minutos como "1h20" / "45′". El formato lo pone lib/medicion.
+export const fmtMin = (min: number): string => horasMinutos(min)

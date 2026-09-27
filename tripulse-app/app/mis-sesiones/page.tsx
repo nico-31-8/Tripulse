@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { aISO } from '@/lib/fechas'
+import { aISO, hoyISO, lunesDe } from '@/lib/fechas'
 import { porDia, diasHasta, cuentaAtras, type CompeticionCal } from '@/lib/competiciones-calendario'
 import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
 import { intensidadesPorSesion } from '@/lib/intensidad-prescrita'
@@ -21,6 +21,12 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 /* Era la cuarta copia de «un Date al día que marca el reloj local». Se queda el
    nombre corto porque se usa mucho en esta pantalla, pero apunta a la de siempre. */
 const ymd = aISO
+
+/* Un día de calendario como `Date` local, al MEDIODÍA: la navegación de esta
+   pantalla va con `Date`, y el mediodía deja doce horas de margen a cada lado
+   para que sumar semanas no se cuele de día con el cambio de hora. Qué lunes es
+   lo decide lib/fechas, que era el cuarto sitio donde estaba escrito. */
+const diaLocal = (iso: string) => new Date(iso + 'T12:00:00')
 
 /* La competición, con la misma cara que en el calendario del entrenador.
    El símbolo, el color y la etiqueta salen de lib/competicion-prioridad, que ya
@@ -63,13 +69,7 @@ export default function MisSesiones() {
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<'lista'|'calendario'|'semana'>('lista')
   const [mesActual, setMesActual] = useState(new Date())
-  const [semanaBase, setSemanaBase] = useState(() => {
-    const hoy = new Date()
-    const lunes = new Date(hoy)
-    lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7))
-    lunes.setHours(0,0,0,0)
-    return lunes
-  })
+  const [semanaBase, setSemanaBase] = useState(() => diaLocal(lunesDe(hoyISO())))
   // Modal calendario
   const [diaModal, setDiaModal] = useState<{ fechaStr: string, sesiones: any[] } | null>(null)
   const [dep, setDep] = useState<any>(null)
@@ -197,13 +197,7 @@ export default function MisSesiones() {
     setSemanaBase(nueva)
   }
 
-  const semanaActual = () => {
-    const hoy = new Date()
-    const lunes = new Date(hoy)
-    lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7))
-    lunes.setHours(0,0,0,0)
-    setSemanaBase(lunes)
-  }
+  const semanaActual = () => setSemanaBase(diaLocal(lunesDe(hoyISO())))
 
   const hoyStr = ymd(new Date())
   /* Índice por día, construido UNA vez. El mes son 42 casillas: filtrar el

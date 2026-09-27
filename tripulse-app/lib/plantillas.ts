@@ -25,6 +25,7 @@
 //   · Carrera  → por distancia (series) o tiempo (continuos).
 import { ZONAS_RESISTENCIA } from './zonas'
 import { TODAS } from './disciplinas'
+import { horasMinutos } from './medicion'
 import { VARIANTES } from './plantillas-variantes'
 import type {
   NivelPlantilla, OrigenPlantilla, BloqueP, PlantillaSesion, VarianteSesion,
@@ -636,13 +637,10 @@ export function textoBloque(b: BloqueP): string {
   return b.series && b.series > 1 ? b.series + ' × ' + unidad : unidad
 }
 
+/* Por debajo del minuto, segundos («40″»): en un bloque de plantilla eso es una
+   duración de verdad. Por encima, el formato de lib/medicion. */
 function fmtSegundos(s: number): string {
-  if (s < 60) return s + '″'
-  const min = Math.round(s / 60)
-  if (min < 60) return min + '′'
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return h + 'h' + (m ? String(m).padStart(2, '0') : '')
+  return s < 60 ? s + '″' : horasMinutos(s / 60)
 }
 
 // Escribe unos bloques como tareas de una sesión. Lo usan el panel de plantillas

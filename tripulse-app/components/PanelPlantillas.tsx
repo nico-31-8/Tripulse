@@ -15,6 +15,7 @@ import {
   type PlantillaSesion, type NivelPlantilla, type BloqueP,
 } from '@/lib/plantillas'
 import { cargarPropias, borrarPropia, type PlantillaPropia } from '@/lib/plantillas-propias'
+import { horasMinutos } from '@/lib/medicion'
 
 type Pestana = 'tipo' | 'propias'
 
@@ -23,9 +24,7 @@ function volumenDe(bloques: BloqueP[]): string {
   const metros = bloques.reduce((a, b) => a + (b.metros || 0) * (b.series || 1), 0)
   if (metros > 0) return metros >= 1000 ? (metros / 1000).toFixed(1).replace('.0', '') + ' km' : metros + ' m'
   const seg = bloques.reduce((a, b) => a + (b.segundos || 0) * (b.series || 1), 0)
-  if (!seg) return '—'
-  const min = Math.round(seg / 60)
-  return min < 60 ? min + '′' : Math.floor(min / 60) + 'h' + (min % 60 ? String(min % 60).padStart(2, '0') : '')
+  return horasMinutos(seg / 60, '—')
 }
 
 interface Props {

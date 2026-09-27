@@ -319,11 +319,51 @@ sin avisos nuevos de lint.
 duración de las parejas en `/mis-analisis`. Si alguna vez viste un «3:60» o un
 «1:30.5», era esto.
 
-### Lo que se apunta para la tanda 3
+### Tanda 3 — las primitivas de tiempo que quedaban · CERRADA (2026-09-27)
 
-Además del backlog de arriba, el rebarrido de esta tanda dejó una familia nueva
-a la vista: **«2h05» está escrito a mano en seis sitios** (`/volumen`,
-`lib/panel-metricas`, `lib/plantillas`, `components/PanelPlantillas`,
-`lib/noches-reloj`, `lib/pacing`). No hay fallo conocido —las horas y los
-minutos no tienen el problema del acarreo— pero son seis copias del mismo
-formato.
+**Sin ningún fallo vivo, y esa es la noticia.** Las dos familias que quedaban
+—«qué lunes es» y «2h05»— daban el mismo resultado en todas sus copias. Se
+cierran igual, porque el riesgo no es que hoy discrepen: es que discrepen el día
+que alguien cambie la regla en una sola.
+
+**1. «Qué lunes es», escrito CUATRO veces.** Una de ellas en
+`components/PlanCadena` **con el mismo nombre y la misma firma** que la buena
+—el caso del impostor, que ya costó un bug con `hoyISO` en agosto—, otra en el
+panel del deportista con `Date` en vez de cadenas, y otras dos en
+`/mis-sesiones` (esas las encontró el alambre, no yo).
+
+Las cuatro daban el mismo lunes. Para no fiarme de mi lectura, el test **compara
+las implementaciones viejas con la del catálogo día a día durante 400 días**: si
+mañana alguien cambia la regla (un cliente que empiece la semana en domingo), ese
+test dice que ya no coinciden, y entonces se borran las viejas en vez de
+«arreglar» el test.
+
+De paso, el panel del deportista pasa a manejar los días como **cadenas** con
+`lib/fechas`, que es la regla de la casa: tenía su propio `addDays`, su propio
+`lunesDe` y el `toISOString()` que de madrugada enseñaba el día de ayer.
+
+**2. «2h05», escrito SEIS veces y con TRES comportamientos.** Cuatro copias sin
+el «00» de las horas exactas («2h»), una con él («1h00», que es lo que alinea la
+tabla de tiempos de `/pacing`) y otra con espacios («7 h 12», el sueño). Las tres
+hacen falta —son decisiones de cada pantalla—, así que ahora son **dos funciones
+con nombre propio** en `lib/medicion`, al lado del m:ss:
+
+- `horasMinutos(min, vacio)` → «45′», «2h», «2h05». El `vacio` es lo que sale con
+  0, y no es lo mismo en todas: un «0» en un total y un «—» donde un hueco es un
+  hueco.
+- `horasExactas(min, sep)` → «1h00», y con el separador de cada sitio, «7 h 12».
+
+El guardián: `lib/primitivas-de-tiempo.test.ts`, que salta con las tres formas de
+sacar el lunes a mano y con las dos de escribir «2h05».
+
+Rebarrido con tres consultas más —todos los `getDay()`/`getUTCDay()` de la app,
+todos los `const lunes =` y todos los `'h' +`—: **limpio**. Solo quedan el
+catálogo y un rótulo de hora («14h») que no es una duración.
+
+Verificado: `tsc` limpio · **3.195 tests en 159 ficheros** · `next build` OK ·
+sin avisos nuevos de lint.
+
+**Qué mirar al desplegar:** el **panel del deportista** (la semana de un vistazo
+y «planificadas esta semana») y la **vista de semana de /mis-sesiones**, que son
+las dos pantallas donde el «qué lunes es» ha cambiado de implementación. Y el
+volumen en horas de `/volumen` y del panel del entrenador.

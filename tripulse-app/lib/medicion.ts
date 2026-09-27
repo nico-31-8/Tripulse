@@ -37,6 +37,39 @@ export function mmss(seg: number): string {
 }
 
 /**
+ * Minutos → «45′», «2h», «2h05». El volumen de una sesión o de una semana.
+ *
+ * Estaba escrito SEIS veces y con tres comportamientos: cuatro copias de este
+ * («2h» sin el «00»), una con las horas siempre («1h00») y otra con espacios
+ * («7 h 12»). Las tres hacen falta, así que se separan el nombre y la
+ * implementación vive aquí, como ya se hizo con mmss y mmssCorto.
+ *
+ * `vacio` es lo que sale con 0 o menos, y cambia según la pantalla: un «0» en un
+ * total y un «—» donde un hueco es un hueco y no un cero medido.
+ */
+export function horasMinutos(min: number | null | undefined, vacio = '0'): string {
+  const m = Math.round(Number(min) || 0)
+  if (m <= 0) return vacio
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  if (!h) return r + '′'
+  return h + 'h' + (r ? String(r).padStart(2, '0') : '')
+}
+
+/**
+ * Minutos → «1h00», «7 h 12»: las horas SIEMPRE y los minutos a dos cifras.
+ *
+ * Es lo que quiere una TABLA —los tiempos de carrera de /pacing— y lo que quiere
+ * el sueño, que se lee en horas aunque sean cero. El separador se elige porque
+ * el sueño lo escribe con espacios y la tabla no.
+ */
+export function horasExactas(min: number | null | undefined, sep = 'h'): string {
+  const m = Math.round(Number(min) || 0)
+  const seguro = Math.max(0, m)
+  return Math.floor(seguro / 60) + sep + String(seguro % 60).padStart(2, '0')
+}
+
+/**
  * «2», «1:30», «0:45». Sin el «:00» cuando el minuto es exacto.
  *
  * Es lo que espera una CASILLA editable: al guardar, `mmssASegundos` entiende

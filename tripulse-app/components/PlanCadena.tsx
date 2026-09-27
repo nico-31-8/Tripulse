@@ -13,7 +13,7 @@
 // precisión que no existe.
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO } from '@/lib/fechas'
+import { hoyISO, lunesDe } from '@/lib/fechas'
 import { cadenaDeMesos, ajustarCadena, type EstadoReal, type MesoDeCadena } from '@/lib/plan-cadena'
 import { serieForma, formaFiable, calcularACWR, estadoTSB, estadoACWR, HISTORIA_MINIMA_FORMA } from '@/lib/panel-metricas'
 import { cargaReal, estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
@@ -29,13 +29,6 @@ interface Props {
   horasReferencia: number
   distancia: DistanciaTri
   competicion?: string | null
-}
-
-/** El lunes de la semana de una fecha. */
-function lunesDe(iso: string): string {
-  const d = new Date(iso + 'T00:00:00Z')
-  const dow = d.getUTCDay() || 7
-  return sumarDias(iso, 1 - dow)
 }
 
 export default function PlanCadena({ dep, mesos, horasReferencia, distancia, competicion }: Props) {

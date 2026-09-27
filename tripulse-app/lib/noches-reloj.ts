@@ -54,11 +54,13 @@ export function delProveedor<T extends { proveedor?: unknown }>(filas: T[] | nul
 export const horasDeMinutos =(min: number | null | undefined): number | null =>
   typeof min === 'number' && Number.isFinite(min) && min > 0 ? Math.round((min / 60) * 100) / 100 : null
 
+import { horasExactas } from './medicion'
+
 /** «7 h 12», para enseñar. */
 export function textoHoras(min: number | null | undefined): string {
   if (typeof min !== 'number' || !Number.isFinite(min) || min <= 0) return '—'
-  const m = Math.round(min)
-  return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0')
+  /* Siempre en horas, aunque sean cero: un sueño se lee «7 h 12», no «432′». */
+  return horasExactas(min, ' h ')
 }
 
 export type ModoWellness = 'sin_reloj' | 'noche_recibida' | 'noche_pendiente'

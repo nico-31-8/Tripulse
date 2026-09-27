@@ -23,6 +23,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { origenMinutos } from '@/lib/duracion-carga'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
+import { horasMinutos } from '@/lib/medicion'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
    acumulador de abajo DESCARTA lo que no tenga casilla, así que una disciplina
@@ -32,12 +33,7 @@ import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
 const cuboDisc = (): Record<string, number> => Object.fromEntries(DEPORTES.map(d => [d, 0]))
 
 /** Minutos → "1h20" / "45′". */
-function fmtMinutos(min: number): string {
-  const m = Math.round(min || 0)
-  if (m <= 0) return '0'
-  const h = Math.floor(m / 60), r = m % 60
-  return h ? h + 'h' + (r ? String(r).padStart(2, '0') : '') : r + '′'
-}
+const fmtMinutos = (min: number): string => horasMinutos(min)
 
 /* Solo los colores viven aquí, que es presentación. Los umbrales y las
    etiquetas están en lib/series-por-grupo para que la leyenda de arriba y la

@@ -14,19 +14,18 @@ import OnboardingDeportista from '@/components/OnboardingDeportista'
 import { altaCompleta } from '@/lib/anamnesis-datos'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { vivas } from '@/lib/papelera'
-import { aISO } from '@/lib/fechas'
+import { hoyISO, lunesDe, sumarDias } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConectarReloj'
 import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
 import { colorDisciplina } from '@/lib/disciplinas'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-/* Era `toISOString()`: pasa la hora LOCAL a UTC y luego se queda con el día.
-   De madrugada, el panel del atleta enseñaba el día de ayer como «hoy» y la
-   semana entera corrida. `aISO` se queda con el día que ve él. */
-const fmt = aISO
-const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
-const lunesDe = (d: Date) => { const off = (d.getDay() + 6) % 7; return addDays(d, -off) }
+/* Los días se manejan como CADENAS con lib/fechas, no como `Date`: aquí había
+   un `addDays` y un `lunesDe` propios —el tercero de la app, y el mismo nombre
+   que el bueno— además del `toISOString()` que de madrugada enseñaba el día de
+   ayer como «hoy». `hoyISO` es el único que mira el reloj, y mira el LOCAL,
+   que es el día que ve el atleta. */
 const CLAVE_PANEL = 'tp-panel-'
 
 /* Cabecera de un bloque plegable. El título entero es el botón: en móvil se pulsa
@@ -90,11 +89,10 @@ export default function DashboardDeportista() {
         if (guardado) setPlegados(JSON.parse(guardado))
       } catch { /* preferencia ilegible: se ignora y se ve todo abierto */ }
 
-      const hoy = fmt(new Date())
-      const monday = lunesDe(new Date())
-      const sunday = addDays(monday, 6)
-      const desde = fmt(addDays(new Date(), -27))
-      const hasta = fmt(sunday)
+      const hoy = hoyISO()
+      const monday = lunesDe(hoy)
+      const desde = sumarDias(hoy, -27)
+      const hasta = sumarDias(monday, 6)
 
       /* Aquí había una cadena de tres saltos —macrociclo → mesociclo →
          microciclo— para acabar preguntando por las sesiones de un rango de
@@ -138,7 +136,7 @@ export default function DashboardDeportista() {
 
       // Semana de un vistazo
       setSemana(LETRAS.map((letra, i) => {
-        const f = fmt(addDays(monday, i))
+        const f = sumarDias(monday, i)
         return { f, letra, esHoy: f === hoy, sesiones: sesiones.filter(s => s.fecha_sesion === f) }
       }))
 
@@ -146,7 +144,7 @@ export default function DashboardDeportista() {
       const ult28 = sesiones.filter(s => s.fecha_sesion >= desde && s.fecha_sesion <= hoy)
       const realizadas = ult28.filter(s => s.estado === 'Realizada').length
       setCumplimiento(ult28.length ? { pct: Math.round(realizadas / ult28.length * 100), realizadas, planificadas: ult28.length } : null)
-      setSemanaPlan(sesiones.filter(s => s.fecha_sesion >= fmt(monday) && s.fecha_sesion <= hasta).length)
+      setSemanaPlan(sesiones.filter(s => s.fecha_sesion >= monday && s.fecha_sesion <= hasta).length)
 
       // Wellness (14 registros → readiness) + próxima competición
       const { data: wells } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)
@@ -182,7 +180,7 @@ export default function DashboardDeportista() {
   })
 
   const wellnessHref = deportista ? '/wellness/' + deportista.id : '#'
-  const hoyStr = fmt(new Date())
+  const hoyStr = hoyISO()
   const wellnessHoy = ultimoWellness?.fecha === hoyStr
   const semanasHastaComp = proximaComp ? Math.max(0, Math.round((new Date(proximaComp.fecha).getTime() - Date.now()) / (7 * 24 * 3600 * 1000))) : null
 

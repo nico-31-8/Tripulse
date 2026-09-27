@@ -8,7 +8,7 @@
 
 import { pruebaPorId } from './pruebas'
 import { zonaResistencia } from './zonas'
-import { mmss } from './medicion'
+import { horasExactas, mmss } from './medicion'
 
 export interface SegPacing {
   disc: 'Natación' | 'Ciclismo' | 'Carrera'
@@ -37,9 +37,9 @@ export const idsConPacing = (): string[] => Object.keys(PACING)
 function fmtTiempo(seg: number): string {
   if (!isFinite(seg) || seg <= 0) return '—'
   const t = Math.round(seg)
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
-  if (h > 0) return `${h}h${String(m).padStart(2, '0')}`
-  return mmss(t)
+  /* Por encima de la hora, las horas con sus dos cifras («1h05»), que es lo
+     que alinea una tabla de tiempos; por debajo, el m:ss de siempre. */
+  return t >= 3600 ? horasExactas(t / 60) : mmss(t)
 }
 function paceKmStr(velKmh: number): string {
   if (velKmh <= 0) return '—'
