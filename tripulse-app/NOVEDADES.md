@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · Limpieza por dentro: nada que notar
+
+Entrada corta y a propósito: **esta vez no cambia nada de lo que ves**, y es
+mejor decirlo que dejarte buscando la diferencia.
+
+«Qué lunes es» estaba calculado en cuatro sitios distintos de la aplicación, y
+«2h05» escrito en seis. Todos daban el mismo resultado —lo comprueba una prueba
+que compara los cuatro cálculos día a día durante 400 días—, así que no había
+nada roto. Se han unificado para que el día que haya que cambiar algo ahí (por
+ejemplo, si alguna vez hace falta que la semana empiece en domingo), no se quede
+media aplicación con la regla vieja.
+
+Si notas algo raro en la **semana del panel del deportista** o en la **vista de
+semana de Mis sesiones**, dímelo: son las dos pantallas que han cambiado de
+cálculo por dentro.
+
+---
+
 ## 27 de septiembre de 2026 · El «3:60» de los ritmos
 
 Un ritmo de «3:60» no existe: son 4:00. Y salía, en siete sitios.
