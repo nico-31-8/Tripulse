@@ -14,6 +14,42 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · Tres cosas que no contaban: bricks, híbridos y la barra que no sumaba
+
+Repaso a fondo de la aplicación. Esta primera tanda buscaba una cosa concreta —los
+sitios donde la lista de deportes está escrita a mano— y de ahí salieron **tres
+fallos que ya estaban en marcha**.
+
+**1. Tus bricks no se dibujaban.** En la periodización visual, el filtro de
+deportes de abajo arrancaba con cinco deportes y **Brick no era uno de ellos**.
+Así que el chip de una sesión de brick no pasaba el filtro y **no se pintaba
+nunca en el lienzo** — y no había manera de encenderlo, porque los botones del
+filtro salían de esa misma lista. Ahora está Brick, y tus tres sesiones de brick
+deberían aparecer.
+
+**2. El desglose del mesociclo se comía las sesiones híbridas.** En la vista de
+un mesociclo, el reparto «por deportes» solo conocía natación, ciclismo, carrera
+y fuerza: **una sesión híbrida no salía en el recuento**. Es el mismo despiste
+que tuvieron los bricks cuando se añadieron. Ahora salen los seis, y los que no
+tienen nada aparecen a 0.
+
+**3. En Volumen, las barras no sumaban el total.** En la vista de evolución
+—por semanas y por meses— la carga de las sesiones híbridas **desaparecía de las
+barras y seguía contando en el total**, así que las barras no cuadraban con el
+número de arriba. Si alguna vez te salieron las cuentas raras ahí, era esto.
+
+**Y algo que no llegó a pasar.** Los tests que te creas se guardan con su
+deporte, y la pantalla de laboratorio escribía «Natación» con tilde mientras la
+de tests propios escribía «Natacion» sin ella — la misma cosa con dos nombres en
+la base. Solo tienes dos tests creados y los dos están bien, así que se ha
+arreglado antes de que hubiera nada que limpiar. De paso, en las dos pantallas el
+desplegable dice ya «Natación» con tilde.
+
+**Lo que cambia de sitio:** en el desplegable «Deporte» de los tests, la natación
+pasa a ir primero (el mismo orden que en el resto de la aplicación).
+
+---
+
 ## 26 de septiembre de 2026 · Cada deporte, de su color en toda la app
 
 **Qué vas a notar.** El mismo deporte se pintaba de colores distintos según la
