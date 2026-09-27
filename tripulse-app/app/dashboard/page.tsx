@@ -11,6 +11,7 @@ import { cargarMetricasPanel, fmtMin, type MetricasPanel } from '@/lib/panel-met
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
 import InvitacionesClub from '@/components/InvitacionesClub'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
@@ -23,9 +24,6 @@ import { informesDeDatos } from '@/lib/informe-datos'
 import { resumenDeEquipo, COLOR_SENAL, type ResultadoSenales } from '@/lib/senales'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
-const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
-const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
-const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 const cssVar = (color: string) => ({ ['--c']: color } as React.CSSProperties)
 
 export default function Dashboard() {
@@ -204,7 +202,7 @@ export default function Dashboard() {
   // panel del deportista, con el mismo 18, decía «Crítico».
   const rc = wellHoy.score != null ? colorBienestar(wellHoy.score) : '#6b7280'
   const etiquetaBienestar = wellHoy.score != null ? estadoBienestar(wellHoy.score) : null
-  const [hc1, hc2] = activo ? grad(activo.nombre) : ['#f97316', '#ea580c']
+  const [hc1] = activo ? coloresDe(activo.nombre) : ['#f97316', '#ea580c']
   const semComp = proximaComp ? Math.max(0, Math.round((new Date(proximaComp.fecha).getTime() - Date.now()) / 604800000)) : 0
 
   const diasComp = proximaComp ? Math.max(0, Math.ceil((new Date(proximaComp.fecha).getTime() - Date.now()) / 86400000)) : null
@@ -335,15 +333,15 @@ export default function Dashboard() {
             <p className="fade-up text-gray-500 text-sm mb-10" style={{ animationDelay: '110ms' }}>Elige un deportista para abrir su panel.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8 w-full max-w-lg">
               {deportistas.map((d, i) => {
-                const [c1, c2] = grad(d.nombre)
+                const [c1] = coloresDe(d.nombre)
                 const sinRevisar = totalDe(porRevisar, d.id)
                 return (
                   <button key={d.id} onClick={() => seleccionar(d)}
                     className="fade-up group flex flex-col items-center gap-3.5 rounded-2xl py-4 transition-transform duration-300 ease-out hover:-translate-y-1.5 focus-visible:outline-none"
                     style={{ animationDelay: (160 + i * 70) + 'ms' }}>
                     <span className="relative w-[86px] h-[86px] rounded-[26px] flex items-center justify-center text-[34px] font-bold text-white transition-all duration-300 ease-out group-hover:scale-105 group-hover:rounded-[30px]"
-                      style={{ background: 'linear-gradient(145deg, ' + c1 + ', ' + c2 + ')', boxShadow: '0 12px 30px -6px ' + c1 + '66' }}>
-                      {inicial(d.nombre)}
+                      style={{ background: fondoDe(d.nombre), boxShadow: '0 12px 30px -6px ' + c1 + '66' }}>
+                      {inicialDe(d.nombre)}
                       <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ borderRadius: 'inherit', boxShadow: 'inset 0 0 0 2px #ffffff40' }} />
                       {sinRevisar > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 min-w-[24px] h-6 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold grid place-items-center tabular-nums ring-[3px] ring-gray-950"
@@ -382,8 +380,8 @@ export default function Dashboard() {
                 <button onClick={() => setSwitcherOpen(o => !o)}
                   className="group flex items-center gap-3.5 rounded-2xl -m-1.5 p-1.5 transition hover:bg-white/[0.04]">
                   <div className="relative w-14 h-14 rounded-[20px] flex items-center justify-center text-xl font-bold text-white flex-shrink-0"
-                    style={{ background: 'linear-gradient(145deg, ' + hc1 + ', ' + hc2 + ')', boxShadow: '0 8px 22px -8px ' + hc1 + '77' }}>
-                    {inicial(activo.nombre)}
+                    style={{ background: fondoDe(activo.nombre), boxShadow: '0 8px 22px -8px ' + hc1 + '77' }}>
+                    {inicialDe(activo.nombre)}
                   </div>
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
@@ -409,13 +407,12 @@ export default function Dashboard() {
                     <div className="absolute left-0 top-full mt-2 z-20 w-72 rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl shadow-black/50 p-1.5">
                       <p className="text-[11px] font-medium text-gray-500 px-3 pt-1.5 pb-1">Cambiar de deportista</p>
                       {deportistas.map(d => {
-                        const [g1, g2] = grad(d.nombre)
                         const sel = d.id === activo.id
                         return (
                           <button key={d.id} onClick={() => seleccionar(d)}
                             className={'w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition ' + (sel ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]')}>
                             <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                              style={{ background: 'linear-gradient(145deg, ' + g1 + ', ' + g2 + ')' }}>{inicial(d.nombre)}</span>
+                              style={{ background: fondoDe(d.nombre) }}>{inicialDe(d.nombre)}</span>
                             <span className={'flex-1 text-sm truncate ' + (sel ? 'text-white font-semibold' : 'text-gray-300')}>{d.nombre}</span>
                             {nivelDe(d.id) && (
                               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLOR_SENAL[nivelDe(d.id)!] }}

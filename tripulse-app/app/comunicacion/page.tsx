@@ -7,10 +7,8 @@ import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { colorDisciplina } from '@/lib/disciplinas'
+import Avatar from '@/components/Avatar'
 
-const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
-const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
-const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 export default function ComunicacionPage() {
   const router = useRouter()
@@ -160,12 +158,6 @@ export default function ComunicacionPage() {
   const threadFbs = activeId ? feedback.filter(f => f.depId === activeId) : []
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
-
-  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
-    const [c1, c2] = grad(nombre)
-    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
-  }
 
   return (
     <main className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">

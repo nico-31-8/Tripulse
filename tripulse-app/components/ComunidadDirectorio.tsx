@@ -9,6 +9,7 @@
 // Incluye un editor del propio perfil público (ciudad + deportes).
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { inicialDe } from '@/lib/avatar'
 import { usuarioActual } from '@/lib/sesion'
 import ComunidadGrupos from './ComunidadGrupos'
 import ComunidadRetos from './ComunidadRetos'
@@ -53,7 +54,7 @@ interface Palmar {
 
 function Ficha({ p, esYo, conteo, palmares }: { p: Persona; esYo: boolean; conteo?: number; palmares?: Palmar[] }) {
   const badge = rolBadge(p.rol)
-  const inicial = (p.nombre || '?').trim().charAt(0).toUpperCase()
+  const inicial = inicialDe(p.nombre)
   const esEntrenador = p.rol === 'entrenador' || p.rol === 'admin'
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex gap-3">
@@ -522,7 +523,7 @@ export default function ComunidadDirectorio({ onSalir }: { onSalir: () => void }
                     <div className="flex items-start gap-3.5">
                       <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold text-white flex-shrink-0 overflow-hidden"
                         style={{ background: 'linear-gradient(145deg,#f97316,#ea580c)' }}>
-                        {c.logo_url ? <img src={c.logo_url} alt="" className="w-full h-full object-cover" /> : (c.nombre || '?').trim().charAt(0).toUpperCase()}
+                        {c.logo_url ? <img src={c.logo_url} alt="" className="w-full h-full object-cover" /> : inicialDe(c.nombre)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">

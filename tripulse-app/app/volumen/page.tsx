@@ -23,6 +23,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { origenMinutos } from '@/lib/duracion-carga'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
+import Avatar from '@/components/Avatar'
 import { horasMinutos } from '@/lib/medicion'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
@@ -586,8 +587,9 @@ export default function VolumenPage() {
           <div className="flex items-center gap-4 mb-5 flex-wrap">
             <button onClick={() => setSeleccionado(null)} title="Cambiar deportista"
               className="w-9 h-9 rounded-xl grid place-items-center text-gray-400 hover:text-white hover:bg-white/5 transition flex-shrink-0">←</button>
-            <span className="w-11 h-11 rounded-[14px] grid place-items-center text-[17px] font-extrabold text-white flex-shrink-0"
-              style={{ background: 'linear-gradient(145deg,#fb923c,#ea580c)' }}>{(seleccionado.nombre || '?').trim()[0]?.toUpperCase()}</span>
+            {/* Del color de su nombre, como en el resto de la app: aquí era
+                siempre naranja y la misma persona salía de dos colores. */}
+            <Avatar nombre={seleccionado.nombre} size={44} />
             <div>
               <h2 className="text-[20px] font-bold tracking-tight leading-none">{seleccionado.nombre}</h2>
               <p className="text-[11.5px] text-gray-500 mt-1">

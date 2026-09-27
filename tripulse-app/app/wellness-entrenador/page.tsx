@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { sumarDias, hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import Avatar from '@/components/Avatar'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score'
@@ -14,9 +15,6 @@ import { vivas } from '@/lib/papelera'
 import { DIAS_VENTANA, type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
 
-const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
-const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
-const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 const VARS_SUBJETIVAS = [
   { key: 'fatiga', label: 'Fatiga', color: '#f87171' },
@@ -177,12 +175,6 @@ export default function WellnessEntrenador() {
 
   const nAtencion = deportistas.filter(d => d.readiness && (d.readiness.nivel === 'alerta' || d.readiness.nivel === 'fatiga')).length
   const analisis = registros.length ? analizarWellness(registros) : null
-
-  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
-    const [c1, c2] = grad(nombre)
-    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
-  }
 
   const Spark = ({ data, color, w = 62, h = 22 }: { data: number[]; color: string; w?: number; h?: number }) => {
     if (!data || data.length < 2) return null

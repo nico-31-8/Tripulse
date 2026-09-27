@@ -17,11 +17,9 @@ import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import DisciplinasDeportista from '@/components/DisciplinasDeportista'
 import { chipDisciplina, colorDisciplina, emojiDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
+import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
-const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
-const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
-const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 // Umbrales y etiquetas de lib/panel-metricas: había cuatro copias de esto.
 function estadoTSB(tsb: number) {
@@ -349,7 +347,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   const edad = deportista.fecha_nacimiento ? calcularEdad(deportista.fecha_nacimiento) : null
   const fcUmbral = deportista.fc_maxima ? Math.round(deportista.fc_maxima * 0.85) : null
-  const [hc1, hc2] = grad(deportista.nombre)
+  const [hc1] = coloresDe(deportista.nombre)
   const diasTecnica = deportista.tec_fecha_actualizacion
     ? Math.floor((Date.now() - new Date(deportista.tec_fecha_actualizacion).getTime()) / 86400000) : null
   // Mismas banderas que ya marcaban la alerta dentro de la anamnesis: se suben a la portada.
@@ -380,8 +378,8 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               {/* La foto abre/cierra todos los datos personales. */}
               <button onClick={() => setAvatarOpen(o => !o)} title="Ver todos los datos personales"
                 className="relative w-[92px] h-[92px] rounded-[28px] grid place-items-center text-[38px] font-extrabold text-white flex-shrink-0 transition hover:-translate-y-0.5"
-                style={{ background: 'linear-gradient(145deg,' + hc1 + ',' + hc2 + ')', boxShadow: '0 18px 40px -14px ' + hc1 + '99' }}>
-                {inicial(deportista.nombre)}
+                style={{ background: fondoDe(deportista.nombre), boxShadow: '0 18px 40px -14px ' + hc1 + '99' }}>
+                {inicialDe(deportista.nombre)}
                 <span className={'absolute -right-1 -bottom-1 w-[26px] h-[26px] rounded-full grid place-items-center text-[11px] bg-[#11161d] border border-white/20 text-gray-300 transition-transform duration-300 ' + (avatarOpen ? 'rotate-180' : '')}>▾</span>
               </button>
 

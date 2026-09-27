@@ -412,3 +412,59 @@ sin avisos nuevos de lint.
 `/zonas/<id>` **con sesión** y comprueba que siguen funcionando igual; y si
 puedes, en una ventana privada, que ahora te manda al login en vez de dejarte
 mirando una pantalla en blanco.
+
+### Tanda 5 — el alto escrito a mano · CERRADA (2026-09-27)
+
+La familia estaba **casi** cerrada: los tres desplegables de verdad
+(`/dashboard`, la ficha del deportista y `/eco`) ya medían su contenido con
+`useAltoDeContenido`. Pero quedaba la bomba en el CSS:
+
+```
+.tp-collapse.open { max-height: 460px; }
+```
+
+Ese 460 no molestaba porque los tres pasan su alto medido por `style`, que gana
+al CSS. Molestaría **el día que alguien escriba un desplegable nuevo y no mida**:
+se llevaría el mismo recorte silencioso que dejó «Tests propios» y «Zonas
+propias» fuera del panel en septiembre.
+
+Ahora el respaldo es `max-height: none`: quien no mida **pierde la animación**
+(de 0 a `none` no se puede interpolar) pero **no pierde contenido**. Perder la
+animación se ve; perder media pantalla en silencio, no.
+
+Los cuatro `max-h-[Npx]` que quedan (`/volumen`, `/wellness-entrenador`,
+`PanelSemana`, `SelectorEjercicio`) **no son de esta familia**: son cajas con
+`overflow-y-auto`, o sea con barra. Ahí el número dice cuánto se ve antes de
+hacer scroll, y no se pierde nada.
+
+El guardián: `lib/alto-medido.test.ts` — el CSS no puede volver a llevar un
+número, y todo fichero que abra un `.tp-collapse` tiene que medir y pasar el alto
+por `style`.
+
+### Tanda 6 — el avatar, un color por nombre · CERRADA (2026-09-27)
+
+**Un fallo pequeño y visible**: en `/volumen` el avatar del atleta era **siempre
+naranja**, mientras en el resto de la app es del color de su nombre. La misma
+persona, dos colores según la pantalla — y el color es justo lo que hace que la
+reconozcas antes de leer.
+
+Las tres piezas (`GRADS`, `grad`, `inicial`) estaban copiadas en **cinco**
+pantallas, y en tres de ellas el **mismo componente `Avatar` entero**, línea por
+línea. Ahora: `lib/avatar` (`coloresDe`, `inicialDe`, `fondoDe`) y
+`components/Avatar`. El panel y la ficha del deportista siguen con su marcado
+propio —le ponen una sombra del color— pero piden las piezas en vez de copiarlas.
+
+De paso, `coloresDe` **recorta el nombre** antes de calcular: en esta base hay
+nombres con un espacio de sobra, y «Ana» y «Ana » no son dos personas de dos
+colores.
+
+El guardián: `lib/avatar-un-solo-sitio.test.ts`. El escudo de un club queda
+permitido con su motivo (lleva el naranja de la marca mientras no suban su logo,
+y no es una persona).
+
+Verificado (las dos tandas): `tsc` limpio · **3.211 tests en 162 ficheros** ·
+`next build` OK · sin avisos nuevos de lint.
+
+**Qué mirar al desplegar:** el avatar del atleta en `/volumen` —ahora del color
+de su nombre, no naranja— y que los desplegables del panel, de `/eco` y de la
+ficha del deportista siguen abriéndose con su animación y enteros.

@@ -17,13 +17,11 @@ import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import { colorDisciplina, cortoDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
+import Avatar from '@/components/Avatar'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
 // Identidad de color estable por nombre (mismo criterio que el resto de la app).
-const GRADS = [['#f97316', '#ea580c'], ['#3b82f6', '#4f46e5'], ['#22c55e', '#0d9488'], ['#a855f7', '#7c3aed'], ['#06b6d4', '#2563eb'], ['#ec4899', '#be185d'], ['#eab308', '#d97706'], ['#ef4444', '#b91c1c']]
-const grad = (n: string) => GRADS[[...(n || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADS.length]
-const inicial = (n: string) => (n || '?').trim()[0]?.toUpperCase() || '?'
 
 const nombreDisc = (d: string) => etiquetaDisciplina(d).toLowerCase()
 function colMult(m: number) { return m < 0.8 ? '#22c55e' : m < 1.2 ? '#eab308' : m < 1.8 ? '#f97316' : '#ef4444' }
@@ -454,12 +452,6 @@ export default function EcoPage() {
           : '',
       ].filter(Boolean).join(' ')
     : '')
-
-  const Avatar = ({ nombre, size = 44 }: { nombre: string; size?: number }) => {
-    const [c1, c2] = grad(nombre)
-    return <span className="rounded-[30%] grid place-items-center font-bold text-white flex-shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.38, background: 'linear-gradient(145deg,' + c1 + ',' + c2 + ')' }}>{inicial(nombre)}</span>
-  }
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
 
