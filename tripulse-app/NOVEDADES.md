@@ -14,6 +14,35 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · Lo que el atleta se apunta ya cuenta en dos sitios más
+
+**Dos sitios que se dejaban fuera las sesiones que el deportista se añade por su
+cuenta** (las de /apuntar, no las que le pones tú):
+
+- **Los índices del panel** (los semáforos de percepción, los que comparan lo que
+  dijo que le costó con lo que marcó el pulso). Solo miraban las sesiones de su
+  plan, así que a un atleta que se apunta cosas le faltaban datos — y **a uno sin
+  plan no le salían los índices en absoluto**.
+- **La gráfica de periodización**: la barra de «carga real» no contaba esas
+  sesiones, así que salía **por debajo** de lo que había entrenado de verdad. Si
+  comparabas esa barra con la curva teórica y no te cuadraba, era esto.
+
+Los dos puede que te suban números. No es que ahora cuente de más: es que antes
+contaba de menos.
+
+**Y en los bricks, el aviso ahora dice la verdad.** Si montabas un brick con dos
+bloques y **dejabas uno sin minutos**, el aviso decía «un brick necesita al menos
+dos bloques con duración» — y tú tenías dos, así que a ver quién adivina qué
+falta. Ahora el aviso sale **dentro del constructor, en rojo, mientras lo montas**
+y dice exactamente qué falta: otra disciplina, o a cuántos bloques les faltan los
+minutos.
+
+De paso, dos avisos que antes abrían la ventana gris del navegador (en el
+laboratorio de tests y en el objetivo de series de Volumen) salen ya dentro de la
+pantalla, como el resto.
+
+---
+
 ## 27 de septiembre de 2026 · El color de cada deportista, el mismo en todas partes
 
 A cada deportista le corresponde un color, sacado de su nombre, y es lo que te
