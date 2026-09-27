@@ -18,15 +18,11 @@ function vacio(): FactorSicatDisc {
 /**
  * Los microciclos de un deportista.
  *
- * Antes esto encadenaba macrociclo → mesociclo → microciclo. Desde la Fase A el
- * microciclo lleva su `id_deportista`, así que es una consulta. Se conserva la
- * función porque quien la llama pide IDS DE MICROCICLO, no sesiones — que es lo
- * que la distingue de las otras cadenas que se han ido quitando.
+ * (Aquí vivía `getMicrosDeportista`, que traía los ids de microciclo del atleta
+ * para poder pedir «las sesiones de su plan». Se ha ido con sus dos únicos
+ * consumidores: las sesiones se piden por `id_deportista`, que las trae todas
+ * —las del plan y las que se añadió él— en un solo viaje.)
  */
-export async function getMicrosDeportista(depId: number): Promise<number[]> {
-  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', depId)
-  return (micros || []).map((m: any) => m.id)
-}
 
 // F1 — Dificultad técnica. Promedia la sensación técnica del atleta (media de todas
 // sus sesiones) con la valoración técnica que el entrenador da en el PERFIL del
@@ -117,8 +113,6 @@ export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatR
   //
   // Y las eliminadas ahora quedan fuera. Estaban entrando: `estado = Realizada` no
   // dice nada de si la sesión sigue viva, así que una borrada seguía pesando.
-  const microsIds = await getMicrosDeportista(dep.id)
-
   // Con `periodo` se acota a un tramo. Sirve para ver si el coste de cada deporte se
   // mueve con el tiempo: sin acotar, el SICAT mete toda la historia en el mismo saco
   // y una mejora de hace un mes queda diluida entre dos años de sesiones.
@@ -133,12 +127,11 @@ export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatR
     return q
   }
 
-  const [enPlan, libres] = await Promise.all([
-    microsIds.length ? consulta().in('id_microciclo', microsIds) : Promise.resolve({ data: [] }),
-    consulta().eq('id_deportista', dep.id).is('id_microciclo', null),
-  ])
-
-  const sesiones = [...(enPlan.data || []), ...(libres.data || [])]
+  /* Era «las de su plan» + «las libres», dos consultas y un viaje antes para
+     saber qué microciclos son suyos. La sesión lleva su `id_deportista` desde la
+     Fase A y su RLS garantiza que está relleno, así que las dos preguntas son
+     una: las suyas. */
+  const sesiones = (await consulta().eq('id_deportista', dep.id)).data || []
   if (!sesiones.length) {
     DISCIPLINAS_SICAT.forEach(d => { resultados[d] = vacio() })
     return resultados

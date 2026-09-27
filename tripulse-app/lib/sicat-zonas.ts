@@ -9,7 +9,7 @@
 import { supabase } from './supabase'
 import { sumarDias } from './fechas'
 import { tareaPico } from './prescripcion-zona'
-import { getMicrosDeportista, DISCIPLINAS_SICAT, type DisciplinaSicat } from './sicat'
+import { DISCIPLINAS_SICAT, type DisciplinaSicat } from './sicat'
 
 export type Confianza = 'alta' | 'media' | 'baja'
 
@@ -61,16 +61,15 @@ export function costeSesion(d0: number | null, d24: number | null, d48: number |
 export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado> {
   const hrvBasal = dep.hrv_basal || 0
   // Mismo criterio que calcularSICAT: las libres cuentan y las eliminadas no.
-  const micros = await getMicrosDeportista(dep.id)
   const consulta = () => supabase.from('sesion')
     .select('id, disciplina, rpe_reportado, fecha_sesion')
     .eq('estado', 'Realizada').or('eliminada.is.null,eliminada.eq.false')
 
-  const [enPlan, libres] = await Promise.all([
-    micros.length ? consulta().in('id_microciclo', micros) : Promise.resolve({ data: [] }),
-    consulta().eq('id_deportista', dep.id).is('id_microciclo', null),
-  ])
-  const ses = [...(enPlan.data || []), ...(libres.data || [])]
+  /* Era «las de su plan» + «las libres», dos consultas y un viaje antes para
+     saber qué microciclos son suyos. La sesión lleva su `id_deportista` desde la
+     Fase A y su RLS garantiza que está relleno, así que las dos preguntas son
+     una: las suyas. */
+  const ses = (await consulta().eq('id_deportista', dep.id)).data || []
 
   // Los bricks entran aunque 'Brick' no sea una disciplina SICAT: sus BLOQUES sí lo son.
   const sesiones = (ses || []).filter((s: any) =>

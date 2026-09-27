@@ -50,17 +50,11 @@ function media(xs: number[]): number | null {
 export async function calcularFactorBrick(supabase: any, depId: number): Promise<FactorBrickResultado> {
   const out: FactorBrickResultado = {}
 
-  /* Antes: macrociclo → mesociclo → microciclo. El microciclo ya lleva su
-     `id_deportista` desde la Fase A. */
-  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', depId)
-  const microIds = (micros || []).map((m: any) => m.id)
-
-  const sesChain = microIds.length
-    ? (await supabase.from('sesion').select('id, disciplina, transiciones')
-        .or(FILTRO_VIVAS).in('id_microciclo', microIds).eq('estado', 'Realizada')).data || [] : []
-  const sesLibres = (await supabase.from('sesion').select('id, disciplina, transiciones')
-    .or(FILTRO_VIVAS).eq('id_deportista', depId).is('id_microciclo', null).eq('estado', 'Realizada')).data || []
-  const sesiones = [...sesChain, ...sesLibres]
+  /* Antes: macrociclo → mesociclo → microciclo, y después DOS consultas —las
+     del plan y las libres—. La sesión lleva su `id_deportista` desde la Fase A:
+     una. */
+  const sesiones = (await supabase.from('sesion').select('id, disciplina, transiciones')
+    .or(FILTRO_VIVAS).eq('id_deportista', depId).eq('estado', 'Realizada')).data || []
   if (!sesiones.length) return out
 
   const { data: tareas } = await supabase.from('tarea')

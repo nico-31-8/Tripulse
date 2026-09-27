@@ -468,3 +468,55 @@ Verificado (las dos tandas): `tsc` limpio · **3.211 tests en 162 ficheros** ·
 **Qué mirar al desplegar:** el avatar del atleta en `/volumen` —ahora del color
 de su nombre, no naranja— y que los desplegables del panel, de `/eco` y de la
 ficha del deportista siguen abriéndose con su animación y enteros.
+
+### Tanda 7 — la cadena del microciclo, tercera vuelta · CERRADA (2026-09-27)
+
+Esta es **la familia de bugs más caras del proyecto**, y ya van tres vueltas:
+
+- **Julio**: «las sesiones libres no se manejaban bien en muchos sitios».
+- **Agosto**: la cadena `macrociclo → mesociclo → microciclo` en **catorce**
+  pantallas, «el mismo bug catorce veces, uno por sitio donde alguien copió la
+  cadena».
+- **Ahora**: quedaban **nueve** sitios pidiendo las sesiones por
+  `in('id_microciclo', …)`. Seis eran la pareja «las del plan + las libres»
+  —correcta, pero dos viajes— y **dos eran el bug otra vez**:
+
+**Los índices del panel del entrenador.** Pedían las últimas veinte realizadas
+**solo de los microciclos del plan**, sin la consulta de las libres que sí tenían
+las otras cuatro métricas del mismo fichero. Así que las sesiones que se añade el
+atleta no contaban para los índices de percepción, y **un atleta sin plan no
+tenía índices en absoluto**.
+
+**La gráfica de periodización.** Tres viajes encadenados
+(`macrociclo → mesociclo → microciclo`) para acabar pidiendo las sesiones de esos
+microciclos: lo que el atleta se añade **no contaba como «carga real»**, así que
+la barra de lo hecho salía por debajo de lo que había entrenado.
+
+Y una consulta que se traía **todos los microciclos de todos sus atletas** —sin
+filtro, con dos tablas anidadas— para quedarse en memoria con los de uno
+(`components/PlanCadena`). El microciclo lleva su `id_deportista` desde la Fase A.
+
+**La regla, ahora en un test:** para saber qué ha entrenado alguien se pregunta
+por `eq('id_deportista', …)`. La sesión lo lleva y su RLS garantiza que está
+relleno —una fila sin dueño no la ve nadie—, así que esa única consulta trae las
+dos cosas: las del plan y las que se añadió él. Pedirlas por microciclo solo vale
+cuando el **alcance es el plan**: borrar sus sesiones, rehacerlo, o mirar un
+mesociclo concreto. Esos cuatro están permitidos con su motivo.
+
+Lo que se ha quitado por el camino: **seis viajes a la base** en el panel del
+entrenador, tres en la gráfica de periodización, dos en el SICAT y uno en cada
+una de las otras. Y `getMicrosDeportista`, que se quedó sin consumidores.
+
+El rebarrido, por otras tres vías —quién pide mesociclos para llegar a sesiones,
+los joins anidados que traen el dueño por dentro, y quién filtra el dueño en JS
+después de traérselo todo— **limpio**: el join anidado de `PlanCadena` era el
+último que quedaba.
+
+Verificado: `tsc` limpio · **3.215 tests en 163 ficheros** · `next build` OK ·
+sin avisos nuevos de lint. El test del brick llevaba su maqueta con las sesiones
+**sin** `id_deportista` (modelaba la realidad vieja): se ha puesto, porque en la
+base lo llevan.
+
+**Qué mirar al desplegar:** los **índices del panel** de un atleta que se añada
+sesiones por su cuenta (o que no tenga plan: ahora debería tenerlos) y la
+**gráfica de periodización**, donde la barra de carga real puede subir.

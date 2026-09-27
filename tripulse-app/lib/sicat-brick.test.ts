@@ -3,10 +3,11 @@ import { FILTRO_VIVAS } from './papelera'
 import { calcularFactorBrick, factorPersonalizado, clavePar } from './sicat-brick'
 
 // ------------------------------------------------------------
-// Doble de Supabase que SÍ filtra. Es importante que aplique eq/in/is de verdad:
-// calcularFactorBrick consulta `sesion` dos veces (las de microciclo y las libres)
-// y un doble que devolviera siempre la misma tabla las contaría dos veces, dando
-// tests verdes sobre datos duplicados.
+// Doble de Supabase que SÍ filtra: aplica eq/in/is de verdad. Antes hacía falta
+// porque `calcularFactorBrick` consultaba `sesion` DOS veces —las del microciclo y
+// las libres— y un doble que devolviera siempre la misma tabla las contaría dos
+// veces. Ahora es una sola consulta por `id_deportista`, así que lo que el doble
+// tiene que respetar sobre todo es el filtro de la papelera.
 // ------------------------------------------------------------
 function fakeSupabase(tablas: Record<string, any[]>) {
   return {
@@ -46,9 +47,9 @@ const estructura = {
 }
 
 const sesNormal = (id: number, disciplina = 'Carrera') =>
-  ({ id, disciplina, estado: 'Realizada', id_microciclo: 100, transiciones: [] })
+  ({ id, disciplina, estado: 'Realizada', id_deportista: DEP, id_microciclo: 100, transiciones: [] })
 const sesBrick = (id: number) =>
-  ({ id, disciplina: 'Brick', estado: 'Realizada', id_microciclo: 100, transiciones: [{ despues_de: 1, segundos: 90 }] })
+  ({ id, disciplina: 'Brick', estado: 'Realizada', id_deportista: DEP, id_microciclo: 100, transiciones: [{ despues_de: 1, segundos: 90 }] })
 
 const bloque = (id_sesion: number, orden: number, disciplina: string, zona: string, rpe: number | null) =>
   ({ id_sesion, orden, disciplina, zona_entrenamiento: zona, rpe_reportado: rpe })
@@ -133,7 +134,7 @@ describe('calcularFactorBrick — qué NO debe contar', () => {
   })
 
   it('sin transición declarada no es concatenación: dos bloques seguidos no bastan', async () => {
-    const sinTrans = { id: 200, disciplina: 'Brick', estado: 'Realizada', id_microciclo: 100, transiciones: [] }
+    const sinTrans = { id: 200, disciplina: 'Brick', estado: 'Realizada', id_deportista: DEP, id_microciclo: 100, transiciones: [] }
     const sb = fakeSupabase({
       ...estructura,
       sesion: [sesNormal(100), sesNormal(101), sesNormal(102), sinTrans],
@@ -205,7 +206,12 @@ describe('calcularFactorBrick — qué NO debe contar', () => {
     expect(par.nBrick).toBe(3)
   })
 
-  it('no cuenta dos veces una sesión de microciclo (se consulta en dos queries distintas)', async () => {
+  /* Antes esto guardaba de un doble conteo real: las sesiones se pedían en DOS
+     consultas —las del microciclo y las libres— y una sesión que cayera en las dos
+     se contaba dos veces. Ahora se piden en una, por deportista, así que el doble
+     conteo no puede darse por construcción; el test se queda porque sigue
+     comprobando lo que importa: tres bricks son tres. */
+  it('una sesión con microciclo se cuenta UNA vez', async () => {
     const par = (await calcularFactorBrick(escenario(3, 6, 8), DEP))[clavePar('Ciclismo', 'Carrera')]
     expect(par.nBrick).toBe(3)
   })

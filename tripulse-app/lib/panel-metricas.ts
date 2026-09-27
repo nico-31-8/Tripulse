@@ -299,11 +299,17 @@ export function diasDeLaSemanaActual(hoy: string = hoyISO()): string[] {
 }
 
 export async function cargarMetricasPanel(supabase: any, dep: any): Promise<MetricasPanel> {
-  /* Aquí empezaba la cadena macro → meso → micro, «base de casi todo». Tres
-     viajes encadenados antes de poder pedir nada. El microciclo lleva su
-     `id_deportista` desde la Fase A: uno. */
-  const { data: micros } = await supabase.from('microciclo').select('id').eq('id_deportista', dep.id)
-  const microIds = (micros || []).map((m: any) => m.id)
+  /* Aquí empezaba la cadena macro → meso → micro, «base de casi todo»: tres
+     viajes antes de poder pedir nada. Se quedó en UNO —los microciclos del
+     deportista— y de ahí salían DOS consultas por métrica: las sesiones de esos
+     microciclos y, aparte, las libres (`id_microciclo` a null).
+
+     Ahora ninguno. LA SESIÓN LLEVA SU DEPORTISTA desde la Fase A, y su política
+     RLS garantiza que está relleno (una fila sin él no la ve nadie), así que
+     `id_deportista` responde de una vez a las dos preguntas: las del plan y las
+     que se añadió él. Cuatro viajes menos y una dependencia menos —la de que el
+     microciclo de una sesión sea del mismo deportista, que se comprobó en agosto
+     pero que este fichero ya no necesita dar por buena—. */
 
   // ---- Ventanas temporales ----
   const hoyStr = hoyISO()
@@ -347,14 +353,13 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
 const VIVAS = FILTRO_VIVAS
 
 // ---- Carga (frescura): sesiones realizadas 70 días ----
-  const cargaChain = microIds.length
-    ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds)
-        .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || [] : []
-  const cargaLibres = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id).is('id_microciclo', null)
+  /* `any[]` y no `any`: el cliente viene sin tipos y, sin el corchete, los
+     `.map` de abajo se quedan sin tipo para su parámetro. */
+  const sesCarga: any[] = (await supabase.from('sesion').select(selSes)
+    .eq('id_deportista', dep.id)
     .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || []
   // Hasta HOY: los días de descanso desde la última sesión también cuentan.
-  const serieCarga = calcularCargas([...cargaChain, ...cargaLibres], hoyISO())
+  const serieCarga = calcularCargas(sesCarga, hoyISO())
   const ultimaCarga = serieCarga[serieCarga.length - 1]
   const carga = ultimaCarga
     ? {
@@ -365,13 +370,9 @@ const VIVAS = FILTRO_VIVAS
   const tendencia = serieCarga.slice(-42).map(x => x.tsb)
 
   // ---- Semana en curso: sesiones planificadas (cualquier estado) ----
-  const semChain = microIds.length
-    ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds)
-        .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)).data || [] : []
-  const semLibres = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id).is('id_microciclo', null)
+  const sesSemana: any[] = (await supabase.from('sesion').select(selSes)
+    .eq('id_deportista', dep.id)
     .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)).data || []
-  const sesSemana = [...semChain, ...semLibres]
 
   // Volumen por disciplina. Si hay duración estimable → minutos; si no, conteo de sesiones.
   let volumen: MetricasPanel['volumen'] = null
@@ -427,9 +428,14 @@ const VIVAS = FILTRO_VIVAS
   // ---- Índices: últimas 20 realizadas + sus tareas ----
   let indices: MetricasPanel['indices'] = null
   const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
-  if (microIds.length && fcUmbral) {
+  /* AQUÍ HABÍA UN FALLO, no solo una cadena: esto pedía las últimas veinte
+     realizadas SOLO de los microciclos del plan, y no tenía la consulta de las
+     libres que sí tienen las demás métricas. Así que las sesiones que se añade el
+     atleta no contaban para los índices de percepción, y un atleta sin plan
+     —`microIds` vacío— no tenía índices en absoluto. */
+  if (fcUmbral) {
     const { data: ses } = await supabase.from('sesion')
-      .select('id, rpe_estimado, fecha_sesion').in('id_microciclo', microIds)
+      .select('id, rpe_estimado, fecha_sesion').eq('id_deportista', dep.id)
       .eq('estado', 'Realizada').or(VIVAS).order('fecha_sesion', { ascending: false }).limit(20)
     const sesIds = (ses || []).map((s: any) => s.id)
     if (sesIds.length) {
@@ -458,11 +464,9 @@ const VIVAS = FILTRO_VIVAS
 
   // ---- Agenda: próximas sesiones (hoy → +21 días, no realizadas) ----
   const finStr = sumarDias(hoyStr, 21)
-  const agChain = microIds.length
-    ? (await supabase.from('sesion').select(selSes).in('id_microciclo', microIds).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || [] : []
-  const agLibres = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id).is('id_microciclo', null).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || []
-  const agSes = [...agChain, ...agLibres]
+  const agTodas: any[] = (await supabase.from('sesion').select(selSes)
+    .eq('id_deportista', dep.id).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || []
+  const agSes = agTodas
     .filter(s => s.estado !== 'Realizada')
     .sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))
     .slice(0, 6)
@@ -484,16 +488,15 @@ const VIVAS = FILTRO_VIVAS
   })
 
   // ---- General: conteos para los accesos secundarios ----
-  const [ejRes, comRes, papChain, papLibres] = await Promise.all([
+  const [ejRes, comRes, papRes] = await Promise.all([
     supabase.from('ejercicios_biblioteca').select('id', { count: 'exact', head: true }),
     supabase.from('mensajes').select('id').eq('id_deportista', dep.id).eq('autor', 'deportista').eq('leido', false),
-    microIds.length ? supabase.from('sesion').select('id').in('id_microciclo', microIds).eq('eliminada', true) : Promise.resolve({ data: [] }),
-    supabase.from('sesion').select('id').eq('id_deportista', dep.id).is('id_microciclo', null).eq('eliminada', true),
+    supabase.from('sesion').select('id').eq('id_deportista', dep.id).eq('eliminada', true),
   ])
   const general = {
     comunicacion: (comRes.data || []).length,
     ejercicios: ejRes.count || 0,
-    papelera: (papChain.data || []).length + (papLibres.data || []).length,
+    papelera: (papRes.data || []).length,
   }
 
   return { carga, tendencia, proxima, volumen, indices, tests: { ultima: ultimaTest }, semana, agenda, general }

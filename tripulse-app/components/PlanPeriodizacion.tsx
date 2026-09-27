@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { FILTRO_VIVAS } from '@/lib/papelera'
+import { sumarDias } from '@/lib/fechas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
 
 const FASE_COLORES: Record<string, string> = {
@@ -280,11 +281,18 @@ export default function PlanPeriodizacion({
 
   const cargarSesiones = async () => {
     if (!macroId) { setLoading(false); return }
-    const { data: mesos } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', macroId)
-    if (!mesos?.length) { setLoading(false); return }
-    const { data: micros } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesos.map(m => m.id))
-    if (!micros?.length) { setLoading(false); return }
-    const { data: ses } = await supabase.from('sesion').select('fecha_sesion, disciplina, duracion_minutos, estado').or(FILTRO_VIVAS).in('id_microciclo', micros.map(m => m.id)).order('fecha_sesion')
+    /* Aquí había tres viajes encadenados —macrociclo → mesociclo → microciclo—
+       para acabar pidiendo las sesiones de esos microciclos. Y con eso, lo que
+       el atleta se añade por su cuenta NO contaba como «carga real»: la barra de
+       lo hecho salía por debajo de lo que había entrenado de verdad.
+
+       La sesión lleva su deportista, así que se pide por él y por las fechas del
+       macrociclo, que son las semanas que pinta la gráfica. Un viaje.
+       (lib/fechas: el día es un día de calendario, se opera en UTC.) */
+    const fin = sumarDias(fechaInicio, duracionSemanas * 7 - 1)
+    const { data: ses } = await supabase.from('sesion')
+      .select('fecha_sesion, disciplina, duracion_minutos, estado')
+      .eq('id_deportista', depId).gte('fecha_sesion', fechaInicio).lte('fecha_sesion', fin).or(FILTRO_VIVAS).order('fecha_sesion')
     setSesionesReales(ses || [])
     setLoading(false)
   }

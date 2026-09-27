@@ -51,20 +51,19 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
       setLunesAjuste(prox?.lunes ?? null)
 
       const desde = sumarDias(hoy, -77)   // 11 semanas: suficiente para el ACWR
-      const { data: micros } = await supabase.from('microciclo')
-        .select('id, fecha_inicio, ua_planificada, mesociclo(macrociclo(id_deportista))')
-      const mios = (micros || []).filter((m: any) => m.mesociclo?.macrociclo?.id_deportista === dep.id)
-
+      /* Esto se traía TODOS los microciclos de todos sus atletas —sin filtro,
+         con dos tablas anidadas— para quedarse en memoria con los de uno. El
+         microciclo lleva su `id_deportista` desde la Fase A, así que se pide por
+         él. Y las sesiones, también: «las de su plan» + «las libres» eran dos
+         consultas para la misma respuesta. */
       const sel = 'id, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado'
-      const [{ data: enPlan }, { data: libres }] = await Promise.all([
-        mios.length
-          ? supabase.from('sesion').select(sel).in('id_microciclo', mios.map((m: any) => m.id))
-              .gte('fecha_sesion', desde).or('eliminada.is.null,eliminada.eq.false')
-          : Promise.resolve({ data: [] as any[] }),
-        supabase.from('sesion').select(sel).eq('id_deportista', dep.id).is('id_microciclo', null)
+      const [{ data: micros }, { data: sesRaw }] = await Promise.all([
+        supabase.from('microciclo').select('id, fecha_inicio, ua_planificada').eq('id_deportista', dep.id),
+        supabase.from('sesion').select(sel).eq('id_deportista', dep.id)
           .gte('fecha_sesion', desde).or('eliminada.is.null,eliminada.eq.false'),
       ])
-      const ses = [...(enPlan || []), ...(libres || [])]
+      const mios = micros || []
+      const ses: any[] = sesRaw || []
       const [dur, wellQ] = await Promise.all([
         ses.length ? estimarDuraciones(supabase, ses.map(s => s.id), {}) : Promise.resolve({} as Record<number, ResultadoDuracion>),
         supabase.from('wellness').select('*').eq('id_deportista', dep.id)

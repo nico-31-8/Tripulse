@@ -73,8 +73,8 @@ export const domingoDe = (lunes: string) => fechaDeDia(lunes, 'Domingo')
  * solo aviso. Se cuenta antes y decide el entrenador.
  */
 export async function loQueYaHay(sb: any, idDeportista: number, lunes: string): Promise<number> {
-  const micros = await microsDelDeportista(sb, idDeportista)
-  const ids = micros.map((m: any) => m.id)
+  /* Ya no hace falta saber sus microciclos para esto: se preguntaba por ellos
+     para pedir «las sesiones de su plan». */
   const desde = lunes, hasta = domingoDe(lunes)
 
   const consulta = () => sb.from('sesion')
@@ -82,13 +82,11 @@ export async function loQueYaHay(sb: any, idDeportista: number, lunes: string): 
     .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
     .or('eliminada.is.null,eliminada.eq.false')
 
-  // Las suyas son las de su plan MÁS las libres. Mirar solo el microciclo deja
-  // fuera justo las que el planificador crea cuando no tiene semana montada.
-  const [enPlan, libres] = await Promise.all([
-    ids.length ? consulta().in('id_microciclo', ids) : Promise.resolve({ data: [] }),
-    consulta().eq('id_deportista', idDeportista).is('id_microciclo', null),
-  ])
-  return ((enPlan as any)?.data?.length || 0) + ((libres as any)?.data?.length || 0)
+  /* Las suyas son las de su plan MÁS las libres —mirar solo el microciclo deja
+     fuera justo las que el planificador crea cuando no tiene semana montada—, y
+     las dos juntas son «las del deportista», que la sesión lo lleva. */
+  const { data } = await consulta().eq('id_deportista', idDeportista)
+  return (data as any[] | null)?.length || 0
 }
 
 /** Los microciclos del atleta, para saber si la fecha cae en su plan. */
