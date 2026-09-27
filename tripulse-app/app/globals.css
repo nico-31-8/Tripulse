@@ -88,7 +88,18 @@ html, body {
   color: color-mix(in oklab, var(--pc) 72%, #fff); background: color-mix(in oklab, var(--pc) 20%, transparent); }
 .tp-collapse { max-height: 0; opacity: 0; overflow: hidden;
   transition: max-height .38s cubic-bezier(.22,1,.36,1), opacity .3s, margin-top .3s; margin-top: 0; }
-.tp-collapse.open { max-height: 460px; opacity: 1; margin-top: 16px; }
+/* EL ALTO LO PONE QUIEN ABRE, MIDIÉNDOLO (lib/alto-desplegable).
+ Aquí había un 460px escrito a mano. Como `overflow` es `hidden`, el día que el
+ contenido pasa de ese número desaparece SIN DEJAR RASTRO: ni barra, ni puntos
+ suspensivos, ni nada. Pasó de verdad —«Tests propios» y «Zonas propias» dejaron
+ de existir en el panel del móvil al pasar las herramientas a una columna—, así
+ que el número se quitó de aquí.
+
+ El `none` es el respaldo a propósito: quien abra un desplegable sin medir el
+ alto se queda SIN ANIMACIÓN (de 0 a `none` no se puede interpolar) pero con
+ todo el contenido a la vista. Perder la animación se ve; perder media pantalla
+ en silencio, no. */
+.tp-collapse.open { max-height: none; opacity: 1; margin-top: 16px; }
 .tp-chev { transition: transform .32s; }
 .tp-chev.open { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .tp-tile, .tp-wm, .tp-collapse, .tp-chev { transition: none; } }
