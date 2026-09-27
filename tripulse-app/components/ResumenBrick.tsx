@@ -11,7 +11,7 @@ import { cargaZona } from '@/lib/zonas'
 import ConstructorBrick from './ConstructorBrick'
 import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import {
-  interferencia, factorConcatenacion, cargarBrick, guardarBrick, brickValido, rpeBrick,
+  interferencia, factorConcatenacion, cargarBrick, guardarBrick, brickValido, queFaltaAlBrick, rpeBrick,
   BRICK_VACIO, type BrickValor,
 } from '@/lib/bricks'
 
@@ -41,7 +41,7 @@ export default function ResumenBrick({ sesionId, transiciones, editable = false,
 
   const guardar = async () => {
     if (!editando) return
-    if (!brickValido(editando)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
+    if (!brickValido(editando)) { alert(queFaltaAlBrick(editando)); return }
     setGuardando(true)
     const err = await guardarBrick(supabase, sesionId, editando)
     if (err) { alert('No se han podido guardar los bloques.\n\n' + err); setGuardando(false); return }

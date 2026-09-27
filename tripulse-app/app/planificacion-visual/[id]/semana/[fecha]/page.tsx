@@ -8,7 +8,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
 import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
 import ConstructorBrick from '@/components/ConstructorBrick'
-import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
+import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
 import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
 import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
@@ -197,7 +197,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const crearSesion = async (fechaDia: string) => {
     if (!disc) { alert('Elige una disciplina'); return }
     const esB = disc === 'Brick'
-    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
+    if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); return }
     setGuardando(true)
     const microId = await obtenerOcrearMicrociclo()
     if (!microId) { setGuardando(false); return }

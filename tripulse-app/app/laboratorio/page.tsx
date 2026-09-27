@@ -39,6 +39,7 @@ import { mmss } from '@/lib/medicion'
 import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
 import { puedeFijarLab, propuestaLab, origenDe } from '@/lib/lab-zonas'
 import { fijarZonas } from '@/lib/zonas-desde-test'
+import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { pitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
 import InterruptoresAviso from '@/components/InterruptoresAviso'
 
@@ -104,7 +105,6 @@ export default function Laboratorio() {
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [fecha, setFecha] = useState(() => hoyISO())
   const [guardando, setGuardando] = useState(false)
-  const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
   const [atletaHist, setAtletaHist] = useState<number | null>(null)
   const [mediciones, setMediciones] = useState<Medicion[]>([])
   const [cargandoHist, setCargandoHist] = useState(false)
@@ -133,10 +133,10 @@ export default function Laboratorio() {
     (a: string): Datos => ({ ...proto, ...(med[a] || {}) }),
     [proto, med],
   )
-  const decir = (tipo: 'ok' | 'mal', texto: string) => {
-    setAviso({ tipo, texto })
-    setTimeout(() => setAviso(null), 4000)
-  }
+  /* El aviso en franja vive ya en components/AvisoEnLinea, que salió de aquí.
+     `decir` se queda porque lo llaman veinte sitios de este fichero. */
+  const { aviso, ok: decirOk, mal: decirMal } = useAviso()
+  const decir = (tipo: 'ok' | 'mal', texto: string) => (tipo === 'ok' ? decirOk : decirMal)(texto)
 
   /* ---------- el BORRADOR, solo en este navegador ----------
      Recargar sin querer y perder el test que llevabas media hora montando no es
@@ -504,11 +504,7 @@ export default function Laboratorio() {
     <main className="min-h-screen bg-gray-950 text-white">
       {cabecera}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
-        {aviso && (
-          <div className={'mb-4 px-4 py-2.5 rounded-xl text-[13px] border ' + (aviso.tipo === 'ok'
-            ? 'bg-green-500/10 border-green-500/30 text-green-300'
-            : 'bg-red-500/10 border-red-500/30 text-red-300')}>{aviso.texto}</div>
-        )}
+        <AvisoEnLinea aviso={aviso} className="mb-4" />
         {vista === 'editor' ? (
           <>
             <div className="flex gap-1.5 flex-wrap mb-4">
@@ -535,7 +531,7 @@ export default function Laboratorio() {
                   {paso === 1 && <Paso1 test={test} mut={mut} />}
                   {paso === 2 && <Paso2 test={test} mut={mut} renombrar={renombrar} proto={proto}
                     setProto={setProto} cajas={Object.keys(med)} setMed={setMed}
-                    pidiendo={pidiendo} setPidiendo={setPidiendo} />}
+                    pidiendo={pidiendo} setPidiendo={setPidiendo} avisar={decirMal} />}
                   {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(cajaActiva)}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} />}
                   {paso === 4 && (
@@ -699,7 +695,7 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
 // ============================================================
 // 2 · Qué se apunta
 // ============================================================
-function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo, setPidiendo }: {
+function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo, setPidiendo, avisar }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   renombrar: (c: Columna, nuevo: string, bl: Bloque | null) => void
@@ -710,6 +706,8 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
   setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
   pidiendo: Pidiendo | null
   setPidiendo: (p: Pidiendo | null) => void
+  /** Para decir que falta algo sin abrir una ventana del navegador. */
+  avisar: (texto: string) => void
 }) {
   const repes = clavesRepetidas(test)
 
@@ -855,7 +853,7 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
                   }}
                   onRenombra={n => renombrar(c, n, bl)}
                   onQuita={() => {
-                    if (bl.columnas.length === 1) { alert('Un bloque sin columnas no mide nada. Quita el bloque entero.'); return }
+                    if (bl.columnas.length === 1) { avisar('Un bloque sin columnas no mide nada. Quita el bloque entero.'); return }
                     mut(t => { t.bloques[bi].columnas.splice(ci, 1) })
                     setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) { const d = { ...m0[a] }; delete d[c.clave]; m[a] = d } return m })
                   }} />

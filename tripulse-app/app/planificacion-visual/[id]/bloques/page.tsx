@@ -8,7 +8,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import GraficaCarga from '@/components/GraficaCarga'
 import GraficaPeriodizacion from '@/components/GraficaPeriodizacion'
 import ConstructorBrick from '@/components/ConstructorBrick'
-import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
+import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import { tiposDeMeso } from '@/lib/periodizacion'
 import { paraProgramar, TODAS, etiquetaDisciplina, claseDisciplina } from '@/lib/disciplinas'
 
@@ -228,7 +228,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     e.preventDefault()
     setLoading(true)
     const esB = sesionDisc === 'Brick'
-    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); setLoading(false); return }
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
     const { data: nueva } = await supabase.from('sesion').insert({
       id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: diaSeleccionado,

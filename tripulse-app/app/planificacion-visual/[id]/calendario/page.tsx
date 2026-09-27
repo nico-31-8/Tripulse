@@ -21,7 +21,7 @@ import { ZONAS_FUERZA, ZONAS_RESISTENCIA, cargaZona } from '@/lib/zonas'
 
 const DISC_RESISTENCIA = ['Natacion', 'Ciclismo', 'Carrera']
 import ConstructorBrick from '@/components/ConstructorBrick'
-import { BRICK_VACIO, brickValido, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
+import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, cargarBrick, type BrickValor } from '@/lib/bricks'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { aBloquesPlantilla } from '@/lib/propuesta-sesion'
 import { colorMeso, tiposEnPlan, tiposDeMeso } from '@/lib/periodizacion'
@@ -617,7 +617,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const esB = sesionDisc === 'Brick'
     // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
     const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
-    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); setLoading(false); return }
     await supabase.from('sesion').update({
       disciplina: sesionDisc,
       duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
@@ -674,7 +674,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const esB = sesionDisc === 'Brick'
     // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
     const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
-    if (esB && !brickValido(brick)) { alert('Un brick necesita al menos dos bloques con duración.'); setLoading(false); return }
+    if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); setLoading(false); return }
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
     // Si es libre no hay microciclo al que colgarla: se guarda suelta contra el deportista.
     // Aun así se comprueba si alguna semana cubre esa fecha; si la hay, se engancha

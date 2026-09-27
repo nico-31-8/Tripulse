@@ -8,7 +8,7 @@ import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import ConstructorBrick from '@/components/ConstructorBrick'
-import { BRICK_VACIO, brickValido, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
+import { BRICK_VACIO, brickValido, queFaltaAlBrick, zonaPicoBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
 import {
   anadirZona, quitarZona, cuantasDe, chipsNuevos, chipDeBrick, textoBoton, resumenSeleccion,
@@ -2596,7 +2596,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                             onClick={() => {
                               const esB = zonaSelDisc === 'Brick'
                               if (esB) {
-                                if (!brickValido(zonaSelBrick)) { alert('Un brick necesita al menos dos bloques con duración.'); return }
+                                if (!brickValido(zonaSelBrick)) { alert(queFaltaAlBrick(zonaSelBrick)); return }
                                 // El chip enseña la zona más dura del brick, que es la que marca el día.
                                 setSesZonas(prev => [...prev, chipDeBrick(popupZona.semana, zonaPicoBrick(zonaSelBrick), zonaSelBrick, nuevoIdChip)])
                                 setZonaSelBrick(BRICK_VACIO)

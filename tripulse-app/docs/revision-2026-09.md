@@ -520,3 +520,58 @@ base lo llevan.
 **Qué mirar al desplegar:** los **índices del panel** de un atleta que se añada
 sesiones por su cuenta (o que no tenga plan: ahora debería tenerlos) y la
 **gráfica de periodización**, donde la barra de carga real puede subir.
+
+### Tanda 8 — «te falta un dato» se dice en la pantalla · PARCIAL (2026-09-27)
+
+**Primero, una corrección de la medición**: en el backlog puse «20 `alert()`» y
+son **casi cien**. Conté sobre una sola carpeta. De esos, unos **28 son
+validaciones** («te falta un dato») y el resto son errores de guardado, que se
+quedan como están a propósito: un «no se ha podido guardar» tiene que molestar,
+porque si se escapa el entrenador se va creyendo que quedó guardado.
+
+**Lo que se ha cerrado:**
+
+**1. El brick, en la raíz.** La frase «un brick necesita al menos dos bloques con
+duración» estaba escrita a mano en **seis** sitios y decía **solo la mitad**: con
+dos bloques y uno sin minutos, hablaba de bloques cuando lo que faltaba eran los
+minutos, y te dejaba mirando el bloque que sí los tenía. Ahora
+`lib/bricks.queFaltaAlBrick` dice qué falta exactamente —otra disciplina, un
+bloque sin disciplina, o cuántos están sin minutos— y **el constructor lo enseña
+en rojo mientras montas el brick**, donde están los bloques. Los seis guardados
+usan esa misma frase, así que si salta la ventana dice lo que ya se veía.
+`brickValido` pasa a ser `queFaltaAlBrick(v) === null`: una sola verdad, con un
+test que lo ata (si discreparan, el aviso saldría con el guardar activo).
+
+**2. La pieza para avisar ya existía, y la hizo el usuario.** `/laboratorio`
+tenía su propia franja —verde si sale bien, roja si no, se va a los cuatro
+segundos—. Se ha sacado a `components/AvisoEnLinea` (con su hook `useAviso`) y
+`/laboratorio` la usa desde ahí. De paso, **el temporizador se cancela**: la
+versión de dentro pedía un `setTimeout` nuevo en cada aviso sin cancelar el
+anterior, así que dos avisos seguidos se comían el uno al otro.
+
+**3. Dos validaciones que ya no abren una ventana**: la del laboratorio («un
+bloque sin columnas no mide nada») y la de `/volumen` («el objetivo tiene que ser
+un número entre 0 y 100»), que no tiene campo al lado porque se pide con un
+`prompt` del navegador.
+
+**4. Una que no había que tocar.** La anamnesis ya lo hacía bien: el botón de
+enviar está desactivado y hay una línea roja debajo. Su `alert()` era **código
+muerto detrás de un botón deshabilitado**.
+
+**LO QUE QUEDA, y por qué no lo he hecho solo.** Las **24 validaciones**
+restantes están todas en `dibujo` y en `semana/[fecha]`: el lienzo. Ahí el aviso
+no puede ir arriba de la página —estás arrastrando un chip, o dentro de un modal
+abierto— así que hay que decidir **dónde aparece cada uno**:
+
+- Las de los modales (nombre de un macro, fecha de una competición, elegir
+  disciplina) tienen su formulario: cabe una línea roja bajo el campo.
+- Las de arrastrar («un brick se arrastra solo», «solo se pueden fusionar zonas
+  de la misma disciplina») no tienen formulario: el aviso tendría que salir donde
+  se suelta, y eso es una pieza nueva.
+
+Verificado: `tsc` limpio · **3.221 tests en 164 ficheros** · `next build` OK ·
+sin avisos nuevos de lint.
+
+**Qué mirar al desplegar:** monta un brick con dos bloques y **déjale uno sin
+minutos**: el aviso rojo tiene que salir dentro del constructor y decir que
+faltan los minutos, no que faltan bloques.

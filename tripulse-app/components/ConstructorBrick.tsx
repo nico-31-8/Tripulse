@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ZONAS_RESISTENCIA } from '@/lib/zonas'
 import {
-  DISCIPLINAS_BRICK, plantillasPara, interferencia, factorConcatenacion,
+  DISCIPLINAS_BRICK, plantillasPara, interferencia, factorConcatenacion, queFaltaAlBrick,
   type BrickBloque, type BrickValor,
 } from '@/lib/bricks'
 import { calcularFactorBrick, clavePar, type FactorBrickResultado } from '@/lib/sicat-brick'
@@ -94,8 +94,12 @@ export default function ConstructorBrick({ valor, onChange, depId = null }: Prop
             </button>
           ))}
         </div>
-        {valor.bloques.length === 1 && (
-          <p className="text-gray-500 text-[11px] mt-2">Añade al menos una disciplina más: un brick son dos esfuerzos encadenados.</p>
+        {/* EN ROJO Y AQUÍ, que es donde está lo que falta. Antes era una pista
+            gris que solo salía con un bloque, así que un brick con dos bloques y
+            uno sin minutos no avisaba de nada: te dejaba darle a guardar y te
+            respondía una ventana del navegador. La frase la dice lib/bricks. */}
+        {queFaltaAlBrick(valor) && (
+          <p className="text-red-300 text-[11.5px] mt-2">{queFaltaAlBrick(valor)}</p>
         )}
       </div>
 

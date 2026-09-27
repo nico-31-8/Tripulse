@@ -185,8 +185,29 @@ export interface BrickValor {
 export const BRICK_VACIO: BrickValor = { bloques: [], transiciones: [] }
 
 // Un brick son al menos dos esfuerzos encadenados.
+/**
+ * Qué le falta al brick para poder guardarse, escrito para leerlo. `null` si no
+ * le falta nada.
+ *
+ * LA FRASE VIVE AQUÍ porque se dice en SEIS sitios: el constructor la enseña en
+ * rojo mientras montas el brick, y los cinco modales que lo llevan dentro la
+ * usan al guardar. Estaba escrita a mano en los seis («Un brick necesita al
+ * menos dos bloques con duración»), y además decía solo la mitad: si tenías dos
+ * bloques pero uno sin minutos, el aviso hablaba de bloques y lo que faltaba
+ * eran los minutos.
+ */
+export function queFaltaAlBrick(v: BrickValor): string | null {
+  const bloques = v?.bloques || []
+  if (bloques.length < 2) return 'Añade otra disciplina: un brick son dos esfuerzos encadenados.'
+  if (bloques.some(b => !b.disciplina)) return 'Hay un bloque sin disciplina.'
+  const sinMin = bloques.filter(b => !(b.minutos > 0)).length
+  if (sinMin) return sinMin === 1 ? 'Ponle minutos al bloque que está sin ellos.' : 'Hay ' + sinMin + ' bloques sin minutos.'
+  return null
+}
+
+/** Si se puede guardar. Una sola verdad: lo que dice `queFaltaAlBrick`. */
 export function brickValido(v: BrickValor): boolean {
-  return v.bloques.length >= 2 && v.bloques.every(b => b.disciplina && b.minutos > 0)
+  return queFaltaAlBrick(v) === null
 }
 
 // RPE estimado del brick: media de las zonas ponderada por minutos, y el

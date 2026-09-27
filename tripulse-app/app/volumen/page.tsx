@@ -24,6 +24,7 @@ import { origenMinutos } from '@/lib/duracion-carga'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
+import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { horasMinutos } from '@/lib/medicion'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
@@ -132,7 +133,7 @@ export default function VolumenPage() {
     const limpio = v.trim()
     const n = limpio === '' ? null : Number(limpio.replace(',', '.'))
     if (n != null && (!Number.isFinite(n) || n < 0 || n > 100)) {
-      alert('El objetivo tiene que ser un número entre 0 y 100.')
+      avisar('El objetivo tiene que ser un número entre 0 y 100.')
       return
     }
 
@@ -158,6 +159,9 @@ export default function VolumenPage() {
      —reparte sus minutos entre los deportes de sus bloques (lib/atribucion)—. */
   const [discsActivas, setDiscsActivas] = useState<string[]>([...DEPORTES])
   const [subVista, setSubVista] = useState<'barras'|'evolucion'>('barras')
+  /* El objetivo se pide con un `prompt` del navegador, así que no hay campo al
+     lado donde poner el aviso: va en la franja de arriba. */
+  const { aviso, mal: avisar } = useAviso()
   const [agrupEvol, setAgrupEvol] = useState<'semanas'|'meses'>('semanas')
   // El desglose por deporte arranca plegado: la gráfica combinada es la que se lee primero
   // y las de cada deporte alargaban mucho la página.
@@ -584,6 +588,7 @@ export default function VolumenPage() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-7">
         {seleccionado ? (
           <>
+          <AvisoEnLinea aviso={aviso} className="mb-4" />
           <div className="flex items-center gap-4 mb-5 flex-wrap">
             <button onClick={() => setSeleccionado(null)} title="Cambiar deportista"
               className="w-9 h-9 rounded-xl grid place-items-center text-gray-400 hover:text-white hover:bg-white/5 transition flex-shrink-0">←</button>
