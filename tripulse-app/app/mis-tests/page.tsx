@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { TablaZonas2 } from '@/components/TablaZonas2'
 import { colorDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
+import { mmss } from '@/lib/medicion'
 
 export default function MisTests() {
   const router = useRouter()
@@ -115,8 +116,8 @@ export default function MisTests() {
                       ].map(z => {
                         const vMin = (t.vam * z.pct[0] / 100)
                         const vMax = (t.vam * z.pct[1] / 100)
-                        const pMin = vMin > 0 ? Math.floor(60/vMin) + ':' + String(Math.round((60/vMin%1)*60)).padStart(2,'0') : '—'
-                        const pMax = vMax > 0 ? Math.floor(60/vMax) + ':' + String(Math.round((60/vMax%1)*60)).padStart(2,'0') : '—'
+                        const pMin = vMin > 0 ? mmss(3600 / vMin) : '—'
+                        const pMax = vMax > 0 ? mmss(3600 / vMax) : '—'
                         return (
                           <div key={z.z} className={'flex justify-between items-center px-3 py-2 rounded-lg ' + z.color}>
                             <span className="text-xs font-medium">Z{z.z} {z.nombre}</span>

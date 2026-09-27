@@ -35,6 +35,7 @@ import {
 import { PLANTILLAS } from '@/lib/lab-plantillas'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
+import { mmss } from '@/lib/medicion'
 import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
 import { puedeFijarLab, propuestaLab, origenDe } from '@/lib/lab-zonas'
 import { fijarZonas } from '@/lib/zonas-desde-test'
@@ -1872,9 +1873,7 @@ function Pasar({
                     lleva la repetición: al atleta lo que le sirve es cuántos
                     segundos le quedan de correr. */}
                 <div className={'font-mono tabular-nums text-[26px] leading-none ' + (tr ? 'text-fuchsia-300' : 'text-white')}>
-                  {tr
-                    ? Math.floor(tr.restante / 60) + ':' + String(tr.restante % 60).padStart(2, '0')
-                    : Math.floor(dentro / 60) + ':' + String(dentro % 60).padStart(2, '0')}
+                  {mmss(tr ? tr.restante : dentro)}
                 </div>
                 <div className={pie}>{tr ? tr.nombre + ' · queda' : 'en este escalón'}</div>
               </div>
@@ -2196,5 +2195,7 @@ function Grafica({ s, idx }: { s: Serie; idx: number }) {
 
 function crono(ms: number): string {
   const t = Math.max(0, ms)
-  return Math.floor(t / 60000) + ':' + String(Math.floor((t % 60000) / 1000)).padStart(2, '0') + '.' + Math.floor((t % 1000) / 100)
+  /* Con décimas, y SIN redondear: un cronómetro no adelanta un segundo que no
+     ha pasado. De ahí el `floor` antes de dar los segundos al formato. */
+  return mmss(Math.floor(t / 1000)) + '.' + Math.floor((t % 1000) / 100)
 }

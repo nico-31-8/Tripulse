@@ -8,8 +8,8 @@ import {
   leerConfig, ordenarLineas, duracionBloque, textoFormato, textoLinea, leerResultado, textoResultado,
   QUE_SE_APUNTA, type Formato, type LineaBloque,
 } from '@/lib/bloque-formato'
+import { mmss } from '@/lib/medicion'
 
-const mmss = (s: number) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 
 export default function ResumenBloque({ t, conApunta = true }: {
   t: { formato?: string | null; formato_config?: unknown; resultado?: unknown; ejercicios?: LineaBloque[] | null }

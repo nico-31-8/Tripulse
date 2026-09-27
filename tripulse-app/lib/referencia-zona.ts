@@ -11,6 +11,7 @@
 // por dónde entrases. Se arregló apuntando a ZONAS_CLASICAS de lib/zonas; este
 // fichero es el siguiente paso: que la traducción entera viva en un sitio.
 import { ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from './zonas'
+import { mmss } from './medicion'
 import { bandaFC, fcReposoDe, type DatosFC, type MetodoFC } from './frecuencia-cardiaca'
 
 export interface Tests {
@@ -85,9 +86,10 @@ function refClasica(zona: any, disciplina: string, tests: Tests, d: DatosFC): Re
     if (tests.vam) {
       const min = tests.vam * ref.vamPct[0] / 100
       const max = tests.vam * ref.vamPct[1] / 100
-      const paso = (v: number) => v > 0
-        ? Math.floor(60 / v) + ':' + String(Math.round((60 / v % 1) * 60)).padStart(2, '0')
-        : null
+      /* v son km/h, así que el ritmo son 3600/v segundos. Antes se sacaban los
+         minutos y los segundos por separado y se redondeaban los segundos sin
+         arrastrar el minuto: «3:60». */
+      const paso = (v: number) => v > 0 ? mmss(3600 / v) : null
       const pMin = paso(min), pMax = paso(max)
       if (pMin && pMax) ritmo = pMin + '–' + pMax + ' /km'
     }
@@ -243,10 +245,8 @@ export function ritmoObjetivoTexto(valor: unknown, disciplina?: string | null): 
 
   const seg = Number(bruto)
   if (!Number.isFinite(seg) || seg <= 0) return null
-  const m = Math.floor(seg / 60)
-  const s = Math.round(seg % 60)
   const unidad = (disciplina || '').startsWith('Nat') ? '/100m' : '/km'
-  return `${m}:${s.toString().padStart(2, '0')} ${unidad}`
+  return mmss(seg) + ' ' + unidad
 }
 
 // ------------------------------------------------------------

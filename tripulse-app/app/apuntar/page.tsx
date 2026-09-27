@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { mmss } from '@/lib/medicion'
 import { hoyISO, fechaLarga, diasEntre } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { vivas } from '@/lib/papelera'
@@ -474,10 +475,9 @@ export default function Apuntar() {
   }
 
   const cuentan = esFuerza ? ejerciciosQueCuentan(ejercicios) : bloquesQueCuentan(bloques)
-  const mmss = (seg: number) => {
-    const m = Math.floor(Math.abs(seg) / 60), s = Math.abs(seg) % 60
-    return (seg < 0 ? '+' : '') + m + ':' + String(s).padStart(2, '0')
-  }
+  /* No es una duración: es lo que te SOBRA o te FALTA del descanso, y el signo
+     va delante del minuto. El formato lo pone lib/medicion; aquí, el signo. */
+  const diferenciaMmss = (seg: number) => (seg < 0 ? '+' : '') + mmss(Math.abs(seg))
 
   return (
     <main className="min-h-screen bg-gray-950 text-white pb-40">
@@ -756,7 +756,7 @@ export default function Apuntar() {
             (descanso.restante <= 0
               ? 'bg-green-600/20 border-green-500/45'
               : 'bg-amber-500/[0.16] border-amber-500/40')}>
-            <span className="text-xl font-bold tabular-nums min-w-[58px]">{mmss(descanso.restante)}</span>
+            <span className="text-xl font-bold tabular-nums min-w-[58px]">{diferenciaMmss(descanso.restante)}</span>
             <span className={'flex-1 text-[11.5px] leading-snug ' + (descanso.restante <= 0 ? 'text-green-300' : 'text-amber-200/90')}>
               {descanso.restante <= 0 ? 'Descanso cumplido · ' : ''}{descanso.que}
             </span>

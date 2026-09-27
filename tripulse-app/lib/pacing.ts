@@ -8,6 +8,7 @@
 
 import { pruebaPorId } from './pruebas'
 import { zonaResistencia } from './zonas'
+import { mmss } from './medicion'
 
 export interface SegPacing {
   disc: 'Natación' | 'Ciclismo' | 'Carrera'
@@ -36,19 +37,17 @@ export const idsConPacing = (): string[] => Object.keys(PACING)
 function fmtTiempo(seg: number): string {
   if (!isFinite(seg) || seg <= 0) return '—'
   const t = Math.round(seg)
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
   if (h > 0) return `${h}h${String(m).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
+  return mmss(t)
 }
 function paceKmStr(velKmh: number): string {
   if (velKmh <= 0) return '—'
-  const seg = Math.round(3600 / velKmh)
-  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`
+  return mmss(3600 / velKmh)
 }
 function pace100Str(velMs: number): string {
   if (velMs <= 0) return '—'
-  const seg = Math.round(100 / velMs)
-  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`
+  return mmss(100 / velMs)
 }
 
 export interface FilaObjetivo {

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
-import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, mmssCorto, type UnidadMedicion } from '@/lib/medicion'
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { filtrarDrills } from '@/lib/tecnica'
@@ -83,9 +83,7 @@ function mostrarTotal(t: any): string {
   const series = vecesDe(t)
   if (t.p_duracion?.[0]?.tiempo_planeado) {
     const totalSeg = t.p_duracion[0].tiempo_planeado * series
-    const min = Math.floor(totalSeg / 60)
-    const seg = totalSeg % 60
-    return seg > 0 ? min + ':' + String(seg).padStart(2, '0') + ' min' : min + ' min'
+    return mmssCorto(totalSeg) + ' min'
   }
   if (t.p_distancia?.[0]?.metros_planeados) {
     const total = t.p_distancia[0].metros_planeados * series

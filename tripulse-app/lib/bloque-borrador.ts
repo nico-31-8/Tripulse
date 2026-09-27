@@ -15,7 +15,7 @@ import {
   type Formato, type ConfigBloque, type MedidaLinea, type LineaBloque,
 } from './bloque-formato'
 import { modalidadDe } from './cardio-fuerza'
-import { mmssASegundos } from './medicion'
+import { mmss, mmssASegundos } from './medicion'
 
 export interface LineaBorrador {
   tipo: 'Ejercicio' | 'Cardio'
@@ -59,7 +59,6 @@ export interface EjercicioBib {
   url_video?: string | null
 }
 
-const mmss = (s: number) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 let contador = 0
 const nuevaClave = () => 'b' + Date.now().toString(36) + (++contador)
 

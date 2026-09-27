@@ -39,6 +39,7 @@ import {
   type TestConMediciones,
 } from '@/lib/referencia-propia'
 import { MESES_CORTOS } from '@/lib/fechas'
+import { mmss } from '@/lib/medicion'
 
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
 
@@ -51,8 +52,7 @@ const fechaCorta = (iso: string): string => {
 /** km/h → «4:30 /km». Solo tiene sentido con una velocidad. */
 const aRitmo = (kmh: number) => {
   if (!Number.isFinite(kmh) || kmh <= 0) return '—'
-  const s = Math.round(3600 / kmh)
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' /km'
+  return mmss(3600 / kmh) + ' /km'
 }
 
 interface FilaDefinicion { id: number; nombre: string; deporte: string }

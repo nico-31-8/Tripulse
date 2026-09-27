@@ -6,6 +6,7 @@ import Cargando from '@/components/Cargando'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { etiquetaConEmoji } from '@/lib/disciplinas'
+import { mmss } from '@/lib/medicion'
 
 /* La pestaña viene en minúsculas (es lo que va en la URL) y la disciplina del
    catálogo lleva mayúscula: esto traduce una en la otra. */
@@ -84,18 +85,14 @@ function TablaZonas2Fuerza() {
   )
 }
 
+/* El formato lo pone lib/medicion: aquí se redondeaban los segundos SIN
+   arrastrar el minuto, así que un ritmo de 239,7 s/km salía como «3:60». */
 function formatRitmoKm(velocidadKmh: number): string {
-  const segPorKm = 3600 / velocidadKmh
-  const min = Math.floor(segPorKm / 60)
-  const seg = Math.round(segPorKm % 60)
-  return `${min}:${seg.toString().padStart(2, '0')} /km`
+  return mmss(3600 / velocidadKmh) + ' /km'
 }
 
 function formatRitmo100m(velocidadMs: number): string {
-  const segPor100m = 100 / velocidadMs
-  const min = Math.floor(segPor100m / 60)
-  const seg = Math.round(segPor100m % 60)
-  return `${min}:${seg.toString().padStart(2, '0')} /100m`
+  return mmss(100 / velocidadMs) + ' /100m'
 }
 
 const colorZona = (n: number) => {

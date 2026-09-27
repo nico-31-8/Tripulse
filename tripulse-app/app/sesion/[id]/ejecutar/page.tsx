@@ -3,7 +3,6 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
-import { mmss } from '@/lib/duracion-carga'
 import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia, type MesoCtx, type MicroCtx } from '@/lib/contexto-sesion'
@@ -18,18 +17,12 @@ import { recomendarRecuperacion } from '@/lib/recuperacion'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza, chipDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
+import { mmss, mmssASegundos } from '@/lib/medicion'
 import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
 
 const segAMmss = mmss
-
-function mmssASeg(str: string): number {
-  if (!str) return 0
-  const p = str.split(':')
-  if (p.length === 2) return (parseInt(p[0]) || 0) * 60 + (parseInt(p[1]) || 0)
-  return parseInt(str) || 0
-}
 
 const COLOR_ZONA: Record<string, string> = {
   'Z1': 'bg-gray-700 border-gray-500',
@@ -325,7 +318,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       const s0 = r['serie_0']
       if (s0) {
         if (tarea.p_distancia?.[0] && s0.metros) await supabase.from('p_distancia').update({ metros_reales: Number(s0.metros) }).eq('id_tarea', tarea.id)
-        if (tarea.p_duracion?.[0] && s0.tiempo) await supabase.from('p_duracion').update({ tiempo_real: mmssASeg(s0.tiempo) }).eq('id_tarea', tarea.id)
+        if (tarea.p_duracion?.[0] && s0.tiempo) await supabase.from('p_duracion').update({ tiempo_real: mmssASegundos(s0.tiempo) }).eq('id_tarea', tarea.id)
       }
     }
     // Marcar sesión como realizada y guardar post-sesión.
@@ -881,7 +874,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                     <>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Duración plan</p>
-                        <p className="font-bold text-sm">{pu.tiempo_planeado ? Math.floor(pu.tiempo_planeado/60)+':'+String(pu.tiempo_planeado%60).padStart(2,'0') : '—'}</p>
+                        <p className="font-bold text-sm">{pu.tiempo_planeado ? mmss(pu.tiempo_planeado) : '—'}</p>
                       </div>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Duración real</p>

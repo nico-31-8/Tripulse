@@ -26,6 +26,7 @@
 // compara con «la última vez».
 
 import { segundosDeCardio, cuantoPorSerie, modalidadDe } from './cardio-fuerza'
+import { mmss } from './medicion'
 
 export type Formato = 'rondas' | 'amrap' | 'emom' | 'fortime' | 'tabata'
 
@@ -245,7 +246,6 @@ export function seriesDeLinea(
 // Cómo se lee
 // ============================================================
 
-const mmss = (s: number) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 const minutos = (s: number) => s % 60 === 0 ? String(s / 60) : mmss(s)
 
 /** «AMRAP 12′», «4 rondas · 2:00 de descanso», «EMOM 10′ alternando»… */

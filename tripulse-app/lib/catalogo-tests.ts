@@ -144,13 +144,19 @@ export interface TestCampo {
 
 // ── Utilidades de formato ───────────────────────────────────
 
+import { mmss as formatoMmss } from './medicion'
+
 const num = (v: string | undefined) => (v == null || v === '' ? NaN : Number(v))
 
-/** 258 segundos → «4:18». */
+/**
+ * 258 segundos → «4:18», y un guion si no hay dato.
+ *
+ * El «—» es lo propio de aquí: en una tabla de tests un hueco es un hueco, y un
+ * «0:00» parecería un tiempo medido. El formato lo pone lib/medicion.
+ */
 export function mmss(segundos: number | null): string {
   if (segundos == null || !isFinite(segundos) || segundos <= 0) return '—'
-  const s = Math.round(segundos)
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')
+  return formatoMmss(segundos)
 }
 
 /**

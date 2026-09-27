@@ -31,6 +31,7 @@ import { repeticionTexto } from '@/lib/bloques-tarea'
 import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
+import { mmss } from '@/lib/medicion'
 
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
@@ -136,9 +137,12 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [registrando, sesion?.usar_cronometro])
 
+  /* Con horas, los minutos van a dos cifras («1:05:03»); sin ellas, el «m:ss»
+     de siempre, que lo escribe lib/medicion. */
   const formatTiempo = (seg: number) => {
-    const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60
-    return (h > 0 ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(s).padStart(2, '0')
+    const t = Math.max(0, Math.round(seg))
+    const h = Math.floor(t / 3600)
+    return h > 0 ? h + ':' + mmss(t % 3600).padStart(5, '0') : mmss(t)
   }
 
   const empezarRegistro = async () => {

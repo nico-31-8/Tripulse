@@ -116,16 +116,18 @@ export function ftpDeRampa(e: FtpEntrada): number | null {
 // ------------------------------------------------------------
 // Un CSS de 1,25 m/s no le dice nada a nadie; «1:20 /100m» sí.
 
+import { mmss } from './medicion'
+
 /** «4:12 /km» a partir de una VAM en km/h. */
 export function ritmoDeVam(vam: number | null | undefined): string {
   if (!vam || vam <= 0) return '—'
-  const s = 3600 / vam
-  return Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0') + ' /km'
+  /* 3600/VAM casi nunca es entero, y redondear los segundos sin arrastrar el
+     minuto escribía «3:60». El formato lo pone lib/medicion. */
+  return mmss(3600 / vam) + ' /km'
 }
 
 /** «1:20 /100m» a partir de un CSS en m/s. */
 export function ritmoDeCss(css: number | null | undefined): string {
   if (!css || css <= 0) return '—'
-  const s = 100 / css
-  return Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0') + ' /100m'
+  return mmss(100 / css) + ' /100m'
 }

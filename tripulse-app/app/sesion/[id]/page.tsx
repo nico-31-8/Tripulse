@@ -44,6 +44,7 @@ import {
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza, chipDisciplina } from '@/lib/disciplinas'
+import { mmssASegundos, mmssCorto } from '@/lib/medicion'
 import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 
@@ -215,16 +216,6 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const calcularRitmo = (zonaKey: string, disc: string, tests: any): string =>
     ritmoObjetivo(zonaKey, disc, tests)
 
-  const mmssASegundos = (str: string): number => {
-    const partes = str.split(':')
-    if (partes.length === 2) {
-      const min = parseInt(partes[0]) || 0
-      const seg = parseInt(partes[1]) || 0
-      return min * 60 + seg
-    }
-    return parseInt(str) || 0
-  }
-
   const formatearMmss = (str: string): string => {
     const limpio = str.replace(/[^0-9:]/g, '')
     if (limpio.includes(':')) return limpio
@@ -239,9 +230,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const mostrarMedicion = (t: any): string => {
     if (t.p_duracion?.[0]?.tiempo_planeado) {
       const seg = t.p_duracion[0].tiempo_planeado
-      const min = Math.floor(seg / 60)
-      const s = seg % 60
-      return s > 0 ? min + ':' + String(s).padStart(2,'0') + ' min' : min + ' min'
+      return mmssCorto(seg) + ' min'
     }
     if (t.p_distancia?.[0]?.metros_planeados) {
       const m = t.p_distancia[0].metros_planeados

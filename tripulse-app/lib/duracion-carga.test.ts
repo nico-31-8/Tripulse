@@ -295,3 +295,56 @@ describe('«Programado» mide lo que se mandó, no lo que costó', () => {
     expect(minutosCarga(conReal, est(30))).toBe(90)
   })
 })
+
+// ============================================================
+// El «3:60»: redondear los segundos sin arrastrar el minuto
+// ============================================================
+// Había NUEVE declaraciones de `mmss` y tres comportamientos. Seis copias hacían
+// `Math.round(seg % 60)`, así que con 239,7 segundos escribían «3:60» en vez de
+// «4:00»; y esta no redondeaba nada, así que escribía «3:59.7». A los ritmos les
+// llegan segundos con decimales SIEMPRE: 3600/velocidad casi nunca es entero.
+describe('los segundos con decimales', () => {
+  it('nunca sale un «:60»', () => {
+    expect(mmss(239.7)).toBe('4:00')
+    expect(mmss(119.6)).toBe('2:00')
+    expect(mmss(59.5)).toBe('1:00')
+    expect(mmssCorto(239.7)).toBe('4')
+    expect(mmssCorto(119.6)).toBe('2')
+  })
+
+  it('ni un decimal en pantalla', () => {
+    expect(mmss(90.5)).toBe('1:31')
+    expect(mmss(90.4)).toBe('1:30')
+    expect(mmss(0.4)).toBe('0:00')
+    expect(mmssCorto(90.5)).toBe('1:31')
+  })
+
+  /* Barrido: ningún número de 0 a 1.200 segundos, de décima en décima, puede
+     escribir unos segundos de 60 ni un punto decimal. */
+  it('ninguno de los 12.000 primeros décimos escribe algo imposible', () => {
+    for (let d = 0; d <= 12000; d++) {
+      const t = mmss(d / 10)
+      expect(t, String(d / 10)).toMatch(/^\d+:[0-5]\d$/)
+    }
+  })
+
+  it('lo que no es un número sale como cero, no como «NaN:NaN»', () => {
+    expect(mmss(NaN)).toBe('0:00')
+    expect(mmss(-30)).toBe('0:00')
+    expect(mmssCorto(NaN)).toBe('0')
+  })
+
+  /* EL CONTROL, para que los de arriba no pasen por verde estando roto: la
+     fórmula que tenían las seis copias escribe «3:60» de verdad, y no en un
+     caso rebuscado —uno de cada ciento veinte números redondos de décima—. */
+  it('el control: la fórmula vieja SÍ escribía «3:60»', () => {
+    const vieja = (seg: number) => Math.floor(seg / 60) + ':' + String(Math.round(seg % 60)).padStart(2, '0')
+    expect(vieja(239.7)).toBe('3:60')
+    expect(mmss(239.7)).toBe('4:00')
+
+    let malos = 0
+    for (let d = 0; d <= 12000; d++) if (/:60$/.test(vieja(d / 10))) malos++
+    /* 5 de cada 600 décimas, o sea 1 de cada 120: unas 100 en 20 minutos. */
+    expect(malos).toBe(100)
+  })
+})

@@ -17,6 +17,7 @@
 // carga de esa disciplina (mismo criterio que `disciplinaDePolar`).
 
 import { TODAS } from './disciplinas'
+import { mmss } from './medicion'
 
 export interface FilaMedicion {
   id?: number
@@ -150,8 +151,7 @@ export function ritmoTexto(a: Pick<ActividadReloj, 'minutos' | 'metros' | 'disci
   const porUnidad = a.disciplina === 'Natacion' ? 100 : 1000
   const seg = Math.round((a.minutos * 60) / (a.metros / porUnidad))
   if (!Number.isFinite(seg) || seg <= 0) return null
-  const mm = Math.floor(seg / 60), ss = seg % 60
-  return mm + ':' + String(ss).padStart(2, '0') + (porUnidad === 100 ? ' /100 m' : ' /km')
+  return mmss(seg) + (porUnidad === 100 ? ' /100 m' : ' /km')
 }
 
 export interface TotalesReloj {

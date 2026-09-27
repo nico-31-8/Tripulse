@@ -11,12 +11,7 @@ import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
 import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
-
-function secAMinSeg(seg: number): string {
-  const m = Math.floor(seg / 60)
-  const s = Math.round(seg % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
+import { mmss } from '@/lib/medicion'
 
 export default function MisAnalisis() {
   const router = useRouter()
@@ -259,12 +254,12 @@ export default function MisAnalisis() {
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Duración plan</p>
-                              <p className="font-bold text-sm">{pu.tiempo_planeado ? secAMinSeg(pu.tiempo_planeado) + ' min' : '—'}</p>
+                              <p className="font-bold text-sm">{pu.tiempo_planeado ? mmss(pu.tiempo_planeado) + ' min' : '—'}</p>
                             </div>
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Duración real</p>
                               <p className={'font-bold text-sm ' + (pu.tiempo_real ? 'text-green-400' : 'text-gray-500')}>
-                                {pu.tiempo_real ? secAMinSeg(pu.tiempo_real) + ' min' : '—'}
+                                {pu.tiempo_real ? mmss(pu.tiempo_real) + ' min' : '—'}
                               </p>
                             </div>
                           </div>

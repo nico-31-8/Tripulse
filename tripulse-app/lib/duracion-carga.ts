@@ -221,22 +221,8 @@ export function cargaReal(s: SesionCarga | null | undefined, est?: ResultadoDura
 // fallos se esconden. No se fusionan —los dos hacen falta— pero se les separa el
 // nombre y la implementación vive aquí una sola vez.
 
-/** «2:00», «1:30», «0:45». Siempre con los dos puntos. Para MOSTRAR. */
-export function mmss(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return min + ':' + String(s).padStart(2, '0')
-}
-
-/**
- * «2», «1:30», «0:45». Sin el «:00» cuando el minuto es exacto.
- *
- * Es lo que espera una CASILLA editable: al guardar, `mmssASegundos` entiende
- * «2» y «1:30», pero el usuario no quiere teclear «2:00» para dos minutos.
- * También se usa donde detrás va un « min», que deshace la ambigüedad.
- */
-export function mmssCorto(seg: number): string {
-  const min = Math.floor(seg / 60)
-  const s = seg % 60
-  return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
-}
+/* Viven en lib/medicion, al lado de su inversa (`mmssASegundos`) y en un
+   fichero que no importa NADA: así lo puede pedir hasta lib/zonas —que es quien
+   escribe los ritmos— sin montar un círculo de importaciones. Se reexportan
+   porque media app las pide aquí. */
+export { mmss, mmssCorto } from './medicion'

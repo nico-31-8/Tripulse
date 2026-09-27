@@ -256,4 +256,74 @@ porqué.
 
 Verificado: `tsc` limpio · **3.173 tests en 157 ficheros** · `next build` OK.
 
-### Tanda 2 — `mmss`: un nombre, tres significados · siguiente
+### Tanda 2 — `mmss`: un nombre, tres significados · CERRADA (2026-09-27)
+
+**El «3:60» estaba vivo en SIETE pantallas**, y la tanda empezó buscando nueve
+declaraciones de `mmss`. Acabó con veintitantos sitios.
+
+**El fallo.** Seis copias hacían `Math.round(seg % 60)`: redondear los segundos
+**sin arrastrar el minuto**. Con 239,7 segundos eso escribe `3:60` en vez de
+`4:00`, y a los ritmos les llegan siempre segundos con decimales porque
+`3600/velocidad` casi nunca es entero. Cae ahí **1 de cada 120** ritmos (5 de
+cada 600 décimas). Y la que se daba por buena —la de `lib/duracion-carga`— no
+redondeaba nada: escribía `1:30.5`.
+
+Dónde se veía el `3:60`:
+
+| Pantalla | Qué escribía mal |
+|---|---|
+| `/zonas/[id]` | los ritmos de cada zona del atleta |
+| `/mis-tests` | el rango de ritmo por zona |
+| `/mis-analisis` | la duración de cada pareja de la sesión |
+| el rótulo del «@» (`lib/referencia-zona`) | el ritmo prescrito y su rango |
+| las fichas de test (`lib/tests-formulas`) | «4:12 /km» desde la VAM y el CSS |
+| `lib/prescripcion-zona` | el tramo escrito del editor |
+| `lib/zonas` | el ritmo objetivo |
+
+**Y el mismo nombre para tres cosas**: `mmss(seg)` (segundos), `mmss(ms)` en
+`BloqueRegistro` (milisegundos) y, en `/apuntar`, una DIFERENCIA con signo
+(«+1:20» si te pasas). Más tres lectores `mmssASegundos` idénticos.
+
+**Ahora**: el formato vive en `lib/medicion`, al lado de su inversa, en un
+fichero **que no importa nada** — así lo puede pedir hasta `lib/zonas`, que es
+quien escribe los ritmos, sin montar un círculo de importaciones.
+`lib/duracion-carga` lo reexporta porque media app lo pide ahí. El redondeo se
+hace **una vez y sobre el total**, así que el minuto se lleva el acarreo. Y lo
+que no es un número sale `0:00` en vez de `NaN:NaN`.
+
+Lo propio de cada sitio se queda en su sitio, delegando el formato: el `—` del
+catálogo de tests (un hueco no es «0:00»), el `null` de la casilla vacía de
+`BloqueRegistro`, el signo de `/apuntar`, las décimas de los cronómetros y el
+`h:mm:ss` del briefing.
+
+**LO QUE ENSEÑÓ EL REBARRIDO, que es la parte importante.** La primera búsqueda
+—por el nombre `mmss`— encontró nueve. El alambre, buscando por la **forma**,
+encontró **once más** que lo escribían con plantillas (`${min}:${seg…}`) y no se
+llamaban `mmss`: entre ellos, **cinco de los siete `3:60`**. Si me hubiera fiado
+del nombre, la tanda se cierra dejando el fallo vivo en las pantallas del
+deportista.
+
+El guardián acabó siendo preciso a base de eso: salta con **unos segundos a dos
+cifras justo detrás de un dos puntos que se imprime**. Así caza las cuatro
+formas y deja fuera lo que no es un m:ss: el «2h05» de horas y minutos (otra
+familia, con sus propias copias — ver abajo), las fechas y los `(d: Date)`.
+
+Rebarrido con otras cuatro consultas —el truco viejo `('0'+s).slice(-2)`,
+`padStart` sin el cero, `toFixed` sobre los segundos y cualquier `mmss`
+declarado— **todo limpio**.
+
+Verificado: `tsc` limpio · **3.185 tests en 158 ficheros** · `next build` OK ·
+sin avisos nuevos de lint.
+
+**Qué mirar al desplegar:** los ritmos de `/zonas/[id]` y `/mis-tests`, y la
+duración de las parejas en `/mis-analisis`. Si alguna vez viste un «3:60» o un
+«1:30.5», era esto.
+
+### Lo que se apunta para la tanda 3
+
+Además del backlog de arriba, el rebarrido de esta tanda dejó una familia nueva
+a la vista: **«2h05» está escrito a mano en seis sitios** (`/volumen`,
+`lib/panel-metricas`, `lib/plantillas`, `components/PanelPlantillas`,
+`lib/noches-reloj`, `lib/pacing`). No hay fallo conocido —las horas y los
+minutos no tienen el problema del acarreo— pero son seis copias del mismo
+formato.

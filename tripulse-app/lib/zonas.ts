@@ -9,6 +9,8 @@
 // Carrera: % sobre VAM.  Natación: offset sobre CSS (texto).
 // ============================================================
 
+import { mmss } from './medicion'
+
 export type Indicador = 'FC' | 'FC+RPE' | 'RPE'
 
 export interface ZonaResistencia {
@@ -240,8 +242,7 @@ export function rango(min: number | null, max: number | null, sufijo = '%'): str
 function paceKm(vam: number, pct: number): string {
   const vel = vam * pct / 100
   if (vel <= 0) return '—'
-  const seg = Math.round(3600 / vel)
-  return `${Math.floor(seg / 60)}:${(seg % 60).toString().padStart(2, '0')}`
+  return mmss(3600 / vel)
 }
 
 // Prescripción de una zona de resistencia por disciplina, dados los tests del atleta
@@ -312,8 +313,7 @@ export function rangoDeZona(
 // Segundos → "m:ss"
 function fmtSeg(s: number): string {
   if (!isFinite(s) || s <= 0) return '—'
-  const t = Math.round(s)
-  return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`
+  return mmss(s)
 }
 
 // ------------------------------------------------------------
@@ -554,8 +554,6 @@ export const esSupuesta = (c: CargaZona): boolean => c.origen === 'supuesta'
 // la que ya usaban carrera y ciclismo, y es la defendible: si de un rango hay que
 // dar un solo número, el del medio representa la zona; el del extremo te deja
 // entrenando en la frontera con la siguiente.
-const mmss = (segundos: number) =>
-  Math.floor(segundos / 60) + ':' + String(Math.round(segundos % 60)).padStart(2, '0')
 
 export function ritmoObjetivo(
   zona: string | null | undefined,

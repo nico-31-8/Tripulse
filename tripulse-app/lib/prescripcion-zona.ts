@@ -27,6 +27,7 @@
 // cargado y devuelve qué ofrecer, qué se puede escribir y qué sale de ello.
 
 import { ZONAS_RESISTENCIA, rangoDeZona, nivelDeRpe, cargaZona, type CargaZona, type CopiaZona } from './zonas'
+import { mmss } from './medicion'
 import { aplicarPct, valorDe, opcionesDeRef, type TestConMediciones } from './referencia-propia'
 import { fichaDe, type ZonaEntrenador } from './zonas-entrenador'
 
@@ -280,9 +281,6 @@ export function tramoDe(
   const [desde, hasta] = [a, b].sort((x, y) => x - y)
   return { desde, hasta, unidad: ref.unidad, inverso: ref.inverso }
 }
-
-const mmss = (seg: number): string =>
-  Math.floor(seg / 60) + ':' + String(Math.round(seg % 60)).padStart(2, '0')
 
 /**
  * El tramo escrito para que lo lea una persona.

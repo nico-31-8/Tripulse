@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import InterruptoresAviso from '@/components/InterruptoresAviso'
 import { avisarEscalon, despertarAudio } from '@/lib/pitido'
+import { mmss, mmssASegundos } from '@/lib/medicion'
 import { CRONO_PARADO, arrancar, pausar, transcurrido, corriendo, type EstadoCrono } from '@/lib/dirigir-cronometro'
 import {
   leerConfig, ordenarLineas, textoFormato, textoLinea, textoResultado, comparar, QUE_SE_APUNTA,
@@ -24,12 +25,15 @@ import type { UltimaVezBloque } from '@/lib/bloque-ultima-vez'
 /* Fuera del componente: la regla del compilador no deja llamar a Date.now()
    desde el cuerpo del componente, y aquí se llama desde los botones. */
 const reloj = () => Date.now()
-const mmss = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
+/* Se llamaba `mmss` y tomaba MILISEGUNDOS, igual que la de segundos que usa
+   media app: el mismo nombre para otra unidad. El nombre dice ya en qué viene y
+   el formato lo pone el de siempre. */
+const mmssDeMs = (ms: number) => mmss(Math.max(0, ms) / 1000)
+/* Vacío es null, NO cero: una casilla sin tocar no es «lo hizo en 0 segundos».
+   Eso es lo propio de aquí; leer el «m:ss» lo hace lib/medicion. */
 const aSegundos = (t: string): number | null => {
   const txt = String(t || '').trim()
-  if (!txt) return null
-  const p = txt.split(':')
-  return p.length === 2 ? (parseInt(p[0]) || 0) * 60 + (parseInt(p[1]) || 0) : (parseInt(txt) || 0)
+  return txt ? mmssASegundos(txt) : null
 }
 const numOnull = (v: string): number | null => (v.trim() === '' ? null : Math.max(0, Math.round(Number(v) || 0)))
 
@@ -51,7 +55,7 @@ export default function BloqueRegistro({ tarea, resultado, onResultado, ultima }
   const [paso, setPaso] = useState(0)                    // for time: por qué ronda del esquema va
   const [ronda, setRonda] = useState(1)                  // rondas: la que está haciendo
   const [descansoHasta, setDescansoHasta] = useState<number | null>(null)
-  const [tiempoTexto, setTiempoTexto] = useState(r.segundos != null ? mmss(r.segundos * 1000) : '')
+  const [tiempoTexto, setTiempoTexto] = useState(r.segundos != null ? mmssDeMs(r.segundos * 1000) : '')
   const marca = useRef<string | null>(null)
 
   const va = corriendo(crono)
@@ -105,7 +109,7 @@ export default function BloqueRegistro({ tarea, resultado, onResultado, ultima }
   const reiniciar = () => { setCrono(CRONO_PARADO); setPaso(0); setRonda(1); setDescansoHasta(null); marca.current = null }
   const terminarCon = (segundos: number) => {
     setCrono(c => pausar(c, reloj()))
-    setTiempoTexto(mmss(segundos * 1000))
+    setTiempoTexto(mmssDeMs(segundos * 1000))
     onResultado({ ...r, segundos, limite: false })
   }
   const pasoHecho = () => {
@@ -118,20 +122,20 @@ export default function BloqueRegistro({ tarea, resultado, onResultado, ultima }
   }
 
   // ---------- el reloj grande ----------
-  let grande = mmss(ms)
+  let grande = mmssDeMs(ms)
   let debajo = ''
-  if (formato === 'amrap') { grande = mmss(total - ms); debajo = alLimite ? '¡Tiempo!' : 'queda' }
+  if (formato === 'amrap') { grande = mmssDeMs(total - ms); debajo = alLimite ? '¡Tiempo!' : 'queda' }
   if (formato === 'emom') {
-    grande = alLimite ? '0:00' : mmss(cada - (ms % cada))
+    grande = alLimite ? '0:00' : mmssDeMs(cada - (ms % cada))
     debajo = alLimite ? '¡Terminado!' : 'Minuto ' + Math.min(minuto + 1, cfg.minutos) + ' de ' + cfg.minutos
   }
   if (formato === 'fortime') debajo = alLimite ? '¡Límite!' : 'límite ' + cfg.limite + ':00'
   if (formato === 'tabata') {
-    grande = alLimite ? '0:00' : mmss(trabajando ? cfg.trabajo * 1000 - (ms % ciclo) : ciclo - (ms % ciclo))
+    grande = alLimite ? '0:00' : mmssDeMs(trabajando ? cfg.trabajo * 1000 - (ms % ciclo) : ciclo - (ms % ciclo))
     debajo = alLimite ? '¡Terminado!' : (trabajando ? 'A tope' : 'Pausa') + ' · vuelta ' + (vuelta % cfg.vueltas + 1) + ' de ' + cfg.vueltas
   }
   if (formato === 'rondas') {
-    if (enDescanso) { grande = mmss((descansoHasta || 0) - ahora); debajo = 'Descanso · después, ronda ' + ronda }
+    if (enDescanso) { grande = mmssDeMs((descansoHasta || 0) - ahora); debajo = 'Descanso · después, ronda ' + ronda }
     else debajo = rondasAcabadas ? '¡Terminado!' : 'Ronda ' + Math.min(ronda, cfg.rondas) + ' de ' + cfg.rondas
   }
 

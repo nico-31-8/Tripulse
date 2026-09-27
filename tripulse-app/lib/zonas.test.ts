@@ -234,3 +234,53 @@ describe('ritmoObjetivo', () => {
     expect(seg(ritmoObjetivo('Z5', 'Carrera', tests))).toBeLessThan(seg(ritmoObjetivo('Z2', 'Carrera', tests)))
   })
 })
+
+// ============================================================
+// Ningún ritmo puede escribir «3:60»
+// ============================================================
+// Seis copias de `mmss` redondeaban los segundos SIN arrastrar el minuto, y a
+// los ritmos les llegan siempre segundos con decimales: 3600/velocidad casi
+// nunca es entero. Con una VAM que dé 239,7 s/km, aquello escribía «3:60».
+//
+// No se prueba con un caso; se barre el abanico entero de tests reales para
+// que no haga falta acertar el número exacto que lo rompía.
+describe('los ritmos se escriben bien en todo el abanico de atletas', () => {
+  const RITMO = /(\d+):([0-5]\d)/g
+
+  const revisa = (texto: string, quien: string) => {
+    /* Que no haya decimales sueltos ni segundos de 60 en NINGÚN número del
+       texto: ni en el ritmo, ni en el rango, ni en el «/100m». */
+    expect(texto, quien).not.toMatch(/:\d{2,}\.\d/)
+    for (const m of texto.matchAll(/:(\d+)/g)) {
+      expect(Number(m[1]), quien + ' → ' + texto).toBeLessThan(60)
+    }
+  }
+
+  it('carrera: de una VAM de 10 a una de 25 km/h', () => {
+    for (let vam = 100; vam <= 250; vam++) {
+      const tests = { vam: vam / 10 }
+      for (const z of ZONAS_RESISTENCIA) {
+        revisa(ritmoObjetivo(z.sigla, 'Carrera', tests), 'VAM ' + vam / 10 + ' ' + z.sigla)
+        revisa(prescripcion(z, 'Carrera', tests), 'VAM ' + vam / 10 + ' ' + z.sigla)
+      }
+    }
+  })
+
+  it('natación: de un CSS de 0,8 a 2,0 m/s', () => {
+    for (let css = 80; css <= 200; css++) {
+      const tests = { css: css / 100 }
+      for (const z of ZONAS_RESISTENCIA) {
+        revisa(ritmoObjetivo(z.sigla, 'Natacion', tests), 'CSS ' + css / 100 + ' ' + z.sigla)
+        revisa(prescripcion(z, 'Natacion', tests), 'CSS ' + css / 100 + ' ' + z.sigla)
+      }
+    }
+  })
+
+  /* El caso que lo rompía, escrito a mano para que se vea: 239,7 s/km son
+     4:00, no «3:60». Una VAM de 15,02 km/h al 100 % da justo eso. */
+  it('y el caso concreto que lo rompía', () => {
+    const t = ritmoObjetivo('PAE', 'Carrera', { vam: 3600 / 239.7 })
+    expect(t).not.toContain(':60')
+    expect(RITMO.test(t)).toBe(true)
+  })
+})

@@ -9,6 +9,7 @@
 // guarda: lib/bloque-formato y lib/bloque-borrador.
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import SelectorEjercicio from '@/components/SelectorEjercicio'
+import { mmss } from '@/lib/medicion'
 import {
   FORMATOS, MEDIDAS, QUE_SE_APUNTA, duracionBloque, type Formato, type LineaBloque, type MedidaLinea,
 } from '@/lib/bloque-formato'
@@ -22,7 +23,6 @@ import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 const campo = 'bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 min-w-0'
 const numero = 'bg-transparent border-0 border-b border-gray-600 text-center font-bold tabular-nums outline-none focus:border-orange-500 py-0.5'
 const pastilla = 'inline-flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5 text-sm text-gray-300'
-const mmss = (s: number) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 
 export default function BloqueEditor({
   bloque, biblioteca, onCambio, onGuardar, onQuitar, guardando, error, modoCompleja, onBibliotecaCambia,

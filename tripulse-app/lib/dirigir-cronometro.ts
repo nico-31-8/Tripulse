@@ -176,10 +176,13 @@ export function escalonEn(
 
 // ── Cómo se enseña ──────────────────────────────────────────
 
+import { mmss } from './medicion'
+
 /** «5:23» — para las cuentas atrás largas, donde las décimas sobran. */
 export function relojMinutos(ms: number): string {
-  const s = Math.ceil(Math.max(0, ms) / 1000)
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')
+  /* Al ALZA (`ceil`) a propósito: mientras quede un resto de segundo, ese
+     segundo se sigue viendo. El formato, de lib/medicion. */
+  return mmss(Math.ceil(Math.max(0, ms) / 1000))
 }
 
 /**
@@ -190,10 +193,9 @@ export function relojMinutos(ms: number): string {
  */
 export function relojDecimas(ms: number): string {
   const t = Math.max(0, ms)
-  const m = Math.floor(t / 60000)
-  const s = Math.floor((t % 60000) / 1000)
-  const d = Math.floor((t % 1000) / 100)
-  return m + ':' + String(s).padStart(2, '0') + '.' + d
+  /* SIN redondear: un cronómetro no adelanta un segundo que no ha pasado, de
+     ahí el `floor` antes de dar los segundos al formato de lib/medicion. */
+  return mmss(Math.floor(t / 1000)) + '.' + Math.floor((t % 1000) / 100)
 }
 
 /** Los segundos que se meten en la casilla, con una décima. */

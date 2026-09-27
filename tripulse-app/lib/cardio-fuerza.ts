@@ -31,7 +31,7 @@
 // cuenta a qué disciplina pertenece un ski erg, acabarían decidiendo distinto.
 
 import { ZONAS_RESISTENCIA } from './zonas'
-import { mmssASegundos } from './medicion'
+import { mmss, mmssASegundos } from './medicion'
 
 /* 'calorias' es lo normal en remo, ski o assault en CrossFit y HYROX («15 cal
    de remo»). Solo se ofrece dentro de un bloque (lib/bloque-formato). */
@@ -169,7 +169,7 @@ export function cuantoPorSerie(c: CardioPrescrito | null | undefined): string {
   if (medidaDe(c) === 'calorias') return valor + ' cal'
   if (valor < 60) return valor + ' s'
   if (valor % 60 === 0) return valor / 60 + ' min'
-  return Math.floor(valor / 60) + ':' + String(valor % 60).padStart(2, '0')
+  return mmss(valor)
 }
 
 /** «Remo 300 m · AEM» — cómo se lee en la hoja. */

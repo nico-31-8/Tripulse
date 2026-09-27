@@ -6,6 +6,7 @@
 // números: si una contara el total y la otra el valor por serie, comparar dos
 // sesiones daría una conclusión falsa — que es justo para lo que sirve el panel.
 import { cuantoPorSerie } from './cardio-fuerza'
+import { mmssCorto } from './medicion'
 import { vecesDe, hayBloques, bloquesDe } from './bloques-tarea'
 import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
@@ -30,8 +31,7 @@ export function totalDeTarea(t: any): string {
   const seg = t?.p_duracion?.[0]?.tiempo_planeado
   if (seg) {
     const total = seg * series
-    const min = Math.floor(total / 60), s = total % 60
-    return s > 0 ? min + ':' + String(s).padStart(2, '0') + ' min' : min + ' min'
+    return mmssCorto(total) + ' min'
   }
   const m = t?.p_distancia?.[0]?.metros_planeados
   if (m) {
