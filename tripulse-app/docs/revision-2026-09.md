@@ -367,3 +367,48 @@ sin avisos nuevos de lint.
 y «planificadas esta semana») y la **vista de semana de /mis-sesiones**, que son
 las dos pantallas donde el «qué lunes es» ha cambiado de implementación. Y el
 volumen en horas de `/volumen` y del panel del entrenador.
+
+### Tanda 4 — las puertas · CERRADA (2026-09-27)
+
+**No había ninguna fuga, y conviene decirlo primero.** En TRIPULSE no hay
+`middleware.ts` ni guardia en el layout: **cada página se protege sola**. Eso
+funciona hasta que una se olvida — y cuando se olvida no se nota, porque la RLS
+hace su trabajo y la pantalla simplemente sale vacía.
+
+Tres pantallas no comprobaban nada:
+
+- **`/sesion/[id]/ejecutar`** (20 consultas). Con la sesión caducada se quedaba
+  **cargando para siempre y en blanco**, en medio de un entrenamiento, en vez de
+  mandar al login. Ahora pide **sesión, no rol**: esa pantalla la usan el atleta
+  y el entrenador.
+- **`/zonas/[id]`** (4 consultas). Igual: «Cargando…» para siempre. Se abre desde
+  la ficha del deportista, así que es del entrenador.
+- **`/asistente`**. Pintaba el copiloto entero para luego no contestar, porque el
+  candado de verdad está en `/api/asistente`.
+
+**El rebarrido, y la lección de método.** Buscando «quién comprueba la sesión»
+por una lista de nombres —`getUser`, `getSession`, `usuarioActual`— aparecieron
+**cinco rutas de reloj con cero coincidencias**, y parecía un agujero grande. No
+lo era: todas usan `quienLlama(req)`, que exige un Bearer, lo valida con
+`auth.getUser(token)` y devuelve un cliente **atado a ese usuario**, así que la
+RLS se aplica como él. Y los dos *callbacks* de OAuth llegan sin sesión a
+propósito: quién es sale de un `state` aleatorio **de un solo uso** que gasta la
+base. **La consulta era estrecha, no el código.**
+
+El guardián (`lib/puertas-con-sesion.test.ts`) cubre las dos puertas:
+
+1. Toda página que consulte la base comprueba la sesión, o está en la lista de
+   públicas con su motivo (login, registro, invitación por token). Las de
+   recuperar la contraseña no están: no consultan la base, solo hablan con
+   `auth`.
+2. Toda ruta de API usa `quienLlama`, salvo los dos *callbacks*, y de esos se
+   comprueba que el `state` **viaja a la base** —mirarlo en la ruta y creerse lo
+   que dice no sería comprobar nada—.
+
+Verificado: `tsc` limpio · **3.200 tests en 160 ficheros** · `next build` OK ·
+sin avisos nuevos de lint.
+
+**Qué mirar al desplegar:** entra en `/sesion/<id>/ejecutar` y en
+`/zonas/<id>` **con sesión** y comprueba que siguen funcionando igual; y si
+puedes, en una ventana privada, que ahora te manda al login en vez de dejarte
+mirando una pantalla en blanco.

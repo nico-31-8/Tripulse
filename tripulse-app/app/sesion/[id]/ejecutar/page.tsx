@@ -18,6 +18,7 @@ import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza, chipDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss, mmssASegundos } from '@/lib/medicion'
+import { usuarioActual } from '@/lib/sesion'
 import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
@@ -98,6 +99,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [medida, setMedida] = useState<DuracionMedida | null>(null)
 
   const cargarDatos = useCallback(async () => {
+    /* Sin sesión, al login. La RLS ya impide ver lo que no es tuyo, pero sin
+       esto la pantalla se quedaba a medias —cargando para siempre, con todo
+       vacío— en vez de decir que hay que entrar. Se pide SESIÓN y no rol: esta
+       pantalla la usan el atleta y el entrenador. */
+    const user = await usuarioActual()
+    if (!user) { router.push('/login'); return }
+
     const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
     setSesion(ses)
     // El reloj arranca al ENTRAR, porque ahora se entra directo a entrenar (antes lo

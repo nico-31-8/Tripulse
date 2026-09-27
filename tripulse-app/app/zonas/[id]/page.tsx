@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Cargando from '@/components/Cargando'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, FACTORES_FUERZA, prescripcion } from '@/lib/zonas'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
+import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { etiquetaConEmoji } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
 
@@ -192,6 +193,10 @@ function TablaZonas({ zonas, tipo, fcMax }: { zonas: any[], tipo: string, fcMax:
 }
 
 export default function PaginaZonas({ params }: { params: Promise<{ id: string }> }) {
+  /* Se abre desde la ficha del deportista: es una pantalla del entrenador. Sin
+     esto, sin sesión no había fuga —la RLS no devuelve nada— pero la pantalla se
+     quedaba en «Cargando…» para siempre en vez de mandar al login. */
+  useRequireEntrenador()
   const router = useRouter()
   const { id } = use(params)
   const [deportista, setDeportista] = useState<any>(null)
