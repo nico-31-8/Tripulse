@@ -14,6 +14,20 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · Si se te caduca la sesión, ahora te lo dice
+
+Tres pantallas no comprobaban si habías entrado: **la de entrenar**
+(`Dirigir/Ejecutar una sesión`), **las zonas de un deportista** y **el
+asistente**. Con la sesión caducada se quedaban «Cargando…» **para siempre y en
+blanco** — y la de entrenar es la peor, porque eso pasa con el móvil en la mano
+entre series. Ahora te mandan al login.
+
+**Tus datos nunca estuvieron a la vista de nadie**: la base no devuelve lo que no
+es tuyo, pase lo que pase en la pantalla. Lo que faltaba era decirte que tenías
+que volver a entrar, en vez de dejarte esperando.
+
+---
+
 ## 27 de septiembre de 2026 · Limpieza por dentro: nada que notar
 
 Entrada corta y a propósito: **esta vez no cambia nada de lo que ves**, y es
