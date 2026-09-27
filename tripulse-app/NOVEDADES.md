@@ -14,6 +14,23 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 27 de septiembre de 2026 · El color de cada deportista, el mismo en todas partes
+
+A cada deportista le corresponde un color, sacado de su nombre, y es lo que te
+deja reconocerlo en una lista antes de leerla. **En Volumen no se respetaba**:
+ahí el círculo con su inicial salía siempre naranja, así que la misma persona era
+naranja en Volumen y de su color en el resto. Ya está igual en todas las
+pantallas.
+
+Y un detalle que puede que hayas notado: si un nombre se guardó con un espacio de
+sobra al final, su color era distinto al del mismo nombre sin el espacio. Ahora el
+espacio no cuenta.
+
+Por dentro, la misma limpieza de siempre: el avatar estaba escrito cinco veces y
+ahora está una.
+
+---
+
 ## 27 de septiembre de 2026 · Si se te caduca la sesión, ahora te lo dice
 
 Tres pantallas no comprobaban si habías entrado: **la de entrenar**
