@@ -8,6 +8,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
 import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
 import ConstructorBrick from '@/components/ConstructorBrick'
+import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
 import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
@@ -59,6 +60,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const [cronometro, setCronometro] = useState(false)
   const [brick, setBrick] = useState<BrickValor>(BRICK_VACIO)
   const [guardando, setGuardando] = useState(false)
+  /* Lo que le falta al modal de nueva sesión, dentro del modal y encima del
+     botón. Antes era la ventana gris del navegador, que tapa el formulario. */
+  const { aviso: avisoModal, mal: avisarModal, limpiar: limpiarAvisoModal } = useAviso()
+  /* Al cambiar de dia el aviso del anterior no se hereda: si no, cierras el lunes
+     con el aviso puesto y sale dentro del martes. */
+  useEffect(() => { limpiarAvisoModal() }, [modal, limpiarAvisoModal])
   const [uaProg, setUaProg] = useState(0)
   const [uaReal, setUaReal] = useState(0)
   const [sesZonasAll, setSesZonasAll] = useState<ChipZona[]>([])
@@ -167,11 +174,19 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setLoading(false)
   }
 
-  // Obtiene el microciclo de esta semana, creandolo automaticamente si aun no existe.
-  const obtenerOcrearMicrociclo = async (): Promise<number | null> => {
+  /*
+   * Obtiene el microciclo de esta semana, creandolo automaticamente si aun no existe.
+   *
+   * RECIBE COMO AVISAR porque la llaman dos caminos distintos: el modal de nueva
+   * sesion —donde la franja roja se ve— y el de arrastrar una unidad a un dia,
+   * donde no hay modal abierto y por tanto no hay franja. Si los tres avisos
+   * fueran siempre a la franja, al arrastrar el mensaje se perderia sin que
+   * saliera nada, que es peor que la ventana gris del navegador.
+   */
+  const obtenerOcrearMicrociclo = async (avisar: (texto: string) => void): Promise<number | null> => {
     if (microciclo?.id) return microciclo.id
     const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
-    if (!macs?.length) { alert('No hay macrociclo para este deportista'); return null }
+    if (!macs?.length) { avisar('Este deportista no tiene macrociclo: móntalo primero en el Dibujo.'); return null }
     const macIds = macs.map((m: any) => m.id)
     const { data: mes } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macIds)
     // Encontrar el meso que contiene esta fecha
@@ -181,7 +196,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       const d = new Date(fecha + 'T12:00:00')
       return d >= ini && d < fin
     })
-    if (!mesoContenedor) { alert('Esta semana no pertenece a ningun mesociclo. Genera la planificacion primero desde el Dibujo.'); return null }
+    if (!mesoContenedor) { avisar('Esta semana no cae en ningún mesociclo. Genera la planificación primero desde el Dibujo.'); return null }
     const { data: nuevoMicro } = await supabase.from('microciclo').insert({
       id_mesociclo: mesoContenedor.id,
       objetivo: 'Semana del ' + fecha,
@@ -189,17 +204,17 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       fecha_inicio: fecha,
       duracion_dias: 7,
     }).select().single()
-    if (!nuevoMicro) { alert('Error creando semana'); return null }
+    if (!nuevoMicro) { avisar('No se ha podido crear la semana.'); return null }
     setMicrociclo(nuevoMicro)
     return nuevoMicro.id
   }
 
   const crearSesion = async (fechaDia: string) => {
-    if (!disc) { alert('Elige una disciplina'); return }
+    if (!disc) { avisarModal('Elige una disciplina.'); return }
     const esB = disc === 'Brick'
-    if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); return }
+    if (esB && !brickValido(brick)) { avisarModal(queFaltaAlBrick(brick) || ''); return }
     setGuardando(true)
-    const microId = await obtenerOcrearMicrociclo()
+    const microId = await obtenerOcrearMicrociclo(avisarModal)
     if (!microId) { setGuardando(false); return }
 
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
@@ -270,7 +285,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const crearSesionDesdeUnidad = async (chips: ChipZona[], fechaDia: string) => {
     if (!chips.length) return
     setGuardando(true)
-    const microId = await obtenerOcrearMicrociclo()
+    /* Aqui no hay modal, asi que sigue la ventana del navegador: es lo unico que
+       se ve soltando un chip. Cambiara cuando haya un aviso junto al dia. */
+    const microId = await obtenerOcrearMicrociclo(texto => alert(texto))
     if (!microId) { setGuardando(false); return }
 
     const disciplina = chips[0].disciplina
@@ -863,6 +880,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 <input type="checkbox" checked={cronometro} onChange={e => setCronometro(e.target.checked)} className="w-4 h-4 accent-orange-500" />
                 <label className="text-white text-sm">Activar cronometro</label>
               </div>
+              <AvisoEnLinea aviso={avisoModal} />
               <button onClick={() => crearSesion(modal)} disabled={guardando || !disc}
                 className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition disabled:opacity-50">
                 {guardando ? 'Guardando...' : 'Crear sesion'}

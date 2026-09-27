@@ -35,6 +35,7 @@ import { ordenarChips, abreGrupo } from '@/lib/orden-chips'
 import { limitesRedimension, redimensionar, type Borde } from '@/lib/redimensionar-ciclo'
 import { fotoDelDibujo, fotoDelPlan, loPendiente, type FotoPlan } from '@/lib/plan-pendiente'
 import IconoDisciplina from '@/components/IconoDisciplina'
+import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
 import { colorDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
@@ -271,6 +272,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
      brick se quedaba FUERA del filtro y no se dibujaba nunca, sin forma de
      encenderlo. */
   const [filtroDisc, setFiltroDisc] = useState<string[]>([...TODAS])
+  /* Lo que le falta al formulario del modal abierto. Va DENTRO del modal, encima
+     del botón: antes era la ventana gris del navegador, que tapa justo lo que
+     hay que corregir. Se va sola a los cuatro segundos, así que no se queda
+     colgada de un modal al siguiente. */
+  const { aviso: avisoModal, mal: avisarModal, limpiar: limpiarAvisoModal } = useAviso()
+  /* Los cinco modales comparten esta franja, asi que al cambiar de modal el aviso
+     del anterior no se hereda: si no, cierras «crear macrociclo» con el aviso
+     puesto y sale dentro de la ficha de la competicion. Se mira QUE modal esta
+     abierto y no los objetos, para que editar un campo de la ficha no borre el
+     aviso que acabas de leer. */
+  const modalAbierto = modal || (modalEditar ? 'editar' : '') || (compSel ? 'ficha' : '')
+  useEffect(() => { limpiarAvisoModal() }, [modalAbierto, limpiarAvisoModal])
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -880,18 +893,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const barH = (ua: number | null) => ua && ua > 0 ? Math.max(3, Math.round((ua / maxUA) * UA_H)) : 0
 
   const saveMacro = () => {
-    if (!fNom.trim()) { alert('Escribe un nombre'); return }
+    if (!fNom.trim()) { avisarModal('Ponle un nombre al macrociclo.'); return }
     const sf = Math.min(fIni + fDur - 1, totalSem - 1)
-    if (macros.some(m => fIni <= m.sf && sf >= m.si)) { alert('Se solapa con otro macrociclo'); return }
+    if (macros.some(m => fIni <= m.sf && sf >= m.si)) { avisarModal('Se solapa con otro macrociclo. Cambia la semana de inicio o la duración.'); return }
     setMacros(p => [...p, { id: uid(), si: fIni, sf, nombre: fNom.trim(), tipo: fTipo }]); setModal(null)
   }
 
   const saveMeso = () => {
-    if (!fNom.trim()) { alert('Escribe un nombre'); return }
+    if (!fNom.trim()) { avisarModal('Ponle un nombre al mesociclo.'); return }
     if (!mMacId) return
     const mac = macros.find(m => m.id === mMacId); if (!mac) return
     const sf = Math.min(fIni + fDur - 1, mac.sf)
-    if (mesos.filter(m => m.macroId === mMacId).some(m => fIni <= m.sf && sf >= m.si)) { alert('Se solapa con otro mesociclo'); return }
+    if (mesos.filter(m => m.macroId === mMacId).some(m => fIni <= m.sf && sf >= m.si)) { avisarModal('Se solapa con otro mesociclo de este macrociclo.'); return }
     setMesos(p => [...p, { id: uid(), macroId: mMacId, si: fIni, sf, nombre: fNom.trim(), tipo: fTipo, intensidad: fInt }]); setModal(null)
   }
 
@@ -944,7 +957,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   const guardarCompReal = async (taper: boolean) => {
-    if (!fCompFecha) { alert('Ponle fecha a la competicion'); return }
+    if (!fCompFecha) { avisarModal('Ponle fecha a la competición.'); return }
     const { error } = await supabase.from('competicion').insert({
       id_deportista: Number(id),
       nombre: fComp.trim() || 'Competicion',
@@ -989,7 +1002,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const guardarFicha = async () => {
     if (!compSel || !editComp) return
     const falta = queLeFaltaComp(editComp)
-    if (falta) { alert(falta); return }
+    if (falta) { avisarModal(falta); return }
     setGuardandoComp(true)
     const cambios = cambiosDeComp(editComp)
     const { error } = await supabase.from('competicion').update(cambios).eq('id', compSel.id)
@@ -1198,7 +1211,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setModalEditar({ tipo: 'meso', item: me })
   }
   const guardarEdicion = () => {
-    if (!editNom.trim()) { alert('Escribe un nombre'); return }
+    if (!editNom.trim()) { avisarModal('Ponle un nombre.'); return }
     if (!modalEditar) return
     if (modalEditar.tipo === 'macro') {
       const mac = modalEditar.item as MacroD
@@ -3074,6 +3087,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <input type="range" min={1} max={10} value={editInt} onChange={e => setEditInt(Number(e.target.value))} className="w-full accent-orange-500" />
                 </div>
               )}
+              <AvisoEnLinea aviso={avisoModal} />
               <div className="flex gap-2">
                 <button onClick={guardarEdicion} className="flex-1 bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition">Guardar cambios</button>
                 <button onClick={() => { if (modalEditar.tipo === 'macro') borrarMacro((modalEditar.item as MacroD).id); else borrarMeso((modalEditar.item as MesoD).id); setModalEditar(null) }}
@@ -3108,6 +3122,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <label className="text-gray-400 text-sm mb-1.5 block">Duracion: <span className="text-orange-400 font-bold">{fDur} semanas</span></label>
                 <input type="range" min={1} max={totalSem - fIni} value={fDur} onChange={e => setFDur(Number(e.target.value))} className="w-full accent-orange-500" />
               </div>
+              <AvisoEnLinea aviso={avisoModal} />
               <button onClick={saveMacro} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition">Crear macrociclo</button>
             </div>
           </div>
@@ -3139,6 +3154,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <label className="text-gray-400 text-sm mb-1.5 block">Intensidad relativa: <span className="text-orange-400 font-bold">{fInt}/10</span></label>
                 <input type="range" min={1} max={10} value={fInt} onChange={e => setFInt(Number(e.target.value))} className="w-full accent-orange-500" />
               </div>
+              <AvisoEnLinea aviso={avisoModal} />
               <button onClick={saveMeso} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl font-bold text-white transition">Crear mesociclo</button>
             </div>
           </div>
@@ -3248,6 +3264,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       placeholder="El objetivo, la hora de salida, lo que quieras acordarte."
                       className="bg-gray-800 text-white px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500 resize-y" />
                   </label>
+                  <AvisoEnLinea aviso={avisoModal} />
                   <div className="flex gap-2 mt-1">
                     <button onClick={guardarFicha} disabled={guardandoComp}
                       className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 py-2.5 rounded-xl font-bold text-white text-[13px] transition">
@@ -3301,6 +3318,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <p className="text-[11px] text-gray-600 mt-1.5">{defDe(fCompPrio).taperTexto}</p>
               </div>
               <input type="text" placeholder="Nombre de la competicion" value={fComp} onChange={e => setFComp(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardarCompReal(false)} autoFocus className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
+              <AvisoEnLinea aviso={avisoModal} />
               {taperSug.length > 0 ? (
                 <div className="bg-purple-900/30 border border-purple-700/50 rounded-xl p-4">
                   <p className="text-purple-300 text-sm font-bold mb-1">Taper recomendado</p>

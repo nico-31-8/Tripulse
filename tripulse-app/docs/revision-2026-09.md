@@ -575,3 +575,64 @@ sin avisos nuevos de lint.
 **Qué mirar al desplegar:** monta un brick con dos bloques y **déjale uno sin
 minutos**: el aviso rojo tiene que salir dentro del constructor y decir que
 faltan los minutos, no que faltan bloques.
+
+### Tanda 9 — las validaciones de los modales del lienzo · CERRADA (2026-09-27)
+
+Las **12 validaciones que viven dentro de un modal** ya no abren la ventana gris
+del navegador: sale una línea roja **dentro del modal, encima del botón que
+acabas de pulsar**, con la misma franja de `components/AvisoEnLinea` (tanda 8).
+
+**En el Dibujo, siete:** el nombre del macrociclo y el del mesociclo, los dos
+solapes («se solapa con otro macrociclo» / «…con otro mesociclo de este
+macrociclo»), la fecha de una competición nueva, lo que le falte a la ficha de una
+competición, y el nombre al renombrar un ciclo. Cinco franjas, una por modal.
+
+**En la semana, cinco:** elegir disciplina, lo que le falte al brick, y las tres
+del microciclo (sin macrociclo, la semana no cae en ningún mesociclo, no se ha
+podido crear la semana).
+
+**De paso, los textos dicen qué hacer.** «Escribe un nombre» pasa a «Ponle un
+nombre al macrociclo»; «Se solapa con otro macrociclo» añade «cambia la semana de
+inicio o la duración»; «Esta semana no pertenece a ningún mesociclo» pasa a «no
+cae en ningún mesociclo: genera la planificación primero desde el Dibujo».
+
+**Dos cosas que casi se cuelan, y por qué las cuento:**
+
+**1. Un aviso que se habría perdido.** `obtenerOcrearMicrociclo` la llaman **dos**
+caminos: el modal de nueva sesión y el de **arrastrar una unidad a un día**. Al
+arrastrar no hay modal abierto, así que la franja no se renderiza: sus tres avisos
+habrían desaparecido **sin que saliera nada**, que es peor que la ventana gris.
+Ahora la función **recibe cómo avisar** y cada camino pasa el suyo — la franja
+desde el modal, la ventana del navegador desde el arrastre, hasta que haya un
+aviso que sepa salir donde se suelta.
+
+**2. El aviso no se hereda de un modal al siguiente.** Los cinco modales del
+Dibujo comparten una franja. Si cerrabas «crear macrociclo» con el aviso puesto y
+abrías la ficha de una competición antes de los cuatro segundos, el aviso del
+anterior salía dentro del nuevo. Se limpia en un solo sitio, mirando **qué** modal
+está abierto y no los objetos, para que editar un campo no borre el aviso que
+acabas de leer. Igual en la semana, de un día al siguiente.
+
+**Lo que sigue con ventana del navegador, y por qué:**
+
+- **Los errores de guardado** (unos 70 en toda la app): a propósito. Un «no se ha
+  podido guardar» tiene que molestar.
+- **Cuatro validaciones de la barra del Dibujo** («el lienzo no tiene fecha de
+  inicio», «no hay sesiones en el calendario», «elige una fecha de inicio»,
+  «necesitas fecha de inicio y al menos un macrociclo»): no son de un modal, son
+  de la página. Hay que decidir dónde va la franja en la barra.
+- **Siete de arrastrar y seleccionar** en la semana («un brick se arrastra solo»,
+  «solo se pueden fusionar zonas de la misma disciplina», y las cinco de devolver
+  al pool): el aviso tendría que salir donde se suelta. Pieza nueva.
+- **El guardado del brick en el Dibujo**: la frase ya se ve en rojo dentro del
+  constructor desde la tanda 8; esa ventana es el respaldo que dice lo mismo.
+
+Verificado: `tsc` limpio · **3.221 tests en 164 ficheros** · `next build` OK · el
+lint de los dos ficheros da exactamente los mismos 79 avisos que antes de tocarlos.
+
+**Qué mirar al desplegar:** en el Dibujo abre «crear macrociclo» y pulsa Crear
+**sin nombre** → línea roja dentro del modal, encima del botón, y el formulario
+sigue visible. Repite con el mesociclo y con una competición **sin fecha**. En la
+semana, abre un día y pulsa Crear sesión **sin elegir disciplina** → igual. Y
+comprueba que al cerrar un modal con el aviso puesto y abrir otro seguido, el
+nuevo sale limpio.
