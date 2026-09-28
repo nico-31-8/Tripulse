@@ -48,6 +48,35 @@ quedó guardado.
 con un atleta que **no tenía ninguna sesión** en el calendario, el botón se
 quedaba desactivado poniendo «Rehaciendo…» **hasta recargar la página**. Ya no.
 
+### Y en la semana, el sitio donde sueltas te contesta antes de soltar
+
+Esto es lo que quedaba: los avisos de **arrastrar**. No tenían formulario donde
+poner una línea roja, así que se ha hecho al revés — en vez de contarte el error
+después, **el destino te dice que no mientras lo llevas en la mano**:
+
+- **La tarjeta de las unidades se pone roja** y dice por qué, si arrastras hacia
+  ella una sesión que no puede volver al pool (una ya realizada, un brick que no
+  salió de ahí, una que no tiene ninguna zona).
+- **Los siete días se ponen en rojo a trazos** si lo que llevas no cabe en un día
+  — un brick agrupado con otras zonas, por ejemplo.
+- **El botón Fusionar se apaga con el motivo debajo** en cuanto seleccionas dos
+  zonas que no pegan. Ya no hay que pulsarlo para enterarse.
+
+Si sueltas igual, el motivo se queda un momento donde estabas mirando.
+
+**Dos avisos que decían la verdad a medias:**
+
+- Seleccionabas **un brick y un ciclismo** y te decía «solo se pueden fusionar
+  zonas de la misma disciplina». Era verdad, pero te mandaba a buscar otro brick
+  — y dos bricks tampoco se fusionan. Ahora te dice lo que pasa de verdad: un
+  brick ya **es** una unidad.
+- A un **chip de brick sin bloques dentro** le decía «un brick se arrastra solo»,
+  y el pobre iba solo. Lo que le faltaban eran los bloques.
+
+**Y las preguntas siguen siendo preguntas.** «Se pierde la duración, ¿la
+devuelvo?», «¿elimino estas unidades?» no cambian: ahí hay que decidir, y una
+pregunta tiene que pararte.
+
 ---
 
 ## 27 de septiembre de 2026 · Lo que el atleta se apunta ya cuenta en dos sitios más
