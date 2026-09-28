@@ -14,6 +14,62 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 28 de septiembre de 2026 · La ficha de fuerza: lo guardado aparte, y el histórico donde se consulta
+
+**La pantalla de tareas ya no es una sola caja.** La tabla de lo que ya está en
+la sesión, la franja de «por defecto», el botón de guardar y las filas que estás
+escribiendo eran todo seguido, sin nada que las separara. Ahora son dos:
+
+- **✓ En la sesión** — lo guardado, con el número de tareas.
+- **✎ Zona de edición** — todo lo que estás escribiendo, en su caja, con un
+  contador de lo que llevas a medias: «3 sin guardar». Hasta ahora no había nada
+  que te avisara de que te ibas de la página con filas sin guardar.
+
+Nada ha cambiado de sitio ni de comportamiento dentro de su caja.
+
+---
+
+**Cuando un atleta no anota ninguna serie, ahora se dice.** Antes el bloque
+«Series realizadas» simplemente no aparecía, exactamente igual que en una sesión
+de carrera — así que no había manera de distinguir «no apuntó nada» de «aquí no
+aplica». Ahora te sale:
+
+> *No anotó ninguna. Cerró la sesión con su valoración, pero no llegó a apuntar
+> los kilos ni las repeticiones de cada serie.*
+
+---
+
+**Lo que le sale al deportista al entrenar: manda lo que le prescribes.** El
+texto de fondo de cada casilla enseñaba lo que hizo en esa misma serie la última
+vez, y solo si no había histórico salía lo que tú le habías puesto. Con 40 kg el
+otro día y 45 prescritos hoy, el fantasma decía **40**: le empujaba a repetir en
+vez de a hacer lo que le mandaste. **Ahora manda lo prescrito.**
+
+Y lo de la última vez no se pierde: **baja a su propia línea, debajo de cada
+serie** — «La última vez: 40 kg × 10 · RIR 2». Con la escala de aquel día, no con
+la de hoy: si entonces anotó RPE, no le pone «RIR» encima.
+
+---
+
+**Y un botón nuevo al crear la sesión: «↺ última vez».** En cada fila de fuerza,
+te rellena series, repeticiones, kilos y control con lo que ese atleta levantó de
+verdad la última vez que hizo ese ejercicio, para que prescribas desde ahí en vez
+de desde cero. Debajo te dice de dónde sale: *«La última vez: 40×10 · 40×10 ·
+30×8»*.
+
+Dos cosas que hace a propósito, porque las series casi nunca salen iguales:
+
+- **Las repeticiones vienen como rango** si variaron: 10, 9 y 8 se traen como
+  `8-10`.
+- **El peso es el que más se repitió**, no el máximo. Si hizo una serie de 50 y
+  dos de 40, su peso de trabajo son 40 — el máximo de una serie suelta engaña.
+
+Si ese atleta no tiene nada anotado de ese ejercicio, te lo dice y **no te toca
+la fila**. Y «la última vez» es la última *antes* de esa sesión: editando una de
+hace un mes no te trae lo de la semana pasada.
+
+---
+
 ## 28 de septiembre de 2026 · Rangos de repeticiones en fuerza: «8-10», no solo «8»
 
 **Ya puedes prescribir un rango.** Donde antes solo entraba un número exacto,
