@@ -1137,11 +1137,29 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     return '≈ ' + (Math.round(dato.rm * pct / 100 / 2.5) * 2.5) + ' kg'
   }
 
+  /* Lo que hay escrito y SIN GUARDAR: filas de resistencia, de fuerza y bloques.
+     Va en el rotulo de la zona de edicion porque hasta ahora no habia nada que
+     te dijera que te ibas de la pagina con trabajo a medias. */
+  const sinGuardar = filasR.length + filasF.length + bloquesB.length
+
   return (
     <div>
-      {/* TAREAS GUARDADAS */}
+      {/* ═══ LO QUE YA ESTÁ EN LA SESIÓN ═══
+
+          La tabla de guardadas, la franja de «por defecto», el botón de guardar
+          y las filas en edición eran CINCO HERMANOS SUELTOS dentro del mismo
+          div: nada decía dónde acababa lo que ya está puesto y dónde empieza lo
+          que todavía no. Ahora son dos cajas, y ninguna pieza cambia de sitio
+          ni de comportamiento dentro de la suya. */}
       {tareasGuardadas.length > 0 && (
-        <div className="mb-4 overflow-x-auto">
+        <section className="mb-4 rounded-2xl border border-gray-800 bg-gray-900/40 p-3.5">
+          <p className="flex items-baseline gap-2.5 flex-wrap mb-3 mt-0">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-green-300">✓ En la sesión</span>
+            <span className="bg-gray-800 text-gray-300 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold">{tareasGuardadas.length}</span>
+            {/* Al deportista esta frase no le dice nada: él ES el atleta. */}
+            {!esDeportista && <span className="text-[12px] text-gray-500">Guardado. El atleta ya lo ve.</span>}
+          </p>
+          <div className="overflow-x-auto">
           {marcadas.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-pink-500/10 border border-pink-500/30 text-sm text-gray-300">
               <b className="text-pink-300">{marcadas.length === 1 ? '1 línea marcada' : marcadas.length + ' líneas marcadas'}</b>
@@ -1358,8 +1376,31 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </section>
       )}
+
+      {/* ═══ LA ZONA DE EDICIÓN ═══
+
+          Todo lo de aquí abajo estaba ya escondido tras `!esDeportista` pieza a
+          pieza; la caja lo envuelve entero, así que al atleta no se le pinta ni
+          el borde. Los guardas de dentro se quedan: son redundantes, pero
+          quitarlos no cambia nada y sí puede romper algo. */}
+      {!esDeportista && (
+        <section className="rounded-2xl border border-orange-500/40 bg-orange-500/5 p-3.5">
+          <p className="flex items-baseline gap-2.5 flex-wrap mb-3 mt-0">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-300">✎ Zona de edición</span>
+            {sinGuardar > 0 && (
+              <span className="bg-orange-500/20 text-orange-300 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold">
+                {sinGuardar === 1 ? '1 sin guardar' : sinGuardar + ' sin guardar'}
+              </span>
+            )}
+            <span className="text-[12px] text-gray-500">
+              {sinGuardar > 0
+                ? 'Nada de aquí abajo está guardado todavía.'
+                : 'Aquí se añade y se edita. No entra en la sesión hasta que lo guardes.'}
+            </span>
+          </p>
 
       {/* CON QUÉ NACE CADA FILA NUEVA.
           Seis bloques de carrera en metros eran seis veces el mismo desplegable,
@@ -2207,6 +2248,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             <p className="text-xs text-gray-500 mt-2.5 mb-0">¿Ya tienes líneas sueltas escritas? Márcalas arriba (la casilla junto al número) y agrúpalas en un bloque sin volver a escribirlas.</p>
           )}
         </div>
+      )}
+
+        </section>
       )}
 
     </div>
