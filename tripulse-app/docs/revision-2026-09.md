@@ -636,3 +636,72 @@ sigue visible. Repite con el mesociclo y con una competición **sin fecha**. En 
 semana, abre un día y pulsa Crear sesión **sin elegir disciplina** → igual. Y
 comprueba que al cerrar un modal con el aviso puesto y abrir otro seguido, el
 nuevo sale limpio.
+
+### Tanda 10 — las validaciones de la barra, y un botón que se quedaba atascado · CERRADA (2026-09-28)
+
+Las **cuatro validaciones de la barra del Dibujo** ya no abren la ventana gris.
+No son de un modal, así que su franja va **pegada a la barra de arriba**, en la
+misma banda donde sale «no te olvides de guardar los cambios de los ciclos»: la
+barra no se mueve y el lienzo sí, a los lados y hacia abajo, así que pulses donde
+pulses el aviso se lee. La de «empezar de cero» va aparte, en su propia pantalla,
+debajo del campo de la fecha que es justo lo que falta.
+
+**Los textos ya dicen cuál falta.** «Necesitas fecha de inicio y al menos un
+macrociclo» se parte en dos: o «el lienzo no tiene fecha de inicio», o «dibuja al
+menos un macrociclo antes de generar la planificación». Es el mismo fallo que
+tenía el aviso del brick — enumerar todo lo que hace falta te deja mirando lo que
+sí tienes, buscando qué de eso no está.
+
+**Y dos mensajes de «ha salido bien» pasan a la franja verde**, en vez de una
+ventana que hay que cerrar: el de rehacer los chips y el de generar la
+planificación. Con una excepción a propósito: si al generar **alguna sesión se
+queda fuera del plan**, eso sigue abriendo la ventana. No es un «hecho», es un
+cambio en el calendario del atleta y no puede pasar de largo.
+
+**EL FALLO QUE SALIÓ DE PASO, que es el de verdad.** «⟳ Rehacer desde el
+calendario» estaba escrito así:
+
+```
+setReconstruyendo(true)
+try {
+  if (!ses.length) { alert('No hay sesiones…'); return }   ← sale de la función
+  …
+} catch (e) { alert(…) }
+setReconstruyendo(false)                                   ← nunca se ejecuta
+```
+
+Un `return` dentro del `try` se salta lo que hay **detrás** del try. A un atleta
+sin sesiones en el calendario, el botón se quedaba **desactivado poniendo
+«Rehaciendo…» hasta recargar la página**. Arreglado por los dos lados: la
+comprobación sube por delante de encender la bandera, y el apagado pasa a
+`finally`.
+
+**El alambre: `lib/bandera-que-se-queda-encendida.test.ts`.** Lee el código con
+el **parser de TypeScript** y no con una expresión regular, porque hay que saber
+si un `return` sale de la función o está dentro de un `.map(y => { return … })`.
+Barrió `app`, `lib` y `components`: **cuatro sitios más tienen la misma forma y
+los cuatro están bien** —apagan la bandera a mano junto al `return`—, así que el
+test acepta las dos maneras (`finally`, o apagarla al salir). Comprobado que
+muerde: con el fichero de antes del arreglo, falla y señala `setReconstruyendo`,
+y solo ese en toda la aplicación.
+
+Verificado: `tsc` limpio · **3.223 tests en 165 ficheros** · `next build` OK · el
+lint del lienzo da exactamente los mismos avisos que antes de tocarlo.
+
+**Lo que sigue con ventana del navegador, y por qué:** los ~70 errores de
+guardado (a propósito), las **siete de arrastrar y seleccionar** de la semana
+—esas necesitan un aviso que salga donde se suelta, que es pieza nueva— y el
+respaldo del brick en el Dibujo, que ya se ve en rojo dentro del constructor.
+
+**De paso, algo que no he tocado:** el botón «⟳ Rehacer desde el calendario» vive
+dentro del lienzo que se desplaza, pegado al borde **derecho**, así que para
+llegar a él hay que arrastrar la vista hasta el final de la temporada. Por eso su
+aviso sale arriba y no al lado. Moverlo es otra decisión.
+
+**Qué mirar al desplegar:** en el Dibujo, con el lienzo abierto y **sin ningún
+macrociclo dibujado**, pulsa «Generar planificación» desde la banda naranja → la
+franja roja sale pegada a la barra y dice que dibujes un macrociclo. Pulsa «⟳
+Rehacer desde el calendario» con un atleta **sin sesiones** → aviso arriba **y el
+botón vuelve a estar pulsable** (antes se quedaba en «Rehaciendo…»). Y en la
+pantalla de crear planificación nueva, pulsa «Empezar a dibujar» **sin fecha** →
+línea roja encima del botón.

@@ -14,6 +14,42 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 28 de septiembre de 2026 · Los avisos de «te falta un dato» salen ya dentro de la pantalla
+
+**Antes, cuando te faltaba algo por rellenar, se abría la ventana gris del
+navegador** — esa que no se parece en nada a TRIPULSE, que tapa justo el
+formulario que tienes que corregir y que en el móvil sale como un aviso del
+sistema. Ahora el aviso sale **dentro, en rojo, donde estabas mirando**.
+
+**En los modales del Dibujo y de la semana**: al ponerle nombre a un macrociclo o
+a un mesociclo, cuando dos se solapan, al crear una competición sin fecha, al
+renombrar un ciclo, y al crear una sesión sin elegir disciplina. La línea roja
+sale encima del botón que acabas de pulsar y el formulario se queda a la vista.
+
+**En la barra del Dibujo**: lo que falta para generar la planificación y lo que
+sale de rehacer los chips. Esos van pegados a la barra de arriba, que no se mueve
+aunque arrastres el lienzo.
+
+**Los avisos dicen cuál falta, no todos.** «Necesitas fecha de inicio y al menos
+un macrociclo» te dejaba mirando los dos a ver cuál era. Ahora dice uno: o te
+falta la fecha, o te falta dibujar un macrociclo. Igual con los solapes, que
+ahora te dicen qué cambiar.
+
+**Lo que ha salido bien también se ve ahí**, en verde: «planificación generada»,
+«recuperados 12 chips». Con una excepción a propósito: si al generar **alguna
+sesión se queda fuera del plan**, eso sigue abriendo la ventana que hay que
+cerrar. No es un «hecho», es un cambio en el calendario de tu atleta.
+
+**Y los errores de guardado siguen como estaban**, con su ventana: un «no se ha
+podido guardar» tiene que molestar, porque si se te escapa te vas creyendo que
+quedó guardado.
+
+**Un botón que se quedaba atascado.** Si pulsabas «⟳ Rehacer desde el calendario»
+con un atleta que **no tenía ninguna sesión** en el calendario, el botón se
+quedaba desactivado poniendo «Rehaciendo…» **hasta recargar la página**. Ya no.
+
+---
+
 ## 27 de septiembre de 2026 · Lo que el atleta se apunta ya cuenta en dos sitios más
 
 **Dos sitios que se dejaban fuera las sesiones que el deportista se añade por su

@@ -284,6 +284,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
      aviso que acabas de leer. */
   const modalAbierto = modal || (modalEditar ? 'editar' : '') || (compSel ? 'ficha' : '')
   useEffect(() => { limpiarAvisoModal() }, [modalAbierto, limpiarAvisoModal])
+  /* LOS AVISOS DE LA BARRA. Generar y rehacer no son de un modal: son de la
+     pantalla entera. Su franja va pegada a la barra de arriba —la misma banda
+     donde sale «no te olvides de guardar»— porque el lienzo se mueve, a los
+     lados y hacia abajo, y la barra no: pulses donde pulses, el aviso se ve.
+     Siete segundos y no cuatro porque aquí caben frases largas («recuperados 12
+     chips, 3 en gris, 2 caen fuera»), y cuatro no dan para leerlas. */
+  const { aviso: avisoLienzo, mal: avisarLienzo, ok: okLienzo } = useAviso(7)
+  /* La pantalla de empezar de cero es otra pantalla y tiene su propio formulario
+     —la fecha de inicio está justo ahí—, así que su aviso va con él. */
+  const { aviso: avisoSetup, mal: avisarSetup } = useAviso()
   const [semanaW, setSemanaW] = useState(SEMANA_W_DEFAULT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -632,11 +642,14 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
    * únicos que no están en ninguna otra tabla.
    */
   const reconstruirChips = async () => {
-    if (!fechaInicio) { alert('El lienzo no tiene fecha de inicio.'); return }
+    if (!fechaInicio) { avisarLienzo('El lienzo no tiene fecha de inicio, así que no se sabe a qué semana va cada sesión.'); return }
+    /* Las dos comprobaciones van ANTES de encender «Rehaciendo…», y no dentro
+       del try: un `return` dentro del try se salta lo que hay detrás, y el botón
+       se quedaba desactivado poniendo «Rehaciendo…» hasta recargar la página. */
+    if (!sesionesProg.length) { avisarLienzo('Este atleta no tiene ninguna sesión en el calendario: no hay nada que rehacer.'); return }
     setReconstruyendo(true)
     try {
       const ses = sesionesProg
-      if (!ses.length) { alert('No hay sesiones en el calendario de este atleta.'); return }
 
       const { data: tareas } = await supabase.from('tarea')
         .select('id_sesion, zona_entrenamiento').in('id_sesion', ses.map((s: any) => s.id))
@@ -658,13 +671,16 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
       const sinZona = nuevos.filter(c => c.sinZona).length
       const fuera = ses.length - nuevos.length
-      alert('Recuperados ' + nuevos.length + ' chips de sesiones ya programadas.' +
-        (sinZona > 0 ? '\n\n' + sinZona + (sinZona === 1 ? ' está en gris: no tiene zona.' : ' están en gris: no tienen zona.') + ' Púlsalos para ponérsela.' : '') +
-        (fuera > 0 ? '\n\n' + fuera + ' sesiones caen fuera de las semanas del lienzo y no salen.' : ''))
+      okLienzo('Recuperados ' + nuevos.length + ' chips de sesiones ya programadas.' +
+        (sinZona > 0 ? ' ' + sinZona + (sinZona === 1 ? ' está en gris: no tiene zona.' : ' están en gris: no tienen zona.') + ' Púlsalos para ponérsela.' : '') +
+        (fuera > 0 ? ' ' + fuera + ' sesiones caen fuera de las semanas del lienzo y no salen.' : ''))
     } catch (e: any) {
+      /* Este sí sigue siendo la ventana del navegador: no es «te falta un dato»,
+         es «la operación ha fallado», y eso tiene que molestar. */
       alert('No se han podido rehacer: ' + e.message)
+    } finally {
+      setReconstruyendo(false)
     }
-    setReconstruyendo(false)
   }
 
   /**
@@ -698,7 +714,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   const iniciarNuevo = () => {
-    if (!fechaInicio) { alert('Elige una fecha de inicio'); return }
+    if (!fechaInicio) { avisarSetup('Elige la fecha de inicio de la temporada.'); return }
     /* EMPEZAR DE CERO CON UN DIBUJO GUARDADO DETRÁS LO BORRA: en cuanto se
        dibuje el primer macrociclo, el autoguardado escribe encima, y
        `dibujo_borrador` se actualiza en su sitio (no hay histórico de donde
@@ -1041,7 +1057,11 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   const generar = async () => {
-    if (!fechaInicio || macros.length === 0) { alert('Necesitas fecha de inicio y al menos un macrociclo'); return }
+    /* Dice cuál de las dos falta, no las dos. Es el mismo fallo que tenía el
+       aviso del brick: enumerar todo lo que hace falta te deja mirando lo que sí
+       tienes, buscando qué de eso no está. */
+    if (!fechaInicio) { avisarLienzo('El lienzo no tiene fecha de inicio.'); return }
+    if (macros.length === 0) { avisarLienzo('Dibuja al menos un macrociclo antes de generar la planificación.'); return }
     setGenerando(true)
     // Acortar un bloque saca sesiones del plan. Se cuentan para decirlo al
     // final: es un cambio en los datos del atleta, no un detalle de dibujo.
@@ -1154,14 +1174,20 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       /* Lo que acaba de escribirse ES el dibujo, así que la foto del plan pasa
          a ser esta y el aviso se apaga solo. */
       setFotoPlan(fotoDelDibujo(macros, mesos, sems))
-      const aviso = sueltas
-        ? '\n\n' + sueltas + (sueltas === 1
+      const hecho = modoEdicion
+        ? 'Planificación actualizada. Las sesiones existentes se han conservado.'
+        : 'Planificación generada correctamente.'
+      /* SALIÓ BIEN → la franja verde de la barra. SALIÓ BIEN PERO ALGO SE HA
+         MOVIDO DE SITIO → la ventana del navegador, que hay que cerrar a mano:
+         «N sesiones se han quedado fuera del plan» no es un «hecho», es un
+         cambio en el calendario del atleta y no puede pasar de largo. */
+      if (sueltas) {
+        alert(hecho + '\n\n' + sueltas + (sueltas === 1
           ? ' sesión estaba en una semana que ya no cabe: sigue en el calendario, pero fuera del plan.'
-          : ' sesiones estaban en semanas que ya no caben: siguen en el calendario, pero fuera del plan.')
-        : ''
-      alert((modoEdicion
-        ? 'Planificacion actualizada. Las sesiones existentes se han conservado.'
-        : 'Planificacion generada correctamente.') + aviso)
+          : ' sesiones estaban en semanas que ya no caben: siguen en el calendario, pero fuera del plan.'))
+      } else {
+        okLienzo(hecho)
+      }
     } catch (e: any) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
@@ -1609,6 +1635,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </div>
                 <p className="text-gray-600 text-xs mt-1.5 text-center">{totalSem} semanas · {Math.round(totalSem / 4.33)} meses</p>
               </div>
+              <AvisoEnLinea aviso={avisoSetup} className="mt-2" />
               <div className="flex gap-2 mt-2">
                 {macrosExistentes.length > 0 && (
                   <button onClick={() => setPantalla('elegir')} className="flex-1 bg-gray-800 hover:bg-gray-700 py-3 rounded-xl text-sm text-gray-400 transition">← Volver</button>
@@ -1740,6 +1767,19 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </button>
               </div>
             </div>
+
+            {/* EL AVISO DE LA BARRA: lo que falta para generar, y lo que ha
+                salido de rehacer los chips.
+
+                Va aquí, fuera del lienzo, por la misma razón que el aviso de
+                abajo: la barra no se mueve. El botón de rehacer está al final
+                del cajón de abajo, así que un aviso pegado a él se leería solo
+                si has hecho scroll hasta allí. */}
+            {avisoLienzo && (
+              <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 px-4 py-2">
+                <AvisoEnLinea aviso={avisoLienzo} />
+              </div>
+            )}
 
             {/* EL AVISO DE LO QUE FALTA POR GENERAR.
 
