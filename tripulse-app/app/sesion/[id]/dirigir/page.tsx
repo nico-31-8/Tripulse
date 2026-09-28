@@ -18,6 +18,7 @@
 //   · Se guarda QUIÉN lo apuntó. El RPE puesto a ojo por el entrenador no es el
 //     esfuerzo percibido del atleta, y el SICAT calcula con ese número.
 import { useRouter } from 'next/navigation'
+import { repsDeEjercicio } from '@/lib/repeticiones'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -45,7 +46,7 @@ function objetivoDe(t: any): string {
   if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
   if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
-  const reps = t.ejercicios?.[0]?.repeticiones
+  const reps = repsDeEjercicio(t.ejercicios?.[0])
   if (reps) return repeticionTexto(t, reps + ' reps')
   return t.series ? t.series + ' series' : '—'
 }

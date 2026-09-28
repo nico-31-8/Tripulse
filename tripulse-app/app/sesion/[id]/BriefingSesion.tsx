@@ -12,6 +12,7 @@
 //   Ya la he hecho → cronómetro aquí + cuestionario. Es la única que escribe
 //                    duracion_real y la que trae la HRV cuando no hay wellness.
 import { useState, useEffect, useRef } from 'react'
+import { repsDeEjercicio, repsDePrescripcion } from '@/lib/repeticiones'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
@@ -42,10 +43,10 @@ function objetivoTarea(t: any): string {
   if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
   if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
-  const reps = t.p_repeticiones?.[0]?.repeticiones_planteadas
+  const reps = repsDePrescripcion(t.p_repeticiones?.[0])
   if (reps) return repeticionTexto(t, reps + ' reps')
   // Fuerza: las repeticiones están en el ejercicio, no en la tarea.
-  const repsEj = t.ejercicios?.[0]?.repeticiones
+  const repsEj = repsDeEjercicio(t.ejercicios?.[0])
   if (repsEj) return repeticionTexto(t, repsEj + ' reps')
   return t.series ? t.series + ' series' : '—'
 }

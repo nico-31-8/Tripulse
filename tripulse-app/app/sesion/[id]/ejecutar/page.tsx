@@ -1,5 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
+import { repsDePrescripcion } from '@/lib/repeticiones'
 import { useState, useEffect, useCallback, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideos } from '@/lib/video-ejercicio'
@@ -416,7 +417,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       const m = tarea.p_distancia[0].metros_planeados || 0
       return m >= 1000 ? (m/1000).toFixed(1) + ' km' : m + ' m'
     }
-    if (tarea.p_repeticiones?.[0]) return tarea.p_repeticiones[0].repeticiones_planteadas + ' reps'
+    const repsPr = repsDePrescripcion(tarea.p_repeticiones?.[0])
+    if (repsPr) return repsPr + ' reps'
     return '—'
   }
 
@@ -894,7 +896,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                     <>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Reps plan</p>
-                        <p className="font-bold text-sm">{pr.repeticiones_planteadas || '—'}</p>
+                        <p className="font-bold text-sm">{repsDePrescripcion(pr) || '—'}</p>
                       </div>
                       <div className="bg-gray-800 rounded-lg p-2 text-center">
                         <p className="text-gray-500 text-xs">Series completadas</p>

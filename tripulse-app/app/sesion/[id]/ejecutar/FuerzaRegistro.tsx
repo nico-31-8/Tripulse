@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { repsDeEjercicio } from '@/lib/repeticiones'
 import { controlDe, textoControl } from '@/lib/control-esfuerzo'
 import {
   resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
@@ -120,7 +121,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
               )}
               <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                 <span>{numSeries} series</span>
-                {ej.repeticiones && <span>{ej.repeticiones} reps obj.</span>}
+                {repsDeEjercicio(ej) && <span>{repsDeEjercicio(ej)} reps obj.</span>}
                 {ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
                 {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
               </div>

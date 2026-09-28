@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import { repsDePrescripcion } from '@/lib/repeticiones'
 import MiFuerza from '@/components/MiFuerza'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -278,7 +279,7 @@ export default function MisAnalisis() {
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Reps plan</p>
-                              <p className="font-bold text-sm">{pr.repeticiones_planteadas || '—'}</p>
+                              <p className="font-bold text-sm">{repsDePrescripcion(pr) || '—'}</p>
                             </div>
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Reps reales</p>

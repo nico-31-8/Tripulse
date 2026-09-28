@@ -3,6 +3,11 @@
 // (p_duracion), repeticiones como número (p_repeticiones). El entrenador puede
 // introducir el valor en la unidad que le resulte cómoda (m/km, seg/min/mm:ss).
 
+/* Lo único que importa este fichero, y a propósito: `lib/repeticiones` no
+   importa nada, así que medicion sigue siendo el sitio sin dependencias donde
+   pueden apoyarse los demás (lib/zonas depende de esto, no al revés). */
+import { leerReps, repsDePrescripcion, columnasPrescripcion } from './repeticiones'
+
 export type UnidadMedicion = '' | 'm' | 'km' | 'seg' | 'min' | 'mmss' | 'reps'
 
 export function mmssASegundos(str: string): number {
@@ -100,7 +105,10 @@ export function valorCanonico(u: UnidadMedicion, valor: string): number {
     case 'min': return Math.round(n * 60)
     case 'seg': return n
     case 'mmss': return mmssASegundos(valor)
-    case 'reps': return n
+    /* «8-10» es un rango: para lo que se mide vale su mínimo, y el tope lo
+       guarda guardarMedicion en su columna. Antes esto era Number('8-10'),
+       o sea NaN, y NaN hacía que la medición se borrara sin decir nada. */
+    case 'reps': return leerReps(valor)?.min || 0
     default: return 0
   }
 }
@@ -113,8 +121,8 @@ export function detectarMedicion(t: any): { tipo: UnidadMedicion; valor: string 
   if (m != null) return { tipo: 'm', valor: String(m) }
   const s = t?.p_duracion?.[0]?.tiempo_planeado
   if (s != null) return { tipo: 'seg', valor: String(s) }
-  const r = t?.p_repeticiones?.[0]?.repeticiones_planteadas
-  if (r != null) return { tipo: 'reps', valor: String(r) }
+  const reps = repsDePrescripcion(t?.p_repeticiones?.[0])
+  if (reps) return { tipo: 'reps', valor: reps }
   return { tipo: '', valor: '' }
 }
 
@@ -141,7 +149,12 @@ export async function guardarMedicion(
     const fila = t?.[tabla]?.[0]
     const esDestino = tabla === destino && valor > 0
     if (esDestino) {
-      const payload = { [COL_MEDICION[tabla]]: valor }
+      /* EL TOPE VIAJA CON EL MÍNIMO. Si se escribiera solo el mínimo, pasar
+         de «8-10» a «12» dejaría el tope en 10: un rango al revés, que la
+         propia base rechaza y que dejaría la sesión sin guardar. */
+      const payload: Record<string, unknown> = tabla === 'p_repeticiones'
+        ? columnasPrescripcion(valorStr)
+        : { [COL_MEDICION[tabla]]: valor }
       if (fila?.id) await supabase.from(tabla).update(payload).eq('id', fila.id)
       else await supabase.from(tabla).insert({ id_tarea: t.id, ...payload })
     } else if (fila?.id) {

@@ -12,6 +12,7 @@ import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
 import { controlDeEjercicio } from './control-esfuerzo'
+import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion } from './repeticiones'
 import { esBloque, leerConfig, ordenarLineas, textoFormato, textoLinea, QUE_SE_APUNTA, type Formato, type LineaBloque } from './bloque-formato'
 
 /** Lo que se hace en CADA serie: «400 m», «5:00 min», «8 reps». */
@@ -20,8 +21,8 @@ export function valorPorSerie(t: any): string {
   if (seg) return segAMmss(seg) + ' min'
   const m = t?.p_distancia?.[0]?.metros_planeados
   if (m) return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m'
-  const r = t?.p_repeticiones?.[0]?.repeticiones_planteadas
-  if (r) return r + ' reps'
+  const reps = repsDePrescripcion(t?.p_repeticiones?.[0])
+  if (reps) return reps + ' reps'
   return '—'
 }
 
@@ -38,8 +39,8 @@ export function totalDeTarea(t: any): string {
     const total = m * series
     return total >= 1000 ? (total / 1000).toFixed(1) + ' km' : total + ' m'
   }
-  const r = t?.p_repeticiones?.[0]?.repeticiones_planteadas
-  if (r) return (r * series) + ' reps'
+  const totalReps = repsTotalDePrescripcion(t?.p_repeticiones?.[0], series)
+  if (totalReps) return totalReps + ' reps'
   return '—'
 }
 
@@ -130,7 +131,7 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
         { k: 'Grupo', v: ej.grupo_muscular || '—' },
         { k: 'Tipo de serie', v: ej.tipo_serie || 'Normal' },
         { k: 'Series', v: String(ej.series ?? t.series ?? '—') },
-        { k: porTiempo ? 'Tiempo' : 'Repeticiones', v: porTiempo ? valorPorSerie(t) : (ej.repeticiones != null ? ej.repeticiones + ' reps' : '—') },
+        { k: porTiempo ? 'Tiempo' : 'Repeticiones', v: porTiempo ? valorPorSerie(t) : (repsDeEjercicio(ej) ? repsDeEjercicio(ej) + ' reps' : '—') },
         { k: 'Carga', v: ej.intensidad != null ? ej.intensidad + ' kg' : '—', destaca: true },
         // «Control», no «RIR»: el RIR es una de las cuatro escalas, y con la
         // etiqueta fija un %1RM salía bajo el nombre equivocado.

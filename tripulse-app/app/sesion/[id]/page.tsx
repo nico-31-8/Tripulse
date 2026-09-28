@@ -1,5 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
+import { repsDeEjercicio, repsDePrescripcion, columnasPrescripcion } from '@/lib/repeticiones'
 import { useState, useEffect, useRef, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideosEnTareas } from '@/lib/video-ejercicio'
@@ -236,8 +237,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       const m = t.p_distancia[0].metros_planeados
       return m >= 1000 ? (m/1000).toFixed(1) + ' km' : m + ' m'
     }
-    if (t.p_repeticiones?.[0]?.repeticiones_planteadas) {
-      return t.p_repeticiones[0].repeticiones_planteadas + ' reps'
+    if (repsDePrescripcion(t.p_repeticiones?.[0])) {
+      return repsDePrescripcion(t.p_repeticiones[0]) + ' reps'
     }
     return ''
   }
@@ -396,7 +397,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       setEjercicioSel(ejerciciosBiblioteca.find(e => e.nombre === ej?.nombre) || null)
       setTipoSerie(ej?.tipo_serie || 'Normal')
       setSeriesFuerza(t.series != null ? String(t.series) : '')
-      setRepsFuerza(ej?.repeticiones != null ? String(ej.repeticiones) : '')
+      setRepsFuerza(repsDeEjercicio(ej))
       setDescansoFuerza(t.descanso_segundos != null ? String(t.descanso_segundos) : '')
       setRir(String(ej?.control_valor || '').replace(/\D/g, ''))
       setConfigSerie(t.comentario || '')
@@ -502,7 +503,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       ...tarea,
       p_duracion: [],
       p_distancia: [],
-      p_repeticiones: repsFuerza ? [{ repeticiones_planteadas: Number(repsFuerza) }] : [],
+      p_repeticiones: repsFuerza ? [columnasPrescripcion(repsFuerza)] : [],
     }])
     cancelarEdicion()
     setLoading(false)
@@ -585,7 +586,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       ...tarea,
       p_duracion: _tabla === 'p_duracion' ? [{ tiempo_planeado: _valorC }] : [],
       p_distancia: _tabla === 'p_distancia' ? [{ metros_planeados: _valorC }] : [],
-      p_repeticiones: _tabla === 'p_repeticiones' ? [{ repeticiones_planteadas: _valorC }] : [],
+      p_repeticiones: _tabla === 'p_repeticiones' ? [columnasPrescripcion(_valorInput)] : [],
     }])
     cancelarEdicion()
     setLoading(false)
@@ -1109,7 +1110,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <input type="number" placeholder="Series" value={seriesFuerza} onChange={e => setSeriesFuerza(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
-                  <input type="number" placeholder="Repeticiones" value={repsFuerza} onChange={e => setRepsFuerza(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
+                  <input type="text" inputMode="numeric" placeholder="Repeticiones («10» o «8-10»)" value={repsFuerza} onChange={e => setRepsFuerza(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <input type="number" placeholder="Descanso (seg)" value={descansoFuerza} onChange={e => setDescansoFuerza(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />

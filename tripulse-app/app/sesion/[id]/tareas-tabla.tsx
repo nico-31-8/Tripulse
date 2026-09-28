@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, columnasEjercicio, columnasEncadenado, columnasPrescripcion } from '@/lib/repeticiones'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { textoEncadenado } from '@/lib/tarea-vista'
@@ -74,7 +75,7 @@ function mostrarValorGuardado(t: any): string {
     const m = t.p_distancia[0].metros_planeados
     return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m'
   }
-  if (t.p_repeticiones?.[0]?.repeticiones_planteadas) return t.p_repeticiones[0].repeticiones_planteadas + ' reps'
+  if (repsDePrescripcion(t.p_repeticiones?.[0])) return repsDePrescripcion(t.p_repeticiones[0]) + ' reps'
   return '—'
 }
 
@@ -89,7 +90,7 @@ function mostrarTotal(t: any): string {
     const total = t.p_distancia[0].metros_planeados * series
     return total >= 1000 ? (total / 1000).toFixed(1) + ' km' : total + ' m'
   }
-  if (t.p_repeticiones?.[0]?.repeticiones_planteadas) return (t.p_repeticiones[0].repeticiones_planteadas * series) + ' reps'
+  if (repsTotalDePrescripcion(t.p_repeticiones?.[0], series)) return repsTotalDePrescripcion(t.p_repeticiones[0], series) + ' reps'
   return '—'
 }
 
@@ -875,7 +876,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         nombre: ejBib.nombre,
         grupo_muscular: ejBib.grupo_muscular,
         series: f.series ? Number(f.series) : null,
-        repeticiones: (!esTiempo && f.repsFuerza) ? Number(f.repsFuerza) : null,
+        /* En modo tiempo la casilla lleva los segundos, no repeticiones: se
+           vacian las DOS columnas, que es lo que hace columnasEjercicio(''). */
+        ...columnasEjercicio(esTiempo ? '' : f.repsFuerza),
         intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
         descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
         // El control ya NO va concatenado en las notas: tiene sus columnas. Antes
@@ -891,7 +894,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
         encadenado_series: ejBib2 && f.series2 ? Number(f.series2) : null,
-        encadenado_repeticiones: ejBib2 && f.repsFuerza2 ? Number(f.repsFuerza2) : null,
+        ...columnasEncadenado(ejBib2 ? f.repsFuerza2 : ''),
         encadenado_intensidad: ejBib2 && f.kgFuerza2 ? Number(f.kgFuerza2) : null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
@@ -904,7 +907,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       if (esTiempo) {
         if (segundos > 0) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: segundos })
       } else if (f.repsFuerza) {
-        await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: Number(f.repsFuerza) })
+        await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, ...columnasPrescripcion(f.repsFuerza) })
       }
     }
     // Editar conserva el sitio de la tarea: no gasta número de orden.
@@ -986,11 +989,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         return
       }
       await supabase.from('ejercicios').insert({ ...f.ejercicio, id_tarea: data.id })
-      const ej = f.ejercicio as { medida?: string | null; cantidad?: number | null; repeticiones?: number | null }
+      const ej = f.ejercicio as { medida?: string | null; cantidad?: number | null; repeticiones?: number | null; repeticiones_max?: number | null }
       if (ej.medida === 'seg' && Number(ej.cantidad) > 0) {
         await supabase.from('p_duracion').insert({ id_tarea: data.id, tiempo_planeado: Math.round(Number(ej.cantidad)) })
       } else if (ej.repeticiones) {
-        await supabase.from('p_repeticiones').insert({ id_tarea: data.id, repeticiones_planteadas: ej.repeticiones })
+        await supabase.from('p_repeticiones').insert({ id_tarea: data.id, ...columnasPrescripcion(repsDeEjercicio(ej)) })
       }
     }
     await borrarEnSilencio(t.id)
@@ -1252,7 +1255,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
                         <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (cuantoPorSerie({ modo: t.ejercicios[0].cardio_modo, medida: t.ejercicios[0].cardio_medida, valor: t.ejercicios[0].cardio_valor }) || '—')
-                          : t.ejercicios?.[0]?.repeticiones ? t.ejercicios[0].repeticiones + ' reps' : mostrarValorGuardado(t)}</td>
+                          : repsDeEjercicio(t.ejercicios?.[0]) ? repsDeEjercicio(t.ejercicios[0]) + ' reps' : mostrarValorGuardado(t)}</td>
                         <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (t.ejercicios[0].cardio_objetivo ? '@ ' + t.ejercicios[0].cardio_objetivo : '—')
                           : t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
@@ -2070,11 +2073,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
                       <span className="text-gray-500 flex-none select-none">×</span>
                       {/* En tiempo el campo pasa a texto: acepta «45» y «1:30». */}
-                      <input type={f.medida === 'tiempo' ? 'text' : 'number'} value={f.repsFuerza}
+                      {/* Texto en los dos modos. En tiempo acepta «45» y «1:30»; en
+                          repeticiones, «10» y «8-10». Con type="number" el guion ni
+                          se podía teclear, que es lo que obligaba a escribir los
+                          rangos en las notas, donde no los lee ningún cálculo. */}
+                      <input type="text" inputMode={f.medida === 'tiempo' ? 'text' : 'numeric'} value={f.repsFuerza}
                         onChange={e => updateF(i, 'repsFuerza', e.target.value)}
                         className={inputBloque + ' w-[74px]'}
-                        placeholder={f.medida === 'tiempo' ? '1:30' : '10'}
-                        title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie'} />
+                        placeholder={f.medida === 'tiempo' ? '1:30' : '8-10'}
+                        title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie — «10», o un rango «8-10»'} />
                       <button type="button"
                         onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
                         title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
@@ -2134,7 +2141,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <input type="number" value={f.series2} onChange={e => updateF(i, 'series2', e.target.value)}
                           className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
                         <span className="text-gray-500 flex-none select-none">×</span>
-                        <input type="number" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)}
+                        <input type="text" inputMode="numeric" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)}
                           className={inputBloque + ' w-[74px]'} placeholder="10" title="Repeticiones" />
                         <span className="text-gray-500 flex-none select-none">@</span>
                         <input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)}

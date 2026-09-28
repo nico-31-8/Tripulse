@@ -17,6 +17,7 @@
 // que la de origen no se toca — que es justo lo que se le promete al entrenador
 // en el panel.
 import { detectarMedicion } from './medicion'
+import { repsDeEjercicio } from './repeticiones'
 import { intensidadGuardada } from './intensidad-prescrita'
 import { mmssCorto } from './duracion-carga'
 import type { ControlTipo } from './control-esfuerzo'
@@ -192,7 +193,8 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
     controlTipo: (ej?.control_tipo as ControlTipo) || 'rir',
     series: t.series != null ? String(t.series) : '',
     // En modo tiempo la casilla de «reps» es la que lleva los segundos.
-    repsFuerza: esTiempo ? tiempoEditable : (ej?.repeticiones != null ? String(ej.repeticiones) : ''),
+    /* Con el rango entero: copiar «8-10» y pegar «8» sería perder la mitad. */
+    repsFuerza: esTiempo ? tiempoEditable : repsDeEjercicio(ej),
     kgFuerza: ej?.intensidad != null ? String(ej.intensidad) : '',
     rir: ej?.control_valor || '',
     descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',

@@ -21,6 +21,7 @@ import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
 import { vecesDe, descansoTotalDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
+import { repsDeCalculo } from './repeticiones'
 import { esBloque, duracionBloque, leerConfig, ordenarLineas, type Formato, type LineaBloque } from './bloque-formato'
 import type { Sexo } from './tests-campo'
 
@@ -68,6 +69,8 @@ export interface TareaDuracion {
 /** Lo que se mira de un ejercicio de fuerza para saber cuánto dura. */
 export interface EjercicioDuracion {
   repeticiones?: number | null
+  /** El tope, si se prescribió un rango («8-10»). Ver lib/repeticiones. */
+  repeticiones_max?: number | null
   /** La línea de cardio, si el tipo de serie es «Cardio». */
   cardio_modo?: string | null
   cardio_medida?: string | null
@@ -267,7 +270,10 @@ export function calcularDuracionEstimada(
 
     // Fuerza (e Híbrido): reps × tempo (normal) o series × segundos (isométrico)
     if (esDisciplinaDeFuerza(t.disciplina)) {
-      const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + (e.repeticiones || 0), 0)
+      /* Con un rango se cuenta el CENTRO: «8-10» estimado como ocho dejaría
+         la sesión corta siempre, y la carga detrás de ella. Con repeticiones
+         exactas da el número de siempre (lib/repeticiones). */
+      const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + repsDeCalculo(e), 0)
       const isoSeg = t.p_duracion?.[0]?.tiempo_planeado || 0
       let trabajo = 0
       if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
