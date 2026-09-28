@@ -11,7 +11,8 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import type { ChipZona } from '@/lib/chips'
-import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool } from '@/lib/devolver-al-pool'
+import { devolverAlPool, chipsEnlazados, loQueSePierde, borrarConSuChip, borrarDelPool, borrarUnidadDelPool, porQueNoVuelveAlPool, zonasQueVuelven } from '@/lib/devolver-al-pool'
+import { porQueNoSeFusiona, sePuedeFusionar, porQueNoCabeEnUnDia } from '@/lib/unidades-semana'
 import { zonasDeSesion } from '@/lib/chips-desde-sesiones'
 import { chipDisciplina, claseDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
 
@@ -66,6 +67,10 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   /* Al cambiar de dia el aviso del anterior no se hereda: si no, cierras el lunes
      con el aviso puesto y sale dentro del martes. */
   useEffect(() => { limpiarAvisoModal() }, [modal, limpiarAvisoModal])
+  /* El aviso de la tarjeta del pool: lo que NO se puede al arrastrar, al soltar
+     o al fusionar. Cinco segundos y no cuatro porque sale justo cuando sueltas,
+     que es cuando desaparece el borde rojo que ya lo estaba diciendo. */
+  const { aviso: avisoPool, mal: avisarPool } = useAviso(5)
   const [uaProg, setUaProg] = useState(0)
   const [uaReal, setUaReal] = useState(0)
   const [sesZonasAll, setSesZonasAll] = useState<ChipZona[]>([])
@@ -284,10 +289,15 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   // Cada zona se materializa como una tarea real, así cuenta en la distribución de zonas.
   const crearSesionDesdeUnidad = async (chips: ChipZona[], fechaDia: string) => {
     if (!chips.length) return
+    /* LO PRIMERO DE TODO, y antes iba después de crear el microciclo: un grupo
+       que no cabe dejaba la semana creada en la base para luego rechazarlo.
+       Es la red: los días ya se han pintado en rojo mientras arrastrabas. */
+    const noCabe = porQueNoCabeEnUnDia(chips)
+    if (noCabe) { avisarPool(noCabe); return }
     setGuardando(true)
-    /* Aqui no hay modal, asi que sigue la ventana del navegador: es lo unico que
-       se ve soltando un chip. Cambiara cuando haya un aviso junto al dia. */
-    const microId = await obtenerOcrearMicrociclo(texto => alert(texto))
+    /* Ya hay dónde decirlo: la tarjeta del pool está justo encima de los días y
+       se ve entera mientras arrastras. */
+    const microId = await obtenerOcrearMicrociclo(avisarPool)
     if (!microId) { setGuardando(false); return }
 
     const disciplina = chips[0].disciplina
@@ -295,11 +305,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const compleja = chips.length > 1
     // Un chip de brick trae sus bloques del canvas: manda él, no la zona del chip.
     const chipBrick = chips.length === 1 && chips[0].disciplina === 'Brick' ? chips[0].brick : null
-    // Red de seguridad: un brick nunca debe caer al camino normal, que crearía tareas
-    // con disciplina 'Brick' y dejaría su volumen sin atribuir a ningún deporte.
-    if (!chipBrick && chips.some(c => c.disciplina === 'Brick')) {
-      alert('Un brick se arrastra solo, no agrupado con otras zonas.'); setGuardando(false); return
-    }
+    /* La red de seguridad que vivía aquí —un brick nunca debe caer al camino
+       normal, que crearía tareas de disciplina 'Brick' sin deporte al que
+       atribuir su volumen— está ahora arriba del todo, en porQueNoCabeEnUnDia. */
     const rpeEstim = chipBrick
       ? rpeBrick(chipBrick)
       : Math.round(chips.reduce((a, c) => a + cargaZona(c.zona).rpe, 0) / chips.length)
@@ -347,10 +355,11 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   const fusionarSeleccion = async () => {
     const sel = sesZonasAll.filter(z => seleccion.includes(z.id))
     if (sel.length < 2) return
-    if (!sel.every(z => z.disciplina === sel[0].disciplina)) { alert('Solo se pueden fusionar zonas de la misma disciplina'); return }
-    // Un brick ya ES una unidad de varios bloques: fusionarlo con otro no significa nada
-    // y rompería la atribución (acabaría con tareas de disciplina 'Brick').
-    if (sel.some(z => z.disciplina === 'Brick')) { alert('Un brick ya es una unidad: edítalo desde el canvas para cambiar sus bloques.'); return }
+    /* El botón ya está apagado con el motivo debajo, así que esto es la red. La
+       frase sale del mismo sitio que la del botón: si se escribieran aparte,
+       acabaría uno encendido con el aviso puesto. */
+    const noSeFusionan = porQueNoSeFusiona(sel)
+    if (noSeFusionan) { avisarPool(noSeFusionan); return }
     // Reutiliza un grupo existente entre las seleccionadas, si lo hay (para ampliar una unidad).
     const grupoId = sel.find(z => z.grupo)?.grupo || ('g' + Math.random().toString(36).slice(2))
     await persistirZonas(sesZonasAll.map(z => seleccion.includes(z.id) ? { ...z, grupo: grupoId } : z))
@@ -397,37 +406,21 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const s = sesiones.find(x => x.id === sesId)
     if (!s) return
 
-    /* Estas dos comprobaciones van ANTES de borrar nada, y ese es el motivo de
-       que existan. El pool se guarda en `dibujo_borrador`, y `persistirZonas`
-       no escribe si no hay fila: sin esta guarda, soltar aquí una sesión la
-       mandaba a la papelera y la unidad no volvía a ninguna parte. Se destruía
-       el trabajo en vez de moverlo. */
-    if (weekIndex === null) {
-      alert('Este deportista no tiene macrociclo, así que esta semana no cae en ningún plan y no hay pool al que devolverla.')
-      return
-    }
-    if (!borradorId) {
-      alert('No hay canvas de periodización para este deportista, que es donde vive el pool. Bórrala con la x si no la quieres aquí.')
-      return
-    }
+    /* LAS CINCO RAZONES PARA DECIR QUE NO, EN UN SOLO SITIO (lib/devolver-al-pool)
+       y todas ANTES de borrar nada. La tarjeta del pool ya las ha enseñado
+       mientras arrastrabas —por eso están en una función y no aquí sueltas—, y
+       esto es la misma frase por si soltaste sin mirar.
 
-    // Una sesión ya hecha no se des-planifica: eso ya no es un plan, es lo que pasó.
-    if (s.estado === 'Realizada') {
-      alert('Esta sesión ya está realizada. Si quieres quitarla del calendario, bórrala con la x.')
-      return
-    }
-
-    /* Un brick sin enlace no puede volver, y hay que pararlo aquí.
-       El rescate por parecido reconstruye chips a partir de las zonas, y un
-       brick no cabe en un par zona+deporte: sus bloques y sus transiciones no
-       están en ninguna zona. Saldrían dos o tres chips de disciplina 'Brick'
-       sin bloques dentro, que además no se pueden volver a arrastrar (el
-       crearSesionDesdeUnidad de más arriba los rechaza). Devolver algo roto es
-       peor que no devolverlo. */
-    if (s.disciplina === 'Brick' && !chipsEnlazados(sesZonasAll, sesId).length) {
-      alert('Este brick no salió del pool, así que no hay bloques que devolver: un chip de zona no sabe de transiciones.\n\nBórralo con la x y móntalo de nuevo desde el Dibujo.')
-      return
-    }
+       Van delante por lo de siempre: el pool se guarda en `dibujo_borrador` y
+       `persistirZonas` no escribe si no hay fila, así que sin esta guarda soltar
+       aquí mandaba la sesión a la papelera y la unidad no volvía a ninguna
+       parte. Se destruía el trabajo en vez de moverlo. */
+    const noVuelve = porQueNoVuelveAlPool(s, { weekIndex, borradorId }, sesZonasAll)
+    if (noVuelve) { avisarPool(noVuelve); return }
+    /* Redundante para quien lee, obligatorio para el compilador: la primera
+       razon de la lista es justamente `weekIndex === null`, pero eso pasa dentro
+       de otra funcion y TypeScript no lo puede seguir hasta aqui. */
+    if (weekIndex === null) return
 
     // Si salió del pool, la vuelta es exacta y no hay nada que avisar. Si no
     // (creada a mano, o colocada antes de que existiera el enlace), un chip solo
@@ -440,15 +433,11 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       if (!confirm(aviso)) return
     }
 
-    // Las de sus bloques, que ya traen la de la propia sesión si no tiene tareas.
-    const zonas: string[] = s._bloques?.length
-      ? s._bloques.map((b: any) => b.zona)
-      : zonasDeSesion(s)
-    // Sin zonas no hay unidad que devolver: sería crear un chip en blanco.
-    if (!zonas.length) {
-      alert('Esta sesión no tiene ninguna zona, así que no hay unidad que devolver al pool. Bórrala con la x si no la quieres.')
-      return
-    }
+    /* La misma cuenta que ha mirado el aviso de arriba para decir que sí. Si
+       cada uno la hiciera a su manera, el aviso diría que se puede y la vuelta
+       crearía un chip en blanco. Que no esté vacía ya lo ha comprobado
+       porQueNoVuelveAlPool. */
+    const zonas = zonasQueVuelven(s)
 
     setSesiones(prev => prev.filter(x => x.id !== sesId))
     await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
@@ -477,7 +466,30 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     } else unidadesPool.push({ grupo: null, chips: [c] })
   })
   const selChips = sesZonasAll.filter(z => seleccion.includes(z.id))
-  const puedeFusionar = selChips.length >= 2 && selChips.every(z => z.disciplina === selChips[0].disciplina)
+  const noSeFusiona = porQueNoSeFusiona(selChips)
+  const puedeFusionar = sePuedeFusionar(selChips)
+
+  /* LO QUE SE SABE MIENTRAS ARRASTRAS, que es todo.
+     Ninguna de estas razones necesita el soltar: en cuanto coges algo se sabe si
+     su destino puede recibirlo. Con esto la tarjeta del pool y los días se
+     pintan de rojo ANTES, en vez de contar el error después. */
+  const sesArrastrada = draggingSesion !== null ? sesiones.find(s => s.id === draggingSesion) : null
+  const noVuelveAlPool = sesArrastrada
+    ? porQueNoVuelveAlPool(sesArrastrada, { weekIndex, borradorId }, sesZonasAll)
+    : null
+  const chipArrastrado = draggingChip ? sesZonasAll.find(z => z.id === draggingChip) : null
+  /* La unidad se arma igual que al soltar: un chip suelto va solo, uno de grupo
+     se lleva a los suyos de esta semana. Si aquí se armara distinto, el aviso
+     hablaría de una unidad y el soltar crearía otra. */
+  const unidadArrastrada = chipArrastrado
+    ? (chipArrastrado.grupo
+        ? sesZonasAll.filter(z => z.grupo === chipArrastrado.grupo && z.semana === weekIndex && !z.hecho)
+        : [chipArrastrado])
+    : null
+  const noCabeEnUnDia = unidadArrastrada ? porQueNoCabeEnUnDia(unidadArrastrada) : null
+  /* Lo que la tarjeta del pool tiene que decir por lo que llevas en la mano.
+     La de fusionar va aparte: esa no es de arrastrar y no pinta bordes. */
+  const motivoArrastre = noVuelveAlPool || noCabeEnUnDia
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -600,22 +612,29 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
               const raw = e.dataTransfer.getData('text/plain')
               if (raw.startsWith('sesion:')) devolverSesionAlPool(Number(raw.slice(7)))
             }}
+            /* EL BORDE CONTESTA ANTES DE SOLTAR. Rojo: esto no puede entrar aquí
+               (o lo que llevas no cabe en ningún día). Naranja: adelante. */
             className={'bg-gray-900 rounded-2xl border p-4 mb-6 transition ' +
-              (dragOverPool ? 'border-orange-400 ring-2 ring-orange-400/40'
+              (motivoArrastre ? 'border-red-500 ring-2 ring-red-500/30'
+                : dragOverPool ? 'border-orange-400 ring-2 ring-orange-400/40'
                 : draggingSesion !== null ? 'border-orange-500/40 border-dashed'
                 : 'border-gray-800')}>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-              <p className="text-gray-400 text-sm font-medium">
-                {draggingSesion !== null
-                  ? '↩ Suelta aquí para devolverla al pool'
-                  : 'Unidades planificadas esta semana — arrastra a un día'}
+              {/* El rótulo ya cambiaba al arrastrar («↩ suelta aquí»), pero decía
+                  que sí siempre. Ahora dice la verdad, y en rojo cuando es que no. */}
+              <p className={'text-sm font-medium ' + (motivoArrastre ? 'text-red-300' : 'text-gray-400')}>
+                {motivoArrastre
+                  ? '✕ ' + motivoArrastre
+                  : draggingSesion !== null
+                    ? '↩ Suelta aquí para devolverla al pool'
+                    : 'Unidades planificadas esta semana — arrastra a un día'}
               </p>
               {seleccion.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 text-xs">{seleccion.length} sel.</span>
                   <button onClick={fusionarSeleccion} disabled={!puedeFusionar}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={puedeFusionar ? 'Fusionar en una sesión compleja' : 'Selecciona 2+ zonas de la misma disciplina'}>
+                    title={noSeFusiona || (puedeFusionar ? 'Fusionar en una sesión compleja' : 'Selecciona 2+ zonas de la misma disciplina')}>
                     🔗 Fusionar ({seleccion.length})
                   </button>
                   <button onClick={marcarSeleccionHechas} className="text-xs text-gray-400 hover:text-orange-400 px-2 py-1.5 transition" title="Quitar del pool sin crear sesión">✓ Hechas</button>
@@ -631,6 +650,14 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
             <p className="text-gray-600 text-xs mb-3">
               Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja, o Eliminar para borrarlas también del dibujo. Arrastra una unidad a un día para programarla, o una sesión de vuelta aquí para deshacerla.
             </p>
+
+            {/* DOS AVISOS EN EL MISMO SITIO, y no son lo mismo.
+                El de fusionar SE QUEDA mientras la selección no pegue: es un
+                estado, no un suceso, y desaparecer solo sería mentir. El de
+                soltar dura cinco segundos: aparece justo cuando se va el borde
+                rojo que ya lo estaba diciendo, para que quede constancia. */}
+            <AvisoEnLinea className="mb-3"
+              aviso={avisoPool || (noSeFusiona ? { tipo: 'mal', texto: noSeFusiona } : null)} />
 
             {/* Con el pool vacío el bloque sigue estando, pero tiene que decir por
                 qué: un recuadro en blanco parece un fallo de carga, no «ya está
@@ -722,9 +749,14 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                   const unidad = chip.grupo ? sesZonasAll.filter(z => z.grupo === chip.grupo && z.semana === weekIndex && !z.hecho) : [chip]
                   crearSesionDesdeUnidad(unidad, fechaDia)
                 }}
+                /* Si lo que llevas en la mano no cabe en un día, LOS SIETE lo
+                   dicen: a trazos, en rojo y apagados. No hay que soltar en uno
+                   para descubrirlo. */
                 className={'rounded-2xl border flex flex-col overflow-hidden transition ' +
-                (dragOverDia === fechaDia ? 'border-orange-400 ring-2 ring-orange-400/40' : esHoy ? 'border-orange-500' : 'border-gray-800')}
-                style={dPrio && dragOverDia !== fechaDia && !esHoy ? { borderColor: dPrio.hex + '88' } : undefined}>
+                (noCabeEnUnDia ? 'border-red-500/70 border-dashed opacity-60'
+                  : dragOverDia === fechaDia ? 'border-orange-400 ring-2 ring-orange-400/40'
+                  : esHoy ? 'border-orange-500' : 'border-gray-800')}
+                style={dPrio && !noCabeEnUnDia && dragOverDia !== fechaDia && !esHoy ? { borderColor: dPrio.hex + '88' } : undefined}>
                 {/* Header dia. EL DIA DE CARRERA SE PINTA DE SU COLOR: es lo
                     primero que hay que ver al repartir la semana. «Hoy» sigue
                     marcandose en el borde de la tarjeta, asi que no se pierde

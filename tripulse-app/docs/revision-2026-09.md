@@ -705,3 +705,75 @@ Rehacer desde el calendario» con un atleta **sin sesiones** → aviso arriba **
 botón vuelve a estar pulsable** (antes se quedaba en «Rehaciendo…»). Y en la
 pantalla de crear planificación nueva, pulsa «Empezar a dibujar» **sin fecha** →
 línea roja encima del botón.
+
+### Tanda 11 — el sitio donde sueltas contesta antes de soltar · CERRADA (2026-09-28)
+
+Las que quedaban, las de arrastrar y seleccionar. **Eran ocho y no siete**: en
+las tandas 9 y 10 me dejé fuera «un brick ya es una unidad» al contarlas.
+
+**LO QUE CAMBIÓ EL DISEÑO.** Al auditar el código antes de maquetar salió que
+**las ocho razones se saben ANTES de soltar**. Que la sesión está realizada, que
+el brick no salió del pool, que no tiene zonas, que el grupo lleva un brick
+dentro: todo eso se sabe en cuanto coges la unidad, y las dos primeras (sin
+macrociclo, sin lienzo) desde que abres la semana. Y la tarjeta del pool **ya
+cambiaba sola mientras arrastras** —pone «↩ Suelta aquí para devolverla al
+pool»—: el sitio donde decirlo ya existía y ya se movía, solo que decía que sí
+siempre.
+
+Así que no son ocho avisos nuevos: es que **el destino contesta**.
+
+- **La tarjeta del pool** se pone roja y su rótulo dice el motivo mientras
+  arrastras algo que no puede entrar (o que no cabe en ningún día).
+- **Los siete días** se ponen a trazos, rojos y apagados cuando lo que llevas en
+  la mano no cabe en un día.
+- **El botón Fusionar** se apaga con el motivo debajo, en cuanto seleccionas dos
+  zonas que no pegan. No hay que pulsarlo para enterarse.
+- Si sueltas igual, el motivo sale en la franja de la tarjeta cinco segundos:
+  aparece justo cuando desaparece el borde rojo, para que quede constancia.
+
+**Las reglas, en dos funciones y no en catorce sitios.**
+`lib/devolver-al-pool.porQueNoVuelveAlPool` (las cinco de devolver) y
+`lib/unidades-semana` (`porQueNoSeFusiona`, `porQueNoCabeEnUnDia`). Devuelven la
+frase o `null`, como `queFaltaAlBrick`. `sePuedeFusionar` pasa a ser
+`porQueNoSeFusiona(sel) === null`: una sola verdad para el botón y para el aviso.
+
+**Tres fallos que salieron al sacar las reglas:**
+
+1. **«Solo se pueden fusionar zonas de la misma disciplina» al seleccionar un
+   brick y un ciclismo.** Era verdad, pero te mandaba a buscar otro brick — que
+   tampoco habría valido. El brick manda: ahora dice que un brick ya es una
+   unidad.
+2. **«Un brick se arrastra solo» a un chip de brick que iba solo.** Lo que le
+   faltaba eran los bloques, no ir solo, y el aviso mandaba a deshacer un grupo
+   que no existía. Es el mismo fallo del brick de la tanda 8.
+3. **Soltar un grupo que no cabe creaba el microciclo igual.** La comprobación
+   estaba DESPUÉS de `obtenerOcrearMicrociclo`, así que rechazarlo dejaba la
+   semana creada en la base. Ahora va lo primero de todo.
+
+Y de paso se cierra lo que quedó abierto en la tanda 9: los avisos de
+`obtenerOcrearMicrociclo` por el camino del arrastre ya no abren la ventana del
+navegador, porque ahora **sí hay dónde decirlo** — la tarjeta del pool está justo
+encima de los días y se ve entera mientras arrastras.
+
+**El alambre: `lib/unidades-semana.test.ts`.** 17 pruebas. Las de las reglas atan
+las dos puntas (`sePuedeFusionar` ⟺ `porQueNoSeFusiona`, y la cuenta de zonas que
+mira el aviso es la misma con la que vuelve la sesión), y el tripwire recorre
+`app`, `lib` y `components` buscando las nueve frases **escritas a mano**: si
+alguien vuelve a teclear una, el rótulo y el aviso dejan de decir lo mismo y no
+se entera nadie hasta que lo ve un entrenador. Las frases del tripwire son trozos
+LARGOS a propósito: los cortos («no tiene macrociclo») salen en comentarios y en
+otros mensajes legítimos. Comprobado que muerde.
+
+**Lo que NO se ha tocado:** los tres `confirm()` de la semana. «Se pierde la
+duración, ¿la devuelvo?», «¿elimino estas unidades?» y «¿elimino esta sesión
+compleja?» son decisiones, y una pregunta tiene que parar. Y los cinco `alert()`
+que quedan son errores de guardado, que se quedan a propósito.
+
+Verificado: `tsc` limpio · **3.240 tests en 166 ficheros** · `next build` OK · el
+lint de la semana da exactamente los mismos avisos que antes de tocarla.
+
+**Qué mirar al desplegar:** en la semana de un atleta, (1) coge una sesión
+**realizada** y llévala hacia el pool: la tarjeta se pone roja y dice por qué
+antes de que sueltes; (2) fusiona dos zonas, arrastra el grupo a un día: los
+siete días se ponen rojos a trazos; (3) selecciona un brick y una zona de otra
+disciplina: el botón Fusionar se apaga y el motivo sale debajo, sin pulsar nada.

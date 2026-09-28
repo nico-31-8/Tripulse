@@ -26,6 +26,8 @@
 
 import type { ChipZona } from './chips'
 import { fechaLarga } from './fechas'
+/* `zonasDeSesion` vive en chips-desde-sesiones y no importa nada de aquí: no hay ciclo. */
+import { zonasDeSesion } from './chips-desde-sesiones'
 
 export interface SesionQueVuelve {
   id: number
@@ -175,4 +177,61 @@ export function borrarDelPool(chips: ChipZona[], ids: string[]): ChipZona[] {
 /** Una sesión compleja entera del pool: sus chips de esa semana, sin colocar. */
 export function borrarUnidadDelPool(chips: ChipZona[], grupo: string, semana: number): ChipZona[] {
   return (chips || []).filter(z => !(z.grupo === grupo && z.semana === semana && !z.hecho))
+}
+
+/**
+ * Por qué NO puede volver esta sesión al pool, dicho antes de soltarla.
+ *
+ * ESTO ESTABA ESCRITO DENTRO DEL MANEJADOR DEL SOLTAR, en cinco `alert()`
+ * seguidos, y por eso solo se enteraba uno DESPUÉS de arrastrar media pantalla.
+ * Ninguna de las cinco razones necesita el soltar para saberse: todas se saben
+ * en cuanto coges la sesión —o incluso al abrir la semana, las dos primeras—.
+ * Sacándolas aquí, la tarjeta del pool puede decir que no MIENTRAS arrastras,
+ * que es la diferencia entre contar un error y no dejar que ocurra.
+ *
+ * Las dos primeras comprobaciones, además, son las que evitan destruir trabajo:
+ * el pool vive en `dibujo_borrador` y `persistirZonas` no escribe si no hay
+ * fila, así que sin ellas soltar aquí mandaba la sesión a la papelera y la
+ * unidad no volvía a ninguna parte.
+ *
+ * Devuelve null si puede volver. Que pueda no quiere decir que sea gratis: si
+ * no salió del pool se pierden la duración y las notas, y eso se PREGUNTA
+ * aparte (loQueSePierde), porque ahí sí hay que decidir.
+ */
+export function porQueNoVuelveAlPool(
+  s: { id: number; disciplina?: string | null; estado?: string | null; _bloques?: { zona: string }[] | null;
+       zona_fuerza?: string | null; zona_resistencia?: string | null },
+  pool: { weekIndex: number | null; borradorId: number | null },
+  chips: ChipZona[],
+): string | null {
+  if (pool.weekIndex === null)
+    return 'Este deportista no tiene macrociclo, así que esta semana no cae en ningún plan y no hay pool al que devolverla.'
+  if (!pool.borradorId)
+    return 'No hay lienzo de periodización para este deportista, que es donde vive el pool. Bórrala con la × si no la quieres aquí.'
+  if (s.estado === 'Realizada')
+    return 'Esta sesión ya está realizada. Si quieres quitarla del calendario, bórrala con la ×.'
+  /* Un brick sin enlace no puede volver. El rescate por parecido reconstruye
+     chips a partir de las zonas, y un brick no cabe en un par zona+deporte: sus
+     bloques y sus transiciones no están en ninguna zona. Volvería roto. */
+  if (s.disciplina === 'Brick' && !chipsEnlazados(chips, s.id).length)
+    return 'Este brick no salió del pool, así que no hay bloques que devolver. Bórralo con la × y móntalo de nuevo desde el Dibujo.'
+  if (!zonasQueVuelven(s).length)
+    return 'Esta sesión no tiene ninguna zona, así que no hay unidad que devolver al pool. Bórrala con la × si no la quieres.'
+  return null
+}
+
+/**
+ * Las zonas con las que vuelve: las de sus bloques, o la suya.
+ *
+ * Aquí y no en la página porque la miran DOS: el aviso de arriba, que tiene que
+ * saber si hay algo que devolver antes de soltar, y la vuelta en sí. Si cada
+ * uno la calculara a su manera, el aviso diría que sí y la vuelta crearía un
+ * chip en blanco.
+ */
+export function zonasQueVuelven(
+  s: { _bloques?: { zona: string }[] | null; disciplina?: string | null;
+       zona_fuerza?: string | null; zona_resistencia?: string | null },
+): string[] {
+  if (s._bloques?.length) return s._bloques.map(b => b.zona)
+  return zonasDeSesion(s)
 }
