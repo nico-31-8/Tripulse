@@ -125,3 +125,37 @@ export function haceTexto(dias: number | null | undefined): string {
 export function haMejorado(volAnterior: number, volHoy: number): boolean {
   return volAnterior > 0 && volHoy > volAnterior
 }
+
+/**
+ * Lo que hizo en ESA serie la última vez, escrito: «40 kg × 10 · RIR 2».
+ *
+ * NACE PORQUE EL FANTASMA CAMBIÓ DE DUEÑO. El texto de fondo de cada casilla
+ * enseñaba lo que hizo esa serie la última vez, y ahora enseña lo PRESCRITO —que
+ * es lo que el atleta tiene que hacer hoy—. El dato de la última vez no vivía en
+ * ningún otro sitio serie a serie: la franja de arriba es un resumen del
+ * ejercicio entero. Sin esto se habría perdido al dar la vuelta al fantasma.
+ */
+export function textoSerieAnterior(s: SerieHecha | null | undefined, porTiempo = false): string {
+  if (!s) return ''
+  const partes: string[] = []
+
+  if (porTiempo) {
+    if (num(s.tiempo_real) > 0) partes.push(num(s.tiempo_real) + ' s')
+  } else {
+    const kg = num(s.peso_real), reps = num(s.repeticiones_reales)
+    /* Con kilos y repeticiones, «40 kg × 10». Con solo una de las dos, esa sola:
+       un ejercicio de peso corporal no tiene kilos y decir «0 kg» sería falso. */
+    if (kg > 0 && reps > 0) partes.push(kg + ' kg × ' + reps)
+    else if (kg > 0) partes.push(kg + ' kg')
+    else if (reps > 0) partes.push(reps + ' reps')
+  }
+
+  if (!partes.length) return ''
+  /* La escala de AQUEL día, no la que se prescribe hoy: si entonces anotó RPE y
+     hoy pides RIR, poner «RIR 8» encima de un RPE sería mentir sobre su
+     histórico. Es la misma razón que en controlUltimaVez. */
+  if (num(s.control_real) > 0) {
+    partes.push(controlDe(s.control_tipo || 'rir').corto + ' ' + num(s.control_real))
+  }
+  return partes.join(' · ')
+}

@@ -1,6 +1,9 @@
 'use client'
 import React from 'react'
 import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, columnasEjercicio, columnasEncadenado, columnasPrescripcion } from '@/lib/repeticiones'
+import { prescripcionDesdeUltimaVez } from '@/lib/traer-ultima-vez'
+import type { SerieHecha } from '@/lib/modo-mejora'
+import { hoyISO } from '@/lib/fechas'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { textoEncadenado } from '@/lib/tarea-vista'
@@ -106,10 +109,14 @@ export const ZONA_DE_TECNICA = 'AER'
    forma en un sitio y quien la construye en otro es como empiezan a divergir. */
 export type { FilaResistencia, FilaFuerza }
 
-export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian, copiar, onCopiado, defectosIniciales }: {
+export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, fechaSesion, esDeportista, modoFuerza = 'simple', zonaFuerza = '', modoResistencia = 'simple', zonaResistencia: zonaResSesion = '', onTareasCambian, copiar, onCopiado, defectosIniciales }: {
   sesionId: number
   deportistaId: number
   disciplinaSesion: string
+  /* La fecha de ESTA sesión: «la última vez» es la última ANTES de ella, no la
+     última que haya. Sin esto, editando una sesión de hace un mes traería lo de
+     la semana pasada, que entonces no había pasado todavía. */
+  fechaSesion?: string
   esDeportista?: boolean
   /* Tareas que llegan del panel de la semana para copiarse aquí. El `token`
      hace de disparador: dos copias seguidas de la MISMA tarea son dos objetos
@@ -1137,6 +1144,44 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     return '≈ ' + (Math.round(dato.rm * pct / 100 / 2.5) * 2.5) + ' kg'
   }
 
+  /* Lo que el botón de «la última vez» acaba de traer a cada fila, para
+     enseñarlo al lado. Rellenar los campos sin decir de dónde salen es pedirle
+     al entrenador que se fíe: aquí ve «40×10 · 40×10 · 30×8» y decide. */
+  const [traido, setTraido] = useState<Record<number, string>>({})
+
+  /**
+   * Trae a la fila lo que ese atleta hizo la última vez en ese ejercicio.
+   *
+   * La cuenta —qué peso, qué rango de repeticiones— vive en lib/traer-ultima-vez
+   * con sus pruebas: aquí solo se pide el dato y se reparte por los campos.
+   */
+  const traerUltimaVez = async (i: number) => {
+    const f = filasF[i]
+    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))?.nombre
+    if (!nombre) { setTraido(p => ({ ...p, [i]: 'Elige primero el ejercicio.' })); return }
+    setTraido(p => ({ ...p, [i]: 'Buscando…' }))
+
+    const { data, error } = await supabase.rpc('ultima_ejecucion_fuerza', {
+      _dep: deportistaId, _nombre: nombre, _antes: fechaSesion || hoyISO(),
+    })
+    if (error) { setTraido(p => ({ ...p, [i]: 'No se ha podido consultar: ' + error.message })); return }
+
+    const pres = prescripcionDesdeUltimaVez(data as SerieHecha[], f.medida === 'tiempo')
+    if (!pres) { setTraido(p => ({ ...p, [i]: 'No hay nada anotado de «' + nombre + '» antes de esta sesión.' })); return }
+
+    /* El peso y el control solo se pisan si vinieron: si el ejercicio es de peso
+       corporal, borrar lo que el entrenador ya hubiera escrito sería un robo. */
+    setFilasF(prev => prev.map((x, k) => k !== i ? x : {
+      ...x,
+      series: pres.series,
+      repsFuerza: pres.reps || x.repsFuerza,
+      kgFuerza: pres.kg || x.kgFuerza,
+      rir: pres.control || x.rir,
+      controlTipo: (pres.controlTipo as ControlTipo) || x.controlTipo,
+    }))
+    setTraido(p => ({ ...p, [i]: 'La última vez: ' + pres.detalle }))
+  }
+
   /* Lo que hay escrito y SIN GUARDAR: filas de resistencia, de fuerza y bloques.
      Va en el rotulo de la zona de edicion porque hasta ahora no habia nada que
      te dijera que te ibas de la pagina con trabajo a medias. */
@@ -2147,7 +2192,21 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         className={botonBloque(f.controlTipo !== 'rir')}>
                         {controlDe(f.controlTipo).corto}
                       </button>
+                      {/* TRAER LO QUE HIZO LA ÚLTIMA VEZ. Rellena la fila entera con
+                          lo que ese atleta levantó de verdad en este ejercicio, para
+                          prescribir desde ahí en vez de desde cero. Lo que él acaba
+                          viendo sigue siendo la prescripción: esto solo cambia de
+                          dónde nace. */}
+                      <button type="button" onClick={() => traerUltimaVez(i)}
+                        title="Traer lo que hizo la última vez en este ejercicio"
+                        className="flex-none text-[11px] font-bold px-2 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition">
+                        ↺ última vez
+                      </button>
                     </div>
+                    )}
+                    {/* De donde sale lo que acaba de rellenarse. */}
+                    {traido[i] && (
+                      <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido[i]}</p>
                     )}
                   </td>
                   <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>

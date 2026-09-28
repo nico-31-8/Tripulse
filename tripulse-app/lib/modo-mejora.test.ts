@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   seriesPrincipales, resumenUltimaVez, controlUltimaVez, volumenDe,
-  haSuperado, haMejorado, serieAnterior, haceTexto,
-} from './modo-mejora'
+  haSuperado, haMejorado, serieAnterior, haceTexto, textoSerieAnterior } from './modo-mejora'
 
 const SERIES = [
   { numero_serie: 1, peso_real: 80, repeticiones_reales: 8, control_real: 2, control_tipo: 'rir', ejercicio_numero: 1 },
@@ -131,5 +130,54 @@ describe('haMejorado', () => {
   it('es MÁS estricta que haSuperado, no otra cosa', () => {
     expect(haSuperado(1000, 1000)).toBe(true)
     expect(haMejorado(1000, 1000)).toBe(false)
+  })
+})
+
+// ============================================================
+// La línea de «la última vez», serie a serie
+// ============================================================
+//
+// Existe porque el fantasma de la casilla pasó a enseñar lo PRESCRITO. Antes ese
+// fantasma era el único sitio donde vivía lo que hizo en esa misma serie; sin
+// esta línea, el cambio lo habría borrado sin que se notara.
+describe('textoSerieAnterior', () => {
+  it('kilos y repeticiones', () => {
+    expect(textoSerieAnterior({ peso_real: 40, repeticiones_reales: 10 })).toBe('40 kg × 10')
+  })
+
+  it('con el control de AQUEL día, no con la escala de hoy', () => {
+    expect(textoSerieAnterior({ peso_real: 40, repeticiones_reales: 10, control_real: 2, control_tipo: 'rir' }))
+      .toBe('40 kg × 10 · RIR 2')
+    expect(textoSerieAnterior({ peso_real: 40, repeticiones_reales: 10, control_real: 8, control_tipo: 'rpe' }))
+      .toMatch(/8$/)
+    /* Y no dice «RIR 8» cuando aquel día era RPE. */
+    expect(textoSerieAnterior({ peso_real: 40, repeticiones_reales: 10, control_real: 8, control_tipo: 'rpe' }))
+      .not.toMatch(/RIR/)
+  })
+
+  /* Un ejercicio de peso corporal no tiene kilos: «0 kg × 12» sería falso. */
+  it('sin kilos, solo las repeticiones', () => {
+    expect(textoSerieAnterior({ repeticiones_reales: 12 })).toBe('12 reps')
+    expect(textoSerieAnterior({ peso_real: 0, repeticiones_reales: 12 })).toBe('12 reps')
+  })
+
+  it('sin repeticiones, solo los kilos', () => {
+    expect(textoSerieAnterior({ peso_real: 60 })).toBe('60 kg')
+  })
+
+  it('por tiempo, los segundos', () => {
+    expect(textoSerieAnterior({ tiempo_real: 45 }, true)).toBe('45 s')
+    /* Y en un ejercicio por tiempo no se cuelan los kilos de la casilla. */
+    expect(textoSerieAnterior({ tiempo_real: 45, peso_real: 20 }, true)).toBe('45 s')
+  })
+
+  /* Si no hay nada que contar, no se pinta la línea: un «la última vez:» seguido
+     de nada es peor que no decirlo. */
+  it('sin nada anotado, cadena vacía', () => {
+    expect(textoSerieAnterior(null)).toBe('')
+    expect(textoSerieAnterior(undefined)).toBe('')
+    expect(textoSerieAnterior({})).toBe('')
+    expect(textoSerieAnterior({ peso_real: 0, repeticiones_reales: 0 })).toBe('')
+    expect(textoSerieAnterior({ control_real: 2 })).toBe('')
   })
 })

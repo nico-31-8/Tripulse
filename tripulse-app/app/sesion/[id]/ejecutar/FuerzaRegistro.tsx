@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { repsDeEjercicio } from '@/lib/repeticiones'
 import { controlDe, textoControl } from '@/lib/control-esfuerzo'
 import {
-  resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior,
+  resumenUltimaVez, controlUltimaVez, volumenDe, haSuperado, serieAnterior, textoSerieAnterior,
 } from '@/lib/modo-mejora'
 import { mmss } from '@/lib/duracion-carga'
 import { cuantoPorSerie } from '@/lib/cardio-fuerza'
@@ -175,17 +175,24 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                             (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
                           {completada ? '✓' : numSerie}
                         </button>
-                        <input type="number" value={s1.peso_real || ''} placeholder={prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : (ej.intensidad ? String(ej.intensidad) : 'Kg')}
+                        {/* MANDA LO PRESCRITO, y antes mandaba la última vez.
+                            El fantasma es la pista de lo que hay que hacer HOY;
+                            con el peso del otro día encima, empujaba a repetirlo
+                            en vez de a hacer lo que le has puesto. Lo de la
+                            última vez no se pierde: baja a su línea, debajo.
+                            Si no prescribiste ese dato, cae a la última vez, que
+                            es mejor pista que un rótulo vacío. */}
+                        <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad ? String(ej.intensidad) : (prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
                         {porTiempo ? (
                           <input type="number" value={s1.tiempo_real || ''}
-                            placeholder={prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie)?.tiempo_real)) + ' s' : segPlan + ' s'}
+                            placeholder={segPlan ? segPlan + ' s' : (prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie)?.tiempo_real)) + ' s' : 'seg')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'tiempo_real', e.target.value)}
                             title="Segundos que aguantaste esta serie"
                             className={inputCls} />
                         ) : (
-                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (repsDeEjercicio(ej) || 'Reps')}
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={repsDeEjercicio(ej) || (prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : 'Reps')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
@@ -202,6 +209,24 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {/* LA ÚLTIMA VEZ, SERIE A SERIE.
+
+                        Este dato vivía SOLO en el fantasma de las casillas, y al
+                        pasar el fantasma a lo prescrito se habría perdido sin que
+                        se notara: la franja de arriba es un resumen del ejercicio
+                        entero, no de esta serie. Aquí abajo se lee sin competir
+                        con lo que tiene que escribir.
+
+                        Solo en la serie normal, que es donde estaba: la
+                        superserie y el drop set nunca lo tuvieron —sus casillas
+                        ya enseñaban lo prescrito— y en una superserie «la serie
+                        2» son dos ejercicios distintos. */}
+                    {!esDropSet && !tieneEj2 && !esCardio && textoSerieAnterior(prevSerie(numSerie), porTiempo) && (
+                      <p className="px-3 pb-2.5 -mt-1 text-[11px] text-gray-500 mb-0">
+                        La última vez: {textoSerieAnterior(prevSerie(numSerie), porTiempo)}
+                      </p>
                     )}
 
                     {/* Superserie / Complex. El RIR de aquí y el del drop set se
