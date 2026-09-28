@@ -14,6 +14,34 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 28 de septiembre de 2026 · Rangos de repeticiones en fuerza: «8-10», no solo «8»
+
+**Ya puedes prescribir un rango.** Donde antes solo entraba un número exacto,
+ahora escribes **`8-10`** y se guarda como lo que es. Hasta hoy el campo era de
+números y el guion ni se podía teclear, así que lo único que quedaba era
+apuntarlo en las notas — donde no lo lee ningún cálculo.
+
+Te acepta `8-10`, `8 - 10` y también el guion largo si lo pegas desde Word. Si
+escribes `10-8` te lo ordena solo, y `8-8` lo entiende como ocho exactas.
+
+**Al deportista le sale el rango entero**: «8-10 reps obj.» en la pantalla de
+entrenar, en el briefing y en su resumen. No se le pide nada nuevo: anota lo que
+haya hecho, igual que siempre.
+
+**Y en tu tabla se ve el total con las dos puntas**: 3 × 8-10 sale como «24-30
+reps».
+
+**Ojo a un número que puede moverse.** La duración estimada de una sesión con
+rangos se calcula con **el centro** del rango, no con el mínimo: si «8-10» se
+estimara como ocho, la sesión saldría corta siempre y la carga detrás de ella.
+**Las sesiones con repeticiones exactas no cambian nada**, ni una: siguen
+calculándose exactamente igual que ayer.
+
+También funciona en el segundo ejercicio de una superserie, al copiar y pegar
+tareas, y al dirigir a pie de pista.
+
+---
+
 ## 28 de septiembre de 2026 · Los avisos de «te falta un dato» salen ya dentro de la pantalla
 
 **Antes, cuando te faltaba algo por rellenar, se abría la ventana gris del
