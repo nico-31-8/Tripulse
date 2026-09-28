@@ -252,6 +252,21 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
         </div>
       )}
 
+      {/* CUANDO NO ANOTÓ NINGUNA SERIE, HAY QUE DECIRLO.
+          Sin esto el bloque desaparecía entero, y «no apuntó nada» se veía
+          exactamente igual que «aquí no aplica» o que «algo se ha roto». Con la
+          sesión cerrada, los 90 minutos puestos y su valoración rellena, lo
+          único que faltaba era saber que las casillas de kilos y repeticiones se
+          quedaron en blanco. */}
+      {esFuerza && seriesReales.length === 0 && tareas.some(t => t.ejercicios.length > 0) && (
+        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+          <p className="font-medium text-gray-300 mb-1 text-sm">Series realizadas</p>
+          <p className="text-sm text-gray-500 mb-0">
+            No anotó ninguna. Cerró la sesión con su valoración, pero no llegó a apuntar los kilos ni las repeticiones de cada serie.
+          </p>
+        </div>
+      )}
+
       {/* Datos de ejecución fuerza */}
       {esFuerza && seriesReales.length > 0 && (
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">

@@ -185,7 +185,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                             title="Segundos que aguantaste esta serie"
                             className={inputCls} />
                         ) : (
-                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (ej.repeticiones ? String(ej.repeticiones) : 'Reps')}
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : (repsDeEjercicio(ej) || 'Reps')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
@@ -221,7 +221,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-400 mb-2 truncate font-medium">{ej.nombre}</p>
                             <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad ? String(ej.intensidad) : 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={ej.repeticiones ? String(ej.repeticiones) : 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={repsDeEjercicio(ej) || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
                             {ctrl && <input type="number" min="0" max={ctrl.max} value={s1.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)} className={inputCls} />}
                           </div>
                           <div className="bg-gray-700 rounded-lg p-2">
