@@ -85,17 +85,45 @@ export default function CobrosPage() {
       supabase.from('cobro').select('*').in('id_deportista', ids),
       supabase.from('cobros_lista').select('id_deportista').in('id_deportista', ids),
     ])
-    setEnLista(((l.data || []) as { id_deportista: number }[]).map(x => x.id_deportista))
-    setTarifas((t.data || []) as Tarifa[])
-    setCargos((c.data || []) as Cargo[])
+    const lTarifas = (t.data || []) as Tarifa[]
+    let lCargos = (c.data || []) as Cargo[]
+    const lLista = ((l.data || []) as { id_deportista: number }[]).map(x => x.id_deportista)
+
+    /* LA CUOTA DEL MES SALE SOLA. Antes había que darle a un botón, y ponerle
+       tarifa a alguien sin ver nada después es exactamente lo que hace pensar
+       que la pantalla está rota.
+
+       SOLO DE MESES QUE YA HAN EMPEZADO: pasearse hasta diciembre no puede
+       cobrarle diciembre a nadie. Y aunque se llame dos veces no duplica: la
+       base lo impide con un índice único por deportista y mes. */
+    if (mes <= mesActual()) {
+      const faltan = lLista
+        .map(id => cargoDeCuota(lTarifas.filter(x => x.id_deportista === id), mes, id))
+        .filter((x): x is NonNullable<typeof x> => !!x)
+        .filter(x => !lCargos.some(y => y.id_deportista === x.id_deportista && y.mes === x.mes && y.tipo === 'mensual'))
+      if (faltan.length) {
+        const { error } = await supabase.from('cargo').insert(faltan)
+        if (error) mal('No se han podido poner las cuotas del mes: ' + error.message)
+        else {
+          const { data } = await supabase.from('cargo').select('*').in('id_deportista', ids)
+          lCargos = (data || []) as Cargo[]
+        }
+      }
+    }
+
+    setEnLista(lLista)
+    setTarifas(lTarifas)
+    setCargos(lCargos)
     setCobros((p.data || []) as Cobro[])
     setCargando(false)
-  }, [])
+  /* El mes va en las dependencias a proposito: cambiar de mes tiene que volver
+     a mirar, y de paso poner las cuotas de ese mes si le faltan. */
+  }, [mes, mal])
 
   /* La regla ve una llamada que acaba en setState; el estado se pone DESPUES de
      que conteste la base, que es el caso que ella misma admite. */
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => { cargar() }, [cargar, mes])
 
   /* CUÁNTAS SESIONES LE HAS DIRIGIDO TÚ ESTE MES. Sale de las series que
      quedaron firmadas con tu nombre al dirigir a pie de pista, así que solo
@@ -142,23 +170,6 @@ export default function CobrosPage() {
     [deportistas, enLista])
 
   const total = useMemo(() => resumenDelMes(filas.map(f => f.saldo)), [filas])
-
-  /* Las cuotas se generan al pedirlo, no solas: si das de baja a alguien en
-     octubre, no le queda un cargo fantasma de noviembre esperando. La base
-     impide que se dupliquen (índice único por deportista y mes). */
-  const generarCuotas = async () => {
-    const nuevos = filas
-      .map(f => cargoDeCuota(f.tarifas, mes, f.dep.id))
-      .filter((c): c is NonNullable<typeof c> => !!c)
-      .filter(c => !cargos.some(x => x.id_deportista === c.id_deportista && x.mes === mes && x.tipo === 'mensual'))
-    if (!nuevos.length) { ok('Las cuotas de ' + mesLargo(mes) + ' ya estaban puestas.'); return }
-    setGuardando(true)
-    const { error } = await supabase.from('cargo').insert(nuevos)
-    setGuardando(false)
-    if (error) { mal('No se han podido generar: ' + error.message); return }
-    await cargar()
-    ok(nuevos.length === 1 ? 'Una cuota generada.' : nuevos.length + ' cuotas generadas.')
-  }
 
   const anadirCargo = async (id: number, concepto: string, importe: number, tipo: TipoTarifa) => {
     if (!(importe > 0)) { mal('El importe tiene que ser mayor que cero.'); return }
@@ -246,16 +257,13 @@ export default function CobrosPage() {
               className="text-gray-500 hover:text-white px-2 transition">›</button>
           </div>
           <span className="flex-1" />
-          <button onClick={generarCuotas} disabled={guardando}
-            title="Pone la cuota de este mes a quien tenga tarifa mensual. Repetirlo no cobra dos veces."
-            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white text-[13px] font-bold px-4 py-2 rounded-lg transition">
-            Generar las cuotas
-          </button>
         </div>
 
         <p className="text-gray-500 text-[12.5px] mb-0">
           Tu libreta. <b className="text-gray-400">El deportista no ve nada de esto.</b> Es un registro, no una facturación:
-          no emite facturas ni calcula impuestos. La cuota se carga el último día del mes, que es cuando cobras.
+          no emite facturas ni calcula impuestos. La cuota de quien tenga tarifa mensual <b className="text-gray-400">se
+          pone sola</b>, con fecha del último día del mes, que es cuando cobras. Los meses que aún no han empezado no se
+          cargan.
         </p>
 
         <AvisoEnLinea aviso={aviso} />
@@ -316,8 +324,8 @@ export default function CobrosPage() {
                     <p className="text-[15px] font-bold tabular-nums mb-0">{eur(saldo.pagadoEnElMes)}</p>
                   </div>
                   <span className={'text-[11.5px] font-bold rounded-full px-2.5 py-1 flex-none ' + PINTA[saldo.estado]}>
-                    {saldo.estado === 'al-dia' ? TEXTO_ESTADO['al-dia']
-                      : saldo.estado === 'previsto' ? eur(saldo.saldo)
+                    {saldo.estado === 'al-dia'
+                      ? TEXTO_ESTADO['al-dia']
                       : TEXTO_ESTADO[saldo.estado] + ' ' + eur(saldo.saldo)}
                   </span>
                   <button onClick={() => setAbierto(a => a === dep.id ? null : dep.id)}
