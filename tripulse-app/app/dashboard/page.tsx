@@ -683,6 +683,9 @@ export default function Dashboard() {
                            dejarlo puesto haría que nadie se atreviera a usarlas. */
                         { ic: '🧪', l: 'Tests propios', s: 'Los tuyos', c: '#a78bfa', h: '/tests-propios' },
                         { ic: '🎚', l: 'Zonas propias', s: 'Las tuyas', c: '#a78bfa', h: '/zonas-propias' },
+                        /* Tu libreta de cobros. Aqui y no en un sitio mas visible a
+                           proposito: es tuya y no tiene nada que ver con entrenar. */
+                        { ic: '💶', l: 'Cobros', s: 'Tu libreta', c: '#22c55e', h: '/cobros' },
                       ].map(t => (
                         <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
                           <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>
