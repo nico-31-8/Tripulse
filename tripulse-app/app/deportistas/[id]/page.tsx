@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import MaterialDeportista from '@/components/MaterialDeportista'
 import { calcularEdad, hoyISO, sumarDias } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -135,7 +136,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
-  const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'>('estado')
+  const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'|'material'>('estado')
   const [avatarOpen, setAvatarOpen] = useState(false)
   const { ref: refDatos, alto: altoDatos } = useAltoDeContenido()
   const [anamnesis, setAnamnesis] = useState<any>(null)
@@ -488,6 +489,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             ['entreno', 'Entrenamiento'],
             ['disponibilidad', 'Disponibilidad'],
             ['anamnesis', 'Anamnesis'],
+            ['material', 'Material'],
           ] as const).map(([k, l]) => (
             <button key={k} onClick={() => setPestana(k)}
               className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px flex items-center gap-1.5 ' +
@@ -501,6 +503,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         </div>
 
         {/* PESTAÑA ZONAS Y TESTS */}
+        {/* EL MATERIAL. La misma pantalla que ve él en su perfil, porque es la
+            misma lista: escribirla dos veces acabaría con las dos diciendo cosas
+            distintas del mismo par de zapatillas. */}
+        {pestana === 'material' && <MaterialDeportista idDeportista={Number(id)} />}
+
         {pestana === 'zonas' && (
           <div className="flex flex-col gap-5">
             <div className="tp-card p-5">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandirEnBloques, porDisciplina, type SesionAtribuible, type TareaAtribuible } from './atribucion'
+import { expandirEnBloques, porDisciplina, metrosDeDisciplina, type SesionAtribuible, type TareaAtribuible } from './atribucion'
 
 const ses = (o: Partial<SesionAtribuible> = {}): SesionAtribuible => ({
   id: 1, fecha_sesion: '2026-07-01', duracion_minutos: 100, rpe_estimado: 6, ...o,
@@ -69,5 +69,84 @@ describe('porDisciplina', () => {
     expect(pd['Brick']).toBeUndefined()
     expect(pd['Ciclismo'].minutos).toBe(50)
     expect(pd['Carrera'].minutos).toBe(50)
+  })
+})
+
+// ============================================================
+// Los metros de cada bloque
+// ============================================================
+//
+// Nacieron para el material —unas zapatillas suman los kilómetros de carrera y
+// una bici los de ciclismo—, pero lo que resuelven es más general: hasta ahora
+// nadie podía pedir los kilómetros por deporte, y en un brick no se pueden sacar
+// de la sesión, que pone 'Brick'.
+describe('los metros, por bloque', () => {
+  const conDistancia = (o: Partial<TareaAtribuible>, metros: number, reales?: number) =>
+    tar({ ...o, p_distancia: [{ metros_planeados: metros, ...(reales != null ? { metros_reales: reales } : {}) }] })
+
+  it('los metros van por serie: 6 × 400 son 2.400', () => {
+    const b = expandirEnBloques([ses()], [conDistancia({ orden: 1, disciplina: 'Carrera', series: 6 }, 400)])
+    expect(b[0].metros).toBe(2400)
+  })
+
+  it('sin series, los de una', () => {
+    const b = expandirEnBloques([ses()], [conDistancia({ orden: 1, disciplina: 'Carrera' }, 10000)])
+    expect(b[0].metros).toBe(10000)
+  })
+
+  /* Para unas zapatillas cuenta lo que corrió, no lo que le mandaron correr. */
+  it('lo REAL manda sobre lo planeado', () => {
+    const b = expandirEnBloques([ses()], [conDistancia({ orden: 1, disciplina: 'Carrera' }, 10000, 10800)])
+    expect(b[0].metros).toBe(10800)
+  })
+
+  it('sin distancia, cero y no NaN', () => {
+    const b = expandirEnBloques([ses()], [tar({ orden: 1, disciplina: 'Carrera' })])
+    expect(b[0].metros).toBe(0)
+    expect(Number.isFinite(b[0].metros)).toBe(true)
+  })
+
+  it('una sesión sin tareas no tiene metros que repartir', () => {
+    const b = expandirEnBloques([ses({ disciplina: 'Carrera' })], [])
+    expect(b[0].metros).toBe(0)
+  })
+
+  /* EL CASO QUE LO MOTIVA TODO. Un brick de 40 km de bici y 10 de carrera: la
+     bici se queda 40 y las zapatillas 10, nunca los 50. */
+  it('un brick reparte sus metros por deporte', () => {
+    const bloques = expandirEnBloques([ses()], [
+      conDistancia({ orden: 1, disciplina: 'Ciclismo' }, 40000),
+      conDistancia({ orden: 2, disciplina: 'Carrera' }, 10000),
+    ])
+    expect(metrosDeDisciplina(bloques, 'Ciclismo')).toBe(40000)
+    expect(metrosDeDisciplina(bloques, 'Carrera')).toBe(10000)
+    /* Y nadie se queda con los 50. */
+    expect(metrosDeDisciplina(bloques, 'Natacion')).toBe(0)
+  })
+
+  it('da igual cómo venga escrita la disciplina', () => {
+    const bloques = expandirEnBloques([ses()], [conDistancia({ orden: 1, disciplina: 'Carrera' }, 10000)])
+    expect(metrosDeDisciplina(bloques, 'carrera')).toBe(10000)
+  })
+
+  it('porDisciplina también los suma', () => {
+    const bloques = expandirEnBloques([ses()], [
+      conDistancia({ orden: 1, disciplina: 'Ciclismo' }, 40000),
+      conDistancia({ orden: 2, disciplina: 'Carrera' }, 10000),
+    ])
+    const p = porDisciplina(bloques)
+    expect(p['Ciclismo'].metros).toBe(40000)
+    expect(p['Carrera'].metros).toBe(10000)
+  })
+
+  /* Y lo de siempre sigue en su sitio: añadir los metros no puede mover ni los
+     minutos ni la UA, que es lo que alimenta la carga de toda la app. */
+  it('los minutos y la UA no se mueven por esto', () => {
+    const bloques = expandirEnBloques([ses()], [
+      conDistancia({ orden: 1, disciplina: 'Ciclismo' }, 40000),
+      conDistancia({ orden: 2, disciplina: 'Carrera' }, 10000),
+    ])
+    expect(sumMin(bloques)).toBe(100)
+    expect(sumUA(bloques)).toBeCloseTo(600, 5)
   })
 })

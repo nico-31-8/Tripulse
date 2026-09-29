@@ -22,6 +22,7 @@ import { calcularDuracionEstimada, type TestsDeportista, type TareaDuracion } fr
 import { SELECT_EJERCICIOS_CONTEO } from './cardio-fuerza'
 import { minutosEfectivos, minutosCarga } from './duracion-carga'
 import { factorConcatenacion } from './bricks'
+import { vecesDe } from './bloques-tarea'
 
 // El coste extra del bloque que va JUSTO DESPUÉS de una transición depende del
 // PAR de deportes, no es plano: B1-04 mide un 10-15% en bici→carrera, pero dice
@@ -68,6 +69,15 @@ export interface Bloque {
   orden: number
   trasTransicion: boolean
   esBrick: boolean          // el bloque viene de una sesión multideporte
+  /* LOS METROS DE ESTE BLOQUE, ya multiplicados por sus series y sus bloques.
+     Los reales si el atleta los anotó; si no, los planeados.
+
+     Nació para el material —una zapatilla suma los kilómetros de carrera y una
+     bici los de ciclismo, y en un brick eso no se puede sacar de la sesión, que
+     pone 'Brick'—, pero lo que resuelve es más general: hasta ahora NADIE podía
+     pedir los kilómetros por deporte. /volumen los sumaba a mano y con los
+     planeados. */
+  metros: number
 }
 
 export interface OpcionesAtribucion {
@@ -129,6 +139,8 @@ export function expandirEnBloques(
       out.push({
         id_sesion: s.id, fecha: s.fecha_sesion, disciplina: s.disciplina || 'Otra',
         minutos, rpe, ua: rpe * minutos, zona: null, orden: 1,
+        /* Sin tareas no hay distancia que repartir: la sesión solo tiene minutos. */
+        metros: 0,
         trasTransicion: false, esBrick: false,
       })
       continue
@@ -166,6 +178,13 @@ export function expandirEnBloques(
         : 1
 
       const minutos = minutosSesion * reparto[i]
+      /* Los metros van POR SERIE en p_distancia, igual que los lee la duración:
+         6 × 400 m se guarda como 400. El total son sus veces —series por
+         bloques—, que es la misma cuenta que hace la tabla al enseñar el total.
+         Y manda lo REAL sobre lo planeado: para unas zapatillas cuenta lo que
+         corrió, no lo que le mandaron correr. */
+      const porSerie = t.p_distancia?.[0]?.metros_reales ?? t.p_distancia?.[0]?.metros_planeados ?? 0
+      const metros = porSerie > 0 ? porSerie * vecesDe(t) : 0
       out.push({
         id_sesion: s.id,
         fecha: s.fecha_sesion,
@@ -178,6 +197,7 @@ export function expandirEnBloques(
         orden,
         trasTransicion,
         esBrick,
+        metros,
       })
     })
   }
@@ -203,7 +223,7 @@ export async function cargarBloques(
 
   const [dists, durs, ejs] = tareaIds.length
     ? await Promise.all([
-        supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
+        supabase.from('p_distancia').select('id_tarea, metros_planeados, metros_reales').in('id_tarea', tareaIds),
         supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
         supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds),
       ])
@@ -231,14 +251,29 @@ export async function cargarBloques(
   return expandirEnBloques(sesiones, enriquecidas, opts)
 }
 
-// Agrupa bloques por disciplina → minutos y UA totales.
-export function porDisciplina(bloques: Bloque[]): Record<string, { minutos: number; ua: number; n: number }> {
-  const out: Record<string, { minutos: number; ua: number; n: number }> = {}
+// Agrupa bloques por disciplina → minutos, UA y metros totales.
+export function porDisciplina(bloques: Bloque[]): Record<string, { minutos: number; ua: number; metros: number; n: number }> {
+  const out: Record<string, { minutos: number; ua: number; metros: number; n: number }> = {}
   bloques.forEach(b => {
-    if (!out[b.disciplina]) out[b.disciplina] = { minutos: 0, ua: 0, n: 0 }
+    if (!out[b.disciplina]) out[b.disciplina] = { minutos: 0, ua: 0, metros: 0, n: 0 }
     out[b.disciplina].minutos += b.minutos
     out[b.disciplina].ua += b.ua
+    out[b.disciplina].metros += b.metros || 0
     out[b.disciplina].n++
   })
   return out
+}
+
+/**
+ * Los metros de unas sesiones que le tocan a UN deporte.
+ *
+ * Es lo que necesita el material: unas zapatillas de carrera se quedan con los
+ * metros de carrera de cada sesión en la que se usaron, y en un brick de 40 km
+ * de bici y 10 de carrera eso son 10, no 50.
+ */
+export function metrosDeDisciplina(bloques: Bloque[], disciplina: string): number {
+  const d = String(disciplina || '').toLowerCase()
+  return bloques
+    .filter(b => String(b.disciplina || '').toLowerCase() === d)
+    .reduce((a, b) => a + (b.metros || 0), 0)
 }

@@ -4,6 +4,7 @@ import Sugerencias from '@/components/Sugerencias'
 import Link from 'next/link'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
+import MaterialDeportista from '@/components/MaterialDeportista'
 import Cargando from '@/components/Cargando'
 import RelojPerfil from '@/components/RelojPerfil'
 import { usuarioActual } from '@/lib/sesion'
@@ -107,6 +108,8 @@ export default function PerfilPage() {
   const router = useRouter()
   const [perfil, setPerfil] = useState<any>(null)
   const [entrenador, setEntrenador] = useState<any>(null)
+  /* Su ficha de deportista: el material cuelga de ahi, no del perfil. */
+  const [idDeportista, setIdDeportista] = useState<number | null>(null)
   const [codigo, setCodigo] = useState('')
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState('')
@@ -127,7 +130,7 @@ export default function PerfilPage() {
        de ellas. */
     const [perfilQ, depQ] = await Promise.all([
       supabase.from('perfiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('deportista').select('id_entrenador').eq('id_usuario', user.id).maybeSingle(),
+      supabase.from('deportista').select('id, id_entrenador').eq('id_usuario', user.id).maybeSingle(),
     ])
     const p = perfilQ.data
     setPerfil(p)
@@ -135,6 +138,8 @@ export default function PerfilPage() {
 
     if (p?.rol === 'deportista') {
       const dep = depQ.data
+      /* Su ficha de deportista, que es a quien pertenece el material. */
+      setIdDeportista(dep?.id ?? null)
       if (dep?.id_entrenador) {
         const { data: ent } = await supabase.from('perfiles').select('nombre, email').eq('id', dep.id_entrenador).single()
         setEntrenador(ent)
@@ -292,6 +297,13 @@ export default function PerfilPage() {
             {/* Suspense porque la tarjeta lee ?reloj= de la dirección (la vuelta
                 de Polar), y Next exige esa frontera para usar useSearchParams. */}
             <Suspense fallback={null}><RelojPerfil /></Suspense>
+            {/* SU ARMARIO. La misma pantalla que ve su entrenador en la ficha,
+                porque es la misma lista: `soyYo` solo cambia los textos. */}
+            {idDeportista != null && (
+              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+                <MaterialDeportista idDeportista={idDeportista} soyYo />
+              </div>
+            )}
           </>
         ) : (
           <>

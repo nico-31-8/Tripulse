@@ -57,7 +57,10 @@ export interface TareaDuracion {
   zona_entrenamiento?: string | null
   /** La copia congelada, si la tarea se prescribió con una zona propia. */
   zona_copia?: unknown
-  p_distancia?: { metros_planeados?: number | null }[] | null
+  /* Los metros van POR SERIE: 6 x 400 m se guarda como 400. Los reales son lo
+     que el atleta anoto; la duracion mira los planeados (esta calculando lo que
+     VA a durar), y la atribucion prefiere los reales para contar kilometros. */
+  p_distancia?: { metros_planeados?: number | null; metros_reales?: number | null }[] | null
   p_duracion?: { tiempo_planeado?: number | null }[] | null
   p_repeticiones?: { repeticiones_planteadas?: number | null }[] | null
   ejercicios?: EjercicioDuracion[] | null

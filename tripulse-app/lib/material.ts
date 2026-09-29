@@ -21,6 +21,9 @@
 // color: es lo que decide qué kilómetros le tocan. En un brick de 40 km de bici
 // y 10 de carrera, la bici suma 40 y las zapatillas 10 — nunca los 50.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { cargarBloques, metrosDeDisciplina, type SesionAtribuible } from './atribucion'
+
 /** Cuánto le queda, en tanto por uno, para empezar a avisar. */
 const AVISA_AL = 0.9
 
@@ -150,4 +153,59 @@ export function siLeSumo(km: KmDeMaterial, metros: number): KmDeMaterial {
 export function valeParaLaSesion(m: Material, disciplina: string): boolean {
   if (m.jubilado) return false
   return String(m.disciplina || '').toLowerCase() === String(disciplina || '').toLowerCase()
+}
+
+/* ── De la base a los kilómetros ───────────────────────────────────────────── */
+
+/**
+ * Los kilómetros de cada material de un deportista, calculados de cero.
+ *
+ * Tres viajes y una sola expansión: qué sesiones usó cada material, esas
+ * sesiones, y sus bloques. El reparto por deporte lo hace la capa de atribución,
+ * que es la única que sabe deshacer un brick — hacerlo aquí a mano sería la
+ * cuarta copia de esa cuenta en la aplicación.
+ *
+ * Devuelve un mapa por id de material. Los que no se han usado nunca salen igual,
+ * con los kilómetros que traían.
+ */
+export async function cargarKmDeMateriales(
+  supabase: SupabaseClient,
+  materiales: Material[],
+): Promise<Record<number, KmDeMaterial>> {
+  const vacio = () => Object.fromEntries(materiales.map(m => [m.id, kmDeMaterial(m, [])]))
+  if (!materiales.length) return {}
+
+  const ids = materiales.map(m => m.id)
+  const { data: enlaces } = await supabase
+    .from('sesion_material').select('id_sesion, id_material').in('id_material', ids)
+  if (!enlaces?.length) return vacio()
+
+  const idsSesion = [...new Set(enlaces.map((e: { id_sesion: number }) => e.id_sesion))]
+  const { data: sesiones } = await supabase
+    .from('sesion')
+    .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, transiciones')
+    .in('id', idsSesion)
+    .or('eliminada.is.null,eliminada.eq.false')
+  if (!sesiones?.length) return vacio()
+
+  const bloques = await cargarBloques(supabase, sesiones as SesionAtribuible[])
+  const porSesion: Record<number, typeof bloques> = {}
+  for (const b of bloques) (porSesion[b.id_sesion] ||= []).push(b)
+
+  const fechaDe: Record<number, string> = {}
+  for (const s of sesiones as SesionAtribuible[]) fechaDe[s.id] = s.fecha_sesion
+
+  const out: Record<number, KmDeMaterial> = {}
+  for (const m of materiales) {
+    const usos: UsoDeMaterial[] = enlaces
+      .filter((e: { id_material: number }) => e.id_material === m.id)
+      .map((e: { id_sesion: number }) => ({
+        fecha: fechaDe[e.id_sesion] || '',
+        /* Cada material se queda con los metros de SU deporte. */
+        metros: metrosDeDisciplina(porSesion[e.id_sesion] || [], m.disciplina),
+      }))
+      .filter((u: UsoDeMaterial) => !!u.fecha)
+    out[m.id] = kmDeMaterial(m, usos)
+  }
+  return out
 }
