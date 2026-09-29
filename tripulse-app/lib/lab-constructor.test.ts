@@ -253,3 +253,57 @@ describe('las plantillas', () => {
     }
   })
 })
+
+// ============================================================
+// Los WODs de referencia
+// ============================================================
+//
+// Fran y el simulacro de HYROX no miden una cualidad: miden el mismo trabajo
+// contra uno mismo. Caben en el laboratorio porque SE REPITEN IGUAL, que es lo
+// único que hace comparable un histórico.
+//
+// Las cuentas van fijadas aquí porque son la razón de ser de las plantillas: una
+// que se monta pero suma mal es peor que no tenerla, porque nadie la revisa.
+describe('las plantillas de referencia calculan lo que dicen', () => {
+  const valores = (rs: { valor: number | null }[]) => rs.map(r => r.valor)
+
+  it('Fran suma sus tres rondas y dice la primera y la última', () => {
+    const t = plantillaPorId('fran')!.test
+    const r = calcular(t, {
+      carga: '43', dominada: 'Kipping',
+      reps: ['21', '15', '9'], parcial: ['95', '140', '117'],
+    })
+    /* 95 + 140 + 117 = 352, y las puntas sin confundirse de orden. */
+    expect(valores(r)).toEqual([352, 95, 117])
+  })
+
+  it('en Fran, menos tiempo es mejor', () => {
+    const t = plantillaPorId('fran')!.test
+    for (const res of t.resultados) expect(res.inverso, res.nombre).toBe(true)
+  })
+
+  it('HYROX separa lo que se va corriendo de lo que se va en las estaciones', () => {
+    const t = plantillaPorId('hyrox')!.test
+    const r = calcular(t, {
+      cual: [],
+      km: ['290', '295', '300', '305', '312', '320', '330', '348'],
+      trabajo: ['240', '265', '270', '255', '260', '300', '280', '330'],
+    })
+    /* Total = 2.500 corriendo + 2.200 en estaciones. Y la caída del ritmo son
+       los 58 s que hay del primer kilómetro (290) al último (348): ese número
+       es el que dice si salió demasiado fuerte, y no lo da ningún reloj. */
+    expect(valores(r)).toEqual([4700, 2500, 2200, 58])
+  })
+
+  it('el protocolo de HYROX trae sus ocho estaciones en orden', () => {
+    const t = plantillaPorId('hyrox')!.test
+    const cual = t.bloques[0].columnas.find(c => c.clave === 'cual')!
+    expect(cual.clase).toBe('dada')
+    expect(cual.etiquetas).toHaveLength(8)
+    expect(cual.etiquetas?.[0]).toBe('SkiErg')
+    expect(cual.etiquetas?.[7]).toBe('Wall balls')
+    /* Ocho estaciones y ocho repeticiones: si dejaran de cuadrar, la lista se
+       quedaría corta a mitad del test y el entrenador no sabría qué apuntar. */
+    expect(t.bloques[0].veces).toBe(cual.etiquetas?.length)
+  })
+})

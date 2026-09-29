@@ -239,6 +239,76 @@ export const PLANTILLAS: Plantilla[] = [
     },
   },
   {
+    /* UN WOD DE REFERENCIA. Fran no mide una cualidad: mide a Fran. Vale como
+       test porque SE REPITE IGUAL, y ahí el laboratorio ya tiene lo que hace
+       falta — el histórico y la comparación con la vez anterior.
+
+       EL PESO VA COMO DADA porque es el protocolo: si lo escalas, cambias el
+       número antes de empezar y queda escrito DENTRO de la medición. Es lo que
+       evita comparar un 8:32 con goma contra un 8:32 en Rx, que es justo lo que
+       hace inútil un histórico de WODs. */
+    id: 'fran',
+    nombre: 'WOD de referencia (Fran)',
+    descripcion: '21-15-9 y el reloj. Lo que compara no es la cualidad: es el mismo WOD contra ti mismo.',
+    distintivo: 'parciales por ronda',
+    test: {
+      nombre: 'Fran', deporte: 'Híbrido',
+      sueltos: [
+        col({ clave: 'carga', etiqueta: 'Thruster', unidad: 'kg', clase: 'dada', valor: '43' }),
+        col({ clave: 'dominada', etiqueta: 'Dominadas', clase: 'dada', tipo: 'lista', etiquetas: ['Estrictas', 'Kipping', 'Butterfly', 'Con goma'] }),
+      ],
+      bloques: [{
+        clave: 'ronda', etiqueta: 'Ronda', modo: 'cerrado', veces: 3, duracion: 0,
+        columnas: [
+          col({ clave: 'reps', etiqueta: 'Repeticiones', clase: 'dada', tipo: 'lista', etiquetas: ['21', '15', '9'] }),
+          col({ clave: 'parcial', etiqueta: 'Parcial', unidad: 's', instrumento: 'crono-seg' }),
+        ],
+      }],
+      resultados: [
+        { nombre: 'total', unidad: 's', ancla: 'especifica', inverso: true, formula: [fnB('suma', 'parcial')] },
+        /* La primera ronda dice con qué ritmo salió; la última, si se murió. */
+        { nombre: 'primera', unidad: 's', inverso: true, formula: [fnB('primera', 'parcial')] },
+        { nombre: 'ultima', unidad: 's', inverso: true, formula: [fnB('ultima', 'parcial')] },
+      ],
+    },
+  },
+  {
+    /* EL SIMULACRO DE HYROX. Ocho kilómetros y ocho estaciones alternados: la
+       forma que el modelo de bloques ya sabe hacer, con dos medidas por
+       repetición. Lo que se mira NO es el total —eso lo da cualquier reloj—,
+       sino en qué se va el tiempo y cuánto se cae el ritmo de carrera. */
+    id: 'hyrox',
+    nombre: 'Simulacro de HYROX',
+    descripcion: 'Los 8 kilómetros y las 8 estaciones, uno a uno. Dice en qué se te va el tiempo.',
+    distintivo: 'dos medidas por repetición',
+    test: {
+      nombre: 'Simulacro HYROX', deporte: 'Híbrido', sueltos: [],
+      bloques: [{
+        clave: 'est', etiqueta: 'Tramo', modo: 'cerrado', veces: 8, duracion: 0,
+        columnas: [
+          col({ clave: 'cual', etiqueta: 'Estación', clase: 'dada', tipo: 'lista', etiquetas: [
+            'SkiErg', 'Sled push', 'Sled pull', 'Burpee broad jump',
+            'Remo', 'Farmers carry', 'Sandbag lunges', 'Wall balls',
+          ] }),
+          col({ clave: 'km', etiqueta: 'El kilómetro', unidad: 's', instrumento: 'crono-seg' }),
+          col({ clave: 'trabajo', etiqueta: 'La estación', unidad: 's', instrumento: 'crono-seg' }),
+        ],
+      }],
+      resultados: [
+        { nombre: 'total', unidad: 's', ancla: 'especifica', inverso: true, formula: [
+          fnB('suma', 'km'), { t: 'op', v: '+' }, fnB('suma', 'trabajo'),
+        ] },
+        { nombre: 'corriendo', unidad: 's', inverso: true, formula: [fnB('suma', 'km')] },
+        { nombre: 'estaciones', unidad: 's', inverso: true, formula: [fnB('suma', 'trabajo')] },
+        /* Cuánto se cae el ritmo del primer kilómetro al último: es el número
+           que dice si salió demasiado fuerte, y no lo da ningún reloj. */
+        { nombre: 'caida_km', unidad: 's', inverso: true, formula: [
+          fnB('ultima', 'km'), { t: 'op', v: '-' }, fnB('primera', 'km'),
+        ] },
+      ],
+    },
+  },
+  {
     id: 'una',
     nombre: 'Una sola medida',
     descripcion: 'Un salto, un dinamómetro, una marca. Una casilla y ya.',
