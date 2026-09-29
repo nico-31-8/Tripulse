@@ -2,6 +2,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import ElegirMaterial from '@/components/ElegirMaterial'
+import { materialDeSesion, guardarMaterialDeSesion } from '@/lib/material'
 import { mmss } from '@/lib/medicion'
 import { hoyISO, fechaLarga, diasEntre } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
@@ -104,6 +106,9 @@ export default function Apuntar() {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [hecho, setHecho] = useState<number | null>(null)
+  /* Con que lo hizo. Aqui tambien cuenta: si sale a correr por su cuenta, esos
+     kilometros son tan suyos como los de una sesion que le pongan. */
+  const [materialElegido, setMaterialElegido] = useState<number[]>([])
   const [aviso, setAviso] = useState<string | null>(null)
 
   const esFuerza = disciplina === 'Fuerza'
@@ -249,6 +254,8 @@ export default function Apuntar() {
     }
     const hecha = s.estado === 'Realizada'
     setEditando(s.id)
+    /* Lo que tuviera elegido: corregir una sesion no puede borrarle el material. */
+    setMaterialElegido(await materialDeSesion(supabase, s.id))
     setDisciplina(s.disciplina || 'Fuerza')
     setRealizada(hecha)
     setFecha(String(s.fecha_sesion).slice(0, 10))
@@ -410,7 +417,10 @@ export default function Apuntar() {
         ? await actualizarRegistroFuerza(supabase, editando, { fecha, ...comun, ejercicios })
         : await actualizarRegistroResistencia(supabase, editando, { disciplina, fecha, realizada, ...comun, bloques })
       if (r.error) setError(r.error)
-      else { setAviso((r as any).aviso || null); setHecho(editando) }
+      else {
+        await guardarMaterialDeSesion(supabase, editando, materialElegido)
+        setAviso((r as any).aviso || null); setHecho(editando)
+      }
       setGuardando(false)
       return
     }
@@ -427,7 +437,12 @@ export default function Apuntar() {
         idDeportista: dep.id, disciplina, fecha, idMicrociclo, realizada, ...comun, bloques,
       })
     if (r.error) setError(r.error)
-    else { setAviso((r as any).aviso || null); setHecho(r.idSesion) }
+    else {
+      /* Con que lo hizo, detras de la sesion: los kilometros de un material salen
+         de sus sesiones, asi que sin sesion no hay nada a lo que enlazarlo. */
+      if (r.idSesion) await guardarMaterialDeSesion(supabase, r.idSesion, materialElegido)
+      setAviso((r as any).aviso || null); setHecho(r.idSesion)
+    }
     setGuardando(false)
   }
 
@@ -715,6 +730,13 @@ export default function Apuntar() {
                   className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               </label>
             </div>
+            {/* Con que lo ha hecho. Solo sale si tiene material de este deporte. */}
+            {dep && (
+              <div className="mt-2.5">
+                <ElegirMaterial idDeportista={dep.id} disciplinas={[disciplina]}
+                  elegidos={materialElegido} onCambio={setMaterialElegido} />
+              </div>
+            )}
             <label className="flex flex-col gap-1.5 mt-2.5">
               <span className="text-gray-400 text-[11px]">Notas (opcional)</span>
               <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}

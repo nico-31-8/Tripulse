@@ -22,7 +22,7 @@
 // y 10 de carrera, la bici suma 40 y las zapatillas 10 — nunca los 50.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { cargarBloques, metrosDeDisciplina, type SesionAtribuible } from './atribucion'
+import { cargarBloques, expandirEnBloques, metrosDeDisciplina, porDisciplina, type SesionAtribuible, type TareaAtribuible } from './atribucion'
 
 /** Cuánto le queda, en tanto por uno, para empezar a avisar. */
 const AVISA_AL = 0.9
@@ -208,4 +208,50 @@ export async function cargarKmDeMateriales(
     out[m.id] = kmDeMaterial(m, usos)
   }
   return out
+}
+
+/**
+ * Los metros de una sesión, repartidos por deporte.
+ *
+ * Es lo que permite avisar ANTES de guardar: «con estos 10 km, las de placa
+ * llegan a 378 de 400». Y el reparto lo hace la capa de atribución, no una cuenta
+ * escrita aquí: en un brick la sesión pone 'Brick', que no es un deporte.
+ */
+export function metrosPorDisciplinaDe(
+  sesion: SesionAtribuible,
+  tareas: TareaAtribuible[],
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [disc, v] of Object.entries(porDisciplina(expandirEnBloques([sesion], tareas)))) {
+    out[disc] = v.metros
+  }
+  return out
+}
+
+/**
+ * Guarda con qué material se hizo una sesión.
+ *
+ * Borra y vuelve a escribir: la lista elegida es la verdad entera, y calcular la
+ * diferencia para ahorrar dos filas seria la clase de optimización que deja
+ * material fantasma cuando alguien cambia de opinión dos veces.
+ *
+ * Devuelve el error si lo hubo, o null.
+ */
+export async function guardarMaterialDeSesion(
+  supabase: SupabaseClient,
+  idSesion: number,
+  ids: number[],
+): Promise<string | null> {
+  const { error: errBorrar } = await supabase.from('sesion_material').delete().eq('id_sesion', idSesion)
+  if (errBorrar) return errBorrar.message
+  if (!ids.length) return null
+  const { error } = await supabase.from('sesion_material')
+    .insert(ids.map(id_material => ({ id_sesion: idSesion, id_material })))
+  return error ? error.message : null
+}
+
+/** Con qué material se hizo una sesión (sus ids). */
+export async function materialDeSesion(supabase: SupabaseClient, idSesion: number): Promise<number[]> {
+  const { data } = await supabase.from('sesion_material').select('id_material').eq('id_sesion', idSesion)
+  return (data || []).map((r: { id_material: number }) => r.id_material)
 }

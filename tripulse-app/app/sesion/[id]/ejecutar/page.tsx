@@ -3,6 +3,8 @@ import { useRouter } from 'next/navigation'
 import { repsDePrescripcion } from '@/lib/repeticiones'
 import { useState, useEffect, useCallback, use } from 'react'
 import { supabase } from '@/lib/supabase'
+import ElegirMaterial from '@/components/ElegirMaterial'
+import { materialDeSesion, guardarMaterialDeSesion, metrosPorDisciplinaDe } from '@/lib/material'
 import { conVideos } from '@/lib/video-ejercicio'
 import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
@@ -86,6 +88,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [rpe, setRpe] = useState(5)
   const [sensacion, setSensacion] = useState(3)
   const [dolor, setDolor] = useState(1)
+  /* Con qué material se hizo. Se carga aparte porque no hace falta para
+     entrenar: solo para cerrar, y para entonces ya ha llegado. */
+  const [materialElegido, setMaterialElegido] = useState<number[]>([])
   const [notasPost, setNotasPost] = useState('')
   const [fcMedia, setFcMedia] = useState('')
   // La HRV del día la preguntaba la ficha pero no el modo entreno, así que quien
@@ -239,6 +244,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     setResultados(prev => ({ ...prev, [tareaId]: { ...prev[tareaId], [campo]: valor } }))
   }
 
+  /* El estado se pone DESPUES de que conteste la base, asi que la regla del
+     compilador no se queja: aqui no hace falta silenciarla. */
+  useEffect(() => { materialDeSesion(supabase, Number(id)).then(setMaterialElegido) }, [id])
+
   const guardarYCerrar = async () => {
     setGuardando(true)
     // Guardar series de fuerza
@@ -342,6 +351,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       ...(durReal > 0 ? { duracion_real: Math.round(durReal) } : {}),
       ...(rpeSesion != null ? { rpe_reportado: rpeSesion, rpe_origen: 'atleta' } : {}),
     }).eq('id', id)
+
+    /* Con qué la hizo. Va aquí y no antes porque hasta que la sesión no está
+       cerrada no hay nada que contar: los kilómetros de un material salen de
+       sus sesiones realizadas. */
+    const errMaterial = await guardarMaterialDeSesion(supabase, Number(id), materialElegido)
+    if (errMaterial) console.warn('material:', errMaterial)
+
     if (tareas.length > 0) {
       // El dolor, las notas y la HRV son del DÍA: van igual en todos los bloques.
       const delDia = {
@@ -1002,6 +1018,18 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               min="40" max="220"
             />
           </div>
+          {/* CON QUÉ LO HA HECHO. Solo sale si tiene material de los deportes de
+              esta sesión: si no tiene ninguno, la pregunta no aparece y no
+              estorba. Un brick pregunta por la bici Y por las zapatillas. */}
+          {sesion && (
+            <ElegirMaterial
+              idDeportista={sesion.id_deportista}
+              disciplinas={esBrick ? tareas.map(t => t.disciplina || '').filter(Boolean) : [sesion.disciplina]}
+              metrosPorDisciplina={metrosPorDisciplinaDe(sesion, tareas.map(t => ({ ...t, id_sesion: sesion.id })))}
+              elegidos={materialElegido}
+              onCambio={setMaterialElegido} />
+          )}
+
           {/* Duración real: el reloj propone, el atleta manda. Si se dejó la sesión
               abierta no se propone nada y se le pide a mano (ver medirDuracion). */}
           <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
