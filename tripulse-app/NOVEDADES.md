@@ -14,6 +14,30 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 29 de septiembre de 2026 · Dos WODs de referencia en el laboratorio
+
+En el **Laboratorio** (Tests propios → 🧪) hay dos plantillas nuevas. No miden una
+cualidad: miden **el mismo trabajo contra uno mismo**, que es justo para lo que
+sirve un WOD de referencia.
+
+**Fran.** Las tres rondas con **su parcial cada una**, así que además del total te
+dice con qué ritmo salió y si se murió en la última.
+
+El peso del thruster y el tipo de dominada se ponen **antes** de empezar, como
+parte del protocolo. Si lo escalas, cambias ahí el número y **queda escrito en la
+medición** — que es lo que evita comparar un 8:32 con goma contra un 8:32 en Rx.
+Sin eso, un histórico de WODs no sirve de nada.
+
+**Simulacro de HYROX.** Los ocho tramos con **dos tiempos cada uno**: el kilómetro
+y la estación, con las ocho estaciones ya puestas en su orden. Lo que te da no es
+el total —eso lo da cualquier reloj— sino **en qué se le va el tiempo** (corriendo
+o en las estaciones) y **cuánto se le cae el ritmo** del primer kilómetro al
+último, que es el número que dice si salió demasiado fuerte.
+
+Como cualquier plantilla, son un punto de partida: dentro se toca todo.
+
+---
+
 ## 29 de septiembre de 2026 · A pie de pista, el reloj ya sabe si es un AMRAP o un EMOM
 
 Dirigiendo una sesión con un bloque, la pantalla decía «AMRAP 12′» y al lado te
