@@ -14,6 +14,48 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 29 de septiembre de 2026 · Material: zapatillas y bicicletas, con sus kilómetros
+
+**Nuevo: cada deportista tiene su armario.** Zapatillas, bicicletas, neopreno.
+Se da de alta en el perfil —**tú desde su ficha, en la pestaña «Material»**, y él
+desde su propio perfil—, y **al cerrar un entreno elige con qué lo ha hecho**.
+Cada material va sumando sus kilómetros solo.
+
+**Le pones el límite que quieras, material a material.** No hay valor por
+defecto: unas zapatillas pueden llevar 700 km y una bici el límite de su cadena.
+Cuando le queda el último 10 %, la tarjeta avisa. Si no le pones límite, se
+limita a contar kilómetros.
+
+**Y el contador se puede reiniciar.** Cambias la cadena y el límite vuelve a
+empezar, **pero la bici conserva sus kilómetros**: la tarjeta enseña los dos
+números y dice cuál es cuál («620 de 4.000 · 4.120 km en total, reiniciado el 30
+de junio»).
+
+**Cuando lo des de alta, apunta los kilómetros que ya traía.** Casi ninguna
+zapatilla entra en la aplicación a cero, y sin ese dato el aviso de cambiarlas
+llegaría cientos de kilómetros tarde.
+
+**Al elegir, te avisa antes de guardar**: «con estos 10 km, "las de placa" llegan
+a 378 de 400, quedan 22». Avisar después sería tarde: ya has corrido con ellas.
+
+Tres cosas que hace a propósito:
+
+- **Un brick pregunta por las dos**, la bici y las zapatillas, y reparte los
+  kilómetros por deporte: 40 km de bici y 10 de carrera suman 40 a la bici y 10 a
+  las zapatillas, nunca 50 a cada una.
+- **Hay una opción «No lo sé / otro».** Si no te acuerdas, no elijas por elegir:
+  esos kilómetros no cuentan y el acumulado sigue siendo de fiar.
+- **Jubilar no es borrar.** Unas zapatillas jubiladas conservan su historia y
+  dejan de salir al elegir. Borrarlas sí se las lleva.
+
+También cuenta lo que el deportista se apunta por su cuenta desde «apuntar».
+
+**Ojo el primer día**: hasta que no cierre un entreno eligiendo material, las
+tarjetas enseñarán solo los kilómetros que le hayas puesto de inicio. No está
+roto — es que todavía no hay nada enlazado.
+
+---
+
 ## 28 de septiembre de 2026 · La ficha de fuerza: lo guardado aparte, y el histórico donde se consulta
 
 **La pantalla de tareas ya no es una sola caja.** La tabla de lo que ya está en
