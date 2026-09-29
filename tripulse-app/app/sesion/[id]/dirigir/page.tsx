@@ -34,6 +34,7 @@ import {
 
 import { vecesDe, repeticionTexto } from '@/lib/bloques-tarea'
 import { esBloque, leerConfig, textoFormato, type Formato } from '@/lib/bloque-formato'
+import RelojDeBloque from '@/components/RelojDeBloque'
 import { emojiDisciplina } from '@/lib/disciplinas'
 
 
@@ -251,6 +252,19 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
                   {ej && !esBloque(t) ? objetivoDe(t) : ''}{prescrito ? (ej && !esBloque(t) ? ' · ' : '') + prescrito + ' s rec' : ''}
                 </span>
               </div>
+
+              {/* EL RELOJ DEL BLOQUE. Un AMRAP con un cronometro que cuenta hacia
+                  arriba obliga a restar de cabeza mientras hablas; un EMOM, a cantar
+                  los minutos a ojo. Solo sale en los formatos que se cronometran
+                  solos: unas rondas duran «lo que tardes». */}
+              {esBloque(t) && (
+                <RelojDeBloque
+                  formato={t.formato as Formato}
+                  config={t.formato_config}
+                  ms={msDeSerie(e, 0, ahora) ?? 0}
+                  corriendo={e.modo === 'serie' && e.indice === 0}
+                  lineas={t.ejercicios?.length || 1} />
+              )}
 
               <div className="px-2.5 pb-2.5 flex flex-col gap-1.5">
                 {e.series.map((s, i) => {
