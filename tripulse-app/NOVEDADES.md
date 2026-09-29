@@ -14,6 +14,37 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 29 de septiembre de 2026 · Volumen: te faltaba un tercio de los kilómetros
+
+**Léelo aunque no leas el resto: los números de Volumen van a subir.** No es que
+ahora cuente de más — es que antes contaba de menos.
+
+**Qué pasaba.** Una tarea de `6 × 400 m` se guarda como «400 metros, 6 series».
+La pantalla de Volumen sumaba el 400 **y se olvidaba de multiplicarlo**: esos
+2.400 metros contaban como 400. Pasaba en natación, en ciclismo y en carrera,
+con cualquier tarea de más de una serie — o sea, con casi todas las series.
+
+Sobre tus datos de hoy: **contaba 273 km donde hay 411**. De 162 tareas con
+distancia, 68 tenían más de una serie.
+
+**Qué cambia.** Los kilómetros salen ahora de la misma cuenta que usa el resto de
+la aplicación, que ya sabe multiplicar por las series. Y de paso **cuenta lo que
+el atleta hizo de verdad** en vez de lo que estaba planificado, cuando lo ha
+anotado.
+
+Si tenías una idea del volumen semanal de un atleta, **esa idea estaba baja**. Lo
+que ves a partir de ahora es lo que había.
+
+---
+
+### Y el aviso del material, también al apuntarse una sesión
+
+Cuando el deportista se apunta un entreno por su cuenta y elige con qué lo hizo,
+ahora le sale el mismo aviso que ya salía en las sesiones que le pones tú: «con
+estos 10 km, "las de placa" llegan a 378 de 400, quedan 22».
+
+---
+
 ## 29 de septiembre de 2026 · Material: zapatillas y bicicletas, con sus kilómetros
 
 **Nuevo: cada deportista tiene su armario.** Zapatillas, bicicletas, neopreno.
