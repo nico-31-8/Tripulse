@@ -16,7 +16,7 @@ import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
 import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { tareaPico, cargaDeTarea } from '@/lib/prescripcion-zona'
 import { cargaZona } from '@/lib/zonas'
-import { expandirEnBloques } from '@/lib/atribucion'
+import { expandirEnBloques, metrosPorSesion } from '@/lib/atribucion'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { distribucionTID, veredictoTID, type ModeloTID } from '@/lib/tid'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -255,8 +255,13 @@ export default function VolumenPage() {
         ])
       : [{ data: [] }, { data: [] }, { data: [] }]
 
-    const distMap: Record<number, number> = {}
-    distancias?.forEach((d: any) => { distMap[d.id_tarea] = d.metros_planeados })
+    /* SOLO PARA SABER QUE TAREAS LLEVAN DISTANCIA. Los metros ya NO se suman de
+       aqui: este mapa guardaba los metros POR SERIE y se sumaban tal cual, asi
+       que un 6 x 400 contaba 400. Sobre los datos de hoy eso era contar 273 km
+       donde hay 411. Ahora los metros salen de los bloques, que los traen ya
+       multiplicados por sus series y prefieren los realizados. */
+    const conDistancia = new Set<number>()
+    distancias?.forEach((d: any) => { if (d.metros_planeados) conDistancia.add(d.id_tarea) })
     const durMap: Record<number, number> = {}
     duraciones?.forEach((d: any) => { durMap[d.id_tarea] = d.tiempo_planeado })
 
@@ -324,27 +329,36 @@ export default function VolumenPage() {
       uaDiscPorSes[b.id_sesion][b.disciplina] = (uaDiscPorSes[b.id_sesion][b.disciplina] || 0) + rpe * b.minutos
     })
 
+    /* LOS METROS, POR SESIÓN Y DEPORTE. Salen de los bloques que ya se han
+       expandido aquí arriba para la fuerza: cada bloque trae sus metros con las
+       series dentro y prefiriendo lo que el atleta anotó. Es la misma cuenta que
+       usa el material para saber cuánto llevan unas zapatillas — si esta página
+       la hiciera por su cuenta, un día dirían cosas distintas. */
+    const metrosDisc = metrosPorSesion(bloques)
+
     // Volumen por sesión
     const volSesion = sesiones.map(s => {
       const tareasSes = tareas?.filter(t => t.id_sesion === s.id) || []
       let natacion = 0, ciclismo = 0, carrera = 0
       const fuerza = (s.rpe_reportado || s.rpe_estimado || 5) * (minFuerza[s.id] || 0)
       const hibrido = (s.rpe_reportado || s.rpe_estimado || 5) * (minHibrido[s.id] || 0)
+      /* El volumen se atribuye a la disciplina del BLOQUE, no a la de la sesión:
+         así un brick reparte su bici y su carrera en su deporte real. */
+      const mDisc = metrosDisc[s.id] || {}
+      natacion += mDisc['Natacion'] || 0
+      ciclismo += (mDisc['Ciclismo'] || 0) / 1000
+      carrera += (mDisc['Carrera'] || 0) / 1000
+
+      /* El respaldo por tiempo, SOLO para las tareas que no llevan distancia: un
+         rodaje de 40 minutos sin metros se estima; uno con metros ya está contado
+         arriba y sumarlo otra vez lo contaría dos veces. */
       tareasSes.forEach(t => {
-        const metros = distMap[t.id]
+        if (conDistancia.has(t.id)) return
         const seg = durMap[t.id]
-        // El volumen se atribuye a la disciplina del BLOQUE (tarea), no a la de la
-        // sesión: así un brick reparte su bici y su carrera en su deporte real.
+        if (!seg) return
         const disc = t.disciplina || s.disciplina
-        if (disc === 'Natacion' && metros) natacion += metros
-        if (disc === 'Ciclismo') {
-          if (metros) ciclismo += metros / 1000
-          else if (seg) ciclismo += seg / 60 * 0.3
-        }
-        if (disc === 'Carrera') {
-          if (metros) carrera += metros / 1000
-          else if (seg) carrera += seg / 60 * 0.2
-        }
+        if (disc === 'Ciclismo') ciclismo += seg / 60 * 0.3
+        if (disc === 'Carrera') carrera += seg / 60 * 0.2
       })
       if (!tareasSes.length) {
         if (s.disciplina === 'Ciclismo') ciclismo = (s.duracion_minutos || 0) * 0.3

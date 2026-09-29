@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandirEnBloques, porDisciplina, metrosDeDisciplina, type SesionAtribuible, type TareaAtribuible } from './atribucion'
+import { expandirEnBloques, porDisciplina, metrosDeDisciplina, metrosPorSesion, type SesionAtribuible, type TareaAtribuible } from './atribucion'
 
 const ses = (o: Partial<SesionAtribuible> = {}): SesionAtribuible => ({
   id: 1, fecha_sesion: '2026-07-01', duracion_minutos: 100, rpe_estimado: 6, ...o,
@@ -148,5 +148,47 @@ describe('los metros, por bloque', () => {
     ])
     expect(sumMin(bloques)).toBe(100)
     expect(sumUA(bloques)).toBeCloseTo(600, 5)
+  })
+})
+
+describe('metrosPorSesion', () => {
+  const conDistancia = (o: object, metros: number) =>
+    tar({ ...o, p_distancia: [{ metros_planeados: metros }] })
+
+  /* EL FALLO QUE MOTIVA ESTO. /volumen sumaba los metros POR SERIE sin
+     multiplicarlos: un 6 × 400 contaba 400. Sobre los datos reales eso era
+     contar 273 km donde había 411. */
+  it('un 6 × 400 son 2.400, no 400', () => {
+    const b = expandirEnBloques([ses()], [conDistancia({ orden: 1, disciplina: 'Carrera', series: 6 }, 400)])
+    expect(metrosPorSesion(b)[1]['Carrera']).toBe(2400)
+  })
+
+  it('reparte por sesión y por deporte', () => {
+    const b = expandirEnBloques(
+      [ses({ id: 1 }), ses({ id: 2 })],
+      [
+        tar({ id_sesion: 1, orden: 1, disciplina: 'Ciclismo', p_distancia: [{ metros_planeados: 40000 }] }),
+        tar({ id_sesion: 1, orden: 2, disciplina: 'Carrera', p_distancia: [{ metros_planeados: 10000 }] }),
+        tar({ id_sesion: 2, orden: 1, disciplina: 'Carrera', p_distancia: [{ metros_planeados: 8000 }] }),
+      ],
+    )
+    const m = metrosPorSesion(b)
+    expect(m[1]).toEqual({ Ciclismo: 40000, Carrera: 10000 })
+    expect(m[2]).toEqual({ Carrera: 8000 })
+  })
+
+  it('suma las tareas del mismo deporte en la misma sesión', () => {
+    const b = expandirEnBloques([ses()], [
+      conDistancia({ orden: 1, disciplina: 'Carrera' }, 3000),
+      conDistancia({ orden: 2, disciplina: 'Carrera' }, 2000),
+    ])
+    expect(metrosPorSesion(b)[1]['Carrera']).toBe(5000)
+  })
+
+  /* Sin metros no aparece la sesión: quien llama hace `|| {}` y el respaldo por
+     tiempo se encarga. Meter un cero le haría creer que sí hay distancia. */
+  it('lo que no tiene metros no aparece', () => {
+    const b = expandirEnBloques([ses()], [tar({ orden: 1, disciplina: 'Carrera' })])
+    expect(metrosPorSesion(b)).toEqual({})
   })
 })

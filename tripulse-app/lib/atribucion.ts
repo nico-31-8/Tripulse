@@ -277,3 +277,20 @@ export function metrosDeDisciplina(bloques: Bloque[], disciplina: string): numbe
     .filter(b => String(b.disciplina || '').toLowerCase() === d)
     .reduce((a, b) => a + (b.metros || 0), 0)
 }
+
+/**
+ * Los metros de cada sesión, repartidos por deporte.
+ *
+ * Existe para que no lo escriba cada pantalla por su cuenta: `/volumen` lo hacía
+ * a mano, sumando los metros POR SERIE sin multiplicarlos, así que un 6 × 400
+ * contaba 400. Aquí los bloques ya los traen con sus series dentro.
+ */
+export function metrosPorSesion(bloques: Bloque[]): Record<number, Record<string, number>> {
+  const out: Record<number, Record<string, number>> = {}
+  for (const b of bloques) {
+    if (!b.metros) continue
+    if (!out[b.id_sesion]) out[b.id_sesion] = {}
+    out[b.id_sesion][b.disciplina] = (out[b.id_sesion][b.disciplina] || 0) + b.metros
+  }
+  return out
+}
