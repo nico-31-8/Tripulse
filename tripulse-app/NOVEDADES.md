@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 29 de septiembre de 2026 · A pie de pista, el reloj ya sabe si es un AMRAP o un EMOM
+
+Dirigiendo una sesión con un bloque, la pantalla decía «AMRAP 12′» y al lado te
+ponía el cronómetro de siempre: **contando hacia arriba**. Así, dirigir un AMRAP
+es restar de cabeza mientras hablas, y un EMOM es cantar los minutos a ojo.
+
+Ahora el reloj sabe qué está cronometrando:
+
+- **AMRAP** y **for time con límite** → cuenta atrás, y tres pitidos al acabar.
+- **EMOM** → «Minuto 3 de 10», con pitido en cada minuto. Si pusiste otro
+  intervalo (cada 90 segundos, por ejemplo) dice «Tramo 3 de 6», que es lo que
+  es.
+- **Tabata** → alterna «Trabajo 4/8» y «Descanso 4/8» con sus 20″/10″, y **pita
+  en cada cambio**, no solo al empezar cada vuelta.
+
+El número se pone naranja en los últimos diez segundos y rojo al acabarse.
+
+**Las rondas y el for time sin límite siguen contando hacia arriba**, que es lo
+que son: lo que dura una ronda es «lo que tardes», y el descanso entre rondas lo
+arrancas tú cuando toca.
+
+Un detalle que igual agradeces en un Tabata de varios ejercicios: las vueltas se
+cuentan **por línea**, así que un 20/10 × 8 con tres ejercicios son 24 vueltas y
+el reloj no se para a un tercio.
+
+---
+
 ## 29 de septiembre de 2026 · Volumen: te faltaba un tercio de los kilómetros
 
 **Léelo aunque no leas el resto: los números de Volumen van a subir.** No es que
