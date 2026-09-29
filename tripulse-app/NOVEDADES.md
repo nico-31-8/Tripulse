@@ -50,6 +50,20 @@ Tres cosas que hace a propósito:
 
 También cuenta lo que el deportista se apunta por su cuenta desde «apuntar».
 
+### Y el aviso del material te busca a ti, en vez de esperar a que lo mires
+
+Hasta ahora, que unas zapatillas llegaran al límite solo se veía si entrabas en
+la pestaña Material a mirarlo. Ahora sale donde ya miras:
+
+- **En tu panel, en «Necesita tu atención»**, junto a lo demás que tienes
+  pendiente con ese atleta: «Cambiar "las de placa": 742 km, 42 por encima del
+  límite». Sale del kilometraje, así que **se va solo** en cuanto lo jubiles o
+  reinicies el contador — no hay nada que marcar como leído.
+- **En el panel del deportista**, una línea cuando algo suyo llega al límite, que
+  le lleva a su material de un toque. Solo aparece si hay algo que decir.
+
+El aviso de tu panel mira al **atleta activo**, el que tengas seleccionado.
+
 **Ojo el primer día**: hasta que no cierre un entreno eligiendo material, las
 tarjetas enseñarán solo los kilómetros que le hayas puesto de inicio. No está
 roto — es que todavía no hay nada enlazado.
