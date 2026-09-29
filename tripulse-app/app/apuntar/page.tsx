@@ -22,7 +22,7 @@ import { controlDe, siguienteControl, type ControlTipo } from '@/lib/control-esf
 import { microDelDia } from '@/lib/grupos-emision'
 import BloquesResistencia from '@/components/BloquesResistencia'
 import {
-  BLOQUE_VACIO, bloquesQueCuentan, resumenTotal, bloquesDesdeSesion,
+  BLOQUE_VACIO, bloquesQueCuentan, resumenTotal, bloquesDesdeSesion, totalDe,
   guardarRegistroResistencia, actualizarRegistroResistencia, type BloqueRegistro,
 } from '@/lib/registro-resistencia'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
@@ -733,7 +733,13 @@ export default function Apuntar() {
             {/* Con que lo ha hecho. Solo sale si tiene material de este deporte. */}
             {dep && (
               <div className="mt-2.5">
+                {/* Los metros salen de `totalDe`, que es la misma cuenta que enseña
+                    el resumen de arriba («1 600 m · 22 min») y ya multiplica por las
+                    series. Sirve para avisar ANTES de guardar; después llega tarde,
+                    que ya ha corrido con ellas. En fuerza no hay bloques y da cero,
+                    así que el aviso no sale y no estorba. */}
                 <ElegirMaterial idDeportista={dep.id} disciplinas={[disciplina]}
+                  metrosPorDisciplina={{ [disciplina]: totalDe(bloques).metros }}
                   elegidos={materialElegido} onCambio={setMaterialElegido} />
               </div>
             )}
