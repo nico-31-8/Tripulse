@@ -52,7 +52,11 @@ export default function CobrosPage() {
   const router = useRouter()
   useRequireEntrenador()
 
+  /* TODOS los que entrenas, y aparte quiénes salen en la libreta. No todo el
+     que entrenas te paga: familia, un amigo, alguien a quien llevas gratis. */
   const [deportistas, setDeportistas] = useState<Dep[]>([])
+  const [enLista, setEnLista] = useState<number[]>([])
+  const [anadiendo, setAnadiendo] = useState('')
   const [tarifas, setTarifas] = useState<Tarifa[]>([])
   const [cargos, setCargos] = useState<Cargo[]>([])
   const [cobros, setCobros] = useState<Cobro[]>([])
@@ -75,11 +79,13 @@ export default function CobrosPage() {
     const ids = lista.map(d => d.id)
     /* Todo el histórico, no solo el mes: quien te debe agosto sigue debiéndotelo
        en septiembre, y el saldo es de siempre. Son tres tablas pequeñas. */
-    const [t, c, p] = await Promise.all([
+    const [t, c, p, l] = await Promise.all([
       supabase.from('tarifa').select('*').in('id_deportista', ids),
       supabase.from('cargo').select('*').in('id_deportista', ids),
       supabase.from('cobro').select('*').in('id_deportista', ids),
+      supabase.from('cobros_lista').select('id_deportista').in('id_deportista', ids),
     ])
+    setEnLista(((l.data || []) as { id_deportista: number }[]).map(x => x.id_deportista))
     setTarifas((t.data || []) as Tarifa[])
     setCargos((c.data || []) as Cargo[])
     setCobros((p.data || []) as Cobro[])
@@ -124,11 +130,16 @@ export default function CobrosPage() {
 
   const deDep = <T extends { id_deportista: number }>(l: T[], id: number) => l.filter(x => x.id_deportista === id)
 
-  const filas = useMemo(() => deportistas.map(d => {
+  const filas = useMemo(() => deportistas.filter(d => enLista.includes(d.id)).map(d => {
     const misTarifas = deDep(tarifas, d.id)
     const saldo = saldoDe(deDep(cargos, d.id), deDep(cobros, d.id), mes, hoyISO())
     return { dep: d, tarifa: tarifaEn(misTarifas, mes), saldo, tarifas: misTarifas }
-  }), [deportistas, tarifas, cargos, cobros, mes])
+  }), [deportistas, enLista, tarifas, cargos, cobros, mes])
+
+  /* Los que entrenas y todavía no has metido: los que puedes añadir. */
+  const fuera = useMemo(
+    () => deportistas.filter(d => !enLista.includes(d.id)),
+    [deportistas, enLista])
 
   const total = useMemo(() => resumenDelMes(filas.map(f => f.saldo)), [filas])
 
@@ -181,6 +192,31 @@ export default function CobrosPage() {
     ok('Tarifa guardada desde ' + mesLargo(mes) + '.')
   }
 
+  const meterEnLaLibreta = async (id: number) => {
+    setGuardando(true)
+    const { error } = await supabase.from('cobros_lista').insert({ id_deportista: id })
+    setGuardando(false)
+    if (error) { mal('No se ha podido añadir: ' + error.message); return }
+    setAnadiendo('')
+    await cargar()
+    setAbierto(id)
+  }
+
+  /* QUITAR NO ES BORRAR. Sale de la lista, pero sus cargos y sus cobros se
+     quedan donde están: si vuelve el mes que viene, su histórico sigue ahí. Lo
+     contrario —llevarse el dinero por delante al ocultar a alguien— sería
+     irreversible y nadie lo espera de un botón que dice «quitar». */
+  const quitarDeLaLibreta = async (id: number, nombre: string, tieneHistorial: boolean) => {
+    if (!confirm('¿Quitar a ' + nombre + ' de la libreta?\n\n'
+      + (tieneHistorial
+        ? 'Sus cargos y sus cobros NO se borran: si vuelves a añadirlo, siguen ahí.'
+        : 'No tiene nada apuntado, así que no se pierde nada.'))) return
+    const { error } = await supabase.from('cobros_lista').delete().eq('id_deportista', id)
+    if (error) { mal('No se ha podido quitar: ' + error.message); return }
+    if (abierto === id) setAbierto(null)
+    await cargar()
+  }
+
   const borrarLinea = async (tabla: 'cargo' | 'cobro', id: number) => {
     if (!confirm('¿Borrar esta línea?\n\nSe va del histórico y el saldo se recalcula.')) return
     const { error } = await supabase.from(tabla).delete().eq('id', id)
@@ -229,7 +265,7 @@ export default function CobrosPage() {
             { et: 'Cobrado', v: eur(total.cobrado), d: 'de ' + eur(total.delMes) + ' del mes', c: 'text-green-300' },
             { et: 'Pendiente', v: eur(total.pendiente), d: total.deben === 1 ? '1 persona' : total.deben + ' personas', c: 'text-amber-300' },
             { et: 'Atrasado', v: eur(total.atrasado), d: 'de meses anteriores', c: 'text-red-300' },
-            { et: 'Gente que llevas', v: String(deportistas.length), d: filas.filter(f => f.tarifa).length + ' con tarifa', c: 'text-white' },
+            { et: 'En la libreta', v: String(filas.length), d: filas.filter(f => f.tarifa).length + ' con tarifa', c: 'text-white' },
           ].map(c => (
             <div key={c.et} className="bg-gray-900 rounded-2xl border border-gray-800 p-3.5">
               <p className="text-[10.5px] uppercase tracking-wider text-gray-500 mb-1 mt-0">{c.et}</p>
@@ -239,9 +275,13 @@ export default function CobrosPage() {
           ))}
         </div>
 
-        {!deportistas.length && (
+        {!deportistas.length ? (
           <p className="text-gray-500 text-sm border border-dashed border-gray-800 rounded-xl py-6 text-center mb-0">
             Todavía no llevas a nadie. En cuanto tengas deportistas, aquí llevas su cuenta.
+          </p>
+        ) : !filas.length && (
+          <p className="text-gray-500 text-sm border border-dashed border-gray-800 rounded-xl py-6 text-center mb-0">
+            La libreta está vacía. Añade abajo a quien quieras llevar la cuenta — no hace falta que estén todos.
           </p>
         )}
 
@@ -284,6 +324,9 @@ export default function CobrosPage() {
                     className="text-[12px] font-bold px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition flex-none">
                     {abierto === dep.id ? 'Cerrar' : 'Ver'}
                   </button>
+                  <button onClick={() => quitarDeLaLibreta(dep.id, dep.nombre, misCargos.length > 0 || misCobros.length > 0)}
+                    title="Sacarlo de la libreta. Su histórico se queda."
+                    className="text-gray-600 hover:text-red-400 text-[13px] px-1.5 py-1.5 transition flex-none">✕</button>
                 </div>
 
                 {abierto === dep.id && (
@@ -349,6 +392,26 @@ export default function CobrosPage() {
             )
           })}
         </div>
+
+        {/* AÑADIR A ALGUIEN. Va al final y no arriba: lo normal es entrar a
+            cobrar, no a dar de alta. Solo salen los que no están ya. */}
+        {fuera.length > 0 && (
+          <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/60 p-3.5 flex flex-wrap gap-2.5 items-center">
+            <span className="text-[13px] text-gray-400">Añadir a la libreta:</span>
+            <select className={campo + ' min-w-[190px]'} value={anadiendo} onChange={e => setAnadiendo(e.target.value)}>
+              <option value="">Elige a alguien…</option>
+              {fuera.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+            </select>
+            <button disabled={!anadiendo || guardando} onClick={() => meterEnLaLibreta(Number(anadiendo))}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white text-[13px] font-bold px-4 py-2 rounded-lg transition">
+              + Añadir
+            </button>
+            <span className="text-gray-600 text-[11.5px] basis-full mb-0">
+              {fuera.length === 1 ? 'Hay 1 deportista fuera de la libreta.' : 'Hay ' + fuera.length + ' deportistas fuera de la libreta.'}
+              {' '}Quien no esté aquí no sale en los totales.
+            </span>
+          </div>
+        )}
       </div>
     </main>
   )
