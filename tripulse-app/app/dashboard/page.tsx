@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { sugerenciasDelAtleta } from '@/lib/sugerencias-entrenador'
+import { cargarKmDeMateriales, comoSeLlama, type Material } from '@/lib/material'
 import { usuarioActual } from '@/lib/sesion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -171,8 +172,24 @@ export default function Dashboard() {
     setWellSpark(listaWell.slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
     setProximaComp(comp.data?.[0] || null)
 
+    /* EL MATERIAL QUE TOCA CAMBIAR. Hasta ahora ese aviso solo existía si el
+       entrenador entraba en la pestaña Material a mirarlo; aquí sale donde ya
+       mira. Se piden aparte y SOLO del atleta activo: la cuenta de kilómetros
+       son tres viajes más, y el panel mira a uno, no a los veinte. */
+    const { data: mats } = await supabase.from('material').select('*')
+      .eq('id_deportista', dep.id).eq('jubilado', false)
+    const kmMat = await cargarKmDeMateriales(supabase, (mats || []) as Material[])
+    const materialSug = ((mats || []) as Material[]).map(m => {
+      const k = kmMat[m.id]
+      return {
+        nombre: comoSeLlama(m),
+        estado: k.estado, contador: k.contador,
+        limite: k.limite, restante: k.restante, pasado: k.pasado,
+      }
+    })
+
     // Qué tiene pendiente con este atleta: lógica pura, en lib/sugerencias-entrenador.
-    setSugerencias(sugerenciasDelAtleta(dep, mesos.data, an.data?.estado, hoyStr))
+    setSugerencias(sugerenciasDelAtleta(dep, mesos.data, an.data?.estado, hoyStr, materialSug))
   }
 
   const addTarea = async (texto?: string) => {

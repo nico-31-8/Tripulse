@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import AvisoMaterial from '@/components/AvisoMaterial'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
@@ -265,6 +266,10 @@ export default function DashboardDeportista() {
         {/* Que exista. En su aplicación no había una sola línea que se lo dijera,
             y la conexión vive tres niveles abajo: «Más» → Mi perfil → bajar. */}
         <AvisoConectarReloj conectado={relojConectado} className="mb-4" />
+
+        {/* El material que toca cambiar. Solo sale si hay algo que decir: un aviso
+            que esta siempre enseña a no leerlos. */}
+        <AvisoMaterial idDeportista={deportista?.id} className="mb-4" />
 
         {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
         <InvitacionesClub />

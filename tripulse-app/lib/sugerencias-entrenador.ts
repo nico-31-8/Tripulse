@@ -28,6 +28,23 @@ export interface MesoSug {
 }
 
 /**
+ * Un material con su cuenta ya hecha.
+ *
+ * A PROPÓSITO NO SE IMPORTA `lib/material`: este fichero solo depende de
+ * `lib/fechas`, y traerse el material arrastraría detrás la capa de atribución
+ * entera. Quien llama ya tiene la cuenta hecha; aquí solo se decide la frase.
+ */
+export interface MaterialSug {
+  /** Como se llama para una persona: el apodo si lo tiene. */
+  nombre: string
+  estado: string
+  contador: number
+  limite: number | null
+  restante: number | null
+  pasado: number
+}
+
+/**
  * Lo que el entrenador tiene pendiente con este atleta.
  *
  * `hoy` se puede pasar para poder probarlo: una función que lee el reloj por su
@@ -38,6 +55,8 @@ export function sugerenciasDelAtleta(
   mesos: MesoSug[] | null | undefined,
   anamnesisEstado: string | null | undefined,
   hoy: string = hoyISO(),
+  /* Va detrás de `hoy` para no romper a quien ya llamaba con cuatro. */
+  material: MaterialSug[] = [],
 ): string[] {
   const sug: string[] = []
   if (!dep) return sug
@@ -63,6 +82,18 @@ export function sugerenciasDelAtleta(
         + (d === 0 ? 'hoy' : d === 1 ? 'mañana' : 'en ' + d + ' días') + ')')
     }
   })
+
+  /* ---- El material que toca cambiar ----
+     Sale del kilometraje, asi que se va solo cuando se jubila o se reinicia el
+     contador: no hay nada que marcar como leido. */
+  for (const m of material) {
+    if (m.estado === 'pasado') {
+      sug.push('Cambiar «' + m.nombre + '»: ' + m.contador.toLocaleString('es-ES')
+        + ' km, ' + m.pasado + ' por encima del límite')
+    } else if (m.estado === 'aviso') {
+      sug.push('«' + m.nombre + '» llega al límite: quedan ' + m.restante + ' km')
+    }
+  }
 
   // ---- La anamnesis, cuando el atleta la ha mandado ----
   if (anamnesisEstado === 'enviada') {

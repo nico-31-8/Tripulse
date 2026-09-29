@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sugerenciasDelAtleta, DIAS_VALORACION } from './sugerencias-entrenador'
+import { sugerenciasDelAtleta, DIAS_VALORACION, type MaterialSug } from './sugerencias-entrenador'
 
 const HOY = '2026-08-23'
 const dep = (extra: any = {}) => ({ nombre: 'Bruno', tec_fecha_actualizacion: HOY, ...extra })
@@ -105,5 +105,67 @@ describe('en conjunto', () => {
 
   it('el umbral está donde dice la constante', () => {
     expect(DIAS_VALORACION).toBe(28)
+  })
+})
+
+// ============================================================
+// El material que toca cambiar
+// ============================================================
+//
+// Hasta ahora el aviso de jubilar unas zapatillas solo existía si el entrenador
+// entraba en la pestaña Material a mirarlo. Aquí sale donde ya mira: el bloque
+// del panel. Y como sale del kilometraje, se va solo cuando se jubilan o se
+// reinicia el contador — no hay nada que marcar como leído.
+describe('sugerenciasDelAtleta — el material', () => {
+  const dep = { nombre: 'Nico', tec_fecha_actualizacion: '2026-09-20' }
+  const solas = (material: MaterialSug[]) =>
+    sugerenciasDelAtleta(dep, [], null, '2026-09-22', material)
+      .filter(s => s.includes('«'))
+
+  const mat = (o: Partial<MaterialSug> = {}): MaterialSug =>
+    ({ nombre: 'las de placa', estado: 'ok', contador: 300, limite: 700, restante: 400, pasado: 0, ...o })
+
+  it('sin material, no dice nada', () => {
+    expect(solas([])).toEqual([])
+    expect(sugerenciasDelAtleta(dep, [], null, '2026-09-22')).not.toContain(undefined)
+  })
+
+  it('el que va bien no se menciona', () => {
+    expect(solas([mat()])).toEqual([])
+  })
+
+  it('sin límite tampoco: no hay nada que avisar', () => {
+    expect(solas([mat({ estado: 'sin-limite', limite: null, restante: null, contador: 4180 })])).toEqual([])
+  })
+
+  it('cerca del límite dice cuánto queda', () => {
+    const s = solas([mat({ estado: 'aviso', contador: 368, limite: 400, restante: 32 })])
+    expect(s).toHaveLength(1)
+    expect(s[0]).toMatch(/las de placa/)
+    expect(s[0]).toMatch(/quedan 32 km/)
+  })
+
+  it('pasado del límite dice que toca cambiarlo, y cuánto se pasó', () => {
+    const s = solas([mat({ estado: 'pasado', contador: 742, limite: 700, restante: 0, pasado: 42 })])
+    expect(s[0]).toMatch(/^Cambiar/)
+    expect(s[0]).toMatch(/742/)
+    expect(s[0]).toMatch(/42 por encima/)
+  })
+
+  it('con varios, uno por cada uno', () => {
+    expect(solas([
+      mat({ nombre: 'las de placa', estado: 'aviso', restante: 32 }),
+      mat({ nombre: 'las de rodar', estado: 'pasado', pasado: 40 }),
+      mat({ nombre: 'la de carretera', estado: 'ok' }),
+    ])).toHaveLength(2)
+  })
+
+  /* El material se añade a lo que ya había, no lo sustituye: si el mismo día hay
+     una anamnesis que revisar y unas zapatillas gastadas, salen las dos. */
+  it('no se come las demás sugerencias', () => {
+    const s = sugerenciasDelAtleta(dep, [], 'enviada', '2026-09-22',
+      [mat({ estado: 'pasado', pasado: 42 })])
+    expect(s.some(x => x.includes('anamnesis'))).toBe(true)
+    expect(s.some(x => x.startsWith('Cambiar'))).toBe(true)
   })
 })
