@@ -14,6 +14,46 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 29 de septiembre de 2026 · Cobros: tu libreta dentro de la aplicación
+
+Nueva pantalla en **Herramientas → 💶 Cobros**: quién te paga, cuánto, y qué
+queda pendiente.
+
+**Es tuya y es privada.** El deportista no ve absolutamente nada de esto, y no
+porque la pantalla se lo esconda: la propia base de datos se lo impide. Al
+contrario que sus zonas o sus sesiones, aquí solo entra su entrenador.
+
+**Y es un registro, no una facturación.** No emite facturas, no calcula impuestos
+y no cobra nada: ordena lo que ya sabes tú.
+
+### Cómo va
+
+**Eliges a quién llevas.** La libreta empieza vacía: añades a quien quieras desde
+el desplegable de abajo. No todo el que entrenas te paga, y quien no esté ahí no
+sale en los totales. Sacar a alguien **no borra su histórico**: si vuelve, sigue
+estando.
+
+**Le pones su tarifa** — cuota mensual, por sesión, o solo cosas sueltas — y la
+cuota del mes **se pone sola**. Con fecha del último día, que es cuando se cobra:
+hasta ese día pone «este mes» y no «pendiente», porque todavía no te debe nada.
+Los meses que aún no han empezado no se cargan.
+
+**Apuntas lo que te paga**, con su fecha y si fue Bizum, transferencia o
+efectivo. Y le cargas lo que sea suelto: una valoración, un plan, un test.
+
+### Dos cosas pensadas para que los números no mientan
+
+- **Cargos y pagos, no una casilla de «pagado».** Así aguantan un pago a medias,
+  un mes con un test además de la cuota, o alguien que te paga dos meses juntos.
+  El saldo es una resta.
+- **Las tarifas tienen fecha.** Si en enero le subes la cuota, septiembre sigue
+  diciendo lo que costó en septiembre.
+
+Y si a alguien le cobras por sesión, te propone las que le has dirigido tú ese
+mes según el calendario — **tú confirmas el número**, nunca lo hace sola.
+
+---
+
 ## 29 de septiembre de 2026 · Dos WODs de referencia en el laboratorio
 
 En el **Laboratorio** (Tests propios → 🧪) hay dos plantillas nuevas. No miden una
