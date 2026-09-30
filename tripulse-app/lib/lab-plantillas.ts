@@ -9,9 +9,9 @@
 // PERO NO ENCIERRAN. La hoja en blanco está al lado y, una vez dentro, en una
 // plantilla se toca absolutamente todo: son un punto de partida, no un molde.
 //
-// Las siete cubren las formas que existen de verdad: repeticiones
-// cronometradas, escalonado abierto, ritmo por pitidos, una sola medida, mejor
-// de varios intentos, por lado, y hasta que falla.
+// Cubren las formas que existen de verdad: repeticiones cronometradas,
+// escalonado abierto, ritmo por pitidos, tiempo fijo con cuenta atrás, una sola
+// medida, mejor de varios intentos, por lado, y hasta que falla.
 
 import { col, fnB, type TestLab } from './lab-constructor'
 
@@ -304,6 +304,33 @@ export const PLANTILLAS: Plantilla[] = [
            que dice si salió demasiado fuerte, y no lo da ningún reloj. */
         { nombre: 'caida_km', unidad: 's', inverso: true, formula: [
           fnB('ultima', 'km'), { t: 'op', v: '-' }, fnB('primera', 'km'),
+        ] },
+      ],
+    },
+  },
+  {
+    id: 'fijo',
+    nombre: 'Test de tiempo fijo',
+    descripcion: 'Doce minutos corriendo y los metros al final. La misma forma sirve para un FTP de 20 o una plancha.',
+    distintivo: 'cuenta atrás',
+    test: {
+      nombre: 'Cooper (12 min)', deporte: 'Carrera', sueltos: [],
+      /* UNA REPETICIÓN QUE DURA. Esto es lo que le da la cuenta atrás: un test
+         de tiempo fijo no es una casilla suelta con un número al lado, es un
+         bloque que dura y una casilla que se rellena al acabar. Montado como
+         casilla suelta se puede, pero entonces nadie cuenta los doce minutos. */
+      bloques: [{
+        clave: 'doce', etiqueta: 'Los 12 minutos', modo: 'cerrado', veces: 1,
+        duracion: 720, duracionUd: 's',
+        pitaCambio: true, avisoAntes: 30, ritmo: 'no', ritmoCada: 0,
+        columnas: [col({ clave: 'metros', etiqueta: 'Metros recorridos', unidad: 'm' })],
+      }],
+      resultados: [
+        { nombre: 'distancia', unidad: 'm', formula: [fnB('suma', 'metros')] },
+        /* VO₂máx = (metros − 504,9) / 44,73 */
+        { nombre: 'vo2max', unidad: 'ml/kg/min', formula: [
+          { t: 'op', v: '(' }, fnB('suma', 'metros'), { t: 'op', v: '-' }, { t: 'num', v: 504.9 },
+          { t: 'op', v: ')' }, { t: 'op', v: '/' }, { t: 'num', v: 44.73 },
         ] },
       ],
     },

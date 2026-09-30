@@ -27,7 +27,8 @@ import { leerModelo, paraGuardar, medicionDe, leerMediciones, type Medicion } fr
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
-  relojesDe, cronosDe, escalonadosDe, todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
+  relojesDe, cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
+  todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
   type Funcion2, type Instrumento, type Resultado, type TestLab,
@@ -82,10 +83,20 @@ interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
  */
 interface Pidiendo { clave: string; col: string; fn: Funcion | null; fn2?: Funcion2; x?: string; y?: string }
 
+/* Las tres clases, dichas por QUIÉN PONE EL NÚMERO y no por su nombre de
+   dentro. «Dada / medida / calculada» es como se llaman en el código, y
+   enseñarlo así obligaba a aprenderse el vocabulario antes de montar nada. */
 const CLASES: Record<string, string> = {
-  medida: 'La mides (de cada uno)',
-  dada: 'La pones tú (del protocolo)',
-  calculada: 'La calcula la app (con las de su fila)',
+  medida: 'Se mide en el test · una por persona',
+  dada: 'La escribes tú antes · igual para todos',
+  calculada: 'La saca la app de su misma fila',
+}
+
+/** Qué significa cada una, con ejemplo, justo debajo del desplegable. */
+const CLASE_PISTA: Record<string, React.ReactNode> = {
+  medida: <>Sale <b className="text-gray-300">vacía</b> y se rellena el día del test. Cada uno tiene la suya: el tiempo del 400, los metros del Cooper, el lactato.</>,
+  dada: <>Es el <b className="text-gray-300">protocolo</b>: la escribes al montar el test y sale ya puesta para todos. La velocidad del escalón, la pendiente, el peso del cajón.</>,
+  calculada: <>No se teclea: la app la saca de las <b className="text-gray-300">otras columnas de su fila</b>. La potencia de cada sprint a partir de su tiempo.</>,
 }
 
 export default function Laboratorio() {
@@ -223,6 +234,45 @@ export default function Laboratorio() {
         const lv = bl.clave + ':' + n
         if (ritmoPrevio.current[lv] === undefined) ritmoPrevio.current[lv] = cuantos
         else if (ritmoPrevio.current[lv] !== cuantos) { pitar(660, 60); ritmoPrevio.current[lv] = cuantos }
+      }
+    }
+
+    /* LA CUENTA ATRÁS, que pita aparte de los escalones. No es una manía de
+       tenerlo separado: el bucle de arriba cuenta con el número RECORTADO al
+       tope del protocolo, y con ese número el final de un bloque cerrado no
+       ocurre nunca —un Cooper de 12 min volvería a empezar sin pitar—. Aquí se
+       cuenta con las repeticiones enteras que lleva, que es lo que sabe
+       acabarse. */
+    for (const bl of cronometradosDe(test)) {
+      if (reloj.clave !== '@' + bl.clave) continue
+      const c = cuentaAtras(bl, ms)
+      const previo = escPrevio.current[bl.clave]
+
+      /* Suena al acabar cada repetición, incluida la última. Pasado el final no
+         vuelve a sonar: el reloj sigue andando solo porque nadie lo ha parado,
+         y sin esto cantaría cada doce minutos hasta que alguien se acordara. */
+      const cambioRep = previo !== undefined && previo !== c.pasadas
+      if (cambioRep && bl.pitaCambio !== false
+        && (bl.modo !== 'cerrado' || c.pasadas <= bl.veces)) avisarEscalon()
+      escPrevio.current[bl.clave] = c.pasadas
+
+      /* Y al cambiar de tramo, igual que en los escalonados: en un 30-15 esa es
+         la señal de dejar de correr. Se calla si la repetición acaba de cambiar,
+         porque eso ya ha sonado y si no serían dos pitidos pegados. */
+      if (c.tramo && !c.fin) {
+        const tr = tramoEn(bl, ms % (duracionDe(bl) * 1000))
+        const prevTr = tramoPrevio.current[bl.clave]
+        if (tr && !cambioRep && prevTr !== undefined && prevTr !== tr.indice) pitar(1100, 130)
+        if (tr) tramoPrevio.current[bl.clave] = tr.indice
+      }
+
+      /* El aviso de que queda poco: más agudo y más corto, para no confundirlo
+         con el del final. Una vez por cosa que esté corriendo. */
+      if ((bl.avisoAntes || 0) > 0 && !c.fin) {
+        const llave = bl.clave + ':' + c.pasadas + ':' + c.tramo
+        if (c.restante <= (bl.avisoAntes || 0) && c.restante > 0 && !avisado.current[llave]) {
+          pitar(1400, 70); avisado.current[llave] = true
+        }
       }
     }
   })
@@ -640,6 +690,25 @@ export default function Laboratorio() {
                 setReloj(null); escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
                 for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
               }}
+              /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una
+                 resta: mide desde la salida, que es lo que significa «el 400».
+                 Por eso volver a marcar simplemente lo pisa. */
+              onMarcaSuelto={(c, a) => {
+                if (!reloj?.corre || reloj.clave !== c.clave) return
+                const ms = ahora - reloj.desde + reloj.acu
+                const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
+                ponMed(String(a.id), d => { d[c.clave] = String(val) })
+              }}
+              onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
+              onReiniciaSuelto={c => {
+                setReloj(null)
+                for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = '' })
+              }}
+              /* Nunca por debajo de cero: un contador en negativo no es una
+                 corrección, es un número que después entra en una fórmula. */
+              onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
+                d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
+              })}
               onArranca={clave => {
                 despertarAudio()
                 setReloj(r => {
@@ -947,7 +1016,7 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
           <input id={id + '-u'} className={campo} value={c.unidad} onChange={e => onCambio('unidad', e.target.value)} />
         </div>
         <div>
-          <label className={lab} htmlFor={id + '-c'}>Qué clase es</label>
+          <label className={lab} htmlFor={id + '-c'}>De dónde sale el número</label>
           <select id={id + '-c'} className={campo} value={c.clase} onChange={e => onClase(e.target.value)}>
             <option value="medida">{CLASES.medida}</option>
             <option value="dada">{CLASES.dada}</option>
@@ -955,6 +1024,15 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
                 de otras es justo lo que ya es un resultado. */}
             {bl && <option value="calculada">{CLASES.calculada}</option>}
           </select>
+          {/* LA FRASE VA AQUÍ DEBAJO, no al final de la tarjeta. Tres opciones a
+              secas no se entendían, y la pista del final habla del instrumento
+              —cómo se rellena—, que es otra pregunta distinta. */}
+          <p className="text-gray-500 text-[10.5px] leading-snug mt-1">
+            {CLASE_PISTA[c.clase]}
+            {!bl && (
+              <> <span className="text-gray-600">Aquí solo hay dos: fuera de un bloque, una casilla que sale de otras es justo lo que ya es un resultado (paso 3).</span></>
+            )}
+          </p>
         </div>
 
         {!dada && !calc && (
@@ -1771,6 +1849,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
+  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta,
 }: {
   test: TestLab
   atletas: Atleta[]
@@ -1795,9 +1874,20 @@ function Pasar({
   onReinicia: (c: Columna, bl: Bloque) => void
   onReiniciaEsc: (bl: Bloque) => void
   onArranca: (clave: string) => void
+  onMarcaSuelto: (c: Columna, a: Atleta) => void
+  onBorraSuelto: (c: Columna, a: Atleta) => void
+  onReiniciaSuelto: (c: Columna) => void
+  onCuenta: (c: Columna, a: Atleta, suma: number) => void
 }) {
   const cronos = cronosDe(test)
   const escalonados = escalonadosDe(test)
+  /* Las cuatro familias de reloj, cada una de su lista. De estas mismas sale la
+     frase de la previa (`relojesDe`), así que lo que se anuncia allí es
+     exactamente lo que se pinta aquí. */
+  const cronometrados = cronometradosDe(test)
+  const sueltosCrono = cronosSueltosDe(test)
+  const sueltosCont = contadoresSueltosDe(test)
+  const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0 || sueltosCrono.length > 0
   const msDe = (clave: string) => reloj && reloj.clave === clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
   const gordo = 'font-mono tabular-nums text-[38px] leading-none text-orange-400 font-medium'
@@ -1838,15 +1928,22 @@ function Pasar({
             : <>No tienes deportistas en tu equipo todavía. El test se puede montar igual, pero para pasarlo hace falta alguien a quien pasárselo.</>}
         </div>
       )}
-      {!cronos.length && !escalonados.length && (
+      {!hayReloj && !sueltosCont.length && (
         <div className="mt-3 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
           Este test no lleva reloj: se rellena a mano en la tabla de al lado. Es una opción legítima —
           nueve de los veinticuatro tests de la app son así.
+          {/* Y SE DICE CÓMO SE CONSIGUE. Un test que dura —un Cooper, un FTP de
+              20— no lleva reloj porque nadie le ha dicho cuánto dura, y eso no
+              se adivinaba desde aquí. */}
+          <span className="block mt-1.5 text-blue-200/70">
+            Si el test dura un tiempo fijo, ponlo como un bloque con duración en el paso 2 y aquí tendrás la cuenta atrás.
+          </span>
         </div>
       )}
 
-      {(cronos.length > 0 || escalonados.length > 0) && (
-        <InterruptoresAviso textoSonido="Suena" hayEscalones={escalonados.length > 0} className="mt-3" />
+      {hayReloj && (
+        <InterruptoresAviso textoSonido="Suena"
+          hayEscalones={escalonados.length > 0 || cronometrados.length > 0} className="mt-3" />
       )}
 
       {escalonados.map(bl => {
@@ -1907,6 +2004,52 @@ function Pasar({
         )
       })}
 
+      {/* LA CUENTA ATRÁS: el reloj normal, el que faltaba. Un bloque que dura y
+          no canta velocidad —un Cooper de 12 min, un FTP de 20, una plancha— no
+          tenía reloj de ninguna clase y había que sacar el móvil. */}
+      {cronometrados.map(bl => {
+        const clave = '@' + bl.clave
+        const ms = msDe(clave)
+        const dur = duracionDe(bl)
+        /* El mismo cálculo que decide cuándo pita: si lo repitiera aquí, el cero
+           de la pantalla y el pitido acabarían en instantes distintos. */
+        const c = cuentaAtras(bl, ms)
+        const corre = reloj?.clave === clave && reloj.corre
+        return (
+          <div key={bl.clave}>
+            <div className={relojCaja}>
+              <div>
+                {/* LO QUE QUEDA, no lo que lleva: a pie de pista lo que hay que
+                    cantar es «treinta segundos», y restar mentalmente mientras
+                    miras a seis personas es justo lo que sale mal. */}
+                <div className={gordo + (c.fin ? ' opacity-40' : '')}>{mmss(c.restante)}</div>
+                <div className={pie}>{c.fin ? 'terminado' : c.tramo ? c.tramo + ' · queda' : 'queda'}</div>
+              </div>
+              {bl.veces > 1 && (
+                <div>
+                  <div className="font-mono tabular-nums text-[26px] leading-none text-white">
+                    {c.rep}<span className="text-gray-600 text-[16px]">/{bl.veces}</span>
+                  </div>
+                  <div className={pie}>{bl.etiqueta || 'repetición'}</div>
+                </div>
+              )}
+              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
+                <button onClick={() => onArranca(clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
+                  {corre ? 'Pausar' : reloj?.clave === clave && reloj.acu ? 'Seguir' : 'Empezar'}
+                </button>
+                <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+              </div>
+            </div>
+            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+              {bl.veces > 1 ? <>Cuenta atrás de <b className="text-white">{mmss(dur)}</b> por repetición, {bl.veces} veces.</>
+                : <>Cuenta atrás de <b className="text-white">{mmss(dur)}</b>.</>}
+              {' '}{bl.pitaCambio !== false ? 'Pita al acabar' : 'No pita al acabar'}
+              {bl.tramos?.length ? ' y al cambiar de tramo' : ''}. Lo que se mida se escribe en la tabla de al lado.
+            </p>
+          </div>
+        )
+      })}
+
       {cronos.map(({ c, bl }) => {
         const ms = msDe(c.clave)
         const corre = reloj?.clave === c.clave && reloj.corre
@@ -1955,9 +2098,88 @@ function Pasar({
         )
       })}
 
-      <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
-        Los tiempos <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla, que es donde además se corrigen.
-      </div>
+      {/* EL CRONÓMETRO DE UNA CASILLA SUELTA. Se podía elegir en el editor y la
+          previa lo prometía, pero no se pintaba en ninguna parte: los relojes
+          salían de las columnas DE DENTRO de los bloques. Un CSS —el 400 y el
+          200— se quedaba sin cronómetro. */}
+      {sueltosCrono.map(c => {
+        const ms = msDe(c.clave)
+        const corre = reloj?.clave === c.clave && reloj.corre
+        const u = c.instrumento === 'crono-min' ? 'minutos' : 'segundos'
+        return (
+          <div key={c.clave}>
+            <div className={relojCaja}>
+              <div>
+                <div className={gordo}>{crono(ms)}</div>
+                <div className={pie}>{c.etiqueta || c.clave}</div>
+              </div>
+              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
+                <button onClick={() => onArranca(c.clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
+                  {corre ? 'Pausar' : reloj?.clave === c.clave && reloj.acu ? 'Seguir' : 'Empezar'}
+                </button>
+                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+              </div>
+            </div>
+            <div className="mt-3">
+              {atletas.map(a => {
+                const val = String(datosDe(String(a.id))[c.clave] ?? '')
+                return (
+                  <div key={a.id} className={filaAt}>
+                    <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
+                    {/* AQUÍ SÍ SE ENSEÑA LO MARCADO, al revés que en las
+                        repeticiones: es un solo número por persona, y saber si
+                        ya le has cogido el tiempo es media pantalla. */}
+                    <span className="font-mono text-[12px] text-blue-300">
+                      {val ? val + (c.unidad ? ' ' + c.unidad : '') : 'sin marcar'}
+                    </span>
+                    <button onClick={() => onBorraSuelto(c, a)} disabled={!val} className={btnSec + ' ' + btnMini + ' ml-auto'}>Borrar</button>
+                    <button onClick={() => onMarcaSuelto(c, a)} disabled={!corre} className={btn + ' ' + btnMini}>
+                      {val ? 'Otra vez' : 'Marcar'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+              Un solo reloj para todos y un botón por persona: cada uno cierra el suyo al llegar.
+              Cae en su casilla en <b className="text-white">{u}</b>, que es como hay que contarlo en la fórmula.
+            </p>
+          </div>
+        )
+      })}
+
+      {/* EL CONTADOR, que tampoco se pintaba. Las vueltas de un Cooper se
+          cuentan pulsando, no recordando. */}
+      {sueltosCont.map(c => (
+        <div key={c.clave} className="mt-3 border border-gray-800 rounded-xl p-3.5 bg-[#0d1420]">
+          <p className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
+            {c.etiqueta || c.clave}{c.unidad ? ' · ' + c.unidad : ''}
+          </p>
+          <div className="mt-2">
+            {atletas.map(a => {
+              const v = Number(datosDe(String(a.id))[c.clave] || 0)
+              return (
+                <div key={a.id} className={filaAt}>
+                  <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
+                  <span className="font-mono tabular-nums text-[22px] leading-none text-orange-400">{v}</span>
+                  <button onClick={() => onCuenta(c, a, -1)} disabled={v <= 0} className={btnSec + ' ' + btnMini + ' ml-auto'}>−1</button>
+                  <button onClick={() => onCuenta(c, a, 1)} className={btn + ' ' + btnMini}>+1</button>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            Una pulsación por vuelta. Si te pasas, el −1 lo deshace, y el número se puede corregir a mano en la tabla.
+          </p>
+        </div>
+      ))}
+
+      {cronos.length > 0 && (
+        <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
+          Los tiempos de cada repetición <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla,
+          que es donde además se corrigen.
+        </div>
+      )}
 
       <div className="mt-4 pt-4 border-t border-gray-800">
         <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Guardar lo medido</p>

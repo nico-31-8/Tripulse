@@ -1076,15 +1076,57 @@ export function nuevaClave(t: TestLab, base: string): string {
 export const cronosDe = (t: TestLab | null) =>
   todasLasColumnas(t).filter(x => x.c.clase === 'medida' && x.c.instrumento.indexOf('crono') === 0)
 
+/* LAS CASILLAS SUELTAS TAMBIÉN LLEVAN INSTRUMENTO, y eso no lo miraba nadie:
+   `todasLasColumnas` solo recorre las de dentro de los bloques, así que un
+   cronómetro en una casilla suelta —el 400 y el 200 de un CSS— se elegía en el
+   editor, se anunciaba en la previa y luego no aparecía por ninguna parte. */
+
+/** Los cronómetros de una casilla suelta: se paran una vez y ya está. */
+export const cronosSueltosDe = (t: TestLab | null): Columna[] =>
+  (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento.indexOf('crono') === 0)
+
+/** Los contadores de una casilla suelta: cada pulsación suma una. */
+export const contadoresSueltosDe = (t: TestLab | null): Columna[] =>
+  (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento === 'contador')
+
+/**
+ * TODOS los bloques que llevan reloj, que son los que duran.
+ *
+ * De aquí salen los dos de abajo, y son complementarios a propósito: cada
+ * bloque con duración cae en uno o en el otro, nunca en ninguno. Antes solo
+ * existía la lista de los escalonados, así que un bloque que duraba doce
+ * minutos sin columna de velocidad —un Cooper— se quedaba sin reloj y sin que
+ * nada lo dijera.
+ */
+export const conRelojDe = (t: TestLab | null): Bloque[] =>
+  (t?.bloques || []).filter(bl => duracionDe(bl) > 0)
+
+/** Los que además cantan una velocidad: esos van por escalones. */
 export const escalonadosDe = (t: TestLab | null): Bloque[] =>
-  (t?.bloques || []).filter(bl => duracionDe(bl) > 0 && !!columnaDeVelocidad(bl, {}))
+  conRelojDe(t).filter(bl => !!columnaDeVelocidad(bl, {}))
+
+/** Los que solo duran: cuenta atrás y un pitido al acabar. */
+export const cronometradosDe = (t: TestLab | null): Bloque[] =>
+  conRelojDe(t).filter(bl => !columnaDeVelocidad(bl, {}))
+
+/**
+ * Si un bloque CERRADO ya ha dado todas sus repeticiones.
+ *
+ * Un cerrado que se acaba se acaba: el reloj no puede seguir cantando
+ * escalones que el protocolo no tiene, ni pitar cada doce minutos hasta que
+ * alguien se acuerde de pararlo. Los abiertos no tienen fin por definición —
+ * cuántas hubo ES el dato— así que ahí esto siempre es falso.
+ */
+export const finDe = (bl: Bloque, n: number): boolean => bl.modo === 'cerrado' && n > bl.veces
 
 /**
  * Qué relojes lleva este test, dicho en palabras.
  *
- * UN SOLO SITIO lo decide, y de él sale tanto el aviso de la vista previa como
- * los relojes de verdad: si lo dijeran dos, el aviso podría prometer un
- * cronómetro que luego no aparece.
+ * ESTA FRASE SE MONTA CON LAS MISMAS LISTAS QUE PINTA LA PANTALLA, y no con un
+ * recorrido propio. Antes tenía el suyo, y por eso pudo prometer durante días un
+ * «cronómetro en «400 m»» que luego no aparecía: la previa miraba las casillas
+ * sueltas y la pantalla de pasarlo no. Quien añada un reloj nuevo tiene que
+ * añadir su lista aquí, y entonces la previa lo cuenta sola.
  */
 export function relojesDe(t: TestLab | null): string[] {
   const o = escalonadosDe(t).map(bl => {
@@ -1095,12 +1137,18 @@ export function relojesDe(t: TestLab | null): string[] {
     else if (bl.ritmo === 'segundos') x += ' (pita cada ' + bl.ritmoCada + ' s)'
     return x
   })
-  for (const x of cronosDe(t)) o.push('cronómetro en «' + (x.c.etiqueta || x.c.clave) + '»')
-  for (const c of t?.sueltos || []) {
-    if (c.instrumento !== 'mano' && c.clase !== 'dada') {
-      o.push((c.instrumento === 'contador' ? 'contador' : 'cronómetro') + ' en «' + (c.etiqueta || c.clave) + '»')
-    }
+  /* La cuenta atrás. Iba sin anunciar, que era el menor de sus problemas:
+     tampoco existía. */
+  for (const bl of cronometradosDe(t)) {
+    const donde = ' en «' + (bl.etiqueta || bl.clave) + '»'
+    const cuantas = bl.veces > 1 ? ' (' + bl.veces + ' veces)' : ''
+    o.push(bl.tramos?.length
+      ? 'cuenta atrás de ' + bl.tramos.map(tr => tr.segundos + ' s ' + tr.nombre).join(' + ') + donde + cuantas
+      : 'cuenta atrás de ' + duracionDe(bl) + ' s' + donde + cuantas)
   }
+  for (const x of cronosDe(t)) o.push('cronómetro en «' + (x.c.etiqueta || x.c.clave) + '»')
+  for (const c of cronosSueltosDe(t)) o.push('cronómetro en «' + (c.etiqueta || c.clave) + '»')
+  for (const c of contadoresSueltosDe(t)) o.push('contador en «' + (c.etiqueta || c.clave) + '»')
   return o
 }
 
@@ -1120,6 +1168,47 @@ export const escalonAhora = (bl: Bloque, ms: number): number => {
   const d = duracionDe(bl)
   if (d <= 0) return 1
   return Math.min(bl.veces, Math.floor(ms / 1000 / d) + 1)
+}
+
+/**
+ * La cuenta atrás de un bloque que dura: cuánto queda y si ya se acabó.
+ *
+ * NO SE PUEDE MONTAR CON `escalonAhora`, y es la trampa de todo esto: ese
+ * RECORTA la repetición al tope del protocolo —lo que necesita una VAM, que se
+ * para donde se para— y con el número recortado el final no llega a ocurrir
+ * nunca. Un Cooper de doce minutos volvería a empezar en el 12:00, en silencio
+ * y sin que nada fallara.
+ *
+ * De aquí salen los dos: lo que se pinta y cuándo pita. Si se calcularan por
+ * separado, el pitido y el cero acabarían en instantes distintos.
+ */
+export interface Cuenta {
+  /** Repeticiones ENTERAS que lleva. Sin recortar: de aquí sale el final. */
+  pasadas: number
+  /** En cuál va, para enseñarla. Nunca pasa del tope del protocolo. */
+  rep: number
+  /** Segundos que le quedan a lo que está corriendo: el tramo, o la repetición. */
+  restante: number
+  /** El tramo en curso, si los lleva. */
+  tramo: string
+  /** Cerrado y ya las ha dado todas. */
+  fin: boolean
+}
+
+export function cuentaAtras(bl: Bloque, ms: number): Cuenta {
+  const d = duracionDe(bl)
+  if (d <= 0) return { pasadas: 0, rep: 1, restante: 0, tramo: '', fin: false }
+  const pasadas = Math.floor(ms / 1000 / d)
+  if (finDe(bl, pasadas + 1)) return { pasadas, rep: bl.veces, restante: 0, tramo: '', fin: true }
+  const dentroMs = ms % (d * 1000)
+  const tr = tramoEn(bl, dentroMs)
+  return {
+    pasadas,
+    rep: pasadas + 1,
+    restante: tr ? tr.restante : d - Math.floor(dentroMs / 1000),
+    tramo: tr ? tr.nombre : '',
+    fin: false,
+  }
 }
 
 /** En qué trozo de la repetición se va, y cuánto le queda. */

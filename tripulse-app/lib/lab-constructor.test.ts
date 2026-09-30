@@ -222,7 +222,7 @@ describe('validar', () => {
   })
 })
 
-/* GUARDIÁN. Las siete plantillas tienen que poder guardarse y calcularse sin
+/* GUARDIÁN. Todas las plantillas tienen que poder guardarse y calcularse sin
    reventar: son la puerta de entrada, y una rota es lo primero que vería
    cualquiera que abra la pantalla. */
 describe('las plantillas', () => {
