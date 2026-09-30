@@ -20,6 +20,7 @@ import { cargaZona } from '@/lib/zonas'
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
 import DiaDeTest from '@/components/DiaDeTest'
+import CorregirSesion from '@/components/CorregirSesion'
 
 // Iniciales para el avatar. Sin nombre cargado, un guion antes que una letra falsa.
 function iniciales(nombre: string | null | undefined): string {
@@ -861,6 +862,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             que cambia qué se hace ese día, y el botón de pasarlo tiene que
             estar donde se abre la sesión, no al final del todo. */}
         <DiaDeTest sesion={sesion} idDeportista={deportistaId} editable onCambio={cargarDatos} />
+
+        {/* CERRARLA POR ÉL Y CORREGIR LO QUE APUNTÓ. Va aquí arriba porque las
+            dos preguntas que trae el entrenador al abrir una sesión pasada son
+            «¿la hizo?» y «¿eso que puso es verdad?». Decide solo lo que enseña:
+            en una sesión futura sin cerrar no pinta nada. */}
+        <CorregirSesion sesion={sesion} estimadaMin={durEstimada.estimable ? durEstimada.minutos : null}
+          onCambio={cargarDatos} />
 
         {/* Por qué no hay estimación. Sin esto, un «—» parece un fallo de la app. */}
         {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
