@@ -256,6 +256,20 @@ describe('lo que se anuncia es lo que se pinta', () => {
     }
   })
 
+  it('la sección «el reloj» de un bloque conoce los DOS relojes', () => {
+    /* Un bloque puede llevar dos relojes que no hacen lo mismo: el del
+       protocolo —cada tanto pasa solo— y el cronómetro, que lo lleva el
+       entrenador y hace que la repetición dure lo que dure. El segundo se
+       enciende en la columna, así que la sección que se llama EL RELOJ llegó a
+       decir «este bloque no lleva reloj» con el cronómetro puesto dos dedos más
+       arriba. Si alguien la deja otra vez mirando solo la duración, esto salta. */
+    const i = PAGINA.indexOf('function RelojBloque(')
+    expect(i).toBeGreaterThan(0)
+    const cuerpo = PAGINA.slice(i, PAGINA.indexOf('\n}\n', i))
+    expect(cuerpo).toContain('duracion')
+    expect(cuerpo).toMatch(/instrumento\.indexOf\('crono'\)/)
+  })
+
   it('la pantalla no decide por su cuenta qué bloques llevan reloj', () => {
     /* Filtrar los bloques a mano en la pantalla es como volvió a nacer este
        fallo la primera vez. Si hace falta otro corte, se le pone nombre y se

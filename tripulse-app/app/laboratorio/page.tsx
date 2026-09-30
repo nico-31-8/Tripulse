@@ -894,6 +894,28 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
                     tipo: 'progresion', desde: 8, paso: 0.5,
                   }))
                 })
+              }}
+              /* EL CRONÓMETRO ES UNA COLUMNA, no un ajuste del bloque: el tiempo
+                 que marcas es un dato de cada persona y tiene que caer en su
+                 fila. Por eso se pone reaprovechando una columna que ya se mida
+                 a mano —ese suele ser el «Tiempo» que acabas de crear— y solo se
+                 añade otra si no hay ninguna. */
+              onCrono={() => {
+                const aprovechable = bl.columnas.find(c => c.clase === 'medida' && c.instrumento === 'mano')
+                if (aprovechable) {
+                  mut(t => {
+                    const c = t.bloques[bi].columnas.find(x => x.clave === aprovechable.clave)
+                    if (c) { c.instrumento = 'crono-seg'; if (!c.unidad) c.unidad = 's' }
+                  })
+                  return
+                }
+                const clave = nuevaClave(test, 'tiempo')
+                mut(t => {
+                  t.bloques[bi].columnas.push(col({
+                    clave, etiqueta: 'Tiempo', unidad: 's', instrumento: 'crono-seg',
+                  }))
+                })
+                nuevaMedida(clave, bl.veces)
               }} />
 
             <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5 pt-2.5 border-t border-dashed border-gray-800">
@@ -1153,13 +1175,20 @@ function pistaCol(c: Columna, bl: Bloque | null, proto: Datos): React.ReactNode 
    ponías una duración, luego una columna dada en progresión, y de ahí salía un
    reloj que canta la velocidad. Nadie piensa así. Se piensa «quiero que cada
    dos minutos cambie la velocidad y pite», y eso es lo que hay que poder decir. */
-function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
+function RelojBloque({ bl, bi, mut, proto, onProgresion, onCrono }: {
   bl: Bloque; bi: number
   mut: (fn: (t: TestLab) => void) => void
   proto: Datos
   onProgresion: () => void
+  onCrono: () => void
 }) {
   const prog = bl.columnas.find(c => c.clase === 'dada' && c.tipo === 'progresion')
+  /* LOS RELOJES DE UN BLOQUE SON DOS, y este sitio solo conocía uno. El otro
+     —el cronómetro de toda la vida: empiezas, vas marcando y paras— existía,
+     pero se encendía en la columna, en «cómo se rellena». Así que en la sección
+     que se llama EL RELOJ ponía «este bloque no lleva reloj» mientras el
+     cronómetro estaba puesto dos dedos más arriba. */
+  const crono = bl.columnas.find(c => c.clase === 'medida' && c.instrumento.indexOf('crono') === 0)
   const marco = 'mt-3 border-t border-dashed border-gray-800 pt-3'
   const frase = 'flex items-center gap-2 flex-wrap text-[12.5px] text-gray-400 mt-2 pl-3 border-l-2 border-orange-500/35 leading-8'
   const mini = 'bg-gray-800 text-white text-[12.5px] rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-orange-500 border border-transparent font-mono text-center w-[72px]'
@@ -1167,18 +1196,43 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
   const chip = (on: boolean) => 'font-mono text-[12px] px-2.5 py-1 rounded-md border transition ' +
     (on ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200' : 'bg-gray-800 border-gray-700 text-gray-300')
 
+  /* Los dos relojes, dichos siempre los dos: el que manda él y el que mandas
+     tú. Elegir entre dos cosas que se ven es una decisión; elegir entre una que
+     se ve y otra que está escondida en otra pantalla, no. */
+  const ponerCrono = (
+    <button onClick={onCrono} className={btnSec + ' ' + btnMini}>
+      ⏱ Que lo marques tú, con cronómetro
+    </button>
+  )
+  const quePasaConElCrono = crono ? (
+    <p className="text-[12px] text-gray-400 mb-2">
+      <b className="text-white">Lleva cronómetro</b>, en «{crono.etiqueta || crono.clave}»: uno para todos y un botón por
+      persona, y cada pulsación cierra una repetición. La repetición dura lo que dure.
+      {' '}<span className="text-gray-500">Se quita desde esa casilla, en «cómo se rellena».</span>
+    </p>
+  ) : null
+
   if (!bl.duracion) {
     return (
       <div className={marco}>
         <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">⏱ El reloj</p>
-        <p className="text-[12px] text-gray-400 mb-2">Este bloque no lleva reloj: las repeticiones las marcas tú a mano.</p>
-        <button onClick={() => mut(t => {
-          /* Dos minutos y pitido al cambiar: es lo más corriente y es un punto
-             de partida, no una ley. Todo se cambia en la frase de al lado. */
-          const b = t.bloques[bi]
-          b.duracion = 120; b.duracionUd = 'min'; b.pitaCambio = true; b.avisoAntes = 5
-          if (!b.ritmo) b.ritmo = 'no'
-        })} className={btnSec + ' ' + btnMini}>⏱ Que el reloj lleve el protocolo</button>
+        {quePasaConElCrono || (
+          <p className="text-[12px] text-gray-400 mb-2">
+            Este bloque no lleva reloj todavía. Hay dos, y no hacen lo mismo:
+            el del <b className="text-white">protocolo</b> pasa solo cada tanto —una VAM, un 30-15—,
+            y el <b className="text-white">cronómetro</b> lo llevas tú y cada repetición dura lo que dure —un 6×100—.
+          </p>
+        )}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => mut(t => {
+            /* Dos minutos y pitido al cambiar: es lo más corriente y es un punto
+               de partida, no una ley. Todo se cambia en la frase de al lado. */
+            const b = t.bloques[bi]
+            b.duracion = 120; b.duracionUd = 'min'; b.pitaCambio = true; b.avisoAntes = 5
+            if (!b.ritmo) b.ritmo = 'no'
+          })} className={btnSec + ' ' + btnMini}>⏱ Que el reloj lleve el protocolo</button>
+          {!crono && ponerCrono}
+        </div>
       </div>
     )
   }
@@ -1308,6 +1362,21 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion }: {
       ) : (
         <button onClick={onProgresion} className={btnSec + ' ' + btnMini + ' mt-2.5'}>
           + Que además cante una intensidad que suba sola
+        </button>
+      )}
+
+      {/* Y el otro reloj, también aquí: se pueden llevar los dos —el protocolo
+          marca el escalón y tú cronometras algo dentro—, pero hasta ahora desde
+          esta sección no había manera de saberlo ni de ponerlo. */}
+      {crono ? (
+        <div className={frase}>
+          Y lleva <b className="text-white">cronómetro</b> en «{crono.etiqueta || crono.clave}»: un botón por persona, y cada
+          pulsación cierra una repetición.
+          <span className="text-gray-600">(se quita en su columna)</span>
+        </div>
+      ) : (
+        <button onClick={onCrono} className={btnSec + ' ' + btnMini + ' mt-2.5 ml-0 sm:ml-2'}>
+          + Que además puedas cronometrar a mano
         </button>
       )}
 
