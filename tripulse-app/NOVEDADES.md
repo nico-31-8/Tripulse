@@ -14,6 +14,44 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 30 de septiembre de 2026 · Con un número del laboratorio ya se puede prescribir
+
+Hasta hoy, un test del laboratorio podía hacer **una sola cosa** con su número:
+fijarle al atleta la VAM, el FTP o el CSS. Nada más.
+
+Sacabas el umbral de una curva de lactato, lo veías, lo pintabas en su gráfica
+de evolución… y para mandarle «40 minutos al 95 % de su umbral» tenías que
+**copiar el número a mano**. En el desplegable de Referencia de una tarea no
+aparecía. Y no es que saliera vacío: **es que no salía**.
+
+### Qué puedes hacer ahora
+
+Un resultado del laboratorio que hayas marcado como referencia sale en el
+desplegable **Referencia** al crear una tarea, igual que los de Tests propios:
+
+> Escalonado con lactato · umbral_4
+
+Le pones el porcentaje y la app calcula el ritmo, los vatios o el tiempo **de
+esa persona**. Lo mismo en **Zonas propias**: ya puedes colgar tus zonas de un
+número del laboratorio.
+
+Vale para cualquier cosa que montes ahí: un VT1, una velocidad máxima, un «mejor
+400», la potencia media de un RAST, el Dmax de una curva. No hace falta que sea
+una de las tres referencias que conoce la aplicación.
+
+### Dos cosas que ya funcionaban y siguen funcionando igual
+
+- **El porcentaje va hacia el lado bueno.** El 95 % de 1:13 el 100 es más
+  **lento** —1:17—, no más rápido. En una unidad de tiempo, bajar es mejorar.
+- **Siempre la última medición que dé número.** Si en la del martes el lactato no
+  llegó a 4 y no salió el umbral, se usa la anterior en vez de dejarte la zona
+  sin referencia. La fecha de la que salió se enseña siempre.
+
+Y en el laboratorio, cuando un resultado no cabe en la VAM, el FTP o el CSS, ya
+no pone solo «referencia tuya»: te dice **dónde la vas a poder usar**.
+
+---
+
 ## 30 de septiembre de 2026 · Laboratorio: los relojes que faltaban
 
 Tres relojes que la pantalla daba por puestos y no lo estaban, y una cosa
