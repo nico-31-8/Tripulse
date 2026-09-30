@@ -14,6 +14,60 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 30 de septiembre de 2026 · Cerrar una sesión por él, y corregir lo que apuntó
+
+Los deportistas a veces se equivocan o no se acuerdan de dar una sesión por
+realizada. Hasta ahora eso no tenía arreglo: lo que él escribía se leía y no se
+tocaba. Ahora, al abrir una sesión suya:
+
+### Si no la cerró
+
+Si el día ya pasó y sigue sin cerrar, te sale un cartel: **Darla por hecha**. La
+duración y el RPE vienen **ya puestos con lo que planificaste**, y los cambias
+si sabes lo que fue de verdad.
+
+Solo aparece cuando el día ha pasado. Cerrar por adelantado algo que no ha
+ocurrido es lo que ensucia la carga de la semana.
+
+**Queda escrito que el RPE lo pusiste tú.** La carga y el SICAT se calculan con
+ese número, y no es lo mismo «me dijo que un 7» que «le puse un 7 mirándolo». Si
+tocas cualquier otra cosa y no el RPE, el RPE sigue siendo suyo.
+
+### Si la cerró con algo mal
+
+Botón **✏️ Corregir lo que apuntó**. Se corrige en tres capas:
+
+- **La sesión**: duración, RPE, nota.
+- **Cada bloque**: RPE, FC media, sensación técnica, dolor y nota. Y si es de
+  resistencia, además **la distancia real, el tiempo real y el detalle de sus
+  series** — el caso de «puso 8 m cuando fueron 8 km».
+- **Las series de fuerza, una a una**: kilos, repeticiones o segundos, y el RIR.
+  Salen **todas las series prescritas**, las apuntara o no: si cerró la sesión
+  sin escribir nada, ahora las puedes escribir tú.
+
+Una serie con algo escrito pasa a contar como hecha, sin tener que marcar nada.
+
+### Si la dio por hecha sin querer
+
+**Devolver a planificada**, y lo que apuntó **no se borra**: si vuelve a
+cerrarla, sigue estando.
+
+### Dos cosas para que los números no mientan
+
+- **Un número imposible no entra.** RPE de 1 a 10, la duración que quepa en un
+  día, la FC entre 30 y 240. Un RPE de 12 no es más esfuerzo: es un dedo que
+  resbaló, y se cuela en la carga como si fuera verdad. Te lo dice antes de
+  guardar.
+- **Dejar algo en blanco es «no lo sé», no cero.** Un cero en la FC media se
+  promediaría con los demás y hundiría la media del día.
+
+Y conviene saberlo: **corregir mueve números que ya estaban**. El RPE y la
+duración cambian la carga de esa semana; los kilos, las repeticiones y los
+metros, el volumen y la comparación de «lo que hizo vs lo prescrito». Se
+recalcula solo.
+
+---
+
 ## 30 de septiembre de 2026 · Un día de test, desde el calendario
 
 Hasta ahora, planificar un test era una sesión normal con una nota escrita a
