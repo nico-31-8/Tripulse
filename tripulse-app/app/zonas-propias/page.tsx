@@ -33,9 +33,8 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { fichaDe, textoRpe, motivoNoUsable, leerZonas, paraGuardar, rangoDe, ZONA_NUEVA, COLORES_ZONA, DEPORTES_ZONA, type ZonaEntrenador } from '@/lib/zonas-entrenador'
 
-import { leerDefinicion } from '@/lib/test-definicion'
 import {
-  opcionesDeRef, buscarOpcion, valorDe, tramoDe, leerValor,
+  opcionesDeRef, buscarOpcion, valorDe, tramoDe, leerValor, testDeFila,
   type TestConMediciones,
 } from '@/lib/referencia-propia'
 import { MESES_CORTOS } from '@/lib/fechas'
@@ -140,10 +139,8 @@ export default function ZonasPropiasPage() {
       (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
     }
 
-    setTests(filas.map(d => ({
-      id: d.id, nombre: d.nombre, deporte: d.deporte,
-      def: leerDefinicion(d), mediciones: porTest[d.id] || [],
-    })))
+    /* La fila la lee «testDeFila», que entiende los DOS modelos. */
+    setTests(filas.map(d => testDeFila(d, porTest[d.id] || [])))
   }
 
   /* Al volver a esta pestaña se vuelven a pedir los tests. El camino normal es

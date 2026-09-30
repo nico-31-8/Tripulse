@@ -26,9 +26,11 @@
 // suposición repetida.
 
 import {
-  calcularResultados, esInverso, referenciasDe, tipoDeAncla,
+  calcularResultados, esInverso, leerDefinicion, referenciasDe, tipoDeAncla,
   type DefinicionTest, type Medicion, type ResultadoTest,
 } from './test-definicion'
+import { calcular, comoResultadoViejo, type TestLab } from './lab-constructor'
+import { leerModelo } from './lab-guardar'
 
 /** A qué resultado de qué test apunta una zona. */
 export interface RefPropia {
@@ -43,9 +45,78 @@ export interface TestConMediciones {
   nombre: string
   deporte: string
   def: DefinicionTest
+  /**
+   * Si es del LABORATORIO, su modelo. Los dos modelos conviven, y un test del
+   * laboratorio deja `def` vacío a propósito (ver `lab-guardar`).
+   *
+   * POR QUÉ ESTÁ AQUÍ. Sin esto, los tests del laboratorio no aparecían al
+   * prescribir ni al montar zonas propias: no salían vacíos, es que no salían.
+   * Podías sacar un umbral de una curva de lactato, verlo, pintarlo en su
+   * gráfica — y después no había forma de colgarle un 95 % a una tarea. Y el
+   * propio laboratorio te decía «◈ Referencia tuya», que era una promesa sin
+   * destino.
+   */
+  lab?: TestLab | null
   /** Las de ESE atleta. El orden da igual: aquí se ordena. */
   mediciones: Medicion[]
 }
+
+/**
+ * Una fila de `test_definicion` tal como la devuelve la base.
+ *
+ * Los tres campos de siempre y los dos cuerpos, sin índice abierto: cada
+ * pantalla la pide con `select('*')` y su propio tipo, y con un índice de
+ * cadena ninguno de esos tipos encajaría.
+ */
+export interface FilaTest {
+  id: number
+  nombre: string
+  deporte: string
+  /** El modelo nuevo. Un test de /tests-propios no lo trae. */
+  modelo?: unknown
+  campos?: unknown
+  resultados?: unknown
+}
+
+/**
+ * Un test del entrenador, sea del modelo que sea, con las mediciones de alguien.
+ *
+ * UN SOLO SITIO LEE LA FILA. Cada pantalla que quería los tests del entrenador
+ * llamaba a `leerDefinicion` por su cuenta, y `leerDefinicion` solo entiende el
+ * modelo viejo: por eso los del laboratorio desaparecían en tres pantallas a la
+ * vez sin que nada fallara. Quien necesite los tests de un atleta pasa por aquí.
+ */
+export function testDeFila(fila: FilaTest, mediciones: Medicion[]): TestConMediciones {
+  const nombre = String(fila?.nombre || '')
+  const deporte = String(fila?.deporte || '')
+  return {
+    id: Number(fila?.id),
+    nombre,
+    deporte,
+    def: leerDefinicion(fila),
+    lab: leerModelo(fila?.modelo, nombre, deporte || 'Carrera'),
+    mediciones: mediciones || [],
+  }
+}
+
+/**
+ * El test con la cara del modelo viejo, venga del modelo que venga.
+ *
+ * Así todo lo de este fichero se escribe UNA vez: cuál sirve de referencia, en
+ * qué orden van, si en su unidad bajar es mejorar. Son preguntas que no
+ * dependen de cómo se montó el test, y contestarlas dos veces —una por modelo—
+ * es cómo se acaba con un test que se ofrece en una pantalla y en la otra no.
+ *
+ * El índice se conserva: es la posición del resultado, y es lo que queda
+ * guardado en la zona que cuelga de él.
+ */
+const comoDefinicion = (t: TestConMediciones): DefinicionTest =>
+  t.lab
+    ? {
+      nombre: t.nombre, deporte: t.deporte, campos: [],
+      resultados: (t.lab.resultados || []).map(comoResultadoViejo),
+    }
+    : t.def
 
 /** Lo que vale hoy una referencia para un atleta. */
 export interface ValorRef {
@@ -92,7 +163,9 @@ export function opcionesDeRef(tests: TestConMediciones[], deporte: string): Opci
   const out: OpcionRef[] = []
   for (const t of tests) {
     if (!mismoDeporte(t.deporte, deporte)) continue
-    for (const { indice, resultado } of referenciasDe(t.def)) {
+    /* La regla de qué resultado vale como referencia es UNA y está en
+       `test-definicion`: aquí solo se le da el test con la cara que entiende. */
+    for (const { indice, resultado } of referenciasDe(comoDefinicion(t))) {
       out.push({
         ref: { idDefinicion: t.id, indice },
         etiqueta: t.nombre + ' · ' + resultado.nombre,
@@ -120,13 +193,20 @@ export const buscarOpcion = (opciones: OpcionRef[], ref: RefPropia | null): Opci
  * la fecha va en `ValorRef` y quien pinta la enseña.
  */
 export function valorDe(test: TestConMediciones, indice: number): ValorRef | null {
-  const r = test.def?.resultados?.[indice]
+  const r = comoDefinicion(test)?.resultados?.[indice]
   if (!r) return null
   if (tipoDeAncla(r.ancla) !== 'referencia') return null
 
   const orden = [...(test.mediciones || [])].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
-  for (const m of orden) {
-    const calc = calcularResultados(test.def, m.datos || {})[indice]
+  for (let i = 0; i < orden.length; i++) {
+    const m = orden[i]
+    /* CADA MODELO SE CALCULA CON SU MOTOR. El del laboratorio recibe además la
+       medición anterior, porque una fórmula suya puede llevar `antes()` —«lo
+       que mejoró desde la última vez»— y sin ella ese resultado no daría
+       número justo aquí, que es donde se decide si la referencia existe. */
+    const calc = test.lab
+      ? calcular(test.lab, m.datos || {}, orden[i + 1]?.datos || null)[indice]
+      : calcularResultados(test.def, m.datos || {})[indice]
     if (!calc || calc.error || calc.valor == null) continue
     if (!Number.isFinite(calc.valor) || calc.valor <= 0) continue
     return {

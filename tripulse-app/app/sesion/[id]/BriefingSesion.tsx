@@ -18,8 +18,7 @@ import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 
 import { cargaDeTarea, objetivoDeCopia, cuelgaDeTestPropio, leerCopia, leerIdPropia } from '@/lib/prescripcion-zona'
-import { leerDefinicion } from '@/lib/test-definicion'
-import type { TestConMediciones } from '@/lib/referencia-propia'
+import { testDeFila, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
@@ -111,10 +110,9 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
       if (!vivo) return
       const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
       for (const m of meds || []) (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
-      setTestsPropios((defs || []).map((d: { id: number; nombre: string; deporte: string }) => ({
-        id: d.id, nombre: d.nombre, deporte: d.deporte,
-        def: leerDefinicion(d), mediciones: porTest[d.id] || [],
-      })))
+      /* La fila la lee «testDeFila», que entiende los DOS modelos: leerla
+         aquí a mano era lo que dejaba fuera a los tests del laboratorio. */
+      setTestsPropios((defs || []).map((d: FilaTest) => testDeFila(d, porTest[d.id] || [])))
     })()
     return () => { vivo = false }
   }, [tareas, sesion.id_deportista])

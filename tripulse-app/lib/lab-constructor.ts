@@ -29,7 +29,7 @@
 //
 // Este fichero es lógica pura: ni pantalla ni base de datos.
 
-import type { Ancla } from './test-definicion'
+import type { Ancla, ResultadoTest } from './test-definicion'
 
 // ------------------------------------------------------------
 // Tipos
@@ -264,6 +264,29 @@ export interface Resultado {
    */
   inverso?: boolean
 }
+
+/**
+ * Un resultado del laboratorio con la cara de uno de /tests-propios.
+ *
+ * NO ES UNA CONVERSIÓN DE ADORNO. Todo lo que pregunta «¿para qué sirve este
+ * número?» —si puede fijar la VAM, si se puede colgar una zona de él, hacia
+ * dónde va un porcentaje— ya está escrito para el modelo viejo y contesta
+ * igual para los dos: la pregunta no depende de cómo se montó el test. Armar
+ * este objeto es más barato y MUCHO más seguro que cambiar esas firmas, que es
+ * como se acaba con dos sitios contestando distinto.
+ *
+ * La fórmula se deja vacía a propósito: la de verdad no se parece en nada a la
+ * del modelo viejo, y quien recibe esto no la usa. Quien quiera el número lo
+ * calcula con `calcular`, que es el único que sabe.
+ */
+export const comoResultadoViejo = (r: Resultado): ResultadoTest => ({
+  nombre: r.nombre,
+  unidad: r.unidad,
+  ancla: r.ancla || 'nada',
+  formula: [],
+  graf: r.graf !== false,
+  ...(typeof r.inverso === 'boolean' ? { inverso: r.inverso } : {}),
+})
 
 export interface TestLab {
   nombre: string

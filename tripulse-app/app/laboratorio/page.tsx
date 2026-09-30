@@ -1498,7 +1498,10 @@ function Cabe({ deporte, r }: { deporte: string; r: Resultado }) {
     <p className={'text-[10.5px] leading-snug mt-1 ' + (v.destino ? 'text-green-400/80' : 'text-gray-500')}>
       {v.destino
         ? <>⚓ Puede fijar {v.destino.nombre} del atleta.</>
-        : <>◈ Referencia tuya: {v.motivo}</>}
+        /* Y SE DICE DÓNDE SE USA. «Referencia tuya» a secas era una promesa sin
+           destino: hasta que los tests del laboratorio entraron en el
+           desplegable de referencias, esto no se podía elegir en ningún sitio. */
+        : <>◈ Referencia tuya: {v.motivo} Podrás elegirla al prescribir y para colgarle tus zonas.</>}
     </p>
   )
 }

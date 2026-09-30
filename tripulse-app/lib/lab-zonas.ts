@@ -15,33 +15,21 @@
 // VO₂máx; `ftp` y `css` son umbrales. Así que solo cabe un ancla por deporte, y
 // un «umbral» de carrera se rechaza explicando por qué.
 
-import { calcular, type Resultado, type TestLab, type Datos } from './lab-constructor'
+import { calcular, comoResultadoViejo, type Resultado, type TestLab, type Datos } from './lab-constructor'
 import { puedeFijar, conversionA, origenDe, type Veredicto } from './ancla-propia'
 import type { Propuesta } from './zonas-desde-test'
-import type { ResultadoTest } from './test-definicion'
 
 export { origenDe }
 export type { Veredicto }
 
-/**
- * Lo que `ancla-propia` necesita saber de un resultado: su ancla y su unidad.
- *
- * Se arma un objeto con la forma que espera en vez de cambiar su firma: la
- * pregunta que contesta —«¿esta magnitud cabe en esa casilla?»— no depende de
- * la fórmula ni del modelo con el que se montó el test.
- */
-const comoViejo = (r: Resultado): ResultadoTest => ({
-  nombre: r.nombre,
-  unidad: r.unidad,
-  ancla: r.ancla || 'nada',
-  formula: [],
-  graf: r.graf !== false,
-  ...(typeof r.inverso === 'boolean' ? { inverso: r.inverso } : {}),
-})
+/* La traducción a la forma del modelo viejo vive en `lab-constructor`
+   (`comoResultadoViejo`) y no aquí: la usa también quien monta las referencias
+   para prescribir, y dos copias de «qué cara tiene este resultado» acabarían
+   contestando distinto en cada pantalla. */
 
 /** Si este resultado puede fijar la referencia de la app, y si no, por qué. */
 export const puedeFijarLab = (deporte: string, r: Resultado): Veredicto =>
-  puedeFijar(deporte, comoViejo(r))
+  puedeFijar(deporte, comoResultadoViejo(r))
 
 /**
  * Qué se guardaría si se pulsara. `null` si no se puede o no hay número.

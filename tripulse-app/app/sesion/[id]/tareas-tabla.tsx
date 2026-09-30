@@ -18,10 +18,9 @@ import {
   type FilaResistencia, type FilaFuerza,
 } from '@/lib/copiar-tarea'
 import { referenciaDeZona, cargarReferencias, ritmoObjetivoTexto, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
-import { leerDefinicion } from '@/lib/test-definicion'
 import { usuarioActual } from '@/lib/sesion'
 import { leerZonas, type ZonaEntrenador } from '@/lib/zonas-entrenador'
-import type { TestConMediciones } from '@/lib/referencia-propia'
+import { testDeFila, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
 import {
   referenciasDe, buscarReferencia, zonasDe, buscarZona, rangoInicial, acotar,
   tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
@@ -271,10 +270,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
     for (const m of meds || []) (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
 
-    setTestsPropios((defs || []).map((d: { id: number; nombre: string; deporte: string }) => ({
-      id: d.id, nombre: d.nombre, deporte: d.deporte,
-      def: leerDefinicion(d), mediciones: porTest[d.id] || [],
-    })))
+    /* La fila la lee «testDeFila», que entiende los DOS modelos: leerla aquí
+       a mano era lo que dejaba fuera a los tests del laboratorio. */
+    setTestsPropios((defs || []).map((d: FilaTest) => testDeFila(d, porTest[d.id] || [])))
   }
 
   const borrarTarea = async (tareaId: number) => {
