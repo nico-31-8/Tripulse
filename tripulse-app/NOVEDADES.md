@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 30 de septiembre de 2026 · El deportista ya ve QUÉ test le toca
+
+Cuando le pones un día de test de **los tuyos** —del Laboratorio o de Tests
+propios—, hasta ahora al deportista le salía «Hoy hay test», sin decirle cuál.
+No era la pantalla: era la base, que solo le dejaba leer los tests **que ya
+había hecho**, y uno planificado todavía no lo es.
+
+Ya lo ve por su nombre. Los de la batería se veían desde el primer día, porque
+esos no se consultan a la base.
+
+**No hace falta que hagas nada**: es un cambio de la base de datos y ya está
+puesto.
+
+Lo que le llega es la ficha de ese test — exactamente lo mismo que ya veía de un
+test que había hecho. Lo único que cambia es que lo ve antes.
+
+---
+
 ## 30 de septiembre de 2026 · Cerrar una sesión por él, y corregir lo que apuntó
 
 Los deportistas a veces se equivocan o no se acuerdan de dar una sesión por
