@@ -14,6 +14,64 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 30 de septiembre de 2026 · Laboratorio: los relojes que faltaban
+
+Tres relojes que la pantalla daba por puestos y no lo estaban, y una cosa
+explicada mejor.
+
+### El cronómetro normal, ahora se ve desde donde toca
+
+Un bloque de repeticiones puede llevar **dos relojes que no hacen lo mismo**:
+
+- **El del protocolo** — cada tanto pasa solo a la siguiente repetición. Una VAM,
+  un 30-15.
+- **El cronómetro** — el de toda la vida: empiezas, vas marcando y paras. Cada
+  pulsación cierra una repetición, y **la repetición dura lo que dure**. Un 6×100.
+
+El segundo ya existía, pero se encendía en la casilla, en «cómo se rellena». Así
+que la sección que se llama **El reloj** llegaba a decirte «este bloque no lleva
+reloj» con el cronómetro puesto dos dedos más arriba. Ahora los dos se ven ahí:
+te dice cuál lleva, y si no lleva ninguno te explica en qué se diferencian.
+**Se pueden llevar los dos** — el protocolo marca el escalón y tú cronometras
+algo dentro.
+
+### La cuenta atrás, que no existía
+
+Si el test **dura un tiempo fijo** —un Cooper de 12 minutos, un FTP de 20, una
+plancha— no había reloj de ninguna clase y había que sacar el móvil. Ahora
+cualquier bloque con duración lleva cuenta atrás:
+
+- canta **lo que queda**, no lo que lleva, que es lo que hay que cantar a pie de
+  pista;
+- **pita al acabar**, y avisa antes si se lo pides;
+- con la repetición partida en tramos, canta el tramo.
+
+Hay plantilla nueva para empezar: **Test de tiempo fijo**.
+
+### El cronómetro y el contador de una casilla suelta
+
+Una casilla suelta —de las que van fuera de un bloque— podía elegir cronómetro o
+contador, y la vista previa te prometía **«al pasarlo llevará reloj»**. Al
+pasarlo no aparecía nada. Un CSS de natación, que son el 400 y el 200
+cronometrados, se quedaba sin cronómetro.
+
+Ya están los dos: el cronómetro con un botón por persona —el tiempo cae en su
+casilla— y el contador con su **+1** para ir contando vueltas, con un −1 por si
+te pasas.
+
+### De dónde sale el número
+
+Al crear una casilla, el desplegable que decía «qué clase es» ahora dice **de
+dónde sale el número**, y las opciones están escritas por quién lo pone:
+
+- **Se mide en el test** · una por persona
+- **La escribes tú antes** · igual para todos
+- **La saca la app** de su misma fila
+
+Debajo de cada una hay una línea con ejemplos, para no tener que adivinarlo.
+
+---
+
 ## 29 de septiembre de 2026 · Cobros: tu libreta dentro de la aplicación
 
 Nueva pantalla en **Herramientas → 💶 Cobros**: quién te paga, cuánto, y qué
