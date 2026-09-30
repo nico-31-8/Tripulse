@@ -49,7 +49,14 @@ import type { Ancla, ResultadoTest } from './test-definicion'
  * del drop jump (altura/contacto de CADA salto) y el perfil carga-velocidad.
  */
 export type Clase = 'dada' | 'medida' | 'calculada'
-export type Instrumento = 'mano' | 'crono-seg' | 'crono-min' | 'contador'
+/**
+ * Con qué se rellena una casilla medida.
+ *
+ * `parciales` es el único que guarda una LISTA en vez de un número: se marca
+ * sin parar el reloj y cada marca se apunta. Por eso solo vale en una casilla
+ * suelta — dentro de un bloque, la lista ya la forman las repeticiones.
+ */
+export type Instrumento = 'mano' | 'crono-seg' | 'crono-min' | 'contador' | 'parciales'
 export type TipoDada = 'progresion' | 'lista'
 export type Ritmo = 'no' | 'segundos' | 'metros'
 
@@ -155,7 +162,8 @@ export const INSTRUMENTOS: Record<Instrumento, string> = {
   mano: 'A mano',
   'crono-seg': 'Cronómetro · s',
   'crono-min': 'Cronómetro · min',
-  contador: 'Contador',
+  contador: 'Pulsador · cuenta al pulsar',
+  parciales: 'Parciales · sin parar el reloj',
 }
 
 export interface Columna {
@@ -968,7 +976,16 @@ export function filaDe(
 
 export function variablesDe(test: TestLab, datos: Datos, errores: Record<string, string>): Record<string, unknown> {
   const vars: Record<string, unknown> = {}
-  for (const c of test.sueltos || []) vars[c.clave] = datos[c.clave]
+  for (const c of test.sueltos || []) {
+    vars[c.clave] = datos[c.clave]
+    /* UNA LISTA VACÍA SE EXPLICA, no se deja reventar. Las series de un bloque
+       ya dicen «todavía no tiene nada»; sin esto, una casilla de parciales sin
+       marcar llegaba a la fórmula como una lista vacía y el resultado salía
+       «no es un número», que no le dice a nadie qué hacer. */
+    if (c.instrumento === 'parciales' && !(datos[c.clave] as unknown[] | undefined)?.length) {
+      errores[c.clave] = '«' + c.clave + '» todavía no tiene ningún parcial'
+    }
+  }
 
   for (const bl of test.bloques || []) {
     const hechas = hechasDe(bl, datos)
@@ -1075,6 +1092,19 @@ export function todasLasColumnas(t: TestLab | null): { c: Columna; bl: Bloque }[
   return o
 }
 
+/**
+ * Si una columna trae una LISTA de valores y no un número suelto.
+ *
+ * Son dos cosas distintas por fuera y la misma por dentro: una columna de un
+ * bloque (una fila por repetición) y una casilla de PARCIALES (una marca por
+ * pulsación). De esto depende qué se le puede pedir en una fórmula —media(),
+ * cuantas()— y qué no, así que lo decide un solo sitio: preguntarlo con
+ * «¿tiene bloque?» dejaba los parciales fuera, y el montador los rechazaba
+ * con un «se mide una sola vez» que era mentira.
+ */
+export const esSerie = (x: { c: Columna; bl: Bloque | null } | null | undefined): boolean =>
+  !!x && (!!x.bl || x.c.instrumento === 'parciales')
+
 export function buscaCol(t: TestLab | null, clave: string): { c: Columna; bl: Bloque | null } | null {
   const s = (t?.sueltos || []).find(c => c.clave === clave)
   if (s) return { c: s, bl: null }
@@ -1108,9 +1138,42 @@ export const cronosDe = (t: TestLab | null) =>
 export const cronosSueltosDe = (t: TestLab | null): Columna[] =>
   (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento.indexOf('crono') === 0)
 
-/** Los contadores de una casilla suelta: cada pulsación suma una. */
+/** Los pulsadores de una casilla suelta: cada pulsación suma una. */
 export const contadoresSueltosDe = (t: TestLab | null): Columna[] =>
   (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento === 'contador')
+
+/**
+ * Las casillas de PARCIALES: se marca sin parar el reloj.
+ *
+ * Guardan una LISTA y no un número, que es lo que las hace distintas de todo
+ * lo demás de una casilla suelta. No hay que decir antes cuántas van a ser
+ * —ese era el problema de hacerlo con un bloque de repeticiones, que obliga a
+ * declarar «6» de antemano cuando lo que quieres es marcar lo que pase—.
+ *
+ * LO QUE SE GUARDA ES EL PARCIAL, no el acumulado: el parcial es lo que se
+ * agrega (la media de los mil, el mejor mil), y el acumulado sale de sumar,
+ * así que no se pierde nada. Al revés sí se perdería: la media de unos
+ * acumulados no significa nada.
+ */
+export const parcialesDe = (t: TestLab | null): Columna[] =>
+  (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento === 'parciales')
+
+/** Los acumulados de una lista de parciales: 4:35, 9:12, 14:00… */
+export function acumuladosDe(parciales: unknown): number[] {
+  const out: number[] = []
+  let suma = 0
+  for (const p of Array.isArray(parciales) ? parciales : []) {
+    /* Lo vacío se salta ANTES de convertir: `Number('')` y `Number(null)` son
+       CERO y pasan por finitos, así que un hueco se colaba como una marca de
+       cero y repetía el acumulado anterior. */
+    if (p === '' || p == null) continue
+    const n = Number(p)
+    if (!Number.isFinite(n)) continue
+    suma += n
+    out.push(Math.round(suma * 10) / 10)
+  }
+  return out
+}
 
 /**
  * TODOS los bloques que llevan reloj, que son los que duran.
@@ -1171,7 +1234,8 @@ export function relojesDe(t: TestLab | null): string[] {
   }
   for (const x of cronosDe(t)) o.push('cronómetro en «' + (x.c.etiqueta || x.c.clave) + '»')
   for (const c of cronosSueltosDe(t)) o.push('cronómetro en «' + (c.etiqueta || c.clave) + '»')
-  for (const c of contadoresSueltosDe(t)) o.push('contador en «' + (c.etiqueta || c.clave) + '»')
+  for (const c of contadoresSueltosDe(t)) o.push('pulsador en «' + (c.etiqueta || c.clave) + '»')
+  for (const c of parcialesDe(t)) o.push('parciales en «' + (c.etiqueta || c.clave) + '»')
   return o
 }
 
@@ -1297,7 +1361,13 @@ export function protoVacio(t: TestLab): Datos {
 
 export function medVacia(t: TestLab): Datos {
   const d: Datos = {}
-  for (const c of t.sueltos || []) if (c.clase !== 'dada') d[c.clave] = c.valor || ''
+  /* Una casilla de parciales nace como LISTA: es lo único suelto que guarda
+     varias cosas, y arrancarla como texto haría que la primera marca tuviera
+     que adivinar en qué se está escribiendo. */
+  for (const c of t.sueltos || []) {
+    if (c.clase === 'dada') continue
+    d[c.clave] = c.instrumento === 'parciales' ? [] : (c.valor || '')
+  }
   for (const bl of t.bloques || []) for (const c of bl.columnas) {
     /* Las calculadas no se teclean, así que no llevan casilla: si la llevaran,
        el entrenador podría escribir encima de algo que se recalcula solo. */
@@ -1362,6 +1432,15 @@ export function pegasDe(t: TestLab): Pega[] {
       }
       const antes = bl.columnas.slice(0, ci).map(x => x.clave)
       const fuera = t.sueltos.map(x => x.clave)
+      /* Una casilla suelta vale dentro de una calculada porque es UN número
+         igual para todas las filas. Una de parciales no: es una lista, y
+         metida en la fórmula de una fila no significa nada. */
+      for (const d of camposDe(c.formula)) {
+        const sx = (t.sueltos || []).find(z => z.clave === d)
+        if (sx?.instrumento === 'parciales') {
+          p.push({ donde: 'columna', indice: i, texto: '«' + c.clave + '» usa «' + d + '», que es una lista de parciales: eso se agrega en un resultado, no dentro de una fila' })
+        }
+      }
       for (const d of camposDe(c.formula)) {
         if (fuera.includes(d) || antes.includes(d)) continue
         p.push({
@@ -1385,14 +1464,33 @@ export function pegasDe(t: TestLab): Pega[] {
         const clave = b.t === 'fn' ? b.de : b.v
         const x = buscaCol(t, clave)
         if (!x) { p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + clave + '», que no existe' }); continue }
-        if (b.t === 'var' && x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se repite: usa suma(' + clave + '), media(' + clave + ')…' })
-        if (b.t === 'fn' && !x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se mide una sola vez: quita el ' + b.v + '()' })
+        if (b.t === 'var' && esSerie(x)) {
+          p.push({
+            donde: 'resultado', indice: i,
+            texto: x.bl
+              ? '«' + clave + '» se repite: usa suma(' + clave + '), media(' + clave + ')…'
+              : '«' + clave + '» es una LISTA de parciales: usa media(' + clave + '), cuantas(' + clave + ')…',
+          })
+        }
+        if (b.t === 'fn' && !esSerie(x)) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se mide una sola vez: quita el ' + b.v + '()' })
       }
       if (b.t === 'fn2') {
         for (const clave of [b.x, b.y]) {
           const x = buscaCol(t, clave)
           if (!x) { p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + clave + '», que no existe' }); continue }
-          if (!x.bl) p.push({ donde: 'resultado', indice: i, texto: '«' + clave + '» se mide una sola vez: ' + b.v + '() necesita dos columnas que se repitan' })
+          if (!x.bl) {
+            p.push({
+              donde: 'resultado', indice: i,
+              /* Dos listas de parciales se podrían emparejar por posición, pero
+                 eso NO es una pareja: en un bloque las dos columnas son de la
+                 misma repetición, y dos pulsaciones sueltas no tienen por qué
+                 corresponderse. Cruzarlas daría una recta impecable entre dos
+                 cosas que no pasaron a la vez. */
+              texto: x.c.instrumento === 'parciales'
+                ? '«' + clave + '» es una lista de parciales: ' + b.v + '() necesita dos columnas de un BLOQUE, donde cada par es de la misma repetición'
+                : '«' + clave + '» se mide una sola vez: ' + b.v + '() necesita dos columnas que se repitan',
+            })
+          }
         }
         const bx = buscaCol(t, b.x)?.bl, by = buscaCol(t, b.y)?.bl
         if (bx && by && bx !== by) {

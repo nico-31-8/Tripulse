@@ -28,6 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
+  parcialesDe, acumuladosDe,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
@@ -737,8 +738,28 @@ export default function Laboratorio() {
               onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
               onReiniciaSuelto={c => {
                 setReloj(null)
-                for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = '' })
+                /* Una casilla de parciales se vacía como LISTA: dejarla en
+                   texto la rompería en la siguiente marca. */
+                const vacio = c.instrumento === 'parciales' ? [] : ''
+                for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = vacio })
               }}
+              /* EL PARCIAL ES LA RESTA con lo que ya lleva marcado ESA persona,
+                 no con la marca anterior del reloj: restar contra el reloj le
+                 daría a todos el trozo del más rápido. */
+              onParcial={(c, a) => {
+                if (!reloj?.corre || reloj.clave !== c.clave) return
+                const ms = ahora - reloj.desde + reloj.acu
+                const k = String(a.id)
+                const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
+                const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
+                const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
+                if (dur <= 0) return
+                ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
+              }}
+              onQuitaParcial={(c, a) => ponMed(String(a.id), d => {
+                const lista = (d[c.clave] as unknown[] | undefined) || []
+                d[c.clave] = lista.slice(0, -1)
+              })}
               /* Nunca por debajo de cero: un contador en negativo no es una
                  corrección, es un número que después entra en una fórmula. */
               onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
@@ -1097,7 +1118,12 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
             <label className={lab} htmlFor={id + '-i'}>Cómo se rellena</label>
             <select id={id + '-i'} className={campo} value={c.instrumento}
               onChange={e => onCambio('instrumento', e.target.value as Instrumento)}>
-              {(Object.keys(INSTRUMENTOS) as Instrumento[]).map(k => <option key={k} value={k}>{INSTRUMENTOS[k]}</option>)}
+              {/* «Parciales» solo en una casilla suelta: dentro de un bloque la
+                  lista ya la forman las repeticiones, y dos formas de hacer lo
+                  mismo es cómo se acaba con dos que no hacen lo mismo. */}
+              {(Object.keys(INSTRUMENTOS) as Instrumento[])
+                .filter(k => k !== 'parciales' || !bl)
+                .map(k => <option key={k} value={k}>{INSTRUMENTOS[k]}</option>)}
             </select>
           </div>
         )}
@@ -1196,7 +1222,12 @@ function pistaCol(c: Columna, bl: Bloque | null, proto: Datos): React.ReactNode 
   if (c.instrumento === 'mano') return bl
     ? <>Te salen <b className="text-white">{n} casillas</b> por persona para escribirlas cuando puedas.</>
     : <>Una casilla por persona y la escribes tú.</>
-  if (c.instrumento === 'contador') return <>Una pulsación por repetición. El número cae aquí.</>
+  if (c.instrumento === 'contador') return <>Un <b className="text-white">botón grande por persona</b>: el número es el botón y sube al pulsarlo. Si el test lleva cuenta atrás, se bloquea al acabar.</>
+  if (c.instrumento === 'parciales') return (
+    <>Un reloj que <b className="text-white">no se para</b> y un botón por persona: cada marca queda apuntada.
+      No hay que decir cuántas van a ser. Se guarda el parcial de cada trozo, y en la fórmula se le puede pedir
+      la media, el mejor o cuántos hubo.</>
+  )
   const u = c.instrumento === 'crono-min' ? 'minutos' : 'segundos'
   return bl
     ? <>Un botón por persona: cada pulsación cierra una repetición y la deja en su fila, en <b className="text-white">{u}</b>.</>
@@ -1854,7 +1885,14 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
           return (
             <div key={bl.clave} className="mb-3">
               <p className={grupo}>{bl.etiqueta || 'Repetición'} · {abierto ? 'hasta ' + bl.veces : bl.veces + ' fijas'}</p>
-              <div className="overflow-x-auto">
+              {/* UN BLOQUE PUEDE SER SOLO UN RELOJ. Desde que existe la cuenta
+                  atrás, un bloque sin columnas es legítimo —«el minuto» de unas
+                  flexiones— y pintarle una tabla con la cabecera vacía parecía
+                  que algo se había roto. */}
+              {!bl.columnas.length && (
+                <p className="text-gray-600 text-[12px] italic mb-0">Solo lleva reloj: aquí no se apunta nada.</p>
+              )}
+              <div className={bl.columnas.length ? 'overflow-x-auto' : 'hidden'}>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
@@ -1916,8 +1954,19 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
               {mios.map(c => (
                 <div key={c.clave}>
                   <label className={lab}>{c.etiqueta || c.clave}{c.unidad ? ' (' + c.unidad + ')' : ''}</label>
-                  <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono'} inputMode="decimal"
-                    value={String(med[c.clave] ?? '')} onChange={e => onMed(c.clave, e.target.value)} />
+                  {/* UNA LISTA NO SE TECLEA. Con un `input` salía «275,277,288»
+                      y al tocarlo se convertía en texto: la casilla se
+                      rellena marcando, y aquí se lee. */}
+                  {c.instrumento === 'parciales' ? (
+                    <p className="font-mono text-[12px] text-blue-300 mb-0 leading-snug">
+                      {((med[c.clave] as unknown[] | undefined) || []).length
+                        ? acumuladosDe(med[c.clave]).map(t => mmss(t)).join(' · ')
+                        : <span className="text-gray-600 italic">sin marcar</span>}
+                    </p>
+                  ) : (
+                    <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono'} inputMode="decimal"
+                      value={String(med[c.clave] ?? '')} onChange={e => onMed(c.clave, e.target.value)} />
+                  )}
                 </div>
               ))}
             </div>
@@ -1956,7 +2005,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
-  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta,
+  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial,
 }: {
   test: TestLab
   atletas: Atleta[]
@@ -1985,6 +2034,8 @@ function Pasar({
   onBorraSuelto: (c: Columna, a: Atleta) => void
   onReiniciaSuelto: (c: Columna) => void
   onCuenta: (c: Columna, a: Atleta, suma: number) => void
+  onParcial: (c: Columna, a: Atleta) => void
+  onQuitaParcial: (c: Columna, a: Atleta) => void
 }) {
   const cronos = cronosDe(test)
   const escalonados = escalonadosDe(test)
@@ -1994,7 +2045,13 @@ function Pasar({
   const cronometrados = cronometradosDe(test)
   const sueltosCrono = cronosSueltosDe(test)
   const sueltosCont = contadoresSueltosDe(test)
-  const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0 || sueltosCrono.length > 0
+  const parciales = parcialesDe(test)
+  const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
+    || sueltosCrono.length > 0 || parciales.length > 0
+  /* Si una cuenta atrás ya ha terminado, los pulsadores se bloquean: dos
+     pulsaciones de más después de la campana entran como repeticiones que no
+     ocurrieron, y eso no se distingue luego de las de verdad. */
+  const seAcaboElTiempo = cronometrados.some(bl => cuentaAtras(bl, msDe('@' + bl.clave)).fin)
   const msDe = (clave: string) => reloj && reloj.clave === clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
   const gordo = 'font-mono tabular-nums text-[38px] leading-none text-orange-400 font-medium'
@@ -2255,28 +2312,102 @@ function Pasar({
         )
       })}
 
-      {/* EL CONTADOR, que tampoco se pintaba. Las vueltas de un Cooper se
-          cuentan pulsando, no recordando. */}
+      {/* LOS PARCIALES: se marca y el reloj SIGUE. Un bloque de repeticiones
+          ya hacía esto, pero obligaba a decir antes cuántos iban a ser, y lo
+          que se quiere es marcar lo que va pasando. */}
+      {parciales.map(c => {
+        const ms = msDe(c.clave)
+        const corre = reloj?.clave === c.clave && reloj.corre
+        return (
+          <div key={c.clave}>
+            <div className={relojCaja}>
+              <div>
+                <div className={gordo}>{crono(ms)}</div>
+                <div className={pie}>{c.etiqueta || c.clave}</div>
+              </div>
+              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
+                <button onClick={() => onArranca(c.clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
+                  {corre ? 'Pausar' : reloj?.clave === c.clave && reloj.acu ? 'Seguir' : 'Empezar'}
+                </button>
+                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+              </div>
+            </div>
+            <div className="mt-3">
+              {atletas.map(a => {
+                const lista = (datosDe(String(a.id))[c.clave] as unknown[] | undefined) || []
+                const acum = acumuladosDe(lista)
+                return (
+                  <div key={a.id} className={filaAt}>
+                    <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
+                    <span className="font-mono text-[12px] text-blue-300">
+                      {lista.length ? lista.length + (lista.length === 1 ? ' parcial' : ' parciales') : 'sin marcar'}
+                    </span>
+                    <button onClick={() => onQuitaParcial(c, a)} disabled={!lista.length}
+                      className={btnSec + ' ' + btnMini + ' ml-auto'}>Deshacer</button>
+                    <button onClick={() => onParcial(c, a)} disabled={!corre} className={btn + ' ' + btnMini}>Marcar</button>
+                    {/* SE VE DÓNDE MARCASTE. Los tiempos de un bloque se van a
+                        la tabla; aquí se quedan a la vista, que es la mitad de
+                        para qué sirve marcar parciales. */}
+                    {lista.length > 0 && (
+                      <span className="basis-full flex gap-1.5 flex-wrap mt-1.5">
+                        {acum.map((t, i) => (
+                          <span key={i} className="font-mono text-[11.5px] rounded-md px-1.5 py-1 border border-blue-400/30 bg-blue-500/[0.12] text-blue-100">
+                            {i + 1} · {mmss(t)}
+                            <span className="text-gray-500"> (+{mmss(Number(lista[i]) || 0)})</span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+              Un reloj para todos y un botón por persona: el reloj <b className="text-white">no se para</b>.
+              Se guarda el parcial de cada trozo, y el acumulado sale de sumarlos — así la fórmula puede pedir
+              la media, el mejor o cuántos hubo.
+            </p>
+          </div>
+        )
+      })}
+
+      {/* EL PULSADOR. El número ES el botón: a pie de pista se pulsa mirando
+          al atleta, no a la pantalla. */}
       {sueltosCont.map(c => (
         <div key={c.clave} className="mt-3 border border-gray-800 rounded-xl p-3.5 bg-[#0d1420]">
           <p className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
             {c.etiqueta || c.clave}{c.unidad ? ' · ' + c.unidad : ''}
+            {seAcaboElTiempo && <span className="text-amber-300 normal-case tracking-normal font-semibold"> · se acabó el tiempo</span>}
           </p>
-          <div className="mt-2">
+          <div className="mt-2.5 flex gap-2.5 flex-wrap">
             {atletas.map(a => {
               const v = Number(datosDe(String(a.id))[c.clave] || 0)
               return (
-                <div key={a.id} className={filaAt}>
-                  <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
-                  <span className="font-mono tabular-nums text-[22px] leading-none text-orange-400">{v}</span>
-                  <button onClick={() => onCuenta(c, a, -1)} disabled={v <= 0} className={btnSec + ' ' + btnMini + ' ml-auto'}>−1</button>
-                  <button onClick={() => onCuenta(c, a, 1)} className={btn + ' ' + btnMini}>+1</button>
+                <div key={a.id} className="flex flex-col items-center gap-1.5">
+                  <button onClick={() => onCuenta(c, a, 1)} disabled={seAcaboElTiempo}
+                    className={'rounded-2xl px-6 py-3.5 border transition min-w-[124px] ' + (seAcaboElTiempo
+                      ? 'border-gray-700 bg-gray-800 text-gray-500'
+                      : 'border-orange-500/45 bg-orange-500/[0.14] hover:bg-orange-500/25 active:bg-orange-500/40')}>
+                    <span className="block font-mono tabular-nums text-[34px] leading-none text-orange-300">{v}</span>
+                    <span className="block text-[10.5px] uppercase tracking-widest text-gray-400 mt-1.5">{a.nombre}</span>
+                  </button>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => onCuenta(c, a, -1)} disabled={v <= 0} className={btnSec + ' ' + btnMini}>−1</button>
+                    {/* EL «+1» DE RESERVA: al acabar el tiempo el botón grande se
+                        bloquea para que dos pulsaciones de más no entren como
+                        repeticiones que no ocurrieron, pero la que cae justo en
+                        la campana tiene que poder apuntarse. */}
+                    {seAcaboElTiempo && (
+                      <button onClick={() => onCuenta(c, a, 1)} className={btnSec + ' ' + btnMini}>+1</button>
+                    )}
+                  </div>
                 </div>
               )
             })}
           </div>
           <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
-            Una pulsación por vuelta. Si te pasas, el −1 lo deshace, y el número se puede corregir a mano en la tabla.
+            Pulsa el número. El <b className="text-white">−1</b> va aparte y pequeño a propósito: corregir no puede ser
+            tan fácil como contar.{seAcaboElTiempo ? ' Se acabó el tiempo: queda el «+1» para la última.' : ''}
           </p>
         </div>
       ))}

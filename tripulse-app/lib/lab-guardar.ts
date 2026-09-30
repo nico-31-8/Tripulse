@@ -29,7 +29,7 @@ const num = (v: unknown): number | undefined => {
 }
 
 const CLASES: Clase[] = ['dada', 'medida', 'calculada']
-const INSTRUMENTOS: Instrumento[] = ['mano', 'crono-seg', 'crono-min', 'contador']
+const INSTRUMENTOS: Instrumento[] = ['mano', 'crono-seg', 'crono-min', 'contador', 'parciales']
 
 // ------------------------------------------------------------
 // Leer

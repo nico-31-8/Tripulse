@@ -309,6 +309,47 @@ export const PLANTILLAS: Plantilla[] = [
     },
   },
   {
+    id: 'pulsador',
+    nombre: 'Cuántas en un tiempo',
+    descripcion: 'Flexiones en un minuto: la cuenta atrás corre y tú vas pulsando. Vale para dominadas, burpees o saltos.',
+    distintivo: 'pulsador',
+    test: {
+      nombre: 'Flexiones en 1 min', deporte: 'Fuerza',
+      /* El pulsador va SUELTO y el reloj en un bloque: son dos cosas: cuánto
+         dura la prueba y qué se cuenta mientras. */
+      sueltos: [col({ clave: 'flexiones', etiqueta: 'Flexiones', unidad: 'ud', instrumento: 'contador' })],
+      bloques: [{
+        clave: 'min', etiqueta: 'El minuto', modo: 'cerrado', veces: 1,
+        duracion: 60, duracionUd: 's',
+        pitaCambio: true, avisoAntes: 10, ritmo: 'no', ritmoCada: 0,
+        columnas: [],
+      }],
+      resultados: [
+        { nombre: 'flexiones', unidad: 'ud', ancla: 'especifica', formula: [{ t: 'var', v: 'flexiones' }] },
+      ],
+    },
+  },
+  {
+    id: 'parciales',
+    nombre: 'Marcar parciales',
+    descripcion: 'El reloj no se para: marcas cada mil, cada vuelta o cada paso, y sale la media y el mejor.',
+    distintivo: 'sin decir cuántos',
+    test: {
+      nombre: 'Series con parciales', deporte: 'Carrera',
+      sueltos: [col({ clave: 'parcial', etiqueta: 'Cada mil', unidad: 's', instrumento: 'parciales' })],
+      bloques: [],
+      resultados: [
+        { nombre: 'cuantos', unidad: 'ud', formula: [fnB('cuantas', 'parcial')] },
+        { nombre: 'media', unidad: 's', inverso: true, formula: [fnB('media', 'parcial')] },
+        { nombre: 'mejor', unidad: 's', inverso: true, formula: [fnB('minimo', 'parcial')] },
+        { nombre: 'total', unidad: 's', formula: [fnB('suma', 'parcial')] },
+        /* Cuánto se cayó del primero al último: en un test de parciales es el
+           dato, más que la media. */
+        { nombre: 'caida', unidad: 's', formula: [fnB('ultima', 'parcial'), { t: 'op', v: '-' }, fnB('primera', 'parcial')] },
+      ],
+    },
+  },
+  {
     id: 'fijo',
     nombre: 'Test de tiempo fijo',
     descripcion: 'Doce minutos corriendo y los metros al final. La misma forma sirve para un FTP de 20 o una plancha.',
