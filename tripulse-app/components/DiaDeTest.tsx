@@ -50,9 +50,11 @@ export default function DiaDeTest({ sesion, idDeportista, editable, onCambio }: 
   const [elegido, setElegido] = useState('')
 
   /* Los tuyos se piden siempre, también para el deportista: es de donde sale el
-     nombre. Él solo puede leer los tests que ya ha hecho —lo dice la política
-     de la base—, así que de uno planificado y nunca hecho verá que hay test
-     pero no cuál. Los de la batería no consultan nada: están en el código. */
+     nombre. La base le deja leer los que ya ha hecho y, desde el 2026-09-30,
+     también los que tiene PLANIFICADOS —política `test_definicion_dep_planificado`,
+     en supabase/deportista-ve-test-planificado.sql—. Si aun así no llega
+     ninguno, verá que hay test pero no cuál, y eso también está contemplado.
+     Los de la batería no consultan nada: están en el código. */
   const cargar = useCallback(async () => {
     const { data } = await supabase.from('test_definicion')
       .select('id, nombre, deporte').eq('archivado', false).order('nombre')
