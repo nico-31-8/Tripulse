@@ -296,6 +296,41 @@ export default function Laboratorio() {
     setPaso(conPaso); setVista('editor')
   }
 
+  /* ---------- VENIR DESDE UNA SESIÓN ----------
+     El día de test de una sesión trae aquí su test, su gente y su fecha en la
+     dirección: `/laboratorio?test=12&dep=35,36&fecha=2026-10-08`. Sin esto
+     había que buscarlo en la lista, añadir a cada uno y corregir la fecha, a
+     pie de pista y con gente esperando — que es justo cuando se apunta un test
+     con la fecha de hoy en vez de la del día.
+
+     MANDA LA DIRECCIÓN, no el borrador guardado en este navegador: si has
+     pulsado «pasar el test» desde una sesión, lo que quieres es ese test.
+     Se lee del navegador y no con `useSearchParams` para no envolver la página
+     entera en un Suspense solo por esto, como en el resto de la aplicación. */
+  const pedido = useRef(false)
+  /* La regla del compilador avisa de poner estado desde un efecto, y aquí es
+     justo lo que toca: la dirección solo se puede leer ya montados, y esto pasa
+     UNA vez —lo sujeta la bandera— en cuanto la lista de tests ha llegado. */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (pedido.current || !guardados.length) return
+    pedido.current = true
+    const p = new URLSearchParams(window.location.search)
+    const id = Number(p.get('test'))
+    if (!id) return
+    const g = guardados.find(x => x.id === id)
+    if (!g) { decir('mal', 'Ese test ya no está en tu lista.'); return }
+
+    empezarCon(clon(g.def), 4, g.id)
+    setVista('pasar')
+    const f = p.get('fecha')
+    if (f) setFecha(f)
+    const quienes = (p.get('dep') || '').split(',').map(Number).filter(n => n > 0)
+    const elegidos = deportistas.filter(d => quienes.includes(d.id))
+    if (elegidos.length) { setAtletas(elegidos); setMed(cajasVacias(g.def, elegidos)) }
+  }, [guardados, deportistas])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const vaciarDatos = () => {
     if (!test) return
     setProto(protoVacio(test))

@@ -36,7 +36,7 @@ export interface ResultadoVolcado {
   error?: string
 }
 
-const SIN_COPIAR = new Set([
+export const SIN_COPIAR = new Set([
   'id', 'created_at', 'id_deportista', 'id_sesion', 'id_tarea', 'id_microciclo',
   'id_emision', 'estado', 'rpe_reportado', 'duracion_real', 'eliminada',
   'sensacion_tecnica', 'sensacion_general', 'notas_post', 'ritmo_objetivo',

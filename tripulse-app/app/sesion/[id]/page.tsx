@@ -19,6 +19,7 @@ import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
+import DiaDeTest from '@/components/DiaDeTest'
 
 // Iniciales para el avatar. Sin nombre cargado, un guion antes que una letra falsa.
 function iniciales(nombre: string | null | undefined): string {
@@ -855,6 +856,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             )}
           </div>
         </div>
+
+        {/* ESTE DÍA ES UN TEST. Va pegado a la cabecera y antes que nada: es lo
+            que cambia qué se hace ese día, y el botón de pasarlo tiene que
+            estar donde se abre la sesión, no al final del todo. */}
+        <DiaDeTest sesion={sesion} idDeportista={deportistaId} editable onCambio={cargarDatos} />
 
         {/* Por qué no hay estimación. Sin esto, un «—» parece un fallo de la app. */}
         {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (

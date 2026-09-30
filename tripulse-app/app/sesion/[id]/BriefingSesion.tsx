@@ -19,6 +19,7 @@ import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 
 import { cargaDeTarea, objetivoDeCopia, cuelgaDeTestPropio, leerCopia, leerIdPropia } from '@/lib/prescripcion-zona'
 import { testDeFila, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
+import DiaDeTest from '@/components/DiaDeTest'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
@@ -240,6 +241,11 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
             </span>
           )}
         </div>
+
+        {/* HOY HAY TEST, y solo eso: sin sermones. Se decidió así — saber que
+            toca test ya le cambia cómo llega; decirle además cómo tiene que
+            venir es escribirle un discurso que él no ha pedido. */}
+        <DiaDeTest sesion={sesion} idDeportista={sesion.id_deportista ?? null} editable={false} />
 
         {/* Lo que dice el entrenador: arriba y con peso. Es lo único de la pantalla
             donde una persona le está hablando. */}

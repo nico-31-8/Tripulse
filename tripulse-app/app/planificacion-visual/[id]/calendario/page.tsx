@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useEsMovil } from '@/lib/es-movil'
 import { hoyISO, lunesDe, aISO } from '@/lib/fechas'
 import { cargarReferencias } from '@/lib/referencia-zona'
+import { leerTestDeSesion, nombreDelTest } from '@/lib/sesion-test'
 import { conVolumen } from '@/lib/sesion-volumen'
 import { SELECT_EJERCICIOS_CONTEO } from '@/lib/cardio-fuerza'
 import { vivas } from '@/lib/papelera'
@@ -99,6 +100,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [mesos, setMesos] = useState<any[]>([])
   const [micros, setMicros] = useState<any[]>([])
   const [sesiones, setSesiones] = useState<any[]>([])
+  /* Los tests del entrenador, solo id y nombre: para poder decir CUÁL test
+     lleva un día de test sin abrir la sesión. */
+  const [testsPropios, setTestsPropios] = useState<{ id: number; nombre: string }[]>([])
   const [competiciones, setCompeticiones] = useState<any[]>([])
   const [semanasBloqueadas, setSemanasBloqueadas] = useState<any[]>([])
   const [tests, setTests] = useState<TestsDeportista>({})
@@ -217,7 +221,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const depId = Number(id)
 
     // ---- Ronda 1: todo lo que solo depende del deportista ----
-    const [dep, refs, mac, comps, bloqs, me, mi, ses] = await Promise.all([
+    const [dep, refs, mac, comps, bloqs, me, mi, ses, defs] = await Promise.all([
       supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
       // VAM/CSS/FTP para estimar los ritmos por zona, de la misma función que
       // usan la ficha de sesión y el panel de la semana.
@@ -228,6 +232,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       supabase.from('mesociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
       supabase.from('microciclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
       vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)).order('fecha_sesion'),
+      /* Solo el nombre, y solo para poder escribir CUÁL test lleva un día:
+         la marca del calendario sin el nombre obliga a abrir la sesión. Los de
+         la batería no consultan nada, están en el código. */
+      supabase.from('test_definicion').select('id, nombre'),
     ])
 
     setDeportista(dep.data)
@@ -239,6 +247,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setSemanasBloqueadas(bloqs.data || [])
     setMesos(me.data || [])
     setMicros(mi.data || [])
+    setTestsPropios((defs.data || []) as { id: number; nombre: string }[])
 
     const sesiones = (ses.data || []) as any[]
     if (!sesiones.length) { setSesiones([]); return }
@@ -1386,10 +1395,17 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     </span>
                   )}
                           {ses.length > 0 && !comp && !bloqueo && (
-                            <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center">
+                            <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center items-center">
                               {ses.slice(0,3).map((s, i) => (
                                 <div key={i} className={'w-1.5 h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
                               ))}
+                              {/* EL DÍA DE TEST SE VE SIN ABRIR NADA: un test cada seis
+                                  semanas solo se sostiene si se ve el hueco entre uno y
+                                  otro. La casilla es un cuadradito con puntos, así que
+                                  aquí cabe la marca y el nombre va en la lista del día. */}
+                              {ses.some(s => leerTestDeSesion(s.test)) && (
+                                <span className="text-[9px] leading-none" title="Día de test">🧪</span>
+                              )}
                             </div>
                           )}
                         </button>
@@ -1534,6 +1550,13 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                       <span className="block text-sm font-semibold truncate">
                         {s.disciplina || 'Sesión'}
                         {s.zonas?.length > 0 && <span className="text-orange-400 font-normal"> · {s.zonas.join(' · ')}</span>}
+                        {/* Aquí sí cabe decir CUÁL: en la casilla del mes solo cabía
+                            la marca, y «hay test» sin saber cuál obliga a abrirla. */}
+                        {leerTestDeSesion(s.test) && (
+                          <span className="text-violet-300 font-normal">
+                            {' · 🧪 '}{nombreDelTest(leerTestDeSesion(s.test), testsPropios) || 'Test'}
+                          </span>
+                        )}
                       </span>
                       <span className="block text-[11.5px] text-gray-500 truncate">
                         {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}

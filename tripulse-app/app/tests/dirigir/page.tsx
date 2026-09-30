@@ -162,6 +162,30 @@ export default function DirigirTests() {
     setGruposEntreno(gs)
   }
 
+  /* ---------- VENIR DESDE UNA SESIÓN ----------
+     Un día de test trae aquí su test, su gente y su fecha en la dirección:
+     `/tests/dirigir?test=navette&dep=35,36&fecha=2026-10-08`. Sin esto había
+     que elegirlo todo otra vez a pie de pista, que es cuando se acaba apuntando
+     el test con la fecha de hoy en vez de la del día de la sesión.
+
+     Se lee del navegador y no con `useSearchParams` para no envolver la página
+     en un Suspense solo por esto, como en el resto de la aplicación. Y se hace
+     DESPUÉS de tener la lista de deportistas: marcar a alguien que todavía no
+     ha llegado no marca a nadie. */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!deportistas) return
+    const p = new URLSearchParams(window.location.search)
+    const pedido = p.get('test')
+    const t = pedido ? testPorClave(pedido) : null
+    if (t) { setClave(t.clave); setDisciplina(t.disciplina) }
+    const f = p.get('fecha')
+    if (f) setFecha(f)
+    const quienes = (p.get('dep') || '').split(',').map(Number).filter(n => n > 0)
+    if (quienes.length) setElegidos(deportistas.filter(d => quienes.includes(d.id)).map(d => d.id))
+  }, [deportistas])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const ponProtocolo = (k: string, v: string) => setProtocolo(p => ({ ...p, [k]: v }))
   const ponPersona = (id: number, k: string, v: string) =>
     setPorPersona(p => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }))
