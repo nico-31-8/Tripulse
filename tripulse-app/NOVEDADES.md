@@ -14,6 +14,58 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 30 de septiembre de 2026 · Un día de test, desde el calendario
+
+Hasta ahora, planificar un test era una sesión normal con una nota escrita a
+mano. El día del test había que ir a Tests o al Laboratorio, buscarlo en la
+lista, elegir al deportista y corregir la fecha: cuatro pasos a pie de pista,
+con gente esperando. Ahora **la sesión sabe que es un test**.
+
+### Cómo se pone
+
+En la sesión, junto a la cabecera, hay un botón nuevo: **🧪 Este día es un
+test**. Eliges de dónde —**de la batería** (los de campo) o **de los tuyos**
+(Laboratorio y Tests propios)— y cuál. En el segundo desplegable salen primero
+los del deporte de esa sesión.
+
+La sesión **sigue pudiendo llevar sus tareas**: el calentamiento no se va a
+ninguna parte.
+
+### El día del test
+
+La sesión enseña una banda con el test, **cuándo fue la última vez** que esa
+persona lo hizo, y un botón: **Pasar el test →**. Ese botón lo abre **montado**:
+con esa gente ya dentro y con la fecha de la sesión puesta, que es justo lo que
+se olvida cuando lo abres a mano y acabas apuntando el test con la fecha de hoy.
+
+Cuando ya está pasado, la banda se pone verde ella sola. No hay que marcar nada:
+lo sabe porque hay una medición de ese día.
+
+### A un grupo entero
+
+Un día de test en el calendario del grupo **llega a todos al volcar**. Y si
+abres esa sesión del grupo, el botón abre el test **con todos sus miembros
+dentro** de una vez.
+
+### En el calendario, y para el deportista
+
+En la casilla del día sale una marca 🧪, y al abrir el día se lee **qué test
+es**. Un test cada seis semanas solo se sostiene si se ve el hueco entre uno y
+otro sin abrir nada.
+
+El deportista ve que ese día tiene test. Nada más: ni consejos ni avisos.
+
+### Dos cosas dichas como son
+
+- De los tests **de la batería no se puede saber si están hechos**: sus tablas
+  no dejan escrito cuál de los diecisiete fue. Así que ahí no verás el ✅ verde.
+  Es a propósito: un test dado por hecho no se repite.
+- El deportista ve el **nombre** del test si es de la batería. Si es uno de los
+  tuyos, solo verá que hay test: la base solo le deja leer los tests que ya ha
+  hecho, y uno planificado todavía no lo es.
+
+---
+
 ## 30 de septiembre de 2026 · Con un número del laboratorio ya se puede prescribir
 
 Hasta hoy, un test del laboratorio podía hacer **una sola cosa** con su número:
