@@ -29,6 +29,8 @@
 // 'entrenador'`), o sea que marcarlas haría desaparecer la corrección la
 // próxima vez que dirija esa sesión.
 
+import { mmss, mmssASegundos } from './medicion'
+
 /** Lo que se puede tocar de la sesión. */
 export interface CamposSesion {
   duracion_real: string
@@ -51,6 +53,25 @@ export interface CamposSerie {
   repeticiones_reales: string
   tiempo_real: string
   control_real: string
+}
+
+/**
+ * Lo que se puede tocar de un bloque de RESISTENCIA.
+ *
+ * Es otra cosa que la fuerza y vive en otras tablas: los metros en
+ * `p_distancia.metros_reales`, el tiempo en `p_duracion.tiempo_real` (en
+ * SEGUNDOS, aunque se escriba mm:ss) y el detalle de las series en un resumen
+ * de TEXTO dentro de `tarea.sensacion_general`.
+ *
+ * EL DETALLE SE PUEDE TOCAR, y no es un capricho: si corriges los metros de 8
+ * a 8000 y el resumen se queda diciendo «8m», la pantalla enseña dos números
+ * distintos de lo mismo y ninguno de los dos se puede creer.
+ */
+export interface CamposResistencia {
+  metros_reales: string
+  /** Se escribe mm:ss porque es como se lee un tiempo; se guarda en segundos. */
+  tiempo_real: string
+  detalle: string
 }
 
 export interface Pega { donde: string; texto: string }
@@ -88,6 +109,7 @@ const TOPES: Record<string, { min: number; max: number; que: string }> = {
   fc_media: { min: 30, max: 240, que: 'La frecuencia cardiaca media va en pulsaciones por minuto' },
   sensacion_tecnica: { min: 1, max: 5, que: 'La sensación técnica va de 1 a 5' },
   dolor_muscular: { min: 1, max: 5, que: 'El dolor muscular va de 1 a 5' },
+  metros_reales: { min: 0, max: 500000, que: 'La distancia va en metros' },
   peso_real: { min: 0, max: 1000, que: 'El peso va en kilos' },
   repeticiones_reales: { min: 0, max: 999, que: 'Las repeticiones son un número entero' },
   tiempo_real: { min: 0, max: 86400, que: 'El tiempo va en segundos' },
@@ -193,6 +215,100 @@ export function parcheDeSerie(c: CamposSerie): Record<string, unknown> {
     tiempo_real: tiempo,
     control_real: control,
     completada: peso != null || reps != null || tiempo != null || control != null,
+  }
+}
+
+/**
+ * Segundos escritos como mm:ss, o como un número suelto de segundos.
+ *
+ * Se acepta «4:35» y «275», porque los dos significan lo mismo y obligar a una
+ * forma concreta con el dato ya delante es pedirle al entrenador que traduzca.
+ */
+export function segundosDeTexto(txt: unknown): number | null {
+  const s = String(txt ?? '').trim()
+  if (!s) return null
+  /* AQUÍ SOLO SE VALIDA. La cuenta la hace `mmssASegundos`, que es la única
+     que sabe pasar de texto a segundos en toda la aplicación; lo que se añade
+     es la pregunta que ella no contesta —«¿esto es una hora que existe?»—,
+     porque ella es indulgente a propósito y «4:75» le sale 315. */
+  if (s.indexOf(':') >= 0) {
+    const [m, sg] = s.split(':')
+    if (!/^\d+$/.test(m.trim())) return null
+    if (!/^\d{1,2}$/.test(sg.trim()) || Number(sg) > 59) return null
+  } else if (!/^\d+$/.test(s)) {
+    return null
+  }
+  return mmssASegundos(s)
+}
+
+/**
+ * Segundos → «4:35», para poder escribirlos encima.
+ *
+ * Vacío cuando no hay nada: un «0:00» en la casilla se lee como un dato, y al
+ * guardar volvería como cero lo que era «no lo sé».
+ */
+export const textoDeSegundos = (seg: number | null | undefined): string => {
+  const n = Number(seg)
+  return Number.isFinite(n) && n > 0 ? mmss(n) : ''
+}
+
+/**
+ * Lo que está mal en un bloque de resistencia.
+ *
+ * El tiempo se mira aparte de los números normales porque un «4:75» no es un
+ * número fuera de rango: es un tiempo que no existe.
+ */
+export function pegasDeResistencia(porTarea: Record<string | number, CamposResistencia>): Pega[] {
+  const out: Pega[] = []
+  for (const [id, c] of Object.entries(porTarea || {})) {
+    const p = fuera('metros_reales', c?.metros_reales, 'tarea:' + id)
+    if (p) out.push(p)
+    const t = String(c?.tiempo_real ?? '').trim()
+    if (t && segundosDeTexto(t) == null) {
+      out.push({ donde: 'tarea:' + id, texto: 'El tiempo se escribe mm:ss («4:35») o en segundos, y «' + t + '» no lo es.' })
+    }
+  }
+  return out
+}
+
+/** Lo que se le escribe a `p_distancia`. */
+export const parcheDistancia = (c: CamposResistencia): Record<string, unknown> =>
+  ({ metros_reales: entero(c?.metros_reales) })
+
+/** Lo que se le escribe a `p_duracion`. */
+export const parcheDuracion = (c: CamposResistencia): Record<string, unknown> =>
+  ({ tiempo_real: segundosDeTexto(c?.tiempo_real) })
+
+/** El resumen de series, que vive en la tarea y es texto. */
+export const parcheDetalle = (c: CamposResistencia): Record<string, unknown> =>
+  ({ sensacion_general: textoONada(c?.detalle) })
+
+/**
+ * Una serie de fuerza que TODAVÍA NO EXISTE en la base.
+ *
+ * Hace falta porque las filas se crean solo cuando el atleta escribe algo: una
+ * sesión de fuerza que cerró sin apuntar nada no tiene ni una, y entonces no
+ * había nada que corregir —que es justo lo que se encontró el entrenador—. Las
+ * que sigan vacías no se crean: una fila de nulos no es un dato, es ruido que
+ * luego hay que distinguir de lo que sí se hizo.
+ *
+ * `id_deportista` no se pone: lo rellena un disparador de la base. Y
+ * `anotado_por` tampoco, por lo de arriba.
+ */
+export function filaNuevaDeSerie(
+  idEjercicio: number,
+  numeroSerie: number,
+  controlTipo: string | null | undefined,
+  c: CamposSerie,
+): Record<string, unknown> | null {
+  const p = parcheDeSerie(c)
+  if (!p.completada) return null
+  return {
+    ...p,
+    id_ejercicio: idEjercicio,
+    numero_serie: numeroSerie,
+    ejercicio_numero: 1,
+    control_tipo: p.control_real != null ? (controlTipo || 'rir') : null,
   }
 }
 

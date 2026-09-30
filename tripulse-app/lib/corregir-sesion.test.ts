@@ -12,7 +12,9 @@ import path from 'node:path'
 import {
   comoDarlaPorHecha, numeroONada, parcheDeSerie, parcheDeSesion, parcheDeTarea,
   pegasDeCorreccion, sePuedeDarPorHecha,
-  type CamposSesion,
+  filaNuevaDeSerie, parcheDetalle, parcheDistancia, parcheDuracion, pegasDeResistencia,
+  segundosDeTexto, textoDeSegundos,
+  type CamposResistencia, type CamposSerie, type CamposSesion,
 } from './corregir-sesion'
 
 const ses = (x: Partial<CamposSesion> = {}): CamposSesion =>
@@ -158,6 +160,77 @@ describe('darla por hecha', () => {
   })
 })
 
+describe('los bloques de resistencia también se corrigen', () => {
+  /* El caso que lo destapó: una tarea con «Distancia real 8 m» —el atleta
+     escribió 8 queriendo decir otra cosa— y no había forma de arreglarlo. */
+  const c = (x: Partial<CamposResistencia> = {}): CamposResistencia =>
+    ({ metros_reales: '', tiempo_real: '', detalle: '', ...x })
+
+  it('los metros van a su tabla', () => {
+    expect(parcheDistancia(c({ metros_reales: '8000' }))).toEqual({ metros_reales: 8000 })
+  })
+
+  it('el tiempo se escribe mm:ss y se guarda en segundos', () => {
+    expect(parcheDuracion(c({ tiempo_real: '4:35' }))).toEqual({ tiempo_real: 275 })
+  })
+
+  it('y también vale escribirlo en segundos a secas', () => {
+    expect(segundosDeTexto('275')).toBe(275)
+    expect(textoDeSegundos(275)).toBe('4:35')
+    expect(textoDeSegundos(null)).toBe('')
+  })
+
+  it('un tiempo que no existe se rechaza, no se redondea', () => {
+    /* «4:75» no es un número fuera de rango: es un tiempo que no existe. */
+    expect(segundosDeTexto('4:75')).toBeNull()
+    expect(pegasDeResistencia({ 4: c({ tiempo_real: '4:75' }) })).toHaveLength(1)
+    expect(pegasDeResistencia({ 4: c({ tiempo_real: '4:35' }) })).toEqual([])
+  })
+
+  it('EL DETALLE SE PUEDE ARREGLAR, porque si no la pantalla se contradice', () => {
+    /* Corriges los metros de 8 a 8000 y el resumen sigue diciendo «8m»: dos
+       números distintos de lo mismo y ninguno creíble. */
+    expect(parcheDetalle(c({ detalle: 'S1[8000m 4:35 S:2/5]' })))
+      .toEqual({ sensacion_general: 'S1[8000m 4:35 S:2/5]' })
+    expect(parcheDetalle(c({ detalle: '   ' }))).toEqual({ sensacion_general: null })
+  })
+})
+
+describe('una sesión de fuerza sin series apuntadas', () => {
+  const s = (x: Partial<CamposSerie> = {}): CamposSerie =>
+    ({ peso_real: '', repeticiones_reales: '', tiempo_real: '', control_real: '', ...x })
+
+  it('se puede escribir la serie que no existía', () => {
+    /* Las filas se crean solo cuando el atleta escribe algo, así que una
+       sesión de fuerza cerrada sin apuntar nada no tenía NADA que corregir. */
+    expect(filaNuevaDeSerie(12, 2, 'rir', s({ peso_real: '70', repeticiones_reales: '8', control_real: '2' })))
+      .toEqual({
+        id_ejercicio: 12, numero_serie: 2, ejercicio_numero: 1,
+        peso_real: 70, repeticiones_reales: 8, tiempo_real: null, control_real: 2,
+        completada: true, control_tipo: 'rir',
+      })
+  })
+
+  it('una serie vacía NO se crea', () => {
+    /* Una fila de nulos no es un dato: es ruido que luego hay que distinguir
+       de lo que sí se hizo. */
+    expect(filaNuevaDeSerie(12, 3, 'rir', s())).toBeNull()
+  })
+
+  it('sin control anotado no se inventa la escala', () => {
+    const f = filaNuevaDeSerie(12, 1, 'rpe', s({ peso_real: '60' }))
+    expect(f!.control_tipo).toBeNull()
+  })
+
+  it('y el id_deportista NO se pone a mano: lo rellena la base', () => {
+    /* Hay un disparador que lo sella. Ponerlo aquí sería un segundo sitio
+       decidiendo de quién es una serie. */
+    const f = filaNuevaDeSerie(12, 1, 'rir', s({ peso_real: '60' }))!
+    expect('id_deportista' in f).toBe(false)
+    expect('anotado_por' in f).toBe(false)
+  })
+})
+
 // ------------------------------------------------------------
 // EL ALAMBRE
 // ------------------------------------------------------------
@@ -172,7 +245,12 @@ describe('un solo sitio decide qué se guarda al corregir', () => {
     const f = path.join(RAIZ, 'components', 'CorregirSesion.tsx')
     expect(fs.existsSync(f), 'falta components/CorregirSesion.tsx').toBe(true)
     const src = fs.readFileSync(f, 'utf8')
-    for (const n of ['parcheDeSesion', 'parcheDeTarea', 'parcheDeSerie', 'pegasDeCorreccion']) {
+    for (const n of [
+      'parcheDeSesion', 'parcheDeTarea', 'parcheDeSerie', 'pegasDeCorreccion',
+      /* Y las tres capas que se escaparon a la primera: la resistencia y las
+         series que todavía no existen. */
+      'parcheDistancia', 'parcheDuracion', 'parcheDetalle', 'pegasDeResistencia', 'filaNuevaDeSerie',
+    ]) {
       expect(src, 'la pantalla no usa ' + n).toContain(n)
     }
     /* Y no escribe rpe_origen por su cuenta: eso lo decide el parche. */
