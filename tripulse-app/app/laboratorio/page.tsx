@@ -1030,7 +1030,14 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
                   }}
                   onRenombra={n => renombrar(c, n, bl)}
                   onQuita={() => {
-                    if (bl.columnas.length === 1) { avisar('Un bloque sin columnas no mide nada. Quita el bloque entero.'); return }
+                    /* Antes esto no dejaba quitar la última: un bloque sin
+                       columnas no medía nada. Desde la cuenta atrás sí tiene
+                       sentido —«el minuto» de unas flexiones es solo reloj—,
+                       así que se avisa y se deja. */
+                    if (bl.columnas.length === 1 && !duracionDe(bl)) {
+                      avisar('Este bloque se quedaría sin nada: ni casillas ni reloj. Quita el bloque entero.')
+                      return
+                    }
                     mut(t => { t.bloques[bi].columnas.splice(ci, 1) })
                     setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) { const d = { ...m0[a] }; delete d[c.clave]; m[a] = d } return m })
                   }} />
@@ -1064,6 +1071,18 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
             setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
           }} className={btnSec}>{x.et}</button>
         ))}
+        {/* LA CUENTA ATRÁS, a un botón como las demás. Antes había que crear
+            un bloque de repeticiones, entrar en «el reloj», darle duración y
+            bajar las repeticiones a una: cuatro pasos para decir «esto dura un
+            minuto». Un bloque que SOLO lleva reloj es legítimo desde que
+            existe la cuenta atrás. */}
+        <button onClick={() => mut(t => {
+          t.bloques.push({
+            clave: 'b' + (t.bloques.length + 1), etiqueta: 'El tiempo', modo: 'cerrado',
+            veces: 1, duracion: 60, duracionUd: 's',
+            pitaCambio: true, avisoAntes: 10, ritmo: 'no', ritmoCada: 0, columnas: [],
+          })
+        })} className={btnSec}>+ Cuenta atrás</button>
         <button onClick={() => {
           const clave = nuevaClave(test, 'medida')
           mut(t => {
