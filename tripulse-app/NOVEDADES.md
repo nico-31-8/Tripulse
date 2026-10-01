@@ -14,6 +14,37 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 1 de octubre de 2026 · La pantalla de pasar el test, a tu gusto
+
+Al pasar un test tienes un botón nuevo: **⚙ Ordenar la pantalla**.
+
+Salen las secciones que tiene ese test —cuenta atrás, cronómetros, parciales,
+pulsadores, guardar— y las subes, las bajas o las escondes con el ojo. Hay un
+**Volver a la de serie** por si te lías.
+
+**Donde de verdad sirve es en el móvil.** A pie de pista todo va en una sola
+columna, así que el orden decide lo que ves sin tener que bajar con el atleta
+esperando. Un escalonado y unas flexiones no se miran igual.
+
+**Se guarda con el test**, no con tu cuenta: cada test se abre como lo dejaste.
+Y se guarda **en el momento**, sin tener que volver al editor a darle a «Guardar
+test». Si el test todavía no está guardado, el orden se queda en el borrador
+hasta que lo guardes.
+
+### Tres cosas pensadas para que no te deje tirado
+
+- **Si añades algo nuevo al test, aparece.** Pones un pulsador a un test cuya
+  pantalla ordenaste hace un mes: la sección nueva sale al final, visible. No se
+  queda escondida por no estar en una lista vieja.
+- **Lo que quites del test desaparece** de la pantalla, sin dejar hueco.
+- **«Guardar lo medido» no se puede esconder.** Una pantalla desde la que no se
+  puede apuntar la medición no está ordenada: está rota.
+
+Se ordena con flechas y no arrastrando: arrastrar en un móvil necesita otra
+mecánica, y esto se usa justo ahí.
+
+---
+
 ## 1 de octubre de 2026 · Parciales y pulsador en el laboratorio
 
 Dos formas nuevas de apuntar a pie de pista, en **Laboratorio → la casilla elige
