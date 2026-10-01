@@ -920,18 +920,28 @@ function BotonesAnadir({ test, mut, setMed, cajas, compacto }: {
       return m
     })
 
+  const QUE = [
+    /* El orden es el de uso, no el del modelo: lo primero es una casilla a
+       mano, que es la mitad de los tests. */
+    { fam: 'casilla', et: compacto ? '+ Casilla' : '+ A mano', pista: 'la escribes tú al medir', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
+    { fam: 'casilla', et: '+ Cronómetro', pista: 'se para y cae el tiempo', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
+    { fam: 'casilla', et: '+ Pulsador', pista: 'cuenta al pulsar', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
+    { fam: 'casilla', et: '+ Parciales', pista: 'sin parar el reloj', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
+    { fam: 'bloque', et: '+ Cuenta atrás', pista: 'el test dura un tiempo', bloque: true },
+    { fam: 'bloque', et: '+ Repeticiones', pista: 'algo que se repite', repes: true },
+  ]
+
   return (
-    <div className="flex gap-2 flex-wrap items-center">
+    <div className={compacto ? 'flex gap-2 flex-wrap items-center' : 'flex flex-col gap-2.5'}>
       {compacto && <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Añadir</span>}
-      {([
-        { et: '+ Cuenta atrás', bloque: true },
-        { et: '+ Parciales', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
-        { et: '+ Pulsador', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
-        { et: '+ Cronómetro', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
-        { et: '+ Casilla suelta', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
-        { et: '+ Bloque de repeticiones', repes: true },
-      ]).map(x => (
-        <button key={x.et} className={clase} onClick={() => {
+      {(compacto ? [{ t: '', fam: '' }] : [
+        { t: 'Una casilla', fam: 'casilla' },
+        { t: 'O un bloque, que es algo que se repite', fam: 'bloque' },
+      ]).map(g => (
+      <div key={g.fam} className={compacto ? 'contents' : 'flex gap-2 flex-wrap items-baseline'}>
+        {!compacto && <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold w-full">{g.t}</span>}
+      {QUE.filter(x => compacto || x.fam === g.fam).map(x => (
+        <button key={x.et} className={clase + (compacto ? '' : ' flex flex-col items-start gap-0.5')} onClick={() => {
           /* LA CUENTA ATRÁS es un bloque que solo lleva reloj: legítimo desde
              que existe. Antes había que crear un bloque de repeticiones,
              entrar en «el reloj», darle duración y bajar las repeticiones a
@@ -962,7 +972,14 @@ function BotonesAnadir({ test, mut, setMed, cajas, compacto }: {
           /* Los parciales nacen como LISTA; lo demás, como texto. */
           const vacio: unknown = x.inst === 'parciales' ? [] : ''
           setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
-        }}>{x.et}</button>
+        }}>
+          <span>{x.et}</span>
+          {/* Qué hace cada uno, en tres palabras. Seis nombres a secas no
+              dicen en qué se diferencian, y entonces se prueba a ver. */}
+          {!compacto && <span className="text-[10.5px] font-normal text-gray-500">{x.pista}</span>}
+        </button>
+      ))}
+      </div>
       ))}
     </div>
   )
@@ -1172,6 +1189,15 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
           </div>
         ))}
       </div>
+
+      {/* EL VACÍO SE DICE. Con el test recién empezado, este paso eran unos
+          botones sueltos bajo un título: ni qué hay ni qué falta. */}
+      {!test.sueltos.length && !test.bloques.length && (
+        <p className="text-gray-500 text-[12.5px] border border-dashed border-gray-800 rounded-xl py-4 px-4 mb-3 leading-snug">
+          Todavía no hay nada que apuntar. Lo que elijas aquí aparece <b className="text-gray-300">en la pantalla
+          de la derecha</b>, que es la que vas a tener delante el día del test.
+        </p>
+      )}
 
       <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={cajas} />
 
