@@ -204,6 +204,18 @@ describe('un cerrado que se acaba, se acaba', () => {
   })
 })
 
+describe('UN SOLO RELOJ para todo el test', () => {
+  it('el reloj no es de una sección: no lleva clave', () => {
+    /* Cada cosa tenía el suyo y solo podía andar uno: arrancar los parciales
+       dejaba parada la cuenta atrás, así que «un minuto contando flexiones
+       mientras marco los pasos» no se podía pasar. Un test ocurre en UNA línea
+       de tiempo. Si alguien vuelve a meterle una clave al reloj, esto salta. */
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app', 'laboratorio', 'page.tsx'), 'utf8')
+    expect(src, 'el reloj ha vuelto a ser de una sección').not.toMatch(/reloj\??\.clave/)
+    expect(src, 'falta el reloj del test').toMatch(/interface Reloj \{ desde: number; acu: number; corre: boolean \}/)
+  })
+})
+
 describe('no se ofrece lo que no se pinta', () => {
   /* El fallo que ya ha pasado dos veces en esta pantalla: un instrumento que
      se puede elegir y luego no aparece. El pulsador y los parciales se pintan

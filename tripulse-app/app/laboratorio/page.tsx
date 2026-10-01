@@ -73,7 +73,14 @@ const rejilla = 'grid gap-2.5 items-end'
 const REJILLA = { gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' } as const
 
 type Vista = 'plantillas' | 'editor' | 'pasar' | 'historial'
-interface Reloj { clave: string; desde: number; acu: number; corre: boolean }
+/**
+ * EL RELOJ DEL TEST, uno para todo. Antes cada cosa tenía el suyo y llevaba
+ * una `clave`, así que solo podía andar uno: arrancar los parciales dejaba
+ * parada la cuenta atrás, y un test que es «un minuto contando flexiones
+ * mientras marco los pasos» no se podía pasar. Un test ocurre en UNA línea de
+ * tiempo, y ahora eso es lo que hay.
+ */
+interface Reloj { desde: number; acu: number; corre: boolean }
 /**
  * Qué se está preguntando y en qué fórmula.
  *
@@ -198,7 +205,6 @@ export default function Laboratorio() {
     const ms = ahora - reloj.desde + reloj.acu
     const datos = datosDe(cajaActiva)
     for (const bl of escalonadosDe(test)) {
-      if (reloj.clave !== '@' + bl.clave) continue
       const dur = duracionDe(bl)
       const n = escalonAhora(bl, ms)
       const dentroMs = ms % (dur * 1000)
@@ -246,7 +252,6 @@ export default function Laboratorio() {
        cuenta con las repeticiones enteras que lleva, que es lo que sabe
        acabarse. */
     for (const bl of cronometradosDe(test)) {
-      if (reloj.clave !== '@' + bl.clave) continue
       const c = cuentaAtras(bl, ms)
       const previo = escPrevio.current[bl.clave]
 
@@ -674,7 +679,7 @@ export default function Laboratorio() {
                 setActivo(v => Math.max(0, Math.min(v, atletas.length - 2)))
               }}
               onBajo={(bl, a) => {
-                const ms = reloj && reloj.clave === '@' + bl.clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
+                const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
                 const esn = escalonAhora(bl, ms)
                 const dentro = Math.floor(ms / 1000) % duracionDe(bl)
                 ponMed(String(a.id), d => {
@@ -686,7 +691,7 @@ export default function Laboratorio() {
                 })
               }}
               onVuelta={(c, bl, a) => {
-                if (!reloj?.corre || reloj.clave !== c.clave) return
+                if (!reloj?.corre) return
                 const k = String(a.id)
                 const ms = ahora - reloj.desde + reloj.acu
                 if (!marcas.current[k]) marcas.current[k] = {}
@@ -715,8 +720,12 @@ export default function Laboratorio() {
                   l[lista.length] = ''; d[c.clave] = l
                 })
               }}
+              /* BORRAR LO APUNTADO NO PARA EL RELOJ. Antes sí, porque el
+                 reloj era de esa sección; ahora es el del test, y pararlo
+                 porque alguien quiere limpiar una columna dejaría la cuenta
+                 atrás y los parciales de los demás tirados. El reloj se pone a
+                 cero en su propio botón. */
               onReinicia={(c, bl) => {
-                setReloj(null)
                 for (const a of atletas) {
                   const k = String(a.id)
                   if (marcas.current[k]) marcas.current[k][c.clave] = []
@@ -724,21 +733,20 @@ export default function Laboratorio() {
                 }
               }}
               onReiniciaEsc={bl => {
-                setReloj(null); escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
+                escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
                 for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
               }}
               /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una
                  resta: mide desde la salida, que es lo que significa «el 400».
                  Por eso volver a marcar simplemente lo pisa. */
               onMarcaSuelto={(c, a) => {
-                if (!reloj?.corre || reloj.clave !== c.clave) return
+                if (!reloj?.corre) return
                 const ms = ahora - reloj.desde + reloj.acu
                 const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
                 ponMed(String(a.id), d => { d[c.clave] = String(val) })
               }}
               onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
               onReiniciaSuelto={c => {
-                setReloj(null)
                 /* Una casilla de parciales se vacía como LISTA: dejarla en
                    texto la rompería en la siguiente marca. */
                 const vacio = c.instrumento === 'parciales' ? [] : ''
@@ -748,7 +756,7 @@ export default function Laboratorio() {
                  no con la marca anterior del reloj: restar contra el reloj le
                  daría a todos el trozo del más rápido. */
               onParcial={(c, a) => {
-                if (!reloj?.corre || reloj.clave !== c.clave) return
+                if (!reloj?.corre) return
                 const ms = ahora - reloj.desde + reloj.acu
                 const k = String(a.id)
                 const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
@@ -779,10 +787,18 @@ export default function Laboratorio() {
               onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
                 d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
               })}
-              onArranca={clave => {
+              /* Poner a cero el RELOJ, no lo apuntado: son dos cosas, y
+                 borrarle a alguien lo que llevaba marcado por querer reiniciar
+                 el reloj es de las que no se perdonan. Lo apuntado se borra
+                 desde cada sección. */
+              onReiniciaReloj={() => {
+                setReloj(null)
+                escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}; tramoPrevio.current = {}
+              }}
+              onArranca={() => {
                 despertarAudio()
                 setReloj(r => {
-                  const base = r && r.clave === clave ? r : { clave, desde: 0, acu: 0, corre: false }
+                  const base = r || { desde: 0, acu: 0, corre: false }
                   return base.corre
                     ? { ...base, acu: base.acu + (Date.now() - base.desde), corre: false }
                     : { ...base, desde: Date.now(), corre: true }
@@ -2036,7 +2052,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
 function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
-  onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
+  onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
   onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial, onPantalla,
 }: {
   test: TestLab
@@ -2061,7 +2077,8 @@ function Pasar({
   onDeshace: (c: Columna, a: Atleta) => void
   onReinicia: (c: Columna, bl: Bloque) => void
   onReiniciaEsc: (bl: Bloque) => void
-  onArranca: (clave: string) => void
+  onArranca: () => void
+  onReiniciaReloj: () => void
   onMarcaSuelto: (c: Columna, a: Atleta) => void
   onBorraSuelto: (c: Columna, a: Atleta) => void
   onReiniciaSuelto: (c: Columna) => void
@@ -2084,13 +2101,17 @@ function Pasar({
   /* Si una cuenta atrás ya ha terminado, los pulsadores se bloquean: dos
      pulsaciones de más después de la campana entran como repeticiones que no
      ocurrieron, y eso no se distingue luego de las de verdad. */
-  const seAcaboElTiempo = cronometrados.some(bl => cuentaAtras(bl, msDe('@' + bl.clave)).fin)
+  const seAcaboElTiempo = cronometrados.some(bl => cuentaAtras(bl, ms).fin)
   /* En qué orden va cada sección y cuáles se esconden. Lo guardado manda, pero
      cuadrado con lo que el test tiene HOY: ver `lib/lab-pantalla`. */
   const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined)
   const ocultas = todas.filter(k => !visibles.includes(k))
   const [ordenando, setOrdenando] = useState(false)
-  const msDe = (clave: string) => reloj && reloj.clave === clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
+  /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
+     cuenta atrás puede ir corriendo mientras marcas parciales y pulsas. */
+  const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
+  const corre = !!reloj?.corre
+  const arrancado = !!reloj && (reloj.corre || reloj.acu > 0)
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
   const gordo = 'font-mono tabular-nums text-[38px] leading-none text-orange-400 font-medium'
   const pie = 'text-[10px] tracking-widest uppercase text-gray-500 font-bold mt-1.5'
@@ -2125,6 +2146,26 @@ function Pasar({
           ))}
         </select>
       </div>
+
+      {/* EL RELOJ DEL TEST, uno para todo y arriba del todo. Antes cada
+          sección traía su «Empezar», y como solo podía andar un reloj, darle a
+          uno paraba el otro: no se podía tener la cuenta atrás corriendo
+          mientras marcas parciales y pulsas. */}
+      {hayReloj && (
+        <div className="mt-3 flex items-center gap-3 flex-wrap rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-3.5 py-2.5">
+          <span className="font-mono tabular-nums text-[30px] leading-none text-orange-400 font-medium">{crono(ms)}</span>
+          <span className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
+            {corre ? 'corriendo' : arrancado ? 'en pausa' : 'el reloj del test'}
+          </span>
+          <button onClick={onArranca} className={btn + ' ml-auto min-w-[112px]'}>
+            {corre ? 'Pausar' : arrancado ? 'Seguir' : 'Empezar'}
+          </button>
+          <button onClick={onReiniciaReloj} disabled={!arrancado}
+            className="text-[11.5px] text-gray-500 hover:text-gray-300 disabled:opacity-30 px-2 transition">
+            Poner a cero
+          </button>
+        </div>
+      )}
 
       {/* ORDENAR LA PANTALLA. Donde de verdad sirve es en el móvil: a pie de
           pista todo va en UNA columna, así que el orden decide lo que ves sin
@@ -2196,15 +2237,12 @@ function Pasar({
 
       {visibles.includes('escalones') && (<div style={{ order: todas.indexOf('escalones') }}>
       {escalonados.map(bl => {
-        const clave = '@' + bl.clave
-        const ms = msDe(clave)
         const dur = duracionDe(bl)
         const n = escalonAhora(bl, ms)
         const dentroMs = ms % (dur * 1000)
         const dentro = Math.floor(dentroMs / 1000)
         const tr = tramoEn(bl, dentroMs)
         const cd = columnaDeVelocidad(bl, datosDe(String((atletas[activo] || atletas[0])?.id ?? '')))!
-        const corre = reloj?.clave === clave && reloj.corre
         return (
           <div key={bl.clave}>
             <div className={relojCaja}>
@@ -2222,10 +2260,7 @@ function Pasar({
                 <div className={pie}>{tr ? tr.nombre + ' · queda' : 'en este escalón'}</div>
               </div>
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onArranca(clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
-                  {corre ? 'Pausar' : reloj?.clave === clave && reloj.acu ? 'Seguir' : 'Empezar'}
-                </button>
-                <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+                <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
 
@@ -2260,13 +2295,10 @@ function Pasar({
           no canta velocidad —un Cooper de 12 min, un FTP de 20, una plancha— no
           tenía reloj de ninguna clase y había que sacar el móvil. */}
       {cronometrados.map(bl => {
-        const clave = '@' + bl.clave
-        const ms = msDe(clave)
         const dur = duracionDe(bl)
         /* El mismo cálculo que decide cuándo pita: si lo repitiera aquí, el cero
            de la pantalla y el pitido acabarían en instantes distintos. */
         const c = cuentaAtras(bl, ms)
-        const corre = reloj?.clave === clave && reloj.corre
         return (
           <div key={bl.clave}>
             <div className={relojCaja}>
@@ -2286,10 +2318,7 @@ function Pasar({
                 </div>
               )}
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onArranca(clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
-                  {corre ? 'Pausar' : reloj?.clave === clave && reloj.acu ? 'Seguir' : 'Empezar'}
-                </button>
-                <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+                <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
             <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
@@ -2306,8 +2335,6 @@ function Pasar({
 
       {visibles.includes('cronos') && (<div style={{ order: todas.indexOf('cronos') }}>
       {cronos.map(({ c, bl }) => {
-        const ms = msDe(c.clave)
-        const corre = reloj?.clave === c.clave && reloj.corre
         return (
           <div key={c.clave}>
             <div className={relojCaja}>
@@ -2316,10 +2343,7 @@ function Pasar({
                 <div className={pie}>{c.etiqueta || c.clave}</div>
               </div>
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onArranca(c.clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
-                  {corre ? 'Pausar' : reloj?.clave === c.clave && reloj.acu ? 'Seguir' : 'Empezar'}
-                </button>
-                <button onClick={() => onReinicia(c, bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+                <button onClick={() => onReinicia(c, bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
             <div className="mt-3">
@@ -2361,8 +2385,6 @@ function Pasar({
           salían de las columnas DE DENTRO de los bloques. Un CSS —el 400 y el
           200— se quedaba sin cronómetro. */}
       {sueltosCrono.map(c => {
-        const ms = msDe(c.clave)
-        const corre = reloj?.clave === c.clave && reloj.corre
         const u = c.instrumento === 'crono-min' ? 'minutos' : 'segundos'
         return (
           <div key={c.clave}>
@@ -2372,10 +2394,7 @@ function Pasar({
                 <div className={pie}>{c.etiqueta || c.clave}</div>
               </div>
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onArranca(c.clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
-                  {corre ? 'Pausar' : reloj?.clave === c.clave && reloj.acu ? 'Seguir' : 'Empezar'}
-                </button>
-                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
             <div className="mt-3">
@@ -2413,8 +2432,6 @@ function Pasar({
           ya hacía esto, pero obligaba a decir antes cuántos iban a ser, y lo
           que se quiere es marcar lo que va pasando. */}
       {parciales.map(c => {
-        const ms = msDe(c.clave)
-        const corre = reloj?.clave === c.clave && reloj.corre
         return (
           <div key={c.clave}>
             <div className={relojCaja}>
@@ -2423,10 +2440,7 @@ function Pasar({
                 <div className={pie}>{c.etiqueta || c.clave}</div>
               </div>
               <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onArranca(c.clave)} className={btnSec + ' flex-1 min-w-[110px]'}>
-                  {corre ? 'Pausar' : reloj?.clave === c.clave && reloj.acu ? 'Seguir' : 'Empezar'}
-                </button>
-                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Reiniciar</button>
+                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
             <div className="mt-3">
