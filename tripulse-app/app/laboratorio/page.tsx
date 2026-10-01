@@ -31,6 +31,7 @@ import {
   parcialesDe, acumuladosDe, SOLO_SUELTOS,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
+  claveDesdeNombre, claveEsAutomatica,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
@@ -1129,6 +1130,20 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
 }) {
   const dada = c.clase === 'dada'
   const calc = c.clase === 'calculada'
+  const [verClave, setVerClave] = useState(false)
+
+  /* EL NOMBRE ARRASTRA LA CLAVE mientras no la hayas tocado. En cuanto la
+     cambias a mano dejan de ir juntas: renombrar la casilla no puede
+     renombrarte una clave que elegiste tú. Y si la que tocaría ya está
+     cogida, se queda la de antes: inventar «tiempo2» a espaldas de nadie es
+     peor que no seguir el nombre. */
+  const onNombre = (nuevo: string) => {
+    const seguia = claveEsAutomatica(c.clave, c.etiqueta)
+    onCambio('etiqueta', nuevo)
+    if (!seguia) return
+    const base = claveDesdeNombre(nuevo)
+    if (base !== c.clave && !buscaCol(test, base)) onRenombra(base)
+  }
   const id = (bl ? bl.clave : 's') + '-' + c.clave
   const dados = test.sueltos.filter(s => s.clase === 'dada' && s.clave)
 
@@ -1142,43 +1157,29 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
         <button onClick={onQuita} className="ml-auto text-gray-600 hover:text-red-400 px-1">×</button>
       </h4>
 
-      <div className={rejilla} style={REJILLA}>
-        <div>
-          <label className={lab} htmlFor={id + '-k'}>Clave</label>
-          <input id={id + '-k'} className={campo + ' font-mono'} value={c.clave} onChange={e => onRenombra(e.target.value)} />
-        </div>
-        <div>
-          <label className={lab} htmlFor={id + '-e'}>Lo que verás</label>
-          <input id={id + '-e'} className={campo} value={c.etiqueta} onChange={e => onCambio('etiqueta', e.target.value)} />
-        </div>
-        <div>
-          <label className={lab} htmlFor={id + '-u'}>Unidad</label>
-          <input id={id + '-u'} className={campo} value={c.unidad} onChange={e => onCambio('unidad', e.target.value)} />
-        </div>
-        <div>
-          <label className={lab} htmlFor={id + '-c'}>De dónde sale el número</label>
-          <select id={id + '-c'} className={campo} value={c.clase} onChange={e => onClase(e.target.value)}>
-            <option value="medida">{CLASES.medida}</option>
-            <option value="dada">{CLASES.dada}</option>
-            {/* Calculada solo dentro de un bloque: fuera, una casilla que sale
-                de otras es justo lo que ya es un resultado. */}
-            {bl && <option value="calculada">{CLASES.calculada}</option>}
-          </select>
-          {/* LA FRASE VA AQUÍ DEBAJO, no al final de la tarjeta. Tres opciones a
-              secas no se entendían, y la pista del final habla del instrumento
-              —cómo se rellena—, que es otra pregunta distinta. */}
-          <p className="text-gray-500 text-[10.5px] leading-snug mt-1">
-            {CLASE_PISTA[c.clase]}
-            {!bl && (
-              <> <span className="text-gray-600">Aquí solo hay dos: fuera de un bloque, una casilla que sale de otras es justo lo que ya es un resultado (paso 3).</span></>
-            )}
-          </p>
-        </div>
-
+      {/* LA CASILLA SE LEE COMO UNA FRASE, no como cinco campos en rejilla.
+          Es lo que ya hace el reloj del bloque —«Cada 2 minutos el reloj pasa
+          a la siguiente repetición»—, que es lo que mejor funciona de esta
+          pantalla. Lo que se teclea está en la frase; lo que necesita más
+          sitio (la progresión, la lista, la fórmula) sigue debajo. */}
+      <div className={frase}>
+        <input id={id + '-e'} className={hueco + ' min-w-[130px]'} value={c.etiqueta}
+          placeholder="Cómo se llama" onChange={e => onNombre(e.target.value)} />
+        en
+        <input id={id + '-u'} className={hueco + ' w-[68px] text-center font-mono'} value={c.unidad}
+          placeholder="s, m, kg" onChange={e => onCambio('unidad', e.target.value)} />
+        <span className="-ml-1.5">,</span>
+        <select id={id + '-c'} className={hueco} value={c.clase} onChange={e => onClase(e.target.value)}>
+          <option value="medida">{CLASES.medida}</option>
+          <option value="dada">{CLASES.dada}</option>
+          {/* Calculada solo dentro de un bloque: fuera, una casilla que sale
+              de otras es justo lo que ya es un resultado. */}
+          {bl && <option value="calculada">{CLASES.calculada}</option>}
+        </select>
         {!dada && !calc && (
-          <div>
-            <label className={lab} htmlFor={id + '-i'}>Cómo se rellena</label>
-            <select id={id + '-i'} className={campo} value={c.instrumento}
+          <>
+            con
+            <select id={id + '-i'} className={hueco} value={c.instrumento}
               onChange={e => onCambio('instrumento', e.target.value as Instrumento)}>
               {/* «Parciales» solo en una casilla suelta: dentro de un bloque la
                   lista ya la forman las repeticiones, y dos formas de hacer lo
@@ -1192,14 +1193,42 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
                 .filter(k => !SOLO_SUELTOS.includes(k) || !bl || c.instrumento === k)
                 .map(k => <option key={k} value={k}>{INSTRUMENTOS[k]}</option>)}
             </select>
-          </div>
+          </>
         )}
         {dada && !bl && (
-          <div>
-            <label className={lab} htmlFor={id + '-v'}>Valor por defecto</label>
-            <input id={id + '-v'} className={campo + ' font-mono'} value={c.valor || ''} onChange={e => onCambio('valor', e.target.value)} />
-          </div>
+          <>
+            <span className="-ml-1.5">:</span>
+            <input id={id + '-v'} className={hueco + ' w-[88px] text-center font-mono'} value={c.valor || ''}
+              placeholder="8" onChange={e => onCambio('valor', e.target.value)} />
+          </>
         )}
+      </div>
+
+      {/* La clave, pequeña y detrás: no se ve al pasar el test, es solo el
+          nombre con el que la llaman las fórmulas. Se propone sola y se
+          cambia si no vale. */}
+      <p className="text-[10.5px] text-gray-600 mt-1.5 flex items-center gap-1.5 flex-wrap">
+        {verClave ? (
+          <>
+            <span>En las fórmulas:</span>
+            <input className={hueco + ' font-mono text-[11px] py-0.5 w-[150px]'} value={c.clave}
+              onChange={e => onRenombra(e.target.value)} autoFocus />
+            <button onClick={() => setVerClave(false)} className="underline hover:text-gray-400">listo</button>
+          </>
+        ) : (
+          <>
+            <span>En las fórmulas se llamará <code className="text-gray-500">{c.clave}</code>.</span>
+            <button onClick={() => setVerClave(true)} className="underline hover:text-gray-400">Cambiar</button>
+          </>
+        )}
+      </p>
+
+      <p className="text-gray-500 text-[10.5px] leading-snug mt-1.5">
+        {CLASE_PISTA[c.clase]}
+        {!bl && <> <span className="text-gray-600">Fuera de un bloque no hay «la calcula la app»: una casilla que sale de otras ya es un resultado (paso 3).</span></>}
+      </p>
+
+      <div className={rejilla + ' mt-2.5'} style={REJILLA}>
         {dada && bl && (
           <>
             <div>
@@ -1230,7 +1259,7 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
           <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">De qué sale</p>
           {/* Aquí cada nombre vale UN número, el de su repetición, así que no se
               ofrecen funciones de serie: dentro de una fila no hay serie. */}
-          <MontaFormula
+          <MontaFormula nombres={nombresDe(test)}
             formula={c.formula || []} clave={'col:' + bl.clave + ':' + c.clave}
             escalares={test.sueltos.map(x => x.clave)
               .concat(bl.columnas.slice(0, indice ?? bl.columnas.length).map(x => x.clave))}
@@ -1594,7 +1623,7 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
             </div>
 
             <div className="mt-2.5">
-              <MontaFormula
+              <MontaFormula nombres={nombresDe(test)}
                 formula={r.formula} clave={'res:' + i}
                 escalares={test.sueltos.map(c => c.clave)}
                 series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
@@ -1648,6 +1677,10 @@ function Grupo({ et, escalon, children }: { et: string; escalon?: boolean; child
   )
 }
 
+/* La frase de una casilla: lo mismo que ya usa el reloj de un bloque. */
+const frase = 'flex items-center gap-2 flex-wrap text-[13px] text-gray-400 leading-9 border-l-2 border-orange-500/35 pl-3'
+const hueco = 'bg-gray-800 text-white text-[13px] rounded-lg px-2.5 py-1 outline-none focus:ring-1 focus:ring-orange-500 border border-transparent'
+
 const FICHA = 'font-mono text-[12px] px-2.5 py-1 rounded-md border transition hover:brightness-125'
 const colorFicha = (b: Bloq) => b.t === 'fn2' ? 'bg-emerald-500/14 border-emerald-400/40 text-emerald-200'
   : b.t === 'fn' ? 'bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'
@@ -1657,12 +1690,27 @@ const colorFicha = (b: Bloq) => b.t === 'fn2' ? 'bg-emerald-500/14 border-emeral
         : b.t === 'num' ? 'bg-blue-500/14 border-blue-400/40 text-blue-200'
           : 'bg-gray-800 border-gray-600 text-gray-300'
 
-/** Cómo se lee una ficha de la fórmula. */
-const textoFicha = (b: Bloq): string =>
-  b.t === 'fn' ? etiquetaFn(b)
-    : b.t === 'fn2' ? etiquetaFn2(b)
-      : b.t === 'antes' ? 'antes(' + b.v + ')'
-        : String(b.v)
+/**
+ * Cómo se lee una ficha de la fórmula.
+ *
+ * CON EL NOMBRE DE LA CASILLA, no con su clave: «media de Tiempo» y no
+ * «media(t100)». Con seis casillas había que subir a mirar qué era «t100», y
+ * una fórmula que no se puede leer no se puede revisar.
+ */
+const textoFicha = (b: Bloq, nombres?: Record<string, string>): string =>
+  b.t === 'fn' ? etiquetaFn(b, nombres)
+    : b.t === 'fn2' ? etiquetaFn2(b, nombres)
+      : b.t === 'antes' ? 'antes de ' + b.v
+        : b.t === 'var' ? ((nombres && nombres[String(b.v)]) || String(b.v))
+          : String(b.v)
+
+/** Cómo se llama cada casilla, para que las fórmulas se lean. */
+const nombresDe = (t: TestLab | null): Record<string, string> => {
+  const o: Record<string, string> = {}
+  for (const c of t?.sueltos || []) if (c.etiqueta) o[c.clave] = c.etiqueta
+  for (const x of todasLasColumnas(t)) if (x.c.etiqueta) o[x.c.clave] = x.c.etiqueta
+  return o
+}
 
 /**
  * El montador de fórmulas, que sirve para las dos.
@@ -1673,11 +1721,13 @@ const textoFicha = (b: Bloq): string =>
  * se ofrecen funciones. Escribir dos montadores habría dejado que uno ofreciera
  * lo que el otro prohíbe.
  */
-function MontaFormula({ formula, clave, escalares, series, refs, previos = [], pidiendo, setPidiendo, onCambio }: {
+function MontaFormula({ formula, clave, escalares, series, refs, previos = [], nombres, pidiendo, setPidiendo, onCambio }: {
   formula: Bloq[]
   clave: string
   escalares: string[]
   series: { clave: string; veces: number }[]
+  /** Clave → cómo se llama, para que las fichas se puedan leer. */
+  nombres?: Record<string, string>
   refs: string[]
   /** Los que se le pueden pedir a `antes()`. Vacío en una columna calculada. */
   previos?: string[]
@@ -1688,36 +1738,91 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], p
   const mio = pidiendo?.clave === clave ? pidiendo : null
   const pon = (b: Bloq) => { onCambio([...formula, b]); setPidiendo(null) }
 
+  /* LAS PREGUNTAS, AQUÍ DENTRO. Eran cinco `prompt()` —la ventana gris del
+     navegador—, y la política de avisos de la aplicación dice que esa ventana
+     es para errores de guardado, no para pedir un dato: en el móvil sale como
+     un aviso del sistema. Van con su valor de siempre puesto para que lo
+     normal sea pulsar y seguir. */
+  const [cual, setCual] = useState('2')
+  const [desde, setDesde] = useState('2')
+  const [hasta, setHasta] = useState('3')
+  const [aValor, setAValor] = useState('4')
+  const [numero, setNumero] = useState('100')
+  /* Qué ficha está abierta. Pulsar una la ABRE en vez de borrarla: antes un
+     clic la quitaba, así que cambiar «media» por «mínimo» obligaba a rehacer
+     la fórmula entera — y si la ficha estaba en medio de una larga, peor. */
+  const [tocada, setTocada] = useState<number | null>(null)
+  const entero = (t: string, min = 1) => Math.max(min, Math.round(Number(t) || min))
+  const chico = 'bg-gray-800 text-white text-[12px] rounded-md px-2 py-1 w-[52px] text-center font-mono outline-none focus:ring-1 focus:ring-orange-500 border border-gray-600'
+
   return (
     <>
       <div className="bg-[#0b1220] border border-dashed border-gray-700 rounded-xl px-2.5 py-2 flex flex-wrap gap-1.5 items-center min-h-[44px]">
         {formula.length === 0
           ? <span className="text-gray-600 text-[12.5px] italic">Móntala con los bloques de abajo</span>
           : formula.map((b, n) => (
-            <button key={n} title="Quitar" onClick={() => onCambio(formula.filter((_, k) => k !== n))}
-              className={FICHA + ' ' + colorFicha(b)}>
-              {textoFicha(b)}
+            <button key={n} title="Tocarla" onClick={() => setTocada(t => (t === n ? null : n))}
+              className={FICHA + ' ' + colorFicha(b) + (tocada === n ? ' ring-2 ring-orange-500 ring-offset-2 ring-offset-[#0b1220]' : '')}>
+              {textoFicha(b, nombres)}
             </button>
           ))}
       </div>
+
+      {/* LO QUE SE PUEDE HACER CON LA FICHA TOCADA. Cambiar la función y el
+          tramo son las dos cosas que se corrigen cada día; quitarla va al
+          final y en rojo, para que no sea lo primero que pulsas. */}
+      {tocada !== null && formula[tocada] && (() => {
+        const b = formula[tocada]
+        const cambia = (nuevo: Bloq) => { onCambio(formula.map((x, k) => (k === tocada ? nuevo : x))); setTocada(null) }
+        return (
+          <div className="mt-2 rounded-xl border border-dashed border-orange-500/40 bg-orange-500/[0.05] p-2.5 flex gap-1.5 flex-wrap items-center">
+            <span className="text-[11.5px] text-gray-400 mr-1">{textoFicha(b, nombres)}:</span>
+            {b.t === 'fn' && (Object.keys(FUNCIONES) as Funcion[]).filter(f => f !== b.v).map(f => (
+              <button key={f} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+                onClick={() => cambia({ ...b, v: f })}>{f}</button>
+            ))}
+            {b.t === 'fn' && !(b.d && b.d === b.h) && (
+              <>
+                <span className="text-[11.5px] text-gray-500 ml-1">de cuáles:</span>
+                {([['todas', 0, 0], ['sin la 1.ª', 2, 0], ['sin la última', 0, -1]] as const).map(([et, d, h]) => (
+                  <button key={et} className={FICHA + ' bg-gray-800 border-gray-600 text-gray-300'}
+                    onClick={() => cambia({ ...b, d: d || undefined, h: h || undefined })}>{et}</button>
+                ))}
+              </>
+            )}
+            {b.t === 'num' && (
+              <>
+                <input className={chico + ' w-[78px]'} inputMode="decimal" defaultValue={String(b.v)}
+                  onChange={e => setNumero(e.target.value)} />
+                <button className={FICHA + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
+                  onClick={() => { const n = Number(String(numero).replace(',', '.')); if (Number.isFinite(n)) cambia({ t: 'num', v: n }) }}>Cambiarlo</button>
+              </>
+            )}
+            <button className={FICHA + ' bg-gray-800 border-gray-600 text-gray-400 ml-auto'}
+              onClick={() => setTocada(null)}>Dejarla</button>
+            <button className={FICHA + ' bg-red-500/10 border-red-500/40 text-red-300'}
+              onClick={() => { onCambio(formula.filter((_, k) => k !== tocada)); setTocada(null) }}>Quitarla</button>
+          </div>
+        )
+      })()}
 
       <div className="mt-2.5 flex flex-col gap-2">
         <Grupo et={series.length ? 'Casillas y columnas' : 'Lo que puedes usar aquí'}>
           {escalares.map(k => (
             <button key={k} className={FICHA + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
-              onClick={() => pon({ t: 'var', v: k })}>{k}</button>
+              onClick={() => pon({ t: 'var', v: k })}>{(nombres && nombres[k]) || k}</button>
           ))}
           {series.map(s => (
             <button key={s.clave} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
               onClick={() => setPidiendo({ clave, col: s.clave, fn: null })}>
-              {s.clave} <span className="opacity-60">×{s.veces}</span>
+              {(nombres && nombres[s.clave]) || s.clave} <span className="opacity-60">×{s.veces}</span>
             </button>
           ))}
           {!escalares.length && !series.length && <span className="text-gray-600 text-[12.5px] italic">Nada todavía</span>}
         </Grupo>
 
         {mio && !mio.fn && (
-          <Grupo et={'De «' + mio.col + '», ¿qué quieres?'} escalon>
+          <Grupo et={'De «' + ((nombres && nombres[mio.col]) || mio.col) + '», ¿qué quieres?'} escalon>
             {(Object.keys(FUNCIONES) as Funcion[]).map(f => (
               <button key={f} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
                 onClick={() => setPidiendo({ ...mio, fn: f })}>
@@ -1727,28 +1832,30 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], p
             {/* «Quiero la 2.ª» es una pregunta tan corriente como «quiero la
                 media», y no tenía por qué pasar por elegir una función: de una
                 sola repetición, la suma y la media son el mismo número. */}
-            <button className={FICHA + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
-              onClick={() => {
-                const n = prompt('¿Cuál? (1 = la primera)', '2')
-                if (n === null) return
-                const k = Math.max(1, Math.round(Number(n) || 1))
-                pon(fnB('suma', mio.col, k, k))
-              }}>una sola <span className="opacity-60">la 2.ª, la 5.ª…</span></button>
+            <span className="flex items-center gap-1.5 text-[12px] text-gray-400">
+              o solo la
+              <input className={chico} inputMode="numeric" value={cual} onChange={e => setCual(e.target.value)} />
+              .ª
+              <button className={FICHA + ' bg-orange-500/14 border-orange-500/45 text-orange-200'}
+                onClick={() => { const k = entero(cual); pon(fnB('suma', mio.col, k, k)) }}>Ponerla</button>
+            </span>
           </Grupo>
         )}
 
         {mio?.fn && (
-          <Grupo et={mio.fn + '(' + mio.col + ') ¿de cuáles?'} escalon>
+          <Grupo et={mio.fn + ' de «' + ((nombres && nombres[mio.col]) || mio.col) + '» ¿de cuáles?'} escalon>
             {([['De todas', 0, 0], ['Sin la primera', 2, 0], ['Sin la última', 0, -1]] as const).map(([n, d, h]) => (
               <button key={n} className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
                 onClick={() => pon(fnB(mio.fn!, mio.col, d, h))}>{n}</button>
             ))}
-            <button className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
-              onClick={() => {
-                const a = prompt('¿Desde qué repetición?', '2'); if (a === null) return
-                const b = prompt('¿Hasta cuál? (0 = hasta la última)', '3'); if (b === null) return
-                pon(fnB(mio.fn!, mio.col, Math.max(1, Math.round(Number(a) || 1)), Math.round(Number(b) || 0)))
-              }}>De la X a la Y…</button>
+            <span className="flex items-center gap-1.5 text-[12px] text-gray-400">
+              de la
+              <input className={chico} inputMode="numeric" value={desde} onChange={e => setDesde(e.target.value)} />
+              a la
+              <input className={chico} inputMode="numeric" value={hasta} onChange={e => setHasta(e.target.value)} />
+              <button className={FICHA + ' bg-fuchsia-500/14 border-fuchsia-400/40 text-fuchsia-200'}
+                onClick={() => pon(fnB(mio.fn!, mio.col, entero(desde), entero(hasta, 0)))}>Ponerlo</button>
+            </span>
             <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
               En un 6×100 la primera sale de pared y no compara con las demás. Y el índice de fatiga son dos tramos: 1–3 contra 4–6.
             </p>
@@ -1791,12 +1898,10 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], p
                   /* Al Dmax le queda una pregunta más, así que aquí solo se
                      apunta la columna. */
                   if (esDmax(mio.fn2!)) { setPidiendo({ ...mio, y: s.clave }); return }
-                  if (mio.fn2 !== 'interpola') { pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: s.clave }); return }
-                  const a = prompt('¿A qué valor de «' + s.clave + '»?', '4')
-                  if (a === null) return
-                  const n = Number(String(a).replace(',', '.'))
-                  if (!Number.isFinite(n)) return
-                  pon({ t: 'fn2', v: 'interpola', x: mio.x!, y: s.clave, a: n })
+                  /* A «interpola» le queda una pregunta —a qué valor—, y se
+                     hace aquí dentro como la del Dmax. */
+                  if (mio.fn2 === 'interpola') { setPidiendo({ ...mio, y: s.clave }); return }
+                  pon({ t: 'fn2', v: mio.fn2!, x: mio.x!, y: s.clave })
                 }}>{s.clave}</button>
             ))}
             {mio.fn2 !== 'interpola' && !esDmax(mio.fn2) && (
@@ -1810,6 +1915,23 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], p
                 se separa más de ella: ahí está el umbral.
               </p>
             )}
+          </Grupo>
+        )}
+
+        {mio?.fn2 === 'interpola' && mio.x && mio.y && (
+          <Grupo et={'¿A qué valor de «' + ((nombres && nombres[mio.y]) || mio.y) + '»?'} escalon>
+            <input className={chico + ' w-[78px]'} inputMode="decimal" value={aValor}
+              onChange={e => setAValor(e.target.value)} autoFocus />
+            <button className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
+              onClick={() => {
+                const n = Number(String(aValor).replace(',', '.'))
+                if (!Number.isFinite(n)) return
+                pon({ t: 'fn2', v: 'interpola', x: mio.x!, y: mio.y!, a: n })
+              }}>Ponerlo</button>
+            <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
+              El umbral de 4 mmol/L es esto: a qué velocidad llega el lactato a 4. Si ese día no llegó,
+              no se lo inventa — lo dice.
+            </p>
           </Grupo>
         )}
 
@@ -1841,7 +1963,9 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], p
               onClick={() => pon({ t: 'op', v: o })}>{o}</button>
           ))}
           <button className={FICHA + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
-            onClick={() => { const n = prompt('¿Qué número?', '100'); if (n !== null && Number.isFinite(Number(n))) pon({ t: 'num', v: Number(n) }) }}>123…</button>
+            onClick={() => { const n = Number(String(numero).replace(',', '.')); if (Number.isFinite(n)) pon({ t: 'num', v: n }) }}>Poner el número</button>
+          <input className={chico + ' w-[78px]'} inputMode="decimal" value={numero}
+            onChange={e => setNumero(e.target.value)} />
         </Grupo>
 
         {refs.length > 0 && (

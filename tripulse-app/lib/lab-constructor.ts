@@ -881,32 +881,46 @@ export const textoFn2 = (b: Extract<Bloq, { t: 'fn2' }>): string =>
   b.v + '(' + b.x + ', ' + b.y + (b.a === undefined ? '' : ', ' + b.a) + ')'
 
 /** Cómo se lee una de dos columnas: por lo que pregunta, no por su sintaxis. */
-export function etiquetaFn2(b: Extract<Bloq, { t: 'fn2' }>): string {
+/**
+ * Cómo se llama una casilla en pantalla. Sin diccionario, su clave.
+ *
+ * Las fórmulas se leían en claves —«media(t100) − primera(t100)»— y con seis
+ * casillas había que subir a mirar qué era «t100». Una fórmula que no se
+ * puede leer no se puede revisar.
+ */
+export type Nombres = Record<string, string> | null | undefined
+const nom = (clave: string, nombres: Nombres): string => (nombres && nombres[clave]) || clave
+
+export function etiquetaFn2(b: Extract<Bloq, { t: 'fn2' }>, nombres?: Nombres): string {
   const n = (v: number) => String(v).replace('.', ',')
-  if (b.v === 'interpola') return b.x + ' cuando ' + b.y + ' = ' + (b.a === undefined ? '?' : n(b.a))
-  if (b.v === 'pendiente') return 'pendiente ' + b.x + '→' + b.y
-  if (b.v === 'corte') return 'corte ' + b.x + '→' + b.y
+  const x = nom(b.x, nombres), y = nom(b.y, nombres)
+  if (b.v === 'interpola') return x + ' cuando ' + y + ' = ' + (b.a === undefined ? '?' : n(b.a))
+  if (b.v === 'pendiente') return 'pendiente ' + x + '→' + y
+  if (b.v === 'corte') return 'corte ' + x + '→' + y
   /* Sobre qué se ha buscado va EN LA ETIQUETA y no escondido en el número: el
      Dmax de los escalones y el de la curva son dos números distintos, y el
      entrenador tiene que ver cuál está mirando sin abrir nada. */
   if (esDmax(b.v)) {
-    return (b.v === 'dmaxmod' ? 'Dmax mod ' : 'Dmax ') + b.x + '→' + b.y +
+    return (b.v === 'dmaxmod' ? 'Dmax mod ' : 'Dmax ') + x + '→' + y +
       ' (' + (b.a === 0 ? 'escalones' : 'curva') + ')'
   }
-  if (b.v === 'curva') return 'se fía la curva ' + b.x + '→' + b.y
-  return 'se fía ' + b.x + '→' + b.y
+  if (b.v === 'curva') return 'se fía la curva ' + x + '→' + y
+  return 'se fía ' + x + '→' + y
 }
 
 /** Cómo se lee en pantalla, que no es cómo se le da al motor. */
-export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>): string {
+export function etiquetaFn(b: Extract<Bloq, { t: 'fn' }>, nombres?: Nombres): string {
+  const de = nom(b.de, nombres)
   /* Un tramo de UNA repetición no necesita función: la suma, la media y el
      máximo de un solo número son el mismo número. Así que se lee por lo que
-     es —«la 2.ª de t100»— en vez de por cómo está guardado. */
-  if (b.d && b.d === b.h) return 'la ' + b.d + '.ª de ' + b.de
-  if (!b.d && !b.h) return b.v + '(' + b.de + ')'
-  if (b.d === 2 && !b.h) return b.v + '(' + b.de + ' · sin la 1.ª)'
-  if (!b.d && b.h === -1) return b.v + '(' + b.de + ' · sin la última)'
-  return b.v + '(' + b.de + ' · ' + (b.d || 1) + '–' + (b.h ? b.h : 'fin') + ')'
+     es —«la 2.ª de Tiempo»— en vez de por cómo está guardado. */
+  if (b.d && b.d === b.h) return 'la ' + b.d + '.ª de ' + de
+  /* «media de Tiempo» y no «media(tiempo)»: con el nombre delante la fórmula
+     se puede LEER, que es lo único que permite revisarla. */
+  if (!b.d && !b.h) return b.v + ' de ' + de
+  if (b.d === 2 && !b.h) return b.v + ' de ' + de + ' · sin la 1.ª'
+  if (!b.d && b.h === -1) return b.v + ' de ' + de + ' · sin la última'
+  return b.v + ' de ' + de + ' · ' + (b.d || 1) + '–' + (b.h ? b.h : 'fin')
 }
 
 export const textoDe = (f: Bloq[]): string =>
@@ -1138,6 +1152,41 @@ export function clavesRepetidas(t: TestLab): string[] {
   }
   return [...new Set(malas)]
 }
+
+/**
+ * La clave que le toca a una casilla por su nombre: «Tiempo del 100» → `tiempo_del_100`.
+ *
+ * POR QUÉ EXISTE. Una casilla pedía DOS nombres: el que se ve y una «clave»
+ * que no aparece en ninguna parte al pasar el test —es el nombre con el que
+ * la llaman las fórmulas— y que había que inventarse, escribir corta y
+ * recordar tres pasos después. Ahora se propone sola y se puede cambiar.
+ *
+ * Lo que NO puede salir de aquí: nada que el motor confunda con otra cosa.
+ * Una clave que empiece por un número o que se llame como una función de
+ * serie —`media`, `suma`— rompería la fórmula, así que se desvían.
+ */
+export function claveDesdeNombre(nombre: string): string {
+  const base = String(nombre ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24)
+  if (!base) return 'dato'
+  if (/^[0-9]/.test(base)) return 'd' + base
+  if (esFuncion(base) || esFuncion2(base) || base === PALABRA_ANTES) return base + '_'
+  return base
+}
+
+/**
+ * Si esa clave es la que se habría puesto sola con ESE nombre.
+ *
+ * Con esto el nombre y la clave van juntos mientras el entrenador no la toque,
+ * y en cuanto la cambia a mano dejan de ir juntos — sin guardar ninguna marca
+ * de «esta es mía», que sería un dato más que mantener y que podría mentir.
+ */
+export const claveEsAutomatica = (clave: string, nombre: string): boolean =>
+  clave === claveDesdeNombre(nombre)
 
 export function nuevaClave(t: TestLab, base: string): string {
   let n = 1, c = base
