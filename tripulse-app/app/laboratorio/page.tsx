@@ -27,7 +27,7 @@ import { leerModelo, paraGuardar, medicionDe, leerMediciones, type Medicion } fr
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
-  relojesDe, cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
+  cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
   parcialesDe, acumuladosDe, SOLO_SUELTOS,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
@@ -2157,7 +2157,6 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
 }) {
   const datos: Datos = { ...proto, ...med }
   const vals = calcular(test, datos)
-  const relojes = relojesDe(test)
   const dados = test.sueltos.filter(c => c.clase === 'dada')
   const mios = test.sueltos.filter(c => c.clase !== 'dada')
   const grupo = 'text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1.5'
@@ -2178,14 +2177,10 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
         <span className="text-[10.5px] text-gray-500 ml-auto truncate">{nombre}</span>
       </div>
       <div className="p-4">
-        {/* El reloj NO se pinta aquí a propósito: esta previa es la tabla, que es
-            lo que hay que juzgar mientras montas. Pero tiene que quedar claro que
-            va a haberlo, o parece que el instrumento elegido no hace nada. */}
-        {relojes.length > 0 && (
-          <div className="mb-3 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2 text-[11.5px] text-blue-100 leading-snug">
-            ⏱ <b>Al pasarlo llevará reloj</b>: {relojes.join(' · ')}. No se pinta aquí para no tapar la tabla.
-          </div>
-        )}
+        {/* AQUÍ IBA UN CARTEL que decía «al pasarlo llevará reloj: … no se
+            pinta aquí para no tapar la tabla». Era verdad cuando esto era lo
+            único de la derecha; ahora el reloj está pintado justo encima y el
+            cartel se contradecía con lo que se veía. */}
 
         {dados.length > 0 && (
           <>
@@ -2287,8 +2282,20 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                         : <span className="text-gray-600 italic">sin marcar</span>}
                     </p>
                   ) : (
-                    <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono'} inputMode="decimal"
-                      value={String(med[c.clave] ?? '')} onChange={e => onMed(c.clave, e.target.value)} />
+                    <>
+                      <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono'} inputMode="decimal"
+                        value={String(med[c.clave] ?? '')} onChange={e => onMed(c.clave, e.target.value)} />
+                      {/* SE DICE QUIÉN LA RELLENA. Una casilla con cronómetro
+                          enseñaba aquí una caja vacía igual que las demás, y
+                          parecía que había que escribirla a mano —o que el
+                          cronómetro no servía—. Se puede escribir, pero para
+                          corregir. */}
+                      {c.instrumento !== 'mano' && (
+                        <span className="block text-[10.5px] text-gray-500 mt-1">
+                          {c.instrumento === 'contador' ? 'lo pone el pulsador' : 'lo pone el cronómetro'} · puedes corregirlo aquí
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -2681,17 +2688,14 @@ function Pasar({
       {sueltosCrono.map(c => {
         const u = c.instrumento === 'crono-min' ? 'minutos' : 'segundos'
         return (
-          <div key={c.clave}>
-            <div className={relojCaja}>
-              <div>
-                <div className={gordo}>{crono(ms)}</div>
-                <div className={pie}>{c.etiqueta || c.clave}</div>
-              </div>
-              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
-              </div>
+          <div key={c.clave} className="mt-3">
+            {/* SIN REPETIR EL RELOJ. Desde que hay uno solo para el test, este
+                número era el mismo de arriba dos dedos más abajo. */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className={pie + ' mt-0'}>{c.etiqueta || c.clave}</span>
+              <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Borrar lo apuntado</button>
             </div>
-            <div className="mt-3">
+            <div className="mt-1.5">
               {atletas.map(a => {
                 const val = String(datosDe(String(a.id))[c.clave] ?? '')
                 return (
@@ -2727,17 +2731,12 @@ function Pasar({
           que se quiere es marcar lo que va pasando. */}
       {parciales.map(c => {
         return (
-          <div key={c.clave}>
-            <div className={relojCaja}>
-              <div>
-                <div className={gordo}>{crono(ms)}</div>
-                <div className={pie}>{c.etiqueta || c.clave}</div>
-              </div>
-              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
-              </div>
+          <div key={c.clave} className="mt-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className={pie + ' mt-0'}>{c.etiqueta || c.clave}</span>
+              <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Borrar lo apuntado</button>
             </div>
-            <div className="mt-3">
+            <div className="mt-1.5">
               {atletas.map(a => {
                 const lista = (datosDe(String(a.id))[c.clave] as unknown[] | undefined) || []
                 const acum = acumuladosDe(lista)

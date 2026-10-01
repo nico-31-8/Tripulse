@@ -289,6 +289,7 @@ describe('lo que se anuncia es lo que se pinta', () => {
 
     const listas = [...new Set([...cuerpo.matchAll(/\b(\w+De)\(/g)].map(m => m[1]))]
       .filter(n => n !== 'duracionDe')   // no es una lista de relojes: es cuánto dura uno
+      .filter(n => n !== 'relojesDe')    // es la propia función: se cuela por su declaración
 
     expect(listas.length).toBeGreaterThan(2)
     for (const n of listas) {

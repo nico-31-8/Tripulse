@@ -1276,6 +1276,12 @@ export const finDe = (bl: Bloque, n: number): boolean => bl.modo === 'cerrado' &
 /**
  * Qué relojes lleva este test, dicho en palabras.
  *
+ * YA NO SE PINTA EN NINGÚN SITIO, y es buena señal: la pantalla del editor es
+ * la de verdad —con el reloj andando—, así que anunciar lo que se ve sobraba.
+ * Se queda porque es el único sitio que dice de una vez qué relojes tiene un
+ * test, y de sus listas cuelga el test que comprueba que TODAS se pintan. Si
+ * pasa mucho tiempo sin volver a usarse, se borra.
+ *
  * ESTA FRASE SE MONTA CON LAS MISMAS LISTAS QUE PINTA LA PANTALLA, y no con un
  * recorrido propio. Antes tenía el suyo, y por eso pudo prometer durante días un
  * «cronómetro en «400 m»» que luego no aparecía: la previa miraba las casillas
