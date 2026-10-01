@@ -28,7 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
-  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe,
+  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
@@ -1334,7 +1334,7 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
                    Si un test viejo ya lo tiene puesto, se deja para no
                    cambiárselo a su espalda. */
                 .filter(k => !SOLO_SUELTOS.includes(k) || !bl || c.instrumento === k)
-                .map(k => <option key={k} value={k}>{INSTRUMENTOS[k]}</option>)}
+                .map(k => <option key={k} value={k}>{etiquetaInstrumento(k, !!bl)}</option>)}
             </select>
           </>
         )}
@@ -1360,7 +1360,7 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
                 className={FICHA + ' ' + (c.instrumento === k
                   ? 'bg-orange-500/20 border-orange-500/60 text-orange-200'
                   : 'bg-gray-800 border-gray-600 text-gray-300')}>
-                {INSTRUMENTOS[k]}
+                {etiquetaInstrumento(k, !!bl)}
               </button>
             ))}
         </div>
@@ -1488,7 +1488,8 @@ function pistaCol(c: Columna, bl: Bloque | null, proto: Datos): React.ReactNode 
   )
   const u = c.instrumento === 'crono-min' ? 'minutos' : 'segundos'
   return bl
-    ? <>Un botón por persona: cada pulsación cierra una repetición y la deja en su fila, en <b className="text-white">{u}</b>.</>
+    ? <><b className="text-white">Así se marcan los parciales dentro de un bloque</b>: un botón por persona, cada pulsación
+        cierra una repetición y la deja en su fila, en <b className="text-white">{u}</b>. El reloj no se para.</>
     : <>Al pararlo escribe <b className="text-white">{u}</b> aquí — cuéntalo así en la fórmula.</>
 }
 
@@ -2256,7 +2257,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                         <th key={c.clave} className="text-left text-[9.5px] uppercase tracking-wide text-gray-500 font-bold px-1.5 py-1 border-b border-gray-800 align-bottom">
                           {c.etiqueta || c.clave}
                           <span className="block normal-case tracking-normal font-normal text-[10px] text-gray-600">
-                            {c.clase === 'dada' ? 'la pones tú' : INSTRUMENTOS[c.instrumento]}{c.unidad ? ' · ' + c.unidad : ''}
+                            {c.clase === 'dada' ? 'la pones tú' : etiquetaInstrumento(c.instrumento, true)}{c.unidad ? ' · ' + c.unidad : ''}
                           </span>
                         </th>
                       ))}

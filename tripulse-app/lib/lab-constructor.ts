@@ -173,6 +173,26 @@ export const esFuncion = (n: string): n is Funcion =>
  */
 export const SOLO_SUELTOS: Instrumento[] = ['parciales']
 
+/**
+ * Cómo se llama un instrumento SEGÚN DÓNDE ESTÉ.
+ *
+ * El entrenador buscaba «parciales» dentro de un bloque y no los encontraba,
+ * y la cosa es que SÍ están: una columna de cronómetro en un bloque es
+ * exactamente eso —un botón por persona, cada pulsación cierra una repetición
+ * y el reloj no se para—. Lo que fallaba era el nombre: fuera, un cronómetro
+ * da UN tiempo; dentro, da uno por repetición, que es un parcial.
+ *
+ * Se arregla el nombre y no el modelo: añadir «parciales» como columna de
+ * bloque sería una segunda forma de hacer lo mismo, y dos formas acaban no
+ * haciendo lo mismo.
+ */
+export function etiquetaInstrumento(i: Instrumento, enBloque: boolean): string {
+  if (!enBloque) return INSTRUMENTOS[i]
+  if (i === 'crono-seg') return 'Parciales · un tiempo por repetición (s)'
+  if (i === 'crono-min') return 'Parciales · un tiempo por repetición (min)'
+  return INSTRUMENTOS[i]
+}
+
 export const INSTRUMENTOS: Record<Instrumento, string> = {
   mano: 'A mano',
   'crono-seg': 'Cronómetro · s',

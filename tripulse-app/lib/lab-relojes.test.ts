@@ -23,7 +23,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   col, conRelojDe, contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe,
-  contadoresDe, cuentaAtras, escalonAhora, escalonadosDe, finDe, relojesDe, repeticionDe, SOLO_SUELTOS,
+  contadoresDe, cuentaAtras, escalonAhora, escalonadosDe, etiquetaInstrumento, finDe, INSTRUMENTOS,
+  relojesDe, repeticionDe, SOLO_SUELTOS,
   type Bloque, type TestLab,
 } from './lab-constructor'
 
@@ -362,5 +363,25 @@ describe('el pulsador SÍ vale dentro de un bloque', () => {
   it('ni con reloj pasada la última: se queda en la 6.ª', () => {
     const bl = conPulsador(60).bloques[0]
     expect(repeticionDe(bl, 10 * 60_000, 1)).toBe(6)
+  })
+})
+
+describe('los parciales de un bloque se llaman parciales', () => {
+  /* El entrenador buscaba «parciales» dentro de un bloque y no los veía: SÍ
+     estaban, pero con el nombre de «cronómetro». Fuera de un bloque un
+     cronómetro da UN tiempo; dentro, uno por repetición — que es un parcial. */
+  it('dentro de un bloque, el cronómetro se llama parciales', () => {
+    expect(etiquetaInstrumento('crono-seg', true)).toContain('Parciales')
+    expect(etiquetaInstrumento('crono-min', true)).toContain('Parciales')
+  })
+
+  it('fuera sigue siendo un cronómetro, que es lo que es', () => {
+    expect(etiquetaInstrumento('crono-seg', false)).toBe(INSTRUMENTOS['crono-seg'])
+  })
+
+  it('y los demás no cambian de nombre por estar dentro', () => {
+    for (const i of ['mano', 'contador'] as const) {
+      expect(etiquetaInstrumento(i, true)).toBe(INSTRUMENTOS[i])
+    }
   })
 })
