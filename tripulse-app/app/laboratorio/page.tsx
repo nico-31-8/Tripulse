@@ -54,7 +54,16 @@ const LLAVE = 'tp_laboratorio_v1'
  * Va aparte de los deportistas de verdad a propósito: probar el test no puede
  * acabar escribiéndole un dato a nadie, y mezclarlas sería cuestión de tiempo.
  */
-const PRUEBA = '_prueba'
+/**
+ * La caja donde se escribe mientras montas el test, sin tocar a nadie.
+ *
+ * Es un id NEGATIVO y no una palabra porque la pantalla de pasar el test
+ * trabaja con atletas, y así se puede pintar la de verdad en el editor en vez
+ * de tener una segunda versión que se queda atrás. Ningún deportista tiene un
+ * id negativo.
+ */
+const PRUEBA = '-1'
+const ATLETA_PRUEBA: Atleta[] = [{ id: -1, nombre: 'Probando' }]
 
 interface Atleta { id: number; nombre: string }
 interface Guardado { id: number; nombre: string; deporte: string; def: TestLab; mediciones: number }
@@ -175,7 +184,11 @@ export default function Laboratorio() {
       const s = localStorage.getItem(LLAVE)
       const o = s ? JSON.parse(s) : null
       if (o?.test) {
-        setTest(o.test); setProto(o.proto || {}); setMed(o.med || {})
+        /* El borrador de antes guardaba la caja de pruebas con otro nombre.
+           Se mueve en vez de perderse: alguien puede tener un test a medias. */
+        const med = { ...(o.med || {}) }
+        if (med._prueba && !med[PRUEBA]) { med[PRUEBA] = med._prueba; delete med._prueba }
+        setTest(o.test); setProto(o.proto || {}); setMed(med)
         setAtletas(o.atletas?.length ? o.atletas : ['Deportista'])
         setVista(o.vista === 'pasar' ? 'pasar' : 'editor')
         setPaso(Math.min(4, Math.max(1, o.paso || 1)))
@@ -593,6 +606,165 @@ export default function Laboratorio() {
       onLlego={(bl, n) => ponMed(cajaActiva, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })} />
   )
 
+  /**
+   * LA PANTALLA DEL TEST, la misma en los dos sitios.
+   *
+   * Se pinta al pasarlo de verdad y también mientras lo montas, con una
+   * caja de pruebas en vez de gente. Está en una función y no copiada
+   * porque una previa que se PARECE a la pantalla se queda atrás a la
+   * primera: la de antes ni siquiera enseñaba el reloj, y el paso 4 decía
+   * que era «exactamente» lo que te ibas a encontrar.
+   */
+  const pantallaDelTest = (op: { atletas: Atleta[]; montando?: boolean; anadir?: React.ReactNode }) => (
+              <Pasar
+                test={test} atletas={op.atletas} activo={op.atletas === atletas ? activo : 0} setActivo={setActivo}
+              montando={op.montando} anadir={op.anadir}
+                deportistas={deportistas} guardado={editandoId !== null}
+                fecha={fecha} setFecha={setFecha} guardando={guardando}
+                onGuardarMediciones={guardarMediciones}
+                datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
+                onAtleta={a => {
+                  if (atletas.some(x => x.id === a.id)) return
+                  setAtletas(l => [...l, a])
+                  setMed(m => ({ ...m, [String(a.id)]: medVacia(test) }))
+                  setActivo(atletas.length)
+                }}
+                onQuitaAtleta={i => {
+                  const a = atletas[i]
+                  setAtletas(l => l.filter((_, k) => k !== i))
+                  setMed(m => { const x = { ...m }; delete x[String(a.id)]; return x })
+                  setActivo(v => Math.max(0, Math.min(v, atletas.length - 2)))
+                }}
+                onBajo={(bl, a) => {
+                  const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
+                  const esn = escalonAhora(bl, ms)
+                  const dentro = Math.floor(ms / 1000) % duracionDe(bl)
+                  ponMed(String(a.id), d => {
+                    /* El último COMPLETO, no el que iba: ese no lo terminó, y sus
+                       segundos son justo el otro dato. */
+                    d['@' + bl.clave] = Math.max(0, esn - 1)
+                    const ag = buscaCol(test, 'aguanto')
+                    if (ag && !ag.bl && ag.c.clase !== 'dada') d['aguanto'] = String(dentro)
+                  })
+                }}
+                onVuelta={(c, bl, a) => {
+                  if (!reloj?.corre) return
+                  const k = String(a.id)
+                  const ms = ahora - reloj.desde + reloj.acu
+                  if (!marcas.current[k]) marcas.current[k] = {}
+                  const lista = marcas.current[k][c.clave] || (marcas.current[k][c.clave] = [])
+                  if (lista.length >= bl.veces) return
+                  /* La marca que se guarda es la del RELOJ COMPARTIDO, y el tiempo
+                     de cada repetición es la resta con la anterior DE ESA PERSONA:
+                     restar contra el reloj le daría a todos el del más rápido. */
+                  const previo = lista.length ? lista[lista.length - 1] : 0
+                  const dur = ms - previo
+                  if (dur <= 0) return
+                  lista.push(ms)
+                  const val = c.instrumento === 'crono-min' ? Math.round(dur / 600) / 100 : Math.round(dur / 100) / 10
+                  ponMed(k, d => {
+                    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
+                    l[lista.length - 1] = String(val); d[c.clave] = l
+                  })
+                }}
+                onDeshace={(c, a) => {
+                  const k = String(a.id)
+                  const lista = marcas.current[k]?.[c.clave]
+                  if (!lista?.length) return
+                  lista.pop()
+                  ponMed(k, d => {
+                    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
+                    l[lista.length] = ''; d[c.clave] = l
+                  })
+                }}
+                /* BORRAR LO APUNTADO NO PARA EL RELOJ. Antes sí, porque el
+                   reloj era de esa sección; ahora es el del test, y pararlo
+                   porque alguien quiere limpiar una columna dejaría la cuenta
+                   atrás y los parciales de los demás tirados. El reloj se pone a
+                   cero en su propio botón. */
+                onReinicia={(c, bl) => {
+                  for (const a of atletas) {
+                    const k = String(a.id)
+                    if (marcas.current[k]) marcas.current[k][c.clave] = []
+                    ponMed(k, d => { d[c.clave] = Array.from({ length: bl.veces }, () => '') })
+                  }
+                }}
+                onReiniciaEsc={bl => {
+                  escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
+                  for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
+                }}
+                /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una
+                   resta: mide desde la salida, que es lo que significa «el 400».
+                   Por eso volver a marcar simplemente lo pisa. */
+                onMarcaSuelto={(c, a) => {
+                  if (!reloj?.corre) return
+                  const ms = ahora - reloj.desde + reloj.acu
+                  const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
+                  ponMed(String(a.id), d => { d[c.clave] = String(val) })
+                }}
+                onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
+                onReiniciaSuelto={c => {
+                  /* Una casilla de parciales se vacía como LISTA: dejarla en
+                     texto la rompería en la siguiente marca. */
+                  const vacio = c.instrumento === 'parciales' ? [] : ''
+                  for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = vacio })
+                }}
+                /* EL PARCIAL ES LA RESTA con lo que ya lleva marcado ESA persona,
+                   no con la marca anterior del reloj: restar contra el reloj le
+                   daría a todos el trozo del más rápido. */
+                onParcial={(c, a) => {
+                  if (!reloj?.corre) return
+                  const ms = ahora - reloj.desde + reloj.acu
+                  const k = String(a.id)
+                  const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
+                  const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
+                  const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
+                  if (dur <= 0) return
+                  ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
+                }}
+                onQuitaParcial={(c, a) => ponMed(String(a.id), d => {
+                  const lista = (d[c.clave] as unknown[] | undefined) || []
+                  d[c.clave] = lista.slice(0, -1)
+                })}
+                /* La pantalla se guarda EN EL ACTO si el test ya existe: pedirle
+                   que vuelva al editor y le dé a «Guardar test» para que se
+                   recuerde el orden es perder justo lo que esto ahorra. */
+                onPantalla={async p => {
+                  if (!test) return
+                  const nuevo: TestLab = { ...clon(test), pantalla: tienePantalla(p) ? p : undefined }
+                  setTest(nuevo)
+                  if (editandoId && userId) {
+                    const { error } = await supabase.from('test_definicion')
+                      .update(paraGuardar(nuevo, userId)).eq('id', editandoId)
+                    if (error) decir('mal', 'No se ha podido guardar la pantalla: ' + error.message)
+                  }
+                }}
+                /* Nunca por debajo de cero: un contador en negativo no es una
+                   corrección, es un número que después entra en una fórmula. */
+                onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
+                  d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
+                })}
+                /* Poner a cero el RELOJ, no lo apuntado: son dos cosas, y
+                   borrarle a alguien lo que llevaba marcado por querer reiniciar
+                   el reloj es de las que no se perdonan. Lo apuntado se borra
+                   desde cada sección. */
+                onReiniciaReloj={() => {
+                  setReloj(null)
+                  escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}; tramoPrevio.current = {}
+                }}
+                onArranca={() => {
+                  despertarAudio()
+                  setReloj(r => {
+                    const base = r || { desde: 0, acu: 0, corre: false }
+                    return base.corre
+                      ? { ...base, acu: base.acu + (Date.now() - base.desde), corre: false }
+                      : { ...base, desde: Date.now(), corre: true }
+                  })
+                  escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
+                  setAhora(Date.now())
+                }} />
+  )
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       {cabecera}
@@ -653,7 +825,19 @@ export default function Laboratorio() {
                     </div>
                   )}
                 </div>
-                <div className="lg:sticky lg:top-4">{previa}</div>
+                {/* LA DERECHA ES LA PANTALLA, no una previa que se le parece.
+                    Antes aquí solo estaba la tabla y el paso 4 decía que era
+                    «exactamente» lo que te ibas a encontrar: el reloj, los
+                    parciales y el pulsador no estaban. Ahora es la misma, con
+                    una caja de pruebas en vez de gente. */}
+                <div className="lg:sticky lg:top-4 flex flex-col gap-4">
+                  {pantallaDelTest({
+                    atletas: ATLETA_PRUEBA,
+                    montando: true,
+                    anadir: <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={Object.keys(med)} compacto />,
+                  })}
+                  {previa}
+                </div>
               </div>
             </div>
           </>
@@ -665,152 +849,7 @@ export default function Laboratorio() {
             onFijar={fijarConEsto} />
         ) : (
           <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
-            <Pasar
-              test={test} atletas={atletas} activo={activo} setActivo={setActivo}
-              deportistas={deportistas} guardado={editandoId !== null}
-              fecha={fecha} setFecha={setFecha} guardando={guardando}
-              onGuardarMediciones={guardarMediciones}
-              datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
-              onAtleta={a => {
-                if (atletas.some(x => x.id === a.id)) return
-                setAtletas(l => [...l, a])
-                setMed(m => ({ ...m, [String(a.id)]: medVacia(test) }))
-                setActivo(atletas.length)
-              }}
-              onQuitaAtleta={i => {
-                const a = atletas[i]
-                setAtletas(l => l.filter((_, k) => k !== i))
-                setMed(m => { const x = { ...m }; delete x[String(a.id)]; return x })
-                setActivo(v => Math.max(0, Math.min(v, atletas.length - 2)))
-              }}
-              onBajo={(bl, a) => {
-                const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
-                const esn = escalonAhora(bl, ms)
-                const dentro = Math.floor(ms / 1000) % duracionDe(bl)
-                ponMed(String(a.id), d => {
-                  /* El último COMPLETO, no el que iba: ese no lo terminó, y sus
-                     segundos son justo el otro dato. */
-                  d['@' + bl.clave] = Math.max(0, esn - 1)
-                  const ag = buscaCol(test, 'aguanto')
-                  if (ag && !ag.bl && ag.c.clase !== 'dada') d['aguanto'] = String(dentro)
-                })
-              }}
-              onVuelta={(c, bl, a) => {
-                if (!reloj?.corre) return
-                const k = String(a.id)
-                const ms = ahora - reloj.desde + reloj.acu
-                if (!marcas.current[k]) marcas.current[k] = {}
-                const lista = marcas.current[k][c.clave] || (marcas.current[k][c.clave] = [])
-                if (lista.length >= bl.veces) return
-                /* La marca que se guarda es la del RELOJ COMPARTIDO, y el tiempo
-                   de cada repetición es la resta con la anterior DE ESA PERSONA:
-                   restar contra el reloj le daría a todos el del más rápido. */
-                const previo = lista.length ? lista[lista.length - 1] : 0
-                const dur = ms - previo
-                if (dur <= 0) return
-                lista.push(ms)
-                const val = c.instrumento === 'crono-min' ? Math.round(dur / 600) / 100 : Math.round(dur / 100) / 10
-                ponMed(k, d => {
-                  const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
-                  l[lista.length - 1] = String(val); d[c.clave] = l
-                })
-              }}
-              onDeshace={(c, a) => {
-                const k = String(a.id)
-                const lista = marcas.current[k]?.[c.clave]
-                if (!lista?.length) return
-                lista.pop()
-                ponMed(k, d => {
-                  const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
-                  l[lista.length] = ''; d[c.clave] = l
-                })
-              }}
-              /* BORRAR LO APUNTADO NO PARA EL RELOJ. Antes sí, porque el
-                 reloj era de esa sección; ahora es el del test, y pararlo
-                 porque alguien quiere limpiar una columna dejaría la cuenta
-                 atrás y los parciales de los demás tirados. El reloj se pone a
-                 cero en su propio botón. */
-              onReinicia={(c, bl) => {
-                for (const a of atletas) {
-                  const k = String(a.id)
-                  if (marcas.current[k]) marcas.current[k][c.clave] = []
-                  ponMed(k, d => { d[c.clave] = Array.from({ length: bl.veces }, () => '') })
-                }
-              }}
-              onReiniciaEsc={bl => {
-                escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
-                for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
-              }}
-              /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una
-                 resta: mide desde la salida, que es lo que significa «el 400».
-                 Por eso volver a marcar simplemente lo pisa. */
-              onMarcaSuelto={(c, a) => {
-                if (!reloj?.corre) return
-                const ms = ahora - reloj.desde + reloj.acu
-                const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
-                ponMed(String(a.id), d => { d[c.clave] = String(val) })
-              }}
-              onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
-              onReiniciaSuelto={c => {
-                /* Una casilla de parciales se vacía como LISTA: dejarla en
-                   texto la rompería en la siguiente marca. */
-                const vacio = c.instrumento === 'parciales' ? [] : ''
-                for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = vacio })
-              }}
-              /* EL PARCIAL ES LA RESTA con lo que ya lleva marcado ESA persona,
-                 no con la marca anterior del reloj: restar contra el reloj le
-                 daría a todos el trozo del más rápido. */
-              onParcial={(c, a) => {
-                if (!reloj?.corre) return
-                const ms = ahora - reloj.desde + reloj.acu
-                const k = String(a.id)
-                const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
-                const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
-                const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
-                if (dur <= 0) return
-                ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
-              }}
-              onQuitaParcial={(c, a) => ponMed(String(a.id), d => {
-                const lista = (d[c.clave] as unknown[] | undefined) || []
-                d[c.clave] = lista.slice(0, -1)
-              })}
-              /* La pantalla se guarda EN EL ACTO si el test ya existe: pedirle
-                 que vuelva al editor y le dé a «Guardar test» para que se
-                 recuerde el orden es perder justo lo que esto ahorra. */
-              onPantalla={async p => {
-                if (!test) return
-                const nuevo: TestLab = { ...clon(test), pantalla: tienePantalla(p) ? p : undefined }
-                setTest(nuevo)
-                if (editandoId && userId) {
-                  const { error } = await supabase.from('test_definicion')
-                    .update(paraGuardar(nuevo, userId)).eq('id', editandoId)
-                  if (error) decir('mal', 'No se ha podido guardar la pantalla: ' + error.message)
-                }
-              }}
-              /* Nunca por debajo de cero: un contador en negativo no es una
-                 corrección, es un número que después entra en una fórmula. */
-              onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
-                d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
-              })}
-              /* Poner a cero el RELOJ, no lo apuntado: son dos cosas, y
-                 borrarle a alguien lo que llevaba marcado por querer reiniciar
-                 el reloj es de las que no se perdonan. Lo apuntado se borra
-                 desde cada sección. */
-              onReiniciaReloj={() => {
-                setReloj(null)
-                escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}; tramoPrevio.current = {}
-              }}
-              onArranca={() => {
-                despertarAudio()
-                setReloj(r => {
-                  const base = r || { desde: 0, acu: 0, corre: false }
-                  return base.corre
-                    ? { ...base, acu: base.acu + (Date.now() - base.desde), corre: false }
-                    : { ...base, desde: Date.now(), corre: true }
-                })
-                escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
-                setAhora(Date.now())
-              }} />
+            {pantallaDelTest({ atletas })}
             <div className="lg:sticky lg:top-4">{previa}</div>
           </div>
         )}
@@ -848,6 +887,83 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
             : <><b className="text-white">tiene las dos cosas</b>: casillas sueltas y repeticiones.</>}
         {' '}Eso se decide en el paso 2 añadiendo casillas o bloques — no hay que elegirlo antes de tiempo.
       </p>
+    </div>
+  )
+}
+
+// ============================================================
+// Añadir algo al test
+// ============================================================
+/**
+ * Los botones de añadir, en UN sitio y usados en DOS.
+ *
+ * Se eligen aquí al crear la casilla —antes solo había «+ Casilla suelta» y la
+ * forma de rellenarla era un desplegable dentro de la casilla ya creada, así
+ * que el cronómetro, el pulsador y los parciales existían y no había manera de
+ * encontrarlos—. Y se pintan también DENTRO de la pantalla del test, porque
+ * montar un test es colocar la pantalla del jueves: lo que añades tiene que
+ * aparecer donde lo vas a usar.
+ */
+function BotonesAnadir({ test, mut, setMed, cajas, compacto }: {
+  test: TestLab
+  mut: (fn: (t: TestLab) => void) => void
+  /* La misma firma que usa Paso2: solo se llama con una función. */
+  setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
+  cajas: string[]
+  compacto?: boolean
+}) {
+  const clase = (compacto ? btnSec + ' ' + btnMini : btnSec)
+  const nuevaMedida = (clave: string, veces: number) =>
+    setMed(m0 => {
+      const m = { ...m0 }
+      for (const a of cajas) m[a] = { ...(m[a] || {}), [clave]: Array.from({ length: veces }, () => '') }
+      return m
+    })
+
+  return (
+    <div className="flex gap-2 flex-wrap items-center">
+      {compacto && <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Añadir</span>}
+      {([
+        { et: '+ Cuenta atrás', bloque: true },
+        { et: '+ Parciales', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
+        { et: '+ Pulsador', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
+        { et: '+ Cronómetro', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
+        { et: '+ Casilla suelta', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
+        { et: '+ Bloque de repeticiones', repes: true },
+      ]).map(x => (
+        <button key={x.et} className={clase} onClick={() => {
+          /* LA CUENTA ATRÁS es un bloque que solo lleva reloj: legítimo desde
+             que existe. Antes había que crear un bloque de repeticiones,
+             entrar en «el reloj», darle duración y bajar las repeticiones a
+             una — cuatro pasos para decir «esto dura un minuto». */
+          if (x.bloque) {
+            mut(t => {
+              t.bloques.push({
+                clave: 'b' + (t.bloques.length + 1), etiqueta: 'El tiempo', modo: 'cerrado',
+                veces: 1, duracion: 60, duracionUd: 's',
+                pitaCambio: true, avisoAntes: 10, ritmo: 'no', ritmoCada: 0, columnas: [],
+              })
+            })
+            return
+          }
+          if (x.repes) {
+            const clave = nuevaClave(test, 'medida')
+            mut(t => {
+              t.bloques.push({
+                clave: 'b' + (t.bloques.length + 1), etiqueta: 'Repetición', modo: 'cerrado',
+                veces: 6, duracion: 0, columnas: [col({ clave, etiqueta: 'Lo que mides' })],
+              })
+            })
+            nuevaMedida(clave, 6)
+            return
+          }
+          const clave = nuevaClave(test, x.base!)
+          mut(t => { t.sueltos.push(col({ clave, etiqueta: x.etiqueta, unidad: x.unidad, instrumento: x.inst })) })
+          /* Los parciales nacen como LISTA; lo demás, como texto. */
+          const vacio: unknown = x.inst === 'parciales' ? [] : ''
+          setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
+        }}>{x.et}</button>
+      ))}
     </div>
   )
 }
@@ -1057,48 +1173,7 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
         ))}
       </div>
 
-      {/* SE ELIGE AQUÍ, AL CREARLA. Antes solo había «+ Casilla suelta» y la
-          forma de rellenarla era un desplegable dentro de la casilla ya
-          creada: el cronómetro, el pulsador y los parciales existían y no
-          había manera de encontrarlos. */}
-      <div className="flex gap-2 flex-wrap">
-        {([
-          { et: '+ Casilla suelta', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
-          { et: '+ Cronómetro', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
-          { et: '+ Pulsador', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
-          { et: '+ Parciales', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
-        ]).map(x => (
-          <button key={x.base} onClick={() => {
-            const clave = nuevaClave(test, x.base)
-            mut(t => { t.sueltos.push(col({ clave, etiqueta: x.etiqueta, unidad: x.unidad, instrumento: x.inst })) })
-            /* Los parciales nacen como LISTA; lo demás, como texto. */
-            const vacio: unknown = x.inst === 'parciales' ? [] : ''
-            setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
-          }} className={btnSec}>{x.et}</button>
-        ))}
-        {/* LA CUENTA ATRÁS, a un botón como las demás. Antes había que crear
-            un bloque de repeticiones, entrar en «el reloj», darle duración y
-            bajar las repeticiones a una: cuatro pasos para decir «esto dura un
-            minuto». Un bloque que SOLO lleva reloj es legítimo desde que
-            existe la cuenta atrás. */}
-        <button onClick={() => mut(t => {
-          t.bloques.push({
-            clave: 'b' + (t.bloques.length + 1), etiqueta: 'El tiempo', modo: 'cerrado',
-            veces: 1, duracion: 60, duracionUd: 's',
-            pitaCambio: true, avisoAntes: 10, ritmo: 'no', ritmoCada: 0, columnas: [],
-          })
-        })} className={btnSec}>+ Cuenta atrás</button>
-        <button onClick={() => {
-          const clave = nuevaClave(test, 'medida')
-          mut(t => {
-            t.bloques.push({
-              clave: 'b' + (t.bloques.length + 1), etiqueta: 'Repetición', modo: 'cerrado',
-              veces: 6, duracion: 0, columnas: [col({ clave, etiqueta: 'Lo que mides' })],
-            })
-          })
-          nuevaMedida(clave, 6)
-        }} className={btnSec}>+ Bloque de repeticiones</button>
-      </div>
+      <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={cajas} />
 
       {repes.length > 0 && (
         <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/[0.07] px-3 py-2.5 text-[12px] text-red-200 leading-snug">
@@ -2201,6 +2276,7 @@ function Pasar({
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
   onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial, onPantalla,
+  montando = false, anadir,
 }: {
   test: TestLab
   atletas: Atleta[]
@@ -2233,6 +2309,17 @@ function Pasar({
   onParcial: (c: Columna, a: Atleta) => void
   onQuitaParcial: (c: Columna, a: Atleta) => void
   onPantalla: (p: Pantalla) => void
+  /**
+   * Se está MONTANDO el test, no pasándolo.
+   *
+   * Es la misma pantalla —no una previa que se parece— y por eso vive en este
+   * componente: una segunda versión se habría quedado atrás a la primera. Lo
+   * único que cambia es que aquí no hay gente a la que pasárselo ni mediciones
+   * que guardar: se escribe en una caja de pruebas que no es de nadie.
+   */
+  montando?: boolean
+  /** Los botones de añadir, para poder montar el test DESDE la pantalla. */
+  anadir?: React.ReactNode
 }) {
   const cronos = cronosDe(test)
   const escalonados = escalonadosDe(test)
@@ -2274,7 +2361,14 @@ function Pasar({
         {test.deporte} · {atletas.length > 1 ? atletas.length + ' personas a la vez' : atletas.length === 1 ? 'una persona' : 'sin nadie todavía'}
       </p>
 
-      <div className="flex gap-1.5 flex-wrap items-center mt-3">
+      {montando && (
+        <p className="text-[11.5px] text-gray-500 mt-1 mb-0">
+          Esto es <b className="text-gray-300">la pantalla de verdad</b>: el reloj anda y los botones funcionan.
+          Lo que escribas aquí es para probar y no se guarda en nadie.
+        </p>
+      )}
+
+      <div className={'flex gap-1.5 flex-wrap items-center mt-3' + (montando ? ' hidden' : '')}>
         {atletas.map((a, i) => (
           <span key={a.id} onClick={() => setActivo(i)}
             className={'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] cursor-pointer border transition ' +
@@ -2355,7 +2449,7 @@ function Pasar({
         </div>
       )}
 
-      {!atletas.length && (
+      {!montando && !atletas.length && (
         <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] text-amber-200 leading-snug">
           {deportistas.length
             ? <>Elige a quién se lo pasas. Puedes poner a varios: el reloj es uno solo y cada uno tiene su botón.</>
@@ -2675,7 +2769,13 @@ function Pasar({
 
       </div>)}
 
-      {visibles.includes('guardar') && (<div style={{ order: todas.indexOf('guardar') }}>
+      {anadir && (
+        <div style={{ order: 998 }} className="mt-3 pt-3 border-t border-dashed border-gray-800">
+          {anadir}
+        </div>
+      )}
+
+      {visibles.includes('guardar') && !montando && (<div style={{ order: 999 }}>
       {cronos.length > 0 && (
         <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
           Los tiempos de cada repetición <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla,
