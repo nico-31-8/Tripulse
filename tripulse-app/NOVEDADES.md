@@ -14,6 +14,46 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 1 de octubre de 2026 · Parciales y pulsador en el laboratorio
+
+Dos formas nuevas de apuntar a pie de pista, en **Laboratorio → la casilla elige
+cómo se rellena**.
+
+### Parciales: el reloj no se para
+
+Eliges **Parciales · sin parar el reloj** y, al pasar el test, tienes un reloj y
+un botón **Marcar** por persona. Cada vez que pulsas queda apuntado dónde ibas,
+y el reloj sigue corriendo:
+
+> 1 · 4:35 (4:35) · 2 · 9:12 (+4:37) · 3 · 14:00 (+4:48)
+
+Se ven **los dos números**: dónde caíste y cuánto tardaste en ese trozo. Y **no
+hay que decir antes cuántos van a ser** — marcas lo que vaya pasando.
+
+Lo que se guarda es el parcial de cada trozo, así que en la fórmula puedes pedir
+la media, el mejor, cuántos hubo, el total o la caída del primero al último.
+
+Antes esto se podía a medias con un bloque de repeticiones cronometrado, pero
+había que declarar «6 repeticiones» de antemano.
+
+### Pulsador: cuántas hizo
+
+La casilla **Pulsador · cuenta al pulsar** ahora es un **botón grande por
+persona**: el número es el botón. A pie de pista se pulsa mirando al atleta, no
+a la pantalla. El **−1** va aparte y pequeño a propósito: corregir no puede ser
+tan fácil como contar.
+
+**Si el test lleva cuenta atrás, el pulsador se bloquea al acabar el tiempo**, y
+queda un `+1` pequeño para la que cae justo en la campana. Dos pulsaciones de
+más después del pitido entrarían como repeticiones que no ocurrieron.
+
+### Dos plantillas para probarlo
+
+- **Cuántas en un tiempo** — flexiones en un minuto.
+- **Marcar parciales** — series de mil, con la media, el mejor y la caída.
+
+---
+
 ## 30 de septiembre de 2026 · El deportista ya ve QUÉ test le toca
 
 Cuando le pones un día de test de **los tuyos** —del Laboratorio o de Tests
