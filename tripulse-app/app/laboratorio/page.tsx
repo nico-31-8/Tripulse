@@ -904,13 +904,15 @@ function Paso1({ test, mut }: { test: TestLab; mut: (fn: (t: TestLab) => void) =
  * montar un test es colocar la pantalla del jueves: lo que añades tiene que
  * aparecer donde lo vas a usar.
  */
-function BotonesAnadir({ test, mut, setMed, cajas, compacto }: {
+function BotonesAnadir({ test, mut, setMed, cajas, compacto, onCreado }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   /* La misma firma que usa Paso2: solo se llama con una función. */
   setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
   cajas: string[]
   compacto?: boolean
+  /** La clave de lo que se acaba de crear, para preguntarle allí qué es. */
+  onCreado?: (clave: string) => void
 }) {
   const clase = (compacto ? btnSec + ' ' + btnMini : btnSec)
   const nuevaMedida = (clave: string, veces: number) =>
@@ -920,69 +922,42 @@ function BotonesAnadir({ test, mut, setMed, cajas, compacto }: {
       return m
     })
 
-  const QUE = [
-    /* El orden es el de uso, no el del modelo: lo primero es una casilla a
-       mano, que es la mitad de los tests. */
-    { fam: 'casilla', et: compacto ? '+ Casilla' : '+ A mano', pista: 'la escribes tú al medir', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
-    { fam: 'casilla', et: '+ Cronómetro', pista: 'se para y cae el tiempo', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
-    { fam: 'casilla', et: '+ Pulsador', pista: 'cuenta al pulsar', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
-    { fam: 'casilla', et: '+ Parciales', pista: 'sin parar el reloj', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
-    { fam: 'bloque', et: '+ Cuenta atrás', pista: 'el test dura un tiempo', bloque: true },
-    { fam: 'bloque', et: '+ Repeticiones', pista: 'algo que se repite', repes: true },
-  ]
-
+  /* DOS PUERTAS, y lo demás se pregunta DESPUÉS, en la casilla ya creada.
+     Antes eran seis botones en fila: obligaban a decidir qué clase de cosa
+     querías —cronómetro, pulsador, parciales— antes de tener nada delante, y
+     con los seis nombres a secas no se sabía en qué se diferencian. */
   return (
-    <div className={compacto ? 'flex gap-2 flex-wrap items-center' : 'flex flex-col gap-2.5'}>
+    <div className={compacto ? 'flex gap-2 flex-wrap items-center' : 'flex gap-2.5 flex-wrap items-stretch'}>
       {compacto && <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Añadir</span>}
-      {(compacto ? [{ t: '', fam: '' }] : [
-        { t: 'Una casilla', fam: 'casilla' },
-        { t: 'O un bloque, que es algo que se repite', fam: 'bloque' },
-      ]).map(g => (
-      <div key={g.fam} className={compacto ? 'contents' : 'flex gap-2 flex-wrap items-baseline'}>
-        {!compacto && <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold w-full">{g.t}</span>}
-      {QUE.filter(x => compacto || x.fam === g.fam).map(x => (
-        <button key={x.et} className={clase + (compacto ? '' : ' flex flex-col items-start gap-0.5')} onClick={() => {
-          /* LA CUENTA ATRÁS es un bloque que solo lleva reloj: legítimo desde
-             que existe. Antes había que crear un bloque de repeticiones,
-             entrar en «el reloj», darle duración y bajar las repeticiones a
-             una — cuatro pasos para decir «esto dura un minuto». */
-          if (x.bloque) {
-            mut(t => {
-              t.bloques.push({
-                clave: 'b' + (t.bloques.length + 1), etiqueta: 'El tiempo', modo: 'cerrado',
-                veces: 1, duracion: 60, duracionUd: 's',
-                pitaCambio: true, avisoAntes: 10, ritmo: 'no', ritmoCada: 0, columnas: [],
-              })
-            })
-            return
-          }
-          if (x.repes) {
-            const clave = nuevaClave(test, 'medida')
-            mut(t => {
-              t.bloques.push({
-                clave: 'b' + (t.bloques.length + 1), etiqueta: 'Repetición', modo: 'cerrado',
-                veces: 6, duracion: 0, columnas: [col({ clave, etiqueta: 'Lo que mides' })],
-              })
-            })
-            nuevaMedida(clave, 6)
-            return
-          }
-          const clave = nuevaClave(test, x.base!)
-          mut(t => { t.sueltos.push(col({ clave, etiqueta: x.etiqueta, unidad: x.unidad, instrumento: x.inst })) })
-          /* Los parciales nacen como LISTA; lo demás, como texto. */
-          const vacio: unknown = x.inst === 'parciales' ? [] : ''
-          setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
-        }}>
-          <span>{x.et}</span>
-          {/* Qué hace cada uno, en tres palabras. Seis nombres a secas no
-              dicen en qué se diferencian, y entonces se prueba a ver. */}
-          {!compacto && <span className="text-[10.5px] font-normal text-gray-500">{x.pista}</span>}
-        </button>
-      ))}
-      </div>
-      ))}
+
+      <button className={clase + (compacto ? '' : ' flex flex-col items-start gap-0.5')} onClick={() => {
+        const clave = nuevaClave(test, 'dato')
+        mut(t => { t.sueltos.push(col({ clave, etiqueta: 'Nuevo dato' })) })
+        setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: '' }; return m })
+        onCreado?.(clave)
+      }}>
+        <span>+ Una casilla</span>
+        {!compacto && <span className="text-[10.5px] font-normal text-gray-500">un dato que se apunta una vez</span>}
+      </button>
+
+      <button className={clase + (compacto ? '' : ' flex flex-col items-start gap-0.5')} onClick={() => {
+        const clave = nuevaClave(test, 'medida')
+        const suya = 'b' + (test.bloques.length + 1)
+        mut(t => {
+          t.bloques.push({
+            clave: suya, etiqueta: 'Repetición', modo: 'cerrado',
+            veces: 6, duracion: 0, columnas: [col({ clave, etiqueta: 'Lo que mides' })],
+          })
+        })
+        nuevaMedida(clave, 6)
+        onCreado?.(suya)
+      }}>
+        <span>+ Un bloque</span>
+        {!compacto && <span className="text-[10.5px] font-normal text-gray-500">algo que se repite, o que dura</span>}
+      </button>
     </div>
   )
+
 }
 
 // ============================================================
@@ -1003,6 +978,9 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
   avisar: (texto: string) => void
 }) {
   const repes = clavesRepetidas(test)
+  /* Lo último que se ha creado: ahí se le pregunta qué es, en vez de pedirlo
+     antes de tener nada delante. */
+  const [reciente, setReciente] = useState<string | null>(null)
 
   const nuevaMedida = (clave: string, veces: number) =>
     setMed(m0 => {
@@ -1049,6 +1027,7 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
               }
             }}
             onRenombra={n => renombrar(c, n, null)}
+            reciente={reciente === c.clave}
             onQuita={() => {
               mut(t => { t.sueltos.splice(i, 1) })
               setProto(p => { const n = { ...p }; delete n[c.clave]; return n })
@@ -1071,6 +1050,33 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
                 })
               }} className="ml-auto text-gray-600 hover:text-red-400 px-1">×</button>
             </h4>
+
+            {/* LA PREGUNTA DEL BLOQUE. Son dos cosas distintas y antes había
+                que saberlo antes de crearlo: uno se repite —6×100— y el otro
+                dura —los 12 minutos del Cooper—. Lo que se mide dentro es el
+                mismo en los dos. */}
+            {reciente === bl.clave && (
+              <div className="mb-2.5 flex gap-1.5 flex-wrap items-center">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">¿Qué es este bloque?</span>
+                <button onClick={() => mut(t => { const x = t.bloques[bi]; x.veces = 6; x.duracion = 0 })}
+                  className={FICHA + ' ' + (!duracionDe(bl)
+                    ? 'bg-orange-500/20 border-orange-500/60 text-orange-200'
+                    : 'bg-gray-800 border-gray-600 text-gray-300')}>
+                  Se repite varias veces
+                </button>
+                <button onClick={() => mut(t => {
+                  const x = t.bloques[bi]
+                  x.veces = 1; x.duracion = 60; x.duracionUd = 's'
+                  x.pitaCambio = true; x.avisoAntes = 10
+                  if (!x.ritmo) x.ritmo = 'no'
+                })}
+                  className={FICHA + ' ' + (duracionDe(bl)
+                    ? 'bg-orange-500/20 border-orange-500/60 text-orange-200'
+                    : 'bg-gray-800 border-gray-600 text-gray-300')}>
+                  Dura un tiempo fijo
+                </button>
+              </div>
+            )}
 
             <div className={rejilla} style={REJILLA}>
               <div>
@@ -1199,7 +1205,7 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
         </p>
       )}
 
-      <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={cajas} />
+      <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={cajas} onCreado={setReciente} />
 
       {repes.length > 0 && (
         <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/[0.07] px-3 py-2.5 text-[12px] text-red-200 leading-snug">
@@ -1219,7 +1225,7 @@ function Pildora({ tono, children }: { tono: 'blo' | 'dada' | 'med'; children: R
 }
 
 /** Una casilla suelta o una columna de un bloque: se editan igual. */
-function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra, onQuita, pidiendo, setPidiendo }: {
+function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra, onQuita, pidiendo, setPidiendo, reciente }: {
   c: Columna
   bl: Bloque | null
   /** Qué puesto ocupa en su bloque: una calculada solo ve lo que va antes. */
@@ -1232,6 +1238,8 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
   onQuita: () => void
   pidiendo?: Pidiendo | null
   setPidiendo?: (p: Pidiendo | null) => void
+  /** Se acaba de crear: se le pregunta aquí qué clase de casilla es. */
+  reciente?: boolean
 }) {
   const dada = c.clase === 'dada'
   const calc = c.clase === 'calculada'
@@ -1308,6 +1316,25 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
           </>
         )}
       </div>
+
+      {/* LA PREGUNTA, DESPUÉS Y AQUÍ. Elegir entre cronómetro, pulsador o
+          parciales antes de tener la casilla delante era pedir una decisión a
+          ciegas; con la casilla creada, es cambiarle una palabra. */}
+      {reciente && !dada && !calc && (
+        <div className="mt-2 flex gap-1.5 flex-wrap items-center">
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">¿Cómo se rellena?</span>
+          {(Object.keys(INSTRUMENTOS) as Instrumento[])
+            .filter(k => !SOLO_SUELTOS.includes(k) || !bl)
+            .map(k => (
+              <button key={k} onClick={() => onCambio('instrumento', k)}
+                className={FICHA + ' ' + (c.instrumento === k
+                  ? 'bg-orange-500/20 border-orange-500/60 text-orange-200'
+                  : 'bg-gray-800 border-gray-600 text-gray-300')}>
+                {INSTRUMENTOS[k]}
+              </button>
+            ))}
+        </div>
+      )}
 
       {/* La clave, pequeña y detrás: no se ve al pasar el test, es solo el
           nombre con el que la llaman las fórmulas. Se propone sola y se
