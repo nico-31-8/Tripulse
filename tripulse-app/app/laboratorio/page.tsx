@@ -142,6 +142,9 @@ export default function Laboratorio() {
   const [reloj, setReloj] = useState<Reloj | null>(null)
   const [ahora, setAhora] = useState(() => Date.now())
   const [cargado, setCargado] = useState(false)
+  /* Cómo se está mirando la pantalla del test mientras se monta: ancha como
+     en un ordenador, o a 375 px como en el móvil. */
+  const [comoSeVe, setComoSeVe] = useState<'ancho' | 'movil'>('ancho')
 
   /* Lo que se pitó la última vez, para pitar solo cuando CAMBIA. En refs y no
      en estado: cambiarlo no tiene que repintar nada. */
@@ -830,13 +833,33 @@ export default function Laboratorio() {
                     «exactamente» lo que te ibas a encontrar: el reloj, los
                     parciales y el pulsador no estaban. Ahora es la misma, con
                     una caja de pruebas en vez de gente. */}
-                <div className="lg:sticky lg:top-4 flex flex-col gap-4">
-                  {pantallaDelTest({
-                    atletas: ATLETA_PRUEBA,
-                    montando: true,
-                    anadir: <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={Object.keys(med)} compacto />,
-                  })}
-                  {previa}
+                <div className="lg:sticky lg:top-4 flex flex-col gap-3">
+                  {/* VERLO COMO SE VA A VER. El test se pasa casi siempre con
+                      el móvil en la mano, y a 375 px todo va en una columna:
+                      el orden decide lo que ves sin bajar, con el atleta
+                      esperando. Descubrirlo el jueves es tarde. */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Verlo como</span>
+                    <div className="flex rounded-lg border border-gray-700 overflow-hidden">
+                      {([['ancho', 'Ordenador'], ['movil', 'Móvil']] as const).map(([k, et]) => (
+                        <button key={k} onClick={() => setComoSeVe(k)}
+                          className={'text-[11.5px] px-3 py-1.5 transition ' +
+                            (comoSeVe === k ? 'bg-gray-800 text-white font-semibold' : 'text-gray-500 hover:text-gray-300')}>
+                          {et}
+                        </button>
+                      ))}
+                    </div>
+                    {comoSeVe === 'movil' && <span className="text-[11px] text-gray-500">375 px, todo en una columna</span>}
+                  </div>
+
+                  <div className={'flex flex-col gap-4' + (comoSeVe === 'movil' ? ' max-w-[375px] w-full mx-auto' : '')}>
+                    {pantallaDelTest({
+                      atletas: ATLETA_PRUEBA,
+                      montando: true,
+                      anadir: <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={Object.keys(med)} compacto />,
+                    })}
+                    {previa}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2490,6 +2513,8 @@ function Pasar({
           <p className="text-[11.5px] text-gray-400 mb-2 leading-snug">
             Arriba lo que miras primero. El ojo esconde lo que no uses en este test.
             <b className="text-gray-300"> Se guarda con el test</b>, porque un escalonado y unas flexiones no se miran igual.
+            {/* La duda que sale sola al ver el interruptor de móvil. */}
+            {' '}Este orden vale <b className="text-gray-300">para el ordenador y para el móvil</b>: es la misma columna.
           </p>
           {todas.map((k, i) => {
             const sec = seccionPorClave(k)
