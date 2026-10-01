@@ -28,7 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
-  parcialesDe, acumuladosDe, SOLO_SUELTOS,
+  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
@@ -744,7 +744,14 @@ export default function Laboratorio() {
                 }}
                 /* Nunca por debajo de cero: un contador en negativo no es una
                    corrección, es un número que después entra en una fórmula. */
-                onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
+                /* En un bloque el número va a SU repetición, no al montón:
+                 seis series de flexiones son seis números. */
+              onCuentaEn={(c, bl, a, rep, suma) => ponMed(String(a.id), d => {
+                const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : Array.from({ length: bl.veces }, () => '')
+                l[rep - 1] = String(Math.max(0, (Number(l[rep - 1]) || 0) + suma))
+                d[c.clave] = l
+              })}
+              onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
                   d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
                 })}
                 /* Poner a cero el RELOJ, no lo apuntado: son dos cosas, y
@@ -2365,7 +2372,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
-  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial, onPantalla,
+  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial, onPantalla,
   montando = false, anadir,
 }: {
   test: TestLab
@@ -2396,6 +2403,7 @@ function Pasar({
   onBorraSuelto: (c: Columna, a: Atleta) => void
   onReiniciaSuelto: (c: Columna) => void
   onCuenta: (c: Columna, a: Atleta, suma: number) => void
+  onCuentaEn: (c: Columna, bl: Bloque, a: Atleta, rep: number, suma: number) => void
   onParcial: (c: Columna, a: Atleta) => void
   onQuitaParcial: (c: Columna, a: Atleta) => void
   onPantalla: (p: Pantalla) => void
@@ -2419,6 +2427,10 @@ function Pasar({
   const cronometrados = cronometradosDe(test)
   const sueltosCrono = cronosSueltosDe(test)
   const sueltosCont = contadoresSueltosDe(test)
+  const contBloque = contadoresDe(test)
+  /* Por qué repetición va cada bloque SIN reloj: lo dice el entrenador, porque
+     un contador a cero no se distingue de uno sin empezar. */
+  const [repMano, setRepMano] = useState<Record<string, number>>({})
   const parciales = parcialesDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0
@@ -2830,6 +2842,58 @@ function Pasar({
       </div>)}
 
       {visibles.includes('pulsadores') && (<div style={{ order: todas.indexOf('pulsadores') }}>
+      {/* EL PULSADOR DE UN BLOQUE: un número POR REPETICIÓN. Seis series de
+          flexiones al máximo son seis números, no uno. */}
+      {contBloque.map(({ c, bl }) => {
+        const rep = repeticionDe(bl, ms, repMano[bl.clave] || 1)
+        const conReloj = duracionDe(bl) > 0
+        return (
+          <div key={c.clave} className="mt-3 border border-gray-800 rounded-xl p-3.5 bg-[#0d1420]">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
+                {c.etiqueta || c.clave}{c.unidad ? ' · ' + c.unidad : ''}
+              </span>
+              {/* Sin reloj, por cuál vamos lo dices tú. Con reloj no se
+                  pregunta: ya lo sabe, y preguntarlo sería poder
+                  contradecirlo. */}
+              {conReloj ? (
+                <span className="text-[11.5px] text-gray-400">repetición <b className="text-white">{rep}</b> de {bl.veces} · la lleva el reloj</span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11.5px] text-gray-400">
+                  vas por la
+                  <button onClick={() => setRepMano(p => ({ ...p, [bl.clave]: Math.max(1, rep - 1) }))}
+                    disabled={rep <= 1} className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>−</button>
+                  <b className="text-white font-mono">{rep}</b>
+                  <button onClick={() => setRepMano(p => ({ ...p, [bl.clave]: Math.min(bl.veces, rep + 1) }))}
+                    disabled={rep >= bl.veces} className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>+</button>
+                  de {bl.veces}
+                </span>
+              )}
+            </div>
+            <div className="mt-2.5 flex gap-2.5 flex-wrap">
+              {atletas.map(a => {
+                const lista = (datosDe(String(a.id))[c.clave] as string[] | undefined) || []
+                const v = Number(lista[rep - 1] || 0)
+                return (
+                  <div key={a.id} className="flex flex-col items-center gap-1.5">
+                    <button onClick={() => onCuentaEn(c, bl, a, rep, 1)}
+                      className="rounded-2xl px-6 py-3.5 border transition min-w-[124px] border-orange-500/45 bg-orange-500/[0.14] hover:bg-orange-500/25 active:bg-orange-500/40">
+                      <span className="block font-mono tabular-nums text-[34px] leading-none text-orange-300">{v}</span>
+                      <span className="block text-[10.5px] uppercase tracking-widest text-gray-400 mt-1.5">{a.nombre}</span>
+                    </button>
+                    <button onClick={() => onCuentaEn(c, bl, a, rep, -1)} disabled={v <= 0}
+                      className={btnSec + ' ' + btnMini}>−1</button>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+              Cada pulsación suma a <b className="text-white">la repetición {rep}</b>. Lo de las demás se queda donde está.
+            </p>
+          </div>
+        )
+      })}
+
       {/* EL PULSADOR. El número ES el botón: a pie de pista se pulsa mirando
           al atleta, no a la pantalla. */}
       {sueltosCont.map(c => (

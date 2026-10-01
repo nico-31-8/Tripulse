@@ -161,12 +161,17 @@ export const esFuncion = (n: string): n is Funcion =>
 /**
  * Los que SOLO funcionan en una casilla suelta.
  *
- * El pulsador y los parciales se pintan recorriendo `sueltos`, así que dentro
- * de un bloque se podían elegir y luego no aparecían — el mismo fallo que ya
- * se arregló con los relojes. Esta lista es la que mira el editor para no
- * ofrecerlos ahí, y hay un test que comprueba que de verdad no se pintan.
+ * Queda uno: los PARCIALES. Dentro de un bloque la lista ya la forman las
+ * repeticiones, así que serían dos maneras de hacer lo mismo — y dos maneras
+ * acaban siendo dos que no hacen lo mismo.
+ *
+ * El PULSADOR estuvo aquí y era un error mío: «6 series de flexiones al
+ * máximo» es un número por serie, y eso es justo una columna de un bloque.
+ *
+ * Esta lista es la que mira el editor para no ofrecer lo que no se pinta, y
+ * hay un test que comprueba las dos mitades.
  */
-export const SOLO_SUELTOS: Instrumento[] = ['contador', 'parciales']
+export const SOLO_SUELTOS: Instrumento[] = ['parciales']
 
 export const INSTRUMENTOS: Record<Instrumento, string> = {
   mano: 'A mano',
@@ -1211,6 +1216,27 @@ export const contadoresSueltosDe = (t: TestLab | null): Columna[] =>
   (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento === 'contador')
 
 /**
+ * Los pulsadores de DENTRO de un bloque: un número por repetición.
+ *
+ * Seis series de flexiones al máximo son seis números, no uno. Cuál se está
+ * contando lo dice el reloj del bloque si lo lleva, y si no, se elige a mano:
+ * ver `repeticionDe`.
+ */
+export const contadoresDe = (t: TestLab | null) =>
+  todasLasColumnas(t).filter(x => x.c.clase === 'medida' && x.c.instrumento === 'contador')
+
+/**
+ * En qué repetición va un bloque: la del reloj si lo lleva.
+ *
+ * Sin reloj no hay forma de saberlo —un contador a cero no se distingue de
+ * uno sin empezar— así que lo dice el entrenador y esto solo pone el tope.
+ */
+export const repeticionDe = (bl: Bloque, ms: number, aMano: number): number => {
+  const n = duracionDe(bl) > 0 ? cuentaAtras(bl, ms).rep : aMano
+  return Math.max(1, Math.min(bl.veces, Math.round(n) || 1))
+}
+
+/**
  * Las casillas de PARCIALES: se marca sin parar el reloj.
  *
  * Guardan una LISTA y no un número, que es lo que las hace distintas de todo
@@ -1309,6 +1335,7 @@ export function relojesDe(t: TestLab | null): string[] {
   for (const x of cronosDe(t)) o.push('cronómetro en «' + (x.c.etiqueta || x.c.clave) + '»')
   for (const c of cronosSueltosDe(t)) o.push('cronómetro en «' + (c.etiqueta || c.clave) + '»')
   for (const c of contadoresSueltosDe(t)) o.push('pulsador en «' + (c.etiqueta || c.clave) + '»')
+  for (const x of contadoresDe(t)) o.push('pulsador en «' + (x.c.etiqueta || x.c.clave) + '»')
   for (const c of parcialesDe(t)) o.push('parciales en «' + (c.etiqueta || c.clave) + '»')
   return o
 }

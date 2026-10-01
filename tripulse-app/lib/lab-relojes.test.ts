@@ -23,7 +23,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   col, conRelojDe, contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe,
-  cuentaAtras, escalonAhora, escalonadosDe, finDe, relojesDe, SOLO_SUELTOS, type Bloque, type TestLab,
+  contadoresDe, cuentaAtras, escalonAhora, escalonadosDe, finDe, relojesDe, repeticionDe, SOLO_SUELTOS,
+  type Bloque, type TestLab,
 } from './lab-constructor'
 
 const bloque = (b: Partial<Bloque> & { clave: string }): Bloque => ({
@@ -316,5 +317,50 @@ describe('lo que se anuncia es lo que se pinta', () => {
        fallo la primera vez. Si hace falta otro corte, se le pone nombre y se
        pone aquí al lado de los demás. */
     expect(PAGINA).not.toMatch(/bloques\.filter\([^)]*duracion/)
+  })
+})
+
+describe('el pulsador SÍ vale dentro de un bloque', () => {
+  /* Estuvo prohibido y era un error mío: «6 series de flexiones al máximo»
+     son seis números, uno por serie, y eso es justo una columna de bloque.
+     Los parciales siguen fuera porque ahí la lista ya la forman las
+     repeticiones. */
+  const conPulsador = (duracion: number): TestLab => ({
+    nombre: 'x', deporte: 'Fuerza', sueltos: [], resultados: [],
+    bloques: [bloque({
+      clave: 'b', etiqueta: 'Serie', veces: 6, duracion,
+      columnas: [col({ clave: 'flex', etiqueta: 'Flexiones', instrumento: 'contador' })],
+    })],
+  })
+
+  it('se reconoce y se anuncia', () => {
+    const t = conPulsador(0)
+    expect(contadoresDe(t).map(x => x.c.clave)).toEqual(['flex'])
+    expect(relojesDe(t)).toEqual(['pulsador en «Flexiones»'])
+  })
+
+  it('y el editor ya no lo esconde', () => {
+    expect(SOLO_SUELTOS).toEqual(['parciales'])
+  })
+
+  it('CON RELOJ, la repetición la lleva el reloj', () => {
+    const bl = conPulsador(60).bloques[0]
+    expect(repeticionDe(bl, 0, 1)).toBe(1)
+    expect(repeticionDe(bl, 61_000, 1)).toBe(2)
+    expect(repeticionDe(bl, 125_000, 1)).toBe(3)
+  })
+
+  it('SIN RELOJ la dices tú, y no se sale del bloque', () => {
+    /* Un contador a cero no se distingue de uno sin empezar, así que sin
+       reloj no hay forma de adivinarlo. */
+    const bl = conPulsador(0).bloques[0]
+    expect(repeticionDe(bl, 0, 3)).toBe(3)
+    expect(repeticionDe(bl, 0, 99)).toBe(6)
+    expect(repeticionDe(bl, 0, 0)).toBe(1)
+  })
+
+  it('ni con reloj pasada la última: se queda en la 6.ª', () => {
+    const bl = conPulsador(60).bloques[0]
+    expect(repeticionDe(bl, 10 * 60_000, 1)).toBe(6)
   })
 })
