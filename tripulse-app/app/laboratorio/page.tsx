@@ -2164,17 +2164,24 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
   if (!test.sueltos.length && !test.bloques.length) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 text-[12px] font-bold">Así lo verás al pasarlo</div>
-        <div className="p-4 text-gray-600 text-[12.5px] italic">Todavía no hay nada que apuntar. Añade una casilla o un bloque en el paso 2.</div>
+        <div className="px-4 py-3 border-b border-gray-800 text-[12px] font-bold">La tabla · lo que se apunta</div>
+        <div className="p-4 text-gray-600 text-[12.5px] italic">Todavía no hay nada que apuntar. Añade una casilla o un bloque.</div>
       </div>
     )
   }
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
-        <span className="text-[12px] font-bold">Así lo verás al pasarlo</span>
+      <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2 flex-wrap">
+        <span className="text-[12px] font-bold">La tabla · lo que se apunta</span>
         <span className="text-[10.5px] text-gray-500 ml-auto truncate">{nombre}</span>
+        {/* DÓNDE VA ESTO DE VERDAD. En el editor cae debajo del reloj porque
+            la columna es estrecha, que es la forma del móvil; al pasarlo en
+            un ordenador va AL LADO. Sin decirlo, parece que la pantalla sale
+            partida en dos. */}
+        <span className="text-[10.5px] text-gray-500 basis-full leading-snug">
+          Al pasarlo va <b className="text-gray-400">al lado del reloj</b> en el ordenador, y debajo en el móvil — como aquí.
+        </span>
       </div>
       <div className="p-4">
         {/* AQUÍ IBA UN CARTEL que decía «al pasarlo llevará reloj: … no se
