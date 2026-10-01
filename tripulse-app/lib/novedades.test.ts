@@ -135,8 +135,42 @@ describe('contra el fichero de verdad', () => {
     }
   })
 
-  it('la primera entrada es la más reciente', () => {
-    expect(real.entradas[0].fecha).toContain('septiembre')
+  it('las entradas van de la más reciente a la más vieja', () => {
+    /* ESTE TEST DECÍA «la primera pone septiembre», y caducó al llegar octubre:
+       comprobaba el mes de aquel día, no la regla. La regla es que lo nuevo va
+       arriba, y eso se comprueba leyendo las fechas y mirando que no suban. */
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+    /* «1 de octubre de 2026» y también «24 al 28 de agosto de 2026», que es
+       como se escribió una tanda que duró varios días. De un rango vale el
+       último, que es cuando se publicó. */
+    const aNumero = (f: string): number => {
+      const m = /^(\d{1,2})(?:\s*al\s*(\d{1,2}))?\s+de\s+([a-zé]+)\s+de\s+(\d{4})/i.exec(f.trim())
+      if (!m) return NaN
+      const mes = MESES.indexOf(m[3].toLowerCase())
+      return mes < 0 ? NaN : Number(m[4]) * 10000 + (mes + 1) * 100 + Number(m[2] || m[1])
+    }
+
+    const fechas = real.entradas.map(e => aNumero(e.fecha))
+
+    /* La última entrada del fichero es «Antes del 17 de agosto»: el cajón de lo
+       que había antes de llevar la cuenta. No tiene fecha que ordenar, así que
+       se permite —pero SOLO al final: una entrada sin fecha en medio sí es un
+       error, porque ahí nadie sabría dónde va. */
+    const primeraSinFecha = fechas.findIndex(n => Number.isNaN(n))
+    if (primeraSinFecha >= 0) {
+      fechas.slice(primeraSinFecha).forEach((n, k) => {
+        expect(n, 'la fecha «' + real.entradas[primeraSinFecha + k].fecha + '» no se entiende y no está al final')
+          .toBeNaN()
+      })
+    }
+
+    const conFecha = primeraSinFecha < 0 ? fechas : fechas.slice(0, primeraSinFecha)
+    expect(conFecha.length, 'ninguna entrada tiene una fecha legible').toBeGreaterThan(3)
+    for (let i = 1; i < conFecha.length; i++) {
+      expect(conFecha[i - 1], real.entradas[i - 1].fecha + ' va antes que ' + real.entradas[i].fecha)
+        .toBeGreaterThanOrEqual(conFecha[i])
+    }
   })
 
   it('la intro explica para qué es', () => {

@@ -1,0 +1,142 @@
+// ============================================================
+// TRIPULSE — La pantalla de pasar el test, a tu gusto
+// ============================================================
+//
+// EL CASO. «Todo esto puede dar lugar a muchas cosas en una misma pantalla, y
+// estaría bien que cualquier entrenador cree la suya: nosotros damos una
+// predeterminada pero que la pueda mover como si fueran bloques.»
+//
+// DONDE DE VERDAD SIRVE ES EN EL MÓVIL: a pie de pista todo va en UNA columna,
+// así que el orden decide lo que ves sin hacer scroll con el atleta esperando.
+// Un escalonado y unas flexiones no se miran igual.
+//
+// LAS DOS REGLAS QUE EVITAN QUE ESTO SE ROMPA SOLO, y son el motivo de que el
+// orden guardado no se use tal cual:
+//
+//   1. UNA SECCIÓN NUEVA NO PUEDE QUEDAR INVISIBLE. Si mañana añades un
+//      pulsador a un test cuyo orden se guardó antes, esa sección no está en
+//      la lista guardada. Si solo pintáramos lo guardado, el pulsador no
+//      aparecería y parecería que no se ha creado. Va al final, visible.
+//   2. LO GUARDADO QUE YA NO EXISTE SE IGNORA. Quitas los parciales del test y
+//      su hueco no puede quedarse ahí.
+//
+// Y «guardar» no se puede esconder: sin ese trozo no hay forma de apuntar la
+// medición, y una pantalla que no deja guardar no es una pantalla configurada,
+// es una rota.
+
+import {
+  contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe, escalonadosDe,
+  parcialesDe, type TestLab,
+} from './lab-constructor'
+
+export type ClaveSeccion =
+  | 'escalones' | 'cuenta' | 'cronos' | 'sueltos' | 'parciales' | 'pulsadores' | 'guardar'
+
+export interface Seccion {
+  clave: ClaveSeccion
+  etiqueta: string
+  icono: string
+  /** Si se puede esconder. «Guardar» no. */
+  prescindible: boolean
+}
+
+/** El catálogo, en el orden DE SERIE: el que damos nosotros. */
+export const SECCIONES: Seccion[] = [
+  { clave: 'escalones', etiqueta: 'Escalones', icono: '📶', prescindible: true },
+  { clave: 'cuenta', etiqueta: 'Cuenta atrás', icono: '⏱', prescindible: true },
+  { clave: 'cronos', etiqueta: 'Cronómetro por repetición', icono: '⏱', prescindible: true },
+  { clave: 'sueltos', etiqueta: 'Cronómetro', icono: '⏱', prescindible: true },
+  { clave: 'parciales', etiqueta: 'Parciales', icono: '🚩', prescindible: true },
+  { clave: 'pulsadores', etiqueta: 'Pulsadores', icono: '👆', prescindible: true },
+  { clave: 'guardar', etiqueta: 'Guardar lo medido', icono: '💾', prescindible: false },
+]
+
+export const seccionPorClave = (c: string): Seccion | undefined =>
+  SECCIONES.find(s => s.clave === c)
+
+/** Lo que se guarda con el test. */
+export interface Pantalla {
+  orden: ClaveSeccion[]
+  ocultas: ClaveSeccion[]
+}
+
+export const PANTALLA_VACIA: Pantalla = { orden: [], ocultas: [] }
+
+/**
+ * Qué secciones TIENE este test de verdad.
+ *
+ * Sale de las mismas listas que pintan los relojes, no de una lista aparte:
+ * si se preguntara dos veces, la pantalla podría ofrecer ordenar algo que no
+ * se pinta — o peor, no ofrecer algo que sí.
+ */
+export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
+  const o: ClaveSeccion[] = []
+  if (escalonadosDe(t).length) o.push('escalones')
+  if (cronometradosDe(t).length) o.push('cuenta')
+  if (cronosDe(t).length) o.push('cronos')
+  if (cronosSueltosDe(t).length) o.push('sueltos')
+  if (parcialesDe(t).length) o.push('parciales')
+  if (contadoresSueltosDe(t).length) o.push('pulsadores')
+  o.push('guardar')
+  return o
+}
+
+/**
+ * El orden de verdad: lo guardado, cuadrado con lo que el test tiene HOY.
+ *
+ * Devuelve TODAS las secciones que existen —para poder ordenarlas— y aparte
+ * cuáles se pintan. Lo guardado manda en el orden, pero no puede inventarse
+ * secciones ni esconder las que aparecieron después.
+ */
+export function pantallaDe(t: TestLab | null, guardada?: Pantalla | null): {
+  todas: ClaveSeccion[]
+  visibles: ClaveSeccion[]
+} {
+  const existen = seccionesDeTest(t)
+  const orden = (guardada?.orden || []).filter(c => existen.includes(c))
+  /* Las que existen y no estaban guardadas van AL FINAL, nunca fuera: una
+     sección nueva que no se viera parecería que no se ha creado. */
+  const todas = [...orden, ...existen.filter(c => !orden.includes(c))]
+
+  const ocultas = new Set((guardada?.ocultas || []).filter(c => {
+    const s = seccionPorClave(c)
+    return !!s && s.prescindible
+  }))
+  return { todas, visibles: todas.filter(c => !ocultas.has(c)) }
+}
+
+/** Mover una sección una posición arriba o abajo. */
+export function mover(orden: ClaveSeccion[], clave: ClaveSeccion, paso: -1 | 1): ClaveSeccion[] {
+  const i = orden.indexOf(clave)
+  const j = i + paso
+  if (i < 0 || j < 0 || j >= orden.length) return orden
+  const o = [...orden]
+  o[i] = o[j]; o[j] = clave
+  return o
+}
+
+/** Esconder o volver a enseñar. «Guardar» no se puede esconder. */
+export function alternar(ocultas: ClaveSeccion[], clave: ClaveSeccion): ClaveSeccion[] {
+  if (!seccionPorClave(clave)?.prescindible) return ocultas
+  return ocultas.includes(clave) ? ocultas.filter(c => c !== clave) : [...ocultas, clave]
+}
+
+/**
+ * Lo guardado, leído a la defensiva.
+ *
+ * Una clave que ya no existe —o que nunca existió— se tira aquí y no más
+ * adelante: un test guardado con una versión vieja no puede dejar la pantalla
+ * a medias.
+ */
+export function leerPantalla(bruto: unknown): Pantalla {
+  const o = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>
+  const limpia = (x: unknown): ClaveSeccion[] =>
+    (Array.isArray(x) ? x : [])
+      .map(v => String(v))
+      .filter((v, i, a) => a.indexOf(v) === i && !!seccionPorClave(v)) as ClaveSeccion[]
+  return { orden: limpia(o.orden), ocultas: limpia(o.ocultas) }
+}
+
+/** Si hay algo que guardar: una pantalla sin tocar no ocupa sitio. */
+export const tienePantalla = (p: Pantalla | null | undefined): boolean =>
+  !!p && (p.orden.length > 0 || p.ocultas.length > 0)

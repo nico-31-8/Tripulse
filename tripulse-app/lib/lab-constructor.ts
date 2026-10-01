@@ -302,6 +302,15 @@ export interface TestLab {
   sueltos: Columna[]
   bloques: Bloque[]
   resultados: Resultado[]
+  /**
+   * Cómo quiere ver ESTE test el entrenador al pasarlo: en qué orden van los
+   * relojes y cuáles esconde. Ausente = la pantalla de serie.
+   *
+   * Va con el test y no con el entrenador porque un escalonado y unas
+   * flexiones no se miran igual. Las reglas —qué pasa cuando el test cambia
+   * después de ordenarla— están en `lib/lab-pantalla`.
+   */
+  pantalla?: { orden: string[]; ocultas: string[] }
 }
 
 /** Lo medido o lo dado, tal cual se guardaría. `@clave` = hasta dónde llegó. */

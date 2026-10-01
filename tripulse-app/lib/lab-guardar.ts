@@ -21,6 +21,7 @@ import {
   type TestLab, type TipoDada, type Tramo,
 } from './lab-constructor'
 import { esAncla, type Ancla } from './test-definicion'
+import { leerPantalla, tienePantalla, type Pantalla } from './lab-pantalla'
 
 const txt = (v: unknown): string => String(v ?? '').trim()
 const num = (v: unknown): number | undefined => {
@@ -179,6 +180,9 @@ export function leerModelo(bruto: unknown, nombre = '', deporte = 'Carrera'): Te
     sueltos: (Array.isArray(o.sueltos) ? o.sueltos : []).map(leerColumna).filter(Boolean) as Columna[],
     bloques: (Array.isArray(o.bloques) ? o.bloques : []).map(leerBloque).filter(Boolean) as Bloque[],
     resultados: (Array.isArray(o.resultados) ? o.resultados : []).map(leerResultado).filter(Boolean) as Resultado[],
+    /* La pantalla a su gusto. Se lee a la defensiva en `lab-pantalla`: una
+       clave que ya no existe no puede dejar la pantalla a medias. */
+    ...(o.pantalla ? { pantalla: leerPantalla(o.pantalla) } : {}),
   }
 }
 
@@ -205,7 +209,13 @@ export function paraGuardar(t: TestLab, idEntrenador: string) {
     deporte: t.deporte,
     campos: [],
     resultados: [],
-    modelo: { nombre: t.nombre.trim(), deporte: t.deporte, sueltos: t.sueltos, bloques: t.bloques, resultados: t.resultados },
+    modelo: {
+      nombre: t.nombre.trim(), deporte: t.deporte,
+      sueltos: t.sueltos, bloques: t.bloques, resultados: t.resultados,
+      /* Solo si la ha tocado: una pantalla sin ordenar no ocupa sitio ni
+         congela el orden de serie, que puede mejorar con el tiempo. */
+      ...(tienePantalla(t.pantalla as Pantalla | undefined) ? { pantalla: t.pantalla } : {}),
+    },
   }
 }
 

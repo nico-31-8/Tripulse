@@ -35,6 +35,7 @@ import {
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
+import { pantallaDe, mover, alternar, seccionPorClave, tienePantalla, type Pantalla } from '@/lib/lab-pantalla'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
@@ -760,6 +761,19 @@ export default function Laboratorio() {
                 const lista = (d[c.clave] as unknown[] | undefined) || []
                 d[c.clave] = lista.slice(0, -1)
               })}
+              /* La pantalla se guarda EN EL ACTO si el test ya existe: pedirle
+                 que vuelva al editor y le dé a «Guardar test» para que se
+                 recuerde el orden es perder justo lo que esto ahorra. */
+              onPantalla={async p => {
+                if (!test) return
+                const nuevo: TestLab = { ...clon(test), pantalla: tienePantalla(p) ? p : undefined }
+                setTest(nuevo)
+                if (editandoId && userId) {
+                  const { error } = await supabase.from('test_definicion')
+                    .update(paraGuardar(nuevo, userId)).eq('id', editandoId)
+                  if (error) decir('mal', 'No se ha podido guardar la pantalla: ' + error.message)
+                }
+              }}
               /* Nunca por debajo de cero: un contador en negativo no es una
                  corrección, es un número que después entra en una fórmula. */
               onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
@@ -2005,7 +2019,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca,
-  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial,
+  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onParcial, onQuitaParcial, onPantalla,
 }: {
   test: TestLab
   atletas: Atleta[]
@@ -2036,6 +2050,7 @@ function Pasar({
   onCuenta: (c: Columna, a: Atleta, suma: number) => void
   onParcial: (c: Columna, a: Atleta) => void
   onQuitaParcial: (c: Columna, a: Atleta) => void
+  onPantalla: (p: Pantalla) => void
 }) {
   const cronos = cronosDe(test)
   const escalonados = escalonadosDe(test)
@@ -2052,6 +2067,11 @@ function Pasar({
      pulsaciones de más después de la campana entran como repeticiones que no
      ocurrieron, y eso no se distingue luego de las de verdad. */
   const seAcaboElTiempo = cronometrados.some(bl => cuentaAtras(bl, msDe('@' + bl.clave)).fin)
+  /* En qué orden va cada sección y cuáles se esconden. Lo guardado manda, pero
+     cuadrado con lo que el test tiene HOY: ver `lib/lab-pantalla`. */
+  const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined)
+  const ocultas = todas.filter(k => !visibles.includes(k))
+  const [ordenando, setOrdenando] = useState(false)
   const msDe = (clave: string) => reloj && reloj.clave === clave ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
   const gordo = 'font-mono tabular-nums text-[38px] leading-none text-orange-400 font-medium'
@@ -2059,7 +2079,10 @@ function Pasar({
   const filaAt = 'flex items-center gap-2.5 flex-wrap py-2 border-b border-gray-800/60'
 
   return (
-    <div className={tarjeta}>
+    /* FLEX EN COLUMNA para que `order` signifique algo: así cada sección se
+       coloca donde diga la pantalla sin mover el código de sitio. */
+    <div className={tarjeta + ' flex flex-col'}>
+      <div style={{ order: -1 }}>
       <p className="font-bold text-[15px]">{test.nombre || 'Test'}</p>
       <p className="text-gray-500 text-xs mt-1">
         {test.deporte} · {atletas.length > 1 ? atletas.length + ' personas a la vez' : atletas.length === 1 ? 'una persona' : 'sin nadie todavía'}
@@ -2084,6 +2107,47 @@ function Pasar({
           ))}
         </select>
       </div>
+
+      {/* ORDENAR LA PANTALLA. Donde de verdad sirve es en el móvil: a pie de
+          pista todo va en UNA columna, así que el orden decide lo que ves sin
+          hacer scroll con el atleta esperando. */}
+      {todas.length > 1 && (
+        <div className="mt-3">
+          <button onClick={() => setOrdenando(o => !o)} className={btnSec + ' ' + btnMini}>
+            {ordenando ? 'Listo' : '⚙ Ordenar la pantalla'}
+          </button>
+        </div>
+      )}
+      {ordenando && (
+        <div className="mt-2.5 rounded-xl border border-dashed border-gray-700 bg-gray-900/60 p-3">
+          <p className="text-[11.5px] text-gray-400 mb-2 leading-snug">
+            Arriba lo que miras primero. El ojo esconde lo que no uses en este test.
+            <b className="text-gray-300"> Se guarda con el test</b>, porque un escalonado y unas flexiones no se miran igual.
+          </p>
+          {todas.map((k, i) => {
+            const sec = seccionPorClave(k)
+            if (!sec) return null
+            const oculta = ocultas.includes(k)
+            return (
+              <div key={k} className="flex items-center gap-2 py-1.5 border-b border-gray-800/60">
+                <span className="text-[15px]" aria-hidden="true">{sec.icono}</span>
+                <b className={'text-[13px] flex-1 font-semibold ' + (oculta ? 'text-gray-600 line-through' : '')}>{sec.etiqueta}</b>
+                <button onClick={() => onPantalla({ orden: mover(todas, k, -1), ocultas })} disabled={i === 0}
+                  title="Subir" className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>↑</button>
+                <button onClick={() => onPantalla({ orden: mover(todas, k, 1), ocultas })} disabled={i === todas.length - 1}
+                  title="Bajar" className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>↓</button>
+                {/* «Guardar lo medido» no se puede esconder: una pantalla desde
+                    la que no se puede apuntar no es una pantalla configurada. */}
+                <button onClick={() => onPantalla({ orden: todas, ocultas: alternar(ocultas, k) })}
+                  disabled={!sec.prescindible} title={sec.prescindible ? (oculta ? 'Volver a enseñarla' : 'Esconderla') : 'Esta no se puede esconder'}
+                  className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>{oculta ? '🙈' : '👁'}</button>
+              </div>
+            )
+          })}
+          <button onClick={() => onPantalla({ orden: [], ocultas: [] })}
+            className="mt-2.5 text-[11.5px] text-gray-500 hover:text-gray-300 transition">Volver a la de serie</button>
+        </div>
+      )}
 
       {!atletas.length && (
         <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] text-amber-200 leading-snug">
@@ -2110,6 +2174,9 @@ function Pasar({
           hayEscalones={escalonados.length > 0 || cronometrados.length > 0} className="mt-3" />
       )}
 
+      </div>
+
+      {visibles.includes('escalones') && (<div style={{ order: todas.indexOf('escalones') }}>
       {escalonados.map(bl => {
         const clave = '@' + bl.clave
         const ms = msDe(clave)
@@ -2168,6 +2235,9 @@ function Pasar({
         )
       })}
 
+      </div>)}
+
+      {visibles.includes('cuenta') && (<div style={{ order: todas.indexOf('cuenta') }}>
       {/* LA CUENTA ATRÁS: el reloj normal, el que faltaba. Un bloque que dura y
           no canta velocidad —un Cooper de 12 min, un FTP de 20, una plancha— no
           tenía reloj de ninguna clase y había que sacar el móvil. */}
@@ -2214,6 +2284,9 @@ function Pasar({
         )
       })}
 
+      </div>)}
+
+      {visibles.includes('cronos') && (<div style={{ order: todas.indexOf('cronos') }}>
       {cronos.map(({ c, bl }) => {
         const ms = msDe(c.clave)
         const corre = reloj?.clave === c.clave && reloj.corre
@@ -2262,6 +2335,9 @@ function Pasar({
         )
       })}
 
+      </div>)}
+
+      {visibles.includes('sueltos') && (<div style={{ order: todas.indexOf('sueltos') }}>
       {/* EL CRONÓMETRO DE UNA CASILLA SUELTA. Se podía elegir en el editor y la
           previa lo prometía, pero no se pintaba en ninguna parte: los relojes
           salían de las columnas DE DENTRO de los bloques. Un CSS —el 400 y el
@@ -2312,6 +2388,9 @@ function Pasar({
         )
       })}
 
+      </div>)}
+
+      {visibles.includes('parciales') && (<div style={{ order: todas.indexOf('parciales') }}>
       {/* LOS PARCIALES: se marca y el reloj SIGUE. Un bloque de repeticiones
           ya hacía esto, pero obligaba a decir antes cuántos iban a ser, y lo
           que se quiere es marcar lo que va pasando. */}
@@ -2371,6 +2450,9 @@ function Pasar({
         )
       })}
 
+      </div>)}
+
+      {visibles.includes('pulsadores') && (<div style={{ order: todas.indexOf('pulsadores') }}>
       {/* EL PULSADOR. El número ES el botón: a pie de pista se pulsa mirando
           al atleta, no a la pantalla. */}
       {sueltosCont.map(c => (
@@ -2412,6 +2494,9 @@ function Pasar({
         </div>
       ))}
 
+      </div>)}
+
+      {visibles.includes('guardar') && (<div style={{ order: todas.indexOf('guardar') }}>
       {cronos.length > 0 && (
         <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
           Los tiempos de cada repetición <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla,
@@ -2443,6 +2528,7 @@ function Pasar({
           </div>
         )}
       </div>
+      </div>)}
     </div>
   )
 }
