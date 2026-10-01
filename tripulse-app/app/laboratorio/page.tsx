@@ -36,7 +36,7 @@ import {
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
-import { pantallaDe, mover, alternar, seccionPorClave, tienePantalla, type Pantalla } from '@/lib/lab-pantalla'
+import { pantallaDe, mover, moverA, alternar, seccionPorClave, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
@@ -2431,6 +2431,8 @@ function Pasar({
   const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined)
   const ocultas = todas.filter(k => !visibles.includes(k))
   const [ordenando, setOrdenando] = useState(false)
+  const [arrastrando, setArrastrando] = useState<ClaveSeccion | null>(null)
+  const [sobre, setSobre] = useState<ClaveSeccion | null>(null)
   /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
      cuenta atrás puede ir corriendo mientras marcas parciales y pulsas. */
   const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
@@ -2515,13 +2517,31 @@ function Pasar({
             <b className="text-gray-300"> Se guarda con el test</b>, porque un escalonado y unas flexiones no se miran igual.
             {/* La duda que sale sola al ver el interruptor de móvil. */}
             {' '}Este orden vale <b className="text-gray-300">para el ordenador y para el móvil</b>: es la misma columna.
+            {' '}Arrástralas con el ratón, o usa las flechas — que es lo que funciona con el dedo.
           </p>
           {todas.map((k, i) => {
             const sec = seccionPorClave(k)
             if (!sec) return null
             const oculta = ocultas.includes(k)
             return (
-              <div key={k} className="flex items-center gap-2 py-1.5 border-b border-gray-800/60">
+              /* ARRASTRAR CON EL RATÓN, flechas en todas partes. Lo nativo del
+                 navegador —lo mismo que ya usan las tareas y los chips del
+                 calendario— NO funciona con el dedo, y esto se configura
+                 muchas veces desde el móvil: por eso las flechas se quedan,
+                 no son un apaño de mientras. */
+              <div key={k} draggable
+                onDragStart={() => setArrastrando(k)}
+                onDragEnd={() => { setArrastrando(null); setSobre(null) }}
+                onDragOver={e => { e.preventDefault(); if (sobre !== k) setSobre(k) }}
+                onDrop={e => {
+                  e.preventDefault()
+                  if (arrastrando && arrastrando !== k) onPantalla({ orden: moverA(todas, arrastrando, i), ocultas })
+                  setArrastrando(null); setSobre(null)
+                }}
+                className={'flex items-center gap-2 py-1.5 border-b border-gray-800/60 cursor-grab ' +
+                  (arrastrando === k ? 'opacity-40 ' : '') +
+                  (sobre === k && arrastrando && arrastrando !== k ? 'border-t-2 border-t-orange-500 ' : '')}>
+                <span className="text-gray-600 text-[13px] select-none" aria-hidden="true">⠿</span>
                 <span className="text-[15px]" aria-hidden="true">{sec.icono}</span>
                 <b className={'text-[13px] flex-1 font-semibold ' + (oculta ? 'text-gray-600 line-through' : '')}>{sec.etiqueta}</b>
                 <button onClick={() => onPantalla({ orden: mover(todas, k, -1), ocultas })} disabled={i === 0}

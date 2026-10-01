@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  alternar, leerPantalla, mover, pantallaDe, seccionesDeTest, tienePantalla,
+  alternar, leerPantalla, mover, moverA, pantallaDe, seccionesDeTest, tienePantalla,
   type Pantalla,
 } from './lab-pantalla'
 import { col, type TestLab } from './lab-constructor'
@@ -120,5 +120,31 @@ describe('lo guardado se lee a la defensiva', () => {
     expect(tienePantalla({ orden: [], ocultas: [] })).toBe(false)
     expect(tienePantalla({ orden: ['cuenta'], ocultas: [] })).toBe(true)
     expect(tienePantalla(null)).toBe(false)
+  })
+})
+
+describe('arrastrar: mover hasta una posición', () => {
+  const o: Parameters<typeof moverA>[0] = ['cuenta', 'parciales', 'pulsadores', 'guardar']
+
+  it('hacia arriba', () => {
+    expect(moverA(o, 'pulsadores', 0)).toEqual(['pulsadores', 'cuenta', 'parciales', 'guardar'])
+  })
+
+  it('HACIA ABAJO sin quedarse a uno, que es el fallo clásico', () => {
+    /* Se saca primero y se mira el destino después: si se mirara antes, al
+       arrastrar hacia abajo la sección caería una posición más arriba de
+       donde la soltaste y parecería que el arrastre «no coge bien». */
+    expect(moverA(o, 'cuenta', 2)).toEqual(['parciales', 'pulsadores', 'cuenta', 'guardar'])
+    expect(moverA(o, 'cuenta', 3)).toEqual(['parciales', 'pulsadores', 'guardar', 'cuenta'])
+  })
+
+  it('soltarla donde estaba no cambia nada', () => {
+    expect(moverA(o, 'parciales', 1)).toEqual(o)
+  })
+
+  it('fuera de rango se queda en el borde, y no se pierde ninguna', () => {
+    expect(moverA(o, 'cuenta', 99)).toEqual(['parciales', 'pulsadores', 'guardar', 'cuenta'])
+    expect(moverA(o, 'cuenta', -5)).toEqual(o)
+    expect(moverA(o, 'noexiste' as 'cuenta', 1)).toEqual(o)
   })
 })

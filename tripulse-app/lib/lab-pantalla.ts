@@ -115,6 +115,23 @@ export function mover(orden: ClaveSeccion[], clave: ClaveSeccion, paso: -1 | 1):
   return o
 }
 
+/**
+ * Mover una sección HASTA la posición de otra, que es lo que hace arrastrar.
+ *
+ * No es lo mismo que subir o bajar de uno en uno: aquí se saca de donde está
+ * y se mete donde la sueltas, y el resto corre. Lo de «sacar primero y mirar
+ * el destino después» importa — con la sección ya fuera, el índice de
+ * destino es el de la lista nueva, y hacerlo al revés deja las cosas
+ * cambiadas de sitio por uno cuando se arrastra hacia abajo.
+ */
+export function moverA(orden: ClaveSeccion[], clave: ClaveSeccion, destino: number): ClaveSeccion[] {
+  const i = orden.indexOf(clave)
+  if (i < 0) return orden
+  const sin = orden.filter(c => c !== clave)
+  const d = Math.max(0, Math.min(sin.length, destino))
+  return [...sin.slice(0, d), clave, ...sin.slice(d)]
+}
+
 /** Esconder o volver a enseñar. «Guardar» no se puede esconder. */
 export function alternar(ocultas: ClaveSeccion[], clave: ClaveSeccion): ClaveSeccion[] {
   if (!seccionPorClave(clave)?.prescindible) return ocultas
