@@ -28,7 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   relojesDe, cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
-  parcialesDe, acumuladosDe,
+  parcialesDe, acumuladosDe, SOLO_SUELTOS,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
@@ -1029,12 +1029,25 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
         ))}
       </div>
 
+      {/* SE ELIGE AQUÍ, AL CREARLA. Antes solo había «+ Casilla suelta» y la
+          forma de rellenarla era un desplegable dentro de la casilla ya
+          creada: el cronómetro, el pulsador y los parciales existían y no
+          había manera de encontrarlos. */}
       <div className="flex gap-2 flex-wrap">
-        <button onClick={() => {
-          const clave = nuevaClave(test, 'dato')
-          mut(t => { t.sueltos.push(col({ clave, etiqueta: 'Nuevo dato' })) })
-          setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: '' }; return m })
-        }} className={btnSec}>+ Casilla suelta</button>
+        {([
+          { et: '+ Casilla suelta', base: 'dato', etiqueta: 'Nuevo dato', inst: 'mano' as Instrumento, unidad: '' },
+          { et: '+ Cronómetro', base: 'tiempo', etiqueta: 'Tiempo', inst: 'crono-seg' as Instrumento, unidad: 's' },
+          { et: '+ Pulsador', base: 'cuantas', etiqueta: 'Cuántas', inst: 'contador' as Instrumento, unidad: 'ud' },
+          { et: '+ Parciales', base: 'parcial', etiqueta: 'Parciales', inst: 'parciales' as Instrumento, unidad: 's' },
+        ]).map(x => (
+          <button key={x.base} onClick={() => {
+            const clave = nuevaClave(test, x.base)
+            mut(t => { t.sueltos.push(col({ clave, etiqueta: x.etiqueta, unidad: x.unidad, instrumento: x.inst })) })
+            /* Los parciales nacen como LISTA; lo demás, como texto. */
+            const vacio: unknown = x.inst === 'parciales' ? [] : ''
+            setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [clave]: vacio }; return m })
+          }} className={btnSec}>{x.et}</button>
+        ))}
         <button onClick={() => {
           const clave = nuevaClave(test, 'medida')
           mut(t => {
@@ -1136,7 +1149,12 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
                   lista ya la forman las repeticiones, y dos formas de hacer lo
                   mismo es cómo se acaba con dos que no hacen lo mismo. */}
               {(Object.keys(INSTRUMENTOS) as Instrumento[])
-                .filter(k => k !== 'parciales' || !bl)
+                /* Dentro de un bloque solo valen los de siempre: ni el pulsador
+                   ni los parciales se pintan ahí, y ofrecer algo que luego no
+                   aparece es justo el fallo que se arregló en los relojes.
+                   Si un test viejo ya lo tiene puesto, se deja para no
+                   cambiárselo a su espalda. */
+                .filter(k => !SOLO_SUELTOS.includes(k) || !bl || c.instrumento === k)
                 .map(k => <option key={k} value={k}>{INSTRUMENTOS[k]}</option>)}
             </select>
           </div>

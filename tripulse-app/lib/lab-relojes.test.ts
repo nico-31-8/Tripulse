@@ -23,7 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   col, conRelojDe, contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe,
-  cuentaAtras, escalonAhora, escalonadosDe, finDe, relojesDe, type Bloque, type TestLab,
+  cuentaAtras, escalonAhora, escalonadosDe, finDe, relojesDe, SOLO_SUELTOS, type Bloque, type TestLab,
 } from './lab-constructor'
 
 const bloque = (b: Partial<Bloque> & { clave: string }): Bloque => ({
@@ -201,6 +201,34 @@ describe('un cerrado que se acaba, se acaba', () => {
     const bl = bloque({ clave: 'e', modo: 'abierto', veces: 20, duracion: 60 })
     expect(finDe(bl, 21)).toBe(false)
     expect(finDe(bl, 99)).toBe(false)
+  })
+})
+
+describe('no se ofrece lo que no se pinta', () => {
+  /* El fallo que ya ha pasado dos veces en esta pantalla: un instrumento que
+     se puede elegir y luego no aparece. El pulsador y los parciales se pintan
+     recorriendo las casillas SUELTAS, así que dentro de un bloque no existen
+     — y el editor no los ofrece ahí. Esto comprueba las dos mitades. */
+  const suelto = (inst: 'contador' | 'parciales'): TestLab => ({
+    nombre: 'x', deporte: 'Carrera', bloques: [], resultados: [],
+    sueltos: [col({ clave: 'c', etiqueta: 'Eso', instrumento: inst })],
+  })
+  const enBloque = (inst: 'contador' | 'parciales'): TestLab => ({
+    nombre: 'x', deporte: 'Carrera', sueltos: [], resultados: [],
+    bloques: [bloque({ clave: 'b', veces: 3, columnas: [col({ clave: 'c', etiqueta: 'Eso', instrumento: inst })] })],
+  })
+
+  for (const inst of SOLO_SUELTOS) {
+    it('«' + inst + '» se anuncia suelto y NO dentro de un bloque', () => {
+      expect(relojesDe(suelto(inst as 'contador')).length, 'suelto').toBe(1)
+      expect(relojesDe(enBloque(inst as 'contador')), 'en un bloque').toEqual([])
+    })
+  }
+
+  it('y la pantalla filtra con ESA lista, no con una suya', () => {
+    const RAIZ = path.resolve(__dirname, '..')
+    const src = fs.readFileSync(path.join(RAIZ, 'app', 'laboratorio', 'page.tsx'), 'utf8')
+    expect(src, 'el editor no usa SOLO_SUELTOS para filtrar').toContain('SOLO_SUELTOS.includes(k)')
   })
 })
 

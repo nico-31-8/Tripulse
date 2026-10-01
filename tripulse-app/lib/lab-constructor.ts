@@ -158,6 +158,16 @@ export const SEPARACION_MINIMA = 0.05
 export const esFuncion = (n: string): n is Funcion =>
   Object.prototype.hasOwnProperty.call(FUNCIONES, n)
 
+/**
+ * Los que SOLO funcionan en una casilla suelta.
+ *
+ * El pulsador y los parciales se pintan recorriendo `sueltos`, así que dentro
+ * de un bloque se podían elegir y luego no aparecían — el mismo fallo que ya
+ * se arregló con los relojes. Esta lista es la que mira el editor para no
+ * ofrecerlos ahí, y hay un test que comprueba que de verdad no se pintan.
+ */
+export const SOLO_SUELTOS: Instrumento[] = ['contador', 'parciales']
+
 export const INSTRUMENTOS: Record<Instrumento, string> = {
   mano: 'A mano',
   'crono-seg': 'Cronómetro · s',
