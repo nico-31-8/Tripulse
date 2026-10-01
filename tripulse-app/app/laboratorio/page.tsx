@@ -596,7 +596,11 @@ export default function Laboratorio() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       {cabecera}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
+      {/* TODA LA PANTALLA. Esto vivía en 1152 px con el resto en hueco:
+          la columna de la izquierda iba apretada —las fórmulas sobre todo— y
+          la pantalla de la derecha no cabía entera. El tope está para que en
+          un monitor muy ancho el formulario no se estire hasta ser ilegible. */}
+      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 py-5">
         <AvisoEnLinea aviso={aviso} className="mb-4" />
         {vista === 'editor' ? (
           <>
@@ -619,7 +623,7 @@ export default function Laboratorio() {
             </div>
 
             <div className="grid gap-4 items-start" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
-              <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
+              <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
                 <div>
                   {paso === 1 && <Paso1 test={test} mut={mut} />}
                   {paso === 2 && <Paso2 test={test} mut={mut} renombrar={renombrar} proto={proto}
@@ -660,7 +664,7 @@ export default function Laboratorio() {
             mediciones={mediciones} cargando={cargandoHist} guardando={guardando}
             onFijar={fijarConEsto} />
         ) : (
-          <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
+          <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
             <Pasar
               test={test} atletas={atletas} activo={activo} setActivo={setActivo}
               deportistas={deportistas} guardado={editandoId !== null}
