@@ -242,6 +242,41 @@ export interface Medicion {
  */
 export const medicionDe = (proto: Datos, mio: Datos): Datos => ({ ...proto, ...mio })
 
+/**
+ * La gente guardada en el borrador del navegador, tirando lo que no sea gente.
+ *
+ * EL FALLO QUE ARREGLA: el borrador se leía con `o.atletas?.length ? o.atletas
+ * : ['Deportista']` — un TEXTO metido donde van atletas, herencia de cuando
+ * eran nombres sueltos. TypeScript no lo veía porque lo que sale de un
+ * `JSON.parse` es `any`, y en pantalla dejaba a cada uno sin `id`: React
+ * avisaba de las claves repetidas y, peor, lo que se marcaba se guardaba en
+ * una caja llamada «undefined» que no lee nadie.
+ *
+ * Sin gente válida se devuelve la lista VACÍA, que es la verdad: no hay nadie
+ * y la pantalla ya sabe decirlo.
+ *
+ * Y OJO CON `Number`: `Number(null)`, `Number(false)` y `Number([])` son CERO,
+ * así que preguntar solo si el id es un número dejaría pasar a un atleta con
+ * id 0 —y el 0 no es nadie— cada vez que el borrador venga a medias. Se mira
+ * primero QUÉ ES, y después cuánto vale.
+ */
+export function leerAtletas(bruto: unknown): { id: number; nombre: string }[] {
+  if (!Array.isArray(bruto)) return []
+  const o: { id: number; nombre: string }[] = []
+  for (const x of bruto) {
+    if (!x || typeof x !== 'object') continue
+    const crudo = (x as { id?: unknown }).id
+    const esNumero = typeof crudo === 'number'
+    const esTexto = typeof crudo === 'string' && crudo.trim() !== ''
+    if (!esNumero && !esTexto) continue
+    const id = Number(crudo)
+    if (!Number.isFinite(id) || id === 0) continue
+    if (o.some(y => y.id === id)) continue
+    o.push({ id, nombre: txt((x as { nombre?: unknown }).nombre) || 'Sin nombre' })
+  }
+  return o
+}
+
 /** Las mediciones de la base, tirando lo que no se entienda. */
 export function leerMediciones(filas: unknown[] | null | undefined): Medicion[] {
   return (filas || []).map(f => {

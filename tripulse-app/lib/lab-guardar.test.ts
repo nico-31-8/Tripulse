@@ -2,11 +2,14 @@
 // dé la vuelta entero —que también— sino que uno ROTO no reviente la pantalla
 // ni se cuele hasta el cálculo.
 import { describe, it, expect } from 'vitest'
-import { leerModelo, paraGuardar, leerMediciones, medicionDe } from './lab-guardar'
+import fs from 'node:fs'
+import path from 'node:path'
+import { leerModelo, paraGuardar, leerMediciones, medicionDe, leerAtletas } from './lab-guardar'
 import { calcular, pegasDe, protoVacio, medVacia, type TestLab } from './lab-constructor'
 import { PLANTILLAS, plantillaPorId } from './lab-plantillas'
 
 const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
+const RAIZ = path.resolve(__dirname, '..')
 
 describe('el viaje de ida y vuelta', () => {
   it('las nueve plantillas sobreviven a guardarlas y volverlas a leer', () => {
@@ -166,5 +169,86 @@ describe('la fila que va a la base', () => {
     expect(fila.nombre).toBe('CMJ con espacios')
     expect(fila.deporte).toBe('Fuerza')
     expect(fila.modelo.nombre).toBe('CMJ con espacios')
+  })
+})
+
+// ============================================================
+// La gente del borrador
+// ============================================================
+//
+// EL FALLO. Al volver al laboratorio, el borrador del navegador se leía así:
+// `o.atletas?.length ? o.atletas : ['Deportista']`. Ese `'Deportista'` es un
+// TEXTO metido en una lista de gente, herencia de cuando los atletas eran
+// nombres sueltos. TypeScript no lo veía —lo que sale de un `JSON.parse` es
+// `any`— y en pantalla cada uno se queda sin `id`: React avisó de las claves
+// repetidas y, peor, las marcas se guardaban en una caja llamada «undefined»
+// que no lee nadie. El usuario lo vio sin tocar nada: «me sale esto aun no
+// probe ni hice nada».
+//
+// LA REGLA. Del navegador no se cree nada: se comprueba.
+
+describe('la gente guardada en el borrador se lee a la defensiva', () => {
+  it('la gente de verdad pasa igual', () => {
+    expect(leerAtletas([{ id: 7, nombre: 'Ana' }, { id: 9, nombre: 'Luis' }]))
+      .toEqual([{ id: 7, nombre: 'Ana' }, { id: 9, nombre: 'Luis' }])
+  })
+
+  it('UN NOMBRE SUELTO NO ES UNA PERSONA: se tira', () => {
+    /* Esto es el fallo exacto. Antes entraba y dejaba a toda la fila sin id. */
+    expect(leerAtletas(['Deportista'])).toEqual([])
+    expect(leerAtletas(['Ana', { id: 3, nombre: 'Luis' }])).toEqual([{ id: 3, nombre: 'Luis' }])
+  })
+
+  it('sin id tampoco, porque el id es el que nombra la caja de datos', () => {
+    expect(leerAtletas([{ nombre: 'Ana' }, { id: null, nombre: 'B' }, { id: 'x', nombre: 'C' }]))
+      .toEqual([])
+  })
+
+  it('NI UN CERO, que es en lo que se convierte la nada', () => {
+    /* `Number(null)` es 0, y `Number([])` también: mirar solo si el id «es un
+       número» dejaba pasar a un atleta con id 0, que no es nadie. Es la misma
+       trampa que ya me comí contando parciales. */
+    for (const malo of [null, false, [], '', '  ', 0]) {
+      expect(leerAtletas([{ id: malo, nombre: 'X' }]), JSON.stringify(malo) ?? 'undefined').toEqual([])
+    }
+  })
+
+  it('el id repetido entra una vez', () => {
+    /* Dos iguales son dos claves iguales: el aviso de React y, al marcar, dos
+       filas peleándose por la misma caja. */
+    expect(leerAtletas([{ id: 4, nombre: 'Ana' }, { id: 4, nombre: 'Ana otra vez' }]))
+      .toEqual([{ id: 4, nombre: 'Ana' }])
+  })
+
+  it('un id en texto vale, que es como vuelve de algún sitio', () => {
+    expect(leerAtletas([{ id: '12', nombre: 'Ana' }])).toEqual([{ id: 12, nombre: 'Ana' }])
+  })
+
+  it('sin nombre se le pone uno, que es mejor que una fila en blanco', () => {
+    expect(leerAtletas([{ id: 5 }])).toEqual([{ id: 5, nombre: 'Sin nombre' }])
+  })
+
+  it('basura entera no es nadie, y no revienta', () => {
+    for (const malo of [null, undefined, 'x', 42, {}, [1, 2], [null]]) {
+      expect(leerAtletas(malo), JSON.stringify(malo) ?? 'undefined').toEqual([])
+    }
+  })
+
+  it('NADIE ES UNA LISTA VACÍA, no un atleta inventado', () => {
+    /* Rellenar el hueco con un «Deportista» de mentira es lo que lo empezó
+       todo: la pantalla ya sabe decir que no hay nadie. */
+    expect(leerAtletas([])).toEqual([])
+  })
+})
+
+describe('ESTE TEST LEE EL CÓDIGO: el borrador no se cree a nadie', () => {
+  const src = fs.readFileSync(path.join(RAIZ, 'app', 'laboratorio', 'page.tsx'), 'utf8')
+
+  it('la gente del borrador pasa por el lector', () => {
+    expect(src).toContain('setAtletas(leerAtletas(o.atletas))')
+  })
+
+  it('y no se rellena el hueco con un atleta de mentira', () => {
+    expect(src).not.toMatch(/setAtletas\([^)]*\[\s*'Deportista'/)
   })
 })

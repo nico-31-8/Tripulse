@@ -23,7 +23,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
-import { leerModelo, paraGuardar, medicionDe, leerMediciones, type Medicion } from '@/lib/lab-guardar'
+import { leerModelo, paraGuardar, medicionDe, leerMediciones, leerAtletas, type Medicion } from '@/lib/lab-guardar'
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
@@ -196,7 +196,7 @@ export default function Laboratorio() {
         const med = { ...(o.med || {}) }
         if (med._prueba && !med[PRUEBA]) { med[PRUEBA] = med._prueba; delete med._prueba }
         setTest(o.test); setProto(o.proto || {}); setMed(med)
-        setAtletas(o.atletas?.length ? o.atletas : ['Deportista'])
+        setAtletas(leerAtletas(o.atletas))
         setVista(o.vista === 'pasar' ? 'pasar' : 'editor')
         setPaso(Math.min(4, Math.max(1, o.paso || 1)))
       }
