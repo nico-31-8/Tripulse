@@ -36,6 +36,7 @@ import {
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
+import { deshacer, marcaEn, primeroLibre, type Marcas } from '@/lib/lab-marcar'
 import { pantallaDe, mover, moverA, alternar, seccionPorClave, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
@@ -159,7 +160,11 @@ export default function Laboratorio() {
   /* Las marcas absolutas del reloj compartido, por persona y columna. Con un
      reloj para todos, el tiempo de cada repetición es la resta con SU marca
      anterior: restar contra el reloj le daría a todos el del más rápido. */
-  const marcas = useRef<Record<string, Record<string, number[]>>>({})
+  /* Los instantes de cada marca, por persona y columna, EN SU REPETICIÓN:
+     lo que se guarda son duraciones, y de una duración no se puede sacar
+     cuándo pasó. Lleva huecos a propósito —se puede marcar la 4.ª con la 3.ª
+     en blanco—, y por eso no es un `number[]` a secas. */
+  const marcas = useRef<Record<string, Record<string, Marcas>>>({})
 
   const atletaActivo = atletas[Math.min(activo, atletas.length - 1)] || null
   /* En el editor se prueba contra la caja de pruebas; al pasar el test, contra
@@ -613,6 +618,85 @@ export default function Laboratorio() {
     )
   }
 
+  // ---------- LO QUE SE APUNTA, EN UN SOLO SITIO ----------
+  /* Las usan las DOS pantallas: las filas por persona —que es lo que sirve
+     para un grupo— y la tabla, tocando la casilla. Antes vivían sueltas dentro
+     de las props de `Pasar`, así que la tabla no podía marcar nada y hubo que
+     poner un botón al lado de cada cosa. */
+
+  /** Lo que lleva el reloj, o null si no corre: marcar sin reloj no es marcar. */
+  const msSiCorre = () => (reloj?.corre ? ahora - reloj.desde + reloj.acu : null)
+
+  /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una resta:
+     mide desde la salida, que es lo que significa «el 400». Por eso volver a
+     marcar simplemente lo pisa. */
+  const marcaSuelto = (c: Columna, k: string) => {
+    const ms = msSiCorre(); if (ms === null) return
+    const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
+    ponMed(k, d => { d[c.clave] = String(val) })
+  }
+
+  /* EL PARCIAL ES LA RESTA con lo que ya lleva marcado ESA persona, no con la
+     marca anterior del reloj: restar contra el reloj le daría a todos el trozo
+     del más rápido. */
+  const parcial = (c: Columna, k: string) => {
+    const ms = msSiCorre(); if (ms === null) return
+    const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
+    const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
+    const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
+    if (dur <= 0) return
+    ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
+  }
+
+  const quitaParcial = (c: Columna, k: string) => ponMed(k, d => {
+    const lista = (d[c.clave] as unknown[] | undefined) || []
+    d[c.clave] = lista.slice(0, -1)
+  })
+
+  /* Nunca por debajo de cero: un contador en negativo no es una corrección, es
+     un número que después entra en una fórmula. */
+  const cuenta = (c: Columna, k: string, suma: number) => ponMed(k, d => {
+    d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
+  })
+
+  /* En un bloque el número va a SU repetición, no al montón: seis series de
+     flexiones son seis números. */
+  const cuentaEn = (c: Columna, bl: Bloque, k: string, rep: number, suma: number) => ponMed(k, d => {
+    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : Array.from({ length: bl.veces }, () => '')
+    l[rep - 1] = String(Math.max(0, (Number(l[rep - 1]) || 0) + suma))
+    d[c.clave] = l
+  })
+
+  /**
+   * MARCAR UNA REPETICIÓN. `fila` es la casilla que se tocó; con -1 se marca la
+   * primera libre, que es lo que hace el botón «Vuelta» de las filas por
+   * persona. Las dos puertas, la misma cuenta.
+   */
+  const marcaVuelta = (c: Columna, bl: Bloque, k: string, fila: number) => {
+    const ms = msSiCorre(); if (ms === null) return
+    if (!marcas.current[k]) marcas.current[k] = {}
+    const abs = marcas.current[k][c.clave] || []
+    const i = fila >= 0 ? fila : primeroLibre(abs, bl.veces)
+    if (i < 0 || i >= bl.veces) return
+    const r = marcaEn(abs, i, ms, c.instrumento === 'crono-min')
+    if (!r) return
+    marcas.current[k][c.clave] = r.abs
+    ponMed(k, d => {
+      const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
+      l[i] = r.valor; d[c.clave] = l
+    })
+  }
+
+  const deshaceVuelta = (c: Columna, k: string) => {
+    const r = deshacer(marcas.current[k]?.[c.clave])
+    if (r.k < 0) return
+    marcas.current[k][c.clave] = r.abs
+    ponMed(k, d => {
+      const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
+      l[r.k] = ''; d[c.clave] = l
+    })
+  }
+
   const pegas = pegasDe(test)
   const previa = (
     <Previa test={test} proto={proto} med={med[cajaActiva] || {}} nombre={nombreActivo}
@@ -622,7 +706,19 @@ export default function Laboratorio() {
         const l = Array.isArray(d[k]) ? [...(d[k] as string[])] : []
         l[i] = v; d[k] = l
       })}
-      onLlego={(bl, n) => ponMed(cajaActiva, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })} />
+      onLlego={(bl, n) => ponMed(cajaActiva, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })}
+      /* LA CASILLA ES SU PROPIO BOTÓN. Todo apunta a la persona que está
+         puesta arriba: la tabla es de uno, las filas por persona son del
+         grupo. */
+      toca={{
+        corre: !!reloj?.corre,
+        marcaBloque: (c, bl, k) => marcaVuelta(c, bl, cajaActiva, k),
+        cuentaBloque: (c, bl, k, suma) => cuentaEn(c, bl, cajaActiva, k + 1, suma),
+        marcaSuelto: c => marcaSuelto(c, cajaActiva),
+        cuentaSuelto: (c, suma) => cuenta(c, cajaActiva, suma),
+        parcial: c => parcial(c, cajaActiva),
+        quitaParcial: c => quitaParcial(c, cajaActiva),
+      }} />
   )
 
   /**
@@ -666,36 +762,12 @@ export default function Laboratorio() {
                     if (ag && !ag.bl && ag.c.clase !== 'dada') d['aguanto'] = String(dentro)
                   })
                 }}
-                onVuelta={(c, bl, a) => {
-                  if (!reloj?.corre) return
-                  const k = String(a.id)
-                  const ms = ahora - reloj.desde + reloj.acu
-                  if (!marcas.current[k]) marcas.current[k] = {}
-                  const lista = marcas.current[k][c.clave] || (marcas.current[k][c.clave] = [])
-                  if (lista.length >= bl.veces) return
-                  /* La marca que se guarda es la del RELOJ COMPARTIDO, y el tiempo
-                     de cada repetición es la resta con la anterior DE ESA PERSONA:
-                     restar contra el reloj le daría a todos el del más rápido. */
-                  const previo = lista.length ? lista[lista.length - 1] : 0
-                  const dur = ms - previo
-                  if (dur <= 0) return
-                  lista.push(ms)
-                  const val = c.instrumento === 'crono-min' ? Math.round(dur / 600) / 100 : Math.round(dur / 100) / 10
-                  ponMed(k, d => {
-                    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
-                    l[lista.length - 1] = String(val); d[c.clave] = l
-                  })
-                }}
-                onDeshace={(c, a) => {
-                  const k = String(a.id)
-                  const lista = marcas.current[k]?.[c.clave]
-                  if (!lista?.length) return
-                  lista.pop()
-                  ponMed(k, d => {
-                    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : []
-                    l[lista.length] = ''; d[c.clave] = l
-                  })
-                }}
+                /* La marca que se guarda es la del RELOJ COMPARTIDO, y el tiempo
+                   de cada repetición es la resta con la anterior DE ESA PERSONA:
+                   restar contra el reloj le daría a todos el del más rápido. Lo
+                   decide `marcaVuelta`, el mismo sitio que la tabla. */
+                onVuelta={(c, bl, a) => marcaVuelta(c, bl, String(a.id), -1)}
+                onDeshace={(c, a) => deshaceVuelta(c, String(a.id))}
                 /* BORRAR LO APUNTADO NO PARA EL RELOJ. Antes sí, porque el
                    reloj era de esa sección; ahora es el del test, y pararlo
                    porque alguien quiere limpiar una columna dejaría la cuenta
@@ -712,15 +784,7 @@ export default function Laboratorio() {
                   escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}
                   for (const a of atletas) ponMed(String(a.id), d => { delete d['@' + bl.clave] })
                 }}
-                /* El tiempo de una casilla suelta es el del reloj TAL CUAL, no una
-                   resta: mide desde la salida, que es lo que significa «el 400».
-                   Por eso volver a marcar simplemente lo pisa. */
-                onMarcaSuelto={(c, a) => {
-                  if (!reloj?.corre) return
-                  const ms = ahora - reloj.desde + reloj.acu
-                  const val = c.instrumento === 'crono-min' ? Math.round(ms / 600) / 100 : Math.round(ms / 100) / 10
-                  ponMed(String(a.id), d => { d[c.clave] = String(val) })
-                }}
+                onMarcaSuelto={(c, a) => marcaSuelto(c, String(a.id))}
                 onBorraSuelto={(c, a) => ponMed(String(a.id), d => { d[c.clave] = '' })}
                 onReiniciaSuelto={c => {
                   /* Una casilla de parciales se vacía como LISTA: dejarla en
@@ -728,23 +792,8 @@ export default function Laboratorio() {
                   const vacio = c.instrumento === 'parciales' ? [] : ''
                   for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = vacio })
                 }}
-                /* EL PARCIAL ES LA RESTA con lo que ya lleva marcado ESA persona,
-                   no con la marca anterior del reloj: restar contra el reloj le
-                   daría a todos el trozo del más rápido. */
-                onParcial={(c, a) => {
-                  if (!reloj?.corre) return
-                  const ms = ahora - reloj.desde + reloj.acu
-                  const k = String(a.id)
-                  const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
-                  const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
-                  const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
-                  if (dur <= 0) return
-                  ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
-                }}
-                onQuitaParcial={(c, a) => ponMed(String(a.id), d => {
-                  const lista = (d[c.clave] as unknown[] | undefined) || []
-                  d[c.clave] = lista.slice(0, -1)
-                })}
+                onParcial={(c, a) => parcial(c, String(a.id))}
+                onQuitaParcial={(c, a) => quitaParcial(c, String(a.id))}
                 /* La pantalla se guarda EN EL ACTO si el test ya existe: pedirle
                    que vuelva al editor y le dé a «Guardar test» para que se
                    recuerde el orden es perder justo lo que esto ahorra. */
@@ -758,18 +807,8 @@ export default function Laboratorio() {
                     if (error) decir('mal', 'No se ha podido guardar la pantalla: ' + error.message)
                   }
                 }}
-                /* Nunca por debajo de cero: un contador en negativo no es una
-                   corrección, es un número que después entra en una fórmula. */
-                /* En un bloque el número va a SU repetición, no al montón:
-                 seis series de flexiones son seis números. */
-              onCuentaEn={(c, bl, a, rep, suma) => ponMed(String(a.id), d => {
-                const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : Array.from({ length: bl.veces }, () => '')
-                l[rep - 1] = String(Math.max(0, (Number(l[rep - 1]) || 0) + suma))
-                d[c.clave] = l
-              })}
-              onCuenta={(c, a, suma) => ponMed(String(a.id), d => {
-                  d[c.clave] = String(Math.max(0, (Number(d[c.clave]) || 0) + suma))
-                })}
+                onCuentaEn={(c, bl, a, rep, suma) => cuentaEn(c, bl, String(a.id), rep, suma)}
+                onCuenta={(c, a, suma) => cuenta(c, String(a.id), suma)}
                 /* Poner a cero el RELOJ, no lo apuntado: son dos cosas, y
                    borrarle a alguien lo que llevaba marcado por querer reiniciar
                    el reloj es de las que no se perdonan. Lo apuntado se borra
@@ -2245,7 +2284,92 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], n
 // ============================================================
 // La tabla: lo que se verá el día del test
 // ============================================================
-function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
+/**
+ * LO QUE PUEDE HACER UNA CASILLA DE LA TABLA.
+ *
+ * La tabla ya dice de qué repeticion y de que columna es cada casilla, asi que
+ * tocarla no necesita explicarse. El boton aparte tenia que repetirlo —«vas por
+ * la 3 de 6»— y ademas podia contradecirla.
+ */
+interface Toca {
+  corre: boolean
+  marcaBloque: (c: Columna, bl: Bloque, k: number) => void
+  cuentaBloque: (c: Columna, bl: Bloque, k: number, suma: number) => void
+  marcaSuelto: (c: Columna) => void
+  cuentaSuelto: (c: Columna, suma: number) => void
+  parcial: (c: Columna) => void
+  quitaParcial: (c: Columna) => void
+}
+
+/**
+ * UNA CASILLA QUE ES SU PROPIO BOTON.
+ *
+ * Tres comportamientos, porque son tres cosas distintas y fingir que son la
+ * misma es lo que hacia falta explicar:
+ *
+ * - PULSADOR: se toca MUCHAS veces y cada una suma. El «−1» sale solo cuando
+ *   hay algo que corregir, pequeno y debajo: corregir no puede ser tan facil
+ *   como contar.
+ * - CRONOMETRO: se toca UNA vez. Vacia, es un boton que invita; con tiempo
+ *   dentro, tocarla la abre para escribir. Volver a tocarla NO la pisa — un
+ *   dedo gordo no puede borrar una marca buena.
+ * - A MANO: la caja de siempre, que no la pone ningun instrumento.
+ */
+function Casilla({ v, c, corre, abierta, abre, cierra, onToca, onMenos, onEscribe, alto }: {
+  v: string
+  c: Columna
+  corre: boolean
+  abierta: boolean
+  abre: () => void
+  cierra: () => void
+  onToca?: () => void
+  onMenos?: () => void
+  onEscribe: (v: string) => void
+  alto?: boolean
+}) {
+  const caja = (
+    <input autoFocus={abierta} onBlur={cierra}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur() }}
+      className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono tabular-nums'} inputMode="decimal"
+      value={v} onChange={e => onEscribe(e.target.value)} />
+  )
+  if (c.instrumento === 'mano' || !onToca) return caja
+  if (abierta) return caja
+
+  if (c.instrumento === 'contador') {
+    const n = Number(v) || 0
+    return (
+      <div className="flex flex-col gap-0.5">
+        <button onClick={onToca} title="Toca para sumar uno"
+          className={'w-full rounded-lg border border-orange-500/45 bg-orange-500/[0.14] hover:bg-orange-500/25 active:bg-orange-500/45 transition ' + (alto ? 'px-3 py-3' : 'px-2 py-2')}>
+          <span className={'block font-mono tabular-nums leading-none text-orange-300 ' + (alto ? 'text-[26px]' : 'text-[19px]')}>{n}</span>
+        </button>
+        {n > 0 && onMenos && (
+          <button onClick={onMenos} className="self-end text-[10.5px] text-gray-500 hover:text-gray-200 px-1 transition">−1</button>
+        )}
+      </div>
+    )
+  }
+
+  /* Cronometro. */
+  if (!v) return (
+    <button onClick={onToca} disabled={!corre}
+      title={corre ? 'Toca para marcar' : 'Arranca el reloj y toca aqui'}
+      className={'w-full rounded-lg border border-dashed text-[11.5px] transition ' + (alto ? 'px-3 py-3' : 'px-2 py-2.5') + ' ' + (corre
+        ? 'border-orange-500/55 text-orange-300 hover:bg-orange-500/15 active:bg-orange-500/30'
+        : 'border-gray-700 text-gray-600 cursor-not-allowed')}>
+      {corre ? 'marcar' : 'sin reloj'}
+    </button>
+  )
+  return (
+    <button onClick={abre} title="Tocala para corregirla"
+      className={'w-full text-left rounded-lg border border-orange-500/50 bg-orange-500/10 font-mono tabular-nums text-white hover:border-orange-400 transition ' + (alto ? 'px-3 py-2.5 text-[15px]' : 'px-2.5 py-2 text-[13px]')}>
+      {v}
+    </button>
+  )
+}
+
+function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
   test: TestLab
   proto: Datos
   med: Datos
@@ -2253,7 +2377,11 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
   onProto: (clave: string, valor: string) => void
   onMed: (clave: string, valor: string, indice?: number) => void
   onLlego: (bloque: string, n: number) => void
+  toca?: Toca
 }) {
+  /* Que casilla esta abierta para escribir. Una sola: abrir la siguiente
+     cierra la anterior, que es lo que pasa al tocar fuera. */
+  const [abierta, setAbierta] = useState('')
   const datos: Datos = { ...proto, ...med }
   const vals = calcular(test, datos)
   const dados = test.sueltos.filter(c => c.clase === 'dada')
@@ -2325,10 +2453,14 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                         <th key={c.clave} className="text-left text-[9.5px] uppercase tracking-wide text-gray-500 font-bold px-1.5 py-1 border-b border-gray-800 align-bottom">
                           {c.etiqueta || c.clave}
                           <span className="block normal-case tracking-normal font-normal text-[10px] text-gray-600">
+                            {/* LO QUE HACE LA CASILLA, no quién la rellena. Antes
+                                ponía «lo pone el cronómetro», que es verdad pero
+                                deja esperando: no decía que para que lo ponga hay
+                                que tocarla. */}
                             {c.clase === 'dada' ? 'la pones tú'
                               : c.instrumento === 'mano' ? 'la escribes aquí'
-                                : c.instrumento === 'contador' ? 'lo pone el pulsador'
-                                  : 'lo pone el cronómetro'}
+                                : c.instrumento === 'contador' ? 'tócala y suma uno'
+                                  : 'tócala y marca'}
                             {c.unidad ? ' · ' + c.unidad : ''}
                           </span>
                         </th>
@@ -2349,17 +2481,23 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                               </button>
                             ) : <span className="font-mono text-[11px] text-gray-600">{k + 1}</span>}
                           </td>
-                          {bl.columnas.map(c => (
+                          {bl.columnas.map(c => {
+                            const id = bl.clave + '|' + c.clave + '|' + k
+                            return (
                             <td key={c.clave} className="px-1.5 py-1 border-b border-gray-800/60">
                               {c.clase === 'dada'
                                 ? <span className="font-mono text-[12.5px] text-blue-300 whitespace-nowrap">{String(valorDado(c, k, datos))}</span>
-                                : <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono tabular-nums'} inputMode="decimal"
-                                  title={c.instrumento === 'mano' ? undefined
-                                    : (c.instrumento === 'contador' ? 'Lo pone el pulsador' : 'Lo pone el cronómetro') + '. Puedes corregirlo aquí.'}
-                                  value={String((med[c.clave] as string[] | undefined)?.[k] ?? '')}
-                                  onChange={e => onMed(c.clave, e.target.value, k)} />}
+                                : <Casilla
+                                  v={String((med[c.clave] as string[] | undefined)?.[k] ?? '')}
+                                  c={c} corre={!!toca?.corre}
+                                  abierta={abierta === id} abre={() => setAbierta(id)} cierra={() => setAbierta('')}
+                                  onToca={!toca ? undefined : c.instrumento === 'contador'
+                                    ? () => toca.cuentaBloque(c, bl, k, 1)
+                                    : () => toca.marcaBloque(c, bl, k)}
+                                  onMenos={toca && c.instrumento === 'contador' ? () => toca.cuentaBloque(c, bl, k, -1) : undefined}
+                                  onEscribe={v => onMed(c.clave, v, k)} />}
                             </td>
-                          ))}
+                          )})}
                         </tr>
                       )
                     })}
@@ -2387,24 +2525,57 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                   {/* UNA LISTA NO SE TECLEA. Con un `input` salía «275,277,288»
                       y al tocarlo se convertía en texto: la casilla se
                       rellena marcando, y aquí se lee. */}
-                  {c.instrumento === 'parciales' ? (
-                    <p className="font-mono text-[12px] text-blue-300 mb-0 leading-snug">
-                      {((med[c.clave] as unknown[] | undefined) || []).length
-                        ? acumuladosDe(med[c.clave]).map(t => mmss(t)).join(' · ')
-                        : <span className="text-gray-600 italic">sin marcar</span>}
-                    </p>
-                  ) : (
+                  {c.instrumento === 'parciales' ? (() => {
+                    /* UNA LISTA NO SE TECLEA, Y AHORA TAMPOCO HACE FALTA UN
+                       BOTÓN AL LADO: la caja donde se leen los parciales es la
+                       que se toca para marcarlos. */
+                    const lista = (med[c.clave] as unknown[] | undefined) || []
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <button onClick={() => toca?.parcial(c)} disabled={!toca?.corre}
+                          title={toca?.corre ? 'Toca para marcar un parcial' : 'Arranca el reloj y toca aquí'}
+                          className={'w-full text-left rounded-lg border px-2.5 py-2 transition ' + (toca?.corre
+                            ? 'border-orange-500/55 bg-orange-500/[0.08] hover:bg-orange-500/[0.18] active:bg-orange-500/30'
+                            : 'border-gray-700 cursor-not-allowed')}>
+                          <span className="block font-mono text-[12px] text-blue-200 leading-snug">
+                            {lista.length
+                              ? acumuladosDe(med[c.clave]).map(t => mmss(t)).join(' · ')
+                              : <span className="text-gray-600 italic">{toca?.corre ? 'toca para marcar' : 'sin marcar'}</span>}
+                          </span>
+                          {(lista.length > 0 || c.esperados) && (
+                            <span className="block text-[10.5px] text-gray-500 mt-1">
+                              {c.esperados
+                                ? lista.length + ' de ' + c.esperados + (lista.length >= c.esperados ? ' ✓' : '')
+                                : lista.length + (lista.length === 1 ? ' parcial' : ' parciales')}
+                            </span>
+                          )}
+                        </button>
+                        {lista.length > 0 && toca && (
+                          <button onClick={() => toca.quitaParcial(c)}
+                            className="self-end text-[10.5px] text-gray-500 hover:text-gray-200 px-1 transition">deshacer</button>
+                        )}
+                      </div>
+                    )
+                  })() : (
                     <>
-                      <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono'} inputMode="decimal"
-                        value={String(med[c.clave] ?? '')} onChange={e => onMed(c.clave, e.target.value)} />
-                      {/* SE DICE QUIÉN LA RELLENA. Una casilla con cronómetro
-                          enseñaba aquí una caja vacía igual que las demás, y
-                          parecía que había que escribirla a mano —o que el
-                          cronómetro no servía—. Se puede escribir, pero para
-                          corregir. */}
+                      <Casilla
+                        v={String(med[c.clave] ?? '')} c={c} corre={!!toca?.corre} alto
+                        abierta={abierta === c.clave} abre={() => setAbierta(c.clave)} cierra={() => setAbierta('')}
+                        onToca={!toca ? undefined : c.instrumento === 'contador'
+                          ? () => toca.cuentaSuelto(c, 1)
+                          : () => toca.marcaSuelto(c)}
+                        onMenos={toca && c.instrumento === 'contador' ? () => toca.cuentaSuelto(c, -1) : undefined}
+                        onEscribe={v => onMed(c.clave, v)} />
+                      {/* SE DICE QUÉ HACE AL TOCARLA. Antes esto decía quién la
+                          rellenaba —«lo pone el cronómetro»— porque la casilla
+                          era una caja vacía y parecía que había que escribirla a
+                          mano. Ahora la casilla ES el botón, así que lo que hay
+                          que decir es qué pasa al tocarla. */}
                       {c.instrumento !== 'mano' && (
                         <span className="block text-[10.5px] text-gray-500 mt-1">
-                          {c.instrumento === 'contador' ? 'lo pone el pulsador' : 'lo pone el cronómetro'} · puedes corregirlo aquí
+                          {c.instrumento === 'contador'
+                            ? 'tócalo y suma uno'
+                            : med[c.clave] ? 'tócalo para corregirlo' : 'tócalo y lo pone el cronómetro'}
                         </span>
                       )}
                     </>
