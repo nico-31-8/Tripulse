@@ -13,7 +13,7 @@ import {
   alternar, leerPantalla, mover, moverA, pantallaDe, seccionesDeTest, tienePantalla,
   type Pantalla,
 } from './lab-pantalla'
-import { col, type TestLab } from './lab-constructor'
+import { col, restanteDescanso, type TestLab } from './lab-constructor'
 
 /** Un test con cuenta atrás, parciales y pulsador. */
 const TEST: TestLab = {
@@ -146,5 +146,42 @@ describe('arrastrar: mover hasta una posición', () => {
     expect(moverA(o, 'cuenta', 99)).toEqual(['parciales', 'pulsadores', 'guardar', 'cuenta'])
     expect(moverA(o, 'cuenta', -5)).toEqual(o)
     expect(moverA(o, 'noexiste' as 'cuenta', 1)).toEqual(o)
+  })
+})
+
+describe('el cronómetro de descanso', () => {
+  /* Es la primera cosa del laboratorio que NO apunta nada: un reloj aparte
+     para cantar el descanso entre series. */
+  const conDescanso: TestLab = {
+    nombre: 'x', deporte: 'Carrera', sueltos: [], bloques: [], resultados: [], descanso: 120,
+  }
+
+  it('aparece como sección cuando el test lo lleva', () => {
+    expect(seccionesDeTest(conDescanso)).toContain('descanso')
+  })
+
+  it('y no cuando no', () => {
+    expect(seccionesDeTest({ ...conDescanso, descanso: undefined })).not.toContain('descanso')
+    expect(seccionesDeTest({ ...conDescanso, descanso: 0 })).not.toContain('descanso')
+  })
+
+  it('se puede esconder y mover como las demás', () => {
+    const r = pantallaDe(conDescanso, { orden: ['descanso', 'guardar'], ocultas: ['descanso'] })
+    expect(r.todas).toEqual(['descanso', 'guardar'])
+    expect(r.visibles).toEqual(['guardar'])
+  })
+
+  it('lo que queda se para en cero, no sigue a negativo', () => {
+    /* Un número que baja de cero se lee mal a pie de pista, y que se acabó ya
+       lo dice el pitido. */
+    expect(restanteDescanso(120, 0)).toBe(120)
+    expect(restanteDescanso(120, 60_000)).toBe(60)
+    expect(restanteDescanso(120, 119_500)).toBe(1)
+    expect(restanteDescanso(120, 120_000)).toBe(0)
+    expect(restanteDescanso(120, 600_000)).toBe(0)
+  })
+
+  it('sin descanso puesto no hay cuenta que hacer', () => {
+    expect(restanteDescanso(0, 5_000)).toBe(0)
   })
 })

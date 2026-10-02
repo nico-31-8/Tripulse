@@ -28,7 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
-  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento,
+  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento, restanteDescanso,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
@@ -145,6 +145,10 @@ export default function Laboratorio() {
   /* Cómo se está mirando la pantalla del test mientras se monta: ancha como
      en un ordenador, o a 375 px como en el móvil. */
   const [comoSeVe, setComoSeVe] = useState<'ancho' | 'movil'>('ancho')
+  /* EL DESCANSO VA APARTE del reloj del test, que es de lo que se trata: corre
+     mientras el del test sigue andando o está parado. */
+  const [desc, setDesc] = useState<Reloj | null>(null)
+  const descAvisado = useRef(false)
 
   /* Lo que se pitó la última vez, para pitar solo cuando CAMBIA. En refs y no
      en estado: cambiarlo no tiene que repintar nada. */
@@ -208,10 +212,12 @@ export default function Laboratorio() {
 
   // ---------- el latido del reloj ----------
   useEffect(() => {
-    if (!reloj?.corre) return
+    /* También con el descanso: si solo mirara al del test, el descanso se
+       quedaría congelado en pantalla mientras corre por dentro. */
+    if (!reloj?.corre && !desc?.corre) return
     const id = setInterval(() => setAhora(Date.now()), 100)
     return () => clearInterval(id)
-  }, [reloj?.corre])
+  }, [reloj?.corre, desc?.corre])
 
   /* El pitido va en un efecto sin lista de dependencias a propósito: corre en
      cada repintado —diez veces por segundo mientras el reloj anda— y es la
@@ -299,6 +305,16 @@ export default function Laboratorio() {
         }
       }
     }
+  })
+
+  /* EL PITIDO DEL DESCANSO. Suena UNA vez al llegar a cero: sin la bandera
+     sonaría diez veces por segundo, que es lo que pasa cuando el aviso se
+     cuelga del valor en vez de del cambio. */
+  useEffect(() => {
+    if (!desc?.corre || !test?.descanso) return
+    const ms = ahora - desc.desde + desc.acu
+    if (restanteDescanso(test.descanso, ms) > 0) { descAvisado.current = false; return }
+    if (!descAvisado.current) { descAvisado.current = true; avisarEscalon() }
   })
 
   // ---------- cambiar cosas ----------
@@ -761,6 +777,21 @@ export default function Laboratorio() {
                 onReiniciaReloj={() => {
                   setReloj(null)
                   escPrevio.current = {}; avisado.current = {}; ritmoPrevio.current = {}; tramoPrevio.current = {}
+                }}
+                desc={desc}
+                /* El descanso tiene su propio arrancar: si compartiera el del
+                   test, empezar a descansar pararía el reloj de la prueba. */
+                onDescanso={accion => {
+                  despertarAudio()
+                  if (accion === 'cero') { setDesc(null); descAvisado.current = false; return }
+                  setDesc(r => {
+                    const base = r || { desde: 0, acu: 0, corre: false }
+                    return base.corre
+                      ? { ...base, acu: base.acu + (Date.now() - base.desde), corre: false }
+                      : { ...base, desde: Date.now(), corre: true }
+                  })
+                  descAvisado.current = false
+                  setAhora(Date.now())
                 }}
                 onArranca={() => {
                   despertarAudio()
@@ -1236,6 +1267,30 @@ function Paso2({ test, mut, renombrar, proto, setProto, cajas, setMed, pidiendo,
       )}
 
       <BotonesAnadir test={test} mut={mut} setMed={setMed} cajas={cajas} onCreado={setReciente} />
+
+      {/* EL DESCANSO NO ES UNA PUERTA MÁS: no apunta nada, es una herramienta
+          para cantar el descanso entre series. Por eso va debajo y en pequeño,
+          no al lado de «una casilla» y «un bloque». */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap text-[12.5px] text-gray-400">
+        <button onClick={() => mut(t => { t.descanso = t.descanso ? undefined : 120 })}
+          className={'text-[12px] px-2.5 py-1 rounded-lg border transition ' + (test.descanso
+            ? 'bg-orange-500/14 border-orange-500/45 text-orange-200'
+            : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200')}>
+          ☕ Cronómetro de descanso
+        </button>
+        {!!test.descanso && (
+          <>
+            de
+            <input className={hueco + ' w-[76px] text-center font-mono'} inputMode="numeric"
+              value={String(test.descanso)}
+              onChange={e => mut(t => { t.descanso = Math.max(1, Math.round(Number(e.target.value) || 0)) })} />
+            segundos · <span className="text-gray-500">{mmss(test.descanso)}</span>
+          </>
+        )}
+        <span className="basis-full text-[11px] text-gray-600 mb-0">
+          Un reloj aparte para el descanso entre series. No apunta nada: solo cuenta y pita.
+        </span>
+      </div>
 
       {repes.length > 0 && (
         <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/[0.07] px-3 py-2.5 text-[12px] text-red-200 leading-snug">
@@ -2393,6 +2448,7 @@ function Pasar({
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
   onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial, onPantalla,
+  desc, onDescanso,
   montando = false, anadir,
 }: {
   test: TestLab
@@ -2427,6 +2483,9 @@ function Pasar({
   onParcial: (c: Columna, a: Atleta) => void
   onQuitaParcial: (c: Columna, a: Atleta) => void
   onPantalla: (p: Pantalla) => void
+  /** El reloj del descanso, que va aparte del del test. */
+  desc: Reloj | null
+  onDescanso: (accion: 'arranca' | 'cero') => void
   /**
    * Se está MONTANDO el test, no pasándolo.
    *
@@ -2976,6 +3035,38 @@ function Pasar({
         </div>
       ))}
 
+      </div>)}
+
+      {/* EL DESCANSO: un reloj aparte, que no apunta nada. Corre mientras el
+          del test sigue andando o está parado — que es lo que pasa de verdad
+          entre series. */}
+      {visibles.includes('descanso') && !!test.descanso && (<div style={{ order: todas.indexOf('descanso') }}>
+        {(() => {
+          const msD = desc ? (desc.corre ? ahora - desc.desde + desc.acu : desc.acu) : 0
+          const queda = restanteDescanso(test.descanso!, msD)
+          const seAcabo = !!desc && queda === 0
+          return (
+            <div className={relojCaja + (seAcabo ? ' border-green-500/40' : '')}>
+              <div>
+                <div className={gordo + (seAcabo ? ' text-green-400' : '')}>{mmss(queda)}</div>
+                <div className={pie}>{seAcabo ? 'descanso cumplido' : 'descanso'}</div>
+              </div>
+              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
+                <button onClick={() => onDescanso('arranca')} className={btnSec + ' flex-1 min-w-[110px]'}>
+                  {desc?.corre ? 'Pausar' : desc ? 'Seguir' : 'Empezar el descanso'}
+                </button>
+                <button onClick={() => onDescanso('cero')} disabled={!desc}
+                  className="text-[11.5px] text-gray-500 hover:text-gray-300 disabled:opacity-30 px-2 transition">
+                  Otra vez
+                </button>
+              </div>
+              <p className="text-gray-400 text-[11.5px] leading-snug basis-full mb-0">
+                {mmss(test.descanso!)} de descanso, con pitido al acabar. Va <b className="text-white">aparte del reloj del test</b>:
+                arrancarlo no para la prueba. No se apunta en ningún sitio.
+              </p>
+            </div>
+          )
+        })()}
       </div>)}
 
       {anadir && (

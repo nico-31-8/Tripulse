@@ -358,6 +358,18 @@ export interface TestLab {
    * después de ordenarla— están en `lib/lab-pantalla`.
    */
   pantalla?: { orden: string[]; ocultas: string[] }
+  /**
+   * Segundos de descanso entre series, si el test lleva.
+   *
+   * ES LA PRIMERA COSA DEL LABORATORIO QUE NO APUNTA NADA: un reloj aparte
+   * para cantar el descanso, que no mide ni guarda. Por eso no es una casilla
+   * ni un bloque —no hay dato que recoger— y vive en el test, como el nombre.
+   *
+   * Va SUELTO del reloj del test a propósito: el descanso corre mientras el
+   * reloj del test sigue andando o está parado, que es justo lo que pasa a pie
+   * de pista.
+   */
+  descanso?: number
 }
 
 /** Lo medido o lo dado, tal cual se guardaría. `@clave` = hasta dónde llegó. */
@@ -1320,6 +1332,15 @@ export const escalonadosDe = (t: TestLab | null): Bloque[] =>
 /** Los que solo duran: cuenta atrás y un pitido al acabar. */
 export const cronometradosDe = (t: TestLab | null): Bloque[] =>
   conRelojDe(t).filter(bl => !columnaDeVelocidad(bl, {}))
+
+/**
+ * Lo que queda de un descanso, en segundos. Cero = se acabó.
+ *
+ * Se para en el cero y no sigue a negativo: un número que baja de cero se lee
+ * mal a pie de pista, y que se acabó ya lo dice el pitido.
+ */
+export const restanteDescanso = (segundos: number, ms: number): number =>
+  Math.max(0, Math.ceil(Number(segundos || 0) - Math.max(0, ms) / 1000))
 
 /**
  * Si un bloque CERRADO ya ha dado todas sus repeticiones.

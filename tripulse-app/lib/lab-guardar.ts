@@ -184,6 +184,7 @@ export function leerModelo(bruto: unknown, nombre = '', deporte = 'Carrera'): Te
     /* La pantalla a su gusto. Se lee a la defensiva en `lab-pantalla`: una
        clave que ya no existe no puede dejar la pantalla a medias. */
     ...(o.pantalla ? { pantalla: leerPantalla(o.pantalla) } : {}),
+    ...(num(o.descanso) && Number(o.descanso) > 0 ? { descanso: Math.round(Number(o.descanso)) } : {}),
   }
 }
 
@@ -216,6 +217,7 @@ export function paraGuardar(t: TestLab, idEntrenador: string) {
       /* Solo si la ha tocado: una pantalla sin ordenar no ocupa sitio ni
          congela el orden de serie, que puede mejorar con el tiempo. */
       ...(tienePantalla(t.pantalla as Pantalla | undefined) ? { pantalla: t.pantalla } : {}),
+      ...(Number(t.descanso) > 0 ? { descanso: Math.round(Number(t.descanso)) } : {}),
     },
   }
 }

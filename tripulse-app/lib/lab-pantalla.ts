@@ -25,12 +25,12 @@
 // es una rota.
 
 import {
-  contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe, escalonadosDe,
+  contadoresDe, contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe, escalonadosDe,
   parcialesDe, type TestLab,
 } from './lab-constructor'
 
 export type ClaveSeccion =
-  | 'escalones' | 'cuenta' | 'cronos' | 'sueltos' | 'parciales' | 'pulsadores' | 'guardar'
+  | 'escalones' | 'cuenta' | 'cronos' | 'sueltos' | 'parciales' | 'pulsadores' | 'descanso' | 'guardar'
 
 export interface Seccion {
   clave: ClaveSeccion
@@ -48,6 +48,7 @@ export const SECCIONES: Seccion[] = [
   { clave: 'sueltos', etiqueta: 'Cronómetro', icono: '⏱', prescindible: true },
   { clave: 'parciales', etiqueta: 'Parciales', icono: '🚩', prescindible: true },
   { clave: 'pulsadores', etiqueta: 'Pulsadores', icono: '👆', prescindible: true },
+  { clave: 'descanso', etiqueta: 'Descanso', icono: '☕', prescindible: true },
   { clave: 'guardar', etiqueta: 'Guardar lo medido', icono: '💾', prescindible: false },
 ]
 
@@ -76,7 +77,8 @@ export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
   if (cronosDe(t).length) o.push('cronos')
   if (cronosSueltosDe(t).length) o.push('sueltos')
   if (parcialesDe(t).length) o.push('parciales')
-  if (contadoresSueltosDe(t).length) o.push('pulsadores')
+  if (contadoresSueltosDe(t).length || contadoresDe(t).length) o.push('pulsadores')
+  if (Number(t?.descanso) > 0) o.push('descanso')
   o.push('guardar')
   return o
 }
