@@ -157,3 +157,38 @@ describe('EL MOTOR AGREGA LA LISTA SIN TOCARLO', () => {
     expect(vals[0].error).toContain('todavía no tiene ningún parcial')
   })
 })
+
+describe('cuántos parciales esperas', () => {
+  /* «Voy a tomar 4» es tan corriente como «los que salgan», y sin decirlo hay
+     que contarlos de cabeza mientras miras a seis personas. */
+  it('se guarda con la casilla y vuelve igual', () => {
+    const t: TestLab = {
+      ...MILES,
+      sueltos: [col({ clave: 'p', etiqueta: 'Cada mil', unidad: 's', instrumento: 'parciales', esperados: 4 })],
+    }
+    const fila = paraGuardar(t, 'entrenador-1')
+    expect(leerModelo(fila.modelo, t.nombre, t.deporte)!.sueltos[0].esperados).toBe(4)
+  })
+
+  it('NO ES UN TOPE: si salen cinco, se marcan cinco', () => {
+    /* Lo que esperabas no manda sobre lo que pasó: el dato es lo que pasó. */
+    const t: TestLab = {
+      ...MILES,
+      sueltos: [col({ clave: 'p', unidad: 's', instrumento: 'parciales', esperados: 4 })],
+    }
+    const vals = calcular(t, { p: [275, 277, 288, 281, 290] })
+    expect(vals[0].valor).toBe(5)
+  })
+
+  it('un número que no vale no se guarda', () => {
+    /* Un cero o un texto en «cuántos espero» dejaría la pantalla diciendo
+       «2 de 0». */
+    for (const malo of [0, -3, 'cuatro', null]) {
+      const fila = paraGuardar({
+        ...MILES,
+        sueltos: [col({ clave: 'p', instrumento: 'parciales', esperados: malo as number })],
+      }, 'e')
+      expect(leerModelo(fila.modelo, 'x', 'Carrera')!.sueltos[0].esperados, String(malo)).toBeUndefined()
+    }
+  })
+})

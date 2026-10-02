@@ -1338,6 +1338,19 @@ function FilaColumna({ c, bl, indice, test, proto, onCambio, onClase, onRenombra
             </select>
           </>
         )}
+        {/* CUÁNTOS PARCIALES. «Voy a tomar 4» es tan corriente como «los que
+            salgan», y sin decirlo había que contarlos de cabeza. */}
+        {!dada && !calc && c.instrumento === 'parciales' && (
+          <>
+            y espero
+            <input className={hueco + ' w-[66px] text-center font-mono'} inputMode="numeric"
+              placeholder="los que salgan" value={c.esperados ? String(c.esperados) : ''}
+              onChange={e => {
+                const n = Math.round(Number(e.target.value) || 0)
+                onCambio('esperados', n > 0 ? n : undefined)
+              }} />
+          </>
+        )}
         {dada && !bl && (
           <>
             <span className="-ml-1.5">:</span>
@@ -2257,7 +2270,11 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                         <th key={c.clave} className="text-left text-[9.5px] uppercase tracking-wide text-gray-500 font-bold px-1.5 py-1 border-b border-gray-800 align-bottom">
                           {c.etiqueta || c.clave}
                           <span className="block normal-case tracking-normal font-normal text-[10px] text-gray-600">
-                            {c.clase === 'dada' ? 'la pones tú' : etiquetaInstrumento(c.instrumento, true)}{c.unidad ? ' · ' + c.unidad : ''}
+                            {c.clase === 'dada' ? 'la pones tú'
+                              : c.instrumento === 'mano' ? 'la escribes aquí'
+                                : c.instrumento === 'contador' ? 'lo pone el pulsador'
+                                  : 'lo pone el cronómetro'}
+                            {c.unidad ? ' · ' + c.unidad : ''}
                           </span>
                         </th>
                       ))}
@@ -2282,6 +2299,8 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego }: {
                               {c.clase === 'dada'
                                 ? <span className="font-mono text-[12.5px] text-blue-300 whitespace-nowrap">{String(valorDado(c, k, datos))}</span>
                                 : <input className={(c.instrumento !== 'mano' ? campoMed : campo) + ' font-mono tabular-nums'} inputMode="decimal"
+                                  title={c.instrumento === 'mano' ? undefined
+                                    : (c.instrumento === 'contador' ? 'Lo pone el pulsador' : 'Lo pone el cronómetro') + '. Puedes corregirlo aquí.'}
                                   value={String((med[c.clave] as string[] | undefined)?.[k] ?? '')}
                                   onChange={e => onMed(c.clave, e.target.value, k)} />}
                             </td>
@@ -2432,6 +2451,15 @@ function Pasar({
   /* Por qué repetición va cada bloque SIN reloj: lo dice el entrenador, porque
      un contador a cero no se distingue de uno sin empezar. */
   const [repMano, setRepMano] = useState<Record<string, number>>({})
+
+  /* Los botones de marcar, pulsar y «se bajó» salen POR PERSONA. Sin nadie
+     añadido, una sección se queda con su título y nada debajo: parece rota.
+     Lo dice cada una, no solo el aviso de arriba. */
+  const sinGente = !atletas.length && !montando ? (
+    <p className="text-[12px] text-amber-300/90 mb-0 mt-1.5 leading-snug">
+      Elige arriba a quién se lo pasas y aquí saldrá <b>su botón</b>.
+    </p>
+  ) : null
   const parciales = parcialesDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0
@@ -2633,6 +2661,7 @@ function Pasar({
             {/* UN reloj, y un botón por persona: das una salida y vas marcando
                 según se van descolgando. */}
             <div className="mt-3">
+              {sinGente}
               {atletas.map(a => {
                 const hechas = hechasDe(bl, datosDe(String(a.id)))
                 return (
@@ -2713,6 +2742,7 @@ function Pasar({
               </div>
             </div>
             <div className="mt-3">
+              {sinGente}
               {atletas.map(a => {
                 const hechas = ((datosDe(String(a.id))[c.clave] as string[] | undefined) || []).filter(x => x !== '' && x != null).length
                 const completa = hechas >= bl.veces
@@ -2761,6 +2791,7 @@ function Pasar({
               <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Borrar lo apuntado</button>
             </div>
             <div className="mt-1.5">
+              {sinGente}
               {atletas.map(a => {
                 const val = String(datosDe(String(a.id))[c.clave] ?? '')
                 return (
@@ -2802,6 +2833,7 @@ function Pasar({
               <button onClick={() => onReiniciaSuelto(c)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Borrar lo apuntado</button>
             </div>
             <div className="mt-1.5">
+              {sinGente}
               {atletas.map(a => {
                 const lista = (datosDe(String(a.id))[c.clave] as unknown[] | undefined) || []
                 const acum = acumuladosDe(lista)
@@ -2809,7 +2841,13 @@ function Pasar({
                   <div key={a.id} className={filaAt}>
                     <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
                     <span className="font-mono text-[12px] text-blue-300">
-                      {lista.length ? lista.length + (lista.length === 1 ? ' parcial' : ' parciales') : 'sin marcar'}
+                      {/* Con un número esperado se dice «2 de 4»: lo que de
+                          verdad quieres saber a pie de pista es cuántos
+                          faltan. Si salen más, se marcan igual — lo que
+                          esperabas no manda sobre lo que pasó. */}
+                      {c.esperados
+                        ? lista.length + ' de ' + c.esperados + (lista.length >= c.esperados ? ' ✓' : '')
+                        : lista.length ? lista.length + (lista.length === 1 ? ' parcial' : ' parciales') : 'sin marcar'}
                     </span>
                     <button onClick={() => onQuitaParcial(c, a)} disabled={!lista.length}
                       className={btnSec + ' ' + btnMini + ' ml-auto'}>Deshacer</button>
@@ -2871,6 +2909,7 @@ function Pasar({
                 </span>
               )}
             </div>
+            {sinGente}
             <div className="mt-2.5 flex gap-2.5 flex-wrap">
               {atletas.map(a => {
                 const lista = (datosDe(String(a.id))[c.clave] as string[] | undefined) || []
@@ -2903,6 +2942,7 @@ function Pasar({
             {c.etiqueta || c.clave}{c.unidad ? ' · ' + c.unidad : ''}
             {seAcaboElTiempo && <span className="text-amber-300 normal-case tracking-normal font-semibold"> · se acabó el tiempo</span>}
           </p>
+          {sinGente}
           <div className="mt-2.5 flex gap-2.5 flex-wrap">
             {atletas.map(a => {
               const v = Number(datosDe(String(a.id))[c.clave] || 0)

@@ -224,6 +224,18 @@ export interface Columna {
   pasoRef?: string
   etiquetas?: string[]
   /**
+   * Cuántos PARCIALES esperas. Vacío = los que salgan.
+   *
+   * Los parciales nacieron abiertos —marcas lo que pase— y eso sigue siendo lo
+   * normal. Pero «voy a tomar 4» es igual de corriente, y entonces la pantalla
+   * puede decir «2 de 4» y avisar cuando están todos, en vez de dejarte
+   * contando de cabeza mientras miras a seis personas.
+   *
+   * No es un tope: si el día del test salen cinco, se marcan cinco. Lo que
+   * esperabas no manda sobre lo que pasó.
+   */
+  esperados?: number
+  /**
    * Solo en las calculadas: de qué sale, dentro de su repetición.
    *
    * Aquí los nombres valen UN número, no la serie entera: `ts` es el tiempo de

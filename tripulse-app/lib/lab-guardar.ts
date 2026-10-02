@@ -82,6 +82,7 @@ function leerColumna(bruto: unknown): Columna | null {
 
   const c: Columna = {
     clave, etiqueta: txt(o.etiqueta), unidad: txt(o.unidad), clase, instrumento,
+    ...(num(o.esperados) && Number(o.esperados) > 0 ? { esperados: Math.round(Number(o.esperados)) } : {}),
     valor: txt(o.valor),
   }
 
