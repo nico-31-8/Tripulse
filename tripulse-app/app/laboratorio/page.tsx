@@ -81,6 +81,11 @@ const btnMini = 'text-[11.5px] px-2.5 py-1.5 rounded-md'
 const tarjeta = 'bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5'
 const caja = 'border border-gray-800 rounded-xl p-3 bg-[#0d1420] mb-3'
 const rejilla = 'grid gap-2.5 items-end'
+/* El ancho del móvil que se finge, en UN SOLO SITIO: lo miran el editor y la
+   pantalla de pasar el test, y con dos números la previa mentiría en una de
+   las dos. Escrito entero y literal porque Tailwind lee el código buscando
+   nombres de clase: partido o montado a trozos, la clase no se genera. */
+const COMO_EN_EL_MOVIL = 'max-w-[375px] w-full mx-auto'
 const REJILLA = { gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' } as const
 
 type Vista = 'plantillas' | 'editor' | 'pasar' | 'historial'
@@ -726,6 +731,37 @@ export default function Laboratorio() {
     })
   }
 
+  /**
+   * VERLO COMO SE VA A VER.
+   *
+   * El test se pasa casi siempre con el móvil en la mano, y a 375 px todo va
+   * en una columna: el orden decide lo que ves sin bajar, con el atleta
+   * esperando. Descubrirlo el jueves es tarde.
+   *
+   * ESTÁ EN LAS DOS PANTALLAS —montando y pasando— y escrito UNA vez. Vivía
+   * suelto dentro del editor, y la de pasar el test, que es la que de verdad
+   * se mira con el móvil, no lo tenía.
+   *
+   * En un móvil de verdad no se pinta: ahí ya estás viendo el móvil, y
+   * preguntarte cómo quieres verlo sobra.
+   */
+  const esMovil = comoSeVe === 'movil'
+  const verloComo = (
+    <div className="hidden sm:flex items-center gap-2 flex-wrap">
+      <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Verlo como</span>
+      <div className="flex rounded-lg border border-gray-700 overflow-hidden">
+        {([['ancho', 'Ordenador'], ['movil', 'Móvil']] as const).map(([k, et]) => (
+          <button key={k} onClick={() => setComoSeVe(k)}
+            className={'text-[11.5px] px-3 py-1.5 transition ' +
+              (comoSeVe === k ? 'bg-gray-800 text-white font-semibold' : 'text-gray-500 hover:text-gray-300')}>
+            {et}
+          </button>
+        ))}
+      </div>
+      {esMovil && <span className="text-[11px] text-gray-500">375 px, todo en una columna</span>}
+    </div>
+  )
+
   const pegas = pegasDe(test)
   const previa = (
     <Previa test={test} proto={proto} med={med[cajaActiva] || {}} nombre={nombreActivo}
@@ -944,25 +980,9 @@ export default function Laboratorio() {
                     parciales y el pulsador no estaban. Ahora es la misma, con
                     una caja de pruebas en vez de gente. */}
                 <div className="lg:sticky lg:top-4 flex flex-col gap-3">
-                  {/* VERLO COMO SE VA A VER. El test se pasa casi siempre con
-                      el móvil en la mano, y a 375 px todo va en una columna:
-                      el orden decide lo que ves sin bajar, con el atleta
-                      esperando. Descubrirlo el jueves es tarde. */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Verlo como</span>
-                    <div className="flex rounded-lg border border-gray-700 overflow-hidden">
-                      {([['ancho', 'Ordenador'], ['movil', 'Móvil']] as const).map(([k, et]) => (
-                        <button key={k} onClick={() => setComoSeVe(k)}
-                          className={'text-[11.5px] px-3 py-1.5 transition ' +
-                            (comoSeVe === k ? 'bg-gray-800 text-white font-semibold' : 'text-gray-500 hover:text-gray-300')}>
-                          {et}
-                        </button>
-                      ))}
-                    </div>
-                    {comoSeVe === 'movil' && <span className="text-[11px] text-gray-500">375 px, todo en una columna</span>}
-                  </div>
+                  {verloComo}
 
-                  <div className={'flex flex-col gap-4' + (comoSeVe === 'movil' ? ' max-w-[375px] w-full mx-auto' : '')}>
+                  <div className={'flex flex-col gap-4' + (esMovil ? ' ' + COMO_EN_EL_MOVIL : '')}>
                     {pantallaDelTest({
                       atletas: ATLETA_PRUEBA,
                       montando: true,
@@ -981,9 +1001,16 @@ export default function Laboratorio() {
             mediciones={mediciones} cargando={cargandoHist} guardando={guardando}
             onFijar={fijarConEsto} />
         ) : (
-          <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
-            {pantallaDelTest({ atletas })}
-            <div className="lg:sticky lg:top-4">{previa}</div>
+          <div className="flex flex-col gap-3">
+            {verloComo}
+            {/* El mismo árbol con otras clases, no dos: cambiando de rama se
+                reiniciaría lo que esté a medias en la tabla. */}
+            <div className={esMovil
+              ? 'flex flex-col gap-4 ' + COMO_EN_EL_MOVIL
+              : 'grid gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]'}>
+              {pantallaDelTest({ atletas })}
+              <div className={esMovil ? '' : 'lg:sticky lg:top-4'}>{previa}</div>
+            </div>
           </div>
         )}
       </div>
