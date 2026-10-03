@@ -30,7 +30,7 @@ import {
 } from './lab-constructor'
 
 export type ClaveSeccion =
-  | 'escalones' | 'cuenta' | 'cronos' | 'sueltos' | 'parciales' | 'pulsadores' | 'descanso' | 'guardar'
+  | 'reloj' | 'escalones' | 'cuenta' | 'cronos' | 'sueltos' | 'parciales' | 'pulsadores' | 'descanso' | 'guardar'
 
 export interface Seccion {
   clave: ClaveSeccion
@@ -42,6 +42,11 @@ export interface Seccion {
 
 /** El catálogo, en el orden DE SERIE: el que damos nosotros. */
 export const SECCIONES: Seccion[] = [
+  /* EL RELOJ TAMBIÉN SE MUEVE. De serie va arriba, pero al pasar el test lo
+     que se mira sin parar es la tabla, y en el móvil queda debajo de todo:
+     bajando el reloj se pegan las dos cosas que se usan a la vez. Esconderlo
+     no se puede —sin él no se puede ni empezar—, igual que «Guardar». */
+  { clave: 'reloj', etiqueta: 'El reloj', icono: '⏱', prescindible: false },
   { clave: 'escalones', etiqueta: 'Escalones', icono: '📶', prescindible: true },
   { clave: 'cuenta', etiqueta: 'Cuenta atrás', icono: '⏱', prescindible: true },
   { clave: 'cronos', etiqueta: 'Cronómetro por repetición', icono: '⏱', prescindible: true },
@@ -64,6 +69,16 @@ export interface Pantalla {
 export const PANTALLA_VACIA: Pantalla = { orden: [], ocultas: [] }
 
 /**
+ * Si hace falta un reloj para pasarlo.
+ *
+ * Un pulsador NO lo necesita: contar flexiones no mide tiempo. Por eso no vale
+ * preguntarle a `relojesDe`, que los cuenta a ellos también.
+ */
+export const tieneReloj = (t: TestLab | null): boolean =>
+  escalonadosDe(t).length > 0 || cronometradosDe(t).length > 0 || cronosDe(t).length > 0
+  || cronosSueltosDe(t).length > 0 || parcialesDe(t).length > 0 || parcialesBloqueDe(t).length > 0
+
+/**
  * Qué secciones TIENE este test de verdad.
  *
  * Sale de las mismas listas que pintan los relojes, no de una lista aparte:
@@ -72,6 +87,7 @@ export const PANTALLA_VACIA: Pantalla = { orden: [], ocultas: [] }
  */
 export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
   const o: ClaveSeccion[] = []
+  if (tieneReloj(t)) o.push('reloj')
   if (escalonadosDe(t).length) o.push('escalones')
   if (cronometradosDe(t).length) o.push('cuenta')
   if (cronosDe(t).length) o.push('cronos')

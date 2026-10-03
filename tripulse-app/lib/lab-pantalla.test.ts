@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  alternar, leerPantalla, mover, moverA, pantallaDe, seccionesDeTest, tienePantalla,
+  alternar, leerPantalla, mover, moverA, pantallaDe, seccionesDeTest, tienePantalla, tieneReloj,
   type Pantalla,
 } from './lab-pantalla'
 import { col, restanteDescanso, type TestLab } from './lab-constructor'
@@ -30,32 +30,47 @@ const TEST: TestLab = {
 
 describe('qué secciones tiene un test', () => {
   it('las que tiene de verdad, y guardar siempre', () => {
-    expect(seccionesDeTest(TEST)).toEqual(['cuenta', 'parciales', 'pulsadores', 'guardar'])
+    /* EL RELOJ ES UNA SECCIÓN MÁS, y va la primera de serie. Se metió aquí
+       para poder bajarlo: al pasar el test lo que se mira sin parar es la
+       tabla, que en el móvil queda debajo de todo. */
+    expect(seccionesDeTest(TEST)).toEqual(['reloj', 'cuenta', 'parciales', 'pulsadores', 'guardar'])
   })
 
   it('un test sin relojes solo tiene guardar', () => {
     expect(seccionesDeTest({ nombre: 'y', deporte: 'Otro', sueltos: [col({ clave: 'a' })], bloques: [], resultados: [] }))
       .toEqual(['guardar'])
   })
+
+  it('UN PULSADOR NO PIDE RELOJ: contar flexiones no mide tiempo', () => {
+    /* Por eso no vale preguntarle a `relojesDe`, que cuenta los pulsadores
+       entre los relojes: saldría la sección del reloj en un test que no lo
+       lleva, con su «Empezar» sin nada que arrancar. */
+    const soloPulsador: TestLab = {
+      nombre: 'z', deporte: 'Fuerza', bloques: [], resultados: [],
+      sueltos: [col({ clave: 'n', instrumento: 'contador' })],
+    }
+    expect(tieneReloj(soloPulsador)).toBe(false)
+    expect(seccionesDeTest(soloPulsador)).toEqual(['pulsadores', 'guardar'])
+  })
 })
 
 describe('lo guardado se cuadra con lo que el test tiene HOY', () => {
   it('sin nada guardado, el orden es el de serie', () => {
-    expect(pantallaDe(TEST).todas).toEqual(['cuenta', 'parciales', 'pulsadores', 'guardar'])
+    expect(pantallaDe(TEST).todas).toEqual(['reloj', 'cuenta', 'parciales', 'pulsadores', 'guardar'])
   })
 
   it('manda el orden guardado', () => {
-    const g: Pantalla = { orden: ['pulsadores', 'cuenta', 'parciales', 'guardar'], ocultas: [] }
-    expect(pantallaDe(TEST, g).todas).toEqual(['pulsadores', 'cuenta', 'parciales', 'guardar'])
+    const g: Pantalla = { orden: ['pulsadores', 'cuenta', 'parciales', 'reloj', 'guardar'], ocultas: [] }
+    expect(pantallaDe(TEST, g).todas).toEqual(['pulsadores', 'cuenta', 'parciales', 'reloj', 'guardar'])
   })
 
   it('UNA SECCIÓN NUEVA NO QUEDA INVISIBLE: va al final', () => {
     /* Ordenaste la pantalla y después le añadiste un pulsador. Si solo se
        pintara lo guardado, el pulsador no aparecería y parecería que no se ha
        creado. */
-    const g: Pantalla = { orden: ['cuenta', 'parciales', 'guardar'], ocultas: [] }
+    const g: Pantalla = { orden: ['reloj', 'cuenta', 'parciales', 'guardar'], ocultas: [] }
     const r = pantallaDe(TEST, g)
-    expect(r.todas).toEqual(['cuenta', 'parciales', 'guardar', 'pulsadores'])
+    expect(r.todas).toEqual(['reloj', 'cuenta', 'parciales', 'guardar', 'pulsadores'])
     expect(r.visibles).toContain('pulsadores')
   })
 
@@ -200,7 +215,13 @@ describe('CON UNA SOLA PERSONA, los botones por persona sobran', () => {
 
   it('con una persona se caen, y queda lo que no se repite', () => {
     const r = pantallaDe(conTodo, null, 1)
-    expect(r.visibles).toEqual(['cuenta', 'descanso', 'guardar'])
+    expect(r.visibles).toEqual(['reloj', 'cuenta', 'descanso', 'guardar'])
+  })
+
+  it('EL RELOJ NO SE CAE NUNCA, ni se puede esconder', () => {
+    /* Sin él no se puede ni empezar, haya una persona o diez. */
+    expect(pantallaDe(conTodo, { orden: [], ocultas: ['reloj'] }, 1).visibles).toContain('reloj')
+    expect(alternar([], 'reloj')).toEqual([])
   })
 
   it('con nadie todavía, igual', () => {

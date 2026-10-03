@@ -37,7 +37,7 @@ import {
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
 import { deshacer, marcaEn, parcialAhora, primeroLibre, type Marcas } from '@/lib/lab-marcar'
-import { pantallaDe, mover, moverA, alternar, seccionPorClave, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
+import { pantallaDe, mover, moverA, alternar, seccionPorClave, tieneReloj, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
@@ -49,6 +49,10 @@ import { pitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
 import InterruptoresAviso from '@/components/InterruptoresAviso'
 
 const LLAVE = 'tp_laboratorio_v1'
+/* LA AYUDA SE RECUERDA APARTE DEL BORRADOR, y a propósito: es de quien usa la
+   app, no del test. Quien ya se sabe la pantalla la apaga una vez y no vuelve
+   a verla, y al día siguiente sigue apagada aunque monte otro test. */
+const LLAVE_AYUDA = 'tp_laboratorio_ayuda'
 /**
  * La caja de lo que se teclea PROBANDO, en el paso 4.
  *
@@ -151,6 +155,9 @@ export default function Laboratorio() {
   /* Cómo se está mirando la pantalla del test mientras se monta: ancha como
      en un ordenador, o a 375 px como en el móvil. */
   const [comoSeVe, setComoSeVe] = useState<'ancho' | 'movil'>('ancho')
+  /* Empieza encendida: quien llega por primera vez necesita que le cuenten de
+     qué va. Apagarla es un clic, y se recuerda. */
+  const [ayuda, setAyuda] = useState(true)
   /* EL DESCANSO VA APARTE del reloj del test, que es de lo que se trata: corre
      mientras el del test sigue andando o está parado. */
   const [desc, setDesc] = useState<Reloj | null>(null)
@@ -198,6 +205,7 @@ export default function Laboratorio() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
+      if (localStorage.getItem(LLAVE_AYUDA) === 'no') setAyuda(false)
       const s = localStorage.getItem(LLAVE)
       const o = s ? JSON.parse(s) : null
       if (o?.test) {
@@ -746,6 +754,10 @@ export default function Laboratorio() {
    * preguntarte cómo quieres verlo sobra.
    */
   const esMovil = comoSeVe === 'movil'
+  const cambiarAyuda = () => setAyuda(v => {
+    try { localStorage.setItem(LLAVE_AYUDA, v ? 'no' : 'si') } catch { /* ventana privada */ }
+    return !v
+  })
   const verloComo = (
     <div className="hidden sm:flex items-center gap-2 flex-wrap">
       <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Verlo como</span>
@@ -772,6 +784,7 @@ export default function Laboratorio() {
         l[i] = v; d[k] = l
       })}
       onLlego={(bl, n) => ponMed(cajaActiva, d => { d['@' + bl] = Number(d['@' + bl]) === n ? '' : n })}
+      ayuda={ayuda}
       /* LA CASILLA ES SU PROPIO BOTÓN. Todo apunta a la persona que está
          puesta arriba: la tabla es de uno, las filas por persona son del
          grupo. */
@@ -801,7 +814,7 @@ export default function Laboratorio() {
               <Pasar
                 test={test} atletas={op.atletas} activo={op.atletas === atletas ? activo : 0} setActivo={setActivo}
               montando={op.montando} anadir={op.anadir}
-                deportistas={deportistas} guardado={editandoId !== null}
+                deportistas={deportistas} guardado={editandoId !== null} ayuda={ayuda} onAyuda={cambiarAyuda}
                 fecha={fecha} setFecha={setFecha} guardando={guardando}
                 onGuardarMediciones={guardarMediciones}
                 datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
@@ -2467,7 +2480,7 @@ function Casilla({ v, valor, c, corre, abierta, abre, cierra, onToca, onMenos, o
   )
 }
 
-function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
+function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca, ayuda }: {
   test: TestLab
   proto: Datos
   med: Datos
@@ -2476,6 +2489,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
   onMed: (clave: string, valor: string, indice?: number) => void
   onLlego: (bloque: string, n: number) => void
   toca?: Toca
+  ayuda?: boolean
 }) {
   /* Que casilla esta abierta para escribir. Una sola: abrir la siguiente
      cierra la anterior, que es lo que pasa al tocar fuera. */
@@ -2504,7 +2518,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
             la columna es estrecha, que es la forma del móvil; al pasarlo en
             un ordenador va AL LADO. Sin decirlo, parece que la pantalla sale
             partida en dos. */}
-        <span className="text-[10.5px] text-gray-500 basis-full leading-snug">
+        <span className={(ayuda === false ? 'hidden ' : '') + 'text-[10.5px] text-gray-500 basis-full leading-snug'}>
           Al pasarlo va <b className="text-gray-400">al lado del reloj</b> en el ordenador, y debajo en el móvil — como aquí.
         </span>
       </div>
@@ -2693,6 +2707,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
+  ayuda, onAyuda,
   onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial,
   onParcialEn, onQuitaParcialEn, onPantalla,
   desc, onDescanso,
@@ -2722,6 +2737,8 @@ function Pasar({
   onReiniciaEsc: (bl: Bloque) => void
   onArranca: () => void
   onReiniciaReloj: () => void
+  ayuda: boolean
+  onAyuda: () => void
   onMarcaSuelto: (c: Columna, a: Atleta) => void
   onBorraSuelto: (c: Columna, a: Atleta) => void
   onReiniciaSuelto: (c: Columna) => void
@@ -2771,15 +2788,17 @@ function Pasar({
 
   const parciales = parcialesDe(test)
   const parcialesBloque = parcialesBloqueDe(test)
-  const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
-    || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
+  /* Lo decide `lib/lab-pantalla`, el mismo sitio que mete la sección «El
+     reloj» en la lista: contándolo aquí por separado, un test podría tener la
+     sección y no el reloj, o al revés. */
+  const hayReloj = tieneReloj(test)
   /* HAY SECCIONES QUE NO SE VEN CON UNA PERSONA, y hay que decir que existen:
      si no, la primera vez que lo pases a un grupo te aparece media pantalla
      que no habías visto nunca. */
   const conGrupoSale = montando && (cronos.length > 0 || escalonados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
     || sueltosCont.length > 0 || contBloque.length > 0) ? (
-      <p className="text-gray-500 text-[11.5px] leading-snug mt-3 border-t border-gray-800 pt-3">
+      <p className={(ayuda ? '' : 'hidden ') + 'text-gray-500 text-[11.5px] leading-snug mt-3 border-t border-gray-800 pt-3'}>
         Con <b className="text-gray-300">dos personas o más</b> aparece además una fila por cada uno con su botón:
         la tabla enseña a quien tengas puesto arriba, y a pie de pista no se puede ir cambiando de atleta a mitad
         de serie. Con uno solo no salen, porque basta tocar la casilla. Puedes ordenarlas igual desde el ⚙.
@@ -2816,6 +2835,11 @@ function Pasar({
   const [sobre, setSobre] = useState<ClaveSeccion | null>(null)
   const corre = !!reloj?.corre
   const arrancado = !!reloj && (reloj.corre || reloj.acu > 0)
+  /* TODA LA LETRA PEQUEÑA PASA POR AQUÍ. Son ocho pies de sección que explican
+     cómo funciona cada cosa; valen mucho el primer día y estorban el décimo,
+     sobre todo en el móvil, donde empujan la tabla fuera de la pantalla. */
+  const ayudita = (hijos: React.ReactNode) =>
+    ayuda ? <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">{hijos}</p> : null
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
   const gordo = 'font-mono tabular-nums text-[38px] leading-none text-orange-400 font-medium'
   const pie = 'text-[10px] tracking-widest uppercase text-gray-500 font-bold mt-1.5'
@@ -2872,7 +2896,7 @@ function Pasar({
            El fondo opaco va en el envoltorio y no en la caja: la caja lleva un
            naranja translúcido a propósito, y pegarlo arriba sin nada detrás
            dejaba ver la tabla pasando por debajo de los números. */
-        <div className="sticky top-0 z-20 bg-gray-950 pt-3 pb-1.5">
+        <div style={{ order: todas.indexOf('reloj') }} className="sticky top-0 z-20 bg-gray-950 pt-3 pb-1.5">
         <div className="flex items-center gap-3 flex-wrap rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-3.5 py-2.5">
           <span className="font-mono tabular-nums text-[30px] leading-none text-orange-400 font-medium">{crono(ms)}</span>
           <span className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
@@ -2892,13 +2916,20 @@ function Pasar({
       {/* ORDENAR LA PANTALLA. Donde de verdad sirve es en el móvil: a pie de
           pista todo va en UNA columna, así que el orden decide lo que ves sin
           hacer scroll con el atleta esperando. */}
-      {delTest.length > 1 && (
-        <div className="mt-3">
+      <div style={{ order: -1 }} className="mt-3 flex gap-2 flex-wrap">
+        {delTest.length > 1 && (
           <button onClick={() => setOrdenando(o => !o)} className={btnSec + ' ' + btnMini}>
             {ordenando ? 'Listo' : '⚙ Ordenar la pantalla'}
           </button>
-        </div>
-      )}
+        )}
+        {/* APAGAR LA LETRA PEQUEÑA. Las explicaciones valen mucho el primer día
+            y estorban el décimo: en el móvil son las que empujan la tabla
+            fuera de la pantalla. Se recuerda, así que se apaga una vez. */}
+        <button onClick={onAyuda} className={btnSec + ' ' + btnMini}
+          title={ayuda ? 'Quitar las explicaciones' : 'Volver a enseñar las explicaciones'}>
+          {ayuda ? 'ℹ Quitar explicaciones' : 'ℹ Explicaciones'}
+        </button>
+      </div>
       {ordenando && (
         <div className="mt-2.5 rounded-xl border border-dashed border-gray-700 bg-gray-900/60 p-3">
           <p className="text-[11.5px] text-gray-400 mb-2 leading-snug">
@@ -2967,7 +2998,7 @@ function Pasar({
             : <>No tienes deportistas en tu equipo todavía. El test se puede montar igual, pero para pasarlo hace falta alguien a quien pasárselo.</>}
         </div>
       )}
-      {!hayReloj && !sueltosCont.length && (
+      {!hayReloj && !sueltosCont.length && ayuda && (
         <div className="mt-3 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
           Este test no lleva reloj: se rellena a mano en la tabla de al lado. Es una opción legítima —
           nueve de los veinticuatro tests de la app son así.
@@ -3033,10 +3064,10 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Al marcar se guarda el <b className="text-white">último escalón COMPLETO</b> y los segundos del que no
               terminó van a «aguanto». Si lo marcas al revés, la VAM sale un escalón alta.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3074,12 +3105,12 @@ function Pasar({
                 <button onClick={() => onReiniciaEsc(bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
               </div>
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               {bl.veces > 1 ? <>Cuenta atrás de <b className="text-white">{mmss(dur)}</b> por repetición, {bl.veces} veces.</>
                 : <>Cuenta atrás de <b className="text-white">{mmss(dur)}</b>.</>}
               {' '}{bl.pitaCambio !== false ? 'Pita al acabar' : 'No pita al acabar'}
               {bl.tramos?.length ? ' y al cambiar de tramo' : ''}. Lo que se mida se escribe en la tabla de al lado.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3123,10 +3154,10 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Un solo reloj para todos y un botón por persona: cada uno cierra SU repetición cuando llega.
               El tiempo que se guarda es el suyo, no el del reloj.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3169,10 +3200,10 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Un solo reloj para todos y un botón por persona: cada uno cierra el suyo al llegar.
               Cae en su casilla en <b className="text-white">{u}</b>, que es como hay que contarlo en la fórmula.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3238,10 +3269,10 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Cada marca va a <b className="text-white">la repetición {rep}</b>. El reloj no se para, y el parcial se
               cuenta desde la última marca de esa persona — da igual en qué repetición fuera.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3293,11 +3324,11 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Un reloj para todos y un botón por persona: el reloj <b className="text-white">no se para</b>.
               Se guarda el parcial de cada trozo, y el acumulado sale de sumarlos — así la fórmula puede pedir
               la media, el mejor o cuántos hubo.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3351,9 +3382,9 @@ function Pasar({
                 )
               })}
             </div>
-            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+            {ayudita(<>
               Cada pulsación suma a <b className="text-white">la repetición {rep}</b>. Lo de las demás se queda donde está.
-            </p>
+            </>)}
           </div>
         )
       })}
@@ -3393,10 +3424,10 @@ function Pasar({
               )
             })}
           </div>
-          <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+          {ayudita(<>
             Pulsa el número. El <b className="text-white">−1</b> va aparte y pequeño a propósito: corregir no puede ser
             tan fácil como contar.{seAcaboElTiempo ? ' Se acabó el tiempo: queda el «+1» para la última.' : ''}
-          </p>
+          </>)}
         </div>
       ))}
 
@@ -3442,7 +3473,7 @@ function Pasar({
 
       {visibles.includes('guardar') && !montando && (<div style={{ order: 999 }}>
       {cronos.length > 0 && (
-        <div className="mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug">
+        <div className={(ayuda ? '' : 'hidden ') + 'mt-4 rounded-lg border border-blue-400/25 bg-blue-500/[0.07] px-3 py-2.5 text-[12px] text-blue-100 leading-snug'}>
           Los tiempos de cada repetición <b>no se enseñan aquí</b>: caen en la fila de cada uno en su tabla,
           que es donde además se corrigen.
         </div>
