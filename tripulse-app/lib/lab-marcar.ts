@@ -79,3 +79,30 @@ export function deshacer(abs: Marcas | undefined): { k: number; abs: Marcas } {
   if (k >= 0) lista[k] = undefined
   return { k, abs: lista }
 }
+
+/**
+ * Lo que dura el parcial que se marca AHORA, o null si no hay nada que marcar.
+ *
+ * `yaMarcadas` son todas las marcas de esa persona en esa columna, EN SEGUNDOS
+ * y ya en una sola lista. En una casilla suelta son las suyas; dentro de un
+ * bloque son las de TODAS las filas juntas, y eso es a propósito: el reloj no
+ * se para entre serie y serie, así que el primer paso de la 2.ª empieza donde
+ * acabó el último de la 1.ª. Midiéndolo contra el principio de su propia fila,
+ * ese primer paso se comería la serie anterior entera.
+ *
+ * SE GUARDA EL PARCIAL, NO EL ACUMULADO: el parcial es lo que se agrega —la
+ * media de los pasos, el mejor— y el acumulado sale de sumar, así que no se
+ * pierde nada. Al revés sí: la media de unos acumulados no significa nada.
+ */
+export function parcialAhora(yaMarcadas: unknown, ms: number): number | null {
+  let lleva = 0
+  for (const x of Array.isArray(yaMarcadas) ? yaMarcadas : []) {
+    /* Lo vacío se salta ANTES de convertir: `Number('')` y `Number(null)` son
+       CERO y pasan por finitos, así que un hueco contaría como una marca. */
+    if (x === '' || x === null || x === undefined) continue
+    const n = Number(x)
+    if (Number.isFinite(n)) lleva += n
+  }
+  const dur = Math.round((ms / 1000 - lleva) * 10) / 10
+  return dur > 0 ? dur : null
+}

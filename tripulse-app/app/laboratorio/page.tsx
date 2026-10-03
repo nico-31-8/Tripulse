@@ -28,7 +28,7 @@ import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
-  parcialesDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento, restanteDescanso,
+  parcialesDe, parcialesBloqueDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento, restanteDescanso,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
@@ -36,7 +36,7 @@ import {
   type Funcion2, type Instrumento, type Resultado, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
-import { deshacer, marcaEn, primeroLibre, type Marcas } from '@/lib/lab-marcar'
+import { deshacer, marcaEn, parcialAhora, primeroLibre, type Marcas } from '@/lib/lab-marcar'
 import { pantallaDe, mover, moverA, alternar, seccionPorClave, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
 import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
@@ -642,11 +642,40 @@ export default function Laboratorio() {
   const parcial = (c: Columna, k: string) => {
     const ms = msSiCorre(); if (ms === null) return
     const lista = (datosDe(k)[c.clave] as unknown[] | undefined) || []
-    const llevaMs = acumuladosDe(lista).slice(-1)[0] ?? 0
-    const dur = Math.round((ms / 1000 - llevaMs) * 10) / 10
-    if (dur <= 0) return
+    const dur = parcialAhora(lista, ms)
+    if (dur === null) return
     ponMed(k, d => { d[c.clave] = [...lista, String(dur)] })
   }
+
+  /**
+   * UN PARCIAL DENTRO DE UN BLOQUE: va a la casilla de SU repetición.
+   *
+   * La cuenta se hace contra TODAS las marcas de la columna, no contra las de
+   * su fila: el reloj no se para entre serie y serie. Lo decide
+   * `parcialAhora`, el mismo sitio que la casilla suelta.
+   */
+  const parcialEn = (c: Columna, bl: Bloque, k: string, fila: number) => {
+    const ms = msSiCorre(); if (ms === null) return
+    const todas = (datosDe(k)[c.clave] as unknown[] | undefined) || []
+    const dur = parcialAhora(todas.flat(), ms)
+    if (dur === null) return
+    ponMed(k, d => {
+      const l = Array.isArray(d[c.clave])
+        ? [...(d[c.clave] as unknown[])]
+        : Array.from({ length: bl.veces }, () => [] as string[])
+      const suya = Array.isArray(l[fila]) ? [...(l[fila] as string[])] : []
+      l[fila] = [...suya, String(dur)]
+      d[c.clave] = l
+    })
+  }
+
+  const quitaParcialEn = (c: Columna, k: string, fila: number) => ponMed(k, d => {
+    if (!Array.isArray(d[c.clave])) return
+    const l = [...(d[c.clave] as unknown[])]
+    const suya = Array.isArray(l[fila]) ? (l[fila] as string[]) : []
+    l[fila] = suya.slice(0, -1)
+    d[c.clave] = l
+  })
 
   const quitaParcial = (c: Columna, k: string) => ponMed(k, d => {
     const lista = (d[c.clave] as unknown[] | undefined) || []
@@ -718,6 +747,8 @@ export default function Laboratorio() {
         cuentaSuelto: (c, suma) => cuenta(c, cajaActiva, suma),
         parcial: c => parcial(c, cajaActiva),
         quitaParcial: c => quitaParcial(c, cajaActiva),
+        parcialBloque: (c, bl, k) => parcialEn(c, bl, cajaActiva, k),
+        quitaParcialBloque: (c, k) => quitaParcialEn(c, cajaActiva, k),
       }} />
   )
 
@@ -793,6 +824,8 @@ export default function Laboratorio() {
                   for (const a of atletas) ponMed(String(a.id), d => { d[c.clave] = vacio })
                 }}
                 onParcial={(c, a) => parcial(c, String(a.id))}
+                onParcialEn={(c, bl, a, fila) => parcialEn(c, bl, String(a.id), fila)}
+                onQuitaParcialEn={(c, a, fila) => quitaParcialEn(c, String(a.id), fila)}
                 onQuitaParcial={(c, a) => quitaParcial(c, String(a.id))}
                 /* La pantalla se guarda EN EL ACTO si el test ya existe: pedirle
                    que vuelva al editor y le dé a «Guardar test» para que se
@@ -2299,6 +2332,8 @@ interface Toca {
   cuentaSuelto: (c: Columna, suma: number) => void
   parcial: (c: Columna) => void
   quitaParcial: (c: Columna) => void
+  parcialBloque: (c: Columna, bl: Bloque, k: number) => void
+  quitaParcialBloque: (c: Columna, k: number) => void
 }
 
 /**
@@ -2315,8 +2350,10 @@ interface Toca {
  *   dedo gordo no puede borrar una marca buena.
  * - A MANO: la caja de siempre, que no la pone ningun instrumento.
  */
-function Casilla({ v, c, corre, abierta, abre, cierra, onToca, onMenos, onEscribe, alto }: {
+function Casilla({ v, valor, c, corre, abierta, abre, cierra, onToca, onMenos, onEscribe, alto }: {
   v: string
+  /** El dato sin convertir a texto: una casilla de parciales guarda una LISTA. */
+  valor?: unknown
   c: Columna
   corre: boolean
   abierta: boolean
@@ -2334,6 +2371,40 @@ function Casilla({ v, c, corre, abierta, abre, cierra, onToca, onMenos, onEscrib
       value={v} onChange={e => onEscribe(e.target.value)} />
   )
   if (c.instrumento === 'mano' || !onToca) return caja
+
+  /* PARCIALES: la casilla guarda VARIAS marcas, así que no hay nada que
+     escribir —se toca y se añade— y lo que se enseña son los acumulados, que
+     es lo que se lee a pie de pista: 0:03.0 · 0:06.8. */
+  if (c.instrumento === 'parciales') {
+    const lista = Array.isArray(valor) ? valor : []
+    const acum = acumuladosDe(lista)
+    return (
+      <div className="flex flex-col gap-0.5">
+        <button onClick={onToca} disabled={!corre}
+          title={corre ? 'Toca para marcar un parcial' : 'Arranca el reloj y toca aquí'}
+          className={'w-full text-left rounded-lg border transition ' + (alto ? 'px-3 py-2.5' : 'px-2 py-2') + ' ' + (corre
+            ? 'border-orange-500/55 bg-orange-500/[0.08] hover:bg-orange-500/[0.18] active:bg-orange-500/30'
+            : 'border-gray-700 cursor-not-allowed')}>
+          <span className="block font-mono text-[12px] text-blue-200 leading-snug">
+            {acum.length
+              ? acum.map(t => mmss(t)).join(' · ')
+              : <span className="text-gray-600 italic">{corre ? 'toca para marcar' : 'sin marcar'}</span>}
+          </span>
+          {(acum.length > 0 || c.esperados) && (
+            <span className="block text-[10.5px] text-gray-500 mt-1">
+              {c.esperados
+                ? acum.length + ' de ' + c.esperados + (acum.length >= c.esperados ? ' ✓' : '')
+                : acum.length + (acum.length === 1 ? ' parcial' : ' parciales')}
+            </span>
+          )}
+        </button>
+        {acum.length > 0 && onMenos && (
+          <button onClick={onMenos} className="self-end text-[10.5px] text-gray-500 hover:text-gray-200 px-1 transition">deshacer</button>
+        )}
+      </div>
+    )
+  }
+
   if (abierta) return caja
 
   if (c.instrumento === 'contador') {
@@ -2460,7 +2531,8 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
                             {c.clase === 'dada' ? 'la pones tú'
                               : c.instrumento === 'mano' ? 'la escribes aquí'
                                 : c.instrumento === 'contador' ? 'tócala y suma uno'
-                                  : 'tócala y marca'}
+                                  : c.instrumento === 'parciales' ? 'tócala y añade un parcial'
+                                    : 'tócala y marca'}
                             {c.unidad ? ' · ' + c.unidad : ''}
                           </span>
                         </th>
@@ -2489,12 +2561,17 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
                                 ? <span className="font-mono text-[12.5px] text-blue-300 whitespace-nowrap">{String(valorDado(c, k, datos))}</span>
                                 : <Casilla
                                   v={String((med[c.clave] as string[] | undefined)?.[k] ?? '')}
+                                  valor={(med[c.clave] as unknown[] | undefined)?.[k]}
                                   c={c} corre={!!toca?.corre}
                                   abierta={abierta === id} abre={() => setAbierta(id)} cierra={() => setAbierta('')}
-                                  onToca={!toca ? undefined : c.instrumento === 'contador'
-                                    ? () => toca.cuentaBloque(c, bl, k, 1)
-                                    : () => toca.marcaBloque(c, bl, k)}
-                                  onMenos={toca && c.instrumento === 'contador' ? () => toca.cuentaBloque(c, bl, k, -1) : undefined}
+                                  onToca={!toca ? undefined
+                                    : c.instrumento === 'contador' ? () => toca.cuentaBloque(c, bl, k, 1)
+                                      : c.instrumento === 'parciales' ? () => toca.parcialBloque(c, bl, k)
+                                        : () => toca.marcaBloque(c, bl, k)}
+                                  onMenos={!toca ? undefined
+                                    : c.instrumento === 'contador' ? () => toca.cuentaBloque(c, bl, k, -1)
+                                      : c.instrumento === 'parciales' ? () => toca.quitaParcialBloque(c, k)
+                                        : undefined}
                                   onEscribe={v => onMed(c.clave, v, k)} />}
                             </td>
                           )})}
@@ -2522,63 +2599,34 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca }: {
               {mios.map(c => (
                 <div key={c.clave}>
                   <label className={lab}>{c.etiqueta || c.clave}{c.unidad ? ' (' + c.unidad + ')' : ''}</label>
-                  {/* UNA LISTA NO SE TECLEA. Con un `input` salía «275,277,288»
-                      y al tocarlo se convertía en texto: la casilla se
-                      rellena marcando, y aquí se lee. */}
-                  {c.instrumento === 'parciales' ? (() => {
-                    /* UNA LISTA NO SE TECLEA, Y AHORA TAMPOCO HACE FALTA UN
-                       BOTÓN AL LADO: la caja donde se leen los parciales es la
-                       que se toca para marcarlos. */
-                    const lista = (med[c.clave] as unknown[] | undefined) || []
-                    return (
-                      <div className="flex flex-col gap-0.5">
-                        <button onClick={() => toca?.parcial(c)} disabled={!toca?.corre}
-                          title={toca?.corre ? 'Toca para marcar un parcial' : 'Arranca el reloj y toca aquí'}
-                          className={'w-full text-left rounded-lg border px-2.5 py-2 transition ' + (toca?.corre
-                            ? 'border-orange-500/55 bg-orange-500/[0.08] hover:bg-orange-500/[0.18] active:bg-orange-500/30'
-                            : 'border-gray-700 cursor-not-allowed')}>
-                          <span className="block font-mono text-[12px] text-blue-200 leading-snug">
-                            {lista.length
-                              ? acumuladosDe(med[c.clave]).map(t => mmss(t)).join(' · ')
-                              : <span className="text-gray-600 italic">{toca?.corre ? 'toca para marcar' : 'sin marcar'}</span>}
-                          </span>
-                          {(lista.length > 0 || c.esperados) && (
-                            <span className="block text-[10.5px] text-gray-500 mt-1">
-                              {c.esperados
-                                ? lista.length + ' de ' + c.esperados + (lista.length >= c.esperados ? ' ✓' : '')
-                                : lista.length + (lista.length === 1 ? ' parcial' : ' parciales')}
-                            </span>
-                          )}
-                        </button>
-                        {lista.length > 0 && toca && (
-                          <button onClick={() => toca.quitaParcial(c)}
-                            className="self-end text-[10.5px] text-gray-500 hover:text-gray-200 px-1 transition">deshacer</button>
-                        )}
-                      </div>
-                    )
-                  })() : (
-                    <>
-                      <Casilla
-                        v={String(med[c.clave] ?? '')} c={c} corre={!!toca?.corre} alto
-                        abierta={abierta === c.clave} abre={() => setAbierta(c.clave)} cierra={() => setAbierta('')}
-                        onToca={!toca ? undefined : c.instrumento === 'contador'
-                          ? () => toca.cuentaSuelto(c, 1)
+                  {/* LA MISMA CASILLA QUE EN LA TABLA, a propósito. Aquí había
+                      una copia aparte para los parciales —una lista no se
+                      teclea— y al poder vivir también dentro de un bloque
+                      habrían sido dos que acaban comportándose distinto. */}
+                  <Casilla
+                    v={String(med[c.clave] ?? '')} valor={med[c.clave]}
+                    c={c} corre={!!toca?.corre} alto
+                    abierta={abierta === c.clave} abre={() => setAbierta(c.clave)} cierra={() => setAbierta('')}
+                    onToca={!toca ? undefined
+                      : c.instrumento === 'contador' ? () => toca.cuentaSuelto(c, 1)
+                        : c.instrumento === 'parciales' ? () => toca.parcial(c)
                           : () => toca.marcaSuelto(c)}
-                        onMenos={toca && c.instrumento === 'contador' ? () => toca.cuentaSuelto(c, -1) : undefined}
-                        onEscribe={v => onMed(c.clave, v)} />
-                      {/* SE DICE QUÉ HACE AL TOCARLA. Antes esto decía quién la
-                          rellenaba —«lo pone el cronómetro»— porque la casilla
-                          era una caja vacía y parecía que había que escribirla a
-                          mano. Ahora la casilla ES el botón, así que lo que hay
-                          que decir es qué pasa al tocarla. */}
-                      {c.instrumento !== 'mano' && (
-                        <span className="block text-[10.5px] text-gray-500 mt-1">
-                          {c.instrumento === 'contador'
-                            ? 'tócalo y suma uno'
-                            : med[c.clave] ? 'tócalo para corregirlo' : 'tócalo y lo pone el cronómetro'}
-                        </span>
-                      )}
-                    </>
+                    onMenos={!toca ? undefined
+                      : c.instrumento === 'contador' ? () => toca.cuentaSuelto(c, -1)
+                        : c.instrumento === 'parciales' ? () => toca.quitaParcial(c)
+                          : undefined}
+                    onEscribe={v => onMed(c.clave, v)} />
+                  {/* SE DICE QUÉ HACE AL TOCARLA. Antes esto decía quién la
+                      rellenaba —«lo pone el cronómetro»— porque la casilla era
+                      una caja vacía y parecía que había que escribirla a mano.
+                      Ahora la casilla ES el botón, así que lo que hay que decir
+                      es qué pasa al tocarla. */}
+                  {c.instrumento !== 'mano' && (
+                    <span className="block text-[10.5px] text-gray-500 mt-1">
+                      {c.instrumento === 'contador' ? 'tócalo y suma uno'
+                        : c.instrumento === 'parciales' ? 'tócalo y añade un parcial'
+                          : med[c.clave] ? 'tócalo para corregirlo' : 'tócalo y lo pone el cronómetro'}
+                    </span>
                   )}
                 </div>
               ))}
@@ -2618,7 +2666,8 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
-  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial, onPantalla,
+  onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial,
+  onParcialEn, onQuitaParcialEn, onPantalla,
   desc, onDescanso,
   montando = false, anadir,
 }: {
@@ -2652,6 +2701,8 @@ function Pasar({
   onCuenta: (c: Columna, a: Atleta, suma: number) => void
   onCuentaEn: (c: Columna, bl: Bloque, a: Atleta, rep: number, suma: number) => void
   onParcial: (c: Columna, a: Atleta) => void
+  onParcialEn: (c: Columna, bl: Bloque, a: Atleta, fila: number) => void
+  onQuitaParcialEn: (c: Columna, a: Atleta, fila: number) => void
   onQuitaParcial: (c: Columna, a: Atleta) => void
   onPantalla: (p: Pantalla) => void
   /** El reloj del descanso, que va aparte del del test. */
@@ -2691,8 +2742,9 @@ function Pasar({
     </p>
   ) : null
   const parciales = parcialesDe(test)
+  const parcialesBloque = parcialesBloqueDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
-    || sueltosCrono.length > 0 || parciales.length > 0
+    || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
   /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
      cuenta atrás puede ir corriendo mientras marcas parciales y pulsas.
 
@@ -3057,6 +3109,72 @@ function Pasar({
       </div>)}
 
       {visibles.includes('parciales') && (<div style={{ order: todas.indexOf('parciales') }}>
+      {/* PARCIALES DENTRO DE UN BLOQUE: las marcas van a la casilla de SU
+          repetición, así que aquí hay que decir por cuál vamos — igual que en
+          el pulsador. En la tabla se toca la casilla y no hace falta; esto es
+          para un GRUPO, donde cada uno tiene la suya y no se puede ir
+          cambiando de atleta a mitad de serie. */}
+      {parcialesBloque.map(({ c, bl }) => {
+        const rep = repeticionDe(bl, ms, repMano[bl.clave] || 1)
+        const conReloj = duracionDe(bl) > 0
+        return (
+          <div key={c.clave} className="mt-3 border border-gray-800 rounded-xl p-3.5 bg-[#0d1420]">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
+                {c.etiqueta || c.clave}{c.unidad ? ' · ' + c.unidad : ''}
+              </span>
+              {conReloj ? (
+                <span className="text-[11.5px] text-gray-400">repetición <b className="text-white">{rep}</b> de {bl.veces} · la lleva el reloj</span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11.5px] text-gray-400">
+                  vas por la
+                  <button onClick={() => setRepMano(p => ({ ...p, [bl.clave]: Math.max(1, rep - 1) }))}
+                    disabled={rep <= 1} className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>−</button>
+                  <b className="text-white font-mono">{rep}</b>
+                  <button onClick={() => setRepMano(p => ({ ...p, [bl.clave]: Math.min(bl.veces, rep + 1) }))}
+                    disabled={rep >= bl.veces} className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>+</button>
+                  de {bl.veces}
+                </span>
+              )}
+            </div>
+            {sinGente}
+            <div className="mt-1.5">
+              {atletas.map(a => {
+                const todas2 = (datosDe(String(a.id))[c.clave] as unknown[] | undefined) || []
+                const suya = (Array.isArray(todas2[rep - 1]) ? todas2[rep - 1] as string[] : [])
+                return (
+                  <div key={a.id} className={filaAt}>
+                    <span className="font-semibold text-[13px] min-w-[110px]">{a.nombre}</span>
+                    <span className="font-mono text-[12px] text-blue-300">
+                      {suya.length
+                        ? suya.length + (suya.length === 1 ? ' parcial' : ' parciales') + ' en la ' + rep + '.ª'
+                        : 'sin marcar la ' + rep + '.ª'}
+                    </span>
+                    <button onClick={() => onQuitaParcialEn(c, a, rep - 1)} disabled={!suya.length}
+                      className={btnSec + ' ' + btnMini + ' ml-auto'}>Deshacer</button>
+                    <button onClick={() => onParcialEn(c, bl, a, rep - 1)} disabled={!corre}
+                      className={btn + ' ' + btnMini}>Marcar</button>
+                    {suya.length > 0 && (
+                      <span className="basis-full flex gap-1.5 flex-wrap mt-1.5">
+                        {acumuladosDe(suya).map((t, i) => (
+                          <span key={i} className="font-mono text-[11.5px] rounded-md px-1.5 py-1 border border-blue-400/30 bg-blue-500/[0.12] text-blue-100">
+                            {i + 1} · {mmss(t)}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-gray-400 text-[11.5px] leading-snug mt-2.5">
+              Cada marca va a <b className="text-white">la repetición {rep}</b>. El reloj no se para, y el parcial se
+              cuenta desde la última marca de esa persona — da igual en qué repetición fuera.
+            </p>
+          </div>
+        )
+      })}
+
       {/* LOS PARCIALES: se marca y el reloj SIGUE. Un bloque de repeticiones
           ya hacía esto, pero obligaba a decir antes cuántos iban a ser, y lo
           que se quiere es marcar lo que va pasando. */}

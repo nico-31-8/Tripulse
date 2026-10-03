@@ -341,7 +341,10 @@ describe('el pulsador SÍ vale dentro de un bloque', () => {
   })
 
   it('y el editor ya no lo esconde', () => {
-    expect(SOLO_SUELTOS).toEqual(['parciales'])
+    /* Esta lista quedó VACÍA: los parciales también salieron, porque dentro de
+       un bloque son una lista por repetición —seis series de 400 y los pasos
+       de cada una—, y eso no se puede montar de ninguna otra forma. */
+    expect(SOLO_SUELTOS).toEqual([])
   })
 
   it('CON RELOJ, la repetición la lleva el reloj', () => {

@@ -4,7 +4,7 @@
 // deje de ser la resta con la anterior DE ESA PERSONA.
 
 import { describe, it, expect } from 'vitest'
-import { deshacer, marcaEn, primeroLibre, ultimaMarca } from './lab-marcar'
+import { deshacer, marcaEn, parcialAhora, primeroLibre, ultimaMarca } from './lab-marcar'
 
 describe('la última marca', () => {
   it('es la más grande, no la de la fila de antes', () => {
@@ -99,5 +99,34 @@ describe('deshacer', () => {
        imposible sin empezar el test de nuevo. */
     const d = deshacer([1000, 5000])
     expect(marcaEn(d.abs, 1, 6000, false)!.valor).toBe('5')
+  })
+})
+
+describe('el parcial que se marca ahora', () => {
+  it('el primero es todo lo que lleva el reloj', () => {
+    expect(parcialAhora([], 95_400)).toBe(95.4)
+  })
+
+  it('y los siguientes, LO QUE HA PASADO DESDE EL ÚLTIMO', () => {
+    expect(parcialAhora(['95.4'], 190_000)).toBe(94.6)
+    expect(parcialAhora(['95.4', '94.6'], 280_000)).toBe(90)
+  })
+
+  it('CONTRA TODAS LAS MARCAS, no contra las de su fila', () => {
+    /* Dentro de un bloque el reloj no se para entre serie y serie: el primer
+       paso de la 2.ª empieza donde acabó el último de la 1.ª. Midiéndolo
+       contra el principio de su propia fila se comería la serie anterior. */
+    const seriePrimera = ['15', '15.5', '16', '15.5']
+    expect(parcialAhora(seriePrimera, 77_000)).toBe(15)
+  })
+
+  it('los huecos no cuentan como marcas de cero', () => {
+    expect(parcialAhora(['15', '', null, '15'], 45_000)).toBe(15)
+    expect(parcialAhora(null, 10_000)).toBe(10)
+  })
+
+  it('sin que haya pasado tiempo no se marca nada', () => {
+    expect(parcialAhora(['95.4'], 95_400)).toBeNull()
+    expect(parcialAhora(['95.4'], 90_000)).toBeNull()
   })
 })

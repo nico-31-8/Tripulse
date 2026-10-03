@@ -26,7 +26,7 @@
 
 import {
   contadoresDe, contadoresSueltosDe, cronometradosDe, cronosDe, cronosSueltosDe, escalonadosDe,
-  parcialesDe, type TestLab,
+  parcialesDe, parcialesBloqueDe, type TestLab,
 } from './lab-constructor'
 
 export type ClaveSeccion =
@@ -76,7 +76,7 @@ export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
   if (cronometradosDe(t).length) o.push('cuenta')
   if (cronosDe(t).length) o.push('cronos')
   if (cronosSueltosDe(t).length) o.push('sueltos')
-  if (parcialesDe(t).length) o.push('parciales')
+  if (parcialesDe(t).length || parcialesBloqueDe(t).length) o.push('parciales')
   if (contadoresSueltosDe(t).length || contadoresDe(t).length) o.push('pulsadores')
   if (Number(t?.descanso) > 0) o.push('descanso')
   o.push('guardar')

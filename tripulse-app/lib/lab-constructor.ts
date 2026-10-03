@@ -161,17 +161,23 @@ export const esFuncion = (n: string): n is Funcion =>
 /**
  * Los que SOLO funcionan en una casilla suelta.
  *
- * Queda uno: los PARCIALES. Dentro de un bloque la lista ya la forman las
- * repeticiones, así que serían dos maneras de hacer lo mismo — y dos maneras
- * acaban siendo dos que no hacen lo mismo.
+ * YA NO QUEDA NINGUNO, y los dos que estuvieron se fueron por el mismo error
+ * mío: dar por hecho que una lista dentro de otra no significaba nada.
  *
- * El PULSADOR estuvo aquí y era un error mío: «6 series de flexiones al
- * máximo» es un número por serie, y eso es justo una columna de un bloque.
+ * El PULSADOR salió primero. «6 series de flexiones al máximo» es un número
+ * por serie, y eso es justo una columna de un bloque.
+ *
+ * Los PARCIALES salieron después. El argumento era que dentro de un bloque la
+ * lista ya la forman las repeticiones, así que sería otra manera de hacer lo
+ * mismo. No lo es: son dos listas ANIDADAS. Seis series de 400, y dentro de
+ * cada 400 los pasos por cada 100 — la fila dice qué serie, y la casilla
+ * guarda lo que pasó dentro. Lo pidió el entrenador con un ejemplo que no se
+ * puede montar de ninguna otra forma.
  *
  * Esta lista es la que mira el editor para no ofrecer lo que no se pinta, y
  * hay un test que comprueba las dos mitades.
  */
-export const SOLO_SUELTOS: Instrumento[] = ['parciales']
+export const SOLO_SUELTOS: Instrumento[] = []
 
 /**
  * Cómo se llama un instrumento SEGÚN DÓNDE ESTÉ.
@@ -410,8 +416,17 @@ const RE_INI = new RegExp('^[' + LETRA + ']')
 export const RE_NOMBRE = new RegExp('^[' + LETRA + '][' + LETRA + '0-9]*$')
 
 /** Sin rellenar. VACÍO NO ES CERO, y JavaScript opina lo contrario. */
+/**
+ * Lo que cuenta como hueco.
+ *
+ * UNA LISTA SIN NADA TAMBIÉN. Antes solo miraba nulos y texto en blanco, y una
+ * casilla de parciales recién creada —que nace como `[]`— se contaba como
+ * RELLENA: el bloque daba por hecha una repetición en la que no se marcó nada,
+ * y el recuento de huecos decía que no faltaba ninguno.
+ */
 export const vacio = (v: unknown): boolean =>
   v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
+  || (Array.isArray(v) && v.length === 0)
 
 /** La palabra reservada para mirar al test anterior. */
 export const PALABRA_ANTES = 'antes'
@@ -1107,7 +1122,17 @@ export function variablesDe(test: TestLab, datos: Datos, errores: Record<string,
           ? 'faltan ' + faltan + ' de ' + bl.veces + ' en «' + c.clave + '»'
           : 'hay ' + faltan + ' hueco' + (faltan === 1 ? '' : 's') + ' dentro de «' + c.clave + '»'
       }
-      vars[c.clave] = lista
+      /* QUÉ VE LA FÓRMULA, que es donde esto se decide.
+         Una columna normal de un bloque da UN número por repetición. Una de
+         parciales da una LISTA por repetición, así que aquí se aplanan: en un
+         resultado, `media(pasos)` es la media de TODAS las marcas, igual que
+         en una casilla suelta. El nombre significa lo mismo en los dos sitios.
+
+         Por repetición no se pierde: dentro de una columna CALCULADA del mismo
+         bloque, `pasos` es la lista de ESA fila —`suma(pasos)` es lo que
+         tardó esa serie—, porque allí se mira fila a fila. Es la misma regla
+         de siempre: dentro ves tu fila, al final ves el conjunto. */
+      vars[c.clave] = c.instrumento === 'parciales' ? lista.flat() : lista
     }
   }
   return vars
@@ -1307,6 +1332,18 @@ export const repeticionDe = (bl: Bloque, ms: number, aMano: number): number => {
 export const parcialesDe = (t: TestLab | null): Columna[] =>
   (t?.sueltos || []).filter(c => c.clase === 'medida' && c.instrumento === 'parciales')
 
+/**
+ * Las columnas de parciales que viven DENTRO de un bloque.
+ *
+ * Aparte de `parcialesDe` a propósito: la de fuera es una casilla y se marca
+ * una vez; esta es una casilla POR REPETICIÓN, así que para marcarla hay que
+ * saber en cuál vas. Mezclarlas en la misma lista haría que la pantalla
+ * tuviera que preguntarse cuál es cuál en cada sitio.
+ */
+export const parcialesBloqueDe = (t: TestLab | null): { c: Columna; bl: Bloque }[] =>
+  (t?.bloques || []).flatMap(bl =>
+    bl.columnas.filter(c => c.clase === 'medida' && c.instrumento === 'parciales').map(c => ({ c, bl })))
+
 /** Los acumulados de una lista de parciales: 4:35, 9:12, 14:00… */
 export function acumuladosDe(parciales: unknown): number[] {
   const out: number[] = []
@@ -1401,6 +1438,7 @@ export function relojesDe(t: TestLab | null): string[] {
   for (const c of contadoresSueltosDe(t)) o.push('pulsador en «' + (c.etiqueta || c.clave) + '»')
   for (const x of contadoresDe(t)) o.push('pulsador en «' + (x.c.etiqueta || x.c.clave) + '»')
   for (const c of parcialesDe(t)) o.push('parciales en «' + (c.etiqueta || c.clave) + '»')
+  for (const x of parcialesBloqueDe(t)) o.push('parciales en «' + (x.c.etiqueta || x.c.clave) + '»')
   return o
 }
 
@@ -1536,7 +1574,12 @@ export function medVacia(t: TestLab): Datos {
   for (const bl of t.bloques || []) for (const c of bl.columnas) {
     /* Las calculadas no se teclean, así que no llevan casilla: si la llevaran,
        el entrenador podría escribir encima de algo que se recalcula solo. */
-    if (c.clase === 'medida') d[c.clave] = Array.from({ length: bl.veces }, () => '')
+    if (c.clase !== 'medida') continue
+    /* Y dentro de un bloque, una de parciales nace como UNA LISTA POR
+       REPETICIÓN: cada casilla guarda lo suyo. */
+    d[c.clave] = c.instrumento === 'parciales'
+      ? Array.from({ length: bl.veces }, () => [] as string[])
+      : Array.from({ length: bl.veces }, () => '')
   }
   return d
 }
@@ -1585,8 +1628,21 @@ export function pegasDe(t: TestLab): Pega[] {
         p.push({ donde: 'columna', indice: i, texto: '«' + c.clave + '» no tiene de qué salir: ponle una fórmula' })
         return
       }
-      if (c.formula.some(b => b.t === 'fn' || b.t === 'fn2')) {
-        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma(), media() ni las de dos columnas: aquí cada nombre es UNA repetición, no la serie' })
+      /* Agregar DENTRO de una fila no suele significar nada: ahí cada nombre
+         vale UNA repetición, y `media(fc)` de un solo número es ese número.
+
+         SALVO EN UNA COSA: una columna de PARCIALES del mismo bloque, donde la
+         casilla de esa fila ya es una lista. `suma(pasos)` es lo que tardó ESA
+         serie, y es justo para lo que sirve tenerlos dentro del bloque. Las de
+         dos columnas no entran en la excepción: emparejan repeticiones, y aquí
+         solo hay una. */
+      const parcialesAqui = bl.columnas
+        .filter(x => x.clase === 'medida' && x.instrumento === 'parciales')
+        .map(x => x.clave)
+      const agregaOtraCosa = c.formula.some(b =>
+        b.t === 'fn2' || (b.t === 'fn' && !parcialesAqui.includes(b.de)))
+      if (agregaOtraCosa) {
+        p.push({ donde: 'columna', indice: i, texto: 'En «' + c.clave + '» no valen suma(), media() ni las de dos columnas: aquí cada nombre es UNA repetición, no la serie' + (parcialesAqui.length ? ' — solo valen sobre «' + parcialesAqui.join('», «') + '», que guarda varias marcas por casilla' : '') })
       }
       /* Ni mirar atrás: una columna se calcula con lo de SU fila, y la fila
          equivalente del test pasado no existe —aquel día pudo tener otro
@@ -1643,16 +1699,23 @@ export function pegasDe(t: TestLab): Pega[] {
         for (const clave of [b.x, b.y]) {
           const x = buscaCol(t, clave)
           if (!x) { p.push({ donde: 'resultado', indice: i, texto: 'Usa «' + clave + '», que no existe' }); continue }
-          if (!x.bl) {
+          /* Dos listas de parciales se podrían emparejar por posición, pero eso
+             NO es una pareja: hacen falta DOS COLUMNAS DE LA MISMA REPETICIÓN,
+             y las marcas de una casilla de parciales no se corresponden con las
+             de la de al lado —ni siquiera tienen por qué ser las mismas—.
+             Cruzarlas daría una recta impecable entre dos cosas que no pasaron
+             a la vez.
+
+             Y OJO: esto hay que mirarlo también DENTRO de un bloque. Una
+             columna de parciales en un bloque sí tiene `bl`, así que mirar
+             solo «¿está suelta?» la dejaba pasar, y al emparejarla se cruzaba
+             una lista aplanada —tres marcas por fila— contra una de seis
+             números. */
+          if (!x.bl || x.c.instrumento === 'parciales') {
             p.push({
               donde: 'resultado', indice: i,
-              /* Dos listas de parciales se podrían emparejar por posición, pero
-                 eso NO es una pareja: en un bloque las dos columnas son de la
-                 misma repetición, y dos pulsaciones sueltas no tienen por qué
-                 corresponderse. Cruzarlas daría una recta impecable entre dos
-                 cosas que no pasaron a la vez. */
               texto: x.c.instrumento === 'parciales'
-                ? '«' + clave + '» es una lista de parciales: ' + b.v + '() necesita dos columnas de un BLOQUE, donde cada par es de la misma repetición'
+                ? '«' + clave + '» guarda varias marcas por casilla: ' + b.v + '() necesita dos columnas con UN número en cada repetición'
                 : '«' + clave + '» se mide una sola vez: ' + b.v + '() necesita dos columnas que se repitan',
             })
           }

@@ -82,9 +82,12 @@ describe('EL MONTADOR LA TRATA COMO UNA SERIE', () => {
     expect(pegas[0].texto).toContain('LISTA de parciales')
   })
 
-  it('las de dos columnas siguen pidiendo un bloque, y se explica', () => {
+  it('las de dos columnas siguen pidiendo UN NÚMERO por repetición, y se explica', () => {
     /* Emparejar dos listas por posición daría una recta impecable entre dos
-       cosas que no pasaron a la vez. */
+       cosas que no pasaron a la vez. El texto cambió al caber los parciales
+       dentro de un bloque: antes bastaba con pedir «un bloque», y ahora hay
+       columnas de bloque que tampoco valen —las de parciales—, así que lo que
+       se pide es lo que de verdad hace falta. */
     const malo: TestLab = {
       nombre: 'x', deporte: 'Carrera',
       sueltos: [
@@ -94,7 +97,7 @@ describe('EL MONTADOR LA TRATA COMO UNA SERIE', () => {
       bloques: [],
       resultados: [{ nombre: 'r', unidad: '', formula: [{ t: 'fn2', v: 'pendiente', x: 'p', y: 'q' }] }],
     }
-    expect(pegasDe(malo).some(z => /de un BLOQUE/.test(z.texto))).toBe(true)
+    expect(pegasDe(malo).some(z => /UN número en cada repetición/.test(z.texto))).toBe(true)
   })
 
   it('y dentro de una columna calculada tampoco cabe una lista', () => {
