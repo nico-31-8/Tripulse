@@ -90,11 +90,36 @@ export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
  * cuáles se pintan. Lo guardado manda en el orden, pero no puede inventarse
  * secciones ni esconder las que aparecieron después.
  */
-export function pantallaDe(t: TestLab | null, guardada?: Pantalla | null): {
+/**
+ * Las secciones que SOLO existen para dar un botón por persona.
+ *
+ * Desde que se puede tocar la casilla de la tabla, con UNA persona son la
+ * misma cosa dos veces: la tabla ya dice de qué repetición y de qué columna
+ * es cada casilla, y estas tienen que volver a decirlo —«vas por la 1 de 6»—
+ * con un botón al lado.
+ *
+ * Con un GRUPO no sobran, y por eso no se borraron: la tabla enseña a UNA
+ * persona —la que esté puesta arriba—, y a pie de pista no se puede ir
+ * cambiando de atleta a mitad de serie. Ahí es donde «un reloj para todos y un
+ * botón por persona» es justo lo que hace falta.
+ *
+ * La cuenta atrás y el descanso NO están aquí: esos cantan un número que no
+ * sale en ningún otro sitio, haya quien haya.
+ */
+export const POR_PERSONA: ClaveSeccion[] = ['escalones', 'cronos', 'sueltos', 'parciales', 'pulsadores']
+
+/**
+ * @param gente Cuántos la están pasando. Con uno o nadie, las de `POR_PERSONA`
+ *   se caen solas: no se esconden —que obligaría a saber que existen y a ir al
+ *   engranaje—, es que ahí no tienen nada que aportar. Sin decirlo se dibuja la
+ *   pantalla entera, que es lo que hace falta al montar el test.
+ */
+export function pantallaDe(t: TestLab | null, guardada?: Pantalla | null, gente?: number): {
   todas: ClaveSeccion[]
   visibles: ClaveSeccion[]
 } {
-  const existen = seccionesDeTest(t)
+  const solo = typeof gente === 'number' && gente <= 1
+  const existen = seccionesDeTest(t).filter(c => !solo || !POR_PERSONA.includes(c))
   const orden = (guardada?.orden || []).filter(c => existen.includes(c))
   /* Las que existen y no estaban guardadas van AL FINAL, nunca fuera: una
      sección nueva que no se viera parecería que no se ha creado. */

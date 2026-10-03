@@ -2741,10 +2741,23 @@ function Pasar({
       Elige arriba a quién se lo pasas y aquí saldrá <b>su botón</b>.
     </p>
   ) : null
+
   const parciales = parcialesDe(test)
   const parcialesBloque = parcialesBloqueDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
+  /* LAS FILAS POR PERSONA NO SE VEN HASTA QUE SON DOS, así que hay que decir
+     que existen: al montar el test hay una sola persona de mentira, y sin esto
+     parecería que a un grupo se le pasa igual que a uno. */
+  const conGrupoSale = montando && (cronos.length > 0 || escalonados.length > 0
+    || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
+    || sueltosCont.length > 0 || contBloque.length > 0) ? (
+      <p className="text-gray-500 text-[11.5px] leading-snug mt-3 border-t border-gray-800 pt-3">
+        Con <b className="text-gray-300">más de una persona</b> aparece aquí una fila por cada uno, con su botón:
+        la tabla enseña a quien tengas puesto arriba, y a pie de pista no se puede ir cambiando de atleta a
+        mitad de serie. Con uno solo sobra, así que no sale.
+      </p>
+    ) : null
   /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
      cuenta atrás puede ir corriendo mientras marcas parciales y pulsas.
 
@@ -2758,8 +2771,12 @@ function Pasar({
      ocurrieron, y eso no se distingue luego de las de verdad. */
   const seAcaboElTiempo = cronometrados.some(bl => cuentaAtras(bl, ms).fin)
   /* En qué orden va cada sección y cuáles se esconden. Lo guardado manda, pero
-     cuadrado con lo que el test tiene HOY: ver `lib/lab-pantalla`. */
-  const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined)
+     cuadrado con lo que el test tiene HOY: ver `lib/lab-pantalla`.
+
+     Y CON CUÁNTA GENTE, que decide si hay secciones que no pintan nada: desde
+     que la casilla de la tabla se toca, con una sola persona los botones por
+     persona son la misma cosa dos veces. */
+  const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined, atletas.length)
   const ocultas = todas.filter(k => !visibles.includes(k))
   const [ordenando, setOrdenando] = useState(false)
   const [arrastrando, setArrastrando] = useState<ClaveSeccion | null>(null)
@@ -3402,6 +3419,9 @@ function Pasar({
         )}
       </div>
       </div>)}
+      {/* Va con `order` del final para que quede debajo de todo, se ordene la
+          pantalla como se ordene. */}
+      {conGrupoSale && <div style={{ order: 1000 }}>{conGrupoSale}</div>}
     </div>
   )
 }

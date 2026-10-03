@@ -185,3 +185,47 @@ describe('el cronómetro de descanso', () => {
     expect(restanteDescanso(0, 5_000)).toBe(0)
   })
 })
+
+describe('CON UNA SOLA PERSONA, los botones por persona sobran', () => {
+  /* Lo vio el entrenador en cuanto funcionó la tabla: «si ya se puede pulsar
+     abajo en la tabla, eso sobra no?». Y sobra, pero solo cuando es uno: la
+     tabla enseña a UNA persona, así que con un grupo esas filas son lo único
+     que deja marcar a seis sin ir cambiando de atleta a mitad de serie. */
+  const conTodo: TestLab = {
+    nombre: 'x', deporte: 'Carrera',
+    sueltos: [col({ clave: 'p', instrumento: 'parciales' }), col({ clave: 'n', instrumento: 'contador' })],
+    bloques: [{ clave: 'b', etiqueta: '', modo: 'cerrado', veces: 3, duracion: 60, columnas: [] }],
+    resultados: [], descanso: 90,
+  }
+
+  it('con una persona se caen, y queda lo que no se repite', () => {
+    const r = pantallaDe(conTodo, null, 1)
+    expect(r.visibles).toEqual(['cuenta', 'descanso', 'guardar'])
+  })
+
+  it('con nadie todavía, igual', () => {
+    expect(pantallaDe(conTodo, null, 0).visibles).not.toContain('pulsadores')
+  })
+
+  it('CON DOS VUELVEN, que es cuando sirven de algo', () => {
+    const r = pantallaDe(conTodo, null, 2)
+    expect(r.visibles).toContain('parciales')
+    expect(r.visibles).toContain('pulsadores')
+  })
+
+  it('sin decir cuántos se dibuja entera, que es lo que hace falta al montarlo', () => {
+    expect(pantallaDe(conTodo).visibles).toContain('pulsadores')
+  })
+
+  it('LA CUENTA ATRÁS Y EL DESCANSO NO SE CAEN NUNCA', () => {
+    /* Esos cantan un número que no sale en ningún otro sitio: quitarlos
+       dejaría a quien pasa el test sin saber cuánto queda. */
+    const r = pantallaDe(conTodo, null, 1)
+    expect(r.visibles).toContain('cuenta')
+    expect(r.visibles).toContain('descanso')
+  })
+
+  it('y tampoco se puede quedar sin guardar', () => {
+    expect(pantallaDe(conTodo, null, 1).visibles).toContain('guardar')
+  })
+})
