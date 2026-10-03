@@ -2773,16 +2773,16 @@ function Pasar({
   const parcialesBloque = parcialesBloqueDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
-  /* LAS FILAS POR PERSONA NO SE VEN HASTA QUE SON DOS, así que hay que decir
-     que existen: al montar el test hay una sola persona de mentira, y sin esto
-     parecería que a un grupo se le pasa igual que a uno. */
+  /* AQUÍ SE VE TODO, Y AL PASARLO NO SIEMPRE: hay que decirlo, o la primera
+     vez que lo pases a una persona parecerá que falta media pantalla. */
   const conGrupoSale = montando && (cronos.length > 0 || escalonados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
     || sueltosCont.length > 0 || contBloque.length > 0) ? (
       <p className="text-gray-500 text-[11.5px] leading-snug mt-3 border-t border-gray-800 pt-3">
-        Con <b className="text-gray-300">más de una persona</b> aparece aquí una fila por cada uno, con su botón:
-        la tabla enseña a quien tengas puesto arriba, y a pie de pista no se puede ir cambiando de atleta a
-        mitad de serie. Con uno solo sobra, así que no sale.
+        Estas filas de botón por persona se enseñan aquí <b className="text-gray-300">para que puedas ordenarlas</b>.
+        Al pasarlo a <b className="text-gray-300">una sola persona no salen</b>: con uno basta tocar la casilla de la
+        tabla. Vuelven con dos o más, porque la tabla enseña a quien tengas puesto arriba y a pie de pista no se
+        puede ir cambiando de atleta a mitad de serie.
       </p>
     ) : null
   /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
@@ -2802,8 +2802,15 @@ function Pasar({
 
      Y CON CUÁNTA GENTE, que decide si hay secciones que no pintan nada: desde
      que la casilla de la tabla se toca, con una sola persona los botones por
-     persona son la misma cosa dos veces. */
-  const { todas, visibles } = pantallaDe(test, test.pantalla as Pantalla | undefined, atletas.length)
+     persona son la misma cosa dos veces.
+
+     MONTANDO NO SE LE DICE A CUÁNTA, y eso dibuja la pantalla ENTERA. Es el
+     sitio donde se ordena y se esconde, y al montar solo hay una persona de
+     mentira: cayéndose las secciones no quedaba más que «guardar», y con una
+     sola el botón de ordenar tampoco salía. Es decir, que al hacer que
+     sobraran me cargué la única forma de configurarla. */
+  const { todas, visibles } = pantallaDe(
+    test, test.pantalla as Pantalla | undefined, montando ? undefined : atletas.length)
   const ocultas = todas.filter(k => !visibles.includes(k))
   const [ordenando, setOrdenando] = useState(false)
   const [arrastrando, setArrastrando] = useState<ClaveSeccion | null>(null)

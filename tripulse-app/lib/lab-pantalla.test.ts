@@ -213,8 +213,17 @@ describe('CON UNA SOLA PERSONA, los botones por persona sobran', () => {
     expect(r.visibles).toContain('pulsadores')
   })
 
-  it('sin decir cuántos se dibuja entera, que es lo que hace falta al montarlo', () => {
-    expect(pantallaDe(conTodo).visibles).toContain('pulsadores')
+  it('SIN DECIR CUÁNTOS SE DIBUJA ENTERA, y de eso depende poder configurarla', () => {
+    /* NO es un detalle: el editor es el único sitio donde se ordena y se
+       esconde, y al montar el test solo hay una persona de mentira. Si allí se
+       cayeran las secciones, no quedaría más que «guardar» — y el botón de
+       ordenar, que solo sale con más de una sección, tampoco. Haciendo que
+       sobraran con una persona me cargué la única forma de configurarla, y el
+       entrenador lo notó enseguida: «¿cómo se editaba la pantalla para mover
+       las cosas de sitio?». */
+    const r = pantallaDe(conTodo)
+    expect(r.visibles).toContain('pulsadores')
+    expect(r.todas.length).toBeGreaterThan(1)
   })
 
   it('LA CUENTA ATRÁS Y EL DESCANSO NO SE CAEN NUNCA', () => {
