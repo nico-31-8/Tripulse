@@ -2693,6 +2693,14 @@ function Pasar({
   const parciales = parcialesDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0
+  /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
+     cuenta atrás puede ir corriendo mientras marcas parciales y pulsas.
+
+     VA EL PRIMERO A PROPÓSITO. Estaba diez líneas más abajo, y `seAcaboElTiempo`
+     lo leía desde arriba: eso es una variable usada antes de existir, que
+     revienta la pantalla entera. No se veía porque `.some()` no llama a nada
+     con la lista vacía, así que solo estallaba en los tests CON cuenta atrás. */
+  const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
   /* Si una cuenta atrás ya ha terminado, los pulsadores se bloquean: dos
      pulsaciones de más después de la campana entran como repeticiones que no
      ocurrieron, y eso no se distingue luego de las de verdad. */
@@ -2704,9 +2712,6 @@ function Pasar({
   const [ordenando, setOrdenando] = useState(false)
   const [arrastrando, setArrastrando] = useState<ClaveSeccion | null>(null)
   const [sobre, setSobre] = useState<ClaveSeccion | null>(null)
-  /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
-     cuenta atrás puede ir corriendo mientras marcas parciales y pulsas. */
-  const ms = reloj ? (reloj.corre ? ahora - reloj.desde + reloj.acu : reloj.acu) : 0
   const corre = !!reloj?.corre
   const arrancado = !!reloj && (reloj.corre || reloj.acu > 0)
   const relojCaja = 'flex gap-4 items-center flex-wrap border border-gray-800 rounded-xl p-3.5 bg-[#0d1420] mt-3'
