@@ -67,4 +67,13 @@ describe('el reloj del laboratorio', () => {
     const cuerpo = cuerpoDe(src, 'Pasar')
     expect(cuerpo.split('const ms = ')).toHaveLength(2)
   })
+
+  it('Y SE CANTA UNA VEZ: dos veces el mismo número son dos relojes', () => {
+    /* Lo vio el usuario: «claude porque hay dos relojes, explícame». La sección
+       de un cronómetro de bloque volvía a pintar `crono(ms)` —el MISMO número
+       que el de arriba— porque venía de cuando cada sección tenía su reloj.
+       Repetirlo no es que sobre: es decir que son dos y que miden cosas
+       distintas, y en un test eso se cree. */
+    expect(src.split('crono(ms)')).toHaveLength(2)
+  })
 })

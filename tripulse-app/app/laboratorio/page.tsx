@@ -2967,16 +2967,16 @@ function Pasar({
       {cronos.map(({ c, bl }) => {
         return (
           <div key={c.clave}>
-            <div className={relojCaja}>
-              <div>
-                <div className={gordo}>{crono(ms)}</div>
-                <div className={pie}>{c.etiqueta || c.clave}</div>
-              </div>
-              <div className="flex gap-2 flex-1 flex-wrap min-w-[200px]">
-                <button onClick={() => onReinicia(c, bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 px-2 transition">Borrar lo apuntado</button>
-              </div>
+            {/* AQUÍ NO SE VUELVE A CANTAR LA HORA. Esta caja enseñaba el reloj
+                otra vez, con el mismo número que el de arriba: era de cuando
+                cada sección tenía el suyo. Desde que hay UNO SOLO, repetirlo es
+                dar a entender que son dos y que miden cosas distintas. Lo único
+                de esta sección es de qué columna va y poder borrarla. */}
+            <div className="flex items-center gap-2.5 flex-wrap mt-3">
+              <span className={pie + ' mt-0'}>{c.etiqueta || c.clave}</span>
+              <button onClick={() => onReinicia(c, bl)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Borrar lo apuntado</button>
             </div>
-            <div className="mt-3">
+            <div className="mt-1.5">
               {sinGente}
               {atletas.map(a => {
                 const hechas = ((datosDe(String(a.id))[c.clave] as string[] | undefined) || []).filter(x => x !== '' && x != null).length
