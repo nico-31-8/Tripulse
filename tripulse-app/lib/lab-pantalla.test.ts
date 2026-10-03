@@ -238,3 +238,44 @@ describe('CON UNA SOLA PERSONA, los botones por persona sobran', () => {
     expect(pantallaDe(conTodo, null, 1).visibles).toContain('guardar')
   })
 })
+
+describe('QUÉ SE VE AHORA y QUÉ SE PUEDE ORDENAR son dos preguntas', () => {
+  /* Este se escribe por un fallo cometido DOS VECES en una tarde. Con una sola
+     persona las secciones de botón por persona no se dibujan; el engranaje
+     listaba lo dibujado, así que se quedó sin nada que ordenar y desapareció
+     —«¿cómo se editaba la pantalla para mover las cosas de sitio?»—. Al
+     devolverlas para recuperarlo, volvieron a la pantalla las filas que se
+     acababan de quitar: «¿por qué vuelve a salir esto? ¿no lo quitamos?».
+
+     Lo que se puede ordenar es del TEST; lo que se ve, de quién lo pasa. */
+  const conTodo: TestLab = {
+    nombre: 'x', deporte: 'Carrera',
+    sueltos: [col({ clave: 'n', instrumento: 'contador' })],
+    bloques: [{ clave: 'b', etiqueta: '', modo: 'cerrado', veces: 3, duracion: 0, columnas: [] }],
+    resultados: [],
+  }
+
+  it('con una persona no se dibujan, PERO SE SIGUEN PUDIENDO ORDENAR', () => {
+    const r = pantallaDe(conTodo, null, 1)
+    expect(r.visibles).not.toContain('pulsadores')
+    expect(r.delTest).toContain('pulsadores')
+  })
+
+  it('y así el engranaje nunca se queda sin nada que ordenar', () => {
+    /* El botón sale cuando hay más de una sección que mover. Mirando lo
+       dibujado, con una persona se quedaba en «guardar» y no salía. */
+    expect(pantallaDe(conTodo, null, 1).delTest.length).toBeGreaterThan(1)
+  })
+
+  it('el orden guardado manda en las dos listas', () => {
+    const g: Pantalla = { orden: ['guardar', 'pulsadores'], ocultas: [] }
+    const r = pantallaDe(conTodo, g, 1)
+    expect(r.delTest).toEqual(['guardar', 'pulsadores'])
+    expect(r.todas).toEqual(['guardar'])
+  })
+
+  it('con dos, lo que se ve y lo que se ordena vuelven a ser lo mismo', () => {
+    const r = pantallaDe(conTodo, null, 2)
+    expect(r.todas).toEqual(r.delTest)
+  })
+})

@@ -2773,16 +2773,16 @@ function Pasar({
   const parcialesBloque = parcialesBloqueDe(test)
   const hayReloj = cronos.length > 0 || escalonados.length > 0 || cronometrados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
-  /* AQUÍ SE VE TODO, Y AL PASARLO NO SIEMPRE: hay que decirlo, o la primera
-     vez que lo pases a una persona parecerá que falta media pantalla. */
+  /* HAY SECCIONES QUE NO SE VEN CON UNA PERSONA, y hay que decir que existen:
+     si no, la primera vez que lo pases a un grupo te aparece media pantalla
+     que no habías visto nunca. */
   const conGrupoSale = montando && (cronos.length > 0 || escalonados.length > 0
     || sueltosCrono.length > 0 || parciales.length > 0 || parcialesBloque.length > 0
     || sueltosCont.length > 0 || contBloque.length > 0) ? (
       <p className="text-gray-500 text-[11.5px] leading-snug mt-3 border-t border-gray-800 pt-3">
-        Estas filas de botón por persona se enseñan aquí <b className="text-gray-300">para que puedas ordenarlas</b>.
-        Al pasarlo a <b className="text-gray-300">una sola persona no salen</b>: con uno basta tocar la casilla de la
-        tabla. Vuelven con dos o más, porque la tabla enseña a quien tengas puesto arriba y a pie de pista no se
-        puede ir cambiando de atleta a mitad de serie.
+        Con <b className="text-gray-300">dos personas o más</b> aparece además una fila por cada uno con su botón:
+        la tabla enseña a quien tengas puesto arriba, y a pie de pista no se puede ir cambiando de atleta a mitad
+        de serie. Con uno solo no salen, porque basta tocar la casilla. Puedes ordenarlas igual desde el ⚙.
       </p>
     ) : null
   /* UN SOLO RELOJ: todas las secciones leen el mismo tiempo, así que una
@@ -2804,13 +2804,12 @@ function Pasar({
      que la casilla de la tabla se toca, con una sola persona los botones por
      persona son la misma cosa dos veces.
 
-     MONTANDO NO SE LE DICE A CUÁNTA, y eso dibuja la pantalla ENTERA. Es el
-     sitio donde se ordena y se esconde, y al montar solo hay una persona de
-     mentira: cayéndose las secciones no quedaba más que «guardar», y con una
-     sola el botón de ordenar tampoco salía. Es decir, que al hacer que
-     sobraran me cargué la única forma de configurarla. */
-  const { todas, visibles } = pantallaDe(
-    test, test.pantalla as Pantalla | undefined, montando ? undefined : atletas.length)
+     Y LO QUE SE DIBUJA NO ES LO QUE SE PUEDE ORDENAR: `delTest` son todas las
+     que el test puede llegar a enseñar, las dibuje ahora o no. Dibujarlas
+     todas al montar para que el engranaje tuviera algo que ordenar devolvía a
+     la pantalla justo las filas que se acababan de quitar. */
+  const { todas, visibles, delTest } = pantallaDe(
+    test, test.pantalla as Pantalla | undefined, atletas.length)
   const ocultas = todas.filter(k => !visibles.includes(k))
   const [ordenando, setOrdenando] = useState(false)
   const [arrastrando, setArrastrando] = useState<ClaveSeccion | null>(null)
@@ -2893,7 +2892,7 @@ function Pasar({
       {/* ORDENAR LA PANTALLA. Donde de verdad sirve es en el móvil: a pie de
           pista todo va en UNA columna, así que el orden decide lo que ves sin
           hacer scroll con el atleta esperando. */}
-      {todas.length > 1 && (
+      {delTest.length > 1 && (
         <div className="mt-3">
           <button onClick={() => setOrdenando(o => !o)} className={btnSec + ' ' + btnMini}>
             {ordenando ? 'Listo' : '⚙ Ordenar la pantalla'}
@@ -2909,10 +2908,14 @@ function Pasar({
             {' '}Este orden vale <b className="text-gray-300">para el ordenador y para el móvil</b>: es la misma columna.
             {' '}Arrástralas con el ratón, o usa las flechas — que es lo que funciona con el dedo.
           </p>
-          {todas.map((k, i) => {
+          {delTest.map((k, i) => {
             const sec = seccionPorClave(k)
             if (!sec) return null
             const oculta = ocultas.includes(k)
+            /* Las que el test tiene pero hoy no se dibujan. No se esconden de
+               la lista: si no, ordenar la pantalla para un grupo habría que
+               hacerlo a ciegas, con medio orden invisible. */
+            const soloEnGrupo = !todas.includes(k)
             return (
               /* ARRASTRAR CON EL RATÓN, flechas en todas partes. Lo nativo del
                  navegador —lo mismo que ya usan las tareas y los chips del
@@ -2925,7 +2928,7 @@ function Pasar({
                 onDragOver={e => { e.preventDefault(); if (sobre !== k) setSobre(k) }}
                 onDrop={e => {
                   e.preventDefault()
-                  if (arrastrando && arrastrando !== k) onPantalla({ orden: moverA(todas, arrastrando, i), ocultas })
+                  if (arrastrando && arrastrando !== k) onPantalla({ orden: moverA(delTest, arrastrando, i), ocultas })
                   setArrastrando(null); setSobre(null)
                 }}
                 className={'flex items-center gap-2 py-1.5 border-b border-gray-800/60 cursor-grab ' +
@@ -2933,14 +2936,20 @@ function Pasar({
                   (sobre === k && arrastrando && arrastrando !== k ? 'border-t-2 border-t-orange-500 ' : '')}>
                 <span className="text-gray-600 text-[13px] select-none" aria-hidden="true">⠿</span>
                 <span className="text-[15px]" aria-hidden="true">{sec.icono}</span>
-                <b className={'text-[13px] flex-1 font-semibold ' + (oculta ? 'text-gray-600 line-through' : '')}>{sec.etiqueta}</b>
-                <button onClick={() => onPantalla({ orden: mover(todas, k, -1), ocultas })} disabled={i === 0}
+                <b className={'text-[13px] font-semibold ' + (oculta ? 'text-gray-600 line-through' : '')}>{sec.etiqueta}</b>
+                {soloEnGrupo && (
+                  <span className="text-[10.5px] text-gray-500 border border-gray-700 rounded-full px-2 py-0.5">
+                    solo con 2 o más
+                  </span>
+                )}
+                <span className="flex-1" />
+                <button onClick={() => onPantalla({ orden: mover(delTest, k, -1), ocultas })} disabled={i === 0}
                   title="Subir" className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>↑</button>
-                <button onClick={() => onPantalla({ orden: mover(todas, k, 1), ocultas })} disabled={i === todas.length - 1}
+                <button onClick={() => onPantalla({ orden: mover(delTest, k, 1), ocultas })} disabled={i === delTest.length - 1}
                   title="Bajar" className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>↓</button>
                 {/* «Guardar lo medido» no se puede esconder: una pantalla desde
                     la que no se puede apuntar no es una pantalla configurada. */}
-                <button onClick={() => onPantalla({ orden: todas, ocultas: alternar(ocultas, k) })}
+                <button onClick={() => onPantalla({ orden: delTest, ocultas: alternar(ocultas, k) })}
                   disabled={!sec.prescindible} title={sec.prescindible ? (oculta ? 'Volver a enseñarla' : 'Esconderla') : 'Esta no se puede esconder'}
                   className={btnSec + ' ' + btnMini + ' disabled:opacity-30'}>{oculta ? '🙈' : '👁'}</button>
               </div>

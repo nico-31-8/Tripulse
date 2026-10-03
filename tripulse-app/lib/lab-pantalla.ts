@@ -115,21 +115,40 @@ export const POR_PERSONA: ClaveSeccion[] = ['escalones', 'cronos', 'sueltos', 'p
  *   pantalla entera, que es lo que hace falta al montar el test.
  */
 export function pantallaDe(t: TestLab | null, guardada?: Pantalla | null, gente?: number): {
+  /** Las que se DIBUJAN ahora mismo, en su orden. */
   todas: ClaveSeccion[]
+  /** De esas, las que no están escondidas. */
   visibles: ClaveSeccion[]
+  /**
+   * TODAS las que este test puede llegar a enseñar, dibujadas o no.
+   *
+   * Es lo que mira el engranaje, y va aparte por un fallo que se cometió dos
+   * veces en una tarde. Con una sola persona las de botón por persona no se
+   * dibujan, y el engranaje —que listaba lo dibujado— se quedó sin nada que
+   * ordenar y desapareció. Al devolverlas para recuperarlo, volvieron a la
+   * pantalla las filas que se acababan de quitar.
+   *
+   * Son dos preguntas distintas: QUÉ SE VE AHORA y QUÉ SE PUEDE ORDENAR. Lo
+   * segundo es del test; lo primero, de quién lo esté pasando.
+   */
+  delTest: ClaveSeccion[]
 } {
   const solo = typeof gente === 'number' && gente <= 1
-  const existen = seccionesDeTest(t).filter(c => !solo || !POR_PERSONA.includes(c))
-  const orden = (guardada?.orden || []).filter(c => existen.includes(c))
-  /* Las que existen y no estaban guardadas van AL FINAL, nunca fuera: una
-     sección nueva que no se viera parecería que no se ha creado. */
-  const todas = [...orden, ...existen.filter(c => !orden.includes(c))]
+  const ordenar = (todos: ClaveSeccion[]) => {
+    const orden = (guardada?.orden || []).filter(c => todos.includes(c))
+    /* Las que existen y no estaban guardadas van AL FINAL, nunca fuera: una
+       sección nueva que no se viera parecería que no se ha creado. */
+    return [...orden, ...todos.filter(c => !orden.includes(c))]
+  }
+
+  const delTest = ordenar(seccionesDeTest(t))
+  const todas = ordenar(seccionesDeTest(t).filter(c => !solo || !POR_PERSONA.includes(c)))
 
   const ocultas = new Set((guardada?.ocultas || []).filter(c => {
     const s = seccionPorClave(c)
     return !!s && s.prescindible
   }))
-  return { todas, visibles: todas.filter(c => !ocultas.has(c)) }
+  return { todas, visibles: todas.filter(c => !ocultas.has(c)), delTest }
 }
 
 /** Mover una sección una posición arriba o abajo. */
