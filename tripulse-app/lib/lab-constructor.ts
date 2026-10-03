@@ -176,11 +176,22 @@ export const SOLO_SUELTOS: Instrumento[] = ['parciales']
 /**
  * Cómo se llama un instrumento SEGÚN DÓNDE ESTÉ.
  *
- * El entrenador buscaba «parciales» dentro de un bloque y no los encontraba,
- * y la cosa es que SÍ están: una columna de cronómetro en un bloque es
- * exactamente eso —un botón por persona, cada pulsación cierra una repetición
- * y el reloj no se para—. Lo que fallaba era el nombre: fuera, un cronómetro
- * da UN tiempo; dentro, da uno por repetición, que es un parcial.
+ * DENTRO DE UN BLOQUE SE LLAMÓ «PARCIALES» Y FUE UN ERROR MÍO. Se hizo cuando
+ * los parciales de verdad todavía no existían y un cronómetro por repetición
+ * era lo más parecido que había. Al existir, el nombre estaba ocupado por
+ * quien no era, y el entrenador abría el desplegable buscando un cronómetro
+ * normal y no lo encontraba — solo «Parciales», tres veces.
+ *
+ * SON DOS COSAS DISTINTAS, y la diferencia está en cuántas marcas cabe en una
+ * casilla:
+ *
+ * - CRONÓMETRO: una marca por casilla. Cada pulsación cierra SU repetición y
+ *   el reloj sigue. Seis casillas, seis tiempos.
+ * - PARCIALES: muchas marcas en LA MISMA casilla. Pulsas y pone 3; vuelves a
+ *   pulsar y pone 3 y 6,8; y así las que hagan falta, sin decir antes cuántas.
+ *
+ * Lo que se conserva es lo único que era verdad: dentro de un bloque un
+ * cronómetro da UN TIEMPO POR REPETICIÓN, y eso se dice.
  *
  * Se arregla el nombre y no el modelo: añadir «parciales» como columna de
  * bloque sería una segunda forma de hacer lo mismo, y dos formas acaban no
@@ -188,8 +199,8 @@ export const SOLO_SUELTOS: Instrumento[] = ['parciales']
  */
 export function etiquetaInstrumento(i: Instrumento, enBloque: boolean): string {
   if (!enBloque) return INSTRUMENTOS[i]
-  if (i === 'crono-seg') return 'Parciales · un tiempo por repetición (s)'
-  if (i === 'crono-min') return 'Parciales · un tiempo por repetición (min)'
+  if (i === 'crono-seg') return 'Cronómetro · un tiempo por repetición (s)'
+  if (i === 'crono-min') return 'Cronómetro · un tiempo por repetición (min)'
   return INSTRUMENTOS[i]
 }
 

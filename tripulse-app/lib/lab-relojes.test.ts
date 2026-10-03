@@ -366,13 +366,27 @@ describe('el pulsador SÍ vale dentro de un bloque', () => {
   })
 })
 
-describe('los parciales de un bloque se llaman parciales', () => {
-  /* El entrenador buscaba «parciales» dentro de un bloque y no los veía: SÍ
-     estaban, pero con el nombre de «cronómetro». Fuera de un bloque un
-     cronómetro da UN tiempo; dentro, uno por repetición — que es un parcial. */
-  it('dentro de un bloque, el cronómetro se llama parciales', () => {
-    expect(etiquetaInstrumento('crono-seg', true)).toContain('Parciales')
-    expect(etiquetaInstrumento('crono-min', true)).toContain('Parciales')
+describe('un cronómetro se llama cronómetro, esté donde esté', () => {
+  /* ESTE TEST DECÍA LO CONTRARIO, y era un error mío: dentro de un bloque el
+     cronómetro se rebautizó «Parciales» cuando los parciales de verdad aún no
+     existían. Al existir, el nombre quedó ocupado por quien no era y el
+     entrenador abría el desplegable buscando un cronómetro normal sin
+     encontrarlo: «quiero que ahí aparezca el cronómetro normal».
+
+     La diferencia es cuántas marcas caben en una casilla: el cronómetro deja
+     UNA por casilla; los parciales, las que hagan falta en la MISMA. */
+  it('dentro de un bloque sigue siendo un cronómetro, y se dice que da uno por repetición', () => {
+    expect(etiquetaInstrumento('crono-seg', true)).toContain('Cronómetro')
+    expect(etiquetaInstrumento('crono-min', true)).toContain('Cronómetro')
+    expect(etiquetaInstrumento('crono-seg', true)).toContain('por repetición')
+  })
+
+  it('Y NUNCA SE LLAMA «PARCIALES», que es el nombre de otra cosa', () => {
+    for (const i of ['crono-seg', 'crono-min'] as const) {
+      for (const dentro of [true, false]) {
+        expect(etiquetaInstrumento(i, dentro), i + ' dentro=' + dentro).not.toContain('Parciales')
+      }
+    }
   })
 
   it('fuera sigue siendo un cronómetro, que es lo que es', () => {
