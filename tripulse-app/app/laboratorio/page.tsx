@@ -2830,7 +2830,17 @@ function Pasar({
           uno paraba el otro: no se podía tener la cuenta atrás corriendo
           mientras marcas parciales y pulsas. */}
       {hayReloj && (
-        <div className="mt-3 flex items-center gap-3 flex-wrap rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-3.5 py-2.5">
+        /* SE QUEDA PEGADO ARRIBA. En el móvil todo va en una columna: el reloj,
+           las filas y la tabla. Bajando a tocar la casilla de la 4.ª
+           repetición el reloj se iba de la pantalla, que es justo cuando hace
+           falta mirarlo — y obligaba a subir, mirar y volver a bajar con el
+           atleta corriendo.
+
+           El fondo opaco va en el envoltorio y no en la caja: la caja lleva un
+           naranja translúcido a propósito, y pegarlo arriba sin nada detrás
+           dejaba ver la tabla pasando por debajo de los números. */
+        <div className="sticky top-0 z-20 bg-gray-950 pt-3 pb-1.5">
+        <div className="flex items-center gap-3 flex-wrap rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-3.5 py-2.5">
           <span className="font-mono tabular-nums text-[30px] leading-none text-orange-400 font-medium">{crono(ms)}</span>
           <span className="text-[10px] tracking-widest uppercase text-gray-500 font-bold">
             {corre ? 'corriendo' : arrancado ? 'en pausa' : 'el reloj del test'}
@@ -2842,6 +2852,7 @@ function Pasar({
             className="text-[11.5px] text-gray-500 hover:text-gray-300 disabled:opacity-30 px-2 transition">
             Poner a cero
           </button>
+        </div>
         </div>
       )}
 
