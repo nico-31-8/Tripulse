@@ -23,7 +23,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
-import { leerModelo, paraGuardar, medicionDe, leerMediciones, leerAtletas, type Medicion } from '@/lib/lab-guardar'
+import { leerModelo, paraGuardar, medicionDe, leerMediciones, leerAtletas, tieneAlgoEscrito, type Medicion } from '@/lib/lab-guardar'
 import {
   FUNCIONES, FUNCIONES2, INSTRUMENTOS, MAX_VECES, TEST_VACIO,
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
@@ -493,8 +493,7 @@ export default function Laboratorio() {
      cambiarlo mañana reescribiría en silencio todas las del pasado. */
   const guardarMediciones = async () => {
     if (!test || !editandoId) { decir('mal', 'Guarda antes el test'); return }
-    const conDatos = atletas.filter(a => Object.values(med[String(a.id)] || {}).some(v =>
-      Array.isArray(v) ? v.some(x => String(x ?? '').trim() !== '') : String(v ?? '').trim() !== ''))
+    const conDatos = atletas.filter(a => tieneAlgoEscrito(med[String(a.id)]))
     if (!conDatos.length) { decir('mal', 'Todavía no hay nada que guardar'); return }
 
     setGuardando(true)
@@ -815,6 +814,7 @@ export default function Laboratorio() {
                 test={test} atletas={op.atletas} activo={op.atletas === atletas ? activo : 0} setActivo={setActivo}
               montando={op.montando} anadir={op.anadir}
                 deportistas={deportistas} guardado={editandoId !== null} ayuda={ayuda} onAyuda={cambiarAyuda}
+                hayDatos={op.atletas.some(a => tieneAlgoEscrito(med[String(a.id)]))}
                 fecha={fecha} setFecha={setFecha} guardando={guardando}
                 onGuardarMediciones={guardarMediciones}
                 datosDe={datosDe} reloj={reloj} setReloj={setReloj} ahora={ahora}
@@ -2707,7 +2707,7 @@ function Pasar({
   test, atletas, activo, setActivo, deportistas, guardado, fecha, setFecha, guardando,
   onGuardarMediciones, datosDe, reloj, ahora,
   onAtleta, onQuitaAtleta, onBajo, onVuelta, onDeshace, onReinicia, onReiniciaEsc, onArranca, onReiniciaReloj,
-  ayuda, onAyuda,
+  ayuda, onAyuda, hayDatos,
   onMarcaSuelto, onBorraSuelto, onReiniciaSuelto, onCuenta, onCuentaEn, onParcial, onQuitaParcial,
   onParcialEn, onQuitaParcialEn, onPantalla,
   desc, onDescanso,
@@ -2739,6 +2739,8 @@ function Pasar({
   onReiniciaReloj: () => void
   ayuda: boolean
   onAyuda: () => void
+  /** Si alguien tiene ya algo apuntado: con datos en juego, los avisos no se callan. */
+  hayDatos: boolean
   onMarcaSuelto: (c: Columna, a: Atleta) => void
   onBorraSuelto: (c: Columna, a: Atleta) => void
   onReiniciaSuelto: (c: Columna) => void
@@ -3479,14 +3481,22 @@ function Pasar({
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-800">
+      <div className={(!guardado && !ayuda && !hayDatos ? 'hidden ' : '') + 'mt-4 pt-4 border-t border-gray-800'}>
         <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Guardar lo medido</p>
-        {!guardado ? (
+        {/* SE CALLA MIENTRAS NO HAYA NADA QUE PERDER. Con la tabla en blanco
+            esto no es un aviso, es una explicación de dónde estás, y ocupa un
+            tercio del móvil. En cuanto alguien tiene una marca vuelve solo,
+            apagadas las explicaciones o no: entonces ya no cuenta dónde
+            estás, cuenta que lo apuntado no se va a poder guardar. */}
+        {!guardado ? ((ayuda || hayDatos) && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] text-amber-200 leading-snug">
-            Este test todavía no está guardado, así que no hay dónde colgar las mediciones.
-            Vuelve al editor y dale a <b>Guardar test</b>.
+            {hayDatos
+              ? <>Hay algo apuntado y <b>este test no está guardado</b>, así que no hay dónde colgarlo.
+                Vuelve al editor y dale a <b>Guardar test</b> antes de perderlo.</>
+              : <>Este test todavía no está guardado, así que no hay dónde colgar las mediciones.
+                Vuelve al editor y dale a <b>Guardar test</b>.</>}
           </div>
-        ) : (
+        )) : (
           <div className="flex gap-2.5 flex-wrap items-end">
             <div style={{ maxWidth: 170 }}>
               <label className={lab} htmlFor="lab-fecha">Fecha</label>

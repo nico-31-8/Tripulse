@@ -243,6 +243,24 @@ export interface Medicion {
 export const medicionDe = (proto: Datos, mio: Datos): Datos => ({ ...proto, ...mio })
 
 /**
+ * Si esta persona tiene algo apuntado.
+ *
+ * Lo mira quien guarda —para no crear mediciones en blanco— y también el aviso
+ * de «este test no está guardado»: ese aviso se puede apagar mientras no haya
+ * nada que perder, pero en cuanto hay una marca vuelve solo, porque entonces
+ * ya no es una explicación sino un dato a punto de tirarse.
+ *
+ * LAS LISTAS SE MIRAN POR DENTRO, y las de dentro de otra también: una columna
+ * de parciales de un bloque guarda una lista POR REPETICIÓN, así que preguntar
+ * solo si el array tiene elementos diría que sí con seis filas vacías.
+ */
+export function tieneAlgoEscrito(d: Datos | null | undefined): boolean {
+  const algo = (v: unknown): boolean =>
+    Array.isArray(v) ? v.some(algo) : String(v ?? '').trim() !== ''
+  return Object.values(d || {}).some(algo)
+}
+
+/**
  * La gente guardada en el borrador del navegador, tirando lo que no sea gente.
  *
  * EL FALLO QUE ARREGLA: el borrador se leía con `o.atletas?.length ? o.atletas

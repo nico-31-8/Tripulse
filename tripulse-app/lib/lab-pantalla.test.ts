@@ -30,10 +30,11 @@ const TEST: TestLab = {
 
 describe('qué secciones tiene un test', () => {
   it('las que tiene de verdad, y guardar siempre', () => {
-    /* EL RELOJ ES UNA SECCIÓN MÁS, y va la primera de serie. Se metió aquí
-       para poder bajarlo: al pasar el test lo que se mira sin parar es la
-       tabla, que en el móvil queda debajo de todo. */
-    expect(seccionesDeTest(TEST)).toEqual(['reloj', 'cuenta', 'parciales', 'pulsadores', 'guardar'])
+    /* EL RELOJ ES UNA SECCIÓN MÁS, Y VA ABAJO, pegado a la tabla: son las dos
+       cosas que se usan a la vez, y en el móvil la tabla queda debajo de todo.
+       Estuvo arriba —que es donde uno lo pone sin pensarlo— y dejaba media
+       pantalla entre el botón de empezar y la casilla que hay que tocar. */
+    expect(seccionesDeTest(TEST)).toEqual(['cuenta', 'parciales', 'pulsadores', 'reloj', 'guardar'])
   })
 
   it('un test sin relojes solo tiene guardar', () => {
@@ -56,7 +57,7 @@ describe('qué secciones tiene un test', () => {
 
 describe('lo guardado se cuadra con lo que el test tiene HOY', () => {
   it('sin nada guardado, el orden es el de serie', () => {
-    expect(pantallaDe(TEST).todas).toEqual(['reloj', 'cuenta', 'parciales', 'pulsadores', 'guardar'])
+    expect(pantallaDe(TEST).todas).toEqual(['cuenta', 'parciales', 'pulsadores', 'reloj', 'guardar'])
   })
 
   it('manda el orden guardado', () => {
@@ -215,7 +216,7 @@ describe('CON UNA SOLA PERSONA, los botones por persona sobran', () => {
 
   it('con una persona se caen, y queda lo que no se repite', () => {
     const r = pantallaDe(conTodo, null, 1)
-    expect(r.visibles).toEqual(['reloj', 'cuenta', 'descanso', 'guardar'])
+    expect(r.visibles).toEqual(['cuenta', 'descanso', 'reloj', 'guardar'])
   })
 
   it('EL RELOJ NO SE CAE NUNCA, ni se puede esconder', () => {

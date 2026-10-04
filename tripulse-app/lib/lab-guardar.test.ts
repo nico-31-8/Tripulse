@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { leerModelo, paraGuardar, leerMediciones, medicionDe, leerAtletas } from './lab-guardar'
+import { leerModelo, paraGuardar, leerMediciones, medicionDe, leerAtletas, tieneAlgoEscrito } from './lab-guardar'
 import { calcular, pegasDe, protoVacio, medVacia, type TestLab } from './lab-constructor'
 import { PLANTILLAS, plantillaPorId } from './lab-plantillas'
 
@@ -250,5 +250,46 @@ describe('ESTE TEST LEE EL CÓDIGO: el borrador no se cree a nadie', () => {
 
   it('y no se rellena el hueco con un atleta de mentira', () => {
     expect(src).not.toMatch(/setAtletas\([^)]*\[\s*'Deportista'/)
+  })
+})
+
+// ============================================================
+// «Tiene algo apuntado»
+// ============================================================
+//
+// Lo miran DOS sitios y por eso vive aquí: quien guarda, para no crear
+// mediciones en blanco, y el aviso de «este test no está guardado», que se
+// puede apagar mientras no haya nada que perder y vuelve solo en cuanto hay
+// una marca.
+
+describe('si hay algo apuntado', () => {
+  it('sin nada, no', () => {
+    expect(tieneAlgoEscrito({})).toBe(false)
+    expect(tieneAlgoEscrito(null)).toBe(false)
+    expect(tieneAlgoEscrito({ a: '', b: '   ', c: null, d: undefined })).toBe(false)
+  })
+
+  it('con un número o un texto, sí', () => {
+    expect(tieneAlgoEscrito({ a: '12.5' })).toBe(true)
+    expect(tieneAlgoEscrito({ a: 0 })).toBe(true)
+  })
+
+  it('una lista vacía no cuenta, y con algo dentro sí', () => {
+    expect(tieneAlgoEscrito({ p: [] })).toBe(false)
+    expect(tieneAlgoEscrito({ p: ['', '', ''] })).toBe(false)
+    expect(tieneAlgoEscrito({ p: ['', '15', ''] })).toBe(true)
+  })
+
+  it('UNA LISTA DENTRO DE OTRA SE MIRA POR DENTRO', () => {
+    /* Una columna de parciales de un bloque guarda una lista POR REPETICIÓN.
+       Preguntando solo si el array tiene elementos, seis filas vacías dirían
+       que sí — y el aviso de «vas a perder lo apuntado» saldría sin que
+       hubiera nada apuntado, que es la manera de que deje de leerse. */
+    expect(tieneAlgoEscrito({ pasos: [[], [], []] })).toBe(false)
+    expect(tieneAlgoEscrito({ pasos: [[], ['15.2'], []] })).toBe(true)
+  })
+
+  it('el protocolo cuenta como algo, que también se guarda', () => {
+    expect(tieneAlgoEscrito({ peso: '72' })).toBe(true)
   })
 })

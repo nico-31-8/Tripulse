@@ -42,11 +42,6 @@ export interface Seccion {
 
 /** El catálogo, en el orden DE SERIE: el que damos nosotros. */
 export const SECCIONES: Seccion[] = [
-  /* EL RELOJ TAMBIÉN SE MUEVE. De serie va arriba, pero al pasar el test lo
-     que se mira sin parar es la tabla, y en el móvil queda debajo de todo:
-     bajando el reloj se pegan las dos cosas que se usan a la vez. Esconderlo
-     no se puede —sin él no se puede ni empezar—, igual que «Guardar». */
-  { clave: 'reloj', etiqueta: 'El reloj', icono: '⏱', prescindible: false },
   { clave: 'escalones', etiqueta: 'Escalones', icono: '📶', prescindible: true },
   { clave: 'cuenta', etiqueta: 'Cuenta atrás', icono: '⏱', prescindible: true },
   { clave: 'cronos', etiqueta: 'Cronómetro por repetición', icono: '⏱', prescindible: true },
@@ -54,6 +49,15 @@ export const SECCIONES: Seccion[] = [
   { clave: 'parciales', etiqueta: 'Parciales', icono: '🚩', prescindible: true },
   { clave: 'pulsadores', etiqueta: 'Pulsadores', icono: '👆', prescindible: true },
   { clave: 'descanso', etiqueta: 'Descanso', icono: '☕', prescindible: true },
+  /* EL RELOJ VA ABAJO, pegado a la tabla: son las dos cosas que se usan a la
+     vez, y en el móvil la tabla queda debajo de todo. Estuvo arriba, que es
+     donde uno lo pone sin pensarlo, y dejaba media pantalla de cosas entre el
+     botón de empezar y la casilla que hay que tocar.
+
+     Que se quede pegado al borde no lo arregla: lo que importa es lo que hay
+     que bajar la PRIMERA vez. Esconderlo no se puede —sin él no se puede ni
+     empezar—, igual que «Guardar». */
+  { clave: 'reloj', etiqueta: 'El reloj', icono: '⏱', prescindible: false },
   { clave: 'guardar', etiqueta: 'Guardar lo medido', icono: '💾', prescindible: false },
 ]
 
@@ -87,7 +91,6 @@ export const tieneReloj = (t: TestLab | null): boolean =>
  */
 export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
   const o: ClaveSeccion[] = []
-  if (tieneReloj(t)) o.push('reloj')
   if (escalonadosDe(t).length) o.push('escalones')
   if (cronometradosDe(t).length) o.push('cuenta')
   if (cronosDe(t).length) o.push('cronos')
@@ -95,6 +98,7 @@ export function seccionesDeTest(t: TestLab | null): ClaveSeccion[] {
   if (parcialesDe(t).length || parcialesBloqueDe(t).length) o.push('parciales')
   if (contadoresSueltosDe(t).length || contadoresDe(t).length) o.push('pulsadores')
   if (Number(t?.descanso) > 0) o.push('descanso')
+  if (tieneReloj(t)) o.push('reloj')
   o.push('guardar')
   return o
 }
