@@ -43,9 +43,13 @@ describe('de quién es cada uno', () => {
 })
 
 describe('la lista que me toca ver', () => {
-  it('el común y lo mío, por orden alfabético', () => {
+  it('el común y lo mío, EN EL ORDEN EN QUE VIENEN', () => {
+    /* No reordena a propósito: la biblioteca los pide por nombre y el buscador
+       de al prescribir por grupo muscular, porque los agrupa por cabeceras.
+       Reordenando aquí se le desharía el agrupado a una de las dos, y no se
+       notaría hasta abrirla. */
     const r = miBiblioteca([comun(1, 'Zancada'), mio(2, 'Arrancada'), comun(3, 'Press')], YO, [])
-    expect(r.map(e => e.nombre)).toEqual(['Arrancada', 'Press', 'Zancada'])
+    expect(r.map(e => e.nombre)).toEqual(['Zancada', 'Arrancada', 'Press'])
   })
 
   it('LA COPIA SUSTITUYE AL ORIGINAL, no se suma', () => {
@@ -81,8 +85,7 @@ describe('esconder', () => {
        no la ha escondido, el ejercicio sale. */
     const filas = [comun(1, 'Sentadilla'), comun(2, 'Press')]
     expect(miBiblioteca(filas, YO, [1]).map(e => e.id)).toEqual([2])
-    /* Por nombre: «Press» va antes que «Sentadilla». */
-    expect(miBiblioteca(filas, OTRO, []).map(e => e.nombre)).toEqual(['Press', 'Sentadilla'])
+    expect(miBiblioteca(filas, OTRO, []).map(e => e.id)).toEqual([1, 2])
   })
 
   it('también se puede esconder uno mío', () => {
@@ -168,5 +171,55 @@ describe('lo que no revienta', () => {
   it('sin sesión se ve el común, que es lo que no es de nadie', () => {
     const r = miBiblioteca([comun(1, 'Press'), mio(9, 'La mía')], null, [])
     expect(r.map(e => e.id)).toEqual([1])
+  })
+})
+
+// ============================================================
+// ESTE TEST LEE EL CÓDIGO
+// ============================================================
+//
+// La lista de ejercicios la ofrecen TRES pantallas del entrenador: la
+// biblioteca de /fuerza, la ficha de la sesión y la tabla de tareas. Si una se
+// carga la tabla por su cuenta, se salta las dos reglas de arriba: esconderías
+// un ejercicio y te lo encontrarías justo al prescribir, o verías la
+// «Sentadilla» del común al lado de la tuya.
+//
+// /fuerza SÍ la carga a pelo, y es correcto: es la pantalla donde se gestionan,
+// así que necesita ver también los escondidos para poder recuperarlos.
+//
+// Y EL /apuntar DEL DEPORTISTA NO ENTRA AQUÍ. Esta regla es del entrenador —mis
+// versiones, lo que yo escondí— y al atleta no le toca: él tiene que ver los
+// del común, los suyos y los de SU entrenador. Por eso pide columnas concretas
+// y no pasa por `miBiblioteca`, que descartaría los de su entrenador por no
+// ser suyos.
+
+import { readFileSync } from 'node:fs'
+
+describe('las pantallas de prescribir usan la misma lista', () => {
+  const PANTALLAS = [
+    'app/sesion/[id]/page.tsx',
+    'app/sesion/[id]/tareas-tabla.tsx',
+  ]
+
+  /* Se mira el IMPORT y no el nombre suelto: `/apuntar` tiene una función
+     propia llamada `recargarBiblioteca`, y buscando la palabra a secas daba
+     por bueno lo que no era. */
+  const IMPORT = "import { cargarBiblioteca } from '@/lib/biblioteca-propia'"
+  const importa = (src: string) => src.includes(IMPORT)
+
+  for (const f of PANTALLAS) {
+    it(f + ' pasa por cargarBiblioteca', () => {
+      const src = readFileSync(f, 'utf8')
+      expect(importa(src), f + ' ya no importa cargarBiblioteca').toBe(true)
+      expect(src, f + ' se carga la biblioteca por su cuenta')
+        .not.toMatch(/from\('ejercicios_biblioteca'\)\s*\.\s*select\('\*'\)/)
+    })
+  }
+
+  it('y el del deportista NO, que es otra regla', () => {
+    /* Si algún día alguien «unifica» esto, el atleta dejaría de ver los
+       ejercicios que le manda su entrenador: no son suyos. */
+    const src = readFileSync('app/apuntar/page.tsx', 'utf8')
+    expect(importa(src)).toBe(false)
   })
 })

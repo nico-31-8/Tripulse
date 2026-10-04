@@ -4,6 +4,8 @@ import { useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { COMPLEJOS, FUNCIONAL, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
+import { usuarioActual } from '@/lib/sesion'
+import { comoCopia, esComun, esMio, hayQueCopiar, miBiblioteca } from '@/lib/biblioteca-propia'
 
 /* Complejos: arrancada, cargada, del suelo a overhead… Es una etiqueta más,
    pero además decide el grupo con el que sale al prescribir (lib/grupo-ejercicio). */
@@ -63,6 +65,11 @@ export default function FuerzaPage() {
   const [testDetalle, setTestDetalle] = useState<any>(null)
   const [claveIntroducida, setClaveIntroducida] = useState('')
   const [claveCorrecta, setClaveCorrecta] = useState(false)
+  /* Quién soy, para saber cuáles son míos. Sin esto la pantalla no puede
+     distinguir «mi versión» del catálogo común. */
+  const [uid, setUid] = useState<string | null>(null)
+  const [ocultos, setOcultos] = useState<number[]>([])
+  const [verEscondidos, setVerEscondidos] = useState(false)
   const [claveError, setClaveError] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
@@ -96,12 +103,19 @@ export default function FuerzaPage() {
   const [guardandoTest, setGuardandoTest] = useState(false)
 
   const cargar = async () => {
-    const [ej, tv] = await Promise.all([
+    const user = await usuarioActual()
+    const mio = user?.id || null
+    setUid(mio)
+    const [ej, tv, oc] = await Promise.all([
       supabase.from('ejercicios_biblioteca').select('*').order('nombre'),
       supabase.from('tests_valoracion').select('*').order('nombre'),
+      /* Los escondidos son MÍOS: la regla de la base ya solo devuelve los de
+         quien pregunta, así que aquí no hace falta filtrar por uid. */
+      mio ? supabase.from('ejercicio_oculto').select('id_ejercicio') : Promise.resolve({ data: [] }),
     ])
     setEjercicios(ej.data || [])
     setTests(tv.data || [])
+    setOcultos(((oc as { data: { id_ejercicio: number }[] | null }).data || []).map(o => o.id_ejercicio))
     setLoading(false)
   }
 
@@ -122,10 +136,14 @@ export default function FuerzaPage() {
     e.preventDefault()
     setGuardando(true)
     const grupo = grupoAlCrear(aTipo, aRegion)
+    /* NACE SUYO. Antes iba sin dueño y caía en el catálogo común, que lo ven
+       los doce entrenadores: uno se creaba «Sentadilla a una pierna con TRX de
+       mi gimnasio» y se la encontraban todos. */
     await supabase.from('ejercicios_biblioteca').insert({
       nombre, grupo_muscular: grupo, url_video: urlVideo || null,
       descripcion: descripcion || null, ejecucion: ejecucion || null,
       tipo: aTipo, region: aRegion, disciplina: aDisc, momento: aMomento, lesion: aLesion,
+      id_entrenador: uid,
     })
     setNombre(''); setUrlVideo(''); setDescripcion(''); setEjecucion('')
     setATipo(['Fuerza']); setARegion([]); setADisc([]); setAMomento([]); setALesion([])
@@ -137,6 +155,7 @@ export default function FuerzaPage() {
 
   const abrirEdicion = (ej: any) => {
     setEjercicioEditando(ej)
+
     setEditNombre(ej.nombre || ''); setEditVideo(ej.url_video || '')
     setEditDescripcion(ej.descripcion || ''); setEditEjecucion(ej.ejecucion || '')
     setETipo(ej.tipo || []); setERegion(ej.region || []); setEDisc(ej.disciplina || [])
@@ -148,21 +167,55 @@ export default function FuerzaPage() {
     setGuardandoEdit(true)
     /* El grupo solo se toca si entra o sale de Complejos: si no, se respeta. */
     const grupo = grupoAlEditar(ejercicioEditando.grupo_muscular, eTipo, eRegion)
-    await supabase.from('ejercicios_biblioteca').update({
+    const cambios = {
       nombre: editNombre, url_video: editVideo || null,
       descripcion: editDescripcion || null, ejecucion: editEjecucion || null,
       tipo: eTipo, region: eRegion, disciplina: eDisc, momento: eMomento, lesion: eLesion,
       ...(grupo ? { grupo_muscular: grupo } : {}),
-    }).eq('id', ejercicioEditando.id)
-    setEjercicioEditando(null)
+    }
+
+    /* TOCAR UNO DEL COMÚN HACE UNA COPIA, no lo cambia. El catálogo lo
+       comparten doce entrenadores: renombrarlo se lo renombra a todos. La copia
+       nace idéntica y en su lista sustituye al original, así que no se queda
+       con dos sentadillas en el desplegable. */
+    const { error } = hayQueCopiar(ejercicioEditando, uid) && uid
+      ? await supabase.from('ejercicios_biblioteca')
+          .insert({ ...comoCopia(ejercicioEditando, uid), ...cambios })
+      : await supabase.from('ejercicios_biblioteca')
+          .update(cambios).eq('id', ejercicioEditando.id)
+
     setGuardandoEdit(false)
+    if (error) { alert('No se ha podido guardar: ' + error.message); return }
+    setEjercicioEditando(null)
     cargar()
   }
 
+  /* Borrar es solo para los tuyos. Del común no se borra nada: se esconde. */
   const eliminarEjercicio = async (id: number) => {
-    if (!confirm('¿Seguro que quieres eliminar este ejercicio?')) return
-    await supabase.from('ejercicios_biblioteca').delete().eq('id', id)
+    if (!confirm('¿Seguro que quieres eliminar este ejercicio? Es tuyo, así que desaparece para siempre.')) return
+    const { error } = await supabase.from('ejercicios_biblioteca').delete().eq('id', id)
+    if (error) { alert('No se ha podido borrar: ' + error.message); return }
     cargar()
+  }
+
+  /**
+   * ESCONDER NO ES BORRAR. La fila del catálogo no se toca: sigue ahí para los
+   * demás entrenadores, solo deja de salir en la lista de quien la escondió —
+   * aquí y en el buscador de al prescribir, que leen la misma regla.
+   */
+  const esconder = async (id: number) => {
+    if (!uid) return
+    setOcultos(o => [...o, id])
+    const { error } = await supabase.from('ejercicio_oculto')
+      .insert({ id_entrenador: uid, id_ejercicio: id })
+    if (error) { setOcultos(o => o.filter(x => x !== id)); alert('No se ha podido esconder: ' + error.message) }
+  }
+
+  const volverAEnsenar = async (id: number) => {
+    if (!uid) return
+    setOcultos(o => o.filter(x => x !== id))
+    const { error } = await supabase.from('ejercicio_oculto').delete().eq('id_ejercicio', id)
+    if (error) { setOcultos(o => [...o, id]); alert('No se ha podido recuperar: ' + error.message) }
   }
 
   const abrirAñadirTest = () => {
@@ -214,7 +267,12 @@ export default function FuerzaPage() {
     return (['tipo', 'region', 'disciplina', 'momento', 'lesion'] as (keyof Filtros)[])
       .every(d => filtros[d].length === 0 || arr(ej[d]).some(v => filtros[d].includes(v)))
   }
-  const ejerciciosFiltrados = ejercicios.filter(matchesFiltros)
+  /* LA MISMA REGLA QUE EL BUSCADOR DE AL PRESCRIBIR (lib/biblioteca-propia):
+     tu versión sustituye a la del común y lo escondido no sale. Calculándolo
+     aquí por su cuenta, el día que una aprenda algo y la otra no, esconderías
+     un ejercicio y te seguiría saliendo justo donde ibas a usarlo. */
+  const mios = miBiblioteca(ejercicios, uid, verEscondidos ? [] : ocultos)
+  const ejerciciosFiltrados = mios.filter(matchesFiltros)
 
   const testsFiltrados = tests.filter(t => {
     if (busqueda) {
@@ -331,7 +389,17 @@ export default function FuerzaPage() {
             )}
 
             <div className="flex items-center justify-between mb-3">
-              <p className="text-gray-500 text-xs">{ejerciciosFiltrados.length} resultados</p>
+              <p className="text-gray-500 text-xs">
+                {ejerciciosFiltrados.length} resultados
+                {ocultos.length > 0 && (
+                  <button onClick={() => setVerEscondidos(v => !v)}
+                    className="ml-2 text-gray-500 hover:text-gray-300 underline underline-offset-2 transition">
+                    {verEscondidos
+                      ? 'ocultar los escondidos'
+                      : 'ver los ' + ocultos.length + ' escondidos'}
+                  </button>
+                )}
+              </p>
               {(nFiltrosActivos > 0 || busqueda) && (
                 <button onClick={limpiarFiltros} className="text-xs text-orange-400 hover:text-orange-300 transition">Limpiar filtros</button>
               )}
@@ -348,13 +416,45 @@ export default function FuerzaPage() {
                   <div key={ej.id} onClick={() => setEjercicioDetalle(ej)}
                     className="bg-gray-900 rounded-xl border border-gray-800 p-4 hover:border-gray-700 transition cursor-pointer flex flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-sm">{ej.nombre}</p>
-                      {claveCorrecta && (
-                        <div className="flex gap-1 shrink-0">
-                          <button onClick={e => { e.stopPropagation(); abrirEdicion(ej) }} className="text-gray-500 hover:text-orange-400 text-xs px-1 transition">✏️</button>
-                          <button onClick={e => { e.stopPropagation(); eliminarEjercicio(ej.id) }} className="text-gray-500 hover:text-red-400 text-xs px-1 transition">🗑</button>
-                        </div>
-                      )}
+                      <p className="font-medium text-sm">
+                        {ej.nombre}
+                        {/* DE QUIÉN ES, de un vistazo. Sin esto, «Sentadilla» y
+                            tu «Sentadilla» se ven igual y no sabes cuál estás
+                            a punto de cambiar. */}
+                        {esMio(ej, uid) && (
+                          <span className="ml-2 text-[9.5px] uppercase tracking-wider text-orange-300 border border-orange-500/40 bg-orange-500/10 rounded-full px-1.5 py-0.5 align-middle">
+                            {ej.origen_id ? 'mi versión' : 'mío'}
+                          </span>
+                        )}
+                        {ocultos.includes(ej.id) && (
+                          <span className="ml-2 text-[9.5px] uppercase tracking-wider text-gray-500 border border-gray-700 rounded-full px-1.5 py-0.5 align-middle">
+                            escondido
+                          </span>
+                        )}
+                      </p>
+                      {/* LO QUE DE VERDAD SE PUEDE HACER CON ESTE. El catálogo
+                          lo comparten doce entrenadores, así que del común no
+                          se borra: se esconde, o se hace tu versión. */}
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={e => { e.stopPropagation(); abrirEdicion(ej) }}
+                          title={hayQueCopiar(ej, uid) ? 'Hacer mi versión' : 'Editar'}
+                          className="text-gray-500 hover:text-orange-400 text-xs px-1 transition">✏️</button>
+                        {esMio(ej, uid) ? (
+                          <button onClick={e => { e.stopPropagation(); eliminarEjercicio(ej.id) }}
+                            title="Borrar (es tuyo)"
+                            className="text-gray-500 hover:text-red-400 text-xs px-1 transition">🗑</button>
+                        ) : esComun(ej) && uid ? (
+                          ocultos.includes(ej.id) ? (
+                            <button onClick={e => { e.stopPropagation(); volverAEnsenar(ej.id) }}
+                              title="Volver a enseñarlo"
+                              className="text-gray-500 hover:text-green-400 text-xs px-1 transition">🙈</button>
+                          ) : (
+                            <button onClick={e => { e.stopPropagation(); esconder(ej.id) }}
+                              title="Esconderlo de mis listas (no lo borra para nadie)"
+                              className="text-gray-500 hover:text-gray-200 text-xs px-1 transition">👁</button>
+                          )
+                        ) : null}
+                      </div>
                     </div>
                     {ej.descripcion && <p className="text-gray-500 text-xs line-clamp-2">{ej.descripcion}</p>}
                     {badgesEjercicio(ej)}
@@ -554,16 +654,15 @@ export default function FuerzaPage() {
               <h3 className="text-xl font-bold">Añadir ejercicio</h3>
               <button onClick={() => setModalAñadir(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
-            {!claveCorrecta ? (
-              <div>
-                <p className="text-gray-400 text-sm mb-4">Introduce la clave de administrador para añadir ejercicios.</p>
-                <input type="password" placeholder="Clave de administrador" value={claveIntroducida}
-                  onChange={e => setClaveIntroducida(e.target.value)} onKeyDown={e => e.key === 'Enter' && verificarClave()}
-                  className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-3" />
-                {claveError && <p className="text-red-400 text-sm mb-3">Clave incorrecta</p>}
-                <button onClick={verificarClave} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition w-full">Verificar</button>
-              </div>
-            ) : (
+            {/* SIN CLAVE DE ADMINISTRADOR. La llevaba porque esto escribía en
+                el catálogo que comparten los doce entrenadores; ahora lo que
+                creas es TUYO y no lo ve nadie más, así que no hay nada que
+                proteger con una contraseña. */}
+            <p className="text-gray-500 text-xs leading-snug mb-4 border-l-2 border-orange-500/40 pl-2.5">
+              Este ejercicio será <b className="text-gray-300">solo tuyo</b>: lo verás tú al prescribir y tus
+              deportistas al hacerlo. No se añade al catálogo común.
+            </p>
+            {(
               <form onSubmit={guardarEjercicio} className="flex flex-col gap-3">
                 <input type="text" placeholder="Nombre del ejercicio" value={nombre} onChange={e => setNombre(e.target.value)}
                   className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
@@ -609,9 +708,21 @@ export default function FuerzaPage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-lg font-bold">Editar ejercicio</h3>
+              <h3 className="text-lg font-bold">
+                {hayQueCopiar(ejercicioEditando, uid) ? 'Hacer mi versión' : 'Editar ejercicio'}
+              </h3>
               <button onClick={() => setEjercicioEditando(null)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
+            {/* SE DICE ANTES DE GUARDAR, no después. Quien abre esto cree que
+                está cambiando «Sentadilla»; si se entera al cerrar de que tiene
+                una copia, lo siguiente que hace es buscar cómo deshacerlo. */}
+            {hayQueCopiar(ejercicioEditando, uid) && (
+              <p className="text-gray-500 text-xs leading-snug mb-4 border-l-2 border-orange-500/40 pl-2.5">
+                Este es del <b className="text-gray-300">catálogo común</b>, que comparten todos los entrenadores, así
+                que no se toca. Al guardar se crea <b className="text-gray-300">tu versión</b> y a partir de ahí verás
+                la tuya en su lugar.
+              </p>
+            )}
             <form onSubmit={guardarEdicion} className="flex flex-col gap-3">
               <div>
                 <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Nombre</label>

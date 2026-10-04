@@ -31,6 +31,7 @@ function iniciales(nombre: string | null | undefined): string {
 }
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
+import { cargarBiblioteca } from '@/lib/biblioteca-propia'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
@@ -256,9 +257,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     }
   }, [zona, disciplina, testsData])
   useEffect(() => {
-    supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre').then(({ data }) => {
-      setEjerciciosBiblioteca(data || [])
-    })
+    /* Por `cargarBiblioteca` y no a pelo: es la que quita los que el
+       entrenador escondió y pone su versión en lugar de la del común. */
+    cargarBiblioteca('grupo').then(l => setEjerciciosBiblioteca(l as never[]))
   }, [])
 
   /*

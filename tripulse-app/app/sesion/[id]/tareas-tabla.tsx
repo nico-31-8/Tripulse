@@ -2,6 +2,7 @@
 import React from 'react'
 import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, columnasEjercicio, columnasEncadenado, columnasPrescripcion } from '@/lib/repeticiones'
 import { prescripcionDesdeUltimaVez } from '@/lib/traer-ultima-vez'
+import { cargarBiblioteca } from '@/lib/biblioteca-propia'
 import type { SerieHecha } from '@/lib/modo-mejora'
 import { hoyISO } from '@/lib/fechas'
 import { useState, useEffect } from 'react'
@@ -207,7 +208,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const cargarDatos = async () => {
     const [refs, ejBib, tf, tar] = await Promise.all([
       cargarReferencias(supabase, deportistaId),
-      supabase.from('ejercicios_biblioteca').select('*').order('grupo_muscular').order('nombre'),
+      cargarBiblioteca('grupo'),
       // 1RM por ejercicio, para poder enseñar el kilo cuando se prescribe en %.
       supabase.from('test_fuerza')
         .select('ejercicio, rm_estimado, fecha').eq('id_deportista', deportistaId)
@@ -220,7 +221,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setFcReposo(refs.fcReposo)
     setSistema(refs.sistema)
     setTests({ ...refs.tests, fuerza: [] })
-    setEjerciciosBiblioteca(ejBib.data || [])
+    setEjerciciosBiblioteca(ejBib as never[])
 
     // Se queda solo con el 1RM más reciente de cada ejercicio: la lista viene
     // ordenada por fecha descendente, así que el primero que aparece es el bueno.

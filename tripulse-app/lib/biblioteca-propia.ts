@@ -44,11 +44,11 @@ export const esMio = (e: EjercicioBib, uid: string | null | undefined): boolean 
  * LO ESCONDIDO SE VA SIEMPRE, sea del común o suyo. Esconder no borra nada: la
  * fila sigue ahí para todos los demás, solo deja de salirle a quien la escondió.
  */
-export function miBiblioteca(
-  filas: EjercicioBib[] | null | undefined,
+export function miBiblioteca<T extends EjercicioBib>(
+  filas: T[] | null | undefined,
   uid: string | null | undefined,
   ocultos: Iterable<number> | null | undefined,
-): EjercicioBib[] {
+): T[] {
   const todas = Array.isArray(filas) ? filas : []
   const tapados = new Set(ocultos || [])
 
@@ -60,15 +60,18 @@ export function miBiblioteca(
     if (esMio(e, uid) && e.origen_id != null) sustituidos.add(e.origen_id)
   }
 
-  const fuera = todas.filter(e => {
+  /* SE RESPETA EL ORDEN EN QUE VIENEN, no se reordena. Cada pantalla le pide a
+     la base el suyo —la biblioteca por nombre, el buscador de al prescribir por
+     grupo muscular y luego nombre, porque los agrupa por cabeceras— y
+     reordenar aquí le desharía el agrupado a una de las dos sin que se note
+     hasta abrirla. Esta función decide QUÉ se ve, no en qué orden. */
+  return todas.filter(e => {
     if (tapados.has(e.id)) return false
     if (esMio(e, uid)) return true
     if (e.id_deportista != null) return true
     if (!esComun(e)) return false            // de otro entrenador: no es mío
     return !sustituidos.has(e.id)            // común, salvo que tenga el mío
   })
-
-  return fuera.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'))
 }
 
 /**
@@ -98,3 +101,39 @@ export function comoCopia(e: EjercicioBib, uid: string): Record<string, unknown>
 /** Si al tocar este ejercicio hay que hacer una copia en vez de editarlo. */
 export const hayQueCopiar = (e: EjercicioBib, uid: string | null | undefined): boolean =>
   !esMio(e, uid) && e.id_deportista == null
+
+/**
+ * La biblioteca ya filtrada, de un viaje, para quien solo quiere la lista.
+ *
+ * LA USAN LAS TRES PANTALLAS QUE OFRECEN EJERCICIOS: la biblioteca de /fuerza,
+ * la ficha de la sesión y la tabla de tareas. Cada una se cargaba la suya y
+ * aplicaba —o no— sus reglas; con eso, esconder un ejercicio lo quitaba de la
+ * biblioteca y te lo seguías encontrando justo al prescribir, que es donde
+ * molesta.
+ *
+ * El ORDEN lo pide cada una: `nombre` para la lista, `grupo` para los
+ * buscadores que agrupan por cabeceras.
+ */
+export async function cargarBiblioteca(
+  orden: 'nombre' | 'grupo' = 'nombre',
+  sb?: unknown,
+): Promise<EjercicioBib[]> {
+  const cliente = (sb as { from: (t: string) => any }) || (await import('./supabase')).supabase
+  const consulta = cliente.from('ejercicios_biblioteca').select('*')
+  const pedida = orden === 'grupo'
+    ? consulta.order('grupo_muscular').order('nombre')
+    : consulta.order('nombre')
+
+  const [ej, oc, user] = await Promise.all([
+    pedida,
+    /* La regla de la base ya solo devuelve los escondidos de quien pregunta. */
+    cliente.from('ejercicio_oculto').select('id_ejercicio'),
+    (await import('./sesion')).usuarioActual(),
+  ])
+
+  return miBiblioteca(
+    (ej?.data || []) as EjercicioBib[],
+    user?.id || null,
+    ((oc?.data || []) as { id_ejercicio: number }[]).map(o => o.id_ejercicio),
+  )
+}
