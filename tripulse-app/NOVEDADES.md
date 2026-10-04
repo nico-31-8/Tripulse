@@ -14,6 +14,51 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 4 de octubre de 2026 · Sin tests, una sesión por distancia ya cuenta
+
+**Esto mueve números que ya estabas viendo. Lee esta entrada.**
+
+Hasta hoy, si un deportista **no tenía tests hechos** y le prescribías carrera o
+natación **por distancia**, esa tarea no se podía pasar a minutos: sin su ritmo
+no hay forma de saber cuánto tarda en hacer 5 km. El resultado era que la sesión
+valía **cero**.
+
+Pero no en todas partes: el dibujo de la planificación sí la estimaba, con un
+ritmo medio de población. Así que la misma semana salía **con barra en el dibujo
+y sin duración en la ficha de la sesión**, en el calendario y en lo que ve el
+deportista. El mismo dato contado de dos maneras.
+
+**Ahora se estima en todas.** Un cero decía que esa sesión no cuesta nada, y eso
+era mentira; una estimación es una suposición, pero va marcada.
+
+### Qué va a cambiar en tu pantalla
+
+- Sesiones que salían con **«—»** en la duración ahora saldrán con un número
+  con tilde: **~45 min**. La tilde significa «esto lo hemos estimado nosotros».
+- Las barras del dibujo **no cambian**: ahí ya estaba encendido.
+- Cambian también el reparto de km por deporte, la recomendación de nutrición y
+  la duración que ve el deportista al abrir la sesión.
+
+### Y lo que la app te va a decir
+
+En la ficha de una sesión estimada con ritmo prestado verás:
+
+> ⚠️ Este tiempo va con un **ritmo medio prestado**, no el suyo: el deportista no
+> tiene tests. Sirve para planificar; para fiarte del número, hazle un test.
+
+**Si el deportista sí tiene tests, no se marca nada**, porque entonces el ritmo
+es el suyo y el número es tan bueno como uno cronometrado.
+
+### El ciclismo sigue igual, y es a propósito
+
+La bici **por tiempo** cuenta siempre, con tests o sin ellos. La bici **por
+distancia** no se estima nunca, ni aunque tenga FTP: en bici la velocidad
+depende del desnivel, del viento y de si va en grupo mucho más que del FTP.
+Suponer una media ahí no sería aproximar, sería inventar. Las de bici, ponlas
+por tiempo.
+
+---
+
 ## 4 de octubre de 2026 · El laboratorio: se apunta tocando la casilla
 
 Lo más gordo del laboratorio desde que existe. **La casilla de la tabla es ahora
