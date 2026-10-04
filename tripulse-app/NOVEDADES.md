@@ -14,6 +14,75 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 4 de octubre de 2026 · El laboratorio: se apunta tocando la casilla
+
+Lo más gordo del laboratorio desde que existe. **La casilla de la tabla es ahora
+el botón**: se acabó tener un botón al lado de cada cosa.
+
+- Una casilla de **cronómetro** se toca una vez y guarda ese tiempo. Si ya tiene
+  uno, tocarla la abre para corregirlo — volver a tocarla **no** pisa la marca
+  buena.
+- Una de **pulsador** suma uno cada vez que la tocas.
+- Una de **parciales** va acumulando: la tocas y pone 0:03.0, la vuelves a tocar
+  y pone 0:03.0 · 0:06.8, y así las que hagan falta.
+
+La tabla ya dice de qué repetición y de qué columna es cada casilla, así que no
+hay nada que explicar. Los botones de antes siguen ahí **solo cuando lo pasas a
+dos personas o más**, que es cuando hacen falta: la tabla enseña a uno.
+
+### Parciales dentro de un bloque
+
+Antes los parciales solo cabían en una casilla suelta. Ahora van también dentro
+de un bloque, **uno por repetición**: tres series de 400 y, dentro de cada 400,
+los pasos de cada 100.
+
+Y una columna **calculada** del mismo bloque puede cerrarlos: sumando los pasos
+sacas lo que tardó cada 400, que es un número por serie que antes no había
+manera de tener.
+
+### El pulsador se corta con los parciales
+
+**Si el bloque lleva parciales, el pulsador se parte igual que ellos.** Cuentas
+los ciclos de brazo y se guardan por 25, no los del 100 entero: 6 · 7 · 7 · 8 en
+vez de 28. El total no se pierde —sale de sumarlos—, pero del 28 no se sacan
+nunca los cuatro números, que es donde se ve que la brazada se alarga al final.
+
+**Si en un tramo no pulsaste, esa casilla queda vacía, no a cero**, y el
+resultado te dice en qué repetición falta el número en vez de darte una media
+rebajada sin avisar.
+
+### Un cronómetro vuelve a llamarse cronómetro
+
+Dentro de un bloque, las opciones de reloj se llamaban «Parciales», y era un
+error: ese nombre es de otra cosa. La diferencia es **cuántas marcas caben en
+una casilla** — el cronómetro deja una, los parciales las que hagan falta.
+
+### La pantalla, más corta
+
+- **El reloj ahora va abajo**, pegado a la tabla, que son las dos cosas que usas
+  a la vez. Y **se queda pegado al borde**: bajes lo que bajes, lo ves.
+- Lo puedes mover con el ⚙ como cualquier otra sección.
+- Botón **ℹ Quitar explicaciones**: apaga toda la letra pequeña de golpe, que es
+  lo que empuja la tabla fuera de la pantalla en el móvil. Se recuerda, así que
+  se apaga una vez.
+- **Verlo como · Ordenador / Móvil** también al pasar el test, no solo al
+  montarlo.
+
+Los avisos **no** se apagan. «Este test no está guardado» se calla mientras la
+tabla esté en blanco, pero vuelve solo en cuanto hay algo apuntado: entonces ya
+no te cuenta dónde estás, te dice que lo marcado no se va a poder guardar.
+
+### Cosas que estaban rotas
+
+- Al volver al laboratorio, el borrador metía un deportista de mentira que no
+  existía: lo que marcaras en él se guardaba en un sitio que no lee nadie.
+- La pantalla de pasar un test **no llegaba a pintarse** en los tests que llevan
+  cuenta atrás.
+- Había **dos relojes** donde solo hay uno: el de abajo era el mismo número
+  pintado otra vez, con otra etiqueta encima.
+
+---
+
 ## 1 de octubre de 2026 · La pantalla de pasar el test, a tu gusto
 
 Al pasar un test tienes un botón nuevo: **⚙ Ordenar la pantalla**.
