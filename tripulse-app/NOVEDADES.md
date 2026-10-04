@@ -14,6 +14,53 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 4 de octubre de 2026 · Tus propios ejercicios
+
+Ya puedes crear ejercicios **que son solo tuyos**: los ves tú al prescribir y
+tus deportistas al hacerlos, y no aparecen en la biblioteca de ningún otro
+entrenador.
+
+**Y ya no hace falta la clave de administrador para añadir uno.** La llevaba
+porque hasta hoy escribía en el catálogo que compartimos todos; ahora lo que
+creas es tuyo, así que no hay nada que proteger. Para los tests de valoración
+la clave se queda, que esos sí son comunes.
+
+### El catálogo común ya no se puede estropear
+
+Los 255 ejercicios que trae la app los comparten todas las cuentas de
+entrenador. Hasta hoy **cualquiera podía renombrarlos o borrarlos para todos
+los demás**. No se había notado porque la pantalla escondía los botones detrás
+de una clave, pero el permiso estaba abierto de par en par.
+
+Ahora el catálogo común es de solo lectura. **Si editas uno, se crea tu
+versión** y el original se queda como estaba:
+
+- Tocas «Sentadilla» del catálogo, le cambias el nombre y guardas.
+- A partir de ahí, en tu lista sale **la tuya** en lugar de la común — no las
+  dos, para que no acabes eligiendo la que no es.
+- A los demás entrenadores no les cambia nada.
+
+Lo verás marcado en la tarjeta: **mío** si lo creaste de cero, **mi versión**
+si salió de uno del catálogo.
+
+### Esconder los que no uses
+
+Con 255 ejercicios, la lista es larga. El **ojo** de cada tarjeta esconde el que
+no uses nunca: deja de salirte aquí **y en el buscador de al prescribir**, que
+es donde de verdad estorba.
+
+**Esconder no es borrar.** La ficha sigue existiendo para todos los demás; solo
+deja de aparecerte a ti. Para recuperarlos, arriba a la derecha del contador
+tienes «ver los N escondidos».
+
+### Lo que no cambia
+
+Las sesiones que ya tienes prescritas **no se tocan**: guardan el nombre del
+ejercicio por su cuenta, así que nada de esto mueve un histórico. Y lo que se
+cree un deportista en su pantalla sigue funcionando igual que antes.
+
+---
+
 ## 4 de octubre de 2026 · Sin tests, una sesión por distancia ya cuenta
 
 **Esto mueve números que ya estabas viendo. Lee esta entrada.**
