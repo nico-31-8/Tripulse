@@ -196,3 +196,30 @@ describe('la pantalla lo cuenta', () => {
     expect(relojesDe(SERIES)).toEqual(['parciales en «Cada 100»'])
   })
 })
+
+describe('UN HUECO DENTRO DE UNA FILA NO ES UN CERO', () => {
+  /* Lo cazó el test del pulsador cortado, pero el fallo era de aquí también:
+     una fila a medias —['15', '', '15.5']— NO está vacía, así que pasaba el
+     control de huecos; y al aplanarla para la fórmula, `Number('')` es CERO y
+     entraba en la media como una marca de verdad. Un paso que nadie tomó
+     bajaba la media sin que nada lo dijera.
+
+     Es la tercera vez en el laboratorio que `Number('')` se cuela como cero.
+     Los dos sitios de antes están en `acumuladosDe` y en `parcialAhora`. */
+  it('se dice que falta, y en qué repetición', () => {
+    const r = pasar(SERIES, { pasos: [['15', '15.5', '16', '15.5'], ['15.2', '', '16.4', '16'], ['14.8', '15', '15.2', '14.6']] })
+    expect(r.paso_medio).toBe('falta un número en «pasos», repetición 2')
+  })
+
+  it('con varios se dicen todas', () => {
+    const r = pasar(SERIES, { pasos: [['15', ''], ['15.2', '16.4'], ['', '15.2']] })
+    expect(r.paso_medio).toBe('faltan 2 números en «pasos» (repeticiones 1, 3)')
+  })
+
+  it('y una fila entera vacía sigue contándose como repetición que falta', () => {
+    /* Son dos cosas distintas: no marcar NADA en una serie, y marcar a medias
+       dentro de ella. La primera manda, porque es la que se arregla antes. */
+    const r = pasar(SERIES, { pasos: [['15'], [], ['14.8', '']] })
+    expect(r.paso_medio).toBe('faltan 1 de 3 en «pasos»')
+  })
+})

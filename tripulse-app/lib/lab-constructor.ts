@@ -1109,6 +1109,16 @@ export function variablesDe(test: TestLab, datos: Datos, errores: Record<string,
     for (const c of bl.columnas) {
       const lista = series[c.clave]
       const faltan = lista.filter(vacio).length
+      /* LOS HUECOS DE DENTRO SE CUENTAN APARTE, y son los peligrosos.
+         En una columna que guarda varias marcas por casilla, una fila a medias
+         —['6', '', '7']— no está vacía, así que pasaba el control de huecos; y
+         al aplanarla para la fórmula, `Number('')` es CERO y entraba en la
+         media como un cero de verdad. Un 25 que nadie contó bajaba los ciclos
+         medios sin que nada lo dijera. */
+      const anidada = c.instrumento === 'parciales' || seCorta(bl, c)
+      const dentro = anidada
+        ? lista.reduce<number[]>((o, f, k) => Array.isArray(f) && f.some(vacio) ? [...o, k + 1] : o, [])
+        : []
       if (hechas === 0) {
         errores[c.clave] = '«' + c.clave + '» todavía no tiene nada' +
           (bl.modo === 'abierto' ? ': marca hasta dónde llegó' : '')
@@ -1121,6 +1131,11 @@ export function variablesDe(test: TestLab, datos: Datos, errores: Record<string,
         errores[c.clave] = bl.modo === 'cerrado'
           ? 'faltan ' + faltan + ' de ' + bl.veces + ' en «' + c.clave + '»'
           : 'hay ' + faltan + ' hueco' + (faltan === 1 ? '' : 's') + ' dentro de «' + c.clave + '»'
+      } else if (dentro.length && !errores[c.clave]) {
+        /* Se dice EN QUÉ REPETICIÓN, que es lo que ahorra buscarla a ojo. */
+        errores[c.clave] = dentro.length === 1
+          ? 'falta un número en «' + c.clave + '», repetición ' + dentro[0]
+          : 'faltan ' + dentro.length + ' números en «' + c.clave + '» (repeticiones ' + dentro.join(', ') + ')'
       }
       /* QUÉ VE LA FÓRMULA, que es donde esto se decide.
          Una columna normal de un bloque da UN número por repetición. Una de
@@ -1132,7 +1147,7 @@ export function variablesDe(test: TestLab, datos: Datos, errores: Record<string,
          bloque, `pasos` es la lista de ESA fila —`suma(pasos)` es lo que
          tardó esa serie—, porque allí se mira fila a fila. Es la misma regla
          de siempre: dentro ves tu fila, al final ves el conjunto. */
-      vars[c.clave] = c.instrumento === 'parciales' ? lista.flat() : lista
+      vars[c.clave] = c.instrumento === 'parciales' || seCorta(bl, c) ? lista.flat() : lista
     }
   }
   return vars
@@ -1304,6 +1319,44 @@ export const contadoresSueltosDe = (t: TestLab | null): Columna[] =>
  */
 export const contadoresDe = (t: TestLab | null) =>
   todasLasColumnas(t).filter(x => x.c.clase === 'medida' && x.c.instrumento === 'contador')
+
+/**
+ * Un pulsador que se CORTA con los parciales de su bloque.
+ *
+ * EL CASO, del entrenador: «¿hay alguna forma de que se guarde cuántas
+ * pulsaciones se han dado en cada parcial?». Es la pregunta de natación de
+ * toda la vida: los ciclos de brazo de CADA 25, no los del 100 entero. Los
+ * parciales ya parten el 100 en cuatro; lo que faltaba era que el pulsador se
+ * partiera igual.
+ *
+ * ES AUTOMÁTICO, Y NO HACE FALTA ELEGIRLO, porque cortar no quita nada: el
+ * total sigue saliendo con `suma()`. Al revés sí se perdería — de un «27» no
+ * se sacan nunca los «6, 7, 7, 7», que es justo donde se ve que la brazada se
+ * alarga al final. Entre guardar lo que se puede deshacer y lo que no, se
+ * guarda lo que no.
+ *
+ * Con dos columnas de parciales en el mismo bloque manda la PRIMERA: cortar
+ * por dos sitios a la vez no es cortar.
+ */
+export const parcialQueCorta = (bl: Bloque | null | undefined): Columna | null =>
+  (bl?.columnas || []).find(c => c.clase === 'medida' && c.instrumento === 'parciales') || null
+
+export const seCorta = (bl: Bloque | null | undefined, c: Columna): boolean =>
+  c.clase === 'medida' && c.instrumento === 'contador' && !!parcialQueCorta(bl)
+
+/**
+ * En qué CAJÓN cae la pulsación de ahora: en el del parcial que esté abierto.
+ *
+ * Sale de cuántos parciales van marcados, no de un contador aparte: así no hay
+ * dos cuentas que puedan separarse. Marcados tres parciales, lo que pulses va
+ * al cajón 3 — el cuarto 25, que todavía está nadándose.
+ *
+ * Y UN CAJÓN AL QUE NUNCA SE PULSÓ SE QUEDA VACÍO, no a cero: no contar es
+ * distinto de contar cero, y el recuento de huecos lo dice en vez de meter un
+ * cero en la media.
+ */
+export const cajonAhora = (parcialesDeLaFila: unknown): number =>
+  Array.isArray(parcialesDeLaFila) ? parcialesDeLaFila.length : 0
 
 /**
  * En qué repetición va un bloque: la del reloj si lo lleva.
@@ -1576,8 +1629,9 @@ export function medVacia(t: TestLab): Datos {
        el entrenador podría escribir encima de algo que se recalcula solo. */
     if (c.clase !== 'medida') continue
     /* Y dentro de un bloque, una de parciales nace como UNA LISTA POR
-       REPETICIÓN: cada casilla guarda lo suyo. */
-    d[c.clave] = c.instrumento === 'parciales'
+       REPETICIÓN: cada casilla guarda lo suyo. Un pulsador que se corta con
+       ellos, igual: sus cajones. */
+    d[c.clave] = c.instrumento === 'parciales' || seCorta(bl, c)
       ? Array.from({ length: bl.veces }, () => [] as string[])
       : Array.from({ length: bl.veces }, () => '')
   }
@@ -1636,8 +1690,10 @@ export function pegasDe(t: TestLab): Pega[] {
          serie, y es justo para lo que sirve tenerlos dentro del bloque. Las de
          dos columnas no entran en la excepción: emparejan repeticiones, y aquí
          solo hay una. */
+      /* Las que guardan VARIAS marcas por casilla: los parciales y, si los
+         hay, los pulsadores que se cortan con ellos. */
       const parcialesAqui = bl.columnas
-        .filter(x => x.clase === 'medida' && x.instrumento === 'parciales')
+        .filter(x => x.clase === 'medida' && (x.instrumento === 'parciales' || seCorta(bl, x)))
         .map(x => x.clave)
       const agregaOtraCosa = c.formula.some(b =>
         b.t === 'fn2' || (b.t === 'fn' && !parcialesAqui.includes(b.de)))
@@ -1711,10 +1767,10 @@ export function pegasDe(t: TestLab): Pega[] {
              solo «¿está suelta?» la dejaba pasar, y al emparejarla se cruzaba
              una lista aplanada —tres marcas por fila— contra una de seis
              números. */
-          if (!x.bl || x.c.instrumento === 'parciales') {
+          if (!x.bl || x.c.instrumento === 'parciales' || seCorta(x.bl, x.c)) {
             p.push({
               donde: 'resultado', indice: i,
-              texto: x.c.instrumento === 'parciales'
+              texto: x.bl || x.c.instrumento === 'parciales'
                 ? '«' + clave + '» guarda varias marcas por casilla: ' + b.v + '() necesita dos columnas con UN número en cada repetición'
                 : '«' + clave + '» se mide una sola vez: ' + b.v + '() necesita dos columnas que se repitan',
             })

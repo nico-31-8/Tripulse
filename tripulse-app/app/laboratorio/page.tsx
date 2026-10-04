@@ -29,6 +29,7 @@ import {
   calcular, hechasDe, valorDado, escalonAhora, intervaloRitmo,
   cronosDe, escalonadosDe, cronometradosDe, cronosSueltosDe, contadoresSueltosDe, cuentaAtras,
   parcialesDe, parcialesBloqueDe, acumuladosDe, SOLO_SUELTOS, contadoresDe, repeticionDe, etiquetaInstrumento, restanteDescanso,
+  seCorta, cajonAhora, parcialQueCorta,
   todasLasColumnas, buscaCol, clavesRepetidas, duracionDe, tramoEn, columnaDeVelocidad,
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
@@ -702,11 +703,36 @@ export default function Laboratorio() {
 
   /* En un bloque el número va a SU repetición, no al montón: seis series de
      flexiones son seis números. */
-  const cuentaEn = (c: Columna, bl: Bloque, k: string, rep: number, suma: number) => ponMed(k, d => {
-    const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : Array.from({ length: bl.veces }, () => '')
-    l[rep - 1] = String(Math.max(0, (Number(l[rep - 1]) || 0) + suma))
-    d[c.clave] = l
-  })
+  const cuentaEn = (c: Columna, bl: Bloque, k: string, rep: number, suma: number) => {
+    const corta = parcialQueCorta(bl)
+    /* SIN PARCIALES, un número por repetición y ya está. */
+    if (!seCorta(bl, c) || !corta) {
+      ponMed(k, d => {
+        const l = Array.isArray(d[c.clave]) ? [...(d[c.clave] as string[])] : Array.from({ length: bl.veces }, () => '')
+        l[rep - 1] = String(Math.max(0, (Number(l[rep - 1]) || 0) + suma))
+        d[c.clave] = l
+      })
+      return
+    }
+    /* CON PARCIALES, la pulsación cae en el cajón del que esté abierto: los
+       ciclos de ESTE 25, no los del 100 entero. Cuál es sale de cuántos
+       parciales van marcados, así que no hay dos cuentas que puedan
+       separarse. */
+    const parcialesDeLaFila = ((datosDe(k)[corta.clave] as unknown[] | undefined) || [])[rep - 1]
+    const cajon = cajonAhora(parcialesDeLaFila)
+    ponMed(k, d => {
+      const l = Array.isArray(d[c.clave])
+        ? [...(d[c.clave] as unknown[])]
+        : Array.from({ length: bl.veces }, () => [] as string[])
+      const fila = Array.isArray(l[rep - 1]) ? [...(l[rep - 1] as string[])] : []
+      /* Los cajones que se saltó quedan VACÍOS, no a cero: no contar es
+         distinto de contar cero, y el recuento de huecos lo dirá. */
+      while (fila.length < cajon) fila.push('')
+      fila[cajon] = String(Math.max(0, (Number(fila[cajon]) || 0) + suma))
+      l[rep - 1] = fila
+      d[c.clave] = l
+    })
+  }
 
   /**
    * MARCAR UNA REPETICIÓN. `fila` es la casilla que se tocó; con -1 se marca la
@@ -2447,6 +2473,37 @@ function Casilla({ v, valor, c, corre, abierta, abre, cierra, onToca, onMenos, o
 
   if (abierta) return caja
 
+  /* Un pulsador CORTADO con los parciales enseña sus cajones: 6 · 7 · 7 · 8.
+     El que crece es el último, que es el 25 que se está nadando. */
+  if (c.instrumento === 'contador' && Array.isArray(valor)) {
+    const cajones = valor as string[]
+    const ultimo = cajones.length - 1
+    return (
+      <div className="flex flex-col gap-0.5">
+        <button onClick={onToca} title="Toca para sumar uno al parcial que va"
+          className={'w-full rounded-lg border border-orange-500/45 bg-orange-500/[0.14] hover:bg-orange-500/25 active:bg-orange-500/45 transition ' + (alto ? 'px-3 py-2.5' : 'px-2 py-2')}>
+          <span className="block font-mono tabular-nums leading-snug text-orange-300 text-[13px]">
+            {cajones.length
+              ? cajones.map((x, i) => (
+                <span key={i} className={i === ultimo ? 'text-orange-200 font-bold' : ''}>
+                  {i ? ' · ' : ''}{x === '' ? '–' : x}
+                </span>
+              ))
+              : <span className="text-gray-500 italic text-[11.5px]">toca para contar</span>}
+          </span>
+          {cajones.length > 0 && (
+            <span className="block text-[10.5px] text-gray-500 mt-1">
+              {cajones.length === 1 ? '1 parcial' : cajones.length + ' parciales'}
+            </span>
+          )}
+        </button>
+        {cajones.length > 0 && onMenos && (
+          <button onClick={onMenos} className="self-end text-[10.5px] text-gray-500 hover:text-gray-200 px-1 transition">−1</button>
+        )}
+      </div>
+    )
+  }
+
   if (c.instrumento === 'contador') {
     const n = Number(v) || 0
     return (
@@ -2571,7 +2628,7 @@ function Previa({ test, proto, med, nombre, onProto, onMed, onLlego, toca, ayuda
                                 que tocarla. */}
                             {c.clase === 'dada' ? 'la pones tú'
                               : c.instrumento === 'mano' ? 'la escribes aquí'
-                                : c.instrumento === 'contador' ? 'tócala y suma uno'
+                                : c.instrumento === 'contador' ? (seCorta(bl, c) ? 'tócala y suma al parcial que va' : 'tócala y suma uno')
                                   : c.instrumento === 'parciales' ? 'tócala y añade un parcial'
                                     : 'tócala y marca'}
                             {c.unidad ? ' · ' + c.unidad : ''}
@@ -3386,6 +3443,8 @@ function Pasar({
             </div>
             {ayudita(<>
               Cada pulsación suma a <b className="text-white">la repetición {rep}</b>. Lo de las demás se queda donde está.
+              {parcialQueCorta(bl) && <> Y como el bloque lleva parciales, se cuenta <b className="text-white">por
+              parcial</b>: el número grande es el del que va, y debajo quedan los cerrados.</>}
             </>)}
           </div>
         )
