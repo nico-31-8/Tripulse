@@ -365,11 +365,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     if (!sesionesProg.length) { setDuraciones({}); return }
     let vivo = true
-    /* CON REFERENCIA, y esta pantalla es la primera que lo enciende.
-       Sin esto, un atleta sin tests hechos veía semanas enteras de carrera
-       dibujadas como una barra vacía: sin VAM no se pueden pasar los metros a
-       minutos, y la tarea se caía de la cuenta en silencio. Ahora se estima con
-       el ritmo medio de la población y la barra lo dice. */
+    /* CON REFERENCIA. Esta pantalla fue la primera que lo encendió —un atleta
+       sin tests veía semanas enteras de carrera como una barra vacía, porque
+       sin VAM no se pueden pasar los metros a minutos— y desde el 4 de octubre
+       de 2026 va encendida en TODAS: tenerla solo aquí dejaba el mismo dato
+       contado de dos maneras, con barra en el dibujo y sin duración en la
+       ficha. Se deja escrito aunque ya sea el valor por defecto, porque aquí
+       es donde se entiende para qué sirve. */
     estimarDuraciones(supabase, sesionesProg.map((s: any) => s.id), testsRef.current,
       { conReferencia: true })
       .then(d => { if (vivo) setDuraciones(d) })

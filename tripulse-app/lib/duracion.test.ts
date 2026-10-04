@@ -33,11 +33,16 @@ describe('calcularDuracionEstimada', () => {
     expect(r.segundos).toBe(1800)
   })
 
-  it('carrera por distancia sin VAM → marca faltanTests', () => {
+  it('carrera por distancia sin VAM → se estima prestada, y marca faltanTests', () => {
+    /* Ya no se descarta: se estima con el ritmo de referencia y se confiesa.
+       `faltanTests` sigue en alto porque el test sigue haciendo falta — lo que
+       cambia no es que sobre, es que mientras no esté se da un número
+       aproximado en vez de un cero que decía que la sesión no cuesta nada. */
     const t: TareaDuracion = { disciplina: 'Carrera', series: 1, p_distancia: [{ metros_planeados: 5000 }] }
     const r = calcularDuracionEstimada([t], {})
     expect(r.faltanTests).toBe(true)
-    expect(r.estimable).toBe(false)
+    expect(r.estimable).toBe(true)
+    expect(r.usoReferencia).toBe(true)
   })
 
   it('ciclismo por distancia → marca avisoCiclismo (no estimable por metros)', () => {
@@ -111,16 +116,43 @@ describe('el ritmo de referencia cuando falta el test', () => {
     p_distancia: [{ metros_planeados: 1000 }],
   }])
 
-  it('APAGADO por defecto: nada cambia para las dieciséis pantallas que ya lo usan', () => {
-    /* Este es el test que protege el resto de la app. Si el día de mañana
-       alguien invierte el valor por defecto, aquí salta: aparecerían duraciones
-       en la pantalla del deportista y en el cálculo de nutrición sin que nadie
-       lo haya decidido. */
-    const r = calcularDuracionEstimada(mil('Carrera'), {})
+  it('ENCENDIDO por defecto, y SIEMPRE confesado', () => {
+    /* Esto estaba al revés, y el test de antes decía: «si alguien invierte el
+       valor por defecto, aquí salta — aparecerían duraciones en la pantalla
+       del deportista y en el cálculo de nutrición sin que nadie lo haya
+       decidido». Saltó, y la decisión la tomó el entrenador el 4 de octubre de
+       2026: que se encienda en todas.
+
+       EL MOTIVO, que es el que hay que conservar: estando solo en el dibujo,
+       el mismo dato salía contado de dos maneras —una semana de carrera por
+       distancia de un atleta sin tests tenía barra en el dibujo y ninguna
+       duración en la ficha—, y eso hace desconfiar de todos los números.
+
+       LO QUE SIGUE SIENDO INNEGOCIABLE es la segunda mitad: estimar sin
+       confesarlo convierte una suposición en un dato. Por eso aquí se
+       comprueban las dos cosas a la vez. */
+    const r = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Hombre' })
+    expect(r.estimable).toBe(true)
+    expect(r.minutos).toBeGreaterThan(0)
+    expect(r.usoReferencia).toBe(true)
+    expect(r.faltanTests).toBe(true)
+  })
+
+  it('y se puede apagar a propósito, para quien no quiera suposiciones', () => {
+    const r = calcularDuracionEstimada(mil('Carrera'), { sexo: 'Hombre' }, { conReferencia: false })
     expect(r.estimable).toBe(false)
     expect(r.minutos).toBe(0)
     expect(r.usoReferencia).toBe(false)
-    expect(r.faltanTests).toBe(true)
+  })
+
+  it('CON TEST NO SE PRESTA NADA: el ritmo es el suyo y no se marca', () => {
+    /* La confesión tiene que distinguir: un número sacado de SU test es tan
+       bueno como uno cronometrado, y marcarlo igual que el prestado haría que
+       se ignorasen los dos. */
+    const r = calcularDuracionEstimada(mil('Carrera'), { vam: 16, sexo: 'Hombre' })
+    expect(r.estimable).toBe(true)
+    expect(r.usoReferencia).toBe(false)
+    expect(r.faltanTests).toBe(false)
   })
 
   it('encendido, estima y lo confiesa', () => {

@@ -874,7 +874,18 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
           <p className="text-yellow-500/80 text-xs">⚠️ Hay tareas de ciclismo por distancia — la duración no se puede estimar (usa tiempo/potencia o ponla a mano).</p>
         )}
-        {!sesion.duracion_minutos && durEstimada.faltanTests && (
+        {/* EL NÚMERO ESTÁ, PERO ES PRESTADO. Este aviso decía «faltan tests
+            para estimar el ritmo», que era verdad cuando no se estimaba nada.
+            Desde que se estima con un ritmo de referencia, callarse esto
+            convertiría una suposición en un dato: el entrenador vería un
+            tiempo con la misma pinta que uno cronometrado. */}
+        {!sesion.duracion_minutos && durEstimada.usoReferencia && (
+          <p className="text-yellow-500/80 text-xs">
+            ⚠️ Este tiempo va con un <b>ritmo medio prestado</b>, no el suyo: el deportista no tiene tests.
+            Sirve para planificar; para fiarte del número, hazle un test.
+          </p>
+        )}
+        {!sesion.duracion_minutos && durEstimada.faltanTests && !durEstimada.usoReferencia && (
           <p className="text-yellow-500/80 text-xs">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
         )}
 

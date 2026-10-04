@@ -106,6 +106,21 @@ export interface OpcionesDuracion {
    * Si falta el test, estimar con un ritmo de referencia de la población en vez
    * de descartar la tarea. Lo que salga viene marcado en `usoReferencia`, y
    * quien lo enseñe TIENE que decir que es aproximado.
+   *
+   * VA ENCENDIDO SALVO QUE SE PIDA LO CONTRARIO, y esto cambió el 4 de octubre
+   * de 2026. Antes solo lo encendía el dibujo de la planificación, y eso dejaba
+   * el mismo dato contado de dos maneras: una semana de carrera por distancia
+   * de un atleta sin tests salía con barra en el dibujo y sin duración en la
+   * ficha de la sesión, en el calendario y en lo que ve el deportista.
+   *
+   * Lo preguntó el entrenador —«si una persona no tiene hecho test y pongo
+   * entrenamiento por distancia, ¿no se le programa ningún tipo de carga?»— y
+   * la respuesta era «según dónde mires», que es la peor de las respuestas:
+   * hace desconfiar de todos los números, no solo de ese.
+   *
+   * Entre las dos salidas se eligió esta porque el cero era una AFIRMACIÓN
+   * FALSA —decía que esa sesión no cuesta nada— y la estimación es una
+   * suposición que va marcada. Quien enseñe el número tiene que marcarlo.
    */
   conReferencia?: boolean
 }
@@ -250,7 +265,7 @@ export function calcularDuracionEstimada(
   let avisoCiclismo = false
   let faltanTests = false
   let usoReferencia = false
-  const conReferencia = opciones.conReferencia === true
+  const conReferencia = opciones.conReferencia !== false
   let ejerciciosFuerza = 0   // nº de tareas de fuerza estimadas (para transiciones)
 
   for (const t of tareas) {
