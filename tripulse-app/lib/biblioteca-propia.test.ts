@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  comoCopia, esComun, esMio, hayQueCopiar, miBiblioteca, type EjercicioBib,
+  comoCopia, esComun, esDe, esMio, hayQueCopiar, miBiblioteca, type EjercicioBib,
 } from './biblioteca-propia'
 
 const YO = 'uuid-mio'
@@ -221,5 +221,39 @@ describe('las pantallas de prescribir usan la misma lista', () => {
        ejercicios que le manda su entrenador: no son suyos. */
     const src = readFileSync('app/apuntar/page.tsx', 'utf8')
     expect(importa(src)).toBe(false)
+  })
+})
+
+describe('de quién va a ser lo que se cree', () => {
+  /* Son los dos únicos dueños, y la diferencia importa: uno del ENTRENADOR lo
+     ve él con todos sus atletas; uno del DEPORTISTA es de ese atleta y nada
+     más. El buscador vive en las dos pantallas, así que tiene que saber en
+     cuál está. */
+  it('del entrenador', () => {
+    expect(esDe({ id_entrenador: YO }, { entrenador: YO })).toBe(true)
+    expect(esDe({ id_entrenador: OTRO }, { entrenador: YO })).toBe(false)
+  })
+
+  it('del deportista', () => {
+    expect(esDe({ id_deportista: 7 }, { deportista: 7 })).toBe(true)
+    expect(esDe({ id_deportista: 9 }, { deportista: 7 })).toBe(false)
+  })
+
+  it('NO SE CRUZAN: el del atleta no es del entrenador aunque sea su atleta', () => {
+    /* Si se cruzaran, el entrenador vería como suyos los que se apuntó el
+       atleta y podría borrárselos desde su propia biblioteca. */
+    expect(esDe({ id_deportista: 7 }, { entrenador: YO })).toBe(false)
+    expect(esDe({ id_entrenador: YO }, { deportista: 7 })).toBe(false)
+  })
+
+  it('el del catálogo común no es de nadie', () => {
+    expect(esDe({ }, { entrenador: YO })).toBe(false)
+    expect(esDe({ }, { deportista: 7 })).toBe(false)
+  })
+
+  it('sin dueño o sin ejercicio, no', () => {
+    expect(esDe(null, { entrenador: YO })).toBe(false)
+    expect(esDe({ id_entrenador: YO }, null)).toBe(false)
+    expect(esDe({ id_entrenador: YO }, { entrenador: '' })).toBe(false)
   })
 })

@@ -33,6 +33,11 @@ export const TIPOS_EJERCICIO = ['Fuerza', 'Movilidad', 'Tecnica', 'Rehab']
    pusiera otra, lo que crea el atleta saldria en un monton aparte. */
 export { SIN_CLASIFICAR } from './series-por-grupo'
 import { SIN_CLASIFICAR } from './series-por-grupo'
+/* El dueño lo define UN solo sitio: aquí había un `esMio` propio que solo
+   sabía de atletas, y con el entrenador creando desde el buscador habrían sido
+   dos ideas de «mío» conviviendo. */
+import { esDe, type Dueno } from './biblioteca-propia'
+export { esDe, type Dueno }
 
 const limpio = (s: string | null | undefined) => (s || '').trim()
 
@@ -79,8 +84,14 @@ export function queLeFalta(
 }
 
 /** ¿Este ejercicio se lo creó él? Solo esos se pueden tocar. */
-export function esMio(ej: { id_deportista?: number | null } | null | undefined, idDeportista: number | null | undefined): boolean {
-  return ej?.id_deportista != null && Number(ej.id_deportista) === Number(idDeportista)
+export function esMio(
+  ej: { id_entrenador?: string | null; id_deportista?: number | null } | null | undefined,
+  dueno: Dueno | number | null | undefined,
+): boolean {
+  /* Se admite el número suelto porque así lo llamaba la pantalla del atleta
+     desde antes de que existieran los del entrenador. */
+  const d: Dueno | null = typeof dueno === 'number' ? { deportista: dueno } : (dueno ?? null)
+  return esDe(ej, d)
 }
 
 /** En cuántas sesiones se ha usado ya. Decide si se puede borrar. */
@@ -95,7 +106,7 @@ export const sinTildes = (s: string) =>
   (s || '').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 /** La fila tal y como va a la base. */
-export function filaDe(e: EjercicioNuevo, idDeportista: number) {
+export function filaDe(e: EjercicioNuevo, dueno: Dueno) {
   const tipo = limpio(e.tipo)
   return {
     nombre: limpio(e.nombre),
@@ -104,7 +115,12 @@ export function filaDe(e: EjercicioNuevo, idDeportista: number) {
     /* `tipo` es text[] en la base, no texto. Mandarlo como cadena suelta lo
        rechaza Postgres. */
     tipo: tipo ? [tipo] : [],
-    id_deportista: idDeportista,
+    /* SOLO UNO DE LOS DOS. Poniendo los dos, la fila sería del atleta Y del
+       entrenador: la lista del entrenador la enseñaría como «mía» y la del
+       atleta también, y borrarla por un lado se la quitaría al otro. */
+    ...('entrenador' in dueno
+      ? { id_entrenador: dueno.entrenador, id_deportista: null }
+      : { id_deportista: dueno.deportista, id_entrenador: null }),
   }
 }
 
@@ -116,15 +132,15 @@ export interface ResultadoAlta {
 export async function crearEjercicioPropio(
   sb: any,
   e: EjercicioNuevo,
-  idDeportista: number,
+  dueno: Dueno,
   yaExisten: string[] = [],
 ): Promise<ResultadoAlta> {
   const falta = queLeFalta(e, yaExisten)
   if (falta) return { ejercicio: null, error: falta }
 
   const { data, error } = await sb.from('ejercicios_biblioteca')
-    .insert(filaDe(e, idDeportista))
-    .select('id, nombre, grupo_muscular, descripcion, url_video')
+    .insert(filaDe(e, dueno))
+    .select('id, nombre, grupo_muscular, descripcion, url_video, id_entrenador, id_deportista')
     .single()
 
   if (error || !data) {
@@ -163,8 +179,13 @@ export async function editarEjercicioPropio(
   const falta = queLeFalta(e, yaExisten, nombreActual)
   if (falta) return { ejercicio: null, error: falta }
 
-  const fila = filaDe(e, 0)
-  delete (fila as any).id_deportista   // el dueño no se toca al corregir
+  const fila = filaDe(e, { deportista: 0 })
+  /* EL DUEÑO NO SE TOCA AL CORREGIR. Hay que quitar los DOS: desde que un
+     ejercicio puede ser del entrenador, dejar `id_entrenador: null` colado en
+     el update le quitaría el dueño a su propio ejercicio y lo soltaría en el
+     catálogo común, a la vista de los doce. */
+  delete (fila as any).id_deportista
+  delete (fila as any).id_entrenador
 
   const { data, error } = await sb.from('ejercicios_biblioteca')
     .update(fila).eq('id', idEjercicio)

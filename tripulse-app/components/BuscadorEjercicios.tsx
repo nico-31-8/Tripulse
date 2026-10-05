@@ -22,9 +22,10 @@
 // cuando lo pides con el ⓘ, así que la lista se lleva toda la altura.
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { usuarioActual } from '@/lib/sesion'
 import { partirInstrucciones } from '@/lib/instrucciones'
 import {
-  EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, crearEjercicioPropio,
+  EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, crearEjercicioPropio, type Dueno,
   editarEjercicioPropio, borrarEjercicioPropio, esMio, type EjercicioNuevo,
 } from '@/lib/ejercicio-propio'
 import { FAMILIAS, esDeFamilia } from '@/lib/familias-grupo'
@@ -85,6 +86,26 @@ interface Props {
 export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [creando, setCreando] = useState<EjercicioNuevo | null>(null)
+  /**
+   * DE QUIÉN SERÁ LO QUE SE CREE AQUÍ.
+   *
+   * Con `idDeportista` es del atleta: este buscador vive también en su
+   * pantalla, y lo que se apunta allí es suyo. Sin él, quien lo abre es el
+   * entrenador —desde la ficha de la sesión o la tabla de tareas— y entonces el
+   * ejercicio es SUYO: lo tendrá en todos sus atletas, no colgando de uno.
+   *
+   * Se resuelve aquí y no se pide por props porque las dos pantallas del
+   * entrenador tendrían que ir a buscar el usuario para pasarlo, y la que se
+   * olvidara crearía ejercicios sin dueño: al catálogo común, a la vista de
+   * los doce entrenadores.
+   */
+  const [dueno, setDueno] = useState<Dueno | null>(null)
+  useEffect(() => {
+    if (idDeportista != null) { setDueno({ deportista: idDeportista }); return }
+    let vivo = true
+    usuarioActual().then(u => { if (vivo && u?.id) setDueno({ entrenador: u.id }) })
+    return () => { vivo = false }
+  }, [idDeportista])
   /* Cuando se está CORRIGIENDO uno, aquí va el id. Es el mismo formulario:
      dos sitios distintos para lo mismo acabarían pidiendo campos distintos. */
   const [editandoId, setEditandoId] = useState<number | null>(null)
@@ -163,12 +184,12 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
   }
 
   const guardarNuevo = async () => {
-    if (!creando || !idDeportista) return
+    if (!creando || !dueno) return
     setGuardandoNuevo(true); setErrorNuevo('')
     const nombres = ejercicios.map(e => e.nombre)
     const r = editandoId
       ? await editarEjercicioPropio(supabase, editandoId, creando, nombres, nombreAntes)
-      : await crearEjercicioPropio(supabase, creando, idDeportista, nombres)
+      : await crearEjercicioPropio(supabase, creando, dueno, nombres)
     setGuardandoNuevo(false)
     /* Al corregir puede volver ejercicio Y error a la vez: el cambio entró pero
        el histórico no se renombró. Se avisa sin cerrar el formulario. */
@@ -274,7 +295,7 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                   </p>
                   {/* Aquí es donde te enteras de que el ejercicio no está, así
                       que aquí es donde tiene que estar el botón de crearlo. */}
-                  {idDeportista != null && (
+                  {dueno != null && (
                     <button onClick={abrirAlta}
                       className="text-left border border-orange-500/45 bg-orange-500/[0.09] hover:bg-orange-500/15 rounded-xl px-3.5 py-2.5 transition">
                       <span className="block text-orange-300 font-medium text-[13.5px]">
@@ -315,7 +336,7 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
 
             <div className="border-t border-gray-800 px-4 py-2.5 flex justify-between items-center gap-3 text-[11.5px] text-gray-600">
               <span className="tabular-nums">{resultados.length} de {ejercicios.length} ejercicios</span>
-              {idDeportista != null && resultados.length > 0 ? (
+              {dueno != null && resultados.length > 0 ? (
                 <button onClick={abrirAlta} className="text-gray-500 hover:text-orange-400 underline transition flex-none">
                   ＋ crear uno mío
                 </button>
@@ -458,7 +479,10 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                       crearse un ejercicio y no tenía forma de deshacerlo: una
                       errata en el nombre se quedaba en su biblioteca para
                       siempre. */}
-                  {esMio(detalle, idDeportista) && (
+                  {/* Con el dueño y no con el atleta: desde que el entrenador
+                      crea aquí, mirar solo `idDeportista` le escondía los
+                      botones de corregir y borrar SUS propios ejercicios. */}
+                  {esMio(detalle, dueno) && (
                     <div className="border-t border-gray-800 px-3 py-2.5 flex items-center gap-2">
                       <span className="text-[10.5px] uppercase tracking-wide text-orange-300/70 font-semibold flex-1">Tuyo</span>
                       <button onClick={() => abrirEdicion(detalle)}

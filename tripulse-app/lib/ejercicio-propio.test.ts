@@ -49,36 +49,45 @@ describe('qué le falta para poder guardarse', () => {
 })
 
 describe('la fila que va a la base', () => {
-  it('lleva el dueño puesto', () => {
-    expect(filaDe(e({ nombre: 'Prensa' }), 42).id_deportista).toBe(42)
+  it('lleva el dueño puesto, y SOLO UNO', () => {
+    /* Poniendo los dos, la fila sería del atleta Y del entrenador: la lista del
+       entrenador la enseñaría como «mía» y la del atleta también, y borrarla
+       por un lado se la quitaría al otro. */
+    const delAtleta = filaDe(e({ nombre: 'Prensa' }), { deportista: 42 })
+    expect(delAtleta.id_deportista).toBe(42)
+    expect(delAtleta.id_entrenador).toBeNull()
+
+    const delEntrenador = filaDe(e({ nombre: 'Prensa' }), { entrenador: 'uuid-1' })
+    expect(delEntrenador.id_entrenador).toBe('uuid-1')
+    expect(delEntrenador.id_deportista).toBeNull()
   })
 
   /* El grupo es lo único de este formulario que sale en una pantalla del
      entrenador: agrupa el reparto de series de la semana. Sin grupo, la fila
      tiene que caer en el mismo cajón que usa esa pantalla, no en null. */
   it('sin grupo cae en «Sin clasificar», no en null', () => {
-    expect(filaDe(e({ nombre: 'Prensa' }), 1).grupo_muscular).toBe(SIN_CLASIFICAR)
+    expect(filaDe(e({ nombre: 'Prensa' }), { deportista: 1 }).grupo_muscular).toBe(SIN_CLASIFICAR)
   })
 
   it('el grupo elegido viaja tal cual', () => {
-    expect(filaDe(e({ nombre: 'Prensa', grupoMuscular: 'Cuádriceps' }), 1).grupo_muscular).toBe('Cuádriceps')
+    expect(filaDe(e({ nombre: 'Prensa', grupoMuscular: 'Cuádriceps' }), { deportista: 1 }).grupo_muscular).toBe('Cuádriceps')
   })
 
   /* `tipo` es text[] en la base. Mandarlo como cadena suelta lo rechaza. */
   it('el tipo va como lista, no como texto', () => {
-    expect(filaDe(e({ nombre: 'Prensa', tipo: 'Movilidad' }), 1).tipo).toEqual(['Movilidad'])
+    expect(filaDe(e({ nombre: 'Prensa', tipo: 'Movilidad' }), { deportista: 1 }).tipo).toEqual(['Movilidad'])
   })
 
   it('sin tipo va una lista vacía', () => {
-    expect(filaDe(e({ nombre: 'Prensa', tipo: '' }), 1).tipo).toEqual([])
+    expect(filaDe(e({ nombre: 'Prensa', tipo: '' }), { deportista: 1 }).tipo).toEqual([])
   })
 
   it('una descripción en blanco se guarda como null', () => {
-    expect(filaDe(e({ nombre: 'Prensa', descripcion: '   ' }), 1).descripcion).toBe(null)
+    expect(filaDe(e({ nombre: 'Prensa', descripcion: '   ' }), { deportista: 1 }).descripcion).toBe(null)
   })
 
   it('el nombre se guarda sin los espacios de los lados', () => {
-    expect(filaDe(e({ nombre: '  Prensa  ' }), 1).nombre).toBe('Prensa')
+    expect(filaDe(e({ nombre: '  Prensa  ' }), { deportista: 1 }).nombre).toBe('Prensa')
   })
 })
 

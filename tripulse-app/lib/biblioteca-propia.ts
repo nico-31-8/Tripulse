@@ -26,12 +26,36 @@ export interface EjercicioBib {
   origen_id?: number | null
 }
 
+/**
+ * De quién va a ser un ejercicio nuevo.
+ *
+ * Son los dos únicos dueños que existen, y la diferencia importa: un ejercicio
+ * del ENTRENADOR lo ve él en todos sus atletas; uno del DEPORTISTA es de ese
+ * atleta y nada más. Antes solo existía el segundo —lo creó la pantalla del
+ * atleta— y el formulario escribía `id_deportista` a pelo: por eso, al abrirlo
+ * desde el entrenador, lo que creara habría acabado colgando de un atleta
+ * suelto en vez de ser suyo.
+ */
+export type Dueno = { deportista: number } | { entrenador: string }
+
+/** Si este ejercicio es de ese dueño. */
+export function esDe(
+  ej: { id_entrenador?: string | null; id_deportista?: number | null } | null | undefined,
+  dueno: Dueno | null | undefined,
+): boolean {
+  if (!ej || !dueno) return false
+  return 'entrenador' in dueno
+    ? !!dueno.entrenador && ej.id_entrenador === dueno.entrenador
+    : ej.id_deportista != null && Number(ej.id_deportista) === Number(dueno.deportista)
+}
+
 /** Los 256 que trae la app: no son de ningún entrenador ni de ningún atleta. */
 export const esComun = (e: EjercicioBib): boolean =>
   !e.id_entrenador && !e.id_deportista
 
+/** Mío = del entrenador que mira. Es el caso de `esDe` que usa la biblioteca. */
 export const esMio = (e: EjercicioBib, uid: string | null | undefined): boolean =>
-  !!uid && e.id_entrenador === uid
+  !!uid && esDe(e, { entrenador: uid })
 
 /**
  * La lista que le toca ver a este entrenador, ya ordenada.
