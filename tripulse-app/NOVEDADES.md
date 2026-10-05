@@ -14,6 +14,35 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 5 de octubre de 2026 · Crear un ejercicio sin salir de la sesión
+
+La **lupa** de buscar ejercicios, la que usas al montar una sesión, ahora deja
+crearlos desde ahí. Antes tenías que salirte a la biblioteca, crearlo, volver y
+buscarlo otra vez.
+
+Te aparece en los dos sitios donde hace falta:
+
+- **Cuando no encuentras nada.** Justo debajo de «Nada con "prensa
+  inclinada"», y **con el nombre ya puesto**: si lo has buscado así, así se
+  llama.
+- **Y siempre**, abajo a la derecha: «＋ crear uno mío».
+
+Al guardarlo **se elige solo** y se mete en la sesión que estabas montando.
+Quien viene aquí a crear un ejercicio es porque lo está prescribiendo en ese
+momento; hacerle buscarlo después sería un paso de más.
+
+Lo que crees desde la lupa es **tuyo**, igual que si lo crearas en la
+biblioteca: lo tendrás con todos tus deportistas y no lo ve ningún otro
+entrenador.
+
+### De paso
+
+En el detalle de un ejercicio (la ⓘ), si es tuyo vuelven a salirte los botones
+de **corregirlo** y **borrarlo**. Se habían quedado escondidos para el
+entrenador.
+
+---
+
 ## 4 de octubre de 2026 · Tus propios ejercicios
 
 Ya puedes crear ejercicios **que son solo tuyos**: los ves tú al prescribir y
