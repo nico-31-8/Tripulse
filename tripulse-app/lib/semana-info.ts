@@ -20,6 +20,8 @@ import { ZONAS_RESISTENCIA } from './zonas'
 /* El formateador de horas NO se escribe aquí: ya existe, y hay un test que
    salta si alguien se hace el suyo. Lo cazó escribiendo este fichero. */
 import { horasMinutos } from './medicion'
+import { cargarBloques } from './atribucion'
+import { conRondasHechas } from './series-por-grupo'
 
 /** Un bloque de `lib/atribucion`, con lo poco que hace falta aquí. */
 export interface BloqueSemana {
@@ -206,4 +208,97 @@ export function resumen(
   /* Con la semana vacía se dice que está vacía. Devolver '' dejaría la cabecera
      con un hueco donde debería haber un número, que se lee como que falla. */
   return trozos.length ? trozos.join('  ·  ') : 'nada puesto todavía'
+}
+
+// ------------------------------------------------------------
+// Traerlo de la base
+// ------------------------------------------------------------
+
+/**
+ * Las columnas de `ejercicios` que hacen falta para contar series por grupo.
+ *
+ * Escritas aquí y no con `*` por lo de siempre, y con el cardio dentro: una
+ * línea de cardio NO son series de fuerza, y sin `tipo_serie` y `cardio_modo`
+ * cuatro series de remo saldrían como cuatro series de un músculo sin
+ * clasificar. Lo decide `seriesPorGrupo`, pero solo si le llegan las columnas.
+ */
+export const SELECT_EJERCICIOS_SEMANA =
+  'id, id_tarea, nombre, grupo_muscular, series, tipo_serie, cardio_modo, orden' as const
+
+export interface SemanaCargada {
+  /** Para `seriesPorGrupo` y para contar por ejercicio. */
+  ejercicios: (EjercicioDeSemana & { nombre?: string | null })[]
+  /** Para `porZona`, `porDisciplina` y `reparto`. */
+  bloques: BloqueSemana[]
+  /** Cuántas sesiones había y cuántas estaban hechas, para poder decirlo. */
+  sesiones: number
+  realizadas: number
+}
+
+export interface EjercicioDeSemana {
+  grupo_muscular?: string | null
+  series?: number | null
+  tipo_serie?: string | null
+  cardio_modo?: string | null
+}
+
+/**
+ * Lo que hay en la semana de un atleta, listo para agrupar.
+ *
+ * `hecho` cambia las DOS mitades a la vez, y tiene que ser así: con lo
+ * prescrito en fuerza y lo realizado en resistencia, el entrenador estaría
+ * comparando dos semanas distintas sin saberlo.
+ *
+ *   - prescrito → todas las sesiones de la semana, con los minutos y metros
+ *     planificados.
+ *   - hecho     → solo las realizadas, con lo que el atleta midió, y las rondas
+ *     de un AMRAP como las hizo y no como se estimaron.
+ */
+export async function cargarSemana(
+  sb: any,
+  idDeportista: number,
+  desde: string,
+  hasta: string,
+  opciones: { hecho?: boolean } = {},
+): Promise<SemanaCargada> {
+  const vacio: SemanaCargada = { ejercicios: [], bloques: [], sesiones: 0, realizadas: 0 }
+  if (!idDeportista || !desde || !hasta) return vacio
+
+  const { data: todas } = await sb.from('sesion')
+    .select('id, fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado')
+    .eq('id_deportista', idDeportista)
+    .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
+
+  const lista = (todas || []) as { id: number; estado?: string | null }[]
+  const realizadas = lista.filter(s => s.estado === 'Realizada')
+  const sesiones = opciones.hecho ? realizadas : lista
+  if (!sesiones.length) return { ...vacio, sesiones: lista.length, realizadas: realizadas.length }
+
+  const ids = sesiones.map(s => s.id)
+  /* Las tareas primero porque los ejercicios cuelgan de ellas; lo demás, en
+     paralelo. Pedir las tareas dos veces —una aquí y otra dentro de la consulta
+     de ejercicios— era un viaje de más por cada vez que se abre el panel. */
+  const { data: tareas } = await sb.from('tarea')
+    .select('id, id_sesion, formato, formato_config, resultado').in('id_sesion', ids)
+  const idsTarea = (tareas || []).map((t: { id: number }) => t.id)
+
+  const [{ data: ejs }, bloques] = await Promise.all([
+    idsTarea.length
+      ? sb.from('ejercicios').select(SELECT_EJERCICIOS_SEMANA).in('id_tarea', idsTarea)
+      : Promise.resolve({ data: [] }),
+    cargarBloques(sb, sesiones as never[], { soloPrescrito: !opciones.hecho, estimar: true }),
+  ])
+
+  /* En un AMRAP hecho, las series de cada línea son las rondas que hizo, no las
+     que se estimaron al programarlo. Solo tiene sentido mirando lo realizado. */
+  const ejercicios = opciones.hecho
+    ? conRondasHechas((tareas || []) as never[], (ejs || []) as never[])
+    : ((ejs || []) as never[])
+
+  return {
+    ejercicios: ejercicios as SemanaCargada['ejercicios'],
+    bloques: bloques as BloqueSemana[],
+    sesiones: lista.length,
+    realizadas: realizadas.length,
+  }
 }

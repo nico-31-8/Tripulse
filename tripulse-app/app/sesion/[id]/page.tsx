@@ -32,6 +32,7 @@ function iniciales(nombre: string | null | undefined): string {
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
 import { cargarBiblioteca } from '@/lib/biblioteca-propia'
+import InfoSemana from '@/components/InfoSemana'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
@@ -1046,6 +1047,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             Aquí es donde se ven, que para eso son un paso entrenable. */}
         {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId}
           onGuardado={() => { cargarDatos(); setRecargaTareas(n => n + 1) }} />}
+
+        {/* LA SEMANA, ENCIMA DE LA TABLA. Aquí es donde se decide qué se le
+            manda, así que aquí es donde hace falta saber cuántas series lleva
+            ese grupo y cómo va el reparto de zonas. Mirarlo en otra pantalla
+            significa salirse de lo que estás montando. Va de la semana de ESTA
+            sesión, no de la de hoy. */}
+        {deportistaId && <InfoSemana idDeportista={deportistaId} fecha={sesion.fecha_sesion} />}
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
