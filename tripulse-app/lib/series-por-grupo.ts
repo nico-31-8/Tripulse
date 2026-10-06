@@ -67,6 +67,68 @@ export interface GrupoSeries {
  * grupos distintos porque son dos cadenas distintas. Por eso el formulario de
  * crear un ejercicio ofrece los que ya existen en vez de dejar escribir libre.
  */
+/**
+ * UNA LÍNEA DE CARDIO NO SON SERIES DE FUERZA.
+ *
+ * No tiene grupo muscular, así que caía en «Sin clasificar»: cuatro series de
+ * remo salían como cuatro series de fuerza sin clasificar en el volumen por
+ * músculo. Su trabajo ya cuenta donde toca, en la duración y la carga.
+ *
+ * Está suelto y exportado porque lo miran DOS: el recuento por grupo y el
+ * desglose que se abre al pulsar un grupo. Con la regla copiada, el desglose
+ * sumaría distinto que la fila de la que cuelga — y entonces el entrenador deja
+ * de fiarse de los dos números, no solo del que está mal.
+ */
+export const esCardio = (e: EjercicioSeries | null | undefined): boolean =>
+  e?.tipo_serie === 'Cardio' || !!e?.cardio_modo
+
+/** Las series de un ejercicio, 0 si no es un número que valga. */
+const seriesDe = (e: EjercicioSeries | null | undefined): number => {
+  const n = Number(e?.series)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export interface EjercicioDelGrupo {
+  nombre: string
+  series: number
+  /** En cuántas líneas distintas aparece, que no es lo mismo que sus series. */
+  veces: number
+}
+
+/**
+ * De qué ejercicios se compone un grupo, de más series a menos.
+ *
+ * Es lo que se abre al pulsar el nombre: «Hombro · 6» no dice si son seis de
+ * press militar o dos de tres ejercicios distintos, y para decidir qué mandar
+ * esa diferencia lo es todo.
+ *
+ * Lo que no tiene nombre se junta en «Sin nombre» en vez de perderse: si se
+ * tirara, el desglose sumaría menos que la fila y no habría forma de saber por
+ * qué.
+ */
+export function ejerciciosDeGrupo(
+  ejercicios: (EjercicioSeries & { nombre?: string | null })[] | null | undefined,
+  grupo: string,
+): EjercicioDelGrupo[] {
+  const buscado = (grupo || '').trim() || SIN_CLASIFICAR
+  const mapa = new Map<string, { series: number; veces: number }>()
+
+  for (const e of ejercicios || []) {
+    if (esCardio(e)) continue
+    const suyo = (e?.grupo_muscular || '').trim() || SIN_CLASIFICAR
+    if (suyo.toLowerCase() !== buscado.toLowerCase()) continue
+    const nombre = (e?.nombre || '').trim() || 'Sin nombre'
+    const a = mapa.get(nombre) || { series: 0, veces: 0 }
+    a.series += seriesDe(e)
+    a.veces += 1
+    mapa.set(nombre, a)
+  }
+
+  return [...mapa.entries()]
+    .map(([nombre, x]) => ({ nombre, series: x.series, veces: x.veces }))
+    .sort((a, b) => (b.series - a.series) || a.nombre.localeCompare(b.nombre, 'es'))
+}
+
 export function seriesPorGrupo(
   ejercicios: EjercicioSeries[] | null | undefined,
   /* Cuántos días abarca lo que se le pasa. Por defecto una semana, que es lo
@@ -76,11 +138,7 @@ export function seriesPorGrupo(
   const semanas = Math.max(1, (Number(diasDelPeriodo) || 7) / 7)
   const mapa = new Map<string, number>()
   for (const e of ejercicios || []) {
-    /* UNA LÍNEA DE CARDIO NO SON SERIES DE FUERZA. No tiene grupo muscular, así
-       que caía en «Sin clasificar»: cuatro series de remo salían como cuatro
-       series de fuerza sin clasificar en el volumen por músculo. Su trabajo ya
-       cuenta donde toca, en la duración y la carga. */
-    if (e?.tipo_serie === 'Cardio' || e?.cardio_modo) continue
+    if (esCardio(e)) continue
     const grupo = (e?.grupo_muscular || '').trim() || SIN_CLASIFICAR
     const n = Number(e?.series)
     mapa.set(grupo, (mapa.get(grupo) || 0) + (Number.isFinite(n) && n > 0 ? n : 0))

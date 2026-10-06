@@ -18,7 +18,7 @@ import {
   cargarSemana, comoTiempo, porDisciplina, porZona, reparto, resumen, soloResistencia,
   type BloqueSemana, type SemanaCargada,
 } from '@/lib/semana-info'
-import { seriesPorGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
+import { seriesPorGrupo, ejerciciosDeGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
 import { esDeFamilia } from '@/lib/familias-grupo'
 import { lunesDe, sumarDias, rangoLegible } from '@/lib/fechas'
 import { emojiDisciplina } from '@/lib/disciplinas'
@@ -63,6 +63,10 @@ export default function InfoSemana({ idDeportista, fecha }: {
   const [datos, setDatos] = useState<SemanaCargada | null>(null)
   const [objetivos, setObjetivos] = useState<Record<string, number>>({})
   const [fijado, setFijado] = useState<Fijado>(VACIO)
+  /* Qué grupo está desplegado. UNO a la vez: con varios abiertos la lista crece
+     tanto que hay que bajar para ver el grupo siguiente, y esto vive encima de
+     la tabla que se está montando. */
+  const [desglose, setDesglose] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
 
   useEffect(() => { setFijado(leerFijado()) }, [])
@@ -150,6 +154,8 @@ export default function InfoSemana({ idDeportista, fecha }: {
      estiramientos dejaban las de fuerza en una rayita de nada aunque estén en
      listas distintas. */
   const fila = (g: { grupo: string; series: number }, fijada: boolean, tope: number) => {
+    const abierta = desglose === g.grupo
+    const detalle = abierta ? ejerciciosDeGrupo(datos?.ejercicios || [], g.grupo) : []
     const obj = objetivos[g.grupo] ?? null
     /* SIN OBJETIVO LA BARRA MIDE CONTRA EL GRUPO MÁS TRABAJADO, no al 100 %.
        Pintarlas todas llenas era lo mismo que no pintarlas: cuatro barras
@@ -160,10 +166,17 @@ export default function InfoSemana({ idDeportista, fecha }: {
       : Math.max(4, Math.round((g.series / Math.max(1, tope)) * 100))
     const color = !obj ? 'rgba(255,255,255,.22)' : pct >= 100 ? '#22C55E' : pct >= 60 ? '#EAB308' : '#F97316'
     return (
-      <div key={g.grupo} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0">
-        <span className="text-[13px] min-w-[96px]">
+      <div key={g.grupo} className="border-b border-gray-800/60 last:border-0">
+      <div className="flex items-center gap-2.5 py-1.5">
+        {/* EL NOMBRE ABRE EL DESGLOSE. «Hombro · 6» no dice si son seis de
+            press militar o dos de tres ejercicios distintos, y para decidir qué
+            mandar esa diferencia lo es todo. */}
+        <button onClick={() => setDesglose(d => d === g.grupo ? null : g.grupo)}
+          title="Ver de qué ejercicios sale"
+          className="text-[13px] min-w-[96px] text-left hover:text-orange-300 transition">
           {fijada && <span className="text-orange-400 text-[10px] mr-1">★</span>}{g.grupo}
-        </span>
+          <span className={'ml-1.5 text-[9px] text-gray-600 inline-block transition ' + (abierta ? 'rotate-180' : '')}>▾</span>
+        </button>
         <span className="flex-1 h-[7px] rounded-full bg-white/[0.07] overflow-hidden min-w-[50px]">
           <i className="block h-full rounded-full" style={{ width: pct + '%', background: color }} />
         </span>
@@ -173,6 +186,23 @@ export default function InfoSemana({ idDeportista, fecha }: {
         <span className="text-[11px] text-gray-500 min-w-[66px] text-right">
           {!obj ? 'sin objetivo' : g.series >= obj ? 'cumplido' : 'faltan ' + (obj - g.series)}
         </span>
+      </div>
+
+      {abierta && (
+        <div className="pl-3 pb-2 border-l border-gray-800 ml-1 mb-1">
+          {detalle.length === 0
+            ? <p className="text-gray-600 text-[11.5px] italic py-1">Sin ejercicios que contar aquí.</p>
+            : detalle.map(e => (
+              <div key={e.nombre} className="flex items-baseline gap-2.5 py-[3px] text-[12px]">
+                <span className="flex-1 min-w-0 truncate text-gray-300">{e.nombre}</span>
+                {/* En cuántas líneas aparece, que no es lo mismo que sus
+                    series: 2 × 3 no es lo mismo que 6 de una vez. */}
+                {e.veces > 1 && <span className="text-[10.5px] text-gray-600">{e.veces} veces</span>}
+                <span className="font-mono tabular-nums text-sky-300 min-w-[34px] text-right">{e.series}</span>
+              </div>
+            ))}
+        </div>
+      )}
       </div>
     )
   }

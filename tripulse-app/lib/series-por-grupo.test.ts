@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   seriesPorGrupo, totalSeries, porcentajeDe, seriesTexto, periodoTexto, bandaDe, bandasDe,
-  conObjetivos, cumplimientoDe, SIN_CLASIFICAR,
-} from './series-por-grupo'
+  conObjetivos, cumplimientoDe, SIN_CLASIFICAR, ejerciciosDeGrupo } from './series-por-grupo'
 
 describe('series por grupo', () => {
   it('suma las de cada grupo', () => {
@@ -265,5 +264,71 @@ describe('las líneas de cardio', () => {
   it('un ejercicio sin grupo que NO es cardio sigue en «Sin clasificar»', () => {
     const g = seriesPorGrupo([{ grupo_muscular: null, series: 3 }])
     expect(g[0].grupo).toBe(SIN_CLASIFICAR)
+  })
+})
+
+// ============================================================
+// El desglose de un grupo
+// ============================================================
+//
+// «Hombro · 6» no dice si son seis de press militar o dos de tres ejercicios
+// distintos, y para decidir qué mandar esa diferencia lo es todo. Se abre
+// pulsando el nombre del grupo.
+//
+// LO QUE DE VERDAD SE SUJETA AQUÍ es que el desglose SUME lo que pone la fila
+// de la que cuelga. Son dos funciones mirando los mismos ejercicios con la
+// misma regla; el día que una cuente el cardio y la otra no, el entrenador ve 6
+// arriba y 4 abajo y deja de fiarse de los dos números, no solo del que está
+// mal.
+
+describe('de qué ejercicios se compone un grupo', () => {
+  const ejs = [
+    { nombre: 'Press militar', grupo_muscular: 'Hombro', series: 4 },
+    { nombre: 'Elevaciones laterales', grupo_muscular: 'Hombro', series: 3 },
+    { nombre: 'Press militar', grupo_muscular: 'Hombro', series: 2 },
+    { nombre: 'Sentadilla', grupo_muscular: 'Cuádriceps', series: 5 },
+    { nombre: 'Remo ergómetro', grupo_muscular: 'Hombro', series: 4, tipo_serie: 'Cardio' },
+  ]
+
+  it('junta el mismo ejercicio y los ordena de más a menos', () => {
+    expect(ejerciciosDeGrupo(ejs, 'Hombro')).toEqual([
+      { nombre: 'Press militar', series: 6, veces: 2 },
+      { nombre: 'Elevaciones laterales', series: 3, veces: 1 },
+    ])
+  })
+
+  it('EL DESGLOSE SUMA LO QUE PONE LA FILA', () => {
+    /* El test que importa. Si un día una de las dos cuenta el cardio y la otra
+       no, aquí salta antes de que el entrenador vea dos números distintos del
+       mismo grupo. */
+    for (const g of seriesPorGrupo(ejs)) {
+      const detalle = ejerciciosDeGrupo(ejs, g.grupo)
+      expect(detalle.reduce((a, x) => a + x.series, 0), g.grupo).toBe(g.series)
+    }
+  })
+
+  it('el cardio se cae de los dos lados', () => {
+    expect(ejerciciosDeGrupo(ejs, 'Hombro').some(x => x.nombre === 'Remo ergómetro')).toBe(false)
+  })
+
+  it('lo que no tiene nombre se junta, no se pierde', () => {
+    /* Tirándolo, el desglose sumaría menos que la fila y no habría forma de
+       saber por qué. */
+    const r = ejerciciosDeGrupo([{ grupo_muscular: 'Core', series: 3 }], 'Core')
+    expect(r).toEqual([{ nombre: 'Sin nombre', series: 3, veces: 1 }])
+  })
+
+  it('lo que no tiene grupo cae en «Sin clasificar», igual que al contarlos', () => {
+    const sueltos = [{ nombre: 'Algo', series: 2 }]
+    expect(ejerciciosDeGrupo(sueltos, SIN_CLASIFICAR)).toEqual([{ nombre: 'Algo', series: 2, veces: 1 }])
+  })
+
+  it('da igual cómo venga escrito el grupo', () => {
+    expect(ejerciciosDeGrupo(ejs, '  hombro  ').length).toBe(2)
+  })
+
+  it('un grupo que no existe no revienta', () => {
+    expect(ejerciciosDeGrupo(ejs, 'Gemelo')).toEqual([])
+    expect(ejerciciosDeGrupo(null, 'Hombro')).toEqual([])
   })
 })
