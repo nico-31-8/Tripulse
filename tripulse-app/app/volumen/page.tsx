@@ -26,6 +26,8 @@ import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { horasMinutos } from '@/lib/medicion'
+import { cargarProgresos, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
+import { fechaLarga } from '@/lib/fechas'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
    acumulador de abajo DESCARTA lo que no tenga casilla, así que una disciplina
@@ -150,7 +152,11 @@ export default function VolumenPage() {
   const [loadingDatos, setLoadingDatos] = useState(false)
   // Volumen y Carga eran dos pestañas: son la misma pregunta medida distinto,
   // así que ahora conviven en "Resistencia" con un conmutador de métrica.
-  const [pestana, setPestana] = useState<'resistencia'|'fuerza'>('resistencia')
+  const [pestana, setPestana] = useState<'resistencia'|'fuerza'|'progresos'>('resistencia')
+  /* Los progresos se piden SOLO al entrar en su pestaña: son cuatro consultas
+     y esta pantalla ya hace unas cuantas al cargar. */
+  const [progresos, setProgresos] = useState<ProgresoEjercicio[] | null>(null)
+  const [cargandoProg, setCargandoProg] = useState(false)
   const [metrica, setMetrica] = useState<'tiempo'|'carga'>('tiempo')
   const [periodoSel, setPeriodoSel] = useState<string | null>(null)
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
@@ -496,6 +502,24 @@ export default function VolumenPage() {
     setDiscsActivas(prev => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key])
   }
 
+  /* Al entrar en Progresos, o al cambiar de atleta estando dentro. */
+  useEffect(() => {
+    if (pestana !== 'progresos' || !seleccionado?.id) return
+    let vivo = true
+    setCargandoProg(true); setProgresos(null)
+    cargarProgresos(supabase, seleccionado.id)
+      .then(r => { if (vivo) { setProgresos(r); setCargandoProg(false) } })
+      .catch(() => { if (vivo) { setProgresos([]); setCargandoProg(false) } })
+    return () => { vivo = false }
+  }, [pestana, seleccionado?.id])
+
+  /* CON QUÉ COMPARAR O SIN ÉL. Un atleta tenía quince ejercicios hechos UNA vez
+     cada uno: quince filas diciendo «primera vez» no son un historial, pero
+     esconderlas tampoco vale — que estén ahí es lo que dice que acaba de
+     empezar. Van separadas, no mezcladas. */
+  const conHistorial = (progresos || []).filter(p => p.dias.length > 1)
+  const soloUnaVez = (progresos || []).filter(p => p.dias.length === 1)
+
   const datosVol = vista === 'dias' ? datosDias : datosSemanas
   const xKeyVol = vista === 'dias' ? 'fecha' : 'semana'
   const datosCargaVista = agrupCarga === 'sesion' ? cargaSesiones : agrupCarga === 'semana' ? cargaSemanas : cargaMeses
@@ -689,7 +713,7 @@ export default function VolumenPage() {
 
             {/* Pestañas: Volumen y Carga se fusionaron en Resistencia */}
             <div className="flex gap-1 border-b border-gray-800">
-              {([['resistencia', 'Resistencia'], ['fuerza', 'Fuerza muscular']] as const).map(([k, l]) => (
+              {([['resistencia', 'Resistencia'], ['fuerza', 'Fuerza muscular'], ['progresos', 'Progresos']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setPestana(k)}
                   className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px ' +
                     (pestana === k ? 'border-orange-500 text-orange-300' : 'border-transparent text-gray-400 hover:text-white')}>
@@ -1103,6 +1127,93 @@ export default function VolumenPage() {
                       })}
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* PESTAÑA PROGRESOS */}
+            {pestana === 'progresos' && (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+                {cargandoProg && <p className="text-gray-500 text-[13px]">Buscando lo que ha anotado…</p>}
+
+                {!cargandoProg && progresos && progresos.length === 0 && (
+                  <p className="text-gray-500 text-[13px] leading-relaxed">
+                    Todavía no ha anotado ningún peso. Los progresos salen de lo que el deportista
+                    escribe al hacer la sesión, no de lo prescrito.
+                  </p>
+                )}
+
+                {!cargandoProg && conHistorial.length > 0 && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold mb-2.5">
+                      Con historial · {conHistorial.length}
+                    </p>
+                    {conHistorial.map(pr => (
+                      <div key={pr.clave} className="border-b border-gray-800/60 last:border-0 py-2.5">
+                        <div className="flex items-baseline gap-2.5 flex-wrap mb-1.5">
+                          <b className="text-[13.5px]">{pr.nombre}</b>
+                          {pr.grupo && <span className="text-[11px] text-gray-500">{pr.grupo}</span>}
+                          {/* QUÉ CAMBIÓ, en una frase. Dice las repeticiones
+                              cuando el peso no se mueve, que es como progresa
+                              la mayoría. */}
+                          {queCambio(pr.dias) && (
+                            <span className="text-[11.5px] text-orange-300 ml-auto">{queCambio(pr.dias)}</span>
+                          )}
+                        </div>
+                        {/* Las tres últimas veces: con más, la pantalla deja de
+                            ser una lista y hay que bajar a buscar el siguiente
+                            ejercicio. El resto está en la lupa. */}
+                        {pr.dias.slice(0, 3).map(d => (
+                          <div key={d.fecha} className="flex items-baseline gap-2.5 py-[3px] pl-2.5 border-l border-gray-800">
+                            <span className="text-[11px] text-gray-500 min-w-[96px]">{fechaLarga(d.fecha)}</span>
+                            {/* UNA LÍNEA POR PESO: un día no siempre es un peso. */}
+                            <div className="flex-1 min-w-0">
+                              {d.porPeso.map((g, i) => (
+                                <div key={i} className="flex items-baseline gap-2.5">
+                                  <span className="font-mono tabular-nums text-[12.5px] text-white min-w-[56px]">
+                                    {g.peso != null ? g.peso + ' kg' : 'sin peso'}
+                                  </span>
+                                  <span className="font-mono text-[12px] text-sky-300 flex-1 min-w-0 truncate">
+                                    {g.reps.map(r => r ?? '–').join(' · ')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            {d.conControl && (
+                              <span className="text-[10.5px] text-gray-500 flex-none">
+                                {d.series.find(x => x.control != null)?.controlTipo?.toUpperCase()}{' '}
+                                {d.series.find(x => x.control != null)?.control}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {!cargandoProg && soloUnaVez.length > 0 && (
+                  <div className={conHistorial.length ? 'mt-5 pt-4 border-t border-gray-800' : ''}>
+                    <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold mb-2">
+                      Hechos una sola vez · {soloUnaVez.length}
+                    </p>
+                    <p className="text-gray-500 text-[11.5px] leading-snug mb-2.5">
+                      Todavía no hay con qué compararlos. Salen igual porque que estén aquí ya dice algo:
+                      es lo que lleva anotado hasta ahora.
+                    </p>
+                    {soloUnaVez.map(pr => (
+                      <div key={pr.clave} className="flex items-baseline gap-2.5 py-1 text-[12.5px]">
+                        <span className="flex-1 min-w-0 truncate">{pr.nombre}</span>
+                        <span className="text-[11px] text-gray-500">{fechaLarga(pr.dias[0].fecha)}</span>
+                        <span className="font-mono tabular-nums text-white min-w-[56px] text-right">
+                          {pr.dias[0].pesoTop != null ? pr.dias[0].pesoTop + ' kg' : '—'}
+                        </span>
+                        <span className="font-mono text-sky-300 min-w-[70px] text-right truncate">
+                          {pr.dias[0].porPeso[0]?.reps.map(r => r ?? '–').join(' · ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

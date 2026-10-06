@@ -255,3 +255,89 @@ export async function cargarHistorial(
 
   return historialPorDia(series).slice(0, tope)
 }
+
+export interface ProgresoEjercicio {
+  /** La clave con la que se reconoce entre semanas: ver `claveDeEjercicio`. */
+  clave: string
+  nombre: string
+  grupo: string | null
+  dias: DiaHistorial[]
+}
+
+/**
+ * Todos los ejercicios que este atleta ha hecho con datos anotados.
+ *
+ * DE UN VIAJE Y NO UNO POR EJERCICIO. Son 8-18 ejercicios por atleta, y pedir
+ * su historial por separado serían setenta consultas para pintar una pantalla.
+ *
+ * Y SE SEPARA LO QUE TIENE CON QUÉ COMPARAR de lo que no: hay atletas con
+ * quince ejercicios hechos UNA vez cada uno. Enseñar quince filas diciendo
+ * «primera vez» no es un historial, pero esconderlas tampoco vale — que estén
+ * ahí es justo lo que dice que ese atleta acaba de empezar. Eso lo ordena quien
+ * lo pinta; aquí se devuelven todos, del más reciente al más antiguo.
+ */
+export async function cargarProgresos(
+  sb: unknown,
+  idDeportista: number,
+): Promise<ProgresoEjercicio[]> {
+  const cliente = sb as { from: (t: string) => any }
+  if (!idDeportista) return []
+
+  const { data: series } = await cliente.from('series_realizadas')
+    .select('id_ejercicio, peso_real, repeticiones_reales, control_real, control_tipo, numero_serie')
+    .eq('id_deportista', idDeportista)
+  if (!series?.length) return []
+
+  const idsEj = [...new Set((series as { id_ejercicio: number }[]).map(r => r.id_ejercicio).filter(Boolean))]
+  if (!idsEj.length) return []
+
+  const { data: ejs } = await cliente.from('ejercicios')
+    .select('id, id_tarea, nombre, grupo_muscular, ejercicio_id').in('id', idsEj)
+  const porEj = new Map((ejs || []).map((e: Record<string, unknown>) => [e.id as number, e]))
+
+  const idsTarea = [...new Set((ejs || []).map((e: { id_tarea: number }) => e.id_tarea).filter(Boolean))]
+  if (!idsTarea.length) return []
+  const { data: tareas } = await cliente.from('tarea').select('id, id_sesion').in('id', idsTarea)
+  const sesionDe = new Map((tareas || []).map((t: { id: number; id_sesion: number }) => [t.id, t.id_sesion]))
+
+  const idsSesion = [...new Set([...sesionDe.values()].filter(Boolean))]
+  if (!idsSesion.length) return []
+  /* La papelera no cuenta: una sesión tirada no es historial de nadie. */
+  const { data: sesiones } = await vivas(cliente.from('sesion')
+    .select('id, fecha_sesion').in('id', idsSesion))
+  const fechaDe = new Map((sesiones || [])
+    .map((s: { id: number; fecha_sesion: string }) => [s.id, s.fecha_sesion]))
+
+  const porClave = new Map<string, { nombre: string; grupo: string | null; series: SerieAnotada[] }>()
+  for (const r of series as Record<string, unknown>[]) {
+    const e = porEj.get(r.id_ejercicio as number) as Record<string, unknown> | undefined
+    if (!e) continue
+    const fecha = fechaDe.get(sesionDe.get(e.id_tarea as number) as number)
+    if (!fecha) continue
+    const clave = claveDeEjercicio({
+      ejercicio_id: e.ejercicio_id as number | null,
+      nombre: e.nombre as string | null,
+    })
+    const a = porClave.get(clave) || {
+      nombre: (e.nombre as string) || 'Sin nombre',
+      grupo: (e.grupo_muscular as string) || null,
+      series: [] as SerieAnotada[],
+    }
+    a.series.push({
+      fecha: fecha as string,
+      peso: r.peso_real as number | null,
+      reps: r.repeticiones_reales as number | null,
+      control: r.control_real as number | null,
+      controlTipo: r.control_tipo as string | null,
+      serie: r.numero_serie as number | null,
+    })
+    porClave.set(clave, a)
+  }
+
+  return [...porClave.entries()]
+    .map(([clave, x]) => ({ clave, nombre: x.nombre, grupo: x.grupo, dias: historialPorDia(x.series) }))
+    /* Por lo más reciente: lo que se acaba de entrenar es lo que se va a
+       prescribir. Ordenado por nombre, el ejercicio de hace tres meses saldría
+       arriba por empezar por A. */
+    .sort((a, b) => (b.dias[0]?.fecha || '').localeCompare(a.dias[0]?.fecha || ''))
+}
