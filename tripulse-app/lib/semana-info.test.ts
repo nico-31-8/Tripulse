@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  comoTiempo, porDisciplina, porZona, reparto, resumen, ZONAS_SUAVES,
+  comoTiempo, porDisciplina, porZona, reparto, resumen, soloResistencia, ZONAS_SUAVES,
   type BloqueSemana,
 } from './semana-info'
 
@@ -154,5 +154,35 @@ describe('la línea de cuando está cerrado', () => {
        la pantalla falla, no como que no hay nada puesto. */
     expect(resumen([], [])).toBe('nada puesto todavía')
     expect(resumen(null, null)).toBe('nada puesto todavía')
+  })
+})
+
+describe('LAS ZONAS DE FUERZA NO SE MEZCLAN CON LAS DE RESISTENCIA', () => {
+  /* Lo vio el entrenador en su propia pantalla: en el reparto por zona le
+     salían FMI y FLEX —que son de gimnasio— entre AEL y PAE. Y lo peor no era
+     verlas: al no estar en la lista de suaves, contaban como DURAS. Una semana
+     con tres sesiones de fuerza salía más dura de lo que era, y ese porcentaje
+     es justo el que se usa para decidir si la semana va polarizada. */
+  const semana: BloqueSemana[] = [
+    { disciplina: 'Carrera', minutos: 80, metros: 0, zona: 'AEL', id_sesion: 1 },
+    { disciplina: 'Fuerza', minutos: 60, metros: 0, zona: 'FMI', id_sesion: 2 },
+    { disciplina: 'Hibrido', minutos: 30, metros: 0, zona: 'FLEX', id_sesion: 3 },
+  ]
+
+  it('la fuerza se cae del reparto por zona', () => {
+    expect(porZona(soloResistencia(semana)).map(z => z.zona)).toEqual(['AEL'])
+  })
+
+  it('y deja de contar como DURA', () => {
+    expect(reparto(semana).pctMinutos).toBe(47)              // lo que salía antes
+    expect(reparto(soloResistencia(semana)).pctMinutos).toBe(100)  // lo que es
+  })
+
+  it('el híbrido también es fuerza para esto', () => {
+    expect(soloResistencia(semana).map(b => b.disciplina)).toEqual(['Carrera'])
+  })
+
+  it('pero por DEPORTE la fuerza sigue saliendo: ahí sí interesa', () => {
+    expect(porDisciplina(semana).map(d => d.disciplina).sort()).toEqual(['Carrera', 'Fuerza', 'Hibrido'])
   })
 })

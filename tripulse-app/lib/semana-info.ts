@@ -20,6 +20,7 @@ import { ZONAS_RESISTENCIA } from './zonas'
 /* El formateador de horas NO se escribe aquí: ya existe, y hay un test que
    salta si alguien se hace el suyo. Lo cazó escribiendo este fichero. */
 import { horasMinutos } from './medicion'
+import { esDisciplinaDeFuerza } from './disciplinas'
 import { cargarBloques } from './atribucion'
 import { conRondasHechas } from './series-por-grupo'
 
@@ -66,6 +67,23 @@ export const ZONAS_SUAVES = ['AER', 'AEL']
 
 const META = new Map(ZONAS_RESISTENCIA.map(z => [z.sigla, z]))
 const SIN_ZONA = 'Sin zona'
+
+/**
+ * Los bloques que de verdad son de resistencia.
+ *
+ * LAS ZONAS DE FUERZA NO SE MEZCLAN CON LAS DE RESISTENCIA. Son dos sistemas
+ * distintos —FMI y FLEX contra AEL y PAE— y juntarlos hacía dos destrozos a la
+ * vez: la cinta de colores enseñaba zonas de gimnasio como si fueran de
+ * carrera, y el porcentaje de «suave» las contaba como DURAS por no estar en la
+ * lista de suaves. Una semana con tres sesiones de fuerza salía más dura de lo
+ * que era, y el número que el entrenador usa para decidir si va polarizado era
+ * falso.
+ *
+ * Se mira la disciplina y no la sigla a propósito: una zona de fuerza que
+ * mañana se llame igual que una de resistencia seguiría cayendo bien.
+ */
+export const soloResistencia = (bloques: BloqueSemana[] | null | undefined): BloqueSemana[] =>
+  (bloques || []).filter(b => !esDisciplinaDeFuerza(b?.disciplina))
 
 const num = (x: unknown): number => {
   const n = Number(x)

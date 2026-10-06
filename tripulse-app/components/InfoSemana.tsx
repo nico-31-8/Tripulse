@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  cargarSemana, comoTiempo, porDisciplina, porZona, reparto, resumen,
+  cargarSemana, comoTiempo, porDisciplina, porZona, reparto, resumen, soloResistencia,
   type BloqueSemana, type SemanaCargada,
 } from '@/lib/semana-info'
 import { seriesPorGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
@@ -88,8 +88,12 @@ export default function InfoSemana({ idDeportista, fecha }: {
   useEffect(() => { if (abierto) traer() }, [abierto, traer])
 
   const bloques: BloqueSemana[] = datos?.bloques || []
+  /* Las zonas y el «cuánto va suave» SOLO de resistencia: FMI y FLEX son de
+     gimnasio y contaban como duras. Lo de por deporte sí lleva la fuerza. */
+  const resistencia = soloResistencia(bloques)
   const grupos = seriesPorGrupo(datos?.ejercicios || [])
-  const r = reparto(bloques)
+  const r = reparto(resistencia)
+  const zonas = porZona(resistencia)
 
   const guardar = (f: Fijado) => {
     setFijado(f)
@@ -124,11 +128,21 @@ export default function InfoSemana({ idDeportista, fecha }: {
 
   if (!idDeportista || !fecha) return null
 
+  /* La barra más larga de la semana, para poder comparar unos grupos con otros
+     cuando no hay objetivo. */
+  const masSeries = Math.max(1, ...grupos.map(g => g.series))
+
   // ---------- una fila de grupo ----------
   const fila = (g: { grupo: string; series: number }, fijada: boolean) => {
     const obj = objetivos[g.grupo] ?? null
-    const pct = obj && obj > 0 ? Math.min(100, Math.round((g.series / obj) * 100)) : 100
-    const color = !obj ? 'rgba(255,255,255,.18)' : pct >= 100 ? '#22C55E' : pct >= 60 ? '#EAB308' : '#F97316'
+    /* SIN OBJETIVO LA BARRA MIDE CONTRA EL GRUPO MÁS TRABAJADO, no al 100 %.
+       Pintarlas todas llenas era lo mismo que no pintarlas: cuatro barras
+       grises e idénticas donde una tenía 26 series y otra 3. Con objetivo mide
+       lo que le falta, que es otra pregunta y por eso va de otro color. */
+    const pct = obj && obj > 0
+      ? Math.min(100, Math.round((g.series / obj) * 100))
+      : Math.max(4, Math.round((g.series / masSeries) * 100))
+    const color = !obj ? 'rgba(255,255,255,.22)' : pct >= 100 ? '#22C55E' : pct >= 60 ? '#EAB308' : '#F97316'
     return (
       <div key={g.grupo} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0">
         <span className="text-[13px] min-w-[96px]">
@@ -240,16 +254,16 @@ export default function InfoSemana({ idDeportista, fecha }: {
             <>
               <div className={caja}>
                 <p className={titulo}>Reparto por zona</p>
-                {porZona(bloques).length === 0
+                {zonas.length === 0
                   ? <p className="text-gray-600 text-[12.5px] italic">Nada de resistencia esta semana.</p>
                   : (
                     <>
                       <div className="flex h-[22px] rounded-lg overflow-hidden mb-3">
-                        {porZona(bloques).map(z => (
+                        {zonas.map(z => (
                           <i key={z.zona} style={{ width: z.pct + '%', background: z.color }} title={z.nombre} />
                         ))}
                       </div>
-                      {porZona(bloques).map(z => (
+                      {zonas.map(z => (
                         <div key={z.zona} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0 text-[13px]">
                           <span className="w-[9px] h-[9px] rounded-[3px] flex-none" style={{ background: z.color }} />
                           <span className="flex-1 min-w-0 truncate">
@@ -269,7 +283,8 @@ export default function InfoSemana({ idDeportista, fecha }: {
                       <p className={pie}>
                         <b className="text-gray-300">{r.pctMinutos} % suave por minutos</b> · {r.pctSesiones} % por sesiones.
                         Los dos números describen la semana: contando solo sesiones te crees más polarizado de
-                        lo que eres. El corte está en AEM.
+                        lo que eres. El corte está en AEM, y <b className="text-gray-400">la fuerza no cuenta
+                        aquí</b>: sus zonas son otras y meterlas haría parecer dura una semana que no lo es.
                       </p>
                     </>
                   )}
