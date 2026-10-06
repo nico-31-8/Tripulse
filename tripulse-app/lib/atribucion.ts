@@ -20,7 +20,7 @@
 // Fuente: deporte/Resources/Triatlón/B1-04-Microciclo-Semanal.md
 import { calcularDuracionEstimada, type TestsDeportista, type TareaDuracion } from './duracion'
 import { SELECT_EJERCICIOS_CONTEO } from './cardio-fuerza'
-import { minutosEfectivos, minutosCarga } from './duracion-carga'
+import { minutosEfectivos, minutosCarga, minutosPlanificados } from './duracion-carga'
 import { factorConcatenacion } from './bricks'
 import { vecesDe } from './bloques-tarea'
 
@@ -98,6 +98,18 @@ export interface OpcionesAtribucion {
   // Si la sesión no tiene duración manual, estimarla desde sus tareas. Las páginas
   // de carga NO lo hacían (una sesión sin duración pesaba 0); false conserva eso.
   estimar?: boolean
+  /**
+   * Mirar SOLO lo prescrito, ignorando lo que el atleta midió.
+   *
+   * Por defecto manda lo real sobre lo planeado, y está bien: para unas
+   * zapatillas cuenta lo que corrió, no lo que le mandaron correr.
+   *
+   * Pero hay una pantalla donde eso es justo al revés: la del entrenador
+   * MONTANDO la semana. Ahí lo que importa es el reparto que está creando, y
+   * mezclarle los minutos reales de los días ya pasados con los planeados de
+   * los que faltan le daría una semana que no existe en ningún sitio.
+   */
+  soloPrescrito?: boolean
 }
 
 const rpePorDefecto = (s: SesionAtribuible) => s.rpe_reportado || s.rpe_estimado || 5
@@ -148,9 +160,11 @@ export function expandirEnBloques(
 
     // Minutos de la sesión: lo cronometrado manda, luego lo manual, luego la
     // estimación del conjunto (con todas las tareas a la vez, como lib/duracion-carga).
-    const minutosSesion = opts.estimar === false
-      ? minutosCarga(s)
-      : (minutosEfectivos(s, calcularDuracionEstimada(tar, tests)) || 0)
+    const minutosSesion = opts.soloPrescrito
+      ? minutosPlanificados(s, calcularDuracionEstimada(tar, tests))
+      : opts.estimar === false
+        ? minutosCarga(s)
+        : (minutosEfectivos(s, calcularDuracionEstimada(tar, tests)) || 0)
 
     const deportes = new Set(tar.map(t => t.disciplina || s.disciplina || 'Otra'))
     const esBrick = deportes.size > 1
@@ -183,7 +197,9 @@ export function expandirEnBloques(
          bloques—, que es la misma cuenta que hace la tabla al enseñar el total.
          Y manda lo REAL sobre lo planeado: para unas zapatillas cuenta lo que
          corrió, no lo que le mandaron correr. */
-      const porSerie = t.p_distancia?.[0]?.metros_reales ?? t.p_distancia?.[0]?.metros_planeados ?? 0
+      const porSerie = opts.soloPrescrito
+        ? (t.p_distancia?.[0]?.metros_planeados ?? 0)
+        : (t.p_distancia?.[0]?.metros_reales ?? t.p_distancia?.[0]?.metros_planeados ?? 0)
       const metros = porSerie > 0 ? porSerie * vecesDe(t) : 0
       out.push({
         id_sesion: s.id,
