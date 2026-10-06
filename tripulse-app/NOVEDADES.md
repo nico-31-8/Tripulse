@@ -14,6 +14,54 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 6 de octubre de 2026 · Ver cómo progresa cada ejercicio
+
+Lo que el deportista anota al hacer la sesión —el peso y las repeticiones de
+cada serie— ya se puede mirar en el tiempo. Está en dos sitios.
+
+**En la lupa.** Buscas un ejercicio, pulsas la **ⓘ** y debajo sale lo que ha
+hecho en él: cada día, con su peso y sus repeticiones, y arriba una frase con lo
+que cambió desde la vez anterior.
+
+**En Volumen y carga**, pestaña nueva **Progresos**: todos sus ejercicios, con
+las tres últimas veces de cada uno. Van **plegados por grupo muscular** —con
+dieciocho ejercicios, una lista corrida obliga a bajar hasta el final para ver si
+el glúteo va bien— y se pueden abrir varios a la vez para compararlos.
+
+### Por qué sale el peso Y las repeticiones
+
+Porque con el peso solo te mentiría. Esto es real, de un deportista:
+
+```
+20 ago · 50 kg · 5 · 5 · 5 · 5
+28 ago · 50 kg · 7 · 7 · 7 · 7
+ 7 sep · 50 kg · 7 · 9 · 10
+```
+
+Progresó de 5 a 10 repeticiones y el peso no se movió un kilo. Un gráfico de
+«peso máximo» habría dicho 50, 50, 50: no progresa.
+
+Por lo mismo, **cuando cambia el número de series no se juzga**: de 4×7 a
+7+9+10 son 28 repeticiones contra 26, y restar totales diría «menos» cuando lo
+que hizo fue subir de 7 a 10 por serie. En ese caso dice «3 series en vez de 4» y
+te deja las filas delante.
+
+### Un día no siempre es un peso
+
+Si un día hay series a pesos distintos —aproximaciones, un drop set, o algo
+anotado en el ejercicio que no era— sale **una línea por peso**. Juntarlas diría
+que hizo seis series a cincuenta kilos cuando fueron tres.
+
+### Lo que no cambia
+
+- **Un ejercicio renombrado no pierde su historial**: se reconoce por su ficha de
+  la biblioteca, no por el nombre.
+- **Las sesiones de la papelera no cuentan.**
+- Los ejercicios hechos **una sola vez** salen aparte: todavía no hay con qué
+  compararlos, pero que estén ahí ya dice algo.
+
+---
+
 ## 6 de octubre de 2026 · Información de la semana
 
 Al abrir una sesión tienes un desplegable nuevo encima de la tabla de tareas:
