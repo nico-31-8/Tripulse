@@ -19,7 +19,7 @@ import {
   type BloqueSemana, type SemanaCargada,
 } from '@/lib/semana-info'
 import { seriesPorGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
-import { COMPLEJOS, FUNCIONAL } from '@/lib/grupo-ejercicio'
+import { esDeFamilia } from '@/lib/familias-grupo'
 import { lunesDe, sumarDias, rangoLegible } from '@/lib/fechas'
 import { emojiDisciplina } from '@/lib/disciplinas'
 
@@ -105,11 +105,27 @@ export default function InfoSemana({ idDeportista, fecha }: {
   }
 
   /* Lo fijado sube; lo demás NO desaparece. Escondiéndolo dejarías de ver justo
-     el grupo que te estás olvidando, que es para lo que sirve esto. */
-  const esFuncional = (g: string) => g === FUNCIONAL || g === COMPLEJOS
+     el grupo que te estás olvidando, que es para lo que sirve esto.
+
+     Y LA MOVILIDAD VA APARTE, como lo funcional. Un estiramiento sostenido dos
+     veces no es volumen semanal de un músculo, igual que cuatro series de remo
+     no son cuatro series de fuerza —eso ya lo resuelve `seriesPorGrupo`
+     tirando el cardio—. Mezclada, se come la lista: en una semana real eran 26
+     series de estiramientos contra 11 de fuerza, y el panel decía que lo más
+     trabajado de la semana era la movilidad.
+
+     La familia la pone `lib/familias-grupo`, que ya tiene su patrón: así
+     entran «Movilidad y flexibilidad» y cualquier grupo que alguien llame
+     «Estiramientos» mañana. */
+  const esAparte = (g: string) => esDeFamilia('funcional', g) || esDeFamilia('movilidad', g)
+  /* La línea de arriba cuenta SOLO lo que se enseña como fuerza: diciendo «37
+     series» y luego pintando 11 en la lista de músculos, el número de la
+     cabecera no cuadraría con nada de lo que hay debajo. */
+  const deFuerza = grupos.filter(g => !esAparte(g.grupo))
   const mios = grupos.filter(g => fijado.grupos.includes(g.grupo))
-  const resto = grupos.filter(g => !fijado.grupos.includes(g.grupo) && !esFuncional(g.grupo))
-  const funcionales = grupos.filter(g => esFuncional(g.grupo))
+  const resto = grupos.filter(g => !fijado.grupos.includes(g.grupo) && !esAparte(g.grupo))
+  const funcionales = grupos.filter(g => esDeFamilia('funcional', g.grupo))
+  const movilidad = grupos.filter(g => esDeFamilia('movilidad', g.grupo))
 
   const porEjercicio = (() => {
     if (!fijado.ejercicios.length) return []
@@ -128,12 +144,12 @@ export default function InfoSemana({ idDeportista, fecha }: {
 
   if (!idDeportista || !fecha) return null
 
-  /* La barra más larga de la semana, para poder comparar unos grupos con otros
-     cuando no hay objetivo. */
-  const masSeries = Math.max(1, ...grupos.map(g => g.series))
-
   // ---------- una fila de grupo ----------
-  const fila = (g: { grupo: string; series: number }, fijada: boolean) => {
+  /* `tope` es contra qué se mide la barra cuando el grupo no tiene objetivo, y
+     lo pone CADA CAJA con su propio máximo. Con un tope único, las 26 series de
+     estiramientos dejaban las de fuerza en una rayita de nada aunque estén en
+     listas distintas. */
+  const fila = (g: { grupo: string; series: number }, fijada: boolean, tope: number) => {
     const obj = objetivos[g.grupo] ?? null
     /* SIN OBJETIVO LA BARRA MIDE CONTRA EL GRUPO MÁS TRABAJADO, no al 100 %.
        Pintarlas todas llenas era lo mismo que no pintarlas: cuatro barras
@@ -141,7 +157,7 @@ export default function InfoSemana({ idDeportista, fecha }: {
        lo que le falta, que es otra pregunta y por eso va de otro color. */
     const pct = obj && obj > 0
       ? Math.min(100, Math.round((g.series / obj) * 100))
-      : Math.max(4, Math.round((g.series / masSeries) * 100))
+      : Math.max(4, Math.round((g.series / Math.max(1, tope)) * 100))
     const color = !obj ? 'rgba(255,255,255,.22)' : pct >= 100 ? '#22C55E' : pct >= 60 ? '#EAB308' : '#F97316'
     return (
       <div key={g.grupo} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0">
@@ -167,7 +183,7 @@ export default function InfoSemana({ idDeportista, fecha }: {
         <b className="text-[14px]">📊 Información de la semana</b>
         {!abierto && (
           <span className="text-gray-400 text-[12.5px]">
-            {cargando ? 'cargando…' : datos ? resumen(grupos, bloques) : rangoLegible(lunes!)}
+            {cargando ? 'cargando…' : datos ? resumen(deFuerza, bloques) : rangoLegible(lunes!)}
           </span>
         )}
         {abierto && <span className="text-gray-500 text-[12.5px]">{rangoLegible(lunes!)}</span>}
@@ -210,7 +226,7 @@ export default function InfoSemana({ idDeportista, fecha }: {
               {mios.length > 0 && (
                 <div className={caja}>
                   <p className={titulo}>★ Lo que vigilo</p>
-                  {mios.map(g => fila(g, true))}
+                  {mios.map(g => fila(g, true, Math.max(...mios.map(x => x.series), 1)))}
                   {porEjercicio.map(e => (
                     <div key={e.nombre} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0">
                       <span className="text-[13px] min-w-[96px]"><span className="text-orange-400 text-[10px] mr-1">★</span>{e.nombre}</span>
@@ -226,17 +242,31 @@ export default function InfoSemana({ idDeportista, fecha }: {
 
               <div className={caja}>
                 <p className={titulo}>{mios.length ? 'El resto' : 'Series por grupo muscular'}</p>
-                {resto.length ? resto.map(g => fila(g, false))
+                {resto.length ? resto.map(g => fila(g, false, Math.max(...resto.map(x => x.series), 1)))
                   : <p className="text-gray-600 text-[12.5px] italic">Nada de fuerza esta semana.</p>}
               </div>
 
-              {/* Solo sale si se ha usado, que es lo que se pidió. */}
+              {/* Cada uno solo sale si se ha usado, que es lo que se pidió. */}
               {funcionales.length > 0 && (
                 <div className={caja}>
                   <p className={titulo}>Funcional y complejos</p>
-                  {funcionales.map(g => fila(g, fijado.grupos.includes(g.grupo)))}
+                  {funcionales.map(g => fila(g, fijado.grupos.includes(g.grupo),
+                    Math.max(...funcionales.map(x => x.series), 1)))}
                   <p className={pie}>
                     No son de un músculo: son el cuerpo entero moviendo una carga, y por eso van aparte.
+                  </p>
+                </div>
+              )}
+
+              {movilidad.length > 0 && (
+                <div className={caja}>
+                  <p className={titulo}>Movilidad y estiramientos</p>
+                  {movilidad.map(g => fila(g, fijado.grupos.includes(g.grupo),
+                    Math.max(...movilidad.map(x => x.series), 1)))}
+                  <p className={pie}>
+                    Van aparte por lo mismo: un estiramiento sostenido dos veces no es volumen de un
+                    músculo. Mezclado arriba se come la lista — y lo que quieres saber ahí es cuánta
+                    fuerza lleva cada grupo.
                   </p>
                 </div>
               )}
