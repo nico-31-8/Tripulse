@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  comoTiempo, porDisciplina, porZona, reparto, resumen, soloResistencia, ZONAS_SUAVES,
+  comoTiempo, conLosFijados, porDisciplina, porZona, reparto, resumen, soloResistencia, ZONAS_SUAVES,
   type BloqueSemana,
 } from './semana-info'
 
@@ -184,5 +184,46 @@ describe('LAS ZONAS DE FUERZA NO SE MEZCLAN CON LAS DE RESISTENCIA', () => {
 
   it('pero por DEPORTE la fuerza sigue saliendo: ahí sí interesa', () => {
     expect(porDisciplina(semana).map(d => d.disciplina).sort()).toEqual(['Carrera', 'Fuerza', 'Hibrido'])
+  })
+})
+
+describe('LO FIJADO SALE AUNQUE LLEVE CERO', () => {
+  /* Es la mitad de para qué sirve fijarlo. Quien marca el glúteo lo marca
+     porque quiere saber si le está entrando algo, y la semana que no le entra
+     nada es justo la que hay que ver — y era la semana en que desaparecía. */
+  const hay = [{ grupo: 'Cuádriceps', series: 9 }, { grupo: 'Core', series: 3 }]
+
+  it('un grupo sin nada esta semana sale a 0', () => {
+    expect(conLosFijados(hay, ['Glúteo'])).toEqual([{ grupo: 'Glúteo', series: 0 }])
+  })
+
+  it('y el que sí tiene, con lo suyo', () => {
+    expect(conLosFijados(hay, ['Glúteo', 'Cuádriceps'])).toEqual([
+      { grupo: 'Glúteo', series: 0 },
+      { grupo: 'Cuádriceps', series: 9 },
+    ])
+  })
+
+  it('EN EL ORDEN EN QUE SE FIJARON, no por series', () => {
+    /* Es la lista del entrenador. Ordenando por series, un grupo salta de sitio
+       justo el día que baja a cero, que es cuando más molesta buscarlo. */
+    expect(conLosFijados(hay, ['Core', 'Cuádriceps']).map(g => g.grupo)).toEqual(['Core', 'Cuádriceps'])
+  })
+
+  it('con el nombre que fijó el entrenador cuando no hay de dónde sacarlo', () => {
+    expect(conLosFijados([], ['Gemelo'])[0].grupo).toBe('Gemelo')
+  })
+
+  it('da igual cómo esté escrito', () => {
+    expect(conLosFijados(hay, ['  cuádriceps  '])).toEqual([{ grupo: 'Cuádriceps', series: 9 }])
+  })
+
+  it('sin repetir, aunque se fije dos veces', () => {
+    expect(conLosFijados(hay, ['Core', 'core'])).toHaveLength(1)
+  })
+
+  it('sin nada fijado, lista vacía', () => {
+    expect(conLosFijados(hay, [])).toEqual([])
+    expect(conLosFijados(hay, null)).toEqual([])
   })
 })

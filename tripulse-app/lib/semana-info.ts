@@ -330,3 +330,36 @@ export async function cargarSemana(
     realizadas: realizadas.length,
   }
 }
+
+/**
+ * Lo fijado SIEMPRE sale, aunque esta semana lleve cero.
+ *
+ * Es la mitad de para qué sirve fijarlo. Un grupo con 0 series no es «nada que
+ * enseñar»: es justo la respuesta que se estaba buscando al marcarlo. Quien
+ * fija el glúteo lo fija porque quiere saber si le está entrando algo, y la
+ * semana que no le entra nada es la semana en la que el panel tiene que
+ * decírselo — y era precisamente la semana en la que desaparecía de la lista.
+ *
+ * Se respeta el ORDEN EN QUE SE FIJARON y no se ordena por series: es la lista
+ * del entrenador, y que un grupo salte de sitio al bajar a cero es justo cuando
+ * más molesta buscarlo.
+ */
+export function conLosFijados<T extends { grupo: string; series: number }>(
+  hay: T[] | null | undefined,
+  fijados: string[] | null | undefined,
+): { grupo: string; series: number }[] {
+  const mapa = new Map((hay || []).map(g => [g.grupo.trim().toLowerCase(), g]))
+  const out: { grupo: string; series: number }[] = []
+  const puestos = new Set<string>()
+
+  for (const f of fijados || []) {
+    const clave = (f || '').trim().toLowerCase()
+    if (!clave || puestos.has(clave)) continue
+    puestos.add(clave)
+    const suyo = mapa.get(clave)
+    /* Con el nombre que fijó el entrenador, no el de la base: si no hay nada
+       esta semana no hay de dónde sacarlo, y la fila saldría sin nombre. */
+    out.push(suyo ? { grupo: suyo.grupo, series: suyo.series } : { grupo: f.trim(), series: 0 })
+  }
+  return out
+}

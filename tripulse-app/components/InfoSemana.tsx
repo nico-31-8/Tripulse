@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  cargarSemana, comoTiempo, porDisciplina, porZona, reparto, resumen, soloResistencia,
+  cargarSemana, comoTiempo, conLosFijados, porDisciplina, porZona, reparto, resumen, soloResistencia,
   type BloqueSemana, type SemanaCargada,
 } from '@/lib/semana-info'
 import { seriesPorGrupo, ejerciciosDeGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
@@ -146,21 +146,33 @@ export default function InfoSemana({ idDeportista, fecha }: {
      series» y luego pintando 11 en la lista de músculos, el número de la
      cabecera no cuadraría con nada de lo que hay debajo. */
   const deFuerza = grupos.filter(g => !esAparte(g.grupo))
-  const mios = grupos.filter(g => fijado.grupos.includes(g.grupo))
-  const resto = grupos.filter(g => !fijado.grupos.includes(g.grupo) && !esAparte(g.grupo))
+  /* LO FIJADO SALE AUNQUE LLEVE CERO esta semana: es la mitad de para qué
+     sirve marcarlo. Filtrando la lista de lo que hay, el grupo que se vigila
+     desaparecía justo la semana en que no entraba nada — que es la que había
+     que ver. */
+  const mios = conLosFijados(grupos, fijado.grupos)
+  /* Comparado como lo compara `conLosFijados` —sin mayúsculas ni espacios—:
+     con `includes` a secas, un grupo fijado como «gluteo» y guardado como
+     «Glúteos» salía arriba Y abajo, contado dos veces. */
+  const estaFijado = (g: string) =>
+    fijado.grupos.some(f => f.trim().toLowerCase() === g.trim().toLowerCase())
+  const resto = grupos.filter(g => !estaFijado(g.grupo) && !esAparte(g.grupo))
   const funcionales = grupos.filter(g => esDeFamilia('funcional', g.grupo))
   const movilidad = grupos.filter(g => esDeFamilia('movilidad', g.grupo))
 
+  /* Lo mismo con los ejercicios: el que se vigila sale aunque esta semana no
+     esté puesto. Se cuenta lo que hay y después se completa con los fijados. */
   const porEjercicio = (() => {
     if (!fijado.ejercicios.length) return []
     const mapa = new Map<string, number>()
     for (const e of datos?.ejercicios || []) {
       const n = (e.nombre || '').trim()
-      if (!n || !fijado.ejercicios.includes(n)) continue
+      if (!n) continue
       const s = Number(e.series)
       mapa.set(n, (mapa.get(n) || 0) + (Number.isFinite(s) && s > 0 ? s : 0))
     }
-    return [...mapa.entries()].map(([nombre, series]) => ({ nombre, series }))
+    const hay = [...mapa.entries()].map(([grupo, series]) => ({ grupo, series }))
+    return conLosFijados(hay, fijado.ejercicios).map(x => ({ nombre: x.grupo, series: x.series }))
   })()
 
   /* DEL CATÁLOGO ENTERO, no de lo que tenga esta semana. Ofreciendo solo lo de
@@ -189,9 +201,13 @@ export default function InfoSemana({ idDeportista, fecha }: {
        Pintarlas todas llenas era lo mismo que no pintarlas: cuatro barras
        grises e idénticas donde una tenía 26 series y otra 3. Con objetivo mide
        lo que le falta, que es otra pregunta y por eso va de otro color. */
-    const pct = obj && obj > 0
-      ? Math.min(100, Math.round((g.series / obj) * 100))
-      : Math.max(4, Math.round((g.series / Math.max(1, tope)) * 100))
+    /* EL CERO SE PINTA COMO UN CERO: barra vacía, no la mínima de 4 % que
+       llevan los grupos con poco trabajo. Con una rayita, «no ha entrado nada»
+       y «ha entrado poquísimo» se ven igual, y son dos cosas distintas. */
+    const pct = g.series <= 0 ? 0
+      : obj && obj > 0
+        ? Math.min(100, Math.round((g.series / obj) * 100))
+        : Math.max(4, Math.round((g.series / Math.max(1, tope)) * 100))
     const color = !obj ? 'rgba(255,255,255,.22)' : pct >= 100 ? '#22C55E' : pct >= 60 ? '#EAB308' : '#F97316'
     return (
       <div key={g.grupo} className="border-b border-gray-800/60 last:border-0">
@@ -211,8 +227,10 @@ export default function InfoSemana({ idDeportista, fecha }: {
         <span className="font-mono tabular-nums text-[12.5px] min-w-[58px] text-right">
           {g.series}{obj ? <span className="text-gray-600"> / {obj}</span> : <span className="text-gray-600"> / —</span>}
         </span>
-        <span className="text-[11px] text-gray-500 min-w-[66px] text-right">
-          {!obj ? 'sin objetivo' : g.series >= obj ? 'cumplido' : 'faltan ' + (obj - g.series)}
+        <span className={'text-[11px] min-w-[66px] text-right ' + (g.series <= 0 ? 'text-amber-300/80' : 'text-gray-500')}>
+          {g.series <= 0 ? 'nada aún'
+            : !obj ? 'sin objetivo'
+              : g.series >= obj ? 'cumplido' : 'faltan ' + (obj - g.series)}
         </span>
       </div>
 
@@ -308,10 +326,13 @@ export default function InfoSemana({ idDeportista, fecha }: {
                     <div key={e.nombre} className="flex items-center gap-2.5 py-1.5 border-b border-gray-800/60 last:border-0">
                       <span className="text-[13px] min-w-[96px]"><span className="text-orange-400 text-[10px] mr-1">★</span>{e.nombre}</span>
                       <span className="flex-1 h-[7px] rounded-full bg-white/[0.07] overflow-hidden min-w-[50px]">
-                        <i className="block h-full rounded-full bg-sky-400" style={{ width: '100%' }} />
+                        <i className="block h-full rounded-full bg-sky-400"
+                          style={{ width: e.series > 0 ? '100%' : '0%' }} />
                       </span>
                       <span className="font-mono tabular-nums text-[12.5px] min-w-[58px] text-right">{e.series}</span>
-                      <span className="text-[11px] text-gray-500 min-w-[66px] text-right">series</span>
+                      <span className={'text-[11px] min-w-[66px] text-right ' + (e.series > 0 ? 'text-gray-500' : 'text-amber-300/80')}>
+                        {e.series > 0 ? 'series' : 'nada aún'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -327,7 +348,7 @@ export default function InfoSemana({ idDeportista, fecha }: {
               {funcionales.length > 0 && (
                 <div className={caja}>
                   <p className={titulo}>Funcional y complejos</p>
-                  {funcionales.map(g => fila(g, fijado.grupos.includes(g.grupo),
+                  {funcionales.map(g => fila(g, estaFijado(g.grupo),
                     Math.max(...funcionales.map(x => x.series), 1)))}
                   <p className={pie}>
                     No son de un músculo: son el cuerpo entero moviendo una carga, y por eso van aparte.
@@ -338,7 +359,7 @@ export default function InfoSemana({ idDeportista, fecha }: {
               {movilidad.length > 0 && (
                 <div className={caja}>
                   <p className={titulo}>Movilidad y estiramientos</p>
-                  {movilidad.map(g => fila(g, fijado.grupos.includes(g.grupo),
+                  {movilidad.map(g => fila(g, estaFijado(g.grupo),
                     Math.max(...movilidad.map(x => x.series), 1)))}
                   <p className={pie}>
                     Van aparte por lo mismo: un estiramiento sostenido dos veces no es volumen de un
