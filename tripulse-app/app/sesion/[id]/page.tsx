@@ -1104,6 +1104,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   <BuscadorEjercicios
                     ejercicios={ejerciciosBiblioteca}
                     onBibliotecaCambia={cargarDatos}
+                    /* De quien se ensena el historial. NO es idDeportista:
+                       ese dice de quien sera lo que se CREE aqui, y lo que
+                       crea el entrenador es suyo. Juntandolos, el entrenador
+                       se quedaria sin historial justo donde mas sirve. */
+                    historialDe={deportistaId}
                     onElegir={ej => { setGrupoMuscularSel(ej.grupo_muscular || ''); setEjercicioSel(ej) }}
                     clase="flex-none bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-3.5 transition" />
                 </div>
@@ -1122,6 +1127,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                       <BuscadorEjercicios
                         ejercicios={ejerciciosBiblioteca}
                         onBibliotecaCambia={cargarDatos}
+                        historialDe={deportistaId}
                         onElegir={ej => { setGrupoMuscular2(ej.grupo_muscular || ''); setEjercicioSel2(ej) }} />
                     </div>
                   </div>

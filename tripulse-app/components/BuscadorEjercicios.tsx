@@ -23,6 +23,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
+import { cargarHistorial, queCambio, type DiaHistorial } from '@/lib/historial-ejercicio'
+import { fechaLarga } from '@/lib/fechas'
 import { partirInstrucciones } from '@/lib/instrucciones'
 import {
   EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, crearEjercicioPropio, type Dueno,
@@ -81,9 +83,19 @@ interface Props {
    * para las filas privadas y crear una sin él la rechaza la base.
    */
   idDeportista?: number | null
+  /**
+   * De quién se enseña el HISTORIAL de cada ejercicio.
+   *
+   * Aparte de `idDeportista` a propósito, aunque en la pantalla del atleta sean
+   * el mismo número: ese dice de quién será lo que se CREE aquí, y este de
+   * quién es lo que se MIRA. Juntándolos, el entrenador —que no pasa
+   * `idDeportista` porque lo que crea es suyo— se quedaría sin historial justo
+   * donde más sirve, que es prescribiendo.
+   */
+  historialDe?: number | null
 }
 
-export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista }: Props) {
+export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista, historialDe }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [creando, setCreando] = useState<EjercicioNuevo | null>(null)
   /**
@@ -100,6 +112,12 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
    * los doce entrenadores.
    */
   const [dueno, setDueno] = useState<Dueno | null>(null)
+  /* El historial del ejercicio que se está mirando. Se pide SOLO al abrir su
+     ficha: son cuatro consultas, y la lista se abre decenas de veces al montar
+     una sesión. */
+  const [historial, setHistorial] = useState<DiaHistorial[] | null>(null)
+  const [cargandoHist, setCargandoHist] = useState(false)
+
   useEffect(() => {
     if (idDeportista != null) { setDueno({ deportista: idDeportista }); return }
     let vivo = true
@@ -118,6 +136,15 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
   const [consulta, setConsulta] = useState('')
   const [sel, setSel] = useState(0)
   const [detalle, setDetalle] = useState<EjercicioBib | null>(null)
+  useEffect(() => {
+    if (!detalle || !historialDe) { setHistorial(null); return }
+    let vivo = true
+    setCargandoHist(true); setHistorial(null)
+    cargarHistorial(supabase, historialDe, { id: detalle.id, nombre: detalle.nombre })
+      .then(h => { if (vivo) { setHistorial(h); setCargandoHist(false) } })
+      .catch(() => { if (vivo) { setHistorial([]); setCargandoHist(false) } })
+    return () => { vivo = false }
+  }, [detalle, historialDe])
   const [videos, setVideos] = useState<Record<number, string | null>>({})
   const [guardando, setGuardando] = useState(false)
 
@@ -433,6 +460,46 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                   <div className="overflow-y-auto p-4">
                     <h4 className="text-[17px] font-bold leading-tight">{detalle.nombre}</h4>
                     <p className="text-[11px] text-gray-500 mt-1.5">{detalle.grupo_muscular}</p>
+                    {historialDe != null && (
+                      <div className="mt-3.5 border border-gray-800 rounded-xl bg-[#0d1420] px-3 py-2.5">
+                        <div className="flex items-baseline gap-2 flex-wrap mb-2">
+                          <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold">Cómo va</p>
+                          {/* QUÉ CAMBIÓ, en una frase. Dice las repeticiones
+                              cuando el peso no se mueve: en el caso real que
+                              destapó esto, el atleta pasó de 5 a 10 reps con
+                              los mismos 50 kg — mirando el peso parecía que no
+                              progresaba. */}
+                          {historial && queCambio(historial) && (
+                            <span className="text-[11.5px] text-orange-300">{queCambio(historial)}</span>
+                          )}
+                        </div>
+                        {cargandoHist
+                          ? <p className="text-gray-600 text-[12px] italic">Buscando las veces anteriores…</p>
+                          : !historial?.length
+                            ? <p className="text-gray-600 text-[12px] italic">Todavía no lo ha hecho con datos anotados.</p>
+                            : historial.map(d => (
+                              <div key={d.fecha} className="flex items-baseline gap-2.5 py-1 border-b border-gray-800/60 last:border-0">
+                                <span className="text-[11.5px] text-gray-500 min-w-[92px]">{fechaLarga(d.fecha)}</span>
+                                {/* PESO Y REPETICIONES, las dos. Con el peso
+                                    solo, una progresión en reps es invisible. */}
+                                <span className="font-mono tabular-nums text-[12.5px] text-white min-w-[52px]">
+                                  {d.pesoTop != null ? d.pesoTop + ' kg' : '—'}
+                                </span>
+                                <span className="font-mono text-[12px] text-sky-300 flex-1 min-w-0 truncate">
+                                  {d.series.map(x => x.reps ?? '–').join(' · ')}
+                                </span>
+                                {/* Sin esfuerzo anotado, 50×10 no dice si fue
+                                    fácil o si no pudo con más. */}
+                                {d.conControl && (
+                                  <span className="text-[10.5px] text-gray-500">
+                                    {d.series.find(x => x.control != null)?.controlTipo?.toUpperCase()}{' '}
+                                    {d.series.find(x => x.control != null)?.control}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                      </div>
+                    )}
                     {detalle.descripcion && (
                       <p className="text-[13.5px] text-gray-300 mt-3 leading-relaxed">{detalle.descripcion}</p>
                     )}

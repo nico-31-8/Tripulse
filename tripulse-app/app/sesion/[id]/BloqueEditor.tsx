@@ -25,7 +25,7 @@ const numero = 'bg-transparent border-0 border-b border-gray-600 text-center fon
 const pastilla = 'inline-flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5 text-sm text-gray-300'
 
 export default function BloqueEditor({
-  bloque, biblioteca, onCambio, onGuardar, onQuitar, guardando, error, modoCompleja, onBibliotecaCambia,
+  bloque, biblioteca, onCambio, onGuardar, onQuitar, guardando, error, modoCompleja, onBibliotecaCambia, historialDe,
 }: {
   bloque: BloqueBorrador
   biblioteca: (EjercicioBib & { grupo_muscular?: string | null })[]
@@ -37,6 +37,8 @@ export default function BloqueEditor({
   /** Sesión en modo «compleja»: cada tarea lleva su cualidad de fuerza. */
   modoCompleja: boolean
   onBibliotecaCambia?: () => void
+  /** De quien se ensena el historial al abrir la ficha de un ejercicio. */
+  historialDe?: number | null
 }) {
   const cfg = configDeBorrador(bloque)
   const conCantidad = pideCantidad(bloque.formato, cfg)
@@ -170,7 +172,7 @@ export default function BloqueEditor({
                       claseGrupo={campo + ' basis-[42%]'}
                       claseCaja="flex-1 min-w-0"
                       claseEjercicio={campo + ' w-full'} />
-                    <BuscadorEjercicios ejercicios={biblioteca} onBibliotecaCambia={onBibliotecaCambia}
+                    <BuscadorEjercicios ejercicios={biblioteca} onBibliotecaCambia={onBibliotecaCambia} historialDe={historialDe}
                       onElegir={ej => cambiaLinea(i, { grupo: ej.grupo_muscular || '', ejercicioId: String(ej.id) })} />
                   </div>
                 )}

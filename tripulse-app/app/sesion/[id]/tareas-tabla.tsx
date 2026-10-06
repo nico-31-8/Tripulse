@@ -2072,7 +2072,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             segunda pisaría a la primera (ver `parcheF`). */}
                         <BuscadorEjercicios
                           ejercicios={ejerciciosBiblioteca}
-                          onBibliotecaCambia={cargarDatos}
+                          onBibliotecaCambia={cargarDatos} historialDe={deportistaId}
                           onElegir={ej => parcheF(i, {
                             grupoMuscularSel: ej.grupo_muscular || '',
                             ejercicioSelId: String(ej.id),
@@ -2090,7 +2090,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           <div className="mt-1">
                             <BuscadorEjercicios
                               ejercicios={ejerciciosBiblioteca}
-                              onBibliotecaCambia={cargarDatos}
+                              onBibliotecaCambia={cargarDatos} historialDe={deportistaId}
                               onElegir={ej => parcheF(i, {
                                 grupoMuscular2: ej.grupo_muscular || '',
                                 ejercicioSelId2: String(ej.id),
@@ -2265,7 +2265,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
           onGuardar={() => guardarBloque(b)}
           onQuitar={() => setBloquesB(prev => prev.filter(x => x.clave !== b.clave))}
           guardando={guardandoBloque === b.clave} error={errorBloque[b.clave]}
-          modoCompleja={modoFuerza === 'compleja'} onBibliotecaCambia={cargarDatos} />
+          modoCompleja={modoFuerza === 'compleja'} onBibliotecaCambia={cargarDatos} historialDe={deportistaId} />
       ))}
 
       {!esDeportista && !esFuerza && (
