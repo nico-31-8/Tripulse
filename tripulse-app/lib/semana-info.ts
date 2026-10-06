@@ -21,6 +21,7 @@ import { ZONAS_RESISTENCIA } from './zonas'
    salta si alguien se hace el suyo. Lo cazó escribiendo este fichero. */
 import { horasMinutos } from './medicion'
 import { esDisciplinaDeFuerza } from './disciplinas'
+import { vivas } from './papelera'
 import { cargarBloques } from './atribucion'
 import { conRondasHechas } from './series-por-grupo'
 
@@ -282,10 +283,19 @@ export async function cargarSemana(
   const vacio: SemanaCargada = { ejercicios: [], bloques: [], sesiones: 0, realizadas: 0 }
   if (!idDeportista || !desde || !hasta) return vacio
 
-  const { data: todas } = await sb.from('sesion')
+  /* DE LA PAPELERA NO SALE NADA, igual que en el resto de la app. Faltaba, y no
+     fallaba: enseñaba números más grandes y creíbles. Un atleta que solo hace
+     carrera y fuerza aparecía con cuatro sesiones de natación y cuatro de bici
+     —las de un plan viejo que el entrenador ya había tirado— y la semana entera
+     salía inflada sin que nada lo dijera.
+
+     Con `vivas` y no con el `.or(...)` a mano: el convenio tiene su sitio
+     (lib/papelera) y escribirlo aquí otra vez es la manera de que un día uno de
+     los dos se quede sin el `is.null` y desaparezca el histórico entero. */
+  const { data: todas } = await vivas(sb.from('sesion')
     .select('id, fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado')
     .eq('id_deportista', idDeportista)
-    .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
+    .gte('fecha_sesion', desde).lte('fecha_sesion', hasta))
 
   const lista = (todas || []) as { id: number; estado?: string | null }[]
   const realizadas = lista.filter(s => s.estado === 'Realizada')
