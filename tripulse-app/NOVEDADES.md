@@ -14,6 +14,60 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 6 de octubre de 2026 · Información de la semana
+
+Al abrir una sesión tienes un desplegable nuevo encima de la tabla de tareas:
+**📊 Información de la semana**. Es lo que te falta saber justo cuando estás
+decidiendo qué mandar.
+
+Cerrado ocupa una línea y ya dice lo esencial: *34 series · 5 grupos · 4h10 ·
+80 % suave*. Si para saber si la semana va bien hubiera que abrirlo, no serviría.
+
+### Fuerza
+
+Las series de cada grupo muscular, con **su objetivo semanal** y cuánto falta.
+Verde si está cumplido, ámbar si va a medias, naranja si va corto. Si un grupo no
+tiene objetivo, la barra mide contra el grupo más trabajado de la semana, para
+que puedas compararlos de un vistazo.
+
+**Pulsa el nombre de un grupo y se abre el desglose**: de qué ejercicios sale ese
+número y cuántas series lleva cada uno. «Hombro · 6» no dice si son seis de press
+militar o dos de tres ejercicios distintos, y para decidir qué mandar esa
+diferencia lo es todo.
+
+**Funcional, complejos y movilidad van en sus propias cajas.** Un estiramiento
+sostenido dos veces no es volumen semanal de un músculo, y mezclado se come la
+lista: en una semana real eran 26 series de estiramientos contra 11 de fuerza.
+
+### Resistencia
+
+El reparto por zona en una cinta de colores, con el tiempo y los kilómetros de
+cada una. Y debajo, por deporte.
+
+Lo de **cuánto va suave sale con dos números**: por minutos y por sesiones. Los
+dos hacen falta — contando solo sesiones te crees más polarizado de lo que eres,
+y contando solo minutos infravaloras el coste de las duras.
+
+La bici sale en **tiempo** y no en kilómetros: por distancia no se puede estimar.
+Y la **fuerza no cuenta** en el reparto de zonas, porque las suyas son otras.
+
+### Elegir qué veo
+
+Fijas con ★ los grupos y los ejercicios que quieras vigilar y suben arriba. Salen
+**todos los del catálogo**, no solo los de esta semana: «quiero vigilar el
+glúteo» se dice justo cuando todavía no hay glúteo.
+
+Lo marcado sube, **lo demás no desaparece**. Escondiéndolo dejarías de ver justo
+el grupo que te estás olvidando.
+
+### Lo demás
+
+- **‹ ›** para moverte de semana y repasar las de antes.
+- **«ver lo que hizo»** cambia de lo prescrito a lo realizado.
+- Va siempre de la semana de **la sesión que tienes abierta**, no de la de hoy.
+
+---
+
 ## 5 de octubre de 2026 · Crear un ejercicio sin salir de la sesión
 
 La **lupa** de buscar ejercicios, la que usas al montar una sesión, ahora deja
