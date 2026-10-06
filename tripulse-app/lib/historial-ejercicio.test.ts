@@ -169,3 +169,41 @@ describe('qué cuenta como «el mismo ejercicio» entre semanas', () => {
     expect(claveDeEjercicio({ ejercicio_id: 7 })).not.toBe(claveDeEjercicio({ nombre: '7' }))
   })
 })
+
+describe('UN DÍA NO SIEMPRE ES UN PESO', () => {
+  /* Caso real: el 7 de septiembre, el hip thrust tenía tres series a 50 kg
+     (7·9·10) y tres más a 8, 12,5 y 15. Enseñado como una línea salía
+     «50 kg · 7 · 9 · 10 · 10 · 10 · 10», que dice que hizo SEIS series a
+     cincuenta kilos. No es un detalle feo: es un número falso justo donde se
+     decide la carga de la semana siguiente. */
+  const dia = historialPorDia([
+    s('2026-09-07', 50, 7), s('2026-09-07', 50, 9), s('2026-09-07', 50, 10),
+    s('2026-09-07', 15, 10), s('2026-09-07', 12.5, 10), s('2026-09-07', 8, 10),
+  ])[0]
+
+  it('se parte por pesos, del más pesado al más ligero', () => {
+    expect(dia.porPeso.map(p => p.peso)).toEqual([50, 15, 12.5, 8])
+  })
+
+  it('y cada peso lleva SUS repeticiones', () => {
+    expect(dia.porPeso[0].reps).toEqual([7, 9, 10])
+    expect(dia.porPeso[3].reps).toEqual([10])
+  })
+
+  it('el día normal sigue siendo una sola línea', () => {
+    const normal = historialPorDia([s('2026-10-01', 40, 10), s('2026-10-01', 40, 8)])[0]
+    expect(normal.porPeso).toHaveLength(1)
+    expect(normal.porPeso[0]).toEqual({ peso: 40, reps: [10, 8] })
+  })
+
+  it('las series sin peso van juntas al final, no con un peso inventado', () => {
+    /* Son las de tiempo, o las que se anotaron a medias. */
+    const d = historialPorDia([s('2026-10-01', 40, 10), s('2026-10-01', null, 12)])[0]
+    expect(d.porPeso.map(p => p.peso)).toEqual([40, null])
+    expect(d.porPeso[1].reps).toEqual([12])
+  })
+
+  it('y el pesoTop sigue siendo el de comparar entre días', () => {
+    expect(dia.pesoTop).toBe(50)
+  })
+})

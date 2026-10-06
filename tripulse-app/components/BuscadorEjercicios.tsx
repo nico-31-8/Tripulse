@@ -478,24 +478,38 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                           : !historial?.length
                             ? <p className="text-gray-600 text-[12px] italic">Todavía no lo ha hecho con datos anotados.</p>
                             : historial.map(d => (
-                              <div key={d.fecha} className="flex items-baseline gap-2.5 py-1 border-b border-gray-800/60 last:border-0">
-                                <span className="text-[11.5px] text-gray-500 min-w-[92px]">{fechaLarga(d.fecha)}</span>
-                                {/* PESO Y REPETICIONES, las dos. Con el peso
-                                    solo, una progresión en reps es invisible. */}
-                                <span className="font-mono tabular-nums text-[12.5px] text-white min-w-[52px]">
-                                  {d.pesoTop != null ? d.pesoTop + ' kg' : '—'}
-                                </span>
-                                <span className="font-mono text-[12px] text-sky-300 flex-1 min-w-0 truncate">
-                                  {d.series.map(x => x.reps ?? '–').join(' · ')}
-                                </span>
-                                {/* Sin esfuerzo anotado, 50×10 no dice si fue
-                                    fácil o si no pudo con más. */}
-                                {d.conControl && (
-                                  <span className="text-[10.5px] text-gray-500">
-                                    {d.series.find(x => x.control != null)?.controlTipo?.toUpperCase()}{' '}
-                                    {d.series.find(x => x.control != null)?.control}
-                                  </span>
-                                )}
+                              <div key={d.fecha} className="py-1.5 border-b border-gray-800/60 last:border-0">
+                                <div className="flex items-baseline gap-2.5">
+                                  <span className="text-[11.5px] text-gray-500 min-w-[92px]">{fechaLarga(d.fecha)}</span>
+                                  {/* UNA LÍNEA POR PESO. Un día no siempre es un
+                                      peso: hay aproximaciones, drop sets y
+                                      series anotadas en el ejercicio que no
+                                      era. Juntándolas, tres series a 50 y tres
+                                      a 8 salían como seis a cincuenta kilos. */}
+                                  <div className="flex-1 min-w-0">
+                                    {d.porPeso.map((g, i) => (
+                                      <div key={i} className="flex items-baseline gap-2.5">
+                                        <span className="font-mono tabular-nums text-[12.5px] text-white min-w-[52px]">
+                                          {g.peso != null ? g.peso + ' kg' : 'sin peso'}
+                                        </span>
+                                        {/* PESO Y REPETICIONES, las dos: con el
+                                            peso solo, una progresión en reps es
+                                            invisible. */}
+                                        <span className="font-mono text-[12px] text-sky-300 flex-1 min-w-0 truncate">
+                                          {g.reps.map(r => r ?? '–').join(' · ')}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {/* Sin esfuerzo anotado, 50×10 no dice si fue
+                                      fácil o si no pudo con más. */}
+                                  {d.conControl && (
+                                    <span className="text-[10.5px] text-gray-500 flex-none">
+                                      {d.series.find(x => x.control != null)?.controlTipo?.toUpperCase()}{' '}
+                                      {d.series.find(x => x.control != null)?.control}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                       </div>

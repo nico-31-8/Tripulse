@@ -38,9 +38,26 @@ export interface SerieDelDia {
   controlTipo: string | null
 }
 
+/** Las series de un mismo peso dentro de un día. */
+export interface PesoDelDia {
+  peso: number | null
+  reps: (number | null)[]
+}
+
 export interface DiaHistorial {
   fecha: string
   series: SerieDelDia[]
+  /**
+   * EL DÍA, PARTIDO POR PESOS, de más pesado a menos.
+   *
+   * Un día no siempre es un peso. Hay aproximaciones, hay drop sets, y hay
+   * series anotadas en el ejercicio que no era. En un caso real había tres
+   * series a 50 kg y tres a 8, 12,5 y 15: enseñándolo como una sola línea
+   * salía «50 kg · 7 · 9 · 10 · 10 · 10 · 10», que dice que hizo seis series a
+   * cincuenta kilos. Y eso no es un detalle feo, es un número falso donde el
+   * entrenador va a decidir la carga de la semana que viene.
+   */
+  porPeso: PesoDelDia[]
   /** El peso más alto del día. Es con el que se compara entre días. */
   pesoTop: number | null
   /** Todas las repeticiones del día sumadas. */
@@ -88,9 +105,23 @@ export function historialPorDia(series: SerieAnotada[] | null | undefined): DiaH
          pero las dos opciones son peores que no contarla. */
       const trabajo = series.reduce((a, x) =>
         a + (x.peso != null && x.reps != null ? x.peso * x.reps : 0), 0)
+      /* Agrupadas por peso, de más a menos. Las que no lo traen van juntas al
+         final: son las de tiempo o las que se anotaron a medias, y mezclarlas
+         con un peso cualquiera sería inventarlo. */
+      const grupos = new Map<string, PesoDelDia>()
+      for (const x of series) {
+        const clave = x.peso == null ? 'sin' : String(x.peso)
+        const g = grupos.get(clave) || { peso: x.peso, reps: [] }
+        g.reps.push(x.reps)
+        grupos.set(clave, g)
+      }
+      const porPeso = [...grupos.values()]
+        .sort((a, b) => (b.peso ?? -1) - (a.peso ?? -1))
+
       return {
         fecha,
         series,
+        porPeso,
         pesoTop: pesos.length ? Math.max(...pesos) : null,
         reps,
         trabajo: Math.round(trabajo),
