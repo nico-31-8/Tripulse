@@ -14,7 +14,8 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  claveDeEjercicio, historialPorDia, queCambio, type SerieAnotada,
+  claveDeEjercicio, historialPorDia, porGrupoMuscular, queCambio, SIN_GRUPO,
+  type ProgresoEjercicio, type SerieAnotada,
 } from './historial-ejercicio'
 
 const s = (fecha: string, peso: number | null, reps: number | null, extra: Partial<SerieAnotada> = {}): SerieAnotada =>
@@ -205,5 +206,44 @@ describe('UN DÍA NO SIEMPRE ES UN PESO', () => {
 
   it('y el pesoTop sigue siendo el de comparar entre días', () => {
     expect(dia.pesoTop).toBe(50)
+  })
+})
+
+describe('plegados por grupo muscular', () => {
+  /* Con dieciocho ejercicios en una lista corrida hay que bajar hasta el final
+     para ver si el glúteo va bien. */
+  const prog = (nombre: string, grupo: string | null, fecha: string): ProgresoEjercicio =>
+    ({ clave: nombre, nombre, grupo, dias: historialPorDia([s(fecha, 50, 5)]) })
+
+  const lista = [
+    prog('Sentadilla', 'Cuádriceps', '2026-09-01'),
+    prog('Hip thrust', 'Glúteos', '2026-10-05'),
+    prog('Prensa', 'Cuádriceps', '2026-10-01'),
+    prog('Algo raro', null, '2026-08-01'),
+  ]
+
+  it('junta los del mismo grupo', () => {
+    const r = porGrupoMuscular(lista)
+    expect(r.find(g => g.grupo === 'Cuádriceps')!.ejercicios.map(e => e.nombre))
+      .toEqual(['Prensa', 'Sentadilla'])
+  })
+
+  it('LOS GRUPOS, POR LO MÁS RECIENTE', () => {
+    /* Por nombre, «Cuádriceps» saldría antes que «Glúteos» aunque el glúteo se
+       haya entrenado ayer y el cuádriceps hace un mes. */
+    expect(porGrupoMuscular(lista).map(g => g.grupo))
+      .toEqual(['Glúteos', 'Cuádriceps', SIN_GRUPO])
+  })
+
+  it('y los ejercicios de dentro, también', () => {
+    expect(porGrupoMuscular(lista)[1].ejercicios[0].nombre).toBe('Prensa')
+  })
+
+  it('los que no dicen de qué son tienen su cajón, no se pierden', () => {
+    expect(porGrupoMuscular(lista).find(g => g.grupo === SIN_GRUPO)!.ejercicios).toHaveLength(1)
+  })
+
+  it('sin nada, nada', () => {
+    expect(porGrupoMuscular(null)).toEqual([])
   })
 })

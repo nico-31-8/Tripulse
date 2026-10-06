@@ -341,3 +341,45 @@ export async function cargarProgresos(
        arriba por empezar por A. */
     .sort((a, b) => (b.dias[0]?.fecha || '').localeCompare(a.dias[0]?.fecha || ''))
 }
+
+export interface GrupoDeProgresos {
+  grupo: string
+  ejercicios: ProgresoEjercicio[]
+  /** La última vez que tocó este grupo. Es por lo que se ordenan. */
+  ultima: string
+}
+
+/** El cajón de los que no dicen de qué son. */
+export const SIN_GRUPO = 'Sin grupo'
+
+/**
+ * Los progresos repartidos por grupo muscular, para poder plegarlos.
+ *
+ * Con dieciocho ejercicios en una lista corrida hay que bajar hasta el final
+ * para ver si el glúteo va bien. Plegados por grupo, la pantalla es una lista
+ * de seis cosas y se abre la que interesa.
+ *
+ * ORDENADOS POR LO MÁS RECIENTE, los grupos y los ejercicios de dentro: lo que
+ * se acaba de entrenar es lo que se va a prescribir. Por nombre, el grupo que
+ * no se toca desde julio saldría el primero por empezar por «A».
+ */
+export function porGrupoMuscular(
+  progresos: ProgresoEjercicio[] | null | undefined,
+): GrupoDeProgresos[] {
+  const mapa = new Map<string, ProgresoEjercicio[]>()
+  for (const p of progresos || []) {
+    const g = (p?.grupo || '').trim() || SIN_GRUPO
+    mapa.set(g, [...(mapa.get(g) || []), p])
+  }
+  return [...mapa.entries()]
+    .map(([grupo, ejercicios]) => ({
+      grupo,
+      ejercicios: [...ejercicios].sort((a, b) =>
+        (b.dias[0]?.fecha || '').localeCompare(a.dias[0]?.fecha || '')),
+      ultima: ejercicios.reduce((max, e) => {
+        const f = e.dias[0]?.fecha || ''
+        return f > max ? f : max
+      }, ''),
+    }))
+    .sort((a, b) => b.ultima.localeCompare(a.ultima) || a.grupo.localeCompare(b.grupo, 'es'))
+}

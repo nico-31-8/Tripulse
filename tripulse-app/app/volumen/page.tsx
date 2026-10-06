@@ -26,7 +26,7 @@ import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { horasMinutos } from '@/lib/medicion'
-import { cargarProgresos, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
+import { cargarProgresos, porGrupoMuscular, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
@@ -157,6 +157,12 @@ export default function VolumenPage() {
      y esta pantalla ya hace unas cuantas al cargar. */
   const [progresos, setProgresos] = useState<ProgresoEjercicio[] | null>(null)
   const [cargandoProg, setCargandoProg] = useState(false)
+  /* Qué grupos están desplegados. VARIOS a la vez, al contrario que en el panel
+     de la semana: aquí se entra a comparar —«cómo va el glúteo contra el
+     cuádriceps»— y cerrar uno para abrir el otro obliga a recordar de memoria
+     lo que acabas de ver. */
+  const [gruposAbiertos, setGruposAbiertos] = useState<string[]>([])
+  const [verUnaVez, setVerUnaVez] = useState(false)
   const [metrica, setMetrica] = useState<'tiempo'|'carga'>('tiempo')
   const [periodoSel, setPeriodoSel] = useState<string | null>(null)
   const [vista, setVista] = useState<'dias'|'semanas'>('semanas')
@@ -519,6 +525,12 @@ export default function VolumenPage() {
      empezar. Van separadas, no mezcladas. */
   const conHistorial = (progresos || []).filter(p => p.dias.length > 1)
   const soloUnaVez = (progresos || []).filter(p => p.dias.length === 1)
+  /* PLEGADOS POR GRUPO. Con dieciocho ejercicios en una lista corrida hay que
+     bajar hasta el final para ver si el glúteo va bien; así la pantalla es una
+     lista de seis cosas y se abre la que interesa. */
+  const porGrupo = porGrupoMuscular(conHistorial)
+  const abrirGrupo = (g: string) =>
+    setGruposAbiertos(l => l.includes(g) ? l.filter(x => x !== g) : [...l, g])
 
   const datosVol = vista === 'dias' ? datosDias : datosSemanas
   const xKeyVol = vista === 'dias' ? 'fecha' : 'semana'
@@ -1145,10 +1157,37 @@ export default function VolumenPage() {
 
                 {!cargandoProg && conHistorial.length > 0 && (
                   <>
-                    <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold mb-2.5">
-                      Con historial · {conHistorial.length}
-                    </p>
-                    {conHistorial.map(pr => (
+                    <div className="flex items-baseline gap-2.5 mb-2.5 flex-wrap">
+                      <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold">
+                        Con historial · {conHistorial.length}
+                      </p>
+                      {/* Abrir y cerrar todos de golpe: con seis grupos, ir uno
+                          a uno para ver la semana entera es peor que la lista
+                          corrida que veníamos de quitar. */}
+                      <button
+                        onClick={() => setGruposAbiertos(l =>
+                          l.length === porGrupo.length ? [] : porGrupo.map(g => g.grupo))}
+                        className="text-[11.5px] text-gray-500 hover:text-orange-300 transition ml-auto">
+                        {gruposAbiertos.length === porGrupo.length ? 'cerrar todos' : 'abrir todos'}
+                      </button>
+                    </div>
+
+                    {porGrupo.map(g => {
+                      const abierto = gruposAbiertos.includes(g.grupo)
+                      return (
+                    <div key={g.grupo} className="border border-gray-800 rounded-xl mb-2 overflow-hidden">
+                      <button onClick={() => abrirGrupo(g.grupo)}
+                        className="w-full flex items-baseline gap-2.5 px-3 py-2.5 bg-[#0d1420] hover:bg-[#121b2b] transition text-left">
+                        <b className="text-[13px]">{g.grupo}</b>
+                        <span className="text-[11px] text-gray-500">
+                          {g.ejercicios.length} {g.ejercicios.length === 1 ? 'ejercicio' : 'ejercicios'}
+                        </span>
+                        <span className="text-[11px] text-gray-600 ml-auto">{fechaLarga(g.ultima)}</span>
+                        <span className={'text-gray-600 text-[11px] transition ' + (abierto ? 'rotate-180' : '')}>▾</span>
+                      </button>
+
+                      {abierto && <div className="px-3 pb-1">
+                    {g.ejercicios.map(pr => (
                       <div key={pr.clave} className="border-b border-gray-800/60 last:border-0 py-2.5">
                         <div className="flex items-baseline gap-2.5 flex-wrap mb-1.5">
                           <b className="text-[13.5px]">{pr.nombre}</b>
@@ -1189,19 +1228,27 @@ export default function VolumenPage() {
                         ))}
                       </div>
                     ))}
+                      </div>}
+                    </div>
+                      )
+                    })}
                   </>
                 )}
 
                 {!cargandoProg && soloUnaVez.length > 0 && (
                   <div className={conHistorial.length ? 'mt-5 pt-4 border-t border-gray-800' : ''}>
-                    <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold mb-2">
-                      Hechos una sola vez · {soloUnaVez.length}
-                    </p>
-                    <p className="text-gray-500 text-[11.5px] leading-snug mb-2.5">
+                    <button onClick={() => setVerUnaVez(v => !v)}
+                      className="flex items-baseline gap-2.5 w-full text-left mb-2">
+                      <p className="text-[10px] uppercase tracking-[0.1em] text-gray-500 font-bold">
+                        Hechos una sola vez · {soloUnaVez.length}
+                      </p>
+                      <span className={'text-gray-600 text-[11px] transition ' + (verUnaVez ? 'rotate-180' : '')}>▾</span>
+                    </button>
+                    {verUnaVez && <p className="text-gray-500 text-[11.5px] leading-snug mb-2.5">
                       Todavía no hay con qué compararlos. Salen igual porque que estén aquí ya dice algo:
                       es lo que lleva anotado hasta ahora.
-                    </p>
-                    {soloUnaVez.map(pr => (
+                    </p>}
+                    {verUnaVez && soloUnaVez.map(pr => (
                       <div key={pr.clave} className="flex items-baseline gap-2.5 py-1 text-[12.5px]">
                         <span className="flex-1 min-w-0 truncate">{pr.nombre}</span>
                         <span className="text-[11px] text-gray-500">{fechaLarga(pr.dias[0].fecha)}</span>
