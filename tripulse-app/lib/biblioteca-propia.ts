@@ -20,6 +20,8 @@
 export interface EjercicioBib {
   id: number
   nombre: string
+  /** Lo lee quien agrupa por familias y quien cuenta series por grupo. */
+  grupo_muscular?: string | null
   id_entrenador?: string | null
   id_deportista?: number | null
   /** De cuál del común es copia, si lo es. */

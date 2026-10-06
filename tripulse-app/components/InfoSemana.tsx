@@ -19,7 +19,9 @@ import {
   type BloqueSemana, type SemanaCargada,
 } from '@/lib/semana-info'
 import { seriesPorGrupo, ejerciciosDeGrupo, cargarObjetivos, SIN_CLASIFICAR } from '@/lib/series-por-grupo'
-import { esDeFamilia } from '@/lib/familias-grupo'
+import { esDeFamilia, porFamilias } from '@/lib/familias-grupo'
+import { gruposExistentes } from '@/lib/ejercicio-propio'
+import { cargarBiblioteca, type EjercicioBib } from '@/lib/biblioteca-propia'
 import { lunesDe, sumarDias, rangoLegible } from '@/lib/fechas'
 import { emojiDisciplina } from '@/lib/disciplinas'
 
@@ -67,11 +69,29 @@ export default function InfoSemana({ idDeportista, fecha }: {
      tanto que hay que bajar para ver el grupo siguiente, y esto vive encima de
      la tabla que se está montando. */
   const [desglose, setDesglose] = useState<string | null>(null)
+  /* Cuántas semanas me he movido de la de la sesión abierta. 0 es la suya, que
+     es donde se entra siempre: el panel está para montar ESTA, y moverse es
+     para repasar. */
+  const [salto, setSalto] = useState(0)
+  /* El catálogo entero, para poder fijar algo que esta semana no se usa. Se
+     pide SOLO al abrir el engranaje: son 255 ejercicios y la inmensa mayoría de
+     las veces el panel se abre para mirar los números, no para configurarlo. */
+  const [catalogo, setCatalogo] = useState<EjercicioBib[] | null>(null)
+  const [busca, setBusca] = useState('')
   const [cargando, setCargando] = useState(false)
 
   useEffect(() => { setFijado(leerFijado()) }, [])
+  /* Al cambiar de sesión se vuelve a SU semana. Si no, abres otra sesión y
+     sigues mirando la semana a la que te habías movido en la anterior, con el
+     nombre de la nueva arriba. */
+  useEffect(() => { setSalto(0) }, [fecha, idDeportista])
+  /* El catálogo, la primera vez que se abre el engranaje. */
+  useEffect(() => {
+    if (pestana !== 'ajustes' || catalogo) return
+    cargarBiblioteca('nombre').then(setCatalogo).catch(() => setCatalogo([]))
+  }, [pestana, catalogo])
 
-  const lunes = fecha ? lunesDe(fecha) : null
+  const lunes = fecha ? sumarDias(lunesDe(fecha), salto * 7) : null
   const domingo = lunes ? sumarDias(lunes, 6) : null
 
   const traer = useCallback(async () => {
@@ -143,8 +163,16 @@ export default function InfoSemana({ idDeportista, fecha }: {
     return [...mapa.entries()].map(([nombre, series]) => ({ nombre, series }))
   })()
 
-  const nombresEjercicio = [...new Set((datos?.ejercicios || [])
-    .map(e => (e.nombre || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+  /* DEL CATÁLOGO ENTERO, no de lo que tenga esta semana. Ofreciendo solo lo de
+     la semana no se podía fijar un grupo PARA EMPEZAR a entrenarlo, que es la
+     mitad de para qué sirve: «quiero vigilar el glúteo» se dice justo cuando
+     todavía no hay glúteo. */
+  const familias = porFamilias(gruposExistentes(catalogo || []))
+  const q = busca.trim().toLowerCase()
+  const nombresEjercicio = [...new Set((catalogo || [])
+    .map(e => (e.nombre || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es'))
+    .filter(n => !q || n.toLowerCase().includes(q))
 
   if (!idDeportista || !fecha) return null
 
@@ -216,9 +244,28 @@ export default function InfoSemana({ idDeportista, fecha }: {
             {cargando ? 'cargando…' : datos ? resumen(deFuerza, bloques) : rangoLegible(lunes!)}
           </span>
         )}
-        {abierto && <span className="text-gray-500 text-[12.5px]">{rangoLegible(lunes!)}</span>}
         <span className={'ml-auto text-gray-600 text-[12px] transition ' + (abierto ? 'rotate-180' : '')}>▾</span>
       </button>
+
+      {/* CAMBIAR DE SEMANA. Fuera del botón de abrir a propósito: dentro, pulsar
+          «‹» cerraría el panel en vez de retroceder. */}
+      {abierto && (
+        <div className="flex items-center gap-1.5 mt-2.5">
+          <button onClick={() => setSalto(n => n - 1)} title="Semana anterior"
+            className="text-gray-500 hover:text-orange-300 px-1.5 py-0.5 rounded transition">‹</button>
+          <span className="text-gray-400 text-[12.5px] tabular-nums">{rangoLegible(lunes!)}</span>
+          <button onClick={() => setSalto(n => n + 1)} title="Semana siguiente"
+            className="text-gray-500 hover:text-orange-300 px-1.5 py-0.5 rounded transition">›</button>
+          {/* Se dice DÓNDE está uno, que si no se pierde: el panel sigue encima
+              de una sesión que es de otra semana. */}
+          {salto !== 0 && (
+            <button onClick={() => setSalto(0)}
+              className="text-[11.5px] text-amber-300/90 hover:text-amber-200 ml-1.5 transition">
+              ↩ volver a la de esta sesión
+            </button>
+          )}
+        </div>
+      )}
 
       {abierto && (
         <>
@@ -377,30 +424,50 @@ export default function InfoSemana({ idDeportista, fecha }: {
             <>
               <div className={caja}>
                 <p className={titulo}>Grupos musculares</p>
-                {grupos.length === 0
-                  ? <p className="text-gray-600 text-[12.5px] italic">Todavía no hay ninguno esta semana.</p>
-                  : grupos.map(g => (
-                    <button key={g.grupo} onClick={() => alternar('grupos', g.grupo)}
-                      className={chip(fijado.grupos.includes(g.grupo))}>
-                      {fijado.grupos.includes(g.grupo) ? '★ ' : ''}{g.grupo}
-                    </button>
+                {!catalogo
+                  ? <p className="text-gray-600 text-[12.5px] italic">Cargando el catálogo…</p>
+                  : familias.filter(f => f.grupos.length > 0).map(f => (
+                    <div key={f.id} className="mb-2.5 last:mb-0">
+                      <p className="text-[10.5px] text-gray-600 mb-1">{f.etiqueta}</p>
+                      {f.grupos.map(g => (
+                        <button key={g} onClick={() => alternar('grupos', g)}
+                          className={chip(fijado.grupos.includes(g))}>
+                          {fijado.grupos.includes(g) ? '★ ' : ''}{g}
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 <p className={pie}>
                   Lo marcado sube arriba con ★. <b className="text-gray-400">Lo demás no desaparece</b>: se queda
                   debajo. Escondiéndolo dejarías de ver justo el grupo que te estás olvidando.
+                  Salen <b className="text-gray-400">todos los del catálogo</b>, no solo los de esta semana:
+                  «quiero vigilar el glúteo» se dice justo cuando todavía no hay glúteo.
                 </p>
               </div>
 
               <div className={caja}>
                 <p className={titulo}>Ejercicios concretos</p>
-                {nombresEjercicio.length === 0
-                  ? <p className="text-gray-600 text-[12.5px] italic">Todavía no hay ninguno esta semana.</p>
-                  : nombresEjercicio.map(n => (
-                    <button key={n} onClick={() => alternar('ejercicios', n)}
-                      className={chip(fijado.ejercicios.includes(n))}>
-                      {fijado.ejercicios.includes(n) ? '★ ' : ''}{n}
-                    </button>
+                {/* CON BUSCADOR, porque son cientos. Volcarlos todos de golpe
+                    convierte el panel en una pared de chips donde no se
+                    encuentra nada — y los que ya están fijados salen SIEMPRE
+                    arriba, aunque no encajen con lo que se está buscando: si no,
+                    al escribir desaparecen y parece que se han perdido. */}
+                <input value={busca} onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar un ejercicio…"
+                  className="bg-gray-800 text-white text-[12.5px] rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-orange-500 w-full mb-2.5 border border-gray-700" />
+                {fijado.ejercicios.map(n => (
+                  <button key={'fijo-' + n} onClick={() => alternar('ejercicios', n)} className={chip(true)}>★ {n}</button>
+                ))}
+                {!catalogo
+                  ? <p className="text-gray-600 text-[12.5px] italic">Cargando el catálogo…</p>
+                  : nombresEjercicio.filter(n => !fijado.ejercicios.includes(n)).slice(0, 60).map(n => (
+                    <button key={n} onClick={() => alternar('ejercicios', n)} className={chip(false)}>{n}</button>
                   ))}
+                {catalogo && nombresEjercicio.filter(n => !fijado.ejercicios.includes(n)).length > 60 && (
+                  <p className="text-[11.5px] text-gray-600 mt-1">
+                    …y más. Escribe arriba para encontrar el que buscas.
+                  </p>
+                )}
                 <p className={pie}>
                   Para cuando lo que quieres vigilar no es un grupo sino <b className="text-gray-400">un
                   ejercicio</b>: cuántas series de peso muerto lleva esta semana.
