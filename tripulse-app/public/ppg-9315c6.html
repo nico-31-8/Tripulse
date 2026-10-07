@@ -70,6 +70,12 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
+  /* ESTO NO ES UN DETALLE. El `[hidden] { display: none }` del navegador lo
+     anula cualquier regla propia que ponga un display, porque pesa más: un
+     `#linterna { display: flex }` dejaba la pantalla blanca TAPANDO LA PÁGINA
+     ENTERA desde que cargaba, sin poder llegar ni al botón de encender la
+     cámara. Le pasaba igual al contador, que es un `.chip`. */
+  [hidden] { display: none !important; }
   body {
     background: var(--fondo);
     color: var(--texto);
