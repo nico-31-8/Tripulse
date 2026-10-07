@@ -184,16 +184,21 @@
   .previa { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
   .previa video {
     width: 76px; height: 76px; flex: none; border-radius: 9px; object-fit: cover;
-    background: #000; border: 1px solid var(--borde);
+    background: #000; border: 1px solid var(--borde); transition: width .2s, height .2s, border-color .2s;
   }
   .previa p { margin: 0; font-size: 12px; color: var(--apagado); }
+  /* Mientras buscas el sitio, la previa manda: es lo único que te dice si el
+     dedo tapa la lente entera. Y el borde hace de semáforo. */
+  body.colocando .previa video { width: 132px; height: 132px; }
+  body.colocando.bien .previa video { border-color: var(--bien); border-width: 2px; }
+  @media (prefers-reduced-motion: reduce) { .previa video { transition: none; } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 
 <h1>Prueba de pulso por cámara</h1>
-<p class="sub">Dedo sobre la lente, un minuto. Mide pulso y variabilidad, y dice cuándo <strong>no</strong> se puede fiar. Fuera de TRIPULSE: no guarda nada en ningún sitio.</p>
+<p class="sub">Dedo sobre la lente, un minuto. Primero enciende la luz y te deja <strong>buscar el sitio</strong>; el minuto arranca solo cuando el pulso se ve bien. Mide pulso y variabilidad, y dice cuándo <strong>no</strong> se puede fiar. Fuera de TRIPULSE: no guarda nada en ningún sitio.</p>
 
 <div class="bloque">
   <h2>1 · De dónde sale la luz</h2>
@@ -210,7 +215,7 @@
   <h2>2 · Qué está viendo la cámara</h2>
   <div class="previa">
     <video id="video" playsinline muted></video>
-    <p id="previaTexto">Con el dedo bien puesto esto tiene que verse <strong>rojo oscuro y uniforme</strong>, sin bordes claros. Si se ve la habitación, el dedo no tapa la lente.</p>
+    <p id="previaTexto">Al encender, <strong>la luz se enciende primero y no se mide todavía</strong>: tienes todo el tiempo del mundo para buscar el sitio mirando aquí. Con el dedo bien puesto esto se ve <strong>rojo oscuro y uniforme</strong>, sin bordes claros; si se ve la habitación, el dedo no tapa la lente. Cuando el pulso aguante bien dos segundos y medio, el minuto <strong>arranca solo</strong> con dos pitidos.</p>
   </div>
   <dl class="rejilla">
     <div class="celda"><dt>Cámara en uso</dt><dd id="dCamara">—</dd></div>
@@ -335,6 +340,24 @@ const DURACION = 60000;     /* un minuto */
 const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
 
 /* ============================================================
+   Buscar el sitio ANTES de medir
+   ============================================================
+   La primera medida real en el móvil perdió latidos, y la explicación más
+   probable es la más tonta: estaba buscando dónde poner el dedo MIENTRAS
+   medía. Un minuto que empieza antes de tener el dedo puesto no vale.
+
+   Así que ahora la luz se enciende primero y no se mide hasta que la señal
+   aguanta bien un rato seguido. Entonces arranca sola.
+
+   `fase` es lo único que decide qué se hace con cada fotograma:
+     colocando — ventana rodante corta, se juzga la colocación, no cuenta
+     midiendo  — el minuto de verdad */
+let fase = 'parado';
+const VENTANA_COLOCAR = 8000;   /* lo que se guarda mientras buscas */
+const ESTABLE = 2500;           /* cuánto tiene que aguantar bien para arrancar */
+let buenoDesde = 0;
+
+/* ============================================================
    El aviso de que ya puedes soltar
    ============================================================
    Mientras mides tienes el dedo tapando la cámara y el teléfono en la mano: no
@@ -436,12 +459,14 @@ async function arrancar() {
   if (modo.pantalla) $('linterna').hidden = false;
   try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
 
-  corriendo = true; tInicio = 0; muestras = []; avisos = 0;
-  $('arrancar').disabled = true; $('parar').disabled = false;
+  corriendo = true; tInicio = 0; muestras = []; avisos = 0; buenoDesde = 0;
+  fase = 'colocando';
+  $('parar').disabled = false;
+  $('arrancar').textContent = 'Empezar ya';   /* por si no quiere esperar */
   $('cuenta').hidden = false;
   $('barra').hidden = false;
-  document.body.classList.add('midiendo');
-  pitar(880, 120);                         /* «ya estoy midiendo» */
+  document.body.classList.add('midiendo', 'colocando');
+  try { document.querySelector('.previa').scrollIntoView({ block: 'center' }); } catch (_) {}
   pedirFotograma();
 
   /* EL PERRO GUARDIÁN. Si no llega ni un fotograma, antes no pasaba nada: la
@@ -496,6 +521,16 @@ function fotograma(t) {
   if (!tInicio) tInicio = t;
   muestras.push({ t: t - tInicio, r, g, b });
 
+  if (fase === 'colocando') {
+    /* Ventana rodante: solo interesa lo de ahora mismo, no lo que pasó
+       mientras movías el dedo buscando. */
+    const corte = (t - tInicio) - VENTANA_COLOCAR;
+    while (muestras.length && muestras[0].t < corte) muestras.shift();
+    $('dCuantos').textContent = muestras.length + (avisos ? ' (' + avisos + ' vacíos)' : '');
+    if (muestras.length % 3 === 0) { refrescar(); mirarColocacion(t - tInicio); }
+    return;
+  }
+
   const pasado = t - tInicio;
   $('cuenta').textContent = Math.min(60, Math.floor(pasado / 1000)) + ' / 60 s';
   $('dCuantos').textContent = muestras.length + (avisos ? ' (' + avisos + ' vacíos)' : '');
@@ -511,6 +546,58 @@ function fotograma(t) {
 
   if (muestras.length % 4 === 0) refrescar();
   if (pasado >= DURACION) terminar();
+}
+
+/* ¿Está el dedo donde tiene que estar? No se pregunta por la foto: se pregunta
+   si de ahí SALE UN PULSO. Cuatro condiciones, y las cuatro a la vez:
+   dedo puesto, señal que late, ritmo de persona, y latidos encontrados.
+
+   Y tiene que aguantar ESTABLE seguidos: un acierto de medio segundo mientras
+   mueves el dedo no es haber encontrado el sitio. */
+function mirarColocacion(ahora) {
+  const est = estadisticas();
+  const bpm = est && est.periodo ? 60000 / est.periodo : 0;
+  const vale = !!est && hayDedo(est.rgb) && est.picos.length >= 4 &&
+               bpm >= 40 && bpm <= 180 && est.mod >= 0.002;
+
+  if (!vale) {
+    buenoDesde = 0;
+    document.body.classList.remove('bien');
+    const texto = !est ? 'Enciende y apoya el dedo'
+      : !hayDedo(est.rgb) ? (est.rgb.r >= 252 ? 'Aprietas demasiado, afloja' : 'Tapa la lente entera con la yema')
+      : est.picos.length < 4 ? 'Dedo puesto. Muévelo despacio hasta que lata'
+      : 'Casi: sujétalo quieto';
+    $('bQueda').textContent = '·';
+    $('bEstado').textContent = texto;
+    $('lQueda').textContent = '·';
+    $('lEstado').textContent = texto;
+    return;
+  }
+
+  if (!buenoDesde) buenoDesde = ahora;
+  const llevan = ahora - buenoDesde;
+  document.body.classList.add('bien');
+  if (llevan >= ESTABLE) return empezarMedida();
+
+  const quedan = Math.ceil((ESTABLE - llevan) / 1000);
+  const texto = 'Ahí está · no te muevas';
+  $('bQueda').textContent = quedan;
+  $('bEstado').textContent = texto;
+  $('lQueda').textContent = quedan;
+  $('lEstado').textContent = texto;
+}
+
+function empezarMedida() {
+  if (fase !== 'colocando') return;
+  fase = 'midiendo';
+  /* El minuto empieza LIMPIO: lo de buscar el sitio no cuenta. */
+  muestras = []; tInicio = 0; buenoDesde = 0; ultimoAviso = -1;
+  document.body.classList.remove('colocando', 'bien');
+  $('arrancar').disabled = true;
+  $('bQueda').textContent = '60';
+  $('bEstado').textContent = 'Midiendo';
+  pitar(880, 120);
+  pitar(1175, 140, 0.16);
 }
 
 /* ============================================================
@@ -951,8 +1038,9 @@ function parar() {
   if (wake) { try { wake.release(); } catch (_) {} wake = null; }
   $('linterna').hidden = true;
   $('barra').hidden = true;
-  document.body.classList.remove('midiendo');
-  ultimoAviso = -1;
+  document.body.classList.remove('midiendo', 'colocando', 'bien');
+  ultimoAviso = -1; buenoDesde = 0; fase = 'parado';
+  $('arrancar').textContent = 'Encender cámara';
   $('arrancar').disabled = false; $('parar').disabled = true; $('cuenta').hidden = true;
 }
 function limpiar() {
@@ -973,7 +1061,9 @@ function pararAMano() {
   parar();
   if (est) pintarControles(controles(est));
 }
-$('arrancar').onclick = arrancar;
+/* El mismo botón: enciende, y mientras buscas el sitio sirve para saltarse la
+   espera y empezar ya. */
+$('arrancar').onclick = () => { if (fase === 'colocando') empezarMedida(); else arrancar(); };
 $('parar').onclick = pararAMano;
 /* El botón de la pantalla blanca PARA de verdad. Antes solo escondía el blanco
    y la medida seguía corriendo a ciegas. */
