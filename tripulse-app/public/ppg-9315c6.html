@@ -223,14 +223,16 @@
     <div class="celda"><dt>¿Hay dedo?</dt><dd id="dDedo">—</dd></div>
     <div class="celda"><dt>Canal usado</dt><dd id="dCanal">—</dd></div>
     <div class="celda"><dt>Fuerza de la señal</dt><dd id="dMod">—</dd></div>
+    <div class="celda"><dt>Ritmo por autocorrelación</dt><dd id="dPeriodo">—</dd></div>
   </dl>
+  <p class="nota"><strong>El ritmo por autocorrelación</strong> se calcula sin buscar latidos, mirando cada cuánto se parece la señal a sí misma. Si no coincide con el pulso de abajo, el que se equivoca es el detector de latidos. Y la <strong>fuerza de la señal</strong> es la altura de un latido sobre el brillo medio: en un dedo con flash lo normal es entre el 1 % y el 10 %.</p>
   <p class="nota">El <strong>temblor</strong> es lo que decide si la variabilidad es creíble: mide cuánto varía el hueco entre fotogramas. Y el <strong>reloj del fotograma</strong> dice si el navegador nos da la hora real de captura o hay que estimarla.</p>
 </div>
 
 <div class="bloque">
   <h2>3 · La señal en vivo <span id="cuenta" class="chip wr" hidden></span></h2>
   <canvas id="traza" width="520" height="130"></canvas>
-  <p class="nota">Lo que se dibuja ya está filtrado (se queda solo lo que late entre 42 y 210 por minuto). Los puntos son los latidos detectados.</p>
+  <p class="nota">En azul, la señal filtrada (solo lo que late entre 42 y 210 por minuto) con un punto por latido detectado. En gris por detrás, <strong>lo que ve la cámara sin tocar</strong>: si la gris no tiene forma de ondas regulares, el problema no es el detector sino la cámara ajustándose sola.</p>
 </div>
 
 <div class="bloque">
@@ -544,14 +546,52 @@ function filtrar(ts, ys) {
    RMSSD de un atleta está entre 20 y 80 ms, así que el error de cuantización
    sería del orden de la propia medida: saldría un número con pinta de bueno y
    sin relación con la realidad. */
-function picos(ts, ys) {
+/* CADA CUÁNTO LATE, antes de buscar los latidos.
+   Se saca por autocorrelación: se desliza la señal sobre sí misma y se mira a
+   qué retraso se parece más a sí misma. Eso da el periodo aunque haya picos de
+   más o de menos, porque no depende de encontrarlos.
+
+   Hace falta para dos cosas, y las dos arreglan fallos reales:
+     · el periodo refractario (cuánto hay que esperar antes de admitir otro
+       latido) deja de ser un número fijo de 300 ms, que a 63 lpm NO excluye la
+       onda dícrota —el segundo rebote de cada latido, que llega a los 250-400 ms—
+       y la colaba como latido;
+     · y da con qué comparar los huecos.
+
+   Se mira solo sobre los últimos 15 segundos para que no crezca el coste. */
+function periodoDominante(ts, ys) {
+  const n = ts.length;
+  if (n < 60) return null;
+  const dt = (ts[n - 1] - ts[0]) / (n - 1);
+  if (!(dt > 0)) return null;
+  const desde = Math.max(0, n - Math.round(15000 / dt));
+  const m = n - desde;
+  const lMin = Math.round(300 / dt), lMax = Math.min(m - 10, Math.round(2000 / dt));
+  if (lMax <= lMin) return null;
+  let mejor = -Infinity, lag = 0;
+  for (let L = lMin; L <= lMax; L++) {
+    let s = 0;
+    for (let i = desde; i + L < n; i++) s += ys[i] * ys[i + L];
+    s /= (n - L - desde);
+    if (s > mejor) { mejor = s; lag = L; }
+  }
+  return lag * dt;
+}
+
+function picos(ts, ys, refractario) {
   const n = ts.length, brutos = [];
   for (let i = 1; i < n - 1; i++) if (ys[i] > ys[i - 1] && ys[i] >= ys[i + 1] && ys[i] > 0) brutos.push(i);
   if (brutos.length < 3) return [];
 
+  /* El umbral sale del PERCENTIL 75 de las alturas, no de la mediana.
+     Con la mediana, una multitud de montículos de ruido la arrastra hacia
+     abajo y el umbral acaba aceptándolos: así salían 49 huecos donde había
+     unos 57 latidos y la mitad se tiraban luego por absurdos. El 75 mira a
+     los grandes, que son los latidos de verdad. */
   const alturas = brutos.map(i => ys[i]).sort((a, b) => a - b);
-  const mediana = alturas[alturas.length >> 1];
-  const umbral = 0.5 * mediana;
+  const p75 = alturas[Math.min(alturas.length - 1, Math.floor(alturas.length * 0.75))];
+  const umbral = 0.4 * p75;
+  const espera = Math.max(300, refractario || 300);
 
   const out = [];
   for (const i of brutos) {
@@ -562,9 +602,9 @@ function picos(ts, ys) {
     off = Math.max(-0.5, Math.min(0.5, off));
     const paso = off >= 0 ? (ts[i + 1] - ts[i]) : (ts[i] - ts[i - 1]);
     const t = ts[i] + off * paso;
-    /* Periodo refractario de 300 ms (nadie late a más de 200 lpm): si dos caen
-       juntos, se queda el más alto. */
-    if (out.length && t - out[out.length - 1].t < 300) {
+    /* Si dos caen dentro del periodo refractario, se queda el más alto: el
+       latido de verdad gana al rebote. */
+    if (out.length && t - out[out.length - 1].t < espera) {
       if (y1 > out[out.length - 1].y) out[out.length - 1] = { t, y: y1 };
     } else out.push({ t, y: y1 });
   }
@@ -579,21 +619,31 @@ function huecos(ps) {
   const brutos = [];
   for (let i = 1; i < ps.length; i++) brutos.push(ps[i].t - ps[i - 1].t);
   const ok = [], recientes = [];
+  /* POR QUÉ se tira cada uno, no solo cuántos. Las dos razones significan
+     cosas opuestas y se arreglan distinto:
+       largo  → se ha PERDIDO un latido (el hueco sale del doble de lo normal)
+       corto  → se ha contado uno DE MÁS (un rebote o ruido tomado por latido)
+     Sin esta distinción, «28 de 49» no dice nada sobre qué hay que tocar. */
+  const porque = { largo: 0, corto: 0, fuera: 0 };
   for (const ib of brutos) {
-    if (ib < 300 || ib > 2000) { ok.push(false); continue; }
+    if (ib < 300 || ib > 2000) { ok.push(false); porque.fuera++; continue; }
     if (recientes.length >= 3) {
       const s = [...recientes].sort((a, b) => a - b);
       const med = s[s.length >> 1];
-      if (Math.abs(ib - med) > 0.2 * med) { ok.push(false); continue; }
+      if (Math.abs(ib - med) > 0.2 * med) {
+        ok.push(false);
+        if (ib > med) porque.largo++; else porque.corto++;
+        continue;
+      }
     }
     ok.push(true); recientes.push(ib);
     if (recientes.length > 5) recientes.shift();
   }
-  return { brutos, ok };
+  return { brutos, ok, porque };
 }
 
 function metricas(ps) {
-  const { brutos, ok } = huecos(ps);
+  const { brutos, ok, porque } = huecos(ps);
   const buenos = brutos.filter((_, i) => ok[i]);
   if (buenos.length < 2) return null;
   const mediaIb = buenos.reduce((a, b) => a + b, 0) / buenos.length;
@@ -608,6 +658,7 @@ function metricas(ps) {
     aceptados: buenos.length,
     totales: brutos.length,
     pares,
+    porque,
   };
 }
 
@@ -645,7 +696,9 @@ function controles(est) {
       dato: (est.mod * 100).toFixed(2) + ' %',
       por: 'con señal débil el pico se mueve con el ruido, y eso ES la variabilidad' },
     { nivel: 'rmssd', ok: limpio >= 0.85, texto: 'Al menos el 85 % de los latidos limpios',
-      dato: m ? m.aceptados + ' de ' + m.totales : 'sin latidos',
+      dato: m ? m.aceptados + ' de ' + m.totales +
+            (m.porque ? ' · ' + m.porque.largo + ' perdidos, ' + m.porque.corto + ' de más, ' + m.porque.fuera + ' imposibles' : '')
+            : 'sin latidos',
       por: 'con muchos descartes el minuto no está representado' },
     { nivel: 'rmssd', ok: m != null && m.aceptados >= 30, texto: 'Al menos 30 huecos entre latidos',
       dato: m ? String(m.aceptados) : '0',
@@ -682,22 +735,35 @@ function estadisticas() {
   /* Qué canal usar se MIDE, no se supone: gana el que más se mueva respecto a
      su propio nivel. Con flash el rojo suele saturar y entonces el verde es
      mejor, que es justo lo contrario de lo que dice el manual. */
+  /* Para ELEGIR canal se usa una amplitud robusta (el percentil 90 de la señal
+     filtrada en valor absoluto). Comparando máximos ganaba el canal que
+     tuviera el peor artefacto, que es justo el contrario del que queremos. */
   const mejor = ['g', 'r', 'b'].map(k => {
     const ys = base.map(s => s[k]);
-    const m = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const media = ys.reduce((a, b) => a + b, 0) / ys.length;
     const f = filtrar(ts, ys);
-    let pico = 0;
-    for (const v of f) pico = Math.max(pico, Math.abs(v));
-    return { k, mod: m > 1 ? pico / m : 0, ys, f };
-  }).sort((a, b) => b.mod - a.mod)[0];
+    const abs = Array.from(f, Math.abs).sort((a, b) => a - b);
+    const p90 = abs[Math.floor(abs.length * 0.9)] || 0;
+    return { k, fuerza: media > 1 ? p90 / media : 0, ys, media, f };
+  }).sort((a, b) => b.fuerza - a.fuerza)[0];
 
-  const ps = picos(ts, mejor.f);
+  const periodo = periodoDominante(ts, mejor.f);
+  const ps = picos(ts, mejor.f, periodo ? 0.6 * periodo : 300);
+
+  /* LA FUERZA DE LA SEÑAL es la altura de UN LATIDO respecto al brillo medio
+     —el AC/DC de toda la vida— y se toma la MEDIANA de los latidos.
+     Antes era el máximo absoluto de todo el minuto, así que un solo artefacto
+     daba 55 % cuando un pulso real en el dedo da entre el 1 % y el 10 %. Ese
+     número no medía la señal: medía el peor golpe. */
+  const alturas = ps.map(p => p.y).sort((a, b) => a - b);
+  const mod = alturas.length && mejor.media > 1 ? alturas[alturas.length >> 1] / mejor.media : 0;
+
   const ult = base[base.length - 1];
   return {
-    fps: 1000 / mediaDt, jitter, mediaDt,
+    fps: 1000 / mediaDt, jitter, mediaDt, periodo,
     canal: { g: 'verde', r: 'rojo', b: 'azul' }[mejor.k],
-    mod: mejor.mod,
-    filtrada: mejor.f, ts, picos: ps,
+    mod,
+    filtrada: mejor.f, cruda: mejor.ys, mediaCanal: mejor.media, ts, picos: ps,
     dedo: base.filter(hayDedo).length / base.length,
     rgb: ult,
     m: metricas(ps),
@@ -731,6 +797,25 @@ function dibujar(est) {
   lx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--borde').trim() || '#333';
   lx.lineWidth = 1; lx.beginPath(); lx.moveTo(0, h / 2); lx.lineTo(w, h / 2); lx.stroke();
 
+  /* LA SEÑAL CRUDA, en gris y por detrás. Sirve para distinguir dos cosas que
+     se parecen en la filtrada: un pulso de verdad (ondas regulares) de la
+     cámara ajustándose sola el brillo (saltos y escalones). Si la gris no tiene
+     forma de pulso, el problema no es el detector. */
+  if (est.cruda && est.cruda.length === est.ts.length) {
+    let mn = Infinity, mx = -Infinity;
+    for (const i of idx) { const v = est.cruda[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    if (mx > mn) {
+      lx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--apagado').trim() || '#888';
+      lx.globalAlpha = 0.35; lx.lineWidth = 1; lx.beginPath();
+      idx.forEach((i, k) => {
+        const x = X(est.ts[i]);
+        const y = h - 6 - ((est.cruda[i] - mn) / (mx - mn)) * (h - 12);
+        k ? lx.lineTo(x, y) : lx.moveTo(x, y);
+      });
+      lx.stroke(); lx.globalAlpha = 1;
+    }
+  }
+
   lx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--traza').trim() || '#4cc3ff';
   lx.lineWidth = 1.8; lx.lineJoin = 'round'; lx.beginPath();
   idx.forEach((i, k) => { const x = X(est.ts[i]), y = Y(est.filtrada[i]); k ? lx.lineTo(x, y) : lx.moveTo(x, y); });
@@ -756,6 +841,7 @@ function refrescar() {
     : '<span class="chip ko">no</span>' + (sat ? ' <small>saturado: aprieta menos</small>' : '');
   $('dCanal').textContent = est.canal;
   $('dMod').textContent = (est.mod * 100).toFixed(2) + ' %';
+  $('dPeriodo').textContent = est.periodo ? (60000 / est.periodo).toFixed(0) + ' lpm' : '—';
   dibujar(est);
 
   /* Un estado en palabras, que es lo único que se puede leer de reojo con el
