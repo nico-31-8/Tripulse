@@ -146,14 +146,36 @@
   .nota { font-size: 12px; color: var(--apagado); margin: 8px 0 0; }
   .aviso { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 10px; border: 1px solid; }
 
-  /* El modo «pantalla blanca»: la pantalla entera hace de linterna. */
+  /* LA BARRA DE MEDIR. El contador vivía en un chip diminuto dentro de un
+     título, y mientras mides estás sujetando el teléfono con el dedo encima de
+     la cámara: no hay forma de verlo. Ahora ocupa la parte de arriba, fija. */
+  #barra {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+    background: var(--panel); border-bottom: 1px solid var(--borde);
+    padding: 10px 16px calc(10px) ; padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  #barra .queda { font: 700 30px/1 var(--mono); font-variant-numeric: tabular-nums; }
+  #barra .estado { font-size: 13px; text-align: right; flex: 1; min-width: 0; }
+  #barra progress { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 3px; border: 0; background: var(--borde); }
+  #barra progress::-webkit-progress-bar { background: var(--borde); }
+  #barra progress::-webkit-progress-value { background: var(--acento); }
+  #barra progress::-moz-progress-bar { background: var(--acento); }
+  body.midiendo { padding-top: calc(78px + env(safe-area-inset-top, 0px)); }
+
+  /* El modo «pantalla blanca»: la pantalla hace de linterna. Pero los números
+     tienen que verse ENCIMA del blanco, o mides a ciegas. */
   #linterna {
     position: fixed; inset: 0; background: #fff; z-index: 50;
-    display: flex; align-items: flex-end; justify-content: center;
-    padding: 0 0 calc(18px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(18px + env(safe-area-inset-bottom, 0px));
+    color: #1a1a1a;
   }
-  #linterna p { color: #333; font-size: 13px; text-align: center; max-width: 280px; margin: 0; }
-  #linterna button { margin-top: 10px; }
+  #linterna p { color: #444; font-size: 13px; text-align: center; max-width: 300px; margin: 0; }
+  #linterna .queda { font: 700 54px/1 var(--mono); font-variant-numeric: tabular-nums; color: #111; }
+  #linterna .lectura { text-align: center; display: grid; gap: 6px; }
+  #linterna .lectura b { font-size: 15px; }
+  #linterna button { background: transparent; border: 1px solid #bbb; color: #333; }
 
   /* EL VÍDEO NO PUEDE IR CON display:none: iOS no decodifica un vídeo oculto,
      y entonces videoWidth se queda en 0 y no llega ni un fotograma — callado.
@@ -232,10 +254,19 @@
   <p class="nota">La pregunta de verdad: <strong>dos medidas seguidas del mismo minuto, ¿dan lo mismo?</strong> Si el RMSSD baila 20 ms entre una y otra, no sirve para decidir una carga.</p>
 </div>
 
+<div id="barra" hidden>
+  <div class="queda" id="bQueda">60</div>
+  <div class="estado" id="bEstado">Pon el dedo</div>
+  <progress id="bProgreso" max="60" value="0"></progress>
+</div>
+
 <div id="linterna" hidden>
-  <div>
-    <p><strong>Pon el brillo al máximo</strong> y apoya el dedo en la cámara frontal, arriba. La pantalla hace de linterna.<br><button class="btn sec" id="salirLinterna" style="margin-top:12px">Salir</button></p>
+  <p><strong>Brillo al máximo.</strong> Dedo en la cámara frontal, arriba del todo. La pantalla hace de linterna.</p>
+  <div class="lectura">
+    <div class="queda" id="lQueda">60</div>
+    <b id="lEstado">Pon el dedo</b>
   </div>
+  <button class="btn sec" id="salirLinterna">Parar</button>
 </div>
 
 <script>
@@ -296,9 +327,45 @@ let stream = null, track = null, corriendo = false, relojUsado = '—';
 let muestras = [];          /* {t, r, g, b} con t en ms */
 let tInicio = 0, idLoop = null, flashPuesto = false, wake = null;
 let avisos = 0;             /* fotogramas anunciados con la imagen todavía vacía */
+let ultimoAviso = -1;       /* para no repetir el pitido de la cuenta atrás */
 
 const DURACION = 60000;     /* un minuto */
 const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
+
+/* ============================================================
+   El aviso de que ya puedes soltar
+   ============================================================
+   Mientras mides tienes el dedo tapando la cámara y el teléfono en la mano: no
+   estás leyendo la pantalla. Así que el final se OYE.
+
+   El contexto de audio se crea al pulsar el botón a propósito: iOS no deja
+   sonar nada que no venga de un gesto, y si se crea antes se queda mudo.
+   La vibración se pide igual, aunque el iPhone no vibre desde la web: en
+   Android sí, y pedirla no cuesta nada. */
+let audio = null;
+function abrirAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (_) { audio = null; }
+}
+function pitar(hz, ms, cuando) {
+  if (!audio) return;
+  try {
+    const t0 = audio.currentTime + (cuando || 0);
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'square'; o.frequency.value = hz;
+    /* Rampa corta a la entrada y a la salida: un cuadrado que arranca de golpe
+       da un chasquido que tapa el propio pitido. */
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.012);
+    g.gain.setValueAtTime(0.3, t0 + ms / 1000 - 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+    o.connect(g); g.connect(audio.destination);
+    o.start(t0); o.stop(t0 + ms / 1000 + 0.02);
+  } catch (_) {}
+}
+const vibrar = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (_) {} };
 
 /* La cámara de atrás se pide con `exact`, no con `ideal`.
    `ideal` es una SUGERENCIA: Safari puede dártela y quedarse con la frontal,
@@ -319,6 +386,7 @@ async function abrirCamara(facing) {
 
 async function arrancar() {
   limpiar();
+  abrirAudio();          /* aquí, que es el gesto del usuario */
   let forzada = true;
   try {
     const r = await abrirCamara(modo.facing);
@@ -369,6 +437,9 @@ async function arrancar() {
   corriendo = true; tInicio = 0; muestras = []; avisos = 0;
   $('arrancar').disabled = true; $('parar').disabled = false;
   $('cuenta').hidden = false;
+  $('barra').hidden = false;
+  document.body.classList.add('midiendo');
+  pitar(880, 120);                         /* «ya estoy midiendo» */
   pedirFotograma();
 
   /* EL PERRO GUARDIÁN. Si no llega ni un fotograma, antes no pasaba nada: la
@@ -426,6 +497,15 @@ function fotograma(t) {
   const pasado = t - tInicio;
   $('cuenta').textContent = Math.min(60, Math.floor(pasado / 1000)) + ' / 60 s';
   $('dCuantos').textContent = muestras.length + (avisos ? ' (' + avisos + ' vacíos)' : '');
+
+  /* La cuenta atrás, en los dos sitios donde puede estar mirando: la barra de
+     arriba y, si el modo es el de la pantalla blanca, encima del blanco. */
+  const quedan = Math.max(0, Math.ceil((DURACION - pasado) / 1000));
+  $('bQueda').textContent = quedan;
+  $('lQueda').textContent = quedan;
+  $('bProgreso').value = Math.min(60, pasado / 1000);
+  /* Tres pitidos cortos en los últimos tres segundos, uno por segundo. */
+  if (quedan <= 3 && quedan !== ultimoAviso) { ultimoAviso = quedan; if (quedan > 0) pitar(660, 90); }
 
   if (muestras.length % 4 === 0) refrescar();
   if (pasado >= DURACION) terminar();
@@ -534,32 +614,58 @@ function metricas(ps) {
 /* ============================================================
    4 · La red: cinco controles, y si uno falla NO SALE NÚMERO
    ============================================================ */
+/* DOS LISTONES, NO UNO. Lo demostró la comprobación contra señal sintética: a
+   15 fotogramas por segundo y sin interpolar, el pulso salía clavado (60,0
+   contra una verdad de 60,0) y el RMSSD se iba a 101,7 contra una verdad de
+   64,0. O sea: el PULSO es fácil y lo que se rompe es la VARIABILIDAD.
+
+   Con un solo listón, una medida con la cámara frontal —que da mucha menos luz
+   que el flash— se tiraba entera cuando el pulso era perfectamente bueno. */
 function controles(est) {
-  const c = [];
-  c.push({ ok: est.fps >= 20, texto: 'Fotogramas por segundo ≥ 20', dato: est.fps.toFixed(1) + ' fps',
-           por: 'por debajo, ni interpolando se sostiene la variabilidad' });
-  c.push({ ok: est.jitter <= 12, texto: 'Temblor entre fotogramas ≤ 12 ms', dato: est.jitter.toFixed(1) + ' ms',
-           por: 'si los fotogramas no llegan regulares, el instante del latido se desdibuja' });
-  c.push({ ok: est.dedo >= 0.9, texto: 'Dedo puesto al menos el 90 % del rato', dato: Math.round(est.dedo * 100) + ' %',
-           por: 'si se levanta el dedo a media medida, lo de antes y lo de después no son lo mismo' });
-  c.push({ ok: est.mod >= 0.004, texto: 'Señal de pulso presente', dato: (est.mod * 100).toFixed(2) + ' % de modulación',
-           por: 'sin pulsación visible, los picos son ruido' });
-  c.push({ ok: est.m != null && est.m.totales > 0 && est.m.aceptados / est.m.totales >= 0.85,
-           texto: 'Al menos el 85 % de los latidos limpios',
-           dato: est.m ? est.m.aceptados + ' de ' + est.m.totales : 'sin latidos',
-           por: 'con muchos descartes el minuto no está representado' });
-  c.push({ ok: est.m != null && est.m.aceptados >= 30, texto: 'Al menos 30 huecos entre latidos',
-           dato: est.m ? String(est.m.aceptados) : '0',
-           por: 'con menos, el RMSSD es un número sobre cuatro datos' });
-  return c;
+  const m = est.m;
+  const limpio = m && m.totales > 0 ? m.aceptados / m.totales : 0;
+  return [
+    { nivel: 'pulso', ok: est.dedo >= 0.9, texto: 'Dedo puesto al menos el 90 % del rato',
+      dato: Math.round(est.dedo * 100) + ' %',
+      por: 'si se levanta el dedo a media medida, lo de antes y lo de después no son lo mismo' },
+    { nivel: 'pulso', ok: est.mod >= 0.0015, texto: 'Se ve latir',
+      dato: (est.mod * 100).toFixed(2) + ' % de modulación',
+      por: 'sin pulsación visible, los picos son ruido' },
+    { nivel: 'pulso', ok: m != null && m.aceptados >= 10, texto: 'Al menos 10 huecos entre latidos',
+      dato: m ? String(m.aceptados) : '0',
+      por: 'con menos no hay ni pulso medio que dar' },
+
+    { nivel: 'rmssd', ok: est.fps >= 20, texto: 'Fotogramas por segundo ≥ 20',
+      dato: est.fps.toFixed(1) + ' fps',
+      por: 'por debajo, ni interpolando se sostiene la variabilidad' },
+    { nivel: 'rmssd', ok: est.jitter <= 12, texto: 'Temblor entre fotogramas ≤ 12 ms',
+      dato: est.jitter.toFixed(1) + ' ms',
+      por: 'si los fotogramas no llegan regulares, el instante del latido se desdibuja' },
+    { nivel: 'rmssd', ok: est.mod >= 0.004, texto: 'Señal fuerte, no solo visible',
+      dato: (est.mod * 100).toFixed(2) + ' %',
+      por: 'con señal débil el pico se mueve con el ruido, y eso ES la variabilidad' },
+    { nivel: 'rmssd', ok: limpio >= 0.85, texto: 'Al menos el 85 % de los latidos limpios',
+      dato: m ? m.aceptados + ' de ' + m.totales : 'sin latidos',
+      por: 'con muchos descartes el minuto no está representado' },
+    { nivel: 'rmssd', ok: m != null && m.aceptados >= 30, texto: 'Al menos 30 huecos entre latidos',
+      dato: m ? String(m.aceptados) : '0',
+      por: 'con menos, el RMSSD es un número sobre cuatro datos' },
+  ];
 }
+const pasaPulso = cs => cs.filter(c => c.nivel === 'pulso').every(c => c.ok);
+const pasaRmssd = cs => cs.every(c => c.ok);
 
 /* ¿Hay dedo? Un dedo iluminado tapa la lente y deja pasar sobre todo rojo. Se
    pide que domine el rojo y que NO esté saturado: con el canal clavado en 255
    la señal muere aunque la foto parezca perfecta. */
 const hayDedo = s => {
   const suma = s.r + s.g + s.b;
-  return suma > 60 && s.r / suma > 0.45 && s.r < 252;
+  /* El umbral de brillo es 40 y no 60 por la cámara frontal: la pantalla da
+     mucha menos luz que el flash y la imagen sale oscura aunque el dedo esté
+     perfectamente puesto. Un falso positivo aquí no cuela nada —el control de
+     «se ve latir» lo caza igual—, pero un falso negativo tiraba la medida
+     entera. */
+  return suma > 40 && s.r / suma > 0.45 && s.r < 252;
 };
 
 function estadisticas() {
@@ -651,68 +757,99 @@ function refrescar() {
   $('dCanal').textContent = est.canal;
   $('dMod').textContent = (est.mod * 100).toFixed(2) + ' %';
   dibujar(est);
+
+  /* Un estado en palabras, que es lo único que se puede leer de reojo con el
+     dedo puesto. El orden importa: lo que hay que corregir primero, primero. */
+  const hay = hayDedo(est.rgb);
+  const estado = !hay
+    ? (est.rgb.r >= 252 ? 'Aprietas demasiado' : 'Pon el dedo en la lente')
+    : est.mod < 0.002 ? 'Dedo puesto, sin pulso aún'
+    : est.picos.length < 3 ? 'Buscando los latidos…'
+    : 'Midiendo · ' + (est.m ? est.m.fc.toFixed(0) + ' lpm' : '…');
+  $('bEstado').textContent = estado;
+  $('lEstado').textContent = estado;
 }
 
 function pintarControles(cs) {
   const ul = $('listaControles');
   ul.innerHTML = '';
-  for (const c of cs) {
-    const li = document.createElement('li');
-    const i = document.createElement('span'); i.textContent = c.ok ? '✓' : '✕';
-    i.style.color = 'var(' + (c.ok ? '--bien' : '--mal') + ')';
-    const t = document.createElement('span');
-    t.innerHTML = '<strong>' + c.texto + '</strong> — <span style="font-family:var(--mono)">' + c.dato + '</span>' +
-                  (c.ok ? '' : '<br><span style="color:var(--apagado);font-size:12px">' + c.por + '</span>');
-    li.append(i, t); ul.appendChild(li);
+  for (const nivel of ['pulso', 'rmssd']) {
+    const cab = document.createElement('li');
+    cab.style.cssText = 'margin-top:8px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--apagado);font-weight:600';
+    cab.textContent = nivel === 'pulso' ? 'Para dar el pulso' : 'Además, para dar el RMSSD';
+    ul.appendChild(cab);
+    for (const c of cs.filter(x => x.nivel === nivel)) {
+      const li = document.createElement('li');
+      const i = document.createElement('span'); i.textContent = c.ok ? '✓' : '✕';
+      i.style.color = 'var(' + (c.ok ? '--bien' : '--mal') + ')';
+      const t = document.createElement('span');
+      t.innerHTML = '<strong>' + c.texto + '</strong> — <span style="font-family:var(--mono)">' + c.dato + '</span>' +
+                    (c.ok ? '' : '<br><span style="color:var(--apagado);font-size:12px">' + c.por + '</span>');
+      li.append(i, t); ul.appendChild(li);
+    }
   }
 }
 
 function terminar() {
+  /* YA PUEDES SOLTAR. Dos pitidos largos y la vibración, antes de nada: con el
+     dedo encima de la cámara no estás leyendo la pantalla. */
+  pitar(1046, 260);
+  pitar(1318, 320, 0.3);
+  vibrar([180, 90, 180]);
   const est = estadisticas();
   parar();
   if (!est) return fallo('No ha llegado ni un fotograma utilizable.');
 
   const cs = controles(est);
   pintarControles(cs);
-  const pasa = cs.every(c => c.ok);
-  const v = $('veredicto'); v.hidden = false; v.className = 'aviso';
+  const hayPulso = pasaPulso(cs) && est.m != null;
+  const hayRmssd = hayPulso && pasaRmssd(cs) && est.m.rmssd != null;
 
-  if (pasa && est.m && est.m.rmssd != null) {
-    $('rFc').innerHTML = est.m.fc.toFixed(0) + '<u> lpm</u>';
-    $('rRmssd').innerHTML = est.m.rmssd.toFixed(1) + '<u> ms</u>';
-    v.style.borderColor = 'color-mix(in srgb, var(--bien) 45%, transparent)';
-    v.style.color = 'var(--bien)';
-    v.textContent = 'Medida válida. SDNN ' + est.m.sdnn.toFixed(1) + ' ms, ' + est.m.latidos +
+  $('rFc').innerHTML = hayPulso ? est.m.fc.toFixed(0) + '<u> lpm</u>' : '—<u> lpm</u>';
+  $('rRmssd').innerHTML = hayRmssd ? est.m.rmssd.toFixed(1) + '<u> ms</u>' : '—<u> ms</u>';
+
+  const v = $('veredicto'); v.hidden = false; v.className = 'aviso';
+  const color = c => {
+    v.style.borderColor = 'color-mix(in srgb, var(--' + c + ') 45%, transparent)';
+    v.style.color = 'var(--' + c + ')';
+  };
+
+  if (hayRmssd) {
+    color('bien');
+    v.textContent = 'Medida completa. SDNN ' + est.m.sdnn.toFixed(1) + ' ms, ' + est.m.latidos +
                     ' latidos en ' + est.segundos.toFixed(0) + ' s. Ahora repítela: el número solo vale si se repite.';
-    guardar(est);
+  } else if (hayPulso) {
+    color('aviso');
+    const fallan = cs.filter(c => !c.ok).map(c => c.texto.toLowerCase());
+    v.textContent = 'El pulso vale; el RMSSD no. Falla: ' + fallan.join('; ') +
+                    '. El pulso aguanta con poca luz, la variabilidad no: para eso hace falta el flash.';
   } else {
-    $('rFc').innerHTML = '—<u> lpm</u>';
-    $('rRmssd').innerHTML = '—<u> ms</u>';
-    v.style.borderColor = 'color-mix(in srgb, var(--mal) 45%, transparent)';
-    v.style.color = 'var(--mal)';
-    const fallan = cs.filter(c => !c.ok).length;
-    v.textContent = 'No sale número: ' + fallan + (fallan === 1 ? ' control no pasa' : ' controles no pasan') +
+    color('mal');
+    const fallan = cs.filter(c => c.nivel === 'pulso' && !c.ok).length;
+    v.textContent = 'No sale ni el pulso: ' + fallan + (fallan === 1 ? ' control básico no pasa' : ' controles básicos no pasan') +
                     '. Un número aquí sería inventado con pinta de bueno.';
-    if (est.m) guardar(est, true);
   }
+  if (est.m) guardar(est, hayRmssd ? null : (hayPulso ? 'solo pulso' : 'rechazada'));
 }
 
 const hist = [];
-function guardar(est, rechazada) {
+function guardar(est, pega) {
   hist.unshift({
     hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     modo: modo.titulo.replace('Trasera + ', '').replace('Frontal + ', ''),
     fps: est.fps, latidos: est.m ? est.m.aceptados : 0,
-    fc: est.m ? est.m.fc : null, rmssd: est.m ? est.m.rmssd : null, rechazada: !!rechazada,
+    fc: est.m ? est.m.fc : null, rmssd: est.m ? est.m.rmssd : null, pega: pega || null,
   });
   const tb = $('historial'); tb.innerHTML = '';
   for (const h of hist) {
     const tr = document.createElement('tr');
-    if (h.rechazada) tr.style.opacity = '.45';
+    if (h.pega === 'rechazada') tr.style.opacity = '.45';
     const c = (txt, mono) => { const td = document.createElement('td'); td.textContent = txt; if (mono) td.className = 'n'; return td; };
+    /* El RMSSD solo se escribe si se ha dado por bueno: enseñarlo tachado o con
+       un aviso invita a mirarlo igual, y es justo el número que no vale. */
     tr.append(c(h.hora), c(h.modo), c(h.fps.toFixed(0), true), c(String(h.latidos), true),
-              c(h.fc != null ? h.fc.toFixed(0) : '—', true),
-              c(h.rmssd != null ? h.rmssd.toFixed(1) + (h.rechazada ? ' ⚠' : '') : '—', true));
+              c(h.pega === 'rechazada' || h.fc == null ? '—' : h.fc.toFixed(0), true),
+              c(h.pega == null && h.rmssd != null ? h.rmssd.toFixed(1) : '—', true));
     tb.appendChild(tr);
   }
 }
@@ -727,6 +864,9 @@ function parar() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
   if (wake) { try { wake.release(); } catch (_) {} wake = null; }
   $('linterna').hidden = true;
+  $('barra').hidden = true;
+  document.body.classList.remove('midiendo');
+  ultimoAviso = -1;
   $('arrancar').disabled = false; $('parar').disabled = true; $('cuenta').hidden = true;
 }
 function limpiar() {
@@ -742,9 +882,16 @@ function fallo(msg) {
   e.textContent = msg;
 }
 
+function pararAMano() {
+  const est = estadisticas();
+  parar();
+  if (est) pintarControles(controles(est));
+}
 $('arrancar').onclick = arrancar;
-$('parar').onclick = () => { const est = estadisticas(); parar(); if (est) { pintarControles(controles(est)); } };
-$('salirLinterna').onclick = () => { $('linterna').hidden = true; };
+$('parar').onclick = pararAMano;
+/* El botón de la pantalla blanca PARA de verdad. Antes solo escondía el blanco
+   y la medida seguía corriendo a ciegas. */
+$('salirLinterna').onclick = pararAMano;
 window.addEventListener('pagehide', parar);
 pintarModos();
 
