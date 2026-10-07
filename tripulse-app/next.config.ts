@@ -107,7 +107,35 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['recharts'],
   },
   async headers() {
-    return [{ source: '/:path*', headers: CABECERAS }]
+    return [
+      { source: '/:path*', headers: CABECERAS },
+      /* ============================================================
+         La excepción de la página de prueba del pulso por cámara
+         ============================================================
+         `public/ppg-9315c6.html` es un fichero estático suelto —ni una línea
+         de la app, ni un import, ni una consulta— para comprobar si se puede
+         medir el pulso con la cámara del móvil.
+
+         Con `camera=()` en todas las rutas, el navegador niega la cámara AL
+         PROPIO DOCUMENTO, no solo a los iframes de terceros. Así que sin esta
+         excepción la página de prueba no puede ni preguntar.
+
+         VA DESPUÉS a propósito: Next aplica todas las reglas que encajan y la
+         última gana para una misma cabecera. Y dice `camera=(self)`, no `*`:
+         solo el propio dominio, nunca un script de fuera.
+
+         SI LA PRUEBA NO CONVENCE, ESTO SE BORRA con el fichero. Y si convence,
+         la decisión de abrir la cámara en la app entera es aparte y más gorda
+         de lo que parece: el script-src lleva 'unsafe-inline' por la hidratación
+         de Next, así que hoy el candado de la cámara es lo que compensa eso. */
+      {
+        source: '/ppg-9315c6.html',
+        headers: [
+          ...CABECERAS.filter(c => c.key !== 'Permissions-Policy'),
+          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(), interest-cohort=()' },
+        ],
+      },
+    ]
   },
 };
 

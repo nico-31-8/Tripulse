@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Que no la indexe nadie: no está enlazada desde ningún sitio y el nombre
+     lleva un trozo al azar, pero un buscador que la encuentre la dejaría
+     pegada en Google para siempre. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Prueba de pulso por cámara</title>
+<!--
+  ============================================================
+  PRUEBA SUELTA — fotopletismografía con la cámara del móvil
+  ============================================================
+
+  NO ES PARTE DE TRIPULSE. Es un fichero estático en public/, sin un solo
+  import: no puede romper nada de la app ni escribe en la base de datos.
+
+  QUÉ RESPONDE. No «¿se puede programar?» —eso ya se sabe— sino «¿el número
+  que sale vale para decidir algo?». Y para eso hay que medir tres cosas en el
+  teléfono de verdad:
+
+    1. Si el iPhone deja encender el flash desde el navegador. La página lo
+       INTENTA y dice lo que ha pasado, en vez de dar por buena mi suposición.
+    2. Cuántos fotogramas por segundo da, y con cuánto temblor entre ellos.
+       Esto es lo que decide si el RMSSD es creíble: a 30 fps cada fotograma
+       son 33 ms, y el RMSSD de un atleta entrenado está entre 20 y 80. Sin
+       interpolar la posición del pico ENTRE fotogramas, el número que sale es
+       inventado con pinta de bueno.
+    3. Si dos medidas seguidas del mismo minuto dan lo mismo. Por eso se
+       guarda la lista: una medida sola no se puede juzgar.
+
+  LA REGLA DE LA CASA: si la calidad no llega, NO SALE NÚMERO. Sale cuál de
+  los cinco controles ha fallado. El peligro de esto no es equivocarse, es
+  acertar con pinta de bueno.
+
+  Esto no mide nada médico ni diagnostica nada.
+-->
+<style>
+  /* ============================================================
+     Instrumento de medida, no documento: oscuro por decisión (se usa con poca
+     luz, y la pantalla hace de linterna en uno de los modos), números grandes
+     y monoespaciados, y el estado codificado en color además de en texto.
+     ============================================================ */
+  :root {
+    color-scheme: dark;
+    --fondo: #0b0f14;
+    --panel: #141b23;
+    --borde: #22303d;
+    --texto: #e6edf3;
+    --apagado: #8b9bab;
+    --acento: #ff7a3d;      /* el naranja de TRIPULSE */
+    --bien: #3fd08a;
+    --aviso: #f0b429;
+    --mal: #f2545b;
+    --traza: #4cc3ff;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --cuerpo: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --fondo: #f6f7f9;
+      --panel: #ffffff;
+      --borde: #dbe1e8;
+      --texto: #111820;
+      --apagado: #5d6b7a;
+      --traza: #0a7ea4;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font: 15px/1.5 var(--cuerpo);
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px
+             calc(24px + env(safe-area-inset-bottom, 0px));
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; text-wrap: balance; }
+  .sub { color: var(--apagado); font-size: 13px; margin: 0 0 20px; }
+
+  .bloque { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .bloque > h2 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--apagado); margin: 0 0 10px; font-weight: 600; }
+
+  .modos { display: grid; gap: 8px; }
+  .modo {
+    display: flex; flex-direction: column; gap: 2px; text-align: left;
+    padding: 11px 13px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--borde); background: transparent; color: var(--texto);
+    font: inherit;
+  }
+  .modo:hover { border-color: var(--apagado); }
+  .modo[aria-pressed="true"] { border-color: var(--acento); background: color-mix(in srgb, var(--acento) 14%, transparent); }
+  .modo b { font-size: 14px; }
+  .modo span { font-size: 12px; color: var(--apagado); }
+  .modo:focus-visible, button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+  .acciones { display: flex; gap: 8px; margin-top: 12px; }
+  .btn {
+    flex: 1; padding: 13px; border-radius: 9px; font: 600 15px var(--cuerpo);
+    border: 1px solid var(--acento); background: var(--acento); color: #15100c; cursor: pointer;
+  }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+  .btn.sec { background: transparent; color: var(--texto); border-color: var(--borde); }
+
+  /* Las parejas dato/valor comparten borde, línea base y relleno. */
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 1px; background: var(--borde); border-radius: 9px; overflow: hidden; }
+  .celda { background: var(--panel); padding: 9px 11px; min-width: 0; }
+  .celda dt { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--apagado); margin: 0 0 3px; }
+  .celda dd { margin: 0; font: 600 16px var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .celda dd small { font-size: 11px; font-weight: 400; color: var(--apagado); }
+
+  #traza { display: block; width: 100%; height: 130px; border-radius: 9px; background: color-mix(in srgb, var(--fondo) 60%, var(--panel)); border: 1px solid var(--borde); }
+
+  .grandes { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--borde); border-radius: 9px; overflow: hidden; }
+  .grande { background: var(--panel); padding: 14px; text-align: center; min-width: 0; }
+  .grande dt { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--apagado); margin: 0 0 4px; }
+  .grande dd { margin: 0; font: 700 34px/1 var(--mono); font-variant-numeric: tabular-nums; }
+  .grande dd u { font-size: 13px; font-weight: 400; color: var(--apagado); text-decoration: none; }
+
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; }
+  .ok { color: var(--bien); border-color: color-mix(in srgb, var(--bien) 45%, transparent); background: color-mix(in srgb, var(--bien) 12%, transparent); }
+  .wr { color: var(--aviso); border-color: color-mix(in srgb, var(--aviso) 45%, transparent); background: color-mix(in srgb, var(--aviso) 12%, transparent); }
+  .ko { color: var(--mal); border-color: color-mix(in srgb, var(--mal) 45%, transparent); background: color-mix(in srgb, var(--mal) 12%, transparent); }
+
+  ul.controles { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; }
+  ul.controles li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+  ul.controles li span:first-child { flex: none; width: 1.1em; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 6px 7px; border-bottom: 1px solid var(--borde); font-variant-numeric: tabular-nums; }
+  th { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--apagado); font-weight: 600; }
+  th:first-child, td:first-child { text-align: left; }
+  td.n { font-family: var(--mono); }
+  .scroll { overflow-x: auto; }
+
+  .nota { font-size: 12px; color: var(--apagado); margin: 8px 0 0; }
+  .aviso { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 10px; border: 1px solid; }
+
+  /* El modo «pantalla blanca»: la pantalla entera hace de linterna. */
+  #linterna {
+    position: fixed; inset: 0; background: #fff; z-index: 50;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0 0 calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  #linterna p { color: #333; font-size: 13px; text-align: center; max-width: 280px; margin: 0; }
+  #linterna button { margin-top: 10px; }
+
+  video { display: none; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<h1>Prueba de pulso por cámara</h1>
+<p class="sub">Dedo sobre la lente, un minuto. Mide pulso y variabilidad, y dice cuándo <strong>no</strong> se puede fiar. Fuera de TRIPULSE: no guarda nada en ningún sitio.</p>
+
+<div class="bloque">
+  <h2>1 · De dónde sale la luz</h2>
+  <div class="modos" id="modos"></div>
+  <p class="nota" id="notaModo"></p>
+  <div class="acciones">
+    <button class="btn" id="arrancar">Encender cámara</button>
+    <button class="btn sec" id="parar" disabled>Parar</button>
+  </div>
+  <div id="errorCam" hidden></div>
+</div>
+
+<div class="bloque">
+  <h2>2 · Qué está viendo la cámara</h2>
+  <dl class="rejilla">
+    <div class="celda"><dt>Fotogramas/s</dt><dd id="dFps">—</dd></div>
+    <div class="celda"><dt>Temblor entre ellos</dt><dd id="dJitter">—</dd></div>
+    <div class="celda"><dt>Reloj del fotograma</dt><dd id="dReloj">—</dd></div>
+    <div class="celda"><dt>Flash</dt><dd id="dFlash">—</dd></div>
+    <div class="celda"><dt>Rojo / Verde / Azul</dt><dd id="dRgb">—</dd></div>
+    <div class="celda"><dt>¿Hay dedo?</dt><dd id="dDedo">—</dd></div>
+    <div class="celda"><dt>Canal usado</dt><dd id="dCanal">—</dd></div>
+    <div class="celda"><dt>Fuerza de la señal</dt><dd id="dMod">—</dd></div>
+  </dl>
+  <p class="nota">El <strong>temblor</strong> es lo que decide si la variabilidad es creíble: mide cuánto varía el hueco entre fotogramas. Y el <strong>reloj del fotograma</strong> dice si el navegador nos da la hora real de captura o hay que estimarla.</p>
+</div>
+
+<div class="bloque">
+  <h2>3 · La señal en vivo <span id="cuenta" class="chip wr" hidden></span></h2>
+  <canvas id="traza" width="520" height="130"></canvas>
+  <p class="nota">Lo que se dibuja ya está filtrado (se queda solo lo que late entre 42 y 210 por minuto). Los puntos son los latidos detectados.</p>
+</div>
+
+<div class="bloque">
+  <h2>4 · Resultado</h2>
+  <dl class="grandes">
+    <div class="grande"><dt>Pulso</dt><dd id="rFc">—<u> lpm</u></dd></div>
+    <div class="grande"><dt>RMSSD</dt><dd id="rRmssd">—<u> ms</u></dd></div>
+  </dl>
+  <ul class="controles" id="listaControles"></ul>
+  <div id="veredicto" hidden></div>
+</div>
+
+<div class="bloque">
+  <h2>5 · Medidas de esta sesión</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Hora</th><th>Modo</th><th>fps</th><th>Latidos</th><th>Pulso</th><th>RMSSD</th></tr></thead>
+      <tbody id="historial"><tr><td colspan="6" style="text-align:center;color:var(--apagado)">Aún ninguna. Haz dos seguidas para ver si se repiten.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="nota">La pregunta de verdad: <strong>dos medidas seguidas del mismo minuto, ¿dan lo mismo?</strong> Si el RMSSD baila 20 ms entre una y otra, no sirve para decidir una carga.</p>
+</div>
+
+<video id="video" playsinline muted></video>
+
+<div id="linterna" hidden>
+  <div>
+    <p><strong>Pon el brillo al máximo</strong> y apoya el dedo en la cámara frontal, arriba. La pantalla hace de linterna.<br><button class="btn sec" id="salirLinterna" style="margin-top:12px">Salir</button></p>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   1 · Los tres modos de luz
+   ============================================================ */
+const MODOS = [
+  { id: 'flash',    facing: 'environment', torch: true,  pantalla: false,
+    titulo: 'Trasera + flash',
+    pista: 'Lo mejor si funciona. Dedo sobre la lente de atrás, tapándola entera, sin apretar.',
+    nota: 'Voy a intentar encender el flash y te digo si el teléfono me deja.' },
+  { id: 'ambiente', facing: 'environment', torch: false, pantalla: false,
+    titulo: 'Trasera + luz ambiente',
+    pista: 'Sin flash. Dedo sobre la lente de atrás y la mano a contraluz de una lámpara o una ventana.',
+    nota: 'Así se hacía antes de que hubiera flash por software. Necesita luz fuerte atravesando el dedo.' },
+  { id: 'pantalla', facing: 'user',        torch: false, pantalla: true,
+    titulo: 'Frontal + pantalla blanca',
+    pista: 'Dedo sobre la cámara frontal. La pantalla se pone blanca y hace de linterna.',
+    nota: 'El plan B para iPhone si el flash no se puede encender. El brillo lo tienes que subir tú: la web no puede.' },
+];
+let modo = MODOS[0];
+
+const $ = id => document.getElementById(id);
+const cont = $('modos');
+MODOS.forEach(m => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'modo'; b.dataset.id = m.id;
+  b.setAttribute('aria-pressed', String(m === modo));
+  b.innerHTML = '<b></b><span></span>';
+  b.querySelector('b').textContent = m.titulo;
+  b.querySelector('span').textContent = m.pista;
+  b.onclick = () => { if (corriendo) return; modo = m; pintarModos(); };
+  cont.appendChild(b);
+});
+function pintarModos() {
+  [...cont.children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === modo.id)));
+  $('notaModo').textContent = modo.nota;
+}
+
+/* ============================================================
+   2 · Leer los fotogramas
+   ============================================================
+   El <video> es opaco para el código: no se le puede preguntar de qué color es
+   un píxel. El canvas es el intermediario — se copia el fotograma ahí y de ahí
+   sí se sacan los bytes.
+
+   Y se copia REDUCIDO a 32x32: el escalado lo hace la gráfica gratis y ya va
+   promediando, así que luego se leen 1024 píxeles en vez de 300.000. Es la
+   diferencia entre ir a 30 fotogramas por segundo o a 4. */
+const LADO = 32, MARGEN = 6;   /* se lee solo el centro: los bordes de la lente vienen oscurecidos */
+const cv = document.createElement('canvas');
+cv.width = cv.height = LADO;
+const cx = cv.getContext('2d', { willReadFrequently: true });
+
+const video = $('video');
+let stream = null, track = null, corriendo = false, relojUsado = '—';
+let muestras = [];          /* {t, r, g, b} con t en ms */
+let tInicio = 0, idLoop = null, flashPuesto = false, wake = null;
+
+const DURACION = 60000;     /* un minuto */
+const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
+
+async function arrancar() {
+  limpiar();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: modo.facing }, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 60 } },
+      audio: false,
+    });
+  } catch (e) {
+    return fallo('No se ha podido abrir la cámara: ' + (e && e.name ? e.name : e) +
+      '. Si dice NotAllowedError y no te ha preguntado nada, lo está bloqueando la cabecera Permissions-Policy del servidor, no tú.');
+  }
+  track = stream.getVideoTracks()[0];
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+
+  /* El flash: se PREGUNTA si existe y se INTENTA, y se cuenta lo que pasa. */
+  flashPuesto = false;
+  let txt = 'no se ha pedido';
+  if (modo.torch) {
+    const cap = (track.getCapabilities && track.getCapabilities()) || {};
+    if (!('torch' in cap)) {
+      txt = 'no lo ofrece este navegador';
+    } else {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        const s = (track.getSettings && track.getSettings()) || {};
+        flashPuesto = s.torch !== false;
+        txt = flashPuesto ? 'encendido' : 'aceptó la orden pero sigue apagado';
+      } catch (e) { txt = 'lo ofrece pero da error: ' + (e && e.name ? e.name : e); }
+    }
+  }
+  $('dFlash').innerHTML = (flashPuesto ? '<span class="chip ok">sí</span> ' : '<span class="chip ko">no</span> ') +
+                          '<small>' + txt + '</small>';
+
+  if (modo.pantalla) $('linterna').hidden = false;
+  try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
+
+  corriendo = true; tInicio = 0; muestras = [];
+  $('arrancar').disabled = true; $('parar').disabled = false;
+  $('cuenta').hidden = false;
+  pedirFotograma();
+}
+
+/* La hora de cada fotograma, por orden de fiabilidad:
+     captureTime — cuándo lo capturó el sensor. Es la buena.
+     mediaTime   — su sitio en la línea de tiempo del vídeo.
+     el reloj de pared al llegar el aviso — la peor, lleva el retraso del navegador.
+   Cuál nos toca se ENSEÑA, porque de eso depende si el RMSSD vale. */
+function pedirFotograma() {
+  if (!corriendo) return;
+  if (video.requestVideoFrameCallback) {
+    idLoop = video.requestVideoFrameCallback((ahora, meta) => {
+      let t = ahora, cual = 'estimado (requestAnimationFrame)';
+      if (meta && typeof meta.captureTime === 'number' && meta.captureTime > 0) { t = meta.captureTime; cual = 'captureTime (el bueno)'; }
+      else if (meta && typeof meta.mediaTime === 'number') { t = meta.mediaTime * 1000; cual = 'mediaTime'; }
+      else if (meta && typeof meta.presentationTime === 'number') { t = meta.presentationTime; cual = 'presentationTime'; }
+      relojUsado = cual;
+      fotograma(t);
+      pedirFotograma();
+    });
+  } else {
+    idLoop = requestAnimationFrame(t => { relojUsado = 'estimado (requestAnimationFrame)'; fotograma(t); pedirFotograma(); });
+  }
+}
+
+function fotograma(t) {
+  if (!video.videoWidth) return;
+  cx.drawImage(video, 0, 0, LADO, LADO);
+  let d;
+  try { d = cx.getImageData(MARGEN, MARGEN, LADO - 2 * MARGEN, LADO - 2 * MARGEN).data; }
+  catch (e) { return fallo('El navegador no deja leer los píxeles del vídeo: ' + e); }
+
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  r /= n; g /= n; b /= n;
+
+  if (!tInicio) tInicio = t;
+  muestras.push({ t: t - tInicio, r, g, b });
+
+  const pasado = t - tInicio;
+  $('cuenta').textContent = Math.min(60, Math.floor(pasado / 1000)) + ' / 60 s';
+
+  if (muestras.length % 4 === 0) refrescar();
+  if (pasado >= DURACION) terminar();
+}
+
+/* ============================================================
+   3 · De la serie de números a los latidos
+   ============================================================ */
+
+/* Filtro de banda por DIFERENCIA DE DOS MEDIAS MÓVILES, y las ventanas van en
+   MILISEGUNDOS, no en número de muestras: así el temblor entre fotogramas no
+   mueve la frecuencia de corte.
+     media corta (±145 ms) quita el ruido por encima de ~3,4 Hz = 210 lpm
+     media larga (±700 ms) quita la deriva por debajo de ~0,7 Hz =  42 lpm */
+function filtrar(ts, ys) {
+  const n = ts.length, out = new Float64Array(n);
+  const media = (radio) => {
+    const m = new Float64Array(n);
+    let i0 = 0, i1 = 0, suma = 0, cuantos = 0;
+    for (let i = 0; i < n; i++) {
+      while (i1 < n && ts[i1] <= ts[i] + radio) { suma += ys[i1]; cuantos++; i1++; }
+      while (i0 < n && ts[i0] < ts[i] - radio) { suma -= ys[i0]; cuantos--; i0++; }
+      m[i] = cuantos ? suma / cuantos : ys[i];
+    }
+    return m;
+  };
+  const corta = media(145), larga = media(700);
+  for (let i = 0; i < n; i++) out[i] = corta[i] - larga[i];
+  return out;
+}
+
+/* Los picos, con LA PARTE QUE IMPORTA: el instante del latido se interpola
+   ENTRE fotogramas con una parábola por los tres puntos de alrededor.
+
+   Sin esto, a 30 fps cada latido queda cuadrado a múltiplos de 33 ms. El
+   RMSSD de un atleta está entre 20 y 80 ms, así que el error de cuantización
+   sería del orden de la propia medida: saldría un número con pinta de bueno y
+   sin relación con la realidad. */
+function picos(ts, ys) {
+  const n = ts.length, brutos = [];
+  for (let i = 1; i < n - 1; i++) if (ys[i] > ys[i - 1] && ys[i] >= ys[i + 1] && ys[i] > 0) brutos.push(i);
+  if (brutos.length < 3) return [];
+
+  const alturas = brutos.map(i => ys[i]).sort((a, b) => a - b);
+  const mediana = alturas[alturas.length >> 1];
+  const umbral = 0.5 * mediana;
+
+  const out = [];
+  for (const i of brutos) {
+    if (ys[i] < umbral) continue;
+    const y0 = ys[i - 1], y1 = ys[i], y2 = ys[i + 1];
+    const curva = y0 - 2 * y1 + y2;
+    let off = curva !== 0 ? 0.5 * (y0 - y2) / curva : 0;
+    off = Math.max(-0.5, Math.min(0.5, off));
+    const paso = off >= 0 ? (ts[i + 1] - ts[i]) : (ts[i] - ts[i - 1]);
+    const t = ts[i] + off * paso;
+    /* Periodo refractario de 300 ms (nadie late a más de 200 lpm): si dos caen
+       juntos, se queda el más alto. */
+    if (out.length && t - out[out.length - 1].t < 300) {
+      if (y1 > out[out.length - 1].y) out[out.length - 1] = { t, y: y1 };
+    } else out.push({ t, y: y1 });
+  }
+  return out;
+}
+
+/* Huecos entre latidos, con el descarte estándar de la variabilidad: fuera el
+   que se aparta más del 20 % de la mediana de los últimos. Se guarda si cada
+   uno se aceptó, porque el RMSSD solo puede restar PAREJAS SEGUIDAS: si se
+   tira uno, la resta que lo cruza no vale. */
+function huecos(ps) {
+  const brutos = [];
+  for (let i = 1; i < ps.length; i++) brutos.push(ps[i].t - ps[i - 1].t);
+  const ok = [], recientes = [];
+  for (const ib of brutos) {
+    if (ib < 300 || ib > 2000) { ok.push(false); continue; }
+    if (recientes.length >= 3) {
+      const s = [...recientes].sort((a, b) => a - b);
+      const med = s[s.length >> 1];
+      if (Math.abs(ib - med) > 0.2 * med) { ok.push(false); continue; }
+    }
+    ok.push(true); recientes.push(ib);
+    if (recientes.length > 5) recientes.shift();
+  }
+  return { brutos, ok };
+}
+
+function metricas(ps) {
+  const { brutos, ok } = huecos(ps);
+  const buenos = brutos.filter((_, i) => ok[i]);
+  if (buenos.length < 2) return null;
+  const mediaIb = buenos.reduce((a, b) => a + b, 0) / buenos.length;
+  let suma = 0, pares = 0;
+  for (let i = 1; i < brutos.length; i++) if (ok[i] && ok[i - 1]) { const d = brutos[i] - brutos[i - 1]; suma += d * d; pares++; }
+  const sd = Math.sqrt(buenos.reduce((a, v) => a + (v - mediaIb) ** 2, 0) / (buenos.length - 1 || 1));
+  return {
+    fc: 60000 / mediaIb,
+    rmssd: pares ? Math.sqrt(suma / pares) : null,
+    sdnn: sd,
+    latidos: buenos.length + 1,
+    aceptados: buenos.length,
+    totales: brutos.length,
+    pares,
+  };
+}
+
+/* ============================================================
+   4 · La red: cinco controles, y si uno falla NO SALE NÚMERO
+   ============================================================ */
+function controles(est) {
+  const c = [];
+  c.push({ ok: est.fps >= 20, texto: 'Fotogramas por segundo ≥ 20', dato: est.fps.toFixed(1) + ' fps',
+           por: 'por debajo, ni interpolando se sostiene la variabilidad' });
+  c.push({ ok: est.jitter <= 12, texto: 'Temblor entre fotogramas ≤ 12 ms', dato: est.jitter.toFixed(1) + ' ms',
+           por: 'si los fotogramas no llegan regulares, el instante del latido se desdibuja' });
+  c.push({ ok: est.dedo >= 0.9, texto: 'Dedo puesto al menos el 90 % del rato', dato: Math.round(est.dedo * 100) + ' %',
+           por: 'si se levanta el dedo a media medida, lo de antes y lo de después no son lo mismo' });
+  c.push({ ok: est.mod >= 0.004, texto: 'Señal de pulso presente', dato: (est.mod * 100).toFixed(2) + ' % de modulación',
+           por: 'sin pulsación visible, los picos son ruido' });
+  c.push({ ok: est.m != null && est.m.totales > 0 && est.m.aceptados / est.m.totales >= 0.85,
+           texto: 'Al menos el 85 % de los latidos limpios',
+           dato: est.m ? est.m.aceptados + ' de ' + est.m.totales : 'sin latidos',
+           por: 'con muchos descartes el minuto no está representado' });
+  c.push({ ok: est.m != null && est.m.aceptados >= 30, texto: 'Al menos 30 huecos entre latidos',
+           dato: est.m ? String(est.m.aceptados) : '0',
+           por: 'con menos, el RMSSD es un número sobre cuatro datos' });
+  return c;
+}
+
+/* ¿Hay dedo? Un dedo iluminado tapa la lente y deja pasar sobre todo rojo. Se
+   pide que domine el rojo y que NO esté saturado: con el canal clavado en 255
+   la señal muere aunque la foto parezca perfecta. */
+const hayDedo = s => {
+  const suma = s.r + s.g + s.b;
+  return suma > 60 && s.r / suma > 0.45 && s.r < 252;
+};
+
+function estadisticas() {
+  const utiles = muestras.filter(s => s.t >= CALENTAR);
+  const base = utiles.length >= 20 ? utiles : muestras;
+  if (base.length < 20) return null;
+
+  const ts = base.map(s => s.t);
+  const dts = [];
+  for (let i = 1; i < ts.length; i++) dts.push(ts[i] - ts[i - 1]);
+  const mediaDt = dts.reduce((a, b) => a + b, 0) / dts.length;
+  const jitter = Math.sqrt(dts.reduce((a, v) => a + (v - mediaDt) ** 2, 0) / (dts.length - 1 || 1));
+
+  /* Qué canal usar se MIDE, no se supone: gana el que más se mueva respecto a
+     su propio nivel. Con flash el rojo suele saturar y entonces el verde es
+     mejor, que es justo lo contrario de lo que dice el manual. */
+  const mejor = ['g', 'r', 'b'].map(k => {
+    const ys = base.map(s => s[k]);
+    const m = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const f = filtrar(ts, ys);
+    let pico = 0;
+    for (const v of f) pico = Math.max(pico, Math.abs(v));
+    return { k, mod: m > 1 ? pico / m : 0, ys, f };
+  }).sort((a, b) => b.mod - a.mod)[0];
+
+  const ps = picos(ts, mejor.f);
+  const ult = base[base.length - 1];
+  return {
+    fps: 1000 / mediaDt, jitter, mediaDt,
+    canal: { g: 'verde', r: 'rojo', b: 'azul' }[mejor.k],
+    mod: mejor.mod,
+    filtrada: mejor.f, ts, picos: ps,
+    dedo: base.filter(hayDedo).length / base.length,
+    rgb: ult,
+    m: metricas(ps),
+    segundos: (ts[ts.length - 1] - ts[0]) / 1000,
+  };
+}
+
+/* ============================================================
+   5 · Pintar
+   ============================================================ */
+const lienzo = $('traza'), lx = lienzo.getContext('2d');
+function dibujar(est) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = lienzo.clientWidth, h = 130;
+  if (lienzo.width !== Math.round(w * dpr)) { lienzo.width = Math.round(w * dpr); lienzo.height = Math.round(h * dpr); }
+  lx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  lx.clearRect(0, 0, w, h);
+  if (!est || !est.filtrada.length) return;
+
+  /* Los últimos 8 segundos, que es lo que se puede mirar con sentido. */
+  const fin = est.ts[est.ts.length - 1], ini = Math.max(est.ts[0], fin - 8000);
+  const idx = [];
+  for (let i = 0; i < est.ts.length; i++) if (est.ts[i] >= ini) idx.push(i);
+  if (idx.length < 2) return;
+  let max = 1e-9;
+  for (const i of idx) max = Math.max(max, Math.abs(est.filtrada[i]));
+
+  const X = t => ((t - ini) / (fin - ini || 1)) * (w - 8) + 4;
+  const Y = v => h / 2 - (v / max) * (h / 2 - 10);
+
+  lx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--borde').trim() || '#333';
+  lx.lineWidth = 1; lx.beginPath(); lx.moveTo(0, h / 2); lx.lineTo(w, h / 2); lx.stroke();
+
+  lx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--traza').trim() || '#4cc3ff';
+  lx.lineWidth = 1.8; lx.lineJoin = 'round'; lx.beginPath();
+  idx.forEach((i, k) => { const x = X(est.ts[i]), y = Y(est.filtrada[i]); k ? lx.lineTo(x, y) : lx.moveTo(x, y); });
+  lx.stroke();
+
+  lx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--acento').trim() || '#ff7a3d';
+  for (const p of est.picos) {
+    if (p.t < ini) continue;
+    lx.beginPath(); lx.arc(X(p.t), Y(p.y), 3.2, 0, Math.PI * 2); lx.fill();
+  }
+}
+
+function refrescar() {
+  const est = estadisticas();
+  if (!est) return;
+  $('dFps').textContent = est.fps.toFixed(1);
+  $('dJitter').textContent = est.jitter.toFixed(1) + ' ms';
+  $('dReloj').innerHTML = '<small>' + relojUsado + '</small>';
+  $('dRgb').textContent = Math.round(est.rgb.r) + ' / ' + Math.round(est.rgb.g) + ' / ' + Math.round(est.rgb.b);
+  const sat = est.rgb.r >= 252;
+  $('dDedo').innerHTML = hayDedo(est.rgb)
+    ? '<span class="chip ok">sí</span>'
+    : '<span class="chip ko">no</span>' + (sat ? ' <small>saturado: aprieta menos</small>' : '');
+  $('dCanal').textContent = est.canal;
+  $('dMod').textContent = (est.mod * 100).toFixed(2) + ' %';
+  dibujar(est);
+}
+
+function pintarControles(cs) {
+  const ul = $('listaControles');
+  ul.innerHTML = '';
+  for (const c of cs) {
+    const li = document.createElement('li');
+    const i = document.createElement('span'); i.textContent = c.ok ? '✓' : '✕';
+    i.style.color = 'var(' + (c.ok ? '--bien' : '--mal') + ')';
+    const t = document.createElement('span');
+    t.innerHTML = '<strong>' + c.texto + '</strong> — <span style="font-family:var(--mono)">' + c.dato + '</span>' +
+                  (c.ok ? '' : '<br><span style="color:var(--apagado);font-size:12px">' + c.por + '</span>');
+    li.append(i, t); ul.appendChild(li);
+  }
+}
+
+function terminar() {
+  const est = estadisticas();
+  parar();
+  if (!est) return fallo('No ha llegado ni un fotograma utilizable.');
+
+  const cs = controles(est);
+  pintarControles(cs);
+  const pasa = cs.every(c => c.ok);
+  const v = $('veredicto'); v.hidden = false; v.className = 'aviso';
+
+  if (pasa && est.m && est.m.rmssd != null) {
+    $('rFc').innerHTML = est.m.fc.toFixed(0) + '<u> lpm</u>';
+    $('rRmssd').innerHTML = est.m.rmssd.toFixed(1) + '<u> ms</u>';
+    v.style.borderColor = 'color-mix(in srgb, var(--bien) 45%, transparent)';
+    v.style.color = 'var(--bien)';
+    v.textContent = 'Medida válida. SDNN ' + est.m.sdnn.toFixed(1) + ' ms, ' + est.m.latidos +
+                    ' latidos en ' + est.segundos.toFixed(0) + ' s. Ahora repítela: el número solo vale si se repite.';
+    guardar(est);
+  } else {
+    $('rFc').innerHTML = '—<u> lpm</u>';
+    $('rRmssd').innerHTML = '—<u> ms</u>';
+    v.style.borderColor = 'color-mix(in srgb, var(--mal) 45%, transparent)';
+    v.style.color = 'var(--mal)';
+    const fallan = cs.filter(c => !c.ok).length;
+    v.textContent = 'No sale número: ' + fallan + (fallan === 1 ? ' control no pasa' : ' controles no pasan') +
+                    '. Un número aquí sería inventado con pinta de bueno.';
+    if (est.m) guardar(est, true);
+  }
+}
+
+const hist = [];
+function guardar(est, rechazada) {
+  hist.unshift({
+    hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    modo: modo.titulo.replace('Trasera + ', '').replace('Frontal + ', ''),
+    fps: est.fps, latidos: est.m ? est.m.aceptados : 0,
+    fc: est.m ? est.m.fc : null, rmssd: est.m ? est.m.rmssd : null, rechazada: !!rechazada,
+  });
+  const tb = $('historial'); tb.innerHTML = '';
+  for (const h of hist) {
+    const tr = document.createElement('tr');
+    if (h.rechazada) tr.style.opacity = '.45';
+    const c = (txt, mono) => { const td = document.createElement('td'); td.textContent = txt; if (mono) td.className = 'n'; return td; };
+    tr.append(c(h.hora), c(h.modo), c(h.fps.toFixed(0), true), c(String(h.latidos), true),
+              c(h.fc != null ? h.fc.toFixed(0) : '—', true),
+              c(h.rmssd != null ? h.rmssd.toFixed(1) + (h.rechazada ? ' ⚠' : '') : '—', true));
+    tb.appendChild(tr);
+  }
+}
+
+/* ============================================================
+   6 · Arrancar y parar
+   ============================================================ */
+function parar() {
+  corriendo = false;
+  if (idLoop != null) { try { video.cancelVideoFrameCallback ? video.cancelVideoFrameCallback(idLoop) : cancelAnimationFrame(idLoop); } catch (_) {} idLoop = null; }
+  if (track) { try { track.applyConstraints({ advanced: [{ torch: false }] }); } catch (_) {} }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
+  if (wake) { try { wake.release(); } catch (_) {} wake = null; }
+  $('linterna').hidden = true;
+  $('arrancar').disabled = false; $('parar').disabled = true; $('cuenta').hidden = true;
+}
+function limpiar() {
+  const e = $('errorCam'); e.hidden = true; e.textContent = '';
+  $('veredicto').hidden = true; $('listaControles').innerHTML = '';
+}
+function fallo(msg) {
+  parar();
+  const e = $('errorCam');
+  e.hidden = false; e.className = 'aviso';
+  e.style.borderColor = 'color-mix(in srgb, var(--mal) 45%, transparent)';
+  e.style.color = 'var(--mal)';
+  e.textContent = msg;
+}
+
+$('arrancar').onclick = arrancar;
+$('parar').onclick = () => { const est = estadisticas(); parar(); if (est) { pintarControles(controles(est)); } };
+$('salirLinterna').onclick = () => { $('linterna').hidden = true; };
+window.addEventListener('pagehide', parar);
+pintarModos();
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  fallo('Este navegador no ofrece acceso a la cámara. Hace falta HTTPS: por http:// (que no sea localhost) no se puede.');
+}
+</script>
+</body>
+</html>
