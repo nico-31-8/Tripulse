@@ -181,7 +181,11 @@
      y entonces videoWidth se queda en 0 y no llega ni un fotograma — callado.
      Así que se enseña pequeño, que además sirve para ver si el dedo tapa la
      lente entera. */
-  .previa { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  /* `wrap` + una base de 200px en el texto: en el móvil el texto NO cabe al
+     lado de los dos cuadrados (le quedaban 60 px y salía una palabra por
+     línea), así que se baja solo a su propia línea. En pantalla ancha sigue al
+     lado. */
+  .previa { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
   /* `fill` y no `cover` A PROPÓSITO: así la previa enseña EXACTAMENTE el mismo
      encuadre que se analiza, y el mapa de al lado cae casilla sobre casilla.
      Con `cover` el navegador recorta y el mapa señalaría otro sitio. */
@@ -189,7 +193,7 @@
     width: 76px; height: 76px; flex: none; border-radius: 9px; object-fit: fill;
     background: #000; border: 1px solid var(--borde); transition: width .2s, height .2s, border-color .2s;
   }
-  .previa p { margin: 0; font-size: 12px; color: var(--apagado); min-width: 0; }
+  .previa p { margin: 0; font-size: 12px; color: var(--apagado); flex: 1 1 200px; min-width: 0; }
   /* El mapa de dónde se ve el pulso: 4×4, igual que el análisis. */
   #mapa {
     display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
@@ -227,7 +231,7 @@
   <div class="previa">
     <video id="video" playsinline muted></video>
     <div id="mapa" aria-hidden="true"></div>
-    <p id="previaTexto">Al encender, <strong>la luz se enciende primero y no se mide todavía</strong>: busca el sitio sin prisa mirando aquí. A la izquierda, lo que ve la cámara. En el centro, <strong>en qué parte de esa imagen se ve latir</strong>: cuanto más verde, mejor, y las que llevan borde naranja son las que se están usando. Si solo se encienden las de un lado, mueve el dedo hacia ahí. Cuando el pulso aguante bien dos segundos y medio, el minuto <strong>arranca solo</strong> con dos pitidos.</p>
+    <p id="previaTexto">Izquierda: lo que ve la cámara. Derecha: <strong>dónde se ve latir</strong> — verde es que ahí hay pulso, y el borde naranja marca las casillas que se usan. <strong>Si el mapa está apagado, mueve el dedo hasta que se encienda.</strong><br><br>Al encender, la luz se enciende pero <strong>no se mide todavía</strong>: busca el sitio sin prisa. Cuando el pulso aguante bien dos segundos y medio, el minuto arranca solo con dos pitidos.</p>
   </div>
   <dl class="rejilla">
     <div class="celda"><dt>Cámara en uso</dt><dd id="dCamara">—</dd></div>
@@ -1076,11 +1080,14 @@ function pintarMapa(est) {
   if (!m.children.length) for (let i = 0; i < CASILLAS; i++) m.appendChild(document.createElement('i'));
   const cal = est.calidad;
   if (!cal) return;
-  let top = 0;
-  for (const v of cal) if (v > top) top = v;
   const sel = new Set(est.elegidas || []);
   for (let c = 0; c < CASILLAS; c++) {
-    const q = top > 0 ? Math.round(100 * cal[c] / top) : 0;
+    /* EN ABSOLUTO, NO RELATIVO AL MEJOR. Pintando en relativo, sin el dedo
+       puesto el mapa salía TODO VERDE: no había señal en ninguna casilla, pero
+       la que tenía más ruido se llevaba el 100 %. Ahora el verde es la
+       autocorrelación tal cual (0 a 1), así que sin pulso el mapa está apagado
+       y eso ya es información. */
+    const q = Math.round(100 * Math.min(1, Math.max(0, cal[c])));
     const e = m.children[c];
     e.style.background = 'color-mix(in srgb, var(--bien) ' + q + '%, var(--panel))';
     e.style.outline = sel.has(c) ? '2px solid var(--acento)' : '1px solid var(--borde)';
