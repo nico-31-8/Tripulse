@@ -149,7 +149,16 @@
   #linterna p { color: #333; font-size: 13px; text-align: center; max-width: 280px; margin: 0; }
   #linterna button { margin-top: 10px; }
 
-  video { display: none; }
+  /* EL VÍDEO NO PUEDE IR CON display:none: iOS no decodifica un vídeo oculto,
+     y entonces videoWidth se queda en 0 y no llega ni un fotograma — callado.
+     Así que se enseña pequeño, que además sirve para ver si el dedo tapa la
+     lente entera. */
+  .previa { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  .previa video {
+    width: 76px; height: 76px; flex: none; border-radius: 9px; object-fit: cover;
+    background: #000; border: 1px solid var(--borde);
+  }
+  .previa p { margin: 0; font-size: 12px; color: var(--apagado); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -171,7 +180,13 @@
 
 <div class="bloque">
   <h2>2 · Qué está viendo la cámara</h2>
+  <div class="previa">
+    <video id="video" playsinline muted></video>
+    <p id="previaTexto">Con el dedo bien puesto esto tiene que verse <strong>rojo oscuro y uniforme</strong>, sin bordes claros. Si se ve la habitación, el dedo no tapa la lente.</p>
+  </div>
   <dl class="rejilla">
+    <div class="celda"><dt>Cámara en uso</dt><dd id="dCamara">—</dd></div>
+    <div class="celda"><dt>Fotogramas recibidos</dt><dd id="dCuantos">—</dd></div>
     <div class="celda"><dt>Fotogramas/s</dt><dd id="dFps">—</dd></div>
     <div class="celda"><dt>Temblor entre ellos</dt><dd id="dJitter">—</dd></div>
     <div class="celda"><dt>Reloj del fotograma</dt><dd id="dReloj">—</dd></div>
@@ -210,8 +225,6 @@
   </div>
   <p class="nota">La pregunta de verdad: <strong>dos medidas seguidas del mismo minuto, ¿dan lo mismo?</strong> Si el RMSSD baila 20 ms entre una y otra, no sirve para decidir una carga.</p>
 </div>
-
-<video id="video" playsinline muted></video>
 
 <div id="linterna" hidden>
   <div>
@@ -276,24 +289,54 @@ const video = $('video');
 let stream = null, track = null, corriendo = false, relojUsado = '—';
 let muestras = [];          /* {t, r, g, b} con t en ms */
 let tInicio = 0, idLoop = null, flashPuesto = false, wake = null;
+let avisos = 0;             /* fotogramas anunciados con la imagen todavía vacía */
 
 const DURACION = 60000;     /* un minuto */
 const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
 
+/* La cámara de atrás se pide con `exact`, no con `ideal`.
+   `ideal` es una SUGERENCIA: Safari puede dártela y quedarse con la frontal,
+   que no tiene flash y tiene peor lente. `exact` obliga, y si no existe
+   (un portátil con una sola cámara) falla con OverconstrainedError y entonces
+   sí se acepta la que haya — pero diciéndolo. */
+async function abrirCamara(facing) {
+  const base = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 60 } };
+  try {
+    return { stream: await navigator.mediaDevices.getUserMedia({ video: { ...base, facingMode: { exact: facing } }, audio: false }), forzada: true };
+  } catch (e) {
+    if (e && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError')) {
+      return { stream: await navigator.mediaDevices.getUserMedia({ video: { ...base, facingMode: facing }, audio: false }), forzada: false };
+    }
+    throw e;
+  }
+}
+
 async function arrancar() {
   limpiar();
+  let forzada = true;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: modo.facing }, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 60 } },
-      audio: false,
-    });
+    const r = await abrirCamara(modo.facing);
+    stream = r.stream; forzada = r.forzada;
   } catch (e) {
-    return fallo('No se ha podido abrir la cámara: ' + (e && e.name ? e.name : e) +
-      '. Si dice NotAllowedError y no te ha preguntado nada, lo está bloqueando la cabecera Permissions-Policy del servidor, no tú.');
+    const n = e && e.name ? e.name : String(e);
+    return fallo('No se ha podido abrir la cámara (' + n + '). ' + (
+      n === 'NotAllowedError'
+        ? 'Si no te ha preguntado nada, lo bloquea el servidor con la cabecera Permissions-Policy. Si te preguntó y dijiste no, en Safari se vuelve a permitir en Ajustes › Safari › Cámara.'
+        : n === 'NotFoundError' ? 'Este aparato no tiene la cámara que he pedido.'
+        : n === 'NotReadableError' ? 'La cámara está ocupada por otra app. Ciérrala y vuelve.'
+        : 'Cuéntame este nombre y lo miro.'));
   }
   track = stream.getVideoTracks()[0];
   video.srcObject = stream;
   await video.play().catch(() => {});
+
+  /* Qué cámara ha tocado de verdad, no la que pedí. */
+  const aj = (track.getSettings && track.getSettings()) || {};
+  const cual = aj.facingMode === 'environment' ? 'trasera' : aj.facingMode === 'user' ? 'frontal' : (track.label || 'sin nombre');
+  const esperada = modo.facing === 'environment' ? 'trasera' : 'frontal';
+  $('dCamara').innerHTML = (cual === esperada ? '<span class="chip ok">' + cual + '</span>' : '<span class="chip wr">' + cual + '</span>') +
+    (forzada ? '' : ' <small>no se pudo forzar</small>') +
+    (aj.width ? ' <small>' + aj.width + '×' + aj.height + '</small>' : '');
 
   /* El flash: se PREGUNTA si existe y se INTENTA, y se cuenta lo que pasa. */
   flashPuesto = false;
@@ -317,10 +360,23 @@ async function arrancar() {
   if (modo.pantalla) $('linterna').hidden = false;
   try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
 
-  corriendo = true; tInicio = 0; muestras = [];
+  corriendo = true; tInicio = 0; muestras = []; avisos = 0;
   $('arrancar').disabled = true; $('parar').disabled = false;
   $('cuenta').hidden = false;
   pedirFotograma();
+
+  /* EL PERRO GUARDIÁN. Si no llega ni un fotograma, antes no pasaba nada: la
+     página se quedaba igual y parecía que no hacía nada. Ahora lo dice y dice
+     qué mirar. */
+  setTimeout(() => {
+    if (!corriendo) return;
+    if (muestras.length === 0) {
+      fallo('La cámara está abierta pero no llega ni un fotograma' +
+        (avisos ? ' (' + avisos + ' avisos con la imagen todavía vacía)' : '') +
+        '. Casi siempre es que el vídeo no se está decodificando: prueba a no salir de esta pestaña, ' +
+        'y si estás en modo de bajo consumo, apágalo. Dime si te sale esto y lo ataco por otro lado.');
+    }
+  }, 3000);
 }
 
 /* La hora de cada fotograma, por orden de fiabilidad:
@@ -346,7 +402,9 @@ function pedirFotograma() {
 }
 
 function fotograma(t) {
-  if (!video.videoWidth) return;
+  /* Un aviso de fotograma con la imagen aún sin tamaño: se CUENTA, porque es
+     justo la pista de que el vídeo no está decodificando. */
+  if (!video.videoWidth) { avisos++; return; }
   cx.drawImage(video, 0, 0, LADO, LADO);
   let d;
   try { d = cx.getImageData(MARGEN, MARGEN, LADO - 2 * MARGEN, LADO - 2 * MARGEN).data; }
@@ -361,6 +419,7 @@ function fotograma(t) {
 
   const pasado = t - tInicio;
   $('cuenta').textContent = Math.min(60, Math.floor(pasado / 1000)) + ' / 60 s';
+  $('dCuantos').textContent = muestras.length + (avisos ? ' (' + avisos + ' vacíos)' : '');
 
   if (muestras.length % 4 === 0) refrescar();
   if (pasado >= DURACION) terminar();
