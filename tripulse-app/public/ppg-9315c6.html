@@ -278,6 +278,7 @@
   <p class="nota">La pregunta de verdad: <strong>dos medidas seguidas del mismo minuto, ¿dan lo mismo?</strong> Si el RMSSD baila 20 ms entre una y otra, no sirve para decidir una carga.</p>
   <div class="acciones">
     <button class="btn sec" id="copiar">Copiar los datos</button>
+    <button class="btn sec" id="copiarSenal">Copiar la señal</button>
   </div>
   <p class="nota">Copia todo —el móvil, la cámara, el mapa y cada medida— como texto, para pegarlo en un mensaje. Funciona aunque no haya salido ninguna medida: si no te funciona, <strong>eso</strong> es justo lo que hay que mandar.</p>
   <textarea id="paraCopiar" hidden readonly rows="10" style="width:100%;margin-top:10px;font:12px var(--mono);background:var(--fondo);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:8px"></textarea>
@@ -369,6 +370,8 @@ let ultimoAviso = -1;       /* para no repetir el pitido de la cuenta atrás */
 /* Qué casillas del fotograma valen. Se guarda entre refrescos porque
    recalcularlo son 16 filtrados y no hace falta más de una vez por segundo. */
 let cacheCasillas = { t: -1e9, canal: '', cal: null, elegidas: null };
+/* La última medida tal cual, para poder mandarla entera y analizarla fuera. */
+let ultimaCruda = null;
 
 const DURACION = 60000;     /* un minuto */
 const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
@@ -794,7 +797,7 @@ function picos(ts, ys, refractario) {
    que se aparta más del 20 % de la mediana de los últimos. Se guarda si cada
    uno se aceptó, porque el RMSSD solo puede restar PAREJAS SEGUIDAS: si se
    tira uno, la resta que lo cruza no vale. */
-function huecos(ps) {
+function huecos(ps, periodo) {
   const brutos = [];
   for (let i = 1; i < ps.length; i++) brutos.push(ps[i].t - ps[i - 1].t);
   const ok = [], recientes = [];
@@ -806,14 +809,24 @@ function huecos(ps) {
   const porque = { largo: 0, corto: 0, fuera: 0 };
   for (const ib of brutos) {
     if (ib < 300 || ib > 2000) { ok.push(false); porque.fuera++; continue; }
+    /* CON QUÉ SE COMPARA, que es donde estaba el fallo.
+       Antes los TRES PRIMEROS huecos se aceptaban a ciegas y sembraban la
+       mediana. Si esos tres estaban mal —y el principio es justo donde peor
+       está la señal—, todo lo demás se juzgaba contra un disparate: los huecos
+       buenos salían «raros» y se tiraban, y la medida quedaba COHERENTE
+       CONSIGO MISMA Y EQUIVOCADA, que es la peor forma de fallar.
+       Ahora, mientras no haya aceptados suficientes, se compara con el periodo
+       sacado por autocorrelación, que no depende de ningún latido concreto. */
+    let ref = null;
     if (recientes.length >= 3) {
       const s = [...recientes].sort((a, b) => a - b);
-      const med = s[s.length >> 1];
-      if (Math.abs(ib - med) > 0.2 * med) {
-        ok.push(false);
-        if (ib > med) porque.largo++; else porque.corto++;
-        continue;
-      }
+      ref = s[s.length >> 1];
+    } else if (periodo) ref = periodo;
+
+    if (ref != null && Math.abs(ib - ref) > 0.2 * ref) {
+      ok.push(false);
+      if (ib > ref) porque.largo++; else porque.corto++;
+      continue;
     }
     ok.push(true); recientes.push(ib);
     if (recientes.length > 5) recientes.shift();
@@ -821,8 +834,8 @@ function huecos(ps) {
   return { brutos, ok, porque };
 }
 
-function metricas(ps) {
-  const { brutos, ok, porque } = huecos(ps);
+function metricas(ps, periodo) {
+  const { brutos, ok, porque } = huecos(ps, periodo);
   const buenos = brutos.filter((_, i) => ok[i]);
   if (buenos.length < 2) return null;
   const mediaIb = buenos.reduce((a, b) => a + b, 0) / buenos.length;
@@ -854,6 +867,7 @@ function metricas(ps) {
 function controles(est) {
   const m = est.m;
   const limpio = m && m.totales > 0 ? m.aceptados / m.totales : 0;
+  const fcAuto = est.periodo ? 60000 / est.periodo : null;
   return [
     { nivel: 'pulso', ok: est.dedo >= 0.9, texto: 'Dedo puesto al menos el 90 % del rato',
       dato: Math.round(est.dedo * 100) + ' %',
@@ -864,6 +878,17 @@ function controles(est) {
     { nivel: 'pulso', ok: m != null && m.aceptados >= 10, texto: 'Al menos 10 huecos entre latidos',
       dato: m ? String(m.aceptados) : '0',
       por: 'con menos no hay ni pulso medio que dar' },
+    /* LAS DOS FORMAS DE CONTAR TIENEN QUE DAR LO MISMO. Una cuenta latidos uno
+       a uno; la otra mira cada cuánto se repite la señal entera, sin buscar
+       ninguno. Si discrepan, una está contando mal y NO SE SABE CUÁL, así que
+       no sale número. Esta es la red que faltaba: sin ella, un pulso
+       equivocado sale con la misma cara de bueno que uno correcto. */
+    { nivel: 'pulso',
+      ok: !!(m && fcAuto) && Math.abs(m.fc - fcAuto) / fcAuto <= 0.12,
+      texto: 'Las dos formas de contar coinciden',
+      dato: m && fcAuto ? m.fc.toFixed(0) + ' por latidos · ' + fcAuto.toFixed(0) + ' por autocorrelación'
+            : 'falta una de las dos',
+      por: 'si no coinciden, una de las dos cuenta mal y no se puede saber cuál' },
 
     { nivel: 'rmssd', ok: est.fps >= 20, texto: 'Fotogramas por segundo ≥ 20',
       dato: est.fps.toFixed(1) + ' fps',
@@ -984,7 +1009,7 @@ function estadisticas() {
     calidad: cacheCasillas.cal, elegidas,
     dedo: conDedo / base.length,
     rgb: { r: crudaR[u], g: crudaG[u], b: crudaB[u] },
-    m: metricas(ps),
+    m: metricas(ps, periodo),
     segundos: (ts[ts.length - 1] - ts[0]) / 1000,
   };
 }
@@ -1128,6 +1153,7 @@ function terminar() {
   const est = estadisticas();
   parar();
   if (!est) return fallo('No ha llegado ni un fotograma utilizable.');
+  ultimaCruda = { ts: est.ts, cruda: est.cruda, canal: est.canal, elegidas: est.elegidas };
 
   const cs = controles(est);
   pintarControles(cs);
@@ -1241,6 +1267,31 @@ async function alPortapapeles(texto) {
     return ok;
   } catch (_) { return false; }
 }
+
+/* LA SEÑAL EN BRUTO, número a número.
+   Dos hipótesis mías sobre por qué falla han resultado falsas al comprobarlas
+   contra señales inventadas. El problema es que mis señales inventadas salen
+   siempre perfectas y la de un dedo real no. Esto manda la medida TAL CUAL
+   —instante y brillo de cada fotograma— para poder pasarla por el mismo
+   cálculo fuera del móvil y ver dónde se tuerce de verdad. */
+function textoSenal() {
+  if (!ultimaCruda) return 'No hay ninguna señal guardada: haz una medida y vuelve a darle.';
+  const { ts, cruda, canal, elegidas } = ultimaCruda;
+  const l = ['SEÑAL EN BRUTO · ' + new Date().toLocaleString('es-ES')];
+  l.push('canal ' + canal + ' · ' + (elegidas ? 'casillas [' + elegidas + ']' : 'fotograma entero') +
+         ' · ' + ts.length + ' fotogramas');
+  l.push('cada línea es "ms,brillo" desde que empezó a medir');
+  for (let i = 0; i < ts.length; i++) l.push(Math.round(ts[i]) + ',' + cruda[i].toFixed(2));
+  return l.join('\n');
+}
+
+$('copiarSenal').onclick = async () => {
+  const b = $('copiarSenal'), texto = textoSenal();
+  const ok = await alPortapapeles(texto);
+  if (!ok) { const ta = $('paraCopiar'); ta.hidden = false; ta.value = texto; ta.select(); }
+  b.textContent = ok ? 'Copiada ✓' : 'Cópiala de abajo';
+  setTimeout(() => { b.textContent = 'Copiar la señal'; }, 2500);
+};
 
 $('copiar').onclick = async () => {
   const b = $('copiar'), texto = textoParaMandar();
