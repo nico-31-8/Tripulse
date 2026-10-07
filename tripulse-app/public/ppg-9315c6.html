@@ -276,6 +276,11 @@
     </table>
   </div>
   <p class="nota">La pregunta de verdad: <strong>dos medidas seguidas del mismo minuto, ¿dan lo mismo?</strong> Si el RMSSD baila 20 ms entre una y otra, no sirve para decidir una carga.</p>
+  <div class="acciones">
+    <button class="btn sec" id="copiar">Copiar los datos</button>
+  </div>
+  <p class="nota">Copia todo —el móvil, la cámara, el mapa y cada medida— como texto, para pegarlo en un mensaje. Funciona aunque no haya salido ninguna medida: si no te funciona, <strong>eso</strong> es justo lo que hay que mandar.</p>
+  <textarea id="paraCopiar" hidden readonly rows="10" style="width:100%;margin-top:10px;font:12px var(--mono);background:var(--fondo);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:8px"></textarea>
 </div>
 
 <div id="barra" hidden>
@@ -1153,12 +1158,102 @@ function terminar() {
     v.textContent = 'No sale ni el pulso: ' + fallan + (fallan === 1 ? ' control básico no pasa' : ' controles básicos no pasan') +
                     '. Un número aquí sería inventado con pinta de bueno.';
   }
-  if (est.m) guardar(est, hayRmssd ? null : (hayPulso ? 'solo pulso' : 'rechazada'));
+  const pega = hayRmssd ? null : (hayPulso ? 'solo pulso' : 'rechazada');
+  const titulo = 'Medida ' + (hist.length + 1) + ' — ' + modo.titulo +
+                 (hayRmssd ? ' — completa' : hayPulso ? ' — solo pulso' : ' — rechazada');
+  guardar(est, pega, detalleDe(est, cs, titulo));
 }
 
+/* ============================================================
+   Copiar los datos como texto
+   ============================================================
+   Para que lo pruebe otra persona y pueda mandarlo por un mensaje sin hacer
+   cuatro capturas. Va TODO lo que hace falta para diagnosticar: el móvil, qué
+   cámara tocó, el reloj, el mapa de casillas y cada medida con sus controles.
+
+   Se puede copiar aunque no haya salido ninguna medida: el caso en que a
+   alguien no le funciona es justo el que más interesa. */
+function rejilla(cal) {
+  if (!cal) return '    (sin datos)';
+  const l = [];
+  for (let f = 0; f < REJA; f++) {
+    const fila = [];
+    for (let x = 0; x < REJA; x++) fila.push(String(Math.round(100 * cal[f * REJA + x])).padStart(3));
+    l.push('    ' + fila.join(' '));
+  }
+  return l.join('\n');
+}
+
+function detalleDe(est, cs, cabecera) {
+  const m = est.m;
+  const l = [cabecera];
+  l.push('  ' + est.fps.toFixed(1) + ' fps · temblor ' + est.jitter.toFixed(1) + ' ms · reloj ' + relojUsado);
+  l.push('  canal ' + est.canal + ' · señal ' + (est.mod * 100).toFixed(2) + ' % · zona ' +
+         (est.elegidas ? est.elegidas.length + '/16 casillas [' + est.elegidas + ']' : 'todas (ninguna destaca)'));
+  l.push('  dedo ' + Math.round(est.dedo * 100) + ' % · RGB ' +
+         Math.round(est.rgb.r) + '/' + Math.round(est.rgb.g) + '/' + Math.round(est.rgb.b) +
+         ' · autocorrelación ' + (est.periodo ? (60000 / est.periodo).toFixed(0) + ' lpm' : '—'));
+  l.push('  mapa (0-100):');
+  l.push(rejilla(est.calidad));
+  if (m) {
+    l.push('  pulso ' + m.fc.toFixed(0) + ' lpm · RMSSD ' + (m.rmssd != null ? m.rmssd.toFixed(1) : '—') +
+           ' ms · SDNN ' + m.sdnn.toFixed(1) + ' ms');
+    l.push('  ' + m.totales + ' huecos, ' + m.aceptados + ' limpios' +
+           (m.porque ? ' · ' + m.porque.largo + ' perdidos, ' + m.porque.corto + ' de más, ' + m.porque.fuera + ' imposibles' : ''));
+  } else {
+    l.push('  sin latidos');
+  }
+  if (cs) {
+    const mal = cs.filter(c => !c.ok);
+    l.push('  controles: ' + (mal.length ? mal.map(c => '✕ ' + c.texto + ' (' + c.dato + ')').join(' · ') : 'todos pasan'));
+  }
+  return l.join('\n');
+}
+
+function textoParaMandar() {
+  const l = ['TRIPULSE · prueba de pulso por cámara'];
+  l.push(new Date().toLocaleString('es-ES'));
+  l.push('móvil: ' + navigator.userAgent);
+  l.push('pantalla: ' + window.innerWidth + '×' + window.innerHeight +
+         ' · dpr ' + (window.devicePixelRatio || 1));
+  l.push('cámara: ' + ($('dCamara').textContent.trim() || '—') + ' · flash: ' + ($('dFlash').textContent.trim() || '—'));
+  l.push('');
+  if (!hist.length) {
+    l.push('NINGUNA MEDIDA COMPLETADA.');
+    const est = muestras.length ? estadisticas() : null;
+    if (est) l.push('', detalleDe(est, controles(est), 'Estado en vivo al copiar (modo ' + modo.titulo + '):'));
+    else l.push('Ni un fotograma leído' + (avisos ? ' (' + avisos + ' avisos con la imagen vacía)' : '') + '.');
+  } else {
+    /* En orden de cómo se hicieron: en la tabla van del revés (la última
+       arriba), pero leyendo un mensaje se espera lo contrario. */
+    [...hist].reverse().forEach(h => { l.push(h.detalle || '(sin detalle)'); l.push(''); });
+  }
+  return l.join('\n');
+}
+
+async function alPortapapeles(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; } catch (_) {}
+  try {
+    const ta = $('paraCopiar');
+    ta.hidden = false; ta.value = texto; ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    if (ok) ta.hidden = true;
+    return ok;
+  } catch (_) { return false; }
+}
+
+$('copiar').onclick = async () => {
+  const b = $('copiar'), texto = textoParaMandar();
+  const ok = await alPortapapeles(texto);
+  if (!ok) { const ta = $('paraCopiar'); ta.hidden = false; ta.value = texto; ta.select(); }
+  b.textContent = ok ? 'Copiado ✓' : 'Cópialo de aquí abajo';
+  setTimeout(() => { b.textContent = 'Copiar los datos'; }, 2500);
+};
+
 const hist = [];
-function guardar(est, pega) {
+function guardar(est, pega, detalle) {
   hist.unshift({
+    detalle,
     hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     modo: modo.titulo.replace('Trasera + ', '').replace('Frontal + ', ''),
     fps: est.fps, latidos: est.m ? est.m.aceptados : 0,
