@@ -224,6 +224,14 @@
     <button class="btn sec" id="parar" disabled>Parar</button>
   </div>
   <div id="errorCam" hidden></div>
+  <div id="sinFlash" hidden class="aviso" style="border-color:color-mix(in srgb, var(--aviso) 45%, transparent)">
+    <strong style="color:var(--aviso)">Este móvil no deja encender el flash desde el navegador.</strong>
+    <p class="nota" style="margin-top:4px">Sin luz no hay pulso que ver, así que por aquí no vas a llegar. Hay dos salidas:</p>
+    <div class="acciones">
+      <button class="btn sec" id="aAmbiente">Seguir con luz ambiente</button>
+      <button class="btn sec" id="aPantalla">Usar la pantalla</button>
+    </div>
+  </div>
 </div>
 
 <div class="bloque">
@@ -446,6 +454,29 @@ async function abrirCamara(facing) {
   }
 }
 
+/* Intentar encender el flash, y si no sale, intentarlo otra vez medio segundo
+   después. El segundo intento no es por superstición: `getCapabilities()`
+   puede no declarar el flash hasta que la pista lleva un rato viva, y
+   entonces el primer intento dice «no lo ofrece» sobre un teléfono que sí. */
+async function encenderFlash(track) {
+  const intento = async () => {
+    const cap = (track.getCapabilities && track.getCapabilities()) || {};
+    if (!('torch' in cap)) return { ok: false, por: 'el navegador no lo ofrece' };
+    try {
+      await track.applyConstraints({ advanced: [{ torch: true }] });
+      const s = (track.getSettings && track.getSettings()) || {};
+      return s.torch === false
+        ? { ok: false, por: 'aceptó la orden pero sigue apagado' }
+        : { ok: true, por: 'encendido' };
+    } catch (e) { return { ok: false, por: 'da error: ' + (e && e.name ? e.name : e) }; }
+  };
+  const uno = await intento();
+  if (uno.ok) return uno;
+  await new Promise(res => setTimeout(res, 500));
+  const dos = await intento();
+  return dos.ok ? { ok: true, por: 'encendido al segundo intento' } : dos;
+}
+
 async function arrancar() {
   limpiar();
   abrirAudio();          /* aquí, que es el gesto del usuario */
@@ -474,24 +505,23 @@ async function arrancar() {
     (forzada ? '' : ' <small>no se pudo forzar</small>') +
     (aj.width ? ' <small>' + aj.width + '×' + aj.height + '</small>' : '');
 
-  /* El flash: se PREGUNTA si existe y se INTENTA, y se cuenta lo que pasa. */
+  /* El flash: se PREGUNTA si existe, se INTENTA, y si no sale se REINTENTA.
+     Hay navegadores que no declaran el flash —ni lo encienden— hasta que la
+     cámara lleva un rato viva, así que un solo intento da falsos negativos. */
   flashPuesto = false;
   let txt = 'no se ha pedido';
   if (modo.torch) {
-    const cap = (track.getCapabilities && track.getCapabilities()) || {};
-    if (!('torch' in cap)) {
-      txt = 'no lo ofrece este navegador';
-    } else {
-      try {
-        await track.applyConstraints({ advanced: [{ torch: true }] });
-        const s = (track.getSettings && track.getSettings()) || {};
-        flashPuesto = s.torch !== false;
-        txt = flashPuesto ? 'encendido' : 'aceptó la orden pero sigue apagado';
-      } catch (e) { txt = 'lo ofrece pero da error: ' + (e && e.name ? e.name : e); }
-    }
+    const r = await encenderFlash(track);
+    flashPuesto = r.ok; txt = r.por;
   }
   $('dFlash').innerHTML = (flashPuesto ? '<span class="chip ok">sí</span> ' : '<span class="chip ko">no</span> ') +
                           '<small>' + txt + '</small>';
+
+  /* SI SE PIDIÓ FLASH Y NO HAY FLASH, SE DICE Y SE OFRECE LA SALIDA. Antes se
+     seguía adelante igual: te quedabas con el dedo puesto y la barra pidiéndote
+     que lo movieras «hasta que lata», cuando por ahí no ibas a llegar nunca
+     porque no había luz. */
+  $('sinFlash').hidden = !(modo.torch && !flashPuesto);
 
   if (modo.pantalla) $('linterna').hidden = false;
   try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
@@ -615,7 +645,11 @@ function mirarColocacion(ahora) {
   if (!vale) {
     buenoDesde = 0;
     document.body.classList.remove('bien');
-    const texto = !est ? 'Enciende y apoya el dedo'
+    /* Si se pidió flash y no hay flash, eso manda sobre todo lo demás: pedirle
+       que mueva el dedo cuando el problema es que no hay luz es mandarlo a dar
+       vueltas. */
+    const texto = (modo.torch && !flashPuesto) ? 'Sin flash: hace falta luz, mira abajo'
+      : !est ? 'Enciende y apoya el dedo'
       : !hayDedo(est.rgb) ? (est.rgb.r >= 252 ? 'Aprietas demasiado, afloja' : 'Tapa la lente entera con la yema')
       : est.picos.length < 4 ? 'Dedo puesto. Muévelo despacio hasta que lata'
       : 'Casi: sujétalo quieto';
@@ -1342,6 +1376,7 @@ function parar() {
 }
 function limpiar() {
   const e = $('errorCam'); e.hidden = true; e.textContent = '';
+  $('sinFlash').hidden = true;
   $('veredicto').hidden = true; $('listaControles').innerHTML = '';
 }
 function fallo(msg) {
@@ -1365,6 +1400,25 @@ $('parar').onclick = pararAMano;
 /* El botón de la pantalla blanca PARA de verdad. Antes solo escondía el blanco
    y la medida seguía corriendo a ciegas. */
 $('salirLinterna').onclick = pararAMano;
+
+/* Las dos salidas cuando no hay flash.
+   La de luz ambiente NO reabre la cámara: es la misma trasera, solo cambia de
+   dónde viene la luz, así que no se pierde lo que ya estabas colocando.
+   La de la pantalla sí, porque es la cámara de delante. */
+$('aAmbiente').onclick = () => {
+  modo = MODOS[1];
+  pintarModos();
+  $('sinFlash').hidden = true;
+  const t = 'Sin flash: pon la mano a contraluz de una lámpara o una ventana';
+  $('bEstado').textContent = t; $('lEstado').textContent = t;
+};
+$('aPantalla').onclick = () => {
+  parar();
+  modo = MODOS[2];
+  pintarModos();
+  $('sinFlash').hidden = true;
+  arrancar();
+};
 window.addEventListener('pagehide', parar);
 pintarModos();
 
