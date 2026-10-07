@@ -182,11 +182,22 @@
      Así que se enseña pequeño, que además sirve para ver si el dedo tapa la
      lente entera. */
   .previa { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  /* `fill` y no `cover` A PROPÓSITO: así la previa enseña EXACTAMENTE el mismo
+     encuadre que se analiza, y el mapa de al lado cae casilla sobre casilla.
+     Con `cover` el navegador recorta y el mapa señalaría otro sitio. */
   .previa video {
-    width: 76px; height: 76px; flex: none; border-radius: 9px; object-fit: cover;
+    width: 76px; height: 76px; flex: none; border-radius: 9px; object-fit: fill;
     background: #000; border: 1px solid var(--borde); transition: width .2s, height .2s, border-color .2s;
   }
-  .previa p { margin: 0; font-size: 12px; color: var(--apagado); }
+  .previa p { margin: 0; font-size: 12px; color: var(--apagado); min-width: 0; }
+  /* El mapa de dónde se ve el pulso: 4×4, igual que el análisis. */
+  #mapa {
+    display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+    gap: 2px; width: 76px; height: 76px; flex: none;
+    transition: width .2s, height .2s;
+  }
+  #mapa i { border-radius: 3px; background: var(--panel); outline-offset: -1px; }
+  body.colocando #mapa { width: 132px; height: 132px; }
   /* Mientras buscas el sitio, la previa manda: es lo único que te dice si el
      dedo tapa la lente entera. Y el borde hace de semáforo. */
   body.colocando .previa video { width: 132px; height: 132px; }
@@ -215,7 +226,8 @@
   <h2>2 · Qué está viendo la cámara</h2>
   <div class="previa">
     <video id="video" playsinline muted></video>
-    <p id="previaTexto">Al encender, <strong>la luz se enciende primero y no se mide todavía</strong>: tienes todo el tiempo del mundo para buscar el sitio mirando aquí. Con el dedo bien puesto esto se ve <strong>rojo oscuro y uniforme</strong>, sin bordes claros; si se ve la habitación, el dedo no tapa la lente. Cuando el pulso aguante bien dos segundos y medio, el minuto <strong>arranca solo</strong> con dos pitidos.</p>
+    <div id="mapa" aria-hidden="true"></div>
+    <p id="previaTexto">Al encender, <strong>la luz se enciende primero y no se mide todavía</strong>: busca el sitio sin prisa mirando aquí. A la izquierda, lo que ve la cámara. En el centro, <strong>en qué parte de esa imagen se ve latir</strong>: cuanto más verde, mejor, y las que llevan borde naranja son las que se están usando. Si solo se encienden las de un lado, mueve el dedo hacia ahí. Cuando el pulso aguante bien dos segundos y medio, el minuto <strong>arranca solo</strong> con dos pitidos.</p>
   </div>
   <dl class="rejilla">
     <div class="celda"><dt>Cámara en uso</dt><dd id="dCamara">—</dd></div>
@@ -229,6 +241,7 @@
     <div class="celda"><dt>Canal usado</dt><dd id="dCanal">—</dd></div>
     <div class="celda"><dt>Fuerza de la señal</dt><dd id="dMod">—</dd></div>
     <div class="celda"><dt>Ritmo por autocorrelación</dt><dd id="dPeriodo">—</dd></div>
+    <div class="celda"><dt>Zona del fotograma usada</dt><dd id="dZona">—</dd></div>
   </dl>
   <p class="nota"><strong>El ritmo por autocorrelación</strong> se calcula sin buscar latidos, mirando cada cuánto se parece la señal a sí misma. Si no coincide con el pulso de abajo, el que se equivoca es el detector de latidos. Y la <strong>fuerza de la señal</strong> es la altura de un latido sobre el brillo medio: en un dedo con flash lo normal es entre el 1 % y el 10 %.</p>
   <p class="nota">El <strong>temblor</strong> es lo que decide si la variabilidad es creíble: mide cuánto varía el hueco entre fotogramas. Y el <strong>reloj del fotograma</strong> dice si el navegador nos da la hora real de captura o hay que estimarla.</p>
@@ -324,7 +337,16 @@ function pintarModos() {
    Y se copia REDUCIDO a 32x32: el escalado lo hace la gráfica gratis y ya va
    promediando, así que luego se leen 1024 píxeles en vez de 300.000. Es la
    diferencia entre ir a 30 fotogramas por segundo o a 4. */
-const LADO = 32, MARGEN = 6;   /* se lee solo el centro: los bordes de la lente vienen oscurecidos */
+/* EL FOTOGRAMA SE PARTE EN 16 CASILLAS, y esto no es un refinamiento: es lo que
+   hace falta cuando el flash está LEJOS de la lente, como en los iPhone
+   recientes. La yema no ilumina igual toda la imagen —un lado quemado, el otro
+   a oscuras— y promediar el centro entero mezcla la parte donde se ve el pulso
+   con la parte donde no, y lo entierra.
+
+   Así que se mide cada casilla por separado, se ve en cuáles late de verdad, y
+   la señal se construye SOLO con esas. Antes se leía el centro y punto, que con
+   el flash descentrado es justo la zona equivocada. */
+const LADO = 32, REJA = 4, CASILLAS = REJA * REJA, PASO = LADO / REJA;
 const cv = document.createElement('canvas');
 cv.width = cv.height = LADO;
 const cx = cv.getContext('2d', { willReadFrequently: true });
@@ -335,6 +357,9 @@ let muestras = [];          /* {t, r, g, b} con t en ms */
 let tInicio = 0, idLoop = null, flashPuesto = false, wake = null;
 let avisos = 0;             /* fotogramas anunciados con la imagen todavía vacía */
 let ultimoAviso = -1;       /* para no repetir el pitido de la cuenta atrás */
+/* Qué casillas del fotograma valen. Se guarda entre refrescos porque
+   recalcularlo son 16 filtrados y no hace falta más de una vez por segundo. */
+let cacheCasillas = { t: -1e9, canal: '', cal: null, elegidas: null };
 
 const DURACION = 60000;     /* un minuto */
 const CALENTAR = 5000;      /* los primeros 5 s no cuentan: la presión del dedo se estabiliza */
@@ -460,6 +485,7 @@ async function arrancar() {
   try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
 
   corriendo = true; tInicio = 0; muestras = []; avisos = 0; buenoDesde = 0;
+  cacheCasillas = { t: -1e9, canal: '', cal: null, elegidas: null };
   fase = 'colocando';
   $('parar').disabled = false;
   $('arrancar').textContent = 'Empezar ya';   /* por si no quiere esperar */
@@ -511,15 +537,29 @@ function fotograma(t) {
   if (!video.videoWidth) { avisos++; return; }
   cx.drawImage(video, 0, 0, LADO, LADO);
   let d;
-  try { d = cx.getImageData(MARGEN, MARGEN, LADO - 2 * MARGEN, LADO - 2 * MARGEN).data; }
+  try { d = cx.getImageData(0, 0, LADO, LADO).data; }
   catch (e) { return fallo('El navegador no deja leer los píxeles del vídeo: ' + e); }
 
-  let r = 0, g = 0, b = 0, n = 0;
-  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-  r /= n; g /= n; b /= n;
+  /* 48 números por fotograma: las 16 casillas × 3 canales, en un solo array
+     plano (rojo 0-15, verde 16-31, azul 32-47). */
+  const cas = new Float32Array(3 * CASILLAS);
+  for (let y = 0; y < LADO; y++) {
+    const fila = ((y / PASO) | 0) * REJA;
+    for (let x = 0; x < LADO; x++) {
+      const c = fila + ((x / PASO) | 0), i = (y * LADO + x) * 4;
+      cas[c] += d[i]; cas[CASILLAS + c] += d[i + 1]; cas[2 * CASILLAS + c] += d[i + 2];
+    }
+  }
+  const px = PASO * PASO;
+  let r = 0, g = 0, b = 0;
+  for (let c = 0; c < CASILLAS; c++) {
+    cas[c] /= px; cas[CASILLAS + c] /= px; cas[2 * CASILLAS + c] /= px;
+    r += cas[c]; g += cas[CASILLAS + c]; b += cas[2 * CASILLAS + c];
+  }
+  r /= CASILLAS; g /= CASILLAS; b /= CASILLAS;
 
   if (!tInicio) tInicio = t;
-  muestras.push({ t: t - tInicio, r, g, b });
+  muestras.push({ t: t - tInicio, r, g, b, cas });
 
   if (fase === 'colocando') {
     /* Ventana rodante: solo interesa lo de ahora mismo, no lo que pasó
@@ -592,6 +632,7 @@ function empezarMedida() {
   fase = 'midiendo';
   /* El minuto empieza LIMPIO: lo de buscar el sitio no cuenta. */
   muestras = []; tInicio = 0; buenoDesde = 0; ultimoAviso = -1;
+  cacheCasillas = { t: -1e9, canal: '', cal: null, elegidas: null };
   document.body.classList.remove('colocando', 'bien');
   $('arrancar').disabled = true;
   $('bQueda').textContent = '60';
@@ -633,6 +674,48 @@ function filtrar(ts, ys) {
    RMSSD de un atleta está entre 20 y 80 ms, así que el error de cuantización
    sería del orden de la propia medida: saldría un número con pinta de bueno y
    sin relación con la realidad. */
+/* EN QUÉ CASILLAS DEL FOTOGRAMA SE VE LATIR, y cuáles se quedan.
+   Pura y en un solo sitio: es la regla que decide de dónde sale la señal, y
+   quería poder comprobarla fuera del navegador.
+
+   LA CALIDAD NO PUEDE SER EL AC/DC —cuánto se mueve respecto a su brillo—, y
+   esto lo descubrió una prueba, no el razonamiento: al dividir por el brillo,
+   una casilla OSCURA CON RUIDO sale premiada. Con media 22 y ruido de 0,4
+   daba un 1,8 %, mientras que una casilla buena con media 150 y un pulso de
+   1,6 daba un 1,1 %. O sea que el mapa habría señalado justo donde no llega
+   la luz.
+
+   Lo que se mide es que LATE: la autocorrelación de la casilla al periodo del
+   pulso, normalizada de 0 a 1. Repetirse cada latido es algo que el ruido no
+   hace por casualidad, y no depende del brillo.
+
+   Se quedan las que pasan de 0,3 y llegan a la mitad de la mejor. Si ninguna
+   destaca se devuelve null y quien llama usa el fotograma entero: una señal
+   mala es más que ninguna. */
+function mirarCasillas(ven, tv, desp, casillas, periodo) {
+  const cal = new Float64Array(casillas);
+  const n = tv.length;
+  if (!periodo || n < 20) return { cal, elegidas: null };
+  const dt = (tv[n - 1] - tv[0]) / (n - 1);
+  const L = Math.round(periodo / dt);
+  if (!(L > 1 && L < n - 5)) return { cal, elegidas: null };
+
+  for (let c = 0; c < casillas; c++) {
+    const ys = ven.map(s => s.cas[desp + c]);
+    const media = ys.reduce((a, b) => a + b, 0) / ys.length;
+    if (!(media > 1)) continue;
+    const f = filtrar(tv, ys);
+    let num = 0, den = 0;
+    for (let i = 0; i + L < n; i++) { num += f[i] * f[i + L]; den += f[i] * f[i]; }
+    cal[c] = den > 0 ? Math.max(0, num / den) : 0;
+  }
+  let top = 0;
+  for (const v of cal) if (v > top) top = v;
+  const eleg = [];
+  for (let c = 0; c < casillas; c++) if (cal[c] >= 0.3 && cal[c] >= 0.5 * top) eleg.push(c);
+  return { cal, elegidas: eleg.length ? eleg : null };
+}
+
 /* CADA CUÁNTO LATE, antes de buscar los latidos.
    Se saca por autocorrelación: se desliza la señal sobre sí misma y se mira a
    qué retraso se parece más a sí misma. Eso da el periodo aunque haya picos de
@@ -822,20 +905,52 @@ function estadisticas() {
   /* Qué canal usar se MIDE, no se supone: gana el que más se mueva respecto a
      su propio nivel. Con flash el rojo suele saturar y entonces el verde es
      mejor, que es justo lo contrario de lo que dice el manual. */
-  /* Para ELEGIR canal se usa una amplitud robusta (el percentil 90 de la señal
-     filtrada en valor absoluto). Comparando máximos ganaba el canal que
-     tuviera el peor artefacto, que es justo el contrario del que queremos. */
-  const mejor = ['g', 'r', 'b'].map(k => {
+  /* 1 · EL CANAL, sobre la media del fotograma entero, que es barato. Se
+     compara con una amplitud robusta —el percentil 90 de la filtrada en valor
+     absoluto— porque comparando máximos ganaba el canal con el peor
+     artefacto, que es justo el contrario del que queremos. */
+  const canal = ['g', 'r', 'b'].map(k => {
     const ys = base.map(s => s[k]);
     const media = ys.reduce((a, b) => a + b, 0) / ys.length;
     const f = filtrar(ts, ys);
     const abs = Array.from(f, Math.abs).sort((a, b) => a - b);
-    const p90 = abs[Math.floor(abs.length * 0.9)] || 0;
-    return { k, fuerza: media > 1 ? p90 / media : 0, ys, media, f };
+    return { k, i: { r: 0, g: 1, b: 2 }[k], f, fuerza: media > 1 ? (abs[Math.floor(abs.length * 0.9)] || 0) / media : 0 };
   }).sort((a, b) => b.fuerza - a.fuerza)[0];
 
-  const periodo = periodoDominante(ts, mejor.f);
-  const ps = picos(ts, mejor.f, periodo ? 0.6 * periodo : 300);
+  /* Un periodo PROVISIONAL del fotograma entero, solo para poder preguntar a
+     cada casilla si late a ese ritmo. El definitivo se saca luego ya con la
+     señal limpia; este solo tiene que acertar de largo. */
+  const periodoProv = periodoDominante(ts, canal.f);
+
+  /* 2 · DÓNDE se ve el pulso dentro del fotograma. Se mira cada casilla por
+     separado y se queda con las que llegan a la mitad de la mejor.
+     Se recalcula como mucho una vez por segundo y mirando solo los últimos 6
+     segundos: es lo caro (16 filtrados) y el dedo no salta de sitio. */
+  const ahora = ts[ts.length - 1];
+  if (ahora - cacheCasillas.t > 1200 || cacheCasillas.canal !== canal.k) {
+    const ven = base.filter(s => s.t >= ahora - 6000);
+    if (ven.length >= 20) {
+      const r = mirarCasillas(ven, ven.map(s => s.t), canal.i * CASILLAS, CASILLAS, periodoProv);
+      cacheCasillas = { t: ahora, canal: canal.k, cal: r.cal, elegidas: r.elegidas };
+    }
+  }
+  const elegidas = cacheCasillas.elegidas;
+
+  /* 3 · La señal, ya solo con la parte buena del fotograma. */
+  const porCanal = k => {
+    const desp = { r: 0, g: 1, b: 2 }[k] * CASILLAS;
+    if (!elegidas) return base.map(s => s[k]);
+    return base.map(s => { let v = 0; for (const c of elegidas) v += s.cas[desp + c]; return v / elegidas.length; });
+  };
+  const cruda = porCanal(canal.k);
+  const crudaR = canal.k === 'r' ? cruda : porCanal('r');
+  const crudaG = canal.k === 'g' ? cruda : porCanal('g');
+  const crudaB = canal.k === 'b' ? cruda : porCanal('b');
+  const mediaCanal = cruda.reduce((a, b) => a + b, 0) / cruda.length;
+  const filtrada = filtrar(ts, cruda);
+
+  const periodo = periodoDominante(ts, filtrada);
+  const ps = picos(ts, filtrada, periodo ? 0.6 * periodo : 300);
 
   /* LA FUERZA DE LA SEÑAL es la altura de UN LATIDO respecto al brillo medio
      —el AC/DC de toda la vida— y se toma la MEDIANA de los latidos.
@@ -843,16 +958,23 @@ function estadisticas() {
      daba 55 % cuando un pulso real en el dedo da entre el 1 % y el 10 %. Ese
      número no medía la señal: medía el peor golpe. */
   const alturas = ps.map(p => p.y).sort((a, b) => a - b);
-  const mod = alturas.length && mejor.media > 1 ? alturas[alturas.length >> 1] / mejor.media : 0;
+  const mod = alturas.length && mediaCanal > 1 ? alturas[alturas.length >> 1] / mediaCanal : 0;
 
-  const ult = base[base.length - 1];
+  /* El «hay dedo» se juzga sobre LA PARTE BUENA, no sobre el fotograma entero:
+     con el flash descentrado media imagen puede estar negra con el dedo
+     perfectamente puesto, y mirando el conjunto saldría que no hay dedo. */
+  const u = base.length - 1;
+  let conDedo = 0;
+  for (let i = 0; i < base.length; i++) if (hayDedo({ r: crudaR[i], g: crudaG[i], b: crudaB[i] })) conDedo++;
+
   return {
     fps: 1000 / mediaDt, jitter, mediaDt, periodo,
-    canal: { g: 'verde', r: 'rojo', b: 'azul' }[mejor.k],
+    canal: { g: 'verde', r: 'rojo', b: 'azul' }[canal.k],
     mod,
-    filtrada: mejor.f, cruda: mejor.ys, mediaCanal: mejor.media, ts, picos: ps,
-    dedo: base.filter(hayDedo).length / base.length,
-    rgb: ult,
+    filtrada, cruda, mediaCanal, ts, picos: ps,
+    calidad: cacheCasillas.cal, elegidas,
+    dedo: conDedo / base.length,
+    rgb: { r: crudaR[u], g: crudaG[u], b: crudaB[u] },
     m: metricas(ps),
     segundos: (ts[ts.length - 1] - ts[0]) / 1000,
   };
@@ -929,7 +1051,9 @@ function refrescar() {
   $('dCanal').textContent = est.canal;
   $('dMod').textContent = (est.mod * 100).toFixed(2) + ' %';
   $('dPeriodo').textContent = est.periodo ? (60000 / est.periodo).toFixed(0) + ' lpm' : '—';
+  $('dZona').textContent = est.elegidas ? est.elegidas.length + ' de 16 casillas' : 'todas (ninguna destaca)';
   dibujar(est);
+  pintarMapa(est);
 
   /* Un estado en palabras, que es lo único que se puede leer de reojo con el
      dedo puesto. El orden importa: lo que hay que corregir primero, primero. */
@@ -941,6 +1065,26 @@ function refrescar() {
     : 'Midiendo · ' + (est.m ? est.m.fc.toFixed(0) + ' lpm' : '…');
   $('bEstado').textContent = estado;
   $('lEstado').textContent = estado;
+}
+
+/* EL MAPA: en qué parte del fotograma se ve latir. Es la respuesta visible a
+   «el flash está lejos de la lente»: si solo se encienden las casillas de un
+   lado, ahí es donde está llegando la luz y hacia ahí hay que mover el dedo.
+   Las que llevan borde naranja son las que se están usando. */
+function pintarMapa(est) {
+  const m = $('mapa');
+  if (!m.children.length) for (let i = 0; i < CASILLAS; i++) m.appendChild(document.createElement('i'));
+  const cal = est.calidad;
+  if (!cal) return;
+  let top = 0;
+  for (const v of cal) if (v > top) top = v;
+  const sel = new Set(est.elegidas || []);
+  for (let c = 0; c < CASILLAS; c++) {
+    const q = top > 0 ? Math.round(100 * cal[c] / top) : 0;
+    const e = m.children[c];
+    e.style.background = 'color-mix(in srgb, var(--bien) ' + q + '%, var(--panel))';
+    e.style.outline = sel.has(c) ? '2px solid var(--acento)' : '1px solid var(--borde)';
+  }
 }
 
 function pintarControles(cs) {
