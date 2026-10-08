@@ -63,6 +63,51 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
+/** Lo real de una tarea de resistencia: por serie y en total. */
+export interface RealDeTarea {
+  /** Series × bloques (lib/bloques-tarea). */
+  veces: number
+  metrosPorSerie: number | null
+  segundosPorSerie: number | null
+  /** Lo de una serie por sus veces. `null` si no hay dato real. */
+  metros: number | null
+  segundos: number | null
+}
+
+/**
+ * Lo que recorrió o duró la tarea ENTERA, no una serie.
+ *
+ * `p_distancia.metros_reales` y `p_duracion.tiempo_real` guardan el valor DE
+ * UNA SERIE: un 6×400 se guarda como 400. El total son sus veces.
+ *
+ * LO QUE ARREGLA. La ficha de la sesión enseñaba el valor sin multiplicar y lo
+ * rotulaba «Distancia real», así que una tarea de 2×1000 m decía **1,0 km justo
+ * encima de la lista con sus dos series de 1000**. En una de 6×600 decía 600 m
+ * donde el atleta corrió 3,6 km.
+ *
+ * Y MULTIPLICA POR `vecesDe` A PROPÓSITO, no por las series que se vean
+ * anotadas: es la MISMA cuenta que hace `lib/atribucion` para los km de unas
+ * zapatillas y la que hace la tabla de tareas para lo prescrito. Si esta
+ * pantalla usara otra, dos sitios de la app dirían cosas distintas del mismo
+ * entrenamiento, que es peor que un número discutible pero coherente.
+ *
+ * (Lo discutible: si el atleta hizo 4 de 6 series, esto cuenta 6. Es una
+ * limitación de dónde se guarda el dato —`ejecutar` solo escribe la PRIMERA
+ * serie en `p_distancia`— y se arregla cambiando eso, no cambiándolo aquí.)
+ */
+export function realDeTarea(t: TareaVistaHecha | null | undefined): RealDeTarea {
+  const veces = vecesDe(t)
+  const m = num(t?.p_distancia?.[0]?.metros_reales)
+  const seg = num(t?.p_duracion?.[0]?.tiempo_real)
+  return {
+    veces,
+    metrosPorSerie: m > 0 ? m : null,
+    segundosPorSerie: seg > 0 ? seg : null,
+    metros: m > 0 ? m * veces : null,
+    segundos: seg > 0 ? seg * veces : null,
+  }
+}
+
 /**
  * Las series que anotó para ESTA tarea.
  *

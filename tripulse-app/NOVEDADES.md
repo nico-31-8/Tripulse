@@ -14,6 +14,37 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 8 de octubre de 2026 · La distancia hecha era la de UNA serie
+
+**⚠ Esto mueve números que ya estabas viendo. Hacia arriba.**
+
+En la ficha de una sesión hecha, el apartado «Ejecución por tarea» decía
+**«Distancia real»** y enseñaba lo que el deportista hizo **en una sola serie**,
+no en toda la tarea. En una tarea de 2 × 1000 m ponía **1,0 km** justo encima de
+la lista con sus dos series de 1000, que se contradecían en la misma tarjeta.
+
+Ahora enseña el **total**, y debajo en pequeño de qué se compone: «2 × 1000 m».
+Lo mismo con el tiempo. Y el deportista, en su pantalla de análisis, ve ese
+mismo total en vez del de una serie: antes vosotros dos veíais números
+distintos del mismo entrenamiento.
+
+**Diez tareas tuyas cambian de número.** La que más: una de 16 × 400 m que decía
+**400 m** y son **6,4 km**. También una de 6 × 600 (decía 600 m, son 3,6 km) y
+otra de 6 × 1000 (decía 1000 m, son 6 km).
+
+**Lo que NO cambia:** la carga, el volumen y los kilómetros de tus zapatillas
+ya estaban bien. Esas cuentas sí multiplicaban por el número de series; era
+solo esa tarjeta —y la del deportista— las que enseñaban el dato sin
+multiplicar. Así que no se ha recalculado nada de tu histórico: se ha corregido
+cómo se enseñaba.
+
+Y una advertencia honesta: si el deportista hizo **menos series de las
+mandadas**, el total cuenta las mandadas. Es una limitación de dónde se guarda
+el dato —al cerrar la sesión solo se guarda la primera serie, las demás quedan
+en el texto del resumen— y se arregla cambiando eso, no la cuenta.
+
+---
+
 ## 6 de octubre de 2026 · Ver cómo progresa cada ejercicio
 
 Lo que el deportista anota al hacer la sesión —el peso y las repeticiones de

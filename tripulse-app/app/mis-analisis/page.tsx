@@ -10,7 +10,7 @@ import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
-import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
+import { hayBloques, bloquesDe, vecesDe } from '@/lib/bloques-tarea'
 import { chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
 
@@ -213,18 +213,28 @@ export default function MisAnalisis() {
                           </div>
                         )}
 
-                        {/* Distancia */}
+                        {/* Distancia. LOS DOS EN TOTAL, no por serie: lo
+                            guardado es el valor de UNA serie y el total son sus
+                            veces. Enseñando el de una serie, esta pantalla y la
+                            ficha del entrenador decían números distintos del
+                            mismo entrenamiento. Debajo, de qué se compone. */}
                         {pd && (
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Distancia plan</p>
-                              <p className="font-bold text-sm">{pd.metros_planeados ? pd.metros_planeados + 'm' : '—'}</p>
+                              <p className="font-bold text-sm">{pd.metros_planeados ? pd.metros_planeados * vecesDe(t) + 'm' : '—'}</p>
+                              {!!pd.metros_planeados && vecesDe(t) > 1 && (
+                                <p className="text-[11px] text-gray-500">{vecesDe(t)} × {pd.metros_planeados} m</p>
+                              )}
                             </div>
                             <div className="bg-gray-800 rounded-lg p-2 text-center">
                               <p className="text-gray-500 text-xs">Distancia real</p>
                               <p className={'font-bold text-sm ' + (pd.metros_reales ? 'text-green-400' : 'text-gray-500')}>
-                                {pd.metros_reales ? pd.metros_reales + 'm' : '—'}
+                                {pd.metros_reales ? pd.metros_reales * vecesDe(t) + 'm' : '—'}
                               </p>
+                              {!!pd.metros_reales && vecesDe(t) > 1 && (
+                                <p className="text-[11px] text-gray-500">{vecesDe(t)} × {pd.metros_reales} m</p>
+                              )}
                             </div>
                           </div>
                         )}

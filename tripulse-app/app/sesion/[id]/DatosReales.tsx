@@ -7,6 +7,7 @@ import { controlDe } from '@/lib/control-esfuerzo'
 import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { esBloque, leerResultado } from '@/lib/bloque-formato'
+import { realDeTarea } from '@/lib/lo-que-hizo'
 import ResumenBloque from '@/components/ResumenBloque'
 
 
@@ -201,26 +202,41 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
           <p className="font-medium text-gray-300 mb-3 text-sm">Ejecución por tarea</p>
           <div className="flex flex-col gap-3">
             {tareas.map((t, i) => {
-              const distReal = t.p_distancia?.[0]?.metros_reales
-              const durReal = t.p_duracion?.[0]?.tiempo_real
+              /* El TOTAL, no una serie: lo que hay guardado es el valor de una
+                 sola y el total son sus veces. Antes se enseñaba sin
+                 multiplicar, así que una tarea de 2×1000 m decía «1,0 km» justo
+                 encima de la lista con sus dos series de 1000. La cuenta vive
+                 en lib/lo-que-hizo, que es la misma que usan los km de las
+                 zapatillas y la tabla de tareas. */
+              const real = realDeTarea(t)
               const seriesData = t.sensacion_general
 
-              if (!distReal && !durReal && !seriesData) return null
+              if (!real.metros && !real.segundos && !seriesData) return null
+
+              /* Cuando se repite, se dice de qué se compone: un total a secas
+                 no deja comprobar de dónde sale. */
+              const deQue = real.veces > 1 ? ' (' + real.veces + ' × ' : ''
 
               return (
                 <div key={t.id} className="bg-gray-800 rounded-xl p-4">
                   <p className="font-medium text-sm mb-2 text-orange-400">Tarea {i + 1} — {t.zona_entrenamiento || t.disciplina}</p>
                   <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                    {distReal && (
+                    {real.metros && (
                       <div>
                         <p className="text-xs text-gray-500">Distancia real</p>
-                        <p className="font-medium text-blue-400">{distReal >= 1000 ? (distReal/1000).toFixed(1) + ' km' : distReal + ' m'}</p>
+                        <p className="font-medium text-blue-400">{real.metros >= 1000 ? (real.metros/1000).toFixed(1) + ' km' : real.metros + ' m'}</p>
+                        {real.veces > 1 && (
+                          <p className="text-[11px] text-gray-500">{deQue}{real.metrosPorSerie} m)</p>
+                        )}
                       </div>
                     )}
-                    {durReal && (
+                    {real.segundos && (
                       <div>
                         <p className="text-xs text-gray-500">Tiempo real</p>
-                        <p className="font-medium text-blue-400">{segAMmss(durReal)}</p>
+                        <p className="font-medium text-blue-400">{segAMmss(real.segundos)}</p>
+                        {real.veces > 1 && (
+                          <p className="text-[11px] text-gray-500">{deQue}{segAMmss(real.segundosPorSerie!)})</p>
+                        )}
                       </div>
                     )}
                   </div>

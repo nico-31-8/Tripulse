@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { seriesDeTarea, camposHechos, valoresEnCasilla, type SerieRealizada } from './lo-que-hizo'
+import { seriesDeTarea, camposHechos, valoresEnCasilla, realDeTarea, type SerieRealizada } from './lo-que-hizo'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const valor = (campos: { k: string; v: string }[] | null, k: string) => campos?.find(c => c.k === k)?.v
 
@@ -180,5 +182,53 @@ describe('lo que hizo en resistencia', () => {
 
   it('sin nada de nada, lo dice', () => {
     expect(camposHechos({ id: 22, disciplina: 'Carrera', series: 1 }, [])).toBeNull()
+  })
+})
+
+describe('lo real de una tarea es el TOTAL, no una serie', () => {
+  /* EL CASO QUE LO DESTAPO, sacado de la base: tarea 920, zona PAE, dos series
+     de 1000 m. En `p_distancia` hay UNA fila con 1000, porque ahi se guarda el
+     valor de UNA serie. La ficha lo enseñaba tal cual y decia «1,0 km» JUSTO
+     ENCIMA de la lista con sus dos series de 1000. */
+  it('dos series de 1000 m son 2 km, no 1', () => {
+    const r = realDeTarea({ id: 920, disciplina: 'Carrera', series: 2, p_distancia: [{ metros_reales: 1000 }] })
+    expect(r.metros).toBe(2000)
+    expect(r.metrosPorSerie).toBe(1000)
+    expect(r.veces).toBe(2)
+  })
+
+  /* El otro caso real, el mas visible: tarea 889, seis series de 600 m. */
+  it('seis series de 600 m son 3,6 km', () => {
+    expect(realDeTarea({ id: 889, disciplina: 'Carrera', series: 6, p_distancia: [{ metros_reales: 600 }] }).metros).toBe(3600)
+  })
+
+  it('el tiempo va igual, y en bloques cuentan series POR bloques', () => {
+    const r = realDeTarea({ id: 1, disciplina: 'Carrera', series: 2, bloques: 3, p_duracion: [{ tiempo_real: 85 }] })
+    expect(r.veces).toBe(6)
+    expect(r.segundos).toBe(510)
+    expect(r.segundosPorSerie).toBe(85)
+  })
+
+  it('una sola serie se queda igual', () => {
+    const r = realDeTarea({ id: 2, disciplina: 'Carrera', series: 1, p_distancia: [{ metros_reales: 10200 }] })
+    expect(r.metros).toBe(10200)
+    expect(r.veces).toBe(1)
+  })
+
+  /* Sin dato real NO se devuelve cero: un 0 se lee como «no corrio nada», y lo
+     que pasa es que no lo anoto. */
+  it('sin dato real da null, nunca cero', () => {
+    const r = realDeTarea({ id: 3, disciplina: 'Carrera', series: 4 })
+    expect(r.metros).toBeNull()
+    expect(r.segundos).toBeNull()
+  })
+
+  /* La cuenta tiene que ser LA MISMA que la de los km de unas zapatillas: si
+     esta pantalla usara otra, el atleta veria 2 km donde su calzado suma 1. */
+  it('es la misma cuenta que hace lib/atribucion', () => {
+    const src = readFileSync(join(__dirname, 'atribucion.ts'), 'utf8')
+    expect(src).toContain('vecesDe(t)')
+    const mio = readFileSync(join(__dirname, 'lo-que-hizo.ts'), 'utf8')
+    expect(mio).toContain('const veces = vecesDe(t)')
   })
 })
