@@ -56,6 +56,7 @@ const SELECT_TAREA =
   '*, p_duracion(*), p_distancia(*), p_repeticiones(*), ' +
   'ejercicios(id, nombre, series, repeticiones, medida, cantidad, orden, tipo_serie, ejercicio_encadenado_nombre, ' +
   'ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, ' +
+  'encadenado_grupo_muscular, encadenado_control_tipo, encadenado_control_valor, encadenado_notas_ejecucion, ' +
   'escalones_drop, grupo_muscular, intensidad, control_tipo, ' +
   'control_valor, notas_ejecucion, ' +
   'cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)'

@@ -14,6 +14,37 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 8 de octubre de 2026 · El segundo ejercicio de una superserie, por fin completo
+
+**⚠ Esto sube el volumen de algunos grupos musculares. Estaba mal antes, no ahora.**
+
+Una superserie se guarda como un solo ejercicio con otro «encadenado» detrás, y
+ese segundo estaba a medias: tenía nombre, series, repeticiones y peso, pero
+**no tenía grupo muscular**. Sin grupo no hay a qué sumar, así que **sus series
+no se contaban en ningún sitio**: ni en Volumen, ni en el dibujo de la
+planificación, ni en el panel de la semana.
+
+En una superserie los dos ejercicios suelen ser de grupos opuestos —tirón con
+empuje—, así que no era perder un poco de todo: **dejaba un grupo entero
+corto**. En un atleta, el pectoral pasa de 24 a 42 series: estaba un 43 % por
+debajo de lo que de verdad había hecho. En total eran **89 series invisibles**.
+
+Ya está relleno en todo lo que había, sin tocar nada a mano.
+
+**Y lo demás que le faltaba al segundo ejercicio:**
+
+- **Su propio RIR o RPE.** Antes la pantalla de ejecución le prestaba el control
+  del primero: si al primero no le habías puesto ninguno, tu atleta se quedaba
+  sin casilla donde anotar el esfuerzo del segundo. Ahora tiene el suyo, y
+  puede ir en otra escala.
+- **Sus notas.** Nuevas, en la misma fila donde prescribes el encadenado.
+- **«La última vez».** El segundo ejercicio no se preguntaba nunca, así que ahí
+  no aparecía aunque el atleta llevara meses haciéndolo. Ahora sale igual que en
+  el principal, y encuentra tanto las veces que lo hizo suelto como las que lo
+  hizo dentro de una superserie.
+
+---
+
 ## 8 de octubre de 2026 · La distancia hecha era la de UNA serie
 
 **⚠ Esto mueve números que ya estabas viendo. Hacia arriba.**

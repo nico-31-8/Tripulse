@@ -51,6 +51,14 @@ export interface EjercicioEjec extends EjercicioDuracion {
   control_valor?: string | null
   escalones_drop?: string | null
   ejercicio_encadenado_nombre?: string | null
+  /* Lo del segundo ejercicio de una superserie. Es un ejercicio de verdad y
+     lleva lo suyo: sus repeticiones, su control del esfuerzo y sus notas.
+     Antes la pantalla le prestaba el control del primero, así que si aquel no
+     tenía ninguno, aquí no salía casilla donde anotar. */
+  encadenado_repeticiones?: number | string | null
+  encadenado_control_tipo?: string | null
+  encadenado_control_valor?: string | null
+  encadenado_notas_ejecucion?: string | null
   video?: string | null
   videoEncadenado?: string | null
 }

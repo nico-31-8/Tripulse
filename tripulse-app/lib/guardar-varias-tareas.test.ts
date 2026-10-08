@@ -9,7 +9,8 @@ const filaF = (extra: Partial<FilaFuerza> = {}): FilaFuerza => ({
   orden: 1, grupoMuscularSel: '', ejercicioSelId: '', tipoSerie: 'Normal',
   series: '', medida: 'reps', controlTipo: 'rir', repsFuerza: '', kgFuerza: '',
   rir: '', descanso: '', comentario: '', grupoMuscular2: '', ejercicioSelId2: '',
-  series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '', zonaFuerzaTarea: '',
+  series2: '', repsFuerza2: '', kgFuerza2: '', controlTipo2: 'rir', rir2: '', comentario2: '',
+  escalonDrop: '', zonaFuerzaTarea: '',
   cardioModo: '', cardioMedida: 'metros', cardioValor: '', cardioZona: '', cardioObjetivo: '',
   ...extra,
 })

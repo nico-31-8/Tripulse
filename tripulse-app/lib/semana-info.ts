@@ -242,7 +242,7 @@ export function resumen(
  * clasificar. Lo decide `seriesPorGrupo`, pero solo si le llegan las columnas.
  */
 export const SELECT_EJERCICIOS_SEMANA =
-  'id, id_tarea, nombre, grupo_muscular, series, tipo_serie, cardio_modo, orden' as const
+  'id, id_tarea, nombre, orden, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular' as const
 
 export interface SemanaCargada {
   /** Para `seriesPorGrupo` y para contar por ejercicio. */

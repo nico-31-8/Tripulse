@@ -35,7 +35,32 @@ export interface EjercicioSeries {
   /** Para saber si es una línea de cardio, que no son series de fuerza. */
   tipo_serie?: string | null
   cardio_modo?: string | null
+  /* ============================================================
+     El segundo ejercicio de una superserie
+     ============================================================
+     NO TIENE FILA PROPIA: una superserie es UNA fila de `ejercicios` con el
+     segundo colgado en columnas `encadenado_*`. Por eso sus series no se
+     contaban en ningún sitio: no había grupo al que sumárselas.
+
+     Son dos ejercicios de verdad, normalmente de grupos OPUESTOS —dominadas
+     con flexiones, remo con press—, así que perderse el segundo no es perder
+     un poco de cada cosa: es dejar un grupo entero a cero. */
+  ejercicio_encadenado_id?: number | null
+  ejercicio_encadenado_nombre?: string | null
+  encadenado_series?: number | null
+  encadenado_grupo_muscular?: string | null
 }
+
+/**
+ * Las columnas que hay que traer de `ejercicios` para poder contar bien.
+ *
+ * ESTÁ AQUÍ, al lado de quien las usa, y hay un test que recorre el código y
+ * exige que todo el que cuente series las pida. Un `select` al que le falte
+ * `encadenado_grupo_muscular` no da error: devuelve `undefined`, el segundo
+ * ejercicio cae en «Sin clasificar» o desaparece, y nadie se entera.
+ */
+export const COLUMNAS_SERIES =
+  'grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular' as const
 
 export interface GrupoSeries {
   grupo: string
@@ -83,9 +108,54 @@ export const esCardio = (e: EjercicioSeries | null | undefined): boolean =>
   e?.tipo_serie === 'Cardio' || !!e?.cardio_modo
 
 /** Las series de un ejercicio, 0 si no es un número que valga. */
-const seriesDe = (e: EjercicioSeries | null | undefined): number => {
-  const n = Number(e?.series)
+const seriesDe = (e: EjercicioSeries | null | undefined): number => cuantas(e?.series)
+const cuantas = (v: unknown): number => {
+  const n = Number(v)
   return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/** Si la fila lleva un segundo ejercicio colgado. */
+export const esSuperserie = (e: EjercicioSeries | null | undefined): boolean =>
+  e?.ejercicio_encadenado_id != null || !!(e?.ejercicio_encadenado_nombre || '').trim()
+
+/** Una línea de las que cuentan: un ejercicio con su grupo y sus series. */
+export interface LineaQueCuenta {
+  grupo: string
+  series: number
+  nombre: string
+}
+
+/**
+ * EN QUÉ SE CONVIERTE UNA FILA AL CONTAR: en una línea, o en DOS si es
+ * superserie. Es el único sitio que lo decide, y de aquí comen el volumen, el
+ * dibujo de la planificación y el panel de la semana.
+ *
+ * Antes cada contador leía `grupo_muscular` y `series` de la fila y ya está,
+ * así que de «Dominadas + Flexiones» solo contaba las dominadas y el pectoral
+ * se quedaba a cero.
+ *
+ * SI NO SE SABE CUÁNTAS VECES SE HACE EL SEGUNDO, se usan las del primero. No
+ * es inventarse un dato: una superserie es A y luego B, tantas rondas como
+ * diga la serie, así que estructuralmente son las mismas. Lo que sí sería
+ * inventar es poner un 1 por defecto, y por eso no se hace.
+ */
+export function lineasDe(
+  e: (EjercicioSeries & { nombre?: string | null }) | null | undefined,
+): LineaQueCuenta[] {
+  if (!e || esCardio(e)) return []
+  const out: LineaQueCuenta[] = [{
+    grupo: (e.grupo_muscular || '').trim() || SIN_CLASIFICAR,
+    series: cuantas(e.series),
+    nombre: (e.nombre || '').trim() || 'Sin nombre',
+  }]
+  if (esSuperserie(e)) {
+    out.push({
+      grupo: (e.encadenado_grupo_muscular || '').trim() || SIN_CLASIFICAR,
+      series: cuantas(e.encadenado_series ?? e.series),
+      nombre: (e.ejercicio_encadenado_nombre || '').trim() || 'Sin nombre',
+    })
+  }
+  return out
 }
 
 export interface EjercicioDelGrupo {
@@ -114,14 +184,13 @@ export function ejerciciosDeGrupo(
   const mapa = new Map<string, { series: number; veces: number }>()
 
   for (const e of ejercicios || []) {
-    if (esCardio(e)) continue
-    const suyo = (e?.grupo_muscular || '').trim() || SIN_CLASIFICAR
-    if (suyo.toLowerCase() !== buscado.toLowerCase()) continue
-    const nombre = (e?.nombre || '').trim() || 'Sin nombre'
-    const a = mapa.get(nombre) || { series: 0, veces: 0 }
-    a.series += seriesDe(e)
-    a.veces += 1
-    mapa.set(nombre, a)
+    for (const l of lineasDe(e)) {
+      if (l.grupo.toLowerCase() !== buscado.toLowerCase()) continue
+      const a = mapa.get(l.nombre) || { series: 0, veces: 0 }
+      a.series += l.series
+      a.veces += 1
+      mapa.set(l.nombre, a)
+    }
   }
 
   return [...mapa.entries()]
@@ -138,10 +207,7 @@ export function seriesPorGrupo(
   const semanas = Math.max(1, (Number(diasDelPeriodo) || 7) / 7)
   const mapa = new Map<string, number>()
   for (const e of ejercicios || []) {
-    if (esCardio(e)) continue
-    const grupo = (e?.grupo_muscular || '').trim() || SIN_CLASIFICAR
-    const n = Number(e?.series)
-    mapa.set(grupo, (mapa.get(grupo) || 0) + (Number.isFinite(n) && n > 0 ? n : 0))
+    for (const l of lineasDe(e)) mapa.set(l.grupo, (mapa.get(l.grupo) || 0) + l.series)
   }
   return [...mapa.entries()]
     .map(([grupo, series]) => ({ grupo, series, porSemana: Math.round((series / semanas) * 10) / 10 }))
@@ -197,7 +263,7 @@ export async function cargarSeriesDeGrupos(
   if (!idsTarea.length) return []
 
   const { data: ejs } = await sb.from('ejercicios')
-    .select('id, id_tarea, orden, grupo_muscular, series, tipo_serie, cardio_modo').in('id_tarea', idsTarea)
+    .select('id, id_tarea, orden, nombre, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular').in('id_tarea', idsTarea)
 
   return seriesPorGrupo(conRondasHechas(tareas || [], ejs || []), dias)
 }

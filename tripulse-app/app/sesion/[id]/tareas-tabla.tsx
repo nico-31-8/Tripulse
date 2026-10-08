@@ -566,7 +566,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     medida: 'reps',
     controlTipo: 'rir',
     series: '', repsFuerza: '', kgFuerza: '', rir: '', descanso: '', comentario: '',
-    grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '',
+    grupoMuscular2: '', ejercicioSelId2: '', series2: '', repsFuerza2: '', kgFuerza2: '',
+    controlTipo2: 'rir', rir2: '', comentario2: '', escalonDrop: '',
     cardioModo: '', cardioMedida: 'metros', cardioValor: '', cardioZona: '', cardioObjetivo: '',
     zonaFuerzaTarea: '',
     // El ejercicio NO se predetermina: repetirlo en toda la sesión no tiene
@@ -902,6 +903,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         encadenado_series: ejBib2 && f.series2 ? Number(f.series2) : null,
         ...columnasEncadenado(ejBib2 ? f.repsFuerza2 : ''),
         encadenado_intensidad: ejBib2 && f.kgFuerza2 ? Number(f.kgFuerza2) : null,
+        /* EL GRUPO DEL SEGUNDO SE COPIA AQUÍ, igual que el del primero.
+           Sin esto, las series del segundo ejercicio no tienen a qué grupo
+           sumarse y desaparecen del volumen: es el fallo que dejó 89 series
+           invisibles y el pectoral de un atleta un 43 % por debajo. Se copia
+           y no se lee en vivo de la biblioteca porque cambiar un ejercicio de
+           grupo mañana reescribiría el volumen de los meses pasados. */
+        encadenado_grupo_muscular: ejBib2?.grupo_muscular || null,
+        encadenado_control_tipo: ejBib2 && f.rir2 ? f.controlTipo2 : null,
+        encadenado_control_valor: ejBib2 ? (f.rir2 || null) : null,
+        encadenado_notas_ejecucion: ejBib2 ? (f.comentario2 || null) : null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
       })
@@ -2245,10 +2256,30 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <span className="text-gray-500 flex-none select-none">@</span>
                         <input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)}
                           className={inputBloque + ' w-[96px]'} placeholder="kg" title="Peso" />
+                        {/* SU PROPIO CONTROL, no el del primero. La pantalla de
+                            ejecución le prestaba el del ejercicio de arriba: si
+                            al primero no le ponías ninguno, el atleta se
+                            quedaba sin casilla donde anotar el esfuerzo del
+                            segundo. Son dos ejercicios distintos y pueden
+                            llevar escalas distintas. */}
+                        <span className="text-gray-500 flex-none select-none">·</span>
+                        <input type="text" value={f.rir2} onChange={e => updateF(i, 'rir2', e.target.value)}
+                          className={inputBloque + ' w-[62px]'}
+                          placeholder={controlDe(f.controlTipo2).ph}
+                          title={controlDe(f.controlTipo2).ayuda} />
+                        <button type="button"
+                          onClick={() => updateF(i, 'controlTipo2', siguienteControl(f.controlTipo2))}
+                          title={controlDe(f.controlTipo2).ayuda + ' — pulsa para cambiar de escala'}
+                          className={botonBloque(f.controlTipo2 !== 'rir')}>
+                          {controlDe(f.controlTipo2).corto}
+                        </button>
                       </div>
                     </td>
                     <td className="py-1.5 px-1.5"></td>
-                    <td className="py-1.5 px-1.5"></td>
+                    <td className="py-1 px-1">
+                      <input type="text" value={f.comentario2} onChange={e => updateF(i, 'comentario2', e.target.value)}
+                        className={inputCls} placeholder="Notas..." title="Notas del ejercicio encadenado" />
+                    </td>
                     <td className="py-1.5 px-1.5"></td>
                   </tr>
                 )}

@@ -12,7 +12,8 @@ const BASE_F = {
   orden: 1, grupoMuscularSel: '', ejercicioSelId: '', tipoSerie: 'Normal', series: '',
   medida: 'reps' as const, controlTipo: 'rir' as const, repsFuerza: '', kgFuerza: '', rir: '',
   descanso: '', comentario: '', grupoMuscular2: '', ejercicioSelId2: '',
-  series2: '', repsFuerza2: '', kgFuerza2: '', escalonDrop: '', zonaFuerzaTarea: '',
+  series2: '', repsFuerza2: '', kgFuerza2: '', controlTipo2: 'rir', rir2: '', comentario2: '',
+  escalonDrop: '', zonaFuerzaTarea: '',
 }
 
 const tareaRes = (extra: any = {}) => ({

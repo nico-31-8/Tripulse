@@ -1307,7 +1307,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     const [{ data: dists }, { data: durs }, { data: ejers }] = await Promise.all([
       tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : { data: [] },
       tareaIds.length ? supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : { data: [] },
-      tareaIds.length ? supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, tipo_serie').in('id_tarea', tareaIds) : { data: [] },
+      tareaIds.length ? supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular').in('id_tarea', tareaIds) : { data: [] },
     ])
     setDetalleSem({ sesiones: sessSem, tareas: tareas || [], distancias: dists || [], duraciones: durs || [], ejercicios: ejers || [] })
     setLoadingDetalle(false)

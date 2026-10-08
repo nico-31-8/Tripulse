@@ -203,14 +203,27 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       // Modo mejora: la última vez que se hizo cada ejercicio (por nombre + deportista).
       if (depIdLocal && ejs && ejs.length) {
         const nombres = [...new Set(ejs.map(e => e.nombre).filter(Boolean))]
+        /* Y LOS ENCADENADOS. El segundo ejercicio de una superserie no se
+           preguntaba nunca, así que ahí no salía «la última vez» aunque el
+           atleta llevara meses haciéndolo. Va por otra función porque su
+           nombre vive en otra columna (`ejercicio_encadenado_nombre`) y sus
+           series llevan `ejercicio_numero = 2`; la hermana mira las dos
+           columnas y devuelve las del lado que coincida. */
+        const encadenados = [...new Set(
+          ejs.map(e => e.ejercicio_encadenado_nombre).filter((n): n is string => !!n && !nombres.includes(n)),
+        )]
         const hist: HistorialFuerza = {}
-        await Promise.all(nombres.map(async (nombre) => {
-          const { data } = await supabase.rpc('ultima_ejecucion_fuerza', { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
+        const traer = async (nombre: string, rpc: string) => {
+          const { data } = await supabase.rpc(rpc, { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
           if (data && data.length) {
             const dias = Math.max(0, Math.round((new Date(ses.fecha_sesion).getTime() - new Date(data[0].fecha).getTime()) / 86400000))
             hist[nombre] = { dias, series: data }
           }
-        }))
+        }
+        await Promise.all([
+          ...nombres.map(n => traer(n, 'ultima_ejecucion_fuerza')),
+          ...encadenados.map(n => traer(n, 'ultima_ejecucion_encadenado')),
+        ])
         setHistorialFuerza(hist)
       }
     }

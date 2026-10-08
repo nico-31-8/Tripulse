@@ -78,6 +78,13 @@ export interface FilaFuerza {
   series2: string
   repsFuerza2: string
   kgFuerza2: string
+  /* El segundo ejercicio de una superserie es un ejercicio de verdad, así que
+     lleva SU control del esfuerzo y SUS notas, no los del primero. Antes la
+     pantalla de ejecución le prestaba el control del primero: si al primero no
+     le habías puesto ninguno, el segundo se quedaba sin casilla de RIR. */
+  controlTipo2: ControlTipo
+  rir2: string
+  comentario2: string
   escalonDrop: string
   /* La línea de cardio (tipo de serie «Cardio»). Las reglas de qué cuenta
      y dónde viven en lib/cardio-fuerza. */
@@ -212,6 +219,9 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
     series2: ej?.encadenado_series != null ? String(ej.encadenado_series) : '',
     repsFuerza2: ej?.encadenado_repeticiones != null ? String(ej.encadenado_repeticiones) : '',
     kgFuerza2: ej?.encadenado_intensidad != null ? String(ej.encadenado_intensidad) : '',
+    controlTipo2: (ej?.encadenado_control_tipo as ControlTipo) || 'rir',
+    rir2: ej?.encadenado_control_valor || '',
+    comentario2: ej?.encadenado_notas_ejecucion || '',
     escalonDrop: ej?.escalones_drop || '',
     cardioModo: ej?.cardio_modo || '',
     cardioMedida: ej?.cardio_medida === 'segundos' ? 'segundos' : 'metros',

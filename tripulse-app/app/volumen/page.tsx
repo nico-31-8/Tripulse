@@ -263,7 +263,7 @@ export default function VolumenPage() {
       ? await Promise.all([
           supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
           supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-          supabase.from('ejercicios').select('id_tarea, grupo_muscular, series, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden').in('id_tarea', tareaIds),
+          supabase.from('ejercicios').select('id_tarea, nombre, repeticiones, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular').in('id_tarea', tareaIds),
         ])
       : [{ data: [] }, { data: [] }, { data: [] }]
 

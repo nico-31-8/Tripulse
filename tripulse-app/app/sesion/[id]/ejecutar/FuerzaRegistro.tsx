@@ -233,7 +233,21 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                         escribían en `rir_real`, que al guardar no se lee: se perdía
                         siempre. Ahora va a `control_real`, como en una serie
                         normal, y en la escala que se prescribió. */}
-                    {tieneEj2 && (
+                    {tieneEj2 && (() => {
+                      /* EL CONTROL DEL SEGUNDO ES SUYO. Antes se usaba `ctrl`,
+                         que sale del control del PRIMER ejercicio de la tarea:
+                         si a aquel no le habías prescrito ninguno, el segundo
+                         se quedaba sin casilla donde anotar el esfuerzo, y si
+                         llevaba otra escala se anotaba en la equivocada.
+                         Si no tiene el suyo, se sigue usando el de antes: así
+                         las superseries de siempre no pierden la casilla. */
+                      const c2 = controlDe(ej.encadenado_control_tipo || ctrlTipo)
+                      const ctrl2 = c2.seAnota ? { et: c2.corto, max: c2.max ?? 10, ayuda: c2.ayuda } : null
+                      /* Y SU «última vez», que tampoco tenía. Viene por nombre,
+                         igual que la del principal. */
+                      const prev2 = ej.ejercicio_encadenado_nombre ? historial?.[ej.ejercicio_encadenado_nombre] : undefined
+                      const antes2 = textoSerieAnterior(serieAnterior(prev2?.series, numSerie), false)
+                      return (
                       <div className="p-3">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-medium">Serie {numSerie}</span>
@@ -252,12 +266,20 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-300 mb-2 truncate font-medium">{ej.ejercicio_encadenado_nombre}</p>
                             <input type="number" value={s2.peso_real || ''} placeholder="Kg" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" value={s2.repeticiones_reales || ''} placeholder="Reps" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
-                            {ctrl && <input type="number" min="0" max={ctrl.max} value={s2.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'control_real', e.target.value)} className={inputCls} />}
+                            <input type="number" value={s2.repeticiones_reales || ''} placeholder={ej.encadenado_repeticiones ? String(ej.encadenado_repeticiones) : 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            {ctrl2 && <input type="number" min="0" max={ctrl2.max} value={s2.control_real || ''} placeholder={ctrl2.et} title={ctrl2.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'control_real', e.target.value)} className={inputCls} />}
+                            {antes2 && (
+                              <p className="text-[11px] text-gray-400 mt-1.5 mb-0">La última vez: {antes2}</p>
+                            )}
                           </div>
                         </div>
+                        {/* Sus notas, que hasta ahora no tenían dónde vivir. */}
+                        {ej.encadenado_notas_ejecucion && (
+                          <p className="text-[11px] text-orange-200/80 mt-2 mb-0">↳ {ej.encadenado_notas_ejecucion}</p>
+                        )}
                       </div>
-                    )}
+                      )
+                    })()}
 
                     {/* Drop set */}
                     {esDropSet && (
