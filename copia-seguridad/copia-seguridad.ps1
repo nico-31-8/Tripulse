@@ -223,14 +223,51 @@ try {
     #    entrar, y los datos de cada atleta quedarían sin dueño.
     $fPub = Join-Path $dBase 'public.dump'
     $fAuth = Join-Path $dBase 'auth-cuentas.dump'
-    & $pg --dbname=$urlSinClave --schema=public --format=custom --no-owner --no-privileges --file=$fPub
-    if ($LASTEXITCODE -ne 0) {
-      # Si no conecta, la conexión guardada NO se puede quedar: la próxima vez
-      # se usaría la misma sin preguntar, buena o mala.
+
+    # ANTES DE MANDAR LA CONTRASEÑA, ¿contesta el servidor? `pg_isready` no
+    # envía contraseña, así que no cuenta como intento fallido.
+    # Esto salió en la primera copia real: desde EDUROAM, la red abre la
+    # conexión pero corta todo lo que hable PostgreSQL. pg_dump lo decía como
+    # «server closed the connection unexpectedly», que parece un fallo de
+    # contraseña y no lo es. Y cada intento con contraseña que falla acerca el
+    # bloqueo temporal de Supabase.
+    $isready = Join-Path (Split-Path $pg) 'pg_isready.exe'
+    if ($servidor -and $usuario -and (Test-Path $isready)) {
+      $hostSolo = ($servidor -split ':')[0]
+      $puerto = if ($servidor -match ':(\d+)$') { $Matches[1] } else { '5432' }
+      & $isready -h $hostSolo -p $puerto -U $usuario -d postgres -t 12 | Out-Null
+      if ($LASTEXITCODE -eq 2) {
+        # La conexión guardada se CONSERVA: lo más probable es que esté bien y
+        # el problema sea la red.
+        throw ('El servidor de Supabase no contesta desde esta red. NO es tu contraseña: ni siquiera se ha enviado.' +
+               "`r`n       Pasa en redes de universidad o de empresa (eduroam, por ejemplo), que cortan el tráfico de bases de datos." +
+               "`r`n       Haz la copia desde casa o compartiendo datos con el móvil. La conexión se queda guardada.")
+      }
+    }
+
+    # pg_dump escribe sus errores por stderr. En PowerShell 5.1, con
+    # ErrorActionPreference en Stop, redirigir el stderr de un programa lo
+    # convierte en un error que corta el script; se baja a Continue solo aquí.
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $salida = & $pg --dbname=$urlSinClave --schema=public --format=custom --no-owner --no-privileges --file=$fPub 2>&1 | ForEach-Object { "$_" }
+    $codigoPg = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    if ($codigoPg -ne 0) {
+      $texto = ($salida -join "`n")
+      $salida | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkGray }
+      if ($texto -match 'password authentication failed') {
+        # Contraseña mala: la conexión guardada NO se puede quedar, o la
+        # próxima vez se usaría la misma sin preguntar.
+        Remove-Item $CONEXION -ErrorAction SilentlyContinue
+        throw ('La contraseña de la base no es correcta. La conexión guardada se ha borrado: la próxima vez te la vuelve a pedir.' +
+               "`r`n       Si acabas de cambiarla, espera un par de minutos. Y no lo intentes muchas veces seguidas: Supabase bloquea un rato tras varios fallos.")
+      }
+      if ($texto -match 'server closed the connection|could not connect|timed out|timeout expired') {
+        throw ('La conexión se ha cortado. Si estás en eduroam o en una red de empresa, es la red: haz la copia desde otra.' +
+               "`r`n       La conexión se queda guardada.")
+      }
       Remove-Item $CONEXION -ErrorAction SilentlyContinue
-      throw ('pg_dump no ha podido exportar la base. La conexión guardada se ha borrado: la próxima vez te la vuelve a pedir.' +
-             "`r`n       Si acabas de cambiar la contraseña, espera un par de minutos antes de reintentar." +
-             "`r`n       Y no lo intentes muchas veces seguidas: Supabase bloquea un rato la conexión tras varios fallos.")
+      throw 'pg_dump no ha podido exportar la base (el motivo está justo encima). La conexión guardada se ha borrado.'
     }
     & $pg --dbname=$urlSinClave --schema=auth --data-only --format=custom --no-owner --no-privileges --file=$fAuth
     if ($LASTEXITCODE -ne 0) { Aviso 'No se han podido exportar las cuentas (auth). Las tablas de la app sí.' }
