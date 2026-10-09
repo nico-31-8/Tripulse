@@ -14,6 +14,32 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 9 de octubre de 2026 · La valoración de la sesión era la de su primera tarea
+
+**⚠ Esto puede cambiar el RPE y la FC que ves en algunas sesiones ya hechas.**
+
+En la ficha de una sesión hecha, la tarjeta **«Valoración post-sesión»** cogía,
+de cada dato, **la primera tarea que lo tuviera** y lo enseñaba como el de la
+sesión entera. Si las tareas tenían RPE 5, 7 y 9, ponía «5/10». Pasaba en 9 de
+88 sesiones con el RPE y en otras 9 con la FC media.
+
+Ahora:
+- **RPE**: el de la propia sesión, que es el que usan la carga, la forma y el
+  ACWR. Si la sesión no lo tiene, la media de sus tareas, y debajo lo dice.
+- **FC media**: la media de las tareas, pesando más las que duraron más (diez
+  minutos a 175 no cuentan lo que una hora a 140). Si eran distintas, pone
+  «media de N tareas».
+- **Notas**: salen todas, no solo la primera.
+- Y un RPE de **0** ya se ve: antes la tarjeta lo tomaba por vacío.
+
+**En el laboratorio de tests**, tres arreglos de lo mismo —una casilla vacía
+tomada como un cero—: una VAM con «Empieza en» vacío se calculaba desde 0 km/h
+en vez de desde el valor de la plantilla; una lista de velocidades con la
+primera casilla en blanco hacía cantar 0 km/h al reloj; y en el editor de
+fórmulas, poner un número con la casilla vacía metía un 0.
+
+---
+
 ## 9 de octubre de 2026 · Los tests de la biblioteca ya no se pueden borrar desde cualquier cuenta
 
 **Esto es una corrección de seguridad.** Los tests de valoración de la
