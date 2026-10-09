@@ -196,10 +196,22 @@ try {
     $url = Conexion-Base
     # La contraseña va en PGPASSWORD y no en la línea de órdenes, que la ven
     # otros procesos del ordenador mientras corre.
+    $url = $url.Trim()
     $m = [regex]::Match($url, '^(postgres(?:ql)?://)([^:/@]+):([^@]*)@(.+)$')
     if ($m.Success) {
-      $env:PGPASSWORD = [uri]::UnescapeDataString($m.Groups[3].Value)
-      $urlSinClave = $m.Groups[1].Value + $m.Groups[2].Value + '@' + $m.Groups[4].Value
+      $usuario = $m.Groups[2].Value
+      $clavePg = [uri]::UnescapeDataString($m.Groups[3].Value)
+      $env:PGPASSWORD = $clavePg
+      $urlSinClave = $m.Groups[1].Value + $usuario + '@' + $m.Groups[4].Value
+      $servidor = ($m.Groups[4].Value -split '/')[0]
+      # Lo que se puede enseñar sin peligro, para ver si la cadena entró bien.
+      # La contraseña NUNCA: solo cuántos caracteres tiene.
+      Write-Host "  Conectando a $servidor como $usuario (contraseña de $($clavePg.Length) caracteres)"
+      if ($clavePg -match '^\[.*\]$' -or $clavePg -eq 'YOUR-PASSWORD') {
+        Remove-Item $CONEXION -ErrorAction SilentlyContinue
+        throw 'En la cadena sigue puesto [YOUR-PASSWORD]: hay que cambiarlo, corchetes incluidos, por la contraseña de la base. La conexión guardada se ha borrado para que te la vuelva a pedir.'
+      }
+      if ($usuario -notmatch '^postgres\.') { Aviso "El usuario es «$usuario» y en el pooler suele ser «postgres.<id del proyecto>». ¿Has copiado la del Session pooler?" }
     } else { $urlSinClave = $url }
     $dBase = Join-Path $staging 'base-de-datos'
     New-Item -ItemType Directory -Path $dBase | Out-Null
@@ -212,7 +224,14 @@ try {
     $fPub = Join-Path $dBase 'public.dump'
     $fAuth = Join-Path $dBase 'auth-cuentas.dump'
     & $pg --dbname=$urlSinClave --schema=public --format=custom --no-owner --no-privileges --file=$fPub
-    if ($LASTEXITCODE -ne 0) { throw 'pg_dump falló exportando las tablas de la app. Revisa la conexión (y que sea la del pooler).' }
+    if ($LASTEXITCODE -ne 0) {
+      # Si no conecta, la conexión guardada NO se puede quedar: la próxima vez
+      # se usaría la misma sin preguntar, buena o mala.
+      Remove-Item $CONEXION -ErrorAction SilentlyContinue
+      throw ('pg_dump no ha podido exportar la base. La conexión guardada se ha borrado: la próxima vez te la vuelve a pedir.' +
+             "`r`n       Si acabas de cambiar la contraseña, espera un par de minutos antes de reintentar." +
+             "`r`n       Y no lo intentes muchas veces seguidas: Supabase bloquea un rato la conexión tras varios fallos.")
+    }
     & $pg --dbname=$urlSinClave --schema=auth --data-only --format=custom --no-owner --no-privileges --file=$fAuth
     if ($LASTEXITCODE -ne 0) { Aviso 'No se han podido exportar las cuentas (auth). Las tablas de la app sí.' }
 
