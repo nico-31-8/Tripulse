@@ -7,7 +7,7 @@ import { controlDe } from '@/lib/control-esfuerzo'
 import { tieneDatos, type SerieConDatos } from '@/lib/serie-hecha'
 import { esDisciplinaDeFuerza, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { esBloque, leerResultado } from '@/lib/bloque-formato'
-import { realDeTarea } from '@/lib/lo-que-hizo'
+import { realDeTarea, valoracionDeSesion } from '@/lib/lo-que-hizo'
 import ResumenBloque from '@/components/ResumenBloque'
 
 
@@ -51,6 +51,8 @@ interface TareaFila {
   fc_media: number | null
   dolor_muscular: number | null
   notas_post: string | null
+  /** Minutos que duró de verdad: pesa el pulso medio de la sesión. */
+  duracion_real: number | null
   sensacion_general: string | null
   p_distancia: { metros_reales: number | null }[] | null
   p_duracion: { tiempo_real: number | null }[] | null
@@ -64,14 +66,22 @@ interface TareaFila {
 export default function DatosReales({ sesionId, disciplina }: { sesionId: number, disciplina: string }) {
   const [tareas, setTareas] = useState<TareaFila[]>([])
   const [seriesReales, setSeriesReales] = useState<SerieFila[]>([])
+  /* El RPE de la SESIÓN. La tarjeta cogía el de la primera tarea que lo
+     tuviera y lo llamaba «RPE real»; el bueno es este, que es el que usan la
+     carga, la forma y el ACWR. */
+  const [rpeSesion, setRpeSesion] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
-    const { data: tar } = await supabase
-      .from('tarea')
-      .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
-      .eq('id_sesion', sesionId)
-      .order('orden')
+    const [{ data: tar }, { data: ses }] = await Promise.all([
+      supabase
+        .from('tarea')
+        .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
+        .eq('id_sesion', sesionId)
+        .order('orden'),
+      supabase.from('sesion').select('rpe_reportado').eq('id', sesionId).maybeSingle(),
+    ])
+    setRpeSesion((ses as { rpe_reportado: number | null } | null)?.rpe_reportado ?? null)
 
     if (tar?.length) {
       // Cargar ejercicios manualmente
@@ -110,8 +120,12 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { cargar() }, [cargar])
 
-  const tienePostSesion = tareas.some(t =>
-    t.rpe_reportado || t.fc_media || t.sensacion_tecnica || t.dolor_muscular
+  /* `!= null` y no «verdadero»: un RPE de 0 es un dato, y con la comprobación
+     de antes la tarjeta no salía. Y cuenta el RPE de la SESIÓN y las notas
+     solas, que antes no hacían aparecer la tarjeta aunque estuvieran. */
+  const tienePostSesion = rpeSesion != null || tareas.some(t =>
+    t.rpe_reportado != null || t.fc_media != null || t.sensacion_tecnica != null ||
+    t.dolor_muscular != null || !!(t.notas_post || '').trim()
   )
 
   const tieneDatosEjecucion = tareas.some(t =>
@@ -178,35 +192,47 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
       {tienePostSesion && (
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
           <p className="font-medium text-gray-300 mb-3 text-sm">Valoración post-sesión{esBrick && <span className="text-gray-600 font-normal"> · del día</span>}</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {!esBrick && tareas.find(t => t.rpe_reportado) && (
-              <div className="bg-gray-800 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">RPE real</p>
-                <p className="text-2xl font-bold text-orange-400">{tareas.find(t => t.rpe_reportado)?.rpe_reportado}/10</p>
-              </div>
-            )}
-            {!esBrick && tareas.find(t => t.sensacion_tecnica) && (
-              <div className="bg-gray-800 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">Sensación técnica</p>
-                <p className="text-2xl font-bold text-blue-400">{tareas.find(t => t.sensacion_tecnica)?.sensacion_tecnica}/5</p>
-              </div>
-            )}
-            {tareas.find(t => t.dolor_muscular) && (
-              <div className="bg-gray-800 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">Dolor muscular</p>
-                <p className="text-2xl font-bold text-yellow-400">{tareas.find(t => t.dolor_muscular)?.dolor_muscular}/5</p>
-              </div>
-            )}
-            {!esBrick && tareas.find(t => t.fc_media) && (
-              <div className="bg-gray-800 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">FC media</p>
-                <p className="text-2xl font-bold text-red-400">{tareas.find(t => t.fc_media)?.fc_media} ppm</p>
-              </div>
-            )}
-          </div>
-          {tareas.find(t => t.notas_post) && (
-            <p className="text-gray-400 text-sm mt-3 italic">&quot;{tareas.find(t => t.notas_post)?.notas_post}&quot;</p>
-          )}
+          {/* Lo decide `valoracionDeSesion` (lib/lo-que-hizo). Antes cada
+              casilla cogía la PRIMERA tarea con ese dato y lo rotulaba como el
+              de la sesión: con tareas de RPE 5, 7 y 9 ponía «5/10». */}
+          {(() => {
+            const v = valoracionDeSesion(rpeSesion, tareas)
+            return (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {!esBrick && v.rpe != null && (
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500 mb-1">RPE real</p>
+                      <p className="text-2xl font-bold text-orange-400">{v.rpe}/10</p>
+                      {v.rpeDe === 'tareas' && <p className="text-[11px] text-gray-500 mt-0.5">media de sus tareas</p>}
+                    </div>
+                  )}
+                  {!esBrick && v.sensacion != null && (
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Sensación técnica</p>
+                      <p className="text-2xl font-bold text-blue-400">{v.sensacion}/5</p>
+                    </div>
+                  )}
+                  {v.dolor != null && (
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Dolor muscular</p>
+                      <p className="text-2xl font-bold text-yellow-400">{v.dolor}/5</p>
+                    </div>
+                  )}
+                  {!esBrick && v.fcMedia != null && (
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500 mb-1">FC media</p>
+                      <p className="text-2xl font-bold text-red-400">{v.fcMedia} ppm</p>
+                      {v.fcVaria && <p className="text-[11px] text-gray-500 mt-0.5">media de {v.fcDeCuantas} tareas</p>}
+                    </div>
+                  )}
+                </div>
+                {v.notas.map((n, k) => (
+                  <p key={k} className="text-gray-400 text-sm mt-3 italic">&quot;{n}&quot;</p>
+                ))}
+              </>
+            )
+          })()}
         </div>
       )}
 

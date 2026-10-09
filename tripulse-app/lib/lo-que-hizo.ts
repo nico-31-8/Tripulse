@@ -63,6 +63,107 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
+/* ============================================================
+   La valoración del final de la sesión
+   ============================================================ */
+
+/** Lo que se mira de cada tarea para la valoración del final. */
+export interface TareaValorada {
+  rpe_reportado?: number | string | null
+  sensacion_tecnica?: number | string | null
+  dolor_muscular?: number | string | null
+  fc_media?: number | string | null
+  notas_post?: string | null
+  duracion_real?: number | string | null
+}
+
+export interface ValoracionSesion {
+  rpe: number | null
+  /**
+   * De dónde sale el RPE:
+   *   'sesion' — el que tiene la propia sesión, que es el bueno
+   *   'tareas' — la sesión no lo tiene y se hace la media de sus tareas
+   */
+  rpeDe: 'sesion' | 'tareas' | null
+  sensacion: number | null
+  dolor: number | null
+  fcMedia: number | null
+  /** Si las tareas daban pulsos distintos: entonces el número es una media. */
+  fcVaria: boolean
+  /** Cuántas tareas tenían pulso. */
+  fcDeCuantas: number
+  /** Todas las notas, no solo la primera. */
+  notas: string[]
+}
+
+/** Un número que valga, o null. Una casilla vacía es «no lo dijo», no un 0. */
+const valorDe = (v: unknown, max: number): number | null => {
+  if (v == null || (typeof v === 'string' && !v.trim())) return null
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 && n <= max ? n : null
+}
+const media1 = (xs: number[]): number | null =>
+  xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null
+
+/**
+ * Lo que dijo el atleta al cerrar la sesión, para la tarjeta de la ficha.
+ *
+ * LO QUE ARREGLA. La tarjeta cogía, de cada dato, la PRIMERA tarea que lo
+ * tuviera y lo rotulaba como el de la sesión. Con tareas de RPE 5, 7 y 9 ponía
+ * «5/10». En la base pasaba en 9 de 88 sesiones hechas con el RPE —y en las 9
+ * el número enseñado no era el de la sesión— y en otras 9 con el pulso.
+ *
+ * Y de paso: `find(t => t.rpe_reportado)` se saltaba un RPE de 0, porque el 0
+ * cuenta como «falso». Aquí un 0 es un 0.
+ *
+ * LAS REGLAS:
+ *   · RPE: el de la SESIÓN, que es el que usan la carga, la forma y el ACWR
+ *     (ver lib/rpe-sesion). Si la sesión no lo tiene, la media de sus tareas,
+ *     y se dice que sale de ahí.
+ *   · Pulso: la media de las tareas, PONDERADA por lo que duró cada una cuando
+ *     todas lo dicen —diez minutos a 170 no pesan lo que una hora a 140—; si
+ *     no, la media simple. Y si eran distintas, se avisa: es una media.
+ *   · Sensación y dolor: la media (hoy se escriben iguales en todas, así que
+ *     sale el mismo número; si un día difieren, no se esconde ninguno).
+ *   · Notas: todas las distintas, en orden.
+ */
+export function valoracionDeSesion(rpeSesion: unknown, tareas: TareaValorada[] | null | undefined): ValoracionSesion {
+  const ts = tareas || []
+  const rpeS = valorDe(rpeSesion, 10)
+  const rpesT = ts.map(t => valorDe(t.rpe_reportado, 10)).filter((x): x is number => x != null)
+
+  const conFc = ts
+    .map(t => ({ fc: valorDe(t.fc_media, 250), min: valorDe(t.duracion_real, 100000) }))
+    .filter((x): x is { fc: number; min: number | null } => x.fc != null && x.fc > 0)
+  let fcMedia: number | null = null
+  if (conFc.length) {
+    const ponderable = conFc.every(x => x.min != null && x.min > 0)
+    if (ponderable) {
+      const peso = conFc.reduce((a, x) => a + (x.min as number), 0)
+      fcMedia = Math.round(conFc.reduce((a, x) => a + x.fc * (x.min as number), 0) / peso)
+    } else {
+      fcMedia = Math.round(conFc.reduce((a, x) => a + x.fc, 0) / conFc.length)
+    }
+  }
+
+  const notas: string[] = []
+  for (const t of ts) {
+    const n = (t.notas_post || '').trim()
+    if (n && !notas.includes(n)) notas.push(n)
+  }
+
+  return {
+    rpe: rpeS != null ? rpeS : media1(rpesT),
+    rpeDe: rpeS != null ? 'sesion' : (rpesT.length ? 'tareas' : null),
+    sensacion: media1(ts.map(t => valorDe(t.sensacion_tecnica, 5)).filter((x): x is number => x != null)),
+    dolor: media1(ts.map(t => valorDe(t.dolor_muscular, 5)).filter((x): x is number => x != null)),
+    fcMedia,
+    fcVaria: new Set(conFc.map(x => x.fc)).size > 1,
+    fcDeCuantas: conFc.length,
+    notas,
+  }
+}
+
 /** Lo real de una tarea de resistencia: por serie y en total. */
 export interface RealDeTarea {
   /** Series × bloques (lib/bloques-tarea). */

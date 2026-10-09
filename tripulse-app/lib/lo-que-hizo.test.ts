@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { seriesDeTarea, camposHechos, valoresEnCasilla, realDeTarea, type SerieRealizada } from './lo-que-hizo'
+import { seriesDeTarea, camposHechos, valoresEnCasilla, realDeTarea, valoracionDeSesion, type SerieRealizada } from './lo-que-hizo'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -296,5 +296,78 @@ describe('si anoto serie a serie, el total se SUMA en vez de estimarse', () => {
     const r = realDeTarea(seis, [{ numero_serie: 1, control_real: 7 }])
     expect(r.metros).toBe(3600)
     expect(r.origen).toBe('estimado')
+  })
+})
+
+describe('la valoracion del final es la de la SESION, no la de la primera tarea', () => {
+  /* EL CASO QUE LO DESTAPO: la tarjeta cogia la PRIMERA tarea con cada dato y
+     lo rotulaba como el de la sesion. Pasaba en 9 de 88 sesiones hechas. */
+  const tres = [
+    { rpe_reportado: 5, fc_media: 140, duracion_real: 60 },
+    { rpe_reportado: 7, fc_media: 160, duracion_real: 20 },
+    { rpe_reportado: 9, fc_media: 175, duracion_real: 10 },
+  ]
+
+  it('el RPE es el de la sesion, aunque la primera tarea diga otro', () => {
+    const v = valoracionDeSesion(8, tres)
+    expect(v.rpe).toBe(8)
+    expect(v.rpeDe).toBe('sesion')
+  })
+
+  it('si la sesion no lo tiene, la media de sus tareas, y lo dice', () => {
+    const v = valoracionDeSesion(null, tres)
+    expect(v.rpe).toBe(7)
+    expect(v.rpeDe).toBe('tareas')
+  })
+
+  /* El 0 era el otro fallo: `find(t => t.rpe_reportado)` lo daba por vacio. */
+  it('un RPE de 0 es un 0, no un hueco', () => {
+    expect(valoracionDeSesion(0, tres).rpe).toBe(0)
+    expect(valoracionDeSesion('', tres).rpeDe).toBe('tareas')
+  })
+
+  /* Diez minutos a 175 no pesan lo que una hora a 140. */
+  it('el pulso es la media ponderada por lo que duro cada tarea', () => {
+    const v = valoracionDeSesion(8, tres)
+    expect(v.fcMedia).toBe(Math.round((140 * 60 + 160 * 20 + 175 * 10) / 90))
+    expect(v.fcVaria).toBe(true)
+    expect(v.fcDeCuantas).toBe(3)
+  })
+
+  it('si alguna tarea no dice cuanto duro, media simple', () => {
+    const v = valoracionDeSesion(8, [{ fc_media: 140, duracion_real: 60 }, { fc_media: 160 }])
+    expect(v.fcMedia).toBe(150)
+  })
+
+  it('con un solo pulso no avisa de que sea una media', () => {
+    expect(valoracionDeSesion(8, [{ fc_media: 150 }, { rpe_reportado: 6 }]).fcVaria).toBe(false)
+  })
+
+  it('todas las notas distintas, no solo la primera', () => {
+    const v = valoracionDeSesion(null, [{ notas_post: 'piernas cargadas' }, { notas_post: 'piernas cargadas' }, { notas_post: 'viento' }])
+    expect(v.notas).toEqual(['piernas cargadas', 'viento'])
+  })
+
+  it('sin nada de nada, todo null y sin notas', () => {
+    const v = valoracionDeSesion(null, [{}])
+    expect(v.rpe).toBeNull()
+    expect(v.fcMedia).toBeNull()
+    expect(v.notas).toEqual([])
+  })
+})
+
+describe('la ficha de la sesion no vuelve a coger la primera tarea', () => {
+  /* La tarjeta tiraba de `tareas.find(t => t.rpe_reportado)?.rpe_reportado`:
+     la primera tarea con el dato, rotulada como la sesion. Este test LEE EL
+     CODIGO de la ficha y no deja volver a escribirlo asi. */
+  const ficha = readFileSync(join(__dirname, '..', 'app', 'sesion', '[id]', 'DatosReales.tsx'), 'utf8')
+
+  it('ningun dato de la valoracion sale de la primera tarea que lo tenga', () => {
+    expect(ficha).not.toMatch(/tareas\.find\(\s*t\s*=>\s*t\.(rpe_reportado|fc_media|sensacion_tecnica|dolor_muscular|notas_post)\s*\)/)
+  })
+
+  it('la tarjeta pasa por valoracionDeSesion con el RPE de la propia sesion', () => {
+    expect(ficha).toContain('valoracionDeSesion(rpeSesion')
+    expect(ficha).toContain("from('sesion').select('rpe_reportado')")
   })
 })
