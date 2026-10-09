@@ -42,7 +42,17 @@ const CLASE_TIPO: Record<string, string> = {
   [FUNCIONAL]: 'bg-cyan-900 text-cyan-300',
 }
 
-const CLAVE_ADMIN = 'fuerza25'
+/* AQUÍ HABÍA UNA CLAVE DE ADMINISTRADOR ESCRITA A MANO, y se quitó el
+   2026-10-09. No protegía nada: una clave en el JavaScript la puede leer
+   cualquiera que abra la página, y además el repositorio de GitHub es
+   público. Y aunque nadie la hubiera visto, daba igual: cualquiera con cuenta
+   de entrenador podía hablar con la base sin pasar por esta pantalla, y la
+   regla de la base le dejaba borrar cualquier test común.
+
+   Ahora quien decide es la BASE (`supabase/tests-valoracion-solo-admin.sql`):
+   solo el administrador de la plataforma escribe el catálogo común. Lo de
+   aquí abajo (`esAdmin`) solo sirve para no enseñar botones que no van a
+   funcionar; si alguien se los inventara, la base le diría que no. */
 
 type Filtros = { tipo: string[]; region: string[]; disciplina: string[]; momento: string[]; lesion: string[] }
 const FILTROS_VACIOS: Filtros = { tipo: [], region: [], disciplina: [], momento: [], lesion: [] }
@@ -63,14 +73,13 @@ export default function FuerzaPage() {
   const [modalVideo, setModalVideo] = useState<string | null>(null)
   const [ejercicioDetalle, setEjercicioDetalle] = useState<any>(null)
   const [testDetalle, setTestDetalle] = useState<any>(null)
-  const [claveIntroducida, setClaveIntroducida] = useState('')
-  const [claveCorrecta, setClaveCorrecta] = useState(false)
+  /** Si es el administrador de la plataforma. Lo pregunta a la base al cargar. */
+  const [esAdmin, setEsAdmin] = useState(false)
   /* Quién soy, para saber cuáles son míos. Sin esto la pantalla no puede
      distinguir «mi versión» del catálogo común. */
   const [uid, setUid] = useState<string | null>(null)
   const [ocultos, setOcultos] = useState<number[]>([])
   const [verEscondidos, setVerEscondidos] = useState(false)
-  const [claveError, setClaveError] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
   // alta
@@ -106,6 +115,14 @@ export default function FuerzaPage() {
     const user = await usuarioActual()
     const mio = user?.id || null
     setUid(mio)
+    /* Si es administrador lo dice la base, con la misma función que protege
+       /admin y que decide la regla de escritura de los tests. Si la llamada
+       falla, se queda en `false`: mejor no enseñar botones que enseñarlos de
+       más. */
+    if (mio) {
+      const { data: admin } = await supabase.rpc('es_admin_plataforma', { _uid: mio })
+      setEsAdmin(admin === true)
+    }
     const [ej, tv, oc] = await Promise.all([
       supabase.from('ejercicios_biblioteca').select('*').order('nombre'),
       supabase.from('tests_valoracion').select('*').order('nombre'),
@@ -120,11 +137,6 @@ export default function FuerzaPage() {
   }
 
   useEffect(() => { cargar() }, [])
-
-  const verificarClave = () => {
-    if (claveIntroducida === CLAVE_ADMIN) { setClaveCorrecta(true); setClaveError(false) }
-    else setClaveError(true)
-  }
 
   const toggle = (arr: string[], v: string) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
   const toggleFiltro = (dim: keyof Filtros, v: string) =>
@@ -220,7 +232,6 @@ export default function FuerzaPage() {
 
   const abrirAñadirTest = () => {
     setTestEditando(null); setTestForm(TEST_VACIO); setModalTest(true)
-    setClaveCorrecta(false); setClaveIntroducida(''); setClaveError(false)
   }
   const abrirEdicionTest = (t: any) => {
     setTestEditando(t)
@@ -320,7 +331,7 @@ export default function FuerzaPage() {
             <p className="text-gray-400 text-sm">{ejercicios.length} ejercicios · {tests.length} tests</p>
           </div>
           {tab === 'ejercicios' && (
-            <button onClick={() => { setModalAñadir(true); setClaveCorrecta(false); setClaveIntroducida(''); setClaveError(false) }}
+            <button onClick={() => setModalAñadir(true)}
               className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
               + Añadir ejercicio
             </button>
@@ -506,7 +517,7 @@ export default function FuerzaPage() {
                     className="bg-gray-900 rounded-xl border border-gray-800 p-4 hover:border-gray-700 transition cursor-pointer flex flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-sm">{t.nombre}</p>
-                      {claveCorrecta && (
+                      {esAdmin && (
                         <div className="flex gap-1 shrink-0">
                           <button onClick={e => { e.stopPropagation(); abrirEdicionTest(t) }} className="text-gray-500 hover:text-orange-400 text-xs px-1 transition">✏️</button>
                           <button onClick={e => { e.stopPropagation(); eliminarTest(t.id) }} className="text-gray-500 hover:text-red-400 text-xs px-1 transition">🗑</button>
@@ -781,14 +792,15 @@ export default function FuerzaPage() {
               <h3 className="text-xl font-bold">{testEditando ? 'Editar test' : 'Añadir test'}</h3>
               <button onClick={() => setModalTest(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
             </div>
-            {!claveCorrecta ? (
+            {!esAdmin ? (
+              /* Ya no se pide ninguna clave. Este catálogo es COMÚN a todos los
+                 entrenadores y solo lo cambia el administrador de la
+                 plataforma: lo decide la base, así que preguntar una clave
+                 aquí sería fingir una puerta que no está. */
               <div>
-                <p className="text-gray-400 text-sm mb-4">Introduce la clave de administrador para gestionar tests.</p>
-                <input type="password" placeholder="Clave de administrador" value={claveIntroducida}
-                  onChange={e => setClaveIntroducida(e.target.value)} onKeyDown={e => e.key === 'Enter' && verificarClave()}
-                  className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-3" />
-                {claveError && <p className="text-red-400 text-sm mb-3">Clave incorrecta</p>}
-                <button onClick={verificarClave} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition w-full">Verificar</button>
+                <p className="text-gray-300 text-sm mb-2">Los tests de esta biblioteca son comunes a todos los entrenadores, así que solo los puede cambiar el administrador de la plataforma.</p>
+                <p className="text-gray-500 text-sm mb-4">Si quieres un test a tu manera, créalo en <strong>Tests propios</strong>: esos son solo tuyos.</p>
+                <button onClick={() => setModalTest(false)} className="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg font-medium transition w-full">Entendido</button>
               </div>
             ) : (
               <form onSubmit={guardarTest} className="flex flex-col gap-3">

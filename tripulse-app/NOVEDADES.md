@@ -14,6 +14,25 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 9 de octubre de 2026 · Los tests de la biblioteca ya no se pueden borrar desde cualquier cuenta
+
+**Esto es una corrección de seguridad.** Los tests de valoración de la
+Biblioteca de fuerza son comunes a todos los entrenadores, y cualquier cuenta de
+entrenador podía cambiarlos o borrarlos —y quitárselos a todos los demás—.
+
+Para gestionarlos se pedía una clave de administrador, pero esa clave no
+protegía nada: estaba escrita dentro de la propia página, y detrás de ella la
+base de datos dejaba hacerlo igual. Ahora lo decide la base: **los tests
+comunes los sigue viendo todo el mundo, pero solo los cambia el administrador
+de la plataforma**.
+
+**Lo que cambia para ti:** ya no te pide ninguna clave. Si eres administrador
+verás los botones de editar y borrar directamente; si no, al pulsar «Añadir
+test» te explica que son comunes y te manda a **Tests propios**, donde los que
+crees son solo tuyos.
+
+---
+
 ## 9 de octubre de 2026 · Ahora se guarda cada serie, no solo la primera
 
 Cuando tu deportista cerraba una sesión de resistencia, de todas las series que
