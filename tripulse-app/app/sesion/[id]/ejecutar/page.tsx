@@ -345,7 +345,61 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           sensacion_general: seriesData
         }).eq('id', tarea.id)
       }
-      // Guardar métricas agregadas de la primera serie si existen
+
+      /* ============================================================
+         CADA SERIE, UNA FILA. Esto es lo que faltaba.
+         ============================================================
+         Hasta ahora de una tarea de resistencia solo se guardaba, en
+         `p_distancia`, la PRIMERA serie, y las demás quedaban únicamente
+         dentro de un resumen de texto que el entrenador puede reescribir a
+         mano. O sea: el dato de lo que hizo de verdad no existía en ningún
+         sitio con el que se pudiera contar.
+
+         Consecuencia: el total había que calcularlo como «lo de una serie ×
+         las series MANDADAS», así que un atleta que hiciera 4 de 6 contaba 6,
+         y dos series distintas (1000 m y 950 m) contaban las dos como la
+         primera.
+
+         Van por `id_tarea`, que es como cuelgan las series de resistencia (en
+         fuerza cuelgan del ejercicio). Mismo formato que las que escribe el
+         entrenador dirigiendo a un grupo, para que se lean igual.
+
+         Se BORRAN las suyas antes de insertar: cerrar la sesión dos veces
+         duplicaría cada serie y el total saldría doble. Se borran solo las
+         anotadas por él: las que puso el entrenador dirigiendo no se tocan. */
+      const filasSerie = Object.keys(r)
+        .filter(k => k.startsWith('serie_'))
+        .sort((a, b) => Number(a.slice(6)) - Number(b.slice(6)))
+        .map((k, i) => ({ s: r[k], n: i + 1 }))
+        .filter(({ s }) => serieEscrita(s))
+        .map(({ s, n }) => ({
+          id_tarea: tarea.id,
+          id_deportista: sesion?.id_deportista ?? null,
+          numero_serie: n,
+          metros_reales: s.metros ? Number(s.metros) : null,
+          tiempo_real: s.tiempo ? mmssASegundos(s.tiempo) : null,
+          completada: !!s.completada,
+          anotado_por: 'deportista',
+          /* La sensación de 1 a 5 NO va en `control_real`: esa columna es el
+             RIR o el RPE, que van sobre 10 y se comparan con lo prescrito.
+             Meter ahí un 1-5 torcería todo el análisis del esfuerzo. Se queda
+             en el resumen de texto hasta que tenga columna propia. */
+        }))
+
+      if (filasSerie.length) {
+        await supabase.from('series_realizadas').delete()
+          .eq('id_tarea', tarea.id).eq('anotado_por', 'deportista')
+        const { error: eSer } = await supabase.from('series_realizadas').insert(filasSerie)
+        /* Si esto falla, el total vuelve a calcularse multiplicando, que es
+           justo el fallo que se está arreglando. Hay que enterarse. */
+        if (eSer) alert('No se han podido guardar las series de una tarea: ' + eSer.message)
+      }
+
+      /* `p_distancia`/`p_duracion` SIGUEN llevando el valor de UNA serie, y no
+         es un olvido: así los lee `lib/atribucion` para los kilómetros de unas
+         zapatillas y para el volumen, y cambiarles el significado reescribiría
+         todo ese histórico. Lo que cambia es que ahora, cuando hay series
+         anotadas, el total se SUMA de ellas en vez de multiplicarse. */
       const s0 = r['serie_0']
       if (s0) {
         if (tarea.p_distancia?.[0] && s0.metros) await supabase.from('p_distancia').update({ metros_reales: Number(s0.metros) }).eq('id_tarea', tarea.id)

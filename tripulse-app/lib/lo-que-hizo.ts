@@ -29,7 +29,7 @@ import { seriesPrincipales, controlUltimaVez, type SerieHecha } from './modo-mej
 import { vecesDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
 import { esBloque, leerConfig, leerResultado, textoResultado, type Formato } from './bloque-formato'
-import { tieneDatos, seriesHechas } from './serie-hecha'
+import { tieneDatos, seriesHechas, type SerieConDatos } from './serie-hecha'
 import { mmss } from './duracion-carga'
 import type { CampoTarea } from './tarea-vista'
 
@@ -69,9 +69,18 @@ export interface RealDeTarea {
   veces: number
   metrosPorSerie: number | null
   segundosPorSerie: number | null
-  /** Lo de una serie por sus veces. `null` si no hay dato real. */
+  /** El total. `null` si no hay dato real. */
   metros: number | null
   segundos: number | null
+  /**
+   * De dónde sale el total:
+   *   'anotado'    — sumando las series que anotó. Es la verdad.
+   *   'estimado'   — lo de una serie por las veces MANDADAS. Es una suposición
+   *                  y hay que decirlo, porque si hizo 4 de 6 cuenta 6.
+   */
+  origen: 'anotado' | 'estimado' | null
+  /** Cuántas series anotó, cuando el total viene de ellas. */
+  seriesAnotadas: number
 }
 
 /**
@@ -95,16 +104,49 @@ export interface RealDeTarea {
  * limitación de dónde se guarda el dato —`ejecutar` solo escribe la PRIMERA
  * serie en `p_distancia`— y se arregla cambiando eso, no cambiándolo aquí.)
  */
-export function realDeTarea(t: TareaVistaHecha | null | undefined): RealDeTarea {
+export function realDeTarea(
+  t: TareaVistaHecha | null | undefined,
+  /* Las series que anotó en ESTA tarea, si se tienen. Se pide `SerieConDatos`
+     y no `SerieRealizada` a propósito: aquí solo se miran los metros y el
+     tiempo, y exigir el tipo completo obligaba a quien llama a convertir filas
+     que ya valen. */
+  series?: SerieConDatos[] | null,
+): RealDeTarea {
   const veces = vecesDe(t)
   const m = num(t?.p_distancia?.[0]?.metros_reales)
   const seg = num(t?.p_duracion?.[0]?.tiempo_real)
+
+  /* SI ANOTÓ SERIE A SERIE, SE SUMAN. Es la verdad: cada una con sus metros y
+     su tiempo, así que un 6×600 donde hizo cuatro cuenta cuatro, y dos series
+     distintas cuentan lo que fue cada una.
+     Multiplicar era lo único posible mientras la ejecución guardaba solo la
+     primera serie; desde que las guarda todas, multiplicar sería preferir la
+     suposición al dato. */
+  const suyas = (series || []).filter(s => tieneDatos(s))
+  if (suyas.length) {
+    const sm = suyas.reduce((a, s) => a + num(s.metros_reales), 0)
+    const ss = suyas.reduce((a, s) => a + num(s.tiempo_real), 0)
+    if (sm > 0 || ss > 0) {
+      return {
+        veces,
+        metrosPorSerie: m > 0 ? m : (sm > 0 ? Math.round(sm / suyas.length) : null),
+        segundosPorSerie: seg > 0 ? seg : (ss > 0 ? Math.round(ss / suyas.length) : null),
+        metros: sm > 0 ? sm : null,
+        segundos: ss > 0 ? ss : null,
+        origen: 'anotado',
+        seriesAnotadas: suyas.length,
+      }
+    }
+  }
+
   return {
     veces,
     metrosPorSerie: m > 0 ? m : null,
     segundosPorSerie: seg > 0 ? seg : null,
     metros: m > 0 ? m * veces : null,
     segundos: seg > 0 ? seg * veces : null,
+    origen: m > 0 || seg > 0 ? 'estimado' : null,
+    seriesAnotadas: 0,
   }
 }
 

@@ -232,3 +232,69 @@ describe('lo real de una tarea es el TOTAL, no una serie', () => {
     expect(mio).toContain('const veces = vecesDe(t)')
   })
 })
+
+describe('si anoto serie a serie, el total se SUMA en vez de estimarse', () => {
+  /* EL CASO QUE LO MOTIVA. Hasta ahora la ejecucion guardaba SOLO la primera
+     serie, asi que el total habia que calcularlo multiplicando por las series
+     MANDADAS. Un atleta que hiciera 4 de 6 contaba 6. Ahora cada serie es una
+     fila y se suman. */
+  const seis = { id: 1, disciplina: 'Carrera', series: 6, p_distancia: [{ metros_reales: 600 }] }
+
+  it('sin series anotadas, estima multiplicando y LO DICE', () => {
+    const r = realDeTarea(seis)
+    expect(r.metros).toBe(3600)
+    expect(r.origen).toBe('estimado')
+    expect(r.seriesAnotadas).toBe(0)
+  })
+
+  it('con cuatro series anotadas de seis mandadas, cuenta CUATRO', () => {
+    const r = realDeTarea(seis, [
+      { numero_serie: 1, metros_reales: 600 },
+      { numero_serie: 2, metros_reales: 600 },
+      { numero_serie: 3, metros_reales: 600 },
+      { numero_serie: 4, metros_reales: 600 },
+    ])
+    expect(r.metros).toBe(2400)
+    expect(r.origen).toBe('anotado')
+    expect(r.seriesAnotadas).toBe(4)
+  })
+
+  /* Y series distintas cuentan lo que fue cada una, no la primera por seis. */
+  it('series desiguales se suman una a una', () => {
+    const r = realDeTarea({ id: 2, disciplina: 'Carrera', series: 3, p_distancia: [{ metros_reales: 1000 }] }, [
+      { numero_serie: 1, metros_reales: 1000 },
+      { numero_serie: 2, metros_reales: 950 },
+      { numero_serie: 3, metros_reales: 870 },
+    ])
+    expect(r.metros).toBe(2820)
+    expect(r.origen).toBe('anotado')
+  })
+
+  it('el tiempo va igual', () => {
+    const r = realDeTarea({ id: 3, disciplina: 'Carrera', series: 4, p_duracion: [{ tiempo_real: 85 }] }, [
+      { numero_serie: 1, tiempo_real: 85 }, { numero_serie: 2, tiempo_real: 92 },
+    ])
+    expect(r.segundos).toBe(177)
+    expect(r.origen).toBe('anotado')
+  })
+
+  /* Una fila vacia no es una serie hecha: la regla es la de lib/serie-hecha,
+     la misma que usa el resto de la app. */
+  it('las filas sin nada anotado no cuentan como serie', () => {
+    const r = realDeTarea(seis, [
+      { numero_serie: 1, metros_reales: 600 },
+      { numero_serie: 2 },
+      { numero_serie: 3, metros_reales: null, tiempo_real: null },
+    ])
+    expect(r.seriesAnotadas).toBe(1)
+    expect(r.metros).toBe(600)
+  })
+
+  /* Si las filas existen pero ninguna trae metros ni tiempo (solo un RPE, por
+     ejemplo), no hay nada que sumar y se vuelve a estimar en vez de dar 0. */
+  it('con series sin medida, vuelve a estimar en vez de dar cero', () => {
+    const r = realDeTarea(seis, [{ numero_serie: 1, control_real: 7 }])
+    expect(r.metros).toBe(3600)
+    expect(r.origen).toBe('estimado')
+  })
+})

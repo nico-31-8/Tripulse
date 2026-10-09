@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 9 de octubre de 2026 · Ahora se guarda cada serie, no solo la primera
+
+Cuando tu deportista cerraba una sesión de resistencia, de todas las series que
+había escrito **solo se guardaba la primera** como dato. Las demás quedaban
+únicamente dentro de un resumen de texto —ese `S1[...] | S2[...]`— que además
+tú puedes reescribir a mano.
+
+Por eso el total había que calcularlo multiplicando: «lo de una serie × las
+series que le mandaste». Si le mandabas 6 × 600 m y hizo cuatro, contaba seis. Y
+si una serie salía a 1000 m y la siguiente a 950, contaba las dos como la
+primera.
+
+**Ya se guarda cada serie con sus metros y su tiempo**, y el total se **suma**
+de ellas. Debajo del número te dice de dónde sale: «suma de 4 series» cuando
+viene de lo que anotó, o «estimado: 6 × 600 m» cuando no anotó serie a serie y
+hay que multiplicar como antes.
+
+Esto vale **de aquí en adelante**: las sesiones ya cerradas no tienen esas
+series guardadas, así que las suyas se siguen estimando. No se puede rellenar
+hacia atrás sin inventar.
+
+Una cosa que **no** se guarda todavía: la **sensación de 1 a 5** de cada serie.
+Sigue en el texto del resumen, porque la columna que había es la del RIR y el
+RPE, que van sobre 10, y meter ahí un 1-5 estropearía el análisis del esfuerzo.
+
+---
+
 ## 8 de octubre de 2026 · El segundo ejercicio de una superserie, por fin completo
 
 **⚠ Esto sube el volumen de algunos grupos musculares. Estaba mal antes, no ahora.**

@@ -33,6 +33,9 @@ interface EjercicioFila {
 interface SerieFila extends SerieConDatos {
   id: number
   id_ejercicio: number
+  /** En resistencia la serie cuelga de la TAREA, no de un ejercicio. */
+  id_tarea: number | null
+  metros_reales: number | null
   ejercicio_numero: number | null
   control_tipo: string | null
   /** El RIR de antes de `control_real`. Solo lo traen las series viejas. */
@@ -80,12 +83,23 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
       }))
       setTareas(tarConEjs)
 
-      // Cargar series realizadas
+      /* Las series anotadas, POR LOS DOS LADOS: en fuerza cuelgan del
+         ejercicio y en resistencia de la propia tarea. Antes solo se pedían
+         las del ejercicio, así que las de resistencia —que ahora sí se
+         guardan— no llegaban y el total se seguía estimando. */
       const ejIds = ejs?.map(e => e.id) || []
-      if (ejIds.length) {
-        const { data: sr } = await supabase.from('series_realizadas').select('*').in('id_ejercicio', ejIds).order('numero_serie')
-        setSeriesReales(sr || [])
-      }
+      const [porEj, porTarea] = await Promise.all([
+        ejIds.length
+          ? supabase.from('series_realizadas').select('*').in('id_ejercicio', ejIds).order('numero_serie')
+          : Promise.resolve({ data: [] as SerieFila[] }),
+        tareaIds.length
+          ? supabase.from('series_realizadas').select('*').in('id_tarea', tareaIds).order('numero_serie')
+          : Promise.resolve({ data: [] as SerieFila[] }),
+      ])
+      /* Por id, que una fila puede venir por los dos caminos. */
+      const unicas = new Map<number, SerieFila>()
+      for (const s of [...(porEj.data || []), ...(porTarea.data || [])] as SerieFila[]) unicas.set(s.id, s)
+      setSeriesReales([...unicas.values()])
     }
     setLoading(false)
   }, [sesionId])
@@ -208,14 +222,18 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                  encima de la lista con sus dos series de 1000. La cuenta vive
                  en lib/lo-que-hizo, que es la misma que usan los km de las
                  zapatillas y la tabla de tareas. */
-              const real = realDeTarea(t)
+              const real = realDeTarea(t, seriesReales.filter(s => s.id_tarea === t.id))
               const seriesData = t.sensacion_general
 
               if (!real.metros && !real.segundos && !seriesData) return null
 
               /* Cuando se repite, se dice de qué se compone: un total a secas
-                 no deja comprobar de dónde sale. */
-              const deQue = real.veces > 1 ? ' (' + real.veces + ' × ' : ''
+                 no deja comprobar de dónde sale. Y se distingue lo SUMADO de
+                 sus series de lo ESTIMADO multiplicando, porque lo segundo
+                 cuenta las series mandadas aunque hiciera menos. */
+              const deQue = real.origen === 'anotado'
+                ? '(suma de ' + real.seriesAnotadas + (real.seriesAnotadas === 1 ? ' serie' : ' series') + ')'
+                : real.veces > 1 ? '(estimado: ' + real.veces + ' × ' : ''
 
               return (
                 <div key={t.id} className="bg-gray-800 rounded-xl p-4">
@@ -225,8 +243,10 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                       <div>
                         <p className="text-xs text-gray-500">Distancia real</p>
                         <p className="font-medium text-blue-400">{real.metros >= 1000 ? (real.metros/1000).toFixed(1) + ' km' : real.metros + ' m'}</p>
-                        {real.veces > 1 && (
-                          <p className="text-[11px] text-gray-500">{deQue}{real.metrosPorSerie} m)</p>
+                        {deQue && (
+                          <p className="text-[11px] text-gray-500">
+                            {real.origen === 'anotado' ? deQue : deQue + real.metrosPorSerie + ' m)'}
+                          </p>
                         )}
                       </div>
                     )}
@@ -234,8 +254,10 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
                       <div>
                         <p className="text-xs text-gray-500">Tiempo real</p>
                         <p className="font-medium text-blue-400">{segAMmss(real.segundos)}</p>
-                        {real.veces > 1 && (
-                          <p className="text-[11px] text-gray-500">{deQue}{segAMmss(real.segundosPorSerie!)})</p>
+                        {deQue && (
+                          <p className="text-[11px] text-gray-500">
+                            {real.origen === 'anotado' ? deQue : deQue + segAMmss(real.segundosPorSerie!) + ')'}
+                          </p>
                         )}
                       </div>
                     )}
