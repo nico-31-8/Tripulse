@@ -2,7 +2,7 @@
 // decisión tomada a mano, así que cada bloque dice cuál.
 import { describe, it, expect } from 'vitest'
 import {
-  evaluar, recorta, textoDe, etiquetaFn, valorDado, hechasDe, calcular, pegasDe,
+  evaluar, recorta, textoDe, etiquetaFn, valorDado, hechasDe, calcular, pegasDe, columnaDeVelocidad,
   relojesDe, intervaloRitmo, escalonAhora, protoVacio, medVacia, esFuncion,
   clavesRepetidas, nuevaClave, buscaCol, col, fnB, FUNCIONES,
   type TestLab, type Datos,
@@ -86,6 +86,28 @@ describe('las columnas dadas', () => {
     const c = col({ clave: 'lado', clase: 'dada', tipo: 'lista', etiquetas: ['Derecha', 'Izquierda'] })
     expect(valorDado(c, 0, {})).toBe('Derecha')
     expect(valorDado(c, 5, {})).toBe('')
+  })
+
+  /* EL FALLO (revisión de octubre, tanda 2). Si la casilla de la que arranca
+     está VACÍA —el entrenador la borra para escribir otro número, o se guarda
+     así—, `Number('')` es 0 y TODO el test se calculaba desde 0 km/h, sin un
+     aviso: una VAM que empieza en 8 salía calculada desde cero.
+     Las plantillas ya traen escrito el respaldo (`desde: 8`), y el código no
+     lo usaba nunca. Ahora sí. */
+  it('con la casilla vacía, arranca del número fijo de la plantilla, no de 0', () => {
+    const c = col({ clave: 'v', clase: 'dada', tipo: 'progresion', desde: 8, paso: 0.5, desdeRef: 'ini', pasoRef: 'inc' })
+    expect(valorDado(c, 0, { ini: '', inc: '0.5' })).toBe(8)
+    expect(valorDado(c, 4, { ini: '', inc: '' })).toBe(10)
+    expect(valorDado(c, 4, {})).toBe(10)
+    /* Lo que no es un número tampoco se convierte en 0. */
+    expect(valorDado(c, 0, { ini: 'abc' })).toBe(8)
+  })
+
+  it('y si la casilla tiene un número, manda la casilla', () => {
+    const c = col({ clave: 'v', clase: 'dada', tipo: 'progresion', desde: 8, paso: 0.5, desdeRef: 'ini' })
+    expect(valorDado(c, 2, { ini: '9' })).toBe(10)
+    /* Un 0 escrito a propósito es un 0: lo vacío no es lo mismo que el cero. */
+    expect(valorDado(c, 0, { ini: '0' })).toBe(0)
   })
 })
 
@@ -305,5 +327,24 @@ describe('las plantillas de referencia calculan lo que dicen', () => {
     /* Ocho estaciones y ocho repeticiones: si dejaran de cuadrar, la lista se
        quedaría corta a mitad del test y el entrenador no sabría qué apuntar. */
     expect(t.bloques[0].veces).toBe(cual.etiquetas?.length)
+  })
+})
+
+describe('la columna de velocidad no confunde un vacio con un 0', () => {
+  /* `Number.isFinite(Number(''))` es verdadero: el vacio se vuelve 0, que es
+     finito. Una lista con la primera etiqueta en blanco pasaba por lista de
+     velocidades y el reloj cantaba 0 km/h. */
+  it('una lista con la primera etiqueta vacia no es una lista de velocidades', () => {
+    const bl = { clave: 'b', etiqueta: 'b', modo: 'cerrado', veces: 3, columnas: [
+      col({ clave: 'v', clase: 'dada', tipo: 'lista', etiquetas: ['', '10', '11'] }),
+    ] } as unknown as Parameters<typeof columnaDeVelocidad>[0]
+    expect(columnaDeVelocidad(bl, {})).toBeNull()
+  })
+
+  it('una lista de numeros de verdad, si', () => {
+    const bl = { clave: 'b', etiqueta: 'b', modo: 'cerrado', veces: 3, columnas: [
+      col({ clave: 'v', clase: 'dada', tipo: 'lista', etiquetas: ['10', '10.5', '11'] }),
+    ] } as unknown as Parameters<typeof columnaDeVelocidad>[0]
+    expect(columnaDeVelocidad(bl, {})?.clave).toBe('v')
   })
 })

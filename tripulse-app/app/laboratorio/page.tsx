@@ -48,6 +48,10 @@ import { fijarZonas } from '@/lib/zonas-desde-test'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { pitar, avisarEscalon, despertarAudio } from '@/lib/pitido'
 import InterruptoresAviso from '@/components/InterruptoresAviso'
+/* Leer lo que se teclea en el editor de fórmulas. Con `Number(...)` +
+   `isFinite`, una casilla VACÍA metía un 0 en la fórmula: `Number('')` es 0 y
+   0 es finito. `numeroONada` devuelve null para el vacío. */
+import { numeroONada } from '@/lib/corregir-sesion'
 
 const LLAVE = 'tp_laboratorio_v1'
 /* LA AYUDA SE RECUERDA APARTE DEL BORRADOR, y a propósito: es de quien usa la
@@ -2164,7 +2168,7 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], n
                 <input className={chico + ' w-[78px]'} inputMode="decimal" defaultValue={String(b.v)}
                   onChange={e => setNumero(e.target.value)} />
                 <button className={FICHA + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
-                  onClick={() => { const n = Number(String(numero).replace(',', '.')); if (Number.isFinite(n)) cambia({ t: 'num', v: n }) }}>Cambiarlo</button>
+                  onClick={() => { const n = numeroONada(numero); if (n != null) cambia({ t: 'num', v: n }) }}>Cambiarlo</button>
               </>
             )}
             <button className={FICHA + ' bg-gray-800 border-gray-600 text-gray-400 ml-auto'}
@@ -2293,8 +2297,8 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], n
               onChange={e => setAValor(e.target.value)} autoFocus />
             <button className={FICHA + ' bg-emerald-500/14 border-emerald-400/40 text-emerald-200'}
               onClick={() => {
-                const n = Number(String(aValor).replace(',', '.'))
-                if (!Number.isFinite(n)) return
+                const n = numeroONada(aValor)
+                if (n == null) return
                 pon({ t: 'fn2', v: 'interpola', x: mio.x!, y: mio.y!, a: n })
               }}>Ponerlo</button>
             <p className="text-gray-500 text-[11px] leading-snug w-full mt-1">
@@ -2332,7 +2336,7 @@ function MontaFormula({ formula, clave, escalares, series, refs, previos = [], n
               onClick={() => pon({ t: 'op', v: o })}>{o}</button>
           ))}
           <button className={FICHA + ' bg-blue-500/14 border-blue-400/40 text-blue-200'}
-            onClick={() => { const n = Number(String(numero).replace(',', '.')); if (Number.isFinite(n)) pon({ t: 'num', v: n }) }}>Poner el número</button>
+            onClick={() => { const n = numeroONada(numero); if (n != null) pon({ t: 'num', v: n }) }}>Poner el número</button>
           <input className={chico + ' w-[78px]'} inputMode="decimal" value={numero}
             onChange={e => setNumero(e.target.value)} />
         </Grupo>

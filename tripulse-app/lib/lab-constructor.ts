@@ -1020,11 +1020,34 @@ export const camposDe = (f: Bloq[]): string[] => {
 /** El valor de una columna dada en la repetición `k` (desde 0). */
 export function valorDado(c: Columna, k: number, datos: Datos): string | number {
   if (c.tipo === 'lista') { const e = (c.etiquetas || [])[k]; return e === undefined ? '' : e }
-  const d0 = c.desdeRef ? Number(datos[c.desdeRef]) : Number(c.desde)
-  const p0 = c.pasoRef ? Number(datos[c.pasoRef]) : Number(c.paso)
-  const d = Number.isFinite(d0) ? d0 : 0
-  const p = Number.isFinite(p0) ? p0 : 0
+  const d = deCasillaOFijo(c.desdeRef, c.desde, datos)
+  const p = deCasillaOFijo(c.pasoRef, c.paso, datos)
   return Math.round((d + p * k) * 1000) / 1000
+}
+
+/**
+ * El número de una casilla, y si está vacía, el fijo que trae la columna.
+ *
+ * ANTES: `Number(datos[ref])` a secas. Si la casilla estaba VACÍA, `Number('')`
+ * es 0, así que una VAM que tenía que arrancar en 8 km/h se calculaba entera
+ * desde 0, sin ningún aviso. Pasaba al borrar la casilla para escribir otro
+ * número, o si se guardaba vacía. Y las plantillas ya traían el respaldo
+ * escrito (`desde: 8`), pero no se usaba: con casilla de referencia, el fijo
+ * quedaba ignorado del todo.
+ *
+ * Lo vacío se mira ANTES de convertir. Un 0 escrito a propósito sigue siendo un
+ * 0: lo vacío y el cero no son lo mismo.
+ */
+function deCasillaOFijo(ref: string | undefined, fijo: unknown, datos: Datos): number {
+  if (ref) {
+    const v = datos[ref]
+    if (!vacio(v)) {
+      const n = Number(v)
+      if (Number.isFinite(n)) return n
+    }
+  }
+  const f = Number(fijo)
+  return Number.isFinite(f) ? f : 0
 }
 
 /**
@@ -1601,7 +1624,14 @@ export function columnaDeVelocidad(bl: Bloque, datos: Datos): Columna | null {
   const dadas = bl.columnas.filter(c => c.clase === 'dada')
   const prog = dadas.find(c => c.tipo === 'progresion')
   if (prog) return prog
-  const lista = dadas.find(c => c.tipo === 'lista' && Number.isFinite(Number(valorDado(c, 0, datos))))
+  /* `!vacio` primero: `Number.isFinite(Number(''))` es VERDADERO —el vacío se
+     convierte en 0, que es finito—, así que una lista con la primera etiqueta
+     en blanco pasaba por lista de velocidades y el reloj cantaba 0 km/h. */
+  const lista = dadas.find(c => {
+    if (c.tipo !== 'lista') return false
+    const v = valorDado(c, 0, datos)
+    return !vacio(v) && Number.isFinite(Number(v))
+  })
   return lista || null
 }
 

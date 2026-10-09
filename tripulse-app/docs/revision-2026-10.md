@@ -94,6 +94,55 @@ reponiéndolo: salta.
 
 ---
 
-## Tanda 2 · Los ficheros que más han cambiado
+## Tanda 2 · Los ficheros que más han cambiado: el vacío no es un cero
 
-*(pendiente)*
+Categoría: **`Number()` de una casilla vacía**. `Number('')`, `Number(null)` y
+`Number([])` valen 0, y `Number.isFinite(Number(''))` es VERDADERO —0 es
+finito—, así que la comprobación que parece protegerte deja pasar el vacío.
+Es la trampa que más veces ha mordido este proyecto, y el laboratorio —el
+fichero que más cambió, 35 commits— es donde una casilla vacía es lo normal.
+
+65 lecturas en los ficheros calientes, revisadas una a una:
+
+| Dónde | Veredicto |
+|---|---|
+| **`valorDado`: columna que arranca de otra casilla** | **FALLO.** Con «Empieza en» vacío, la velocidad de una VAM se calculaba entera desde 0. Las plantillas traían el respaldo (`desde: 8`) y el código lo ignoraba en cuanto había casilla de referencia |
+| **`columnaDeVelocidad`** | **FALLO.** `isFinite(Number(''))` → una lista con la 1.ª etiqueta en blanco pasaba por lista de velocidades: el reloj cantaba 0 km/h |
+| **Editor de fórmulas: «Cambiarlo», «Poner el número», interpolar** | **FALLO** (más visible: el 0 aparece en la fórmula). Con la casilla vacía metían un 0 |
+| La regresión (`pendiente`, `corte`, `interpola`) | Correcto: salta el vacío ANTES de convertir |
+| `hechasDe`, el marcador «llegó hasta aquí» | Correcto: pide `> 0` |
+| Contadores y pulsadores (`|| 0`) | Correcto: un pulsador vacío lleva 0 pulsaciones |
+| Duraciones de tramos y relojes (`|| 0`) | Correcto: una duración vacía es 0 s para un reloj |
+| `lab-guardar`, `volumen`, `semana-info`, `historial` | Correcto: con su guarda |
+
+**Medido antes de tocar**: hay **0 tests del laboratorio guardados** en la base
+(está en pruebas), así que ningún resultado guardado salió mal. Pero 3 de las 10
+plantillas arrancan de una casilla —la VAM entre ellas—, o sea que el fallo lo
+alcanzaba cualquiera que borrase esa casilla.
+
+**Arreglo**: `deCasillaOFijo` en `lib/lab-constructor` (si la casilla está
+vacía o no es un número, el fijo de la columna; un 0 escrito a propósito sigue
+siendo 0), `!vacio` antes de `isFinite` en la columna de velocidad, y en el
+editor de fórmulas **`numeroONada`, que ya existía** en `lib/corregir-sesion` con
+esa misma regla («vacío es `null` y no cero»): no se escribió otro.
+
+Los tests nuevos del motor se escribieron **antes** del arreglo y fallaban
+(`expected 0 to be 8`); el de la columna de velocidad, después, y se comprobó
+que falla con la comprobación de antes.
+
+Guardián: `lib/vacio-no-es-cero.test.ts`, lee el código del motor y de la
+pantalla. Probado reponiendo la lectura vieja: salta.
+
+### Apuntado y no tocado
+
+- `numeroONada` vive en `lib/corregir-sesion` y ahora lo usa también el
+  laboratorio. Funciona, pero su sitio natural sería un módulo neutro; moverlo
+  es tocar los imports de otro módulo, y eso es otra tanda.
+
+---
+
+## Lo que queda para la próxima
+
+- Las **62 páginas que no se han tocado** desde septiembre siguen revisadas por
+  la tercera pasada. La siguiente entera, cuando la app crezca en superficie.
+- **`FuerzaRegistro`** y el control del primer ejercicio (latente, tanda 1).
