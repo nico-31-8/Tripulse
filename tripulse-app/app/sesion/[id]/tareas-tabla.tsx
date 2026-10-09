@@ -1158,6 +1158,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      enseñarlo al lado. Rellenar los campos sin decir de dónde salen es pedirle
      al entrenador que se fíe: aquí ve «40×10 · 40×10 · 30×8» y decide. */
   const [traido, setTraido] = useState<Record<number, string>>({})
+  /** Lo mismo, para el segundo ejercicio de una superserie. */
+  const [traido2, setTraido2] = useState<Record<number, string>>({})
 
   /**
    * Trae a la fila lo que ese atleta hizo la última vez en ese ejercicio.
@@ -1190,6 +1192,44 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       controlTipo: (pres.controlTipo as ControlTipo) || x.controlTipo,
     }))
     setTraido(p => ({ ...p, [i]: 'La última vez: ' + pres.detalle }))
+  }
+
+  /**
+   * Lo mismo para el SEGUNDO ejercicio de una superserie.
+   *
+   * No lo tenía, y es la mitad de la queja: el botón existía solo para el
+   * principal, así que del encadenado no había forma de ver lo que levantó la
+   * última vez ni de traerlo.
+   *
+   * Va por `ultima_ejecucion_encadenado` y no por la de siempre porque su
+   * nombre vive en otra columna y sus series llevan `ejercicio_numero = 2`.
+   * Esa función mira las dos columnas, así que encuentra tanto las veces que
+   * lo hizo suelto como encadenado.
+   */
+  const traerUltimaVez2 = async (i: number) => {
+    const f = filasF[i]
+    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId2))?.nombre
+    if (!nombre) { setTraido2(p => ({ ...p, [i]: 'Elige primero el ejercicio encadenado.' })); return }
+    setTraido2(p => ({ ...p, [i]: 'Buscando…' }))
+
+    const { data, error } = await supabase.rpc('ultima_ejecucion_encadenado', {
+      _dep: deportistaId, _nombre: nombre, _antes: fechaSesion || hoyISO(),
+    })
+    if (error) { setTraido2(p => ({ ...p, [i]: 'No se ha podido consultar: ' + error.message })); return }
+
+    /* El encadenado no tiene modo tiempo propio: se prescribe por repeticiones. */
+    const pres = prescripcionDesdeUltimaVez(data as SerieHecha[], false)
+    if (!pres) { setTraido2(p => ({ ...p, [i]: 'No hay nada anotado de «' + nombre + '» antes de esta sesión.' })); return }
+
+    setFilasF(prev => prev.map((x, k) => k !== i ? x : {
+      ...x,
+      series2: pres.series,
+      repsFuerza2: pres.reps || x.repsFuerza2,
+      kgFuerza2: pres.kg || x.kgFuerza2,
+      rir2: pres.control || x.rir2,
+      controlTipo2: (pres.controlTipo as ControlTipo) || x.controlTipo2,
+    }))
+    setTraido2(p => ({ ...p, [i]: 'La última vez: ' + pres.detalle }))
   }
 
   /* Lo que hay escrito y SIN GUARDAR: filas de resistencia, de fuerza y bloques.
@@ -2273,7 +2313,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           className={botonBloque(f.controlTipo2 !== 'rir')}>
                           {controlDe(f.controlTipo2).corto}
                         </button>
+                        {/* El mismo «↺ última vez» que el principal: este
+                            ejercicio también se repite semana a semana y
+                            también hay que prescribirlo desde lo que levantó. */}
+                        <button type="button" onClick={() => traerUltimaVez2(i)}
+                          title="Traer lo que hizo la última vez en este ejercicio"
+                          className="flex-none text-[11px] font-bold px-2 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition">
+                          ↺ última vez
+                        </button>
                       </div>
+                      {traido2[i] && (
+                        <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido2[i]}</p>
+                      )}
                     </td>
                     <td className="py-1.5 px-1.5"></td>
                     <td className="py-1 px-1">

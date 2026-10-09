@@ -38,10 +38,11 @@ Ya está relleno en todo lo que había, sin tocar nada a mano.
   sin casilla donde anotar el esfuerzo del segundo. Ahora tiene el suyo, y
   puede ir en otra escala.
 - **Sus notas.** Nuevas, en la misma fila donde prescribes el encadenado.
-- **«La última vez».** El segundo ejercicio no se preguntaba nunca, así que ahí
-  no aparecía aunque el atleta llevara meses haciéndolo. Ahora sale igual que en
-  el principal, y encuentra tanto las veces que lo hizo suelto como las que lo
-  hizo dentro de una superserie.
+- **«La última vez», en los dos sitios.** Al **prescribir** tiene su propio
+  botón **↺ última vez**, que rellena sus series, repeticiones, peso y control
+  con lo que el atleta levantó de verdad; y al **ejecutar**, tu atleta ve debajo
+  lo que hizo la vez anterior, igual que en el principal. Encuentra tanto las
+  veces que hizo ese ejercicio suelto como las que lo hizo encadenado.
 
 ---
 
