@@ -59,6 +59,12 @@ $$;
 comment on function public.auth_def_planificados() is
   'Los tests propios que alguien tiene PLANIFICADOS en sus sesiones (sesion.test). Para que el deportista vea el nombre antes de haberlo hecho.';
 
+/* Cerrada a quien no tiene sesion (2026-10-10): al crearla nacio abierta a
+   public y a anon. La politica de abajo es TO authenticated, que la conserva.
+   Ver cerrar-auth-def-planificados.sql. */
+revoke execute on function public.auth_def_planificados() from public, anon;
+grant execute on function public.auth_def_planificados() to authenticated;
+
 drop policy if exists test_definicion_dep_planificado on test_definicion;
 
 create policy test_definicion_dep_planificado on test_definicion

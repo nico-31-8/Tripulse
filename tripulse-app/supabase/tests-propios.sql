@@ -98,17 +98,21 @@ create index if not exists idx_test_medicion_serie
 
 alter table test_medicion enable row level security;
 
-/* La medicion se ve si se ve su definicion. Asi la regla vive en un sitio: si
-   manana se comparten los tests, esto no hay que tocarlo. */
+/* La medicion es tuya si el TEST es tuyo Y el DEPORTISTA es tuyo
+   (auth_dep_ids). Hasta el 2026-10-10 solo miraba el test, y con un test
+   propio se podian apuntar mediciones a cualquier atleta: el porque y el
+   ensayo estan en test-medicion-solo-mis-deportistas.sql. */
 drop policy if exists test_medicion_suyo on test_medicion;
 create policy test_medicion_suyo on test_medicion
-  for all using (
+  for all to authenticated using (
     exists (select 1 from test_definicion d
-            where d.id = test_medicion.id_definicion and d.id_entrenador = auth.uid())
+            where d.id = test_medicion.id_definicion and d.id_entrenador = (select auth.uid()))
+    and id_deportista in (select auth_dep_ids())
   )
   with check (
     exists (select 1 from test_definicion d
-            where d.id = test_medicion.id_definicion and d.id_entrenador = auth.uid())
+            where d.id = test_medicion.id_definicion and d.id_entrenador = (select auth.uid()))
+    and id_deportista in (select auth_dep_ids())
   );
 
 /* Comprobacion: deben salir las dos tablas con rowsecurity = true */
