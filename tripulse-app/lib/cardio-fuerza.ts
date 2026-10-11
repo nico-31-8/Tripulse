@@ -205,4 +205,4 @@ export const filaCardioCompleta = (f: { cardioModo?: string; cardioMedida?: stri
  * salga corto en una pantalla y bien en la de al lado.
  */
 export const SELECT_EJERCICIOS_CONTEO =
-  'id_tarea, repeticiones, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden' as const
+  'id_tarea, repeticiones, repeticiones_max, series_detalle, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden' as const

@@ -1,6 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { repsDeEjercicio, repsDePrescripcion, columnasPrescripcion } from '@/lib/repeticiones'
+import { tieneSeriesDistintas, seriesDe, textoRepsSeries } from '@/lib/series-detalle'
 import { useState, useEffect, useRef, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideosEnTareas } from '@/lib/video-ejercicio'
@@ -234,6 +235,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   }
 
   const mostrarMedicion = (t: any): string => {
+    /* Serie a serie: «12/10/8 reps», y no el resumen «8-12» que guarda la fila. */
+    const ej = t.ejercicios?.[0]
+    if (tieneSeriesDistintas(ej)) {
+      const seg = t.p_duracion?.[0]?.tiempo_planeado
+      const r = textoRepsSeries(seriesDe(ej, { segFila: seg }), !!seg)
+      if (r) return seg ? r : r + ' reps'
+    }
     if (t.p_duracion?.[0]?.tiempo_planeado) {
       const seg = t.p_duracion[0].tiempo_planeado
       return mmssCorto(seg) + ' min'
@@ -295,7 +303,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
       // sesiones anteriores a que el control tuviera columnas propias.
       ordenarTareasQuery(
-        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, medida, cantidad, orden, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, encadenado_grupo_muscular, encadenado_control_tipo, encadenado_control_valor, encadenado_notas_ejecucion, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id)),
+        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, repeticiones_max, series_detalle, encadenado_repeticiones_max, encadenado_series_detalle, medida, cantidad, orden, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, encadenado_grupo_muscular, encadenado_control_tipo, encadenado_control_valor, encadenado_notas_ejecucion, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id)),
     ])
 
     setSesion(ses)
@@ -1294,9 +1302,11 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                             {t.disciplina && <span className={'text-xs px-2 py-0.5 rounded-full ' + chipDisciplina(t.disciplina)}>{t.disciplina}</span>}
                           </div>
                           <div className="flex gap-1">
-                            {/* Un bloque se edita en la tabla: este formulario no sabe de bloques. */}
-                            {esBloque(t)
-                              ? <button onClick={() => setVistaTabla(true)} title="Los bloques se editan en la vista de tabla" className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️ en la tabla</button>
+                            {/* Un bloque se edita en la tabla: este formulario no sabe de bloques.
+                                Ni de «Serie a serie»: guardar desde aquí dejaría las series
+                                iguales sin avisar, así que esas también van a la tabla. */}
+                            {esBloque(t) || tieneSeriesDistintas(t.ejercicios?.[0]) || tieneSeriesDistintas(t.ejercicios?.[0], true)
+                              ? <button onClick={() => setVistaTabla(true)} title={esBloque(t) ? 'Los bloques se editan en la vista de tabla' : 'Las series distintas se editan en la vista de tabla'} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️ en la tabla</button>
                               : <button onClick={() => abrirEditarTarea(t)} className="text-gray-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">✏️</button>}
                             <button onClick={() => borrarTarea(t.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-800 transition">🗑</button>
                           </div>

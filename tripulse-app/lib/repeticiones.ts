@@ -111,6 +111,11 @@ export function repsDeEjercicio(ej: { repeticiones?: number | null; repeticiones
   return textoReps(ej?.repeticiones, ej?.repeticiones_max)
 }
 
+/** Lo que enseña el ejercicio encadenado de una superserie: «12» o «10-12». */
+export function repsDeEncadenado(ej: { encadenado_repeticiones?: number | null; encadenado_repeticiones_max?: number | null } | null | undefined): string {
+  return textoReps(ej?.encadenado_repeticiones, ej?.encadenado_repeticiones_max)
+}
+
 /** Lo que enseña una fila de `p_repeticiones`. */
 export function repsDePrescripcion(p: { repeticiones_planteadas?: number | null; repeticiones_planteadas_max?: number | null } | null | undefined): string {
   return textoReps(p?.repeticiones_planteadas, p?.repeticiones_planteadas_max)

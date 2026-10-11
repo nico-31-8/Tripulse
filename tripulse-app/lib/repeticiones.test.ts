@@ -144,6 +144,12 @@ describe('las columnas del tope viven en un solo sitio', () => {
      `r?.max` son un valor. */
   const ES_UN_TIPO = /(?:repeticiones_max|encadenado_repeticiones_max|repeticiones_planteadas_max)\??\s*:\s*number\s*\|\s*null/
   const NOMBRES = /repeticiones_max|encadenado_repeticiones_max|repeticiones_planteadas_max/
+  /* PEDIR LA COLUMNA EN UNA CONSULTA ES LEER, no escribir, y hace falta: una
+     lista de columnas que no la pide trae el mínimo solo y la pantalla enseña
+     «8» donde se mandó «8-10». Así perdían el rango el panel de la semana, la
+     vista de fichas y las cuentas de duración hasta el 2026-10-11. Se reconoce
+     porque el nombre va DENTRO de una cadena, como una columna más de la lista. */
+  const EN_UNA_CONSULTA = /'(?:[^']*[\s,(])?(?:repeticiones_max|encadenado_repeticiones_max|repeticiones_planteadas_max)\s*[,)']/
 
   function ficheros(): string[] {
     const out: string[] = []
@@ -166,6 +172,7 @@ describe('las columnas del tope viven en un solo sitio', () => {
       fs.readFileSync(f, 'utf8').split('\n').forEach((linea, i) => {
         if (!NOMBRES.test(linea)) return
         if (ES_UN_TIPO.test(linea)) return
+        if (EN_UNA_CONSULTA.test(linea)) return
         culpables.push(rel + ':' + (i + 1))
       })
     }
@@ -185,6 +192,13 @@ describe('las columnas del tope viven en un solo sitio', () => {
     /* Y el cast en línea, que es el caso que hay de verdad en tareas-tabla. */
     expect(ES_UN_TIPO.test('  const ej = f.ejercicio as { cantidad?: number | null; repeticiones_max?: number | null }')).toBe(true)
     expect(ES_UN_TIPO.test("  repeticiones_max: r?.max ?? null,")).toBe(false)
+    /* Pedirla en una consulta, sí; escribirla o leerla suelta, no. */
+    expect(EN_UNA_CONSULTA.test("  .select('id_tarea, repeticiones, repeticiones_max, orden')")).toBe(true)
+    expect(EN_UNA_CONSULTA.test("  'ejercicios(id, encadenado_repeticiones_max, ' +")).toBe(true)
+    expect(EN_UNA_CONSULTA.test("  .select('repeticiones_max')")).toBe(true)
+    expect(EN_UNA_CONSULTA.test("  await sb.insert({ repeticiones_max: 10 })")).toBe(false)
+    expect(EN_UNA_CONSULTA.test("  const t = ej.repeticiones_max ?? null")).toBe(false)
+    expect(EN_UNA_CONSULTA.test("  textoReps(ej.repeticiones, ej.repeticiones_max) + ' reps'")).toBe(false)
     /* Y que la biblioteca sí las tiene, por si alguien la vacía. */
     const lib = fs.readFileSync(path.join(RAIZ, 'lib/repeticiones.ts'), 'utf8')
     for (const col of ['repeticiones_max', 'encadenado_repeticiones_max', 'repeticiones_planteadas_max']) {

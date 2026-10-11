@@ -88,6 +88,18 @@ export function mmssCorto(seg: number): string {
   return s > 0 ? min + ':' + String(s).padStart(2, '0') : String(min)
 }
 
+/**
+ * Una duración corta para LEER: «45 s», «2 min» o «2:30 min».
+ *
+ * Los segundos sueltos no se redondean a minutos. El resumen del deportista y
+ * el modo entrenador hacían `Math.round(seg / 60) + ' min'`, así que una
+ * plancha de 40 s salía «1 min» y una de 20 s, «0 min».
+ */
+export function duracionCorta(seg: number): string {
+  const s = Math.max(0, Math.round(seg || 0))
+  return s < 60 ? s + ' s' : mmssCorto(s) + ' min'
+}
+
 // Tabla de medición a la que corresponde cada unidad.
 export function tablaMedicion(u: UnidadMedicion): 'p_distancia' | 'p_duracion' | 'p_repeticiones' | null {
   if (u === 'm' || u === 'km') return 'p_distancia'

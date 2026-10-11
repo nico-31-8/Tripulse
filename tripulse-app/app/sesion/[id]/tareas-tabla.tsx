@@ -1,17 +1,22 @@
 'use client'
 import React from 'react'
 import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, columnasEjercicio, columnasEncadenado, columnasPrescripcion } from '@/lib/repeticiones'
-import { prescripcionDesdeUltimaVez } from '@/lib/traer-ultima-vez'
+import { prescripcionDesdeUltimaVez, type PrescripcionTraida } from '@/lib/traer-ultima-vez'
 import { cargarBiblioteca } from '@/lib/biblioteca-propia'
 import type { SerieHecha } from '@/lib/modo-mejora'
-import { hoyISO } from '@/lib/fechas'
+import { hoyISO, fechaLarga } from '@/lib/fechas'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
 import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
-import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, mmssCorto, type UnidadMedicion } from '@/lib/medicion'
-import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, type ControlTipo } from '@/lib/control-esfuerzo'
+import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, mmssCorto, duracionCorta, type UnidadMedicion } from '@/lib/medicion'
+import {
+  seriesIguales, ajustarSeries, valorComun, sonDistintas, resumenCampo, ponerEnTodas, ponerEnUna,
+  igualarALaPrimera, paraGuardar, seriesDe, tieneSeriesDistintas, textoRepsSeries, textoKgSeries,
+  textoControlSeries, type CampoSerie,
+} from '@/lib/series-detalle'
+import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, textoControl, type ControlTipo } from '@/lib/control-esfuerzo'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { filtrarDrills } from '@/lib/tecnica'
 import {
@@ -52,13 +57,13 @@ import { duenosCompartidos } from '@/lib/compartido-direccion'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
-// la otra se queda contando distinto.
+// la otra se queda contando distinto. Lo mismo `duracionTexto`, que ahora es
+// `duracionCorta` de lib/medicion: la necesitan también el resumen del atleta y
+// el modo entrenador.
 
-// Texto corto de una duración: «45 s» o «2:30 min». segAMmss devuelve solo los
-// minutos cuando no hay segundos sueltos («2»), que sin unidad no se entiende.
-function duracionTexto(seg: number): string {
-  return seg < 60 ? seg + ' s' : segAMmss(seg) + ' min'
-}
+/** Lo que trae «↺ última vez» a una fila: la línea de debajo y lo de cada serie,
+ *  que es lo que enseña al lado cada línea de «Serie a serie» («antes 45×10»). */
+type LineaUltimaVez = { ej: string; texto: string; porSerie?: string[] }
 
 // ------------------------------------------------------------
 // Cómo se controla el esfuerzo de una serie de fuerza
@@ -72,6 +77,24 @@ function duracionTexto(seg: number): string {
 // re-exporta para no tocar a quien ya lo importaba de aquí.
 export { CONTROLES, controlDe }
 export type { ControlTipo }
+
+/**
+ * Las columnas de la tabla de guardadas cuando las series son distintas:
+ * «12/10/8 reps», «40/45/50 kg», «RIR 3/2/1». null si son todas iguales, y
+ * entonces se enseña lo de siempre.
+ */
+function columnasSerieASerie(t: any): { reps: string; kg: string; control: string } | null {
+  const ej = t?.ejercicios?.[0]
+  if (!ej || !tieneSeriesDistintas(ej)) return null
+  const seg = t.p_duracion?.[0]?.tiempo_planeado
+  const series = seriesDe(ej, { segFila: seg })
+  const reps = textoRepsSeries(series, !!seg)
+  return {
+    reps: reps ? (seg ? reps : reps + ' reps') : '—',
+    kg: textoKgSeries(series) || '—',
+    control: textoControlSeries(series, ej.control_tipo) || '—',
+  }
+}
 
 function mostrarValorGuardado(t: any): string {
   if (t.p_duracion?.[0]?.tiempo_planeado) return segAMmss(t.p_duracion[0].tiempo_planeado) + ' min'
@@ -598,6 +621,103 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const updateR = (i: number, key: string, val: any) => parcheR(i, { [key]: val } as any)
   const updateF = (i: number, key: string, val: any) => parcheF(i, { [key]: val } as any)
 
+  /* ── SERIE A SERIE (lib/series-detalle) ──────────────────────────────────
+     `detalle` es la lista del ejercicio principal y `detalle2` la del
+     encadenado. Existe desde que el entrenador abre «Serie a serie»; si al
+     guardar son todas iguales, no se guarda y manda la fila, como siempre. */
+  const CLAVES_FILA = { reps: 'repsFuerza', kg: 'kgFuerza', rir: 'rir' } as const
+  const CLAVES_FILA2 = { reps: 'repsFuerza2', kg: 'kgFuerza2', rir: 'rir2' } as const
+
+  /** El número de series manda sobre la lista: subir añade copiando la última, bajar quita las últimas. */
+  const cambiarSeries = (i: number, valor: string, encadenado = false) =>
+    setFilasF(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      const n = Number(valor)
+      if (encadenado) return { ...f, series2: valor, detalle2: f.detalle2 ? ajustarSeries(f.detalle2, n) : f.detalle2 }
+      return {
+        ...f, series: valor,
+        detalle: f.detalle ? ajustarSeries(f.detalle, n) : f.detalle,
+        /* El encadenado sin series propias usa las del principal: su lista las sigue. */
+        ...(!f.series2 && f.detalle2 ? { detalle2: ajustarSeries(f.detalle2, n) } : {}),
+      }
+    }))
+
+  /** Una casilla de la fila mientras es igual en todas las series: va a todas. */
+  const cambiarCampoFila = (i: number, campo: CampoSerie, valor: string, encadenado = false) =>
+    setFilasF(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      const lista = encadenado ? f.detalle2 : f.detalle
+      return {
+        ...f,
+        [(encadenado ? CLAVES_FILA2 : CLAVES_FILA)[campo]]: valor,
+        ...(lista ? { [encadenado ? 'detalle2' : 'detalle']: ponerEnTodas(lista, campo, valor) } : {}),
+      }
+    }))
+
+  /** Una casilla de una serie. */
+  const cambiarSerie = (i: number, k: number, campo: CampoSerie, valor: string, encadenado = false) =>
+    setFilasF(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      const lista = encadenado ? f.detalle2 : f.detalle
+      return lista ? { ...f, [encadenado ? 'detalle2' : 'detalle']: ponerEnUna(lista, k, campo, valor) } : f
+    }))
+
+  /** Abrir o cerrar «Serie a serie». La primera vez, las series nacen iguales a la fila. */
+  const abrirSeries = (i: number, encadenado = false) =>
+    setFilasF(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      if (encadenado) {
+        const abierto = !f.verSeries2
+        return {
+          ...f, verSeries2: abierto,
+          detalle2: f.detalle2 ?? (abierto
+            ? seriesIguales(Number(f.series2 || f.series) || 0, { reps: f.repsFuerza2, kg: f.kgFuerza2, rir: f.rir2 })
+            : null),
+        }
+      }
+      const abierto = !f.verSeries
+      return {
+        ...f, verSeries: abierto,
+        detalle: f.detalle ?? (abierto
+          ? seriesIguales(Number(f.series) || 0, { reps: f.repsFuerza, kg: f.kgFuerza, rir: f.rir })
+          : null),
+      }
+    }))
+
+  /** «Igualar todas a la serie 1»: y la fila vuelve a ser normal. */
+  const igualarSeries = (i: number, encadenado = false) =>
+    setFilasF(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      const lista = encadenado ? f.detalle2 : f.detalle
+      if (!lista?.length) return f
+      const iguales = igualarALaPrimera(lista)
+      const p = iguales[0]
+      return encadenado
+        ? { ...f, detalle2: iguales, repsFuerza2: p.reps, kgFuerza2: p.kg, rir2: p.rir }
+        : { ...f, detalle: iguales, repsFuerza: p.reps, kgFuerza: p.kg, rir: p.rir }
+    }))
+
+  /** El estado de «Serie a serie» de una fila, para pintarla. */
+  const seriesDeFila = (f: FilaFuerza, encadenado = false) => {
+    const n = Number(encadenado ? (f.series2 || f.series) : f.series) || 0
+    /* El drop set y el cardio no llevan «Serie a serie»: si la fila cambia a uno
+       de ellos, la lista se ignora y las casillas vuelven a teclearse. Sin esto
+       se quedaban resumidas y sin desplegable donde cambiarlas. */
+    const sinSeries = f.tipoSerie === 'Drop set' || f.tipoSerie === 'Cardio'
+    const crudo = sinSeries ? null : (encadenado ? f.detalle2 : f.detalle) || null
+    const lista = crudo && n >= 2 ? ajustarSeries(crudo, n) : null
+    const porTiempo = !encadenado && f.medida === 'tiempo'
+    return {
+      n, lista, porTiempo,
+      abierto: !!(encadenado ? f.verSeries2 : f.verSeries),
+      distintas: !!lista && sonDistintas(lista, porTiempo),
+      /** null = el campo es igual en todas (o no hay lista): se teclea arriba. */
+      resumen: (c: CampoSerie) => lista && valorComun(lista, c, porTiempo) === null ? resumenCampo(lista, c, porTiempo) : null,
+      /** Lo que enseña la casilla de arriba cuando el campo es igual en todas. */
+      comun: (c: CampoSerie, deFila: string) => lista ? (valorComun(lista, c, porTiempo) ?? deFila) : deFila,
+    }
+  }
+
   /* Pulsar un atajo de unidad en la fila `i`.
      El cursor se coloca a mano DESPUÉS de que React repinte: si se pone antes,
      el repintado escribe el value nuevo y el navegador manda el cursor al final,
@@ -844,8 +964,23 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     // granjero de 40 s había que declararlo «Isométrico» para que se guardara como
     // tiempo, mintiendo sobre el tipo de serie para arreglar la unidad.
     const esTiempo = f.medida === 'tiempo'
+    /* SERIE A SERIE. Con alguna serie distinta, la lista va a su columna y la
+       fila se guarda con el resumen; con todas iguales, lo de siempre. Lo que
+       sale de aquí es el texto que teclearía el entrenador, así que el resto
+       del guardado no cambia. El drop set se queda fuera: sus escalones son
+       su serie a serie. Las cuentas, en lib/series-detalle. */
+    const sinSeries = f.tipoSerie === 'Drop set'
+    const ss1 = paraGuardar(sinSeries ? null : f.detalle, Number(f.series), esTiempo,
+      { reps: f.repsFuerza, kg: f.kgFuerza, rir: f.rir })
+    const ss2 = paraGuardar(sinSeries ? null : f.detalle2, Number(f.series2 || f.series), false,
+      { reps: f.repsFuerza2, kg: f.kgFuerza2, rir: f.rir2 })
+    const p1 = ss1.fila, p2 = ss2.fila
     // Acepta «45» y «1:30»: mmssASegundos ya distingue por los dos puntos.
-    const segundos = esTiempo ? mmssASegundos(f.repsFuerza) : 0
+    // Con series distintas es la MEDIA: series × media da lo que dura de verdad.
+    const segundos = esTiempo ? mmssASegundos(p1.reps) : 0
+    const textoTiempo = ss1.detalle
+      ? textoRepsSeries(seriesDe({ series_detalle: ss1.detalle }), true)
+      : segundos > 0 ? duracionCorta(segundos) : ''
     const zonaF = (modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza) || null
     const campos = {
       disciplina: disciplinaDeTareaFuerza(disciplinaSesion),
@@ -895,24 +1030,26 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
         series: f.series ? Number(f.series) : null,
         /* En modo tiempo la casilla lleva los segundos, no repeticiones: se
            vacian las DOS columnas, que es lo que hace columnasEjercicio(''). */
-        ...columnasEjercicio(esTiempo ? '' : f.repsFuerza),
-        intensidad: f.kgFuerza ? Number(f.kgFuerza) : null,
+        ...columnasEjercicio(esTiempo ? '' : p1.reps),
+        intensidad: p1.kg ? Number(p1.kg) : null,
         descanso_segundos: f.descanso ? mmssASegundos(f.descanso) : null,
         // El control ya NO va concatenado en las notas: tiene sus columnas. Antes
         // se escribía «RIR: 2» aquí dentro y no había forma de compararlo con lo
         // que el atleta registraba, que sí era un número.
-        control_tipo: f.rir ? f.controlTipo : null,
-        control_valor: f.rir || null,
+        control_tipo: p1.rir ? f.controlTipo : null,
+        control_valor: p1.rir || null,
+        series_detalle: ss1.detalle,
         notas_ejecucion: [
-          esTiempo && segundos > 0 ? duracionTexto(segundos) + (f.tipoSerie === 'Isométrico' ? ' isométrico' : ' por serie') : '',
+          esTiempo && textoTiempo ? textoTiempo + (f.tipoSerie === 'Isométrico' ? ' isométrico' : ' por serie') : '',
           f.comentario || '',
         ].filter(Boolean).join(' · '),
         tipo_serie: f.tipoSerie || 'Normal',
         ejercicio_encadenado_nombre: ejBib2?.nombre || null,
         ejercicio_encadenado_id: ejBib2?.id || null,
         encadenado_series: ejBib2 && f.series2 ? Number(f.series2) : null,
-        ...columnasEncadenado(ejBib2 ? f.repsFuerza2 : ''),
-        encadenado_intensidad: ejBib2 && f.kgFuerza2 ? Number(f.kgFuerza2) : null,
+        ...columnasEncadenado(ejBib2 ? p2.reps : ''),
+        encadenado_intensidad: ejBib2 && p2.kg ? Number(p2.kg) : null,
+        encadenado_series_detalle: ejBib2 ? ss2.detalle : null,
         /* EL GRUPO DEL SEGUNDO SE COPIA AQUÍ, igual que el del primero.
            Sin esto, las series del segundo ejercicio no tienen a qué grupo
            sumarse y desaparecen del volumen: es el fallo que dejó 89 series
@@ -920,8 +1057,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
            y no se lee en vivo de la biblioteca porque cambiar un ejercicio de
            grupo mañana reescribiría el volumen de los meses pasados. */
         encadenado_grupo_muscular: ejBib2?.grupo_muscular || null,
-        encadenado_control_tipo: ejBib2 && f.rir2 ? f.controlTipo2 : null,
-        encadenado_control_valor: ejBib2 ? (f.rir2 || null) : null,
+        encadenado_control_tipo: ejBib2 && p2.rir ? f.controlTipo2 : null,
+        encadenado_control_valor: ejBib2 ? (p2.rir || null) : null,
         encadenado_notas_ejecucion: ejBib2 ? (f.comentario2 || null) : null,
         escalones_drop: f.escalonDrop || null,
         url_video: ejBib.url_video || null,
@@ -933,8 +1070,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       // Una tarea tiene UNA medición: o segundos o repeticiones, nunca las dos.
       if (esTiempo) {
         if (segundos > 0) await supabase.from('p_duracion').insert({ id_tarea: tarea.id, tiempo_planeado: segundos })
-      } else if (f.repsFuerza) {
-        await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, ...columnasPrescripcion(f.repsFuerza) })
+      } else if (p1.reps) {
+        await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, ...columnasPrescripcion(p1.reps) })
       }
     }
     // Editar conserva el sitio de la tarea: no gasta número de orden.
@@ -1113,6 +1250,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // viviera en la base las dos reglas volverían a pelearse.
   const campoBloque = "bg-gray-950/60 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500"
   const inputBloque = campoBloque + ' flex-none'
+  /* La casilla cuando las series son distintas: enseña el resumen («12/10/8») y
+     no se teclea, se cambia en «Serie a serie». Mismo tamaño que la casilla. */
+  const campoResumen = 'bg-transparent border border-dashed border-gray-600 text-gray-300 text-sm rounded-lg px-[9px] py-[7px] flex-none truncate cursor-default'
 
   // Los conmutadores del bloque: gris cuando están en su valor por defecto, naranja
   // cuando el entrenador ha elegido algo. Mismo lenguaje que el reps/seg de fuerza.
@@ -1153,9 +1293,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // El «≈» no es adorno: rm_estimado sale de Epley sobre una serie submáxima, así
   // que esto es un porcentaje de una estimación. Redondear a 2,5 kg porque eso es
   // lo que se puede montar en una barra.
-  const kgDesde1RM = (f: FilaFuerza): string | null => {
+  /* `pctTexto`: el porcentaje de una serie concreta en «Serie a serie»; si no,
+     el de la fila. */
+  const kgDesde1RM = (f: FilaFuerza, pctTexto: string = f.rir): string | null => {
     if (f.controlTipo !== 'pct1rm') return null
-    const pct = parseFloat(String(f.rir).replace(',', '.'))
+    const pct = parseFloat(String(pctTexto).replace(',', '.'))
     if (!pct || pct <= 0) return null
     const ej = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))
     if (!ej) return null
@@ -1164,44 +1306,53 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     return '≈ ' + (Math.round(dato.rm * pct / 100 / 2.5) * 2.5) + ' kg'
   }
 
-  /* Lo que el botón de «la última vez» acaba de traer a cada fila, para
-     enseñarlo al lado. Rellenar los campos sin decir de dónde salen es pedirle
-     al entrenador que se fíe: aquí ve «40×10 · 40×10 · 30×8» y decide. */
-  const [traido, setTraido] = useState<Record<number, string>>({})
+  /* Lo que hizo la última vez en el ejercicio de cada fila, para enseñarlo
+     debajo: «La última vez: 40×10 · 40×10 · 30×8». Va con el ejercicio para el
+     que se pidió (`ej`) y solo sale mientras la fila siga con ese: si luego se
+     cambia el ejercicio, o se quita una fila de arriba y los índices se corren,
+     la línea desaparece en vez de enseñar lo de otro ejercicio. */
+  const [traido, setTraido] = useState<Record<number, LineaUltimaVez>>({})
   /** Lo mismo, para el segundo ejercicio de una superserie. */
-  const [traido2, setTraido2] = useState<Record<number, string>>({})
+  const [traido2, setTraido2] = useState<Record<number, LineaUltimaVez>>({})
+
+  /** «La última vez: 18×10 · 18×9 (RIR 1-2)». Si el atleta no anotó en qué
+   *  escala iba el esfuerzo, se lee con la de la fila. */
+  const lineaUltimaVez = (pres: PrescripcionTraida, escalaFila: ControlTipo): string => {
+    const ctrl = textoControl(pres.controlTipo || escalaFila, pres.control)
+    return 'La última vez: ' + pres.detalle + (ctrl ? ' (' + ctrl + ')' : '')
+  }
 
   /**
-   * Trae a la fila lo que ese atleta hizo la última vez en ese ejercicio.
+   * Enseña debajo de la fila lo que ese atleta hizo la última vez en ese
+   * ejercicio. SOLO lo enseña: no toca series, repeticiones, peso ni control.
    *
-   * La cuenta —qué peso, qué rango de repeticiones— vive en lib/traer-ultima-vez
-   * con sus pruebas: aquí solo se pide el dato y se reparte por los campos.
+   * Antes rellenaba la fila con ello y le pisaba al entrenador la prescripción
+   * que ya había escrito. Lo pidió así (2026-10-11): «solo me ponga debajo
+   * cuanto hizo». Lo que se prescribe lo decide él mirando el dato.
    */
-  const traerUltimaVez = async (i: number) => {
+  /* Sin nada antes, con la FECHA: «antes de esta sesión» a secas no decía de qué
+     día hablaba, y al saltar con el panel de la semana a la sesión en la que lo
+     hizo por primera vez parecía que el botón se había roto (2026-10-11). */
+  const nadaAntes = (nombre: string) =>
+    'No hay nada anotado de «' + nombre + '» antes de esta sesión (' + fechaLarga(fechaSesion || hoyISO()).toLowerCase() + ').'
+
+  const verUltimaVez = async (i: number) => {
     const f = filasF[i]
-    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId))?.nombre
-    if (!nombre) { setTraido(p => ({ ...p, [i]: 'Elige primero el ejercicio.' })); return }
-    setTraido(p => ({ ...p, [i]: 'Buscando…' }))
+    const ej = f.ejercicioSelId
+    const poner = (texto: string, porSerie?: string[]) => setTraido(p => ({ ...p, [i]: { ej, texto, porSerie } }))
+    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(ej))?.nombre
+    if (!nombre) { poner('Elige primero el ejercicio.'); return }
+    poner('Buscando…')
 
     const { data, error } = await supabase.rpc('ultima_ejecucion_fuerza', {
       _dep: deportistaId, _nombre: nombre, _antes: fechaSesion || hoyISO(),
     })
-    if (error) { setTraido(p => ({ ...p, [i]: 'No se ha podido consultar: ' + error.message })); return }
+    if (error) { poner('No se ha podido consultar: ' + error.message); return }
 
     const pres = prescripcionDesdeUltimaVez(data as SerieHecha[], f.medida === 'tiempo')
-    if (!pres) { setTraido(p => ({ ...p, [i]: 'No hay nada anotado de «' + nombre + '» antes de esta sesión.' })); return }
+    if (!pres) { poner(nadaAntes(nombre)); return }
 
-    /* El peso y el control solo se pisan si vinieron: si el ejercicio es de peso
-       corporal, borrar lo que el entrenador ya hubiera escrito sería un robo. */
-    setFilasF(prev => prev.map((x, k) => k !== i ? x : {
-      ...x,
-      series: pres.series,
-      repsFuerza: pres.reps || x.repsFuerza,
-      kgFuerza: pres.kg || x.kgFuerza,
-      rir: pres.control || x.rir,
-      controlTipo: (pres.controlTipo as ControlTipo) || x.controlTipo,
-    }))
-    setTraido(p => ({ ...p, [i]: 'La última vez: ' + pres.detalle }))
+    poner(lineaUltimaVez(pres, f.controlTipo), pres.porSerie)
   }
 
   /**
@@ -1209,37 +1360,95 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
    *
    * No lo tenía, y es la mitad de la queja: el botón existía solo para el
    * principal, así que del encadenado no había forma de ver lo que levantó la
-   * última vez ni de traerlo.
+   * última vez.
    *
    * Va por `ultima_ejecucion_encadenado` y no por la de siempre porque su
    * nombre vive en otra columna y sus series llevan `ejercicio_numero = 2`.
    * Esa función mira las dos columnas, así que encuentra tanto las veces que
    * lo hizo suelto como encadenado.
    */
-  const traerUltimaVez2 = async (i: number) => {
+  const verUltimaVez2 = async (i: number) => {
     const f = filasF[i]
-    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(f.ejercicioSelId2))?.nombre
-    if (!nombre) { setTraido2(p => ({ ...p, [i]: 'Elige primero el ejercicio encadenado.' })); return }
-    setTraido2(p => ({ ...p, [i]: 'Buscando…' }))
+    const ej = f.ejercicioSelId2
+    const poner = (texto: string, porSerie?: string[]) => setTraido2(p => ({ ...p, [i]: { ej, texto, porSerie } }))
+    const nombre = ejerciciosBiblioteca.find(e => e.id === Number(ej))?.nombre
+    if (!nombre) { poner('Elige primero el ejercicio encadenado.'); return }
+    poner('Buscando…')
 
     const { data, error } = await supabase.rpc('ultima_ejecucion_encadenado', {
       _dep: deportistaId, _nombre: nombre, _antes: fechaSesion || hoyISO(),
     })
-    if (error) { setTraido2(p => ({ ...p, [i]: 'No se ha podido consultar: ' + error.message })); return }
+    if (error) { poner('No se ha podido consultar: ' + error.message); return }
 
     /* El encadenado no tiene modo tiempo propio: se prescribe por repeticiones. */
     const pres = prescripcionDesdeUltimaVez(data as SerieHecha[], false)
-    if (!pres) { setTraido2(p => ({ ...p, [i]: 'No hay nada anotado de «' + nombre + '» antes de esta sesión.' })); return }
+    if (!pres) { poner(nadaAntes(nombre)); return }
 
-    setFilasF(prev => prev.map((x, k) => k !== i ? x : {
-      ...x,
-      series2: pres.series,
-      repsFuerza2: pres.reps || x.repsFuerza2,
-      kgFuerza2: pres.kg || x.kgFuerza2,
-      rir2: pres.control || x.rir2,
-      controlTipo2: (pres.controlTipo as ControlTipo) || x.controlTipo2,
-    }))
-    setTraido2(p => ({ ...p, [i]: 'La última vez: ' + pres.detalle }))
+    poner(lineaUltimaVez(pres, f.controlTipo2), pres.porSerie)
+  }
+
+  /**
+   * «Serie a serie», debajo de la fila (o de su encadenado): solo con 2 series
+   * o más, y cerrado hasta que el entrenador lo abre. Cada línea cae bajo las
+   * casillas de arriba —mismos anchos, el «×» invisible y la etiqueta con el
+   * mismo hueco que su botón— para que se lea como una columna.
+   *
+   * El drop set no lo lleva: sus escalones de kilos ya son su serie a serie.
+   */
+  const pintarSeries = (f: FilaFuerza, i: number, encadenado = false) => {
+    if (f.tipoSerie === 'Cardio' || f.tipoSerie === 'Drop set') return null
+    const ss = seriesDeFila(f, encadenado)
+    if (ss.n < 2) return null
+    const control = controlDe(encadenado ? f.controlTipo2 : f.controlTipo)
+    /* Con «↺ última vez» pedido, cada serie enseña al lado lo que hizo esa misma
+       serie aquel día. Solo si sigue siendo el mismo ejercicio. */
+    const linea = encadenado ? traido2[i] : traido[i]
+    const antes = linea && linea.ej === (encadenado ? f.ejercicioSelId2 : f.ejercicioSelId) ? linea.porSerie : undefined
+    const etiqueta = 'flex-none px-2 py-1.5 text-[11.5px] font-bold border border-transparent text-gray-500 select-none'
+    return (
+      <div className="mt-1.5">
+        <button type="button" onClick={() => abrirSeries(i, encadenado)} aria-expanded={ss.abierto}
+          title="Escribir cada serie por separado: repeticiones, peso y esfuerzo"
+          className="inline-flex items-center gap-1.5 text-xs font-bold pl-1.5 pr-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500/50 transition">
+          <span className="w-2.5 text-[11px] text-gray-500" aria-hidden="true">{ss.abierto ? '▾' : '▸'}</span>
+          Serie a serie
+        </button>
+        {ss.abierto && ss.lista && (
+          <div className="mt-1.5 w-fit flex flex-col gap-1 border border-gray-800 bg-gray-950/40 rounded-xl px-2.5 pt-1.5 pb-2">
+            {ss.lista.map((s, k) => (
+              <div key={k} className="flex items-center gap-1.5">
+                <span className="w-[58px] flex-none text-xs font-semibold text-gray-400">Serie {k + 1}</span>
+                <span className="text-gray-500 flex-none select-none invisible" aria-hidden="true">×</span>
+                <input type="text" inputMode={ss.porTiempo ? 'text' : 'numeric'} value={s.reps}
+                  onChange={e => cambiarSerie(i, k, 'reps', e.target.value, encadenado)}
+                  className={inputBloque + ' w-[74px]'} placeholder={ss.porTiempo ? '1:30' : '8-10'}
+                  aria-label={'Serie ' + (k + 1) + ': ' + (ss.porTiempo ? 'segundos' : 'repeticiones')} />
+                {!encadenado && <span className={etiqueta} aria-hidden="true">{ss.porTiempo ? 'seg' : 'reps'}</span>}
+                <span className="text-gray-500 flex-none select-none">@</span>
+                <input type="number" value={s.kg} onChange={e => cambiarSerie(i, k, 'kg', e.target.value, encadenado)}
+                  className={inputBloque + ' w-[96px]'}
+                  placeholder={!encadenado && f.controlTipo === 'pct1rm' ? (kgDesde1RM(f, s.rir) ?? 'kg') : 'kg'}
+                  aria-label={'Serie ' + (k + 1) + ': peso'} />
+                <span className="text-gray-500 flex-none select-none">·</span>
+                <input type="text" value={s.rir} onChange={e => cambiarSerie(i, k, 'rir', e.target.value, encadenado)}
+                  className={inputBloque + ' w-[62px]'} placeholder={control.ph}
+                  aria-label={'Serie ' + (k + 1) + ': ' + control.ayuda} />
+                <span className={etiqueta} aria-hidden="true">{control.corto}</span>
+                {antes?.[k] && (
+                  <span className="ml-1 text-[11px] text-gray-500 whitespace-nowrap tabular-nums">antes {antes[k]}</span>
+                )}
+              </div>
+            ))}
+            {ss.distintas && (
+              <button type="button" onClick={() => igualarSeries(i, encadenado)}
+                className="self-start mt-1 text-[11.5px] text-gray-400 hover:text-orange-300 underline decoration-dotted underline-offset-4 transition">
+                Igualar todas a la serie 1
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   /* Lo que hay escrito y SIN GUARDAR: filas de resistencia, de fuerza y bloques.
@@ -1378,10 +1587,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
                         <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (cuantoPorSerie({ modo: t.ejercicios[0].cardio_modo, medida: t.ejercicios[0].cardio_medida, valor: t.ejercicios[0].cardio_valor }) || '—')
-                          : repsDeEjercicio(t.ejercicios?.[0]) ? repsDeEjercicio(t.ejercicios[0]) + ' reps' : mostrarValorGuardado(t)}</td>
+                          : columnasSerieASerie(t)?.reps
+                            ?? (repsDeEjercicio(t.ejercicios?.[0]) ? repsDeEjercicio(t.ejercicios[0]) + ' reps' : mostrarValorGuardado(t))}</td>
                         <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (t.ejercicios[0].cardio_objetivo ? '@ ' + t.ejercicios[0].cardio_objetivo : '—')
-                          : t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—'}</td>
+                          : columnasSerieASerie(t)?.kg
+                            ?? (t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : '—')}</td>
                         {/* El valor se guarda en `control_valor` + `control_tipo`.
                             Aquí se leía con una expresión regular sobre el texto de
                             las notas —«RIR: 2»—, que es donde vivía ANTES de que
@@ -1389,7 +1600,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             columna salía vacía siempre, y con RPE o %1RM no había
                             forma de que saliera nada. `controlDeEjercicio` lee la
                             columna y, si está vacía, rescata el texto viejo. */}
-                        <td className="py-2 px-2 text-gray-300">{controlDeEjercicio(t.ejercicios?.[0]) || '—'}</td>
+                        <td className="py-2 px-2 text-gray-300">{columnasSerieASerie(t)?.control ?? (controlDeEjercicio(t.ejercicios?.[0]) || '—')}</td>
                         <td className="py-2 px-2 text-gray-300">{t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}</td>
                         {/* El comentario del ENTRENADOR, que es lo que se prescribe.
                             Aquí se pintaba `notas_post`, que es lo que escribe el
@@ -2213,9 +2424,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           title="Cuenta en duración y en carga. Sus metros no entran en el volumen de carrera, ciclismo ni natación: no son comparables.">ⓘ</span>
                       )}
                     </div>
-                    ) : (
+                    ) : (() => {
+                    /* SERIE A SERIE: si alguna serie lleva otra cosa, esa casilla
+                       se resume sola («12/10/8») y se cambia desde «Serie a serie».
+                       Lo que es igual en todas se sigue tecleando aquí y va a todas. */
+                    const ss = seriesDeFila(f)
+                    const resReps = ss.resumen('reps'), resKg = ss.resumen('kg'), resRir = ss.resumen('rir')
+                    return (
                     <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700 rounded-xl px-2.5 py-1.5">
-                      <input type="number" value={f.series} onChange={e => updateF(i, 'series', e.target.value)}
+                      <input type="number" value={f.series} onChange={e => cambiarSeries(i, e.target.value)}
                         className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
                       <span className="text-gray-500 flex-none select-none">×</span>
                       {/* En tiempo el campo pasa a texto: acepta «45» y «1:30». */}
@@ -2223,11 +2440,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           repeticiones, «10» y «8-10». Con type="number" el guion ni
                           se podía teclear, que es lo que obligaba a escribir los
                           rangos en las notas, donde no los lee ningún cálculo. */}
-                      <input type="text" inputMode={f.medida === 'tiempo' ? 'text' : 'numeric'} value={f.repsFuerza}
-                        onChange={e => updateF(i, 'repsFuerza', e.target.value)}
+                      {resReps != null ? (
+                        <span className={campoResumen + ' w-[74px]'} title={resReps + ' — se cambia en «Serie a serie»'}>{resReps}</span>
+                      ) : (
+                      <input type="text" inputMode={f.medida === 'tiempo' ? 'text' : 'numeric'} value={ss.comun('reps', f.repsFuerza)}
+                        onChange={e => cambiarCampoFila(i, 'reps', e.target.value)}
                         className={inputBloque + ' w-[74px]'}
                         placeholder={f.medida === 'tiempo' ? '1:30' : '8-10'}
                         title={f.medida === 'tiempo' ? 'Tiempo por serie — segundos o mm:ss' : 'Repeticiones por serie — «10», o un rango «8-10»'} />
+                      )}
                       <button type="button"
                         onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
                         title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
@@ -2237,37 +2458,45 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       <span className="text-gray-500 flex-none select-none">@</span>
                       {/* Con %1RM el kilo sale solo del test del atleta y se enseña de
                           fantasma. Si no tiene ese test, no aparece nada. */}
-                      <input type="number" value={f.kgFuerza} onChange={e => updateF(i, 'kgFuerza', e.target.value)}
+                      {resKg != null ? (
+                        <span className={campoResumen + ' w-[96px]'} title={resKg + ' kg — se cambia en «Serie a serie»'}>{resKg}</span>
+                      ) : (
+                      <input type="number" value={ss.comun('kg', f.kgFuerza)} onChange={e => cambiarCampoFila(i, 'kg', e.target.value)}
                         className={inputBloque + ' w-[96px]'}
                         placeholder={f.controlTipo === 'pct1rm' ? (kgDesde1RM(f) ?? 'kg') : 'kg'}
                         title={f.controlTipo === 'pct1rm' && kgDesde1RM(f) ? 'Calculado con su 1RM más reciente de este ejercicio' : 'Peso'} />
+                      )}
                       <span className="text-gray-500 flex-none select-none">·</span>
-                      <input type="text" value={f.rir} onChange={e => updateF(i, 'rir', e.target.value)}
+                      {resRir != null ? (
+                        <span className={campoResumen + ' w-[62px]'} title={resRir + ' — se cambia en «Serie a serie»'}>{resRir}</span>
+                      ) : (
+                      <input type="text" value={ss.comun('rir', f.rir)} onChange={e => cambiarCampoFila(i, 'rir', e.target.value)}
                         className={inputBloque + ' w-[62px]'}
                         placeholder={controlDe(f.controlTipo).ph}
                         title={controlDe(f.controlTipo).ayuda} />
+                      )}
                       <button type="button"
                         onClick={() => updateF(i, 'controlTipo', siguienteControl(f.controlTipo))}
                         title={controlDe(f.controlTipo).ayuda + ' — pulsa para cambiar de escala'}
                         className={botonBloque(f.controlTipo !== 'rir')}>
                         {controlDe(f.controlTipo).corto}
                       </button>
-                      {/* TRAER LO QUE HIZO LA ÚLTIMA VEZ. Rellena la fila entera con
-                          lo que ese atleta levantó de verdad en este ejercicio, para
-                          prescribir desde ahí en vez de desde cero. Lo que él acaba
-                          viendo sigue siendo la prescripción: esto solo cambia de
-                          dónde nace. */}
-                      <button type="button" onClick={() => traerUltimaVez(i)}
-                        title="Traer lo que hizo la última vez en este ejercicio"
+                      {/* LO QUE HIZO LA ÚLTIMA VEZ, debajo de la fila. Solo se
+                          enseña: las casillas siguen siendo lo que escribió el
+                          entrenador. */}
+                      <button type="button" onClick={() => verUltimaVez(i)}
+                        title="Ver lo que hizo la última vez en este ejercicio"
                         className="flex-none text-[11px] font-bold px-2 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition">
                         ↺ última vez
                       </button>
                     </div>
+                    )
+                    })()}
+                    {/* Lo que hizo la última vez (o por qué no sale). */}
+                    {traido[i] && traido[i].ej === f.ejercicioSelId && (
+                      <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido[i].texto}</p>
                     )}
-                    {/* De donde sale lo que acaba de rellenarse. */}
-                    {traido[i] && (
-                      <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido[i]}</p>
-                    )}
+                    {pintarSeries(f, i)}
                   </td>
                   <td className="py-1.5 px-1.5"><input type="text" value={f.descanso} onChange={e => updateF(i, 'descanso', e.target.value)} className={inputCls} placeholder="2:00" /></td>
                   <td className="py-1 px-1"><input type="text" value={f.comentario} onChange={e => updateF(i, 'comentario', e.target.value)} className={inputCls} placeholder="Notas..." /></td>
@@ -2297,15 +2526,28 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       </p>
                     </td>
                     <td className="py-1.5 px-1.5">
+                      {(() => {
+                      /* Su propio «Serie a serie», independiente del principal. */
+                      const ss2 = seriesDeFila(f, true)
+                      const resReps2 = ss2.resumen('reps'), resKg2 = ss2.resumen('kg'), resRir2 = ss2.resumen('rir')
+                      return (
                       <div className="flex items-center gap-1.5 bg-gray-800/40 border border-orange-900/60 rounded-xl px-2.5 py-1.5">
-                        <input type="number" value={f.series2} onChange={e => updateF(i, 'series2', e.target.value)}
+                        <input type="number" value={f.series2} onChange={e => cambiarSeries(i, e.target.value, true)}
                           className={inputBloque + ' w-[58px]'} placeholder="4" title="Series" />
                         <span className="text-gray-500 flex-none select-none">×</span>
-                        <input type="text" inputMode="numeric" value={f.repsFuerza2} onChange={e => updateF(i, 'repsFuerza2', e.target.value)}
+                        {resReps2 != null ? (
+                          <span className={campoResumen + ' w-[74px]'} title={resReps2 + ' — se cambia en «Serie a serie»'}>{resReps2}</span>
+                        ) : (
+                        <input type="text" inputMode="numeric" value={ss2.comun('reps', f.repsFuerza2)} onChange={e => cambiarCampoFila(i, 'reps', e.target.value, true)}
                           className={inputBloque + ' w-[74px]'} placeholder="10" title="Repeticiones" />
+                        )}
                         <span className="text-gray-500 flex-none select-none">@</span>
-                        <input type="number" value={f.kgFuerza2} onChange={e => updateF(i, 'kgFuerza2', e.target.value)}
+                        {resKg2 != null ? (
+                          <span className={campoResumen + ' w-[96px]'} title={resKg2 + ' kg — se cambia en «Serie a serie»'}>{resKg2}</span>
+                        ) : (
+                        <input type="number" value={ss2.comun('kg', f.kgFuerza2)} onChange={e => cambiarCampoFila(i, 'kg', e.target.value, true)}
                           className={inputBloque + ' w-[96px]'} placeholder="kg" title="Peso" />
+                        )}
                         {/* SU PROPIO CONTROL, no el del primero. La pantalla de
                             ejecución le prestaba el del ejercicio de arriba: si
                             al primero no le ponías ninguno, el atleta se
@@ -2313,10 +2555,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             segundo. Son dos ejercicios distintos y pueden
                             llevar escalas distintas. */}
                         <span className="text-gray-500 flex-none select-none">·</span>
-                        <input type="text" value={f.rir2} onChange={e => updateF(i, 'rir2', e.target.value)}
+                        {resRir2 != null ? (
+                          <span className={campoResumen + ' w-[62px]'} title={resRir2 + ' — se cambia en «Serie a serie»'}>{resRir2}</span>
+                        ) : (
+                        <input type="text" value={ss2.comun('rir', f.rir2)} onChange={e => cambiarCampoFila(i, 'rir', e.target.value, true)}
                           className={inputBloque + ' w-[62px]'}
                           placeholder={controlDe(f.controlTipo2).ph}
                           title={controlDe(f.controlTipo2).ayuda} />
+                        )}
                         <button type="button"
                           onClick={() => updateF(i, 'controlTipo2', siguienteControl(f.controlTipo2))}
                           title={controlDe(f.controlTipo2).ayuda + ' — pulsa para cambiar de escala'}
@@ -2325,16 +2571,19 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         </button>
                         {/* El mismo «↺ última vez» que el principal: este
                             ejercicio también se repite semana a semana y
-                            también hay que prescribirlo desde lo que levantó. */}
-                        <button type="button" onClick={() => traerUltimaVez2(i)}
-                          title="Traer lo que hizo la última vez en este ejercicio"
+                            también hay que ver lo que levantó. */}
+                        <button type="button" onClick={() => verUltimaVez2(i)}
+                          title="Ver lo que hizo la última vez en este ejercicio"
                           className="flex-none text-[11px] font-bold px-2 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition">
                           ↺ última vez
                         </button>
                       </div>
-                      {traido2[i] && (
-                        <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido2[i]}</p>
+                      )
+                      })()}
+                      {traido2[i] && traido2[i].ej === f.ejercicioSelId2 && (
+                        <p className="text-[11px] text-gray-500 mt-1 mb-0">{traido2[i].texto}</p>
                       )}
+                      {pintarSeries(f, i, true)}
                     </td>
                     <td className="py-1.5 px-1.5"></td>
                     <td className="py-1 px-1">

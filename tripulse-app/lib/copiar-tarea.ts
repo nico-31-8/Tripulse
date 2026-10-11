@@ -17,10 +17,11 @@
 // que la de origen no se toca — que es justo lo que se le promete al entrenador
 // en el panel.
 import { detectarMedicion } from './medicion'
-import { repsDeEjercicio } from './repeticiones'
+import { repsDeEjercicio, repsDeEncadenado } from './repeticiones'
 import { intensidadGuardada } from './intensidad-prescrita'
 import { mmssCorto } from './duracion-carga'
 import type { ControlTipo } from './control-esfuerzo'
+import { seriesParaEditar, type SerieEditor } from './series-detalle'
 
 export interface FilaResistencia {
   orden: number
@@ -85,6 +86,14 @@ export interface FilaFuerza {
   controlTipo2: ControlTipo
   rir2: string
   comentario2: string
+  /* SERIE A SERIE (lib/series-detalle): una entrada por serie cuando el
+     entrenador abre «Serie a serie». Sin ella —o con todas iguales— manda la
+     fila, como siempre. `detalle2` es la del ejercicio encadenado. Los `ver*`
+     solo dicen si el desplegable está abierto: sale cerrado. */
+  detalle?: SerieEditor[] | null
+  detalle2?: SerieEditor[] | null
+  verSeries?: boolean
+  verSeries2?: boolean
   escalonDrop: string
   /* La línea de cardio (tipo de serie «Cardio»). Las reglas de qué cuenta
      y dónde viven en lib/cardio-fuerza. */
@@ -217,11 +226,17 @@ export function filaFuerzaDesde(t: any, o: OpcionesFila): FilaFuerza {
        igual que antes, y sus números se siguen leyendo en las notas. No se
        rellenan hacia atrás, que exigiría justo el parser que se ha evitado. */
     series2: ej?.encadenado_series != null ? String(ej.encadenado_series) : '',
-    repsFuerza2: ej?.encadenado_repeticiones != null ? String(ej.encadenado_repeticiones) : '',
+    /* Con el tope, igual que el principal: con `String(min)` un «8-10» del
+       segundo ejercicio volvía como «8» y, al guardar, se quedaba en 8. */
+    repsFuerza2: repsDeEncadenado(ej),
     kgFuerza2: ej?.encadenado_intensidad != null ? String(ej.encadenado_intensidad) : '',
     controlTipo2: (ej?.encadenado_control_tipo as ControlTipo) || 'rir',
     rir2: ej?.encadenado_control_valor || '',
     comentario2: ej?.encadenado_notas_ejecucion || '',
+    /* Las series distintas vuelven con la tarea, al editar y al duplicar. Sin
+       esto, tocar el descanso de una pirámide la guardaba como series iguales. */
+    detalle: seriesParaEditar(ej?.series_detalle, esTiempo),
+    detalle2: seriesParaEditar(ej?.encadenado_series_detalle, false),
     escalonDrop: ej?.escalones_drop || '',
     cardioModo: ej?.cardio_modo || '',
     cardioMedida: ej?.cardio_medida === 'segundos' ? 'segundos' : 'metros',

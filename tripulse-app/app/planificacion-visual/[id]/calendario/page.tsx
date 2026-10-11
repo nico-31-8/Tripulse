@@ -32,6 +32,7 @@ import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
 import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
+import { columnasPrescripcion, repsDePrescripcion } from '@/lib/repeticiones'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -386,7 +387,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       const pu = Array.isArray(tarea.p_duracion) ? tarea.p_duracion[0] : tarea.p_duracion
       if (pu) await supabase.from('p_duracion').insert({ id_tarea: t.id, tiempo_planeado: pu.tiempo_planeado, potencia_objetivo: pu.potencia_objetivo ?? null })
       const pr = Array.isArray(tarea.p_repeticiones) ? tarea.p_repeticiones[0] : tarea.p_repeticiones
-      if (pr) await supabase.from('p_repeticiones').insert({ id_tarea: t.id, repeticiones_planteadas: pr.repeticiones_planteadas })
+      /* Con el tope del rango: copiando solo el mínimo, pegar una sesión convertía
+         «8-10» en «8». Se lee y se escribe con lib/repeticiones, que arma las dos
+         columnas juntas. */
+      if (pr) await supabase.from('p_repeticiones').insert({ id_tarea: t.id, ...columnasPrescripcion(repsDePrescripcion(pr)) })
       // Ejercicios de fuerza de la tarea (antes se perdían al copiar → tarea vacía).
       const ejs = Array.isArray(tarea.ejercicios) ? tarea.ejercicios : (tarea.ejercicios ? [tarea.ejercicios] : [])
       if (ejs.length) {

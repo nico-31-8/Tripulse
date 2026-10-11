@@ -8,6 +8,11 @@
 // acaba viendo es LA PRESCRIPCIÓN, no un historial — solo que ahora la
 // prescripción nace de lo que de verdad levantó.
 //
+// DESDE EL 2026-10-11 EL EDITOR YA NO RELLENA LA FILA: solo enseña debajo el
+// `detalle` (y el control), porque le pisaba al entrenador lo que ya había
+// escrito. Las demás cuentas siguen aquí, con sus pruebas, por si vuelve a
+// hacer falta traer algo (por ejemplo, solo el peso cuando la casilla esté vacía).
+//
 // EL PROBLEMA ES QUE LAS SERIES CASI NUNCA SON IGUALES. «40×10, 40×10, 30×8» no
 // es «3 × 10 @ 40», y rellenar eso sería meterle al entrenador un dato que él no
 // ha comprobado. Así que:
@@ -35,6 +40,8 @@ export interface PrescripcionTraida {
   controlTipo: string
   /** Lo que hizo, tal cual: «40×10 · 40×10 · 30×8». Para enseñarlo al lado. */
   detalle: string
+  /** Lo mismo, serie a serie: lo que enseña cada línea de «Serie a serie». */
+  porSerie: string[]
 }
 
 const num = (v: unknown): number => {
@@ -85,6 +92,15 @@ export function prescripcionDesdeUltimaVez(
   const cMin = controles.length ? Math.min(...controles) : 0
   const cMax = controles.length ? Math.max(...controles) : 0
 
+  const porSerie = p.map(s => {
+    if (porTiempo) return num(s.tiempo_real) ? num(s.tiempo_real) + 's' : '—'
+    const k = num(s.peso_real), r = num(s.repeticiones_reales)
+    if (k && r) return k + '×' + r
+    if (r) return String(r)
+    if (k) return k + ' kg'
+    return '—'
+  })
+
   return {
     series: String(p.length),
     /* Por tiempo, el campo de la fila lleva los segundos y no admite rango:
@@ -93,13 +109,7 @@ export function prescripcionDesdeUltimaVez(
     kg: kg ? String(kg) : '',
     control: cMin ? (cMin === cMax ? String(cMin) : cMin + '-' + cMax) : '',
     controlTipo: p.find(s => s.control_tipo)?.control_tipo || '',
-    detalle: p.map(s => {
-      if (porTiempo) return num(s.tiempo_real) ? num(s.tiempo_real) + 's' : '—'
-      const k = num(s.peso_real), r = num(s.repeticiones_reales)
-      if (k && r) return k + '×' + r
-      if (r) return String(r)
-      if (k) return k + ' kg'
-      return '—'
-    }).join(' · '),
+    detalle: porSerie.join(' · '),
+    porSerie,
   }
 }

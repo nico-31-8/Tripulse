@@ -14,6 +14,52 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 11 de octubre de 2026 · Serie a serie: cada serie con sus repeticiones, su peso y su esfuerzo
+
+**Qué es.** Hasta ahora todas las series de un ejercicio eran iguales
+(«3 × 8 @ 60 · RIR 2»). Ahora, con 2 series o más, debajo de la fila sale
+**▸ Serie a serie**: lo abres y escribes cada serie por separado. Por ejemplo,
+una pirámide: 12 × 40, 10 × 45 y 8 × 50.
+
+**Cómo funciona.**
+- Sale cerrado. Si no lo abres, todo funciona como siempre.
+- Al abrirlo, cada serie empieza con lo que pone la fila y cambias solo la que
+  quieras.
+- Si alguna serie es distinta, esa casilla de la fila se resume sola:
+  «12/10/8». La barra es serie a serie; el guion sigue siendo un rango («8-10»).
+- El número de series se sigue cambiando arriba: subirlo añade una serie igual
+  a la última y bajarlo quita la última.
+- **Igualar todas a la serie 1** las vuelve a dejar iguales.
+- Vale también para el segundo ejercicio de una superserie y para los
+  ejercicios por tiempo (los segundos de cada serie). El drop set sigue como
+  estaba.
+- Si vacías una casilla de una serie, esa serie se queda sin ese dato.
+- En la vista de fichas, una tarea con series distintas se edita en la tabla.
+
+**Lo que ve tu deportista.** En el resumen de la sesión, una línea por serie.
+Cuando apunta, cada serie le enseña en gris lo que le toca, también el RIR o el
+RPE, que antes no salía en esa casilla.
+
+**↺ última vez ya no cambia tus casillas.** Ahora solo enseña debajo lo que
+hizo («La última vez: 18×10 · 18×9 (RIR 1-2)») y, con **Serie a serie**
+abierto, lo que hizo en cada serie al lado de esa serie. Si no hay nada, dice de
+qué fecha habla: «antes de esta sesión (jueves 8 oct)».
+
+**Correcciones que puedes notar:**
+- **La carga de las sesiones con rangos de repeticiones sube un poco.** Al
+  estimar la duración (y con ella la carga) se contaba «8-10» como 8; ahora se
+  cuenta el centro, 9, que es lo que tocaba desde que existen los rangos.
+- Al pegar una sesión en el calendario, al copiar una tarea desde el panel de
+  la semana y al editar el segundo ejercicio de una superserie, «8-10» se
+  quedaba en «8». Ya no.
+- En el resumen del deportista y en el modo entrenador, los ejercicios por
+  tiempo salían redondeados a minutos: 40 s aparecía como «1 min» y 20 s como
+  «0 min». Ahora salen en segundos.
+- El resumen del deportista no enseñaba los números del segundo ejercicio de
+  una superserie, solo su nombre. Ahora sí.
+
+---
+
 ## 11 de octubre de 2026 · Llega el director: un entrenador que dirige a otros entrenadores
 
 **Si no trabajas con un director, para ti no cambia nada.** Todo lo de abajo

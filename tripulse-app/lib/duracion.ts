@@ -21,7 +21,7 @@ import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
 import { vecesDe, descansoTotalDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
-import { repsDeCalculo } from './repeticiones'
+import { repsDeCalculoPorSerie, segDeCalculoPorSerie } from './series-detalle'
 import { esBloque, duracionBloque, leerConfig, ordenarLineas, type Formato, type LineaBloque } from './bloque-formato'
 import type { Sexo } from './tests-campo'
 
@@ -74,6 +74,8 @@ export interface EjercicioDuracion {
   repeticiones?: number | null
   /** El tope, si se prescribió un rango («8-10»). Ver lib/repeticiones. */
   repeticiones_max?: number | null
+  /** Serie a serie, si las series son distintas. Ver lib/series-detalle. */
+  series_detalle?: unknown
   /** La línea de cardio, si el tipo de serie es «Cardio». */
   cardio_modo?: string | null
   cardio_medida?: string | null
@@ -291,8 +293,10 @@ export function calcularDuracionEstimada(
       /* Con un rango se cuenta el CENTRO: «8-10» estimado como ocho dejaría
          la sesión corta siempre, y la carga detrás de ella. Con repeticiones
          exactas da el número de siempre (lib/repeticiones). */
-      const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + repsDeCalculo(e), 0)
-      const isoSeg = t.p_duracion?.[0]?.tiempo_planeado || 0
+      /* SERIE A SERIE: con series distintas cuenta la media de cada ejercicio,
+         que por las series da lo que suman todas (lib/series-detalle). */
+      const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + repsDeCalculoPorSerie(e), 0)
+      const isoSeg = segDeCalculoPorSerie(t.ejercicios?.[0], t.p_duracion?.[0]?.tiempo_planeado || 0)
       let trabajo = 0
       if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
       else if (isoSeg > 0) trabajo = series * isoSeg

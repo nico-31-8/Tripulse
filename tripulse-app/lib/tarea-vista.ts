@@ -12,7 +12,8 @@ import { referenciaDeZona, type Tests } from './referencia-zona'
 import { segAMmss } from './copiar-tarea'
 import { zonaResistencia, zonaFuerza } from './zonas'
 import { controlDeEjercicio } from './control-esfuerzo'
-import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion } from './repeticiones'
+import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, repsDeEncadenado } from './repeticiones'
+import { seriesDe, tieneSeriesDistintas, textoRepsSeries, textoKgSeries, textoControlSeries } from './series-detalle'
 import { esBloque, leerConfig, ordenarLineas, textoFormato, textoLinea, QUE_SE_APUNTA, type Formato, type LineaBloque } from './bloque-formato'
 
 /** Lo que se hace en CADA serie: «400 m», «5:00 min», «8 reps». */
@@ -124,6 +125,9 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
 
   if (esFuerza) {
     const porTiempo = !!t?.p_duracion?.[0]?.tiempo_planeado
+    /* Serie a serie: «12/10/8 reps», «40/45/50 kg», «RIR 3/2/1». */
+    const sas = tieneSeriesDistintas(ej) ? seriesDe(ej, { segFila: t?.p_duracion?.[0]?.tiempo_planeado }) : null
+    const repsSas = sas ? textoRepsSeries(sas, porTiempo) : ''
     return {
       titulo: ej.nombre || comentario || 'Ejercicio',
       zona, nombreZona, disciplina: disciplina || 'Fuerza', esFuerza: true,
@@ -131,11 +135,15 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
         { k: 'Grupo', v: ej.grupo_muscular || '—' },
         { k: 'Tipo de serie', v: ej.tipo_serie || 'Normal' },
         { k: 'Series', v: String(ej.series ?? t.series ?? '—') },
-        { k: porTiempo ? 'Tiempo' : 'Repeticiones', v: porTiempo ? valorPorSerie(t) : (repsDeEjercicio(ej) ? repsDeEjercicio(ej) + ' reps' : '—') },
-        { k: 'Carga', v: ej.intensidad != null ? ej.intensidad + ' kg' : '—', destaca: true },
+        {
+          k: porTiempo ? 'Tiempo' : 'Repeticiones',
+          v: sas ? (repsSas ? (porTiempo ? repsSas : repsSas + ' reps') : '—')
+            : porTiempo ? valorPorSerie(t) : (repsDeEjercicio(ej) ? repsDeEjercicio(ej) + ' reps' : '—'),
+        },
+        { k: 'Carga', v: sas ? (textoKgSeries(sas) || '—') : ej.intensidad != null ? ej.intensidad + ' kg' : '—', destaca: true },
         // «Control», no «RIR»: el RIR es una de las cuatro escalas, y con la
         // etiqueta fija un %1RM salía bajo el nombre equivocado.
-        { k: 'Control', v: controlDeEjercicio(ej) || '—', destaca: true },
+        { k: 'Control', v: sas ? (textoControlSeries(sas, ej.control_tipo) || '—') : controlDeEjercicio(ej) || '—', destaca: true },
         { k: 'Descanso', v: descanso },
       ],
       comentario,
@@ -202,13 +210,16 @@ export function textoEncadenado(ej: any): string {
   const nombre = ej?.ejercicio_encadenado_nombre
   if (!nombre) return ''
   const ser = ej.encadenado_series
-  const rep = ej.encadenado_repeticiones
-  const kg = ej.encadenado_intensidad
+  /* Serie a serie (lib/series-detalle): «3×12/10/8 · 25/27.5/30 kg». */
+  const sas = tieneSeriesDistintas(ej, true) ? seriesDe(ej, { encadenado: true }) : null
+  /* Con el tope del rango: «3×8-10», no «3×8». */
+  const rep = sas ? textoRepsSeries(sas, false) : repsDeEncadenado(ej)
+  const kg = sas ? textoKgSeries(sas) : ej.encadenado_intensidad != null ? ej.encadenado_intensidad + ' kg' : ''
   const trozos = [
-    ser != null && rep != null ? ser + '×' + rep
+    ser != null && rep ? ser + '×' + rep
       : ser != null ? ser + (Number(ser) === 1 ? ' serie' : ' series')
-      : rep != null ? rep + ' reps' : '',
-    kg != null ? kg + ' kg' : '',
+      : rep ? rep + ' reps' : '',
+    kg,
   ].filter(Boolean)
   return trozos.length ? nombre + ' · ' + trozos.join(' · ') : String(nombre)
 }

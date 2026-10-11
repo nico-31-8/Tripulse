@@ -19,6 +19,8 @@
 //     esfuerzo percibido del atleta, y el SICAT calcula con ese número.
 import { useRouter } from 'next/navigation'
 import { repsDeEjercicio } from '@/lib/repeticiones'
+import { duracionCorta } from '@/lib/medicion'
+import { seriesDe, tieneSeriesDistintas, textoRepsSeries } from '@/lib/series-detalle'
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -42,11 +44,19 @@ import { emojiDisciplina } from '@/lib/disciplinas'
 function objetivoDe(t: any): string {
   /* Un bloque con formato (AMRAP…) se dice por su formato. */
   if (esBloque(t)) return textoFormato(t.formato as Formato, leerConfig(t.formato_config))
+  /* Serie a serie (lib/series-detalle): «3 × 12/10/8 reps». */
+  const ej = t.ejercicios?.[0]
+  if (tieneSeriesDistintas(ej)) {
+    const segS = t.p_duracion?.[0]?.tiempo_planeado
+    const r = textoRepsSeries(seriesDe(ej, { segFila: segS }), !!segS)
+    if (r) return (t.series ? t.series + ' × ' : '') + (segS ? r : r + ' reps')
+  }
   /* En bloques: «3 × (2 × 400 m)». El texto es de lib/bloques-tarea. */
   const m = t.p_distancia?.[0]?.metros_planeados
   if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
-  if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
+  /* «40 s», no «1 min» (lib/medicion). */
+  if (seg) return repeticionTexto(t, duracionCorta(seg))
   const reps = repsDeEjercicio(t.ejercicios?.[0])
   if (reps) return repeticionTexto(t, reps + ' reps')
   return t.series ? t.series + ' series' : '—'

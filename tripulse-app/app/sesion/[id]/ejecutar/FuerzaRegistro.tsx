@@ -8,6 +8,7 @@ import {
 import { mmss } from '@/lib/duracion-carga'
 import { cuantoPorSerie } from '@/lib/cardio-fuerza'
 import { textoEncadenado } from '@/lib/tarea-vista'
+import { seriesDe, textoRepsSeries, textoKgSeries } from '@/lib/series-detalle'
 import type { TareaEjec, EjercicioEjec, SerieEnCurso, CampoSerie, HistorialFuerza } from './tipos'
 
 const segAMmss = mmss
@@ -71,6 +72,14 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
         const esCardio = tipoSerie === 'Cardio'
         const cuantoCardio = esCardio ? cuantoPorSerie({ modo: ej.cardio_modo, medida: ej.cardio_medida, valor: ej.cardio_valor }) : ''
         const escalones = esDropSet && ej.escalones_drop ? ej.escalones_drop.split(',').map((s: string) => s.trim()) : []
+        /* LO QUE TOCA EN CADA SERIE (lib/series-detalle): con «Serie a serie», la
+           suya; si no, todas iguales desde la fila. Es lo que va de fantasma en las
+           casillas, también el RIR: antes esa casilla ponía solo «RIR» y el atleta
+           no veía a cuánto se lo habías mandado. */
+        const objetivos = seriesDe(ej, { segFila: segPlan, n: numSeries })
+        const objetivos2 = tieneEj2 ? seriesDe(ej, { encadenado: true, n: numSeries }) : []
+        const repsObj = textoRepsSeries(objetivos, porTiempo)
+        const kgObj = textoKgSeries(objetivos)
 
         /* Modo mejora: qué hizo la última vez. La lógica vive en lib/modo-mejora
            porque la pantalla donde el ATLETA registra su propia sesión de fuerza
@@ -121,8 +130,11 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
               )}
               <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                 <span>{numSeries} series</span>
-                {repsDeEjercicio(ej) && <span>{repsDeEjercicio(ej)} reps obj.</span>}
-                {ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
+                {!esCardio && !esDropSet && repsObj && <span>{repsObj}{porTiempo ? '' : ' reps'} obj.</span>}
+                {!esCardio && !esDropSet && kgObj && <span>{kgObj} obj.</span>}
+                {/* El drop set, como siempre: sus kilos van por escalones. */}
+                {esDropSet && repsDeEjercicio(ej) && <span>{repsDeEjercicio(ej)} reps obj.</span>}
+                {esDropSet && ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
                 {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
               </div>
               {/* Modo mejora: la última vez que hiciste este ejercicio, para superarlo. */}
@@ -143,6 +155,8 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                 const s1 = getSerieFuerza(ej.id, numSerie, 1)
                 const s2 = getSerieFuerza(ej.id, numSerie, 2)
                 const completada = s1.completada
+                const o = objetivos[serieIdx]
+                const o2 = objetivos2[serieIdx]
 
                 return (
                   <div key={serieIdx} className={'rounded-xl border transition ' + (completada ? 'bg-green-900/30 border-green-700' : 'bg-gray-800 border-gray-700')}>
@@ -182,22 +196,22 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                             última vez no se pierde: baja a su línea, debajo.
                             Si no prescribiste ese dato, cae a la última vez, que
                             es mejor pista que un rótulo vacío. */}
-                        <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad ? String(ej.intensidad) : (prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : 'Kg')}
+                        <input type="number" value={s1.peso_real || ''} placeholder={o.kg != null ? String(o.kg) : (prevSerie(numSerie)?.peso_real ? String(Number(prevSerie(numSerie)?.peso_real)) : 'Kg')}
                           onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)}
                           className={inputCls} />
                         {porTiempo ? (
                           <input type="number" value={s1.tiempo_real || ''}
-                            placeholder={segPlan ? segPlan + ' s' : (prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie)?.tiempo_real)) + ' s' : 'seg')}
+                            placeholder={o.seg ? o.seg + ' s' : (prevSerie(numSerie)?.tiempo_real ? String(Number(prevSerie(numSerie)?.tiempo_real)) + ' s' : 'seg')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'tiempo_real', e.target.value)}
                             title="Segundos que aguantaste esta serie"
                             className={inputCls} />
                         ) : (
-                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={repsDeEjercicio(ej) || (prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : 'Reps')}
+                          <input type="number" value={s1.repeticiones_reales || ''} placeholder={o.reps || (prevSerie(numSerie)?.repeticiones_reales ? String(Number(prevSerie(numSerie)?.repeticiones_reales)) : 'Reps')}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)}
                             className={inputCls} />
                         )}
                         {seAnotaControl ? (
-                          <input type="number" min="0" max={ctrl!.max} value={s1.control_real || ''} placeholder={ctrl!.et}
+                          <input type="number" min="0" max={ctrl!.max} value={s1.control_real || ''} placeholder={o.control || ctrl!.et}
                             title={ctrl!.ayuda}
                             onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)}
                             className={inputCls} />
@@ -205,7 +219,7 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                           /* Con VBT o %1RM no hay nada que anotar al terminar la serie.
                              Se enseña lo prescrito para que sepa contra qué iba. */
                           <div className="text-center text-[11px] text-gray-500 leading-tight py-1">
-                            {textoControl(ej.control_tipo || ctrlTipo, ej.control_valor) || '—'}
+                            {textoControl(ej.control_tipo || ctrlTipo, o.control) || '—'}
                           </div>
                         )}
                       </div>
@@ -259,15 +273,15 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
                         <div className="grid grid-cols-2 gap-2">
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-400 mb-2 truncate font-medium">{ej.nombre}</p>
-                            <input type="number" value={s1.peso_real || ''} placeholder={ej.intensidad ? String(ej.intensidad) : 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={repsDeEjercicio(ej) || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
-                            {ctrl && <input type="number" min="0" max={ctrl.max} value={s1.control_real || ''} placeholder={ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)} className={inputCls} />}
+                            <input type="number" value={s1.peso_real || ''} placeholder={o.kg != null ? String(o.kg) : 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s1.repeticiones_reales || ''} placeholder={o.reps || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            {ctrl && <input type="number" min="0" max={ctrl.max} value={s1.control_real || ''} placeholder={o.control || ctrl.et} title={ctrl.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 1, 'control_real', e.target.value)} className={inputCls} />}
                           </div>
                           <div className="bg-gray-700 rounded-lg p-2">
                             <p className="text-xs text-orange-300 mb-2 truncate font-medium">{ej.ejercicio_encadenado_nombre}</p>
-                            <input type="number" value={s2.peso_real || ''} placeholder="Kg" onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
-                            <input type="number" value={s2.repeticiones_reales || ''} placeholder={ej.encadenado_repeticiones ? String(ej.encadenado_repeticiones) : 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
-                            {ctrl2 && <input type="number" min="0" max={ctrl2.max} value={s2.control_real || ''} placeholder={ctrl2.et} title={ctrl2.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'control_real', e.target.value)} className={inputCls} />}
+                            <input type="number" value={s2.peso_real || ''} placeholder={o2?.kg != null ? String(o2.kg) : 'Kg'} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'peso_real', e.target.value)} className={inputCls + ' mb-1'} />
+                            <input type="number" value={s2.repeticiones_reales || ''} placeholder={o2?.reps || 'Reps'} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'repeticiones_reales', e.target.value)} className={inputCls + ' mb-1'} />
+                            {ctrl2 && <input type="number" min="0" max={ctrl2.max} value={s2.control_real || ''} placeholder={o2?.control || ctrl2.et} title={ctrl2.ayuda} onChange={e => updateSerieFuerza(ej.id, numSerie, 2, 'control_real', e.target.value)} className={inputCls} />}
                             {antes2 && (
                               <p className="text-[11px] text-gray-400 mt-1.5 mb-0">La última vez: {antes2}</p>
                             )}

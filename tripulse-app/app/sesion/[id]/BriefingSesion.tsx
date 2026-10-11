@@ -23,7 +23,8 @@ import DiaDeTest from '@/components/DiaDeTest'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
 import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
-import { controlDeEjercicio } from '@/lib/control-esfuerzo'
+import { controlDeEjercicio, textoControl } from '@/lib/control-esfuerzo'
+import { seriesDe, tieneSeriesDistintas, trozosSerie, type SerieVista } from '@/lib/series-detalle'
 import DatosReales from './DatosReales'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { minutosEfectivos } from '@/lib/duracion-carga'
@@ -32,7 +33,7 @@ import { repeticionTexto } from '@/lib/bloques-tarea'
 import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
-import { mmss } from '@/lib/medicion'
+import { mmss, duracionCorta } from '@/lib/medicion'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 
 
@@ -43,7 +44,9 @@ function objetivoTarea(t: any): string {
   const m = t.p_distancia?.[0]?.metros_planeados
   if (m) return repeticionTexto(t, m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m')
   const seg = t.p_duracion?.[0]?.tiempo_planeado
-  if (seg) return repeticionTexto(t, Math.round(seg / 60) + ' min')
+  /* «40 s», no «1 min»: redondear a minutos ponía una plancha de 20 s como
+     «0 min» (lib/medicion). */
+  if (seg) return repeticionTexto(t, duracionCorta(seg))
   const reps = repsDePrescripcion(t.p_repeticiones?.[0])
   if (reps) return repeticionTexto(t, reps + ' reps')
   // Fuerza: las repeticiones están en el ejercicio, no en la tarea.
@@ -63,6 +66,47 @@ function ejercicioTarea(t: any): { nombre: string; tipo: string | null } | null 
   if (!e?.nombre) return null
   const nombre = e.ejercicio_encadenado_nombre ? e.nombre + ' + ' + e.ejercicio_encadenado_nombre : e.nombre
   return { nombre, tipo: e.tipo_serie && e.tipo_serie !== 'Normal' ? e.tipo_serie : null }
+}
+
+/**
+ * El segundo ejercicio de una superserie, con sus números: «Curl con barra:
+ * 3 × 12 reps · 25 kg · RIR 2». Hasta ahora el resumen enseñaba solo el nombre
+ * («Dominadas + Curl con barra») y el atleta no sabía cuánto peso ni cuántas
+ * repeticiones le tocaban del segundo hasta abrir la sesión.
+ */
+function lineaEncadenado(e: any): string {
+  if (!e?.ejercicio_encadenado_nombre) return ''
+  const s = seriesDe(e, { encadenado: true })[0]
+  const n = Number(e.encadenado_series ?? e.series) || 0
+  const trozos = [
+    s.reps ? (n > 1 ? n + ' × ' : '') + s.reps + ' reps' : '',
+    s.kg != null ? s.kg + ' kg' : '',
+    textoControl(e.encadenado_control_tipo, s.control),
+  ].filter(Boolean)
+  return trozos.length ? e.ejercicio_encadenado_nombre + ': ' + trozos.join(' · ') : ''
+}
+
+/** Serie a serie, en el resumen: una línea por serie. Solo sale si son distintas. */
+function ListaSeries({ series, tipo, porTiempo, titulo }: {
+  series: SerieVista[]
+  tipo?: string | null
+  porTiempo: boolean
+  titulo?: string
+}) {
+  return (
+    <ol className="list-none m-0 mt-1.5 pt-1.5 pl-0 border-t border-white/[0.06] grid gap-0.5">
+      {titulo && <li className="text-[11px] font-semibold text-orange-300 mb-0.5">{titulo}</li>}
+      {series.map((s, k) => {
+        const [cuanto, kg, control] = trozosSerie(s, tipo, porTiempo)
+        return (
+          <li key={k} className="grid grid-cols-[16px_repeat(3,minmax(0,1fr))] gap-1.5 font-mono tabular-nums text-xs text-gray-300">
+            <b className="text-gray-500 font-semibold">{k + 1}</b>
+            <span>{cuanto}</span><span>{kg}</span><span>{control}</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
 }
 
 interface Props {
@@ -370,8 +414,16 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                    lib/video-ejercicio), no de la copia que se guardó al
                    prescribir: si no, un vídeo añadido después no llegaría. */
                 const video = t.tecnica?.url_video || t.ejercicios?.[0]?.video || null
+                /* SERIE A SERIE (lib/series-detalle): con series distintas, el
+                   «3 × 8 reps · 60 kg» no existe; va «3 series» y una línea por
+                   serie. Lo mismo para el segundo ejercicio de una superserie. */
+                const e0 = t.ejercicios?.[0]
+                const segTarea = t.p_duracion?.[0]?.tiempo_planeado
+                const sas = e0 && tieneSeriesDistintas(e0) ? seriesDe(e0, { segFila: segTarea }) : null
+                const sas2 = e0 && tieneSeriesDistintas(e0, true) ? seriesDe(e0, { encadenado: true }) : null
+                const linea2 = !sas2 ? lineaEncadenado(e0) : ''
                 return (
-                  <div key={t.id} className="border border-white/[0.075] rounded-[13px] bg-[#0e1218] px-3.5 py-3 flex items-center gap-3">
+                  <div key={t.id} className={'border border-white/[0.075] rounded-[13px] bg-[#0e1218] px-3.5 py-3 flex gap-3 ' + (sas || sas2 ? 'items-start' : 'items-center')}>
                     {t.zona_entrenamiento && (
                       <span className="text-[11px] font-bold px-2 py-[3px] rounded-md flex-shrink-0"
                         style={{ color: zc, background: `color-mix(in oklab, ${zc} 17%, transparent)` }}>
@@ -394,12 +446,15 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                           hasta dónde apretar, que es justo lo que se le prescribe. */}
                       <span className="text-[11.5px] text-gray-500">
                         {[
-                          ej ? objetivoTarea(t) : null,
-                          t.ejercicios?.[0]?.intensidad ? t.ejercicios[0].intensidad + ' kg' : null,
-                          controlDeEjercicio(t.ejercicios?.[0]) || null,
+                          sas ? (t.series ? t.series + ' series' : null) : ej ? objetivoTarea(t) : null,
+                          !sas && e0?.intensidad ? e0.intensidad + ' kg' : null,
+                          !sas ? (controlDeEjercicio(e0) || null) : null,
                           t.descanso_segundos ? t.descanso_segundos + ' s de descanso' : null,
                         ].filter(Boolean).join(' · ')}
                       </span>
+                      {sas && <ListaSeries series={sas} tipo={e0.control_tipo} porTiempo={!!segTarea} />}
+                      {sas2 && <ListaSeries series={sas2} tipo={e0.encadenado_control_tipo} porTiempo={false} titulo={e0.ejercicio_encadenado_nombre} />}
+                      {linea2 && <span className="text-[11.5px] text-gray-500">{linea2}</span>}
                       {t.comentario && <span className="text-[11.5px] text-gray-400 italic leading-snug">{t.comentario}</span>}
                     </div>
                     {intensidad.principal && (
