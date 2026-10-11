@@ -19,6 +19,7 @@ import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
 import BriefingSesion from './BriefingSesion'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import DiaDeTest from '@/components/DiaDeTest'
 import CorregirSesion from '@/components/CorregirSesion'
 
@@ -774,6 +775,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             )}
             <span className={'text-xs px-2.5 py-1 rounded-full font-medium ' + chipDisciplina(sesion.disciplina)}>{sesion.disciplina}</span>
             <span className={'text-xs px-2.5 py-1 rounded-full ' + (sesion.estado === 'Realizada' ? 'bg-green-900 text-green-300' : sesion.estado === 'Cancelada' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300')}>{sesion.estado}</span>
+            {/* La cambió alguien de la dirección (lo marca la base). */}
+            <EtiquetaCambiada por={sesion.cambiada_por} />
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}
 
             <div className="flex flex-col">

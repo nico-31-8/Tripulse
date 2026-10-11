@@ -14,6 +14,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { vivas } from '@/lib/papelera'
 import { DIAS_VENTANA, type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 
 const VARS_SUBJETIVAS = [
@@ -58,7 +59,7 @@ export default function WellnessEntrenador() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       if (deps) {
         /* Esto era una consulta POR ATLETA: con veinte deportistas, veinte
            viajes para pintar la lista. Ahora es uno para todos y se reparte en

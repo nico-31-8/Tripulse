@@ -48,6 +48,7 @@ import {
   leer as leerDefectos, fijar as fijarDefecto, guardar as guardarDefectos,
   paraFilaResistencia, paraFilaFuerza, cuantosFijados,
 } from '@/lib/valores-por-defecto'
+import { duenosCompartidos } from '@/lib/compartido-direccion'
 
 // mmssASeg vivía aquí duplicando letra por letra a mmssASegundos de lib/medicion.
 // Dos funciones para lo mismo es como empiezan las divergencias: se arregla una y
@@ -255,11 +256,20 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const cargarLoDelEntrenador = async () => {
     const user = await usuarioActual()
     if (!user) return
+    /* Los tuyos y los compartidos en la dirección (lib/compartido-direccion):
+       un director prescribe con los tests y las zonas del entrenador del
+       atleta, y el entrenador con los de su director. */
+    const duenos = await duenosCompartidos(user.id)
     const [{ data: defs }, { data: zs }] = await Promise.all([
-      supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false),
-      supabase.from('zona_entrenador').select('*').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
+      supabase.from('test_definicion').select('*').in('id_entrenador', duenos).eq('archivado', false),
+      supabase.from('zona_entrenador').select('*').in('id_entrenador', duenos).eq('archivada', false).order('orden'),
     ])
-    setZonasMias(leerZonas(zs))
+    /* Si una zona compartida se llama igual que una tuya en el mismo deporte,
+       manda la tuya: dos «Z3x» en el desplegable no se distinguirían. */
+    const filasZ = (zs || []) as { id_entrenador: string; sigla: string; deporte: string }[]
+    const mias = filasZ.filter(z => z.id_entrenador === user.id)
+    const otras = filasZ.filter(z => z.id_entrenador !== user.id && !mias.some(m => m.sigla === z.sigla && m.deporte === z.deporte))
+    setZonasMias(leerZonas([...mias, ...otras]))
 
     const ids = (defs || []).map((d: { id: number }) => d.id)
     /* Las mediciones de ESTE atleta en una consulta, no una por test. */

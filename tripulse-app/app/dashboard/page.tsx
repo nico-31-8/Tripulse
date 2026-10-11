@@ -23,6 +23,10 @@ import AvisoSenales from '@/components/AvisoSenales'
 import { cargarSenales, cargarDatosDeVarios, senalesDeDatos, type DatosAtleta } from '@/lib/senales-datos'
 import { informesDeDatos } from '@/lib/informe-datos'
 import { resumenDeEquipo, COLOR_SENAL, type ResultadoSenales } from '@/lib/senales'
+import { getEspacio, setEspacio, entrenadorEfectivo, type Espacio } from '@/lib/espacio'
+import AvisosDirector from '@/components/AvisosDirector'
+import EntradaEspacio, { type FilaRoster } from '@/components/EntradaEspacio'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const cssVar = (color: string) => ({ ['--c']: color } as React.CSSProperties)
@@ -52,6 +56,10 @@ export default function Dashboard() {
   // Acceso al panel de plataforma. Solo aparece para nuestras cuentas; esconderlo
   // es cosmética, el candado está en cada función SQL de /admin.
   const [esPlataforma, setEsPlataforma] = useState(false)
+  /* Un director ve arriba el acceso a «Mis entrenadores», como la plataforma ve
+     el suyo. Igual que ahí, es cosmética: el candado está en las funciones de
+     la base (director_* en supabase/director-1-base.sql). */
+  const [esDirector, setEsDirector] = useState(false)
   // Mensajes y comentarios de sesión sin revisar, de todos sus atletas.
   const [porRevisar, setPorRevisar] = useState<Pendientes>(SIN_PENDIENTES)
   /* Lo que ha pasado con TODO el equipo estas últimas semanas, pedido una sola
@@ -61,6 +69,15 @@ export default function Dashboard() {
   const [datosEquipo, setDatosEquipo] = useState<Map<number, DatosAtleta> | null>(null)
   // Red de seguridad: las de un atleta que no venía en el cálculo del equipo.
   const [senalesSueltas, setSenalesSueltas] = useState<{ id: number; res: ResultadoSenales } | null>(null)
+  /* Un director dentro del espacio de uno de sus entrenadores (lib/espacio): la
+     lista de deportistas es la de ese entrenador —la base solo devuelve los
+     que le ha abierto— y la entrada enseña también los cerrados, con candado. */
+  const [espacio, setEspacioPanel] = useState<Espacio | null>(null)
+  const [roster, setRoster] = useState<FilaRoster[]>([])
+  const cargarRoster = async (esp: Espacio) => {
+    const { data } = await supabase.rpc('director_roster', { _id_entrenador: esp.id })
+    setRoster((data || []) as FilaRoster[])
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -70,13 +87,19 @@ export default function Dashboard() {
       const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       setPerfil(p)
       supabase.rpc('soy_plataforma').then(({ data }) => setEsPlataforma(!!data))
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
+      supabase.rpc('soy_director').then(({ data }) => setEsDirector(!!data))
+      const esp = getEspacio()
+      setEspacioPanel(esp)
+      if (esp) await cargarRoster(esp)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre')
       setDeportistas(deps || [])
       // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
       const depIds = (deps || []).map((d: any) => d.id)
       /* Lo que tiene sin revisar en Comunicación. Sin await: es un aviso, no
          puede retrasar ni tumbar el panel si falla. */
-      cargarPendientes(supabase, user.id, depIds).then(setPorRevisar).catch(() => {})
+      /* En el espacio de otro entrenador no: su bandeja es suya (el chat está
+         cerrado para el director) y los comentarios de sus atletas los revisa él. */
+      if (!esp) cargarPendientes(supabase, user.id, depIds).then(setPorRevisar).catch(() => {})
       /* Los datos del equipo entero, también sin await: la entrada se pinta
          enseguida y los avisos aparecen cuando llegan. Si falla, un Map vacío
          para que el panel del atleta sepa que tiene que pedir los suyos. */
@@ -98,7 +121,7 @@ export default function Dashboard() {
   /* Al volver a la pestaña se vuelve a mirar, como mucho una vez por minuto: el
      panel se queda abierto horas y los mensajes llegan mientras tanto. */
   useEffect(() => {
-    if (!userId || !deportistas.length) return
+    if (!userId || !deportistas.length || espacio) return
     let ultimo = Date.now()
     const alVolver = () => {
       if (Date.now() - ultimo < 60_000) return
@@ -107,7 +130,7 @@ export default function Dashboard() {
     }
     window.addEventListener('focus', alVolver)
     return () => window.removeEventListener('focus', alVolver)
-  }, [userId, deportistas])
+  }, [userId, deportistas, espacio])
 
   /* Las señales y el informe salen de los mismos datos: un cálculo en memoria
      cada uno, sin volver a la base. */
@@ -208,7 +231,7 @@ export default function Dashboard() {
     setTareas(prev => prev.filter(x => x.id !== id))
     await supabase.from('tarea_entrenador').delete().eq('id', id)
   }
-  const cerrarSesion = async () => { setAtletaActivo(null); await supabase.auth.signOut(); router.push('/') }
+  const cerrarSesion = async () => { setAtletaActivo(null); setEspacio(null); await supabase.auth.signOut(); router.push('/') }
 
   const pendientes = tareas.filter(t => !t.hecho).length
   const hechas = tareas.length - pendientes
@@ -297,6 +320,12 @@ export default function Dashboard() {
 
       <nav className="relative bg-gray-900/70 backdrop-blur-sm pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <div className="flex items-center gap-4">
+          {esDirector && (
+            <button onClick={() => router.push('/entrenadores')}
+              className="flex items-center gap-1.5 text-sm text-teal-200 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-400/30 px-3 py-1.5 rounded-lg transition">
+              <span className="text-base leading-none">🧭</span>Mis entrenadores
+            </button>
+          )}
           {esPlataforma && (
             <button onClick={() => router.push('/admin')}
               className="flex items-center gap-1.5 text-sm text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 px-3 py-1.5 rounded-lg transition">
@@ -321,8 +350,16 @@ export default function Dashboard() {
 
       <div className={'relative mx-auto px-6 py-8 ' + (activo ? 'max-w-[1560px]' : 'max-w-3xl')}>
         <InvitacionesClub />
-        <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />
-        {deportistas.length === 0 ? (
+        {/* Lo que tiene que ver con directores: le piden permiso, su director
+            ha cambiado algo, o (si él es director) le han contestado. Dentro
+            del espacio de otro entrenador no: ahí no está en su casa. */}
+        {!espacio && <AvisosDirector papel="entrenador" className="mb-6 max-w-3xl mx-auto" />}
+        {!espacio && <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />}
+        {espacio && !activo ? (
+          <EntradaEspacio espacio={espacio} roster={roster} deportistas={deportistas}
+            onAbrir={seleccionar}
+            onCambio={() => cargarRoster(espacio)} />
+        ) : deportistas.length === 0 ? (
           <h2 className="text-2xl font-bold tracking-tight mb-4">Hola, {perfil?.nombre} 👋</h2>
         ) : !activo ? (
           /* ===== ENTRADA: elegir deportista ===== */
@@ -686,7 +723,18 @@ export default function Dashboard() {
                         /* Tu libreta de cobros. Aqui y no en un sitio mas visible a
                            proposito: es tuya y no tiene nada que ver con entrenar. */
                         { ic: '💶', l: 'Cobros', s: 'Tu libreta', c: '#22c55e', h: '/cobros' },
-                      ].map(t => (
+                      ]
+                        /* En el espacio de otro entrenador, sus cobros ni
+                           aparecen y el chat se queda con candado: es suyo y de
+                           sus deportistas (supabase/director-1-base.sql). */
+                        .filter(t => !(espacio && t.h === '/cobros'))
+                        .map(t => espacio && t.h === '/comunicacion' ? (
+                        <div key={t.l} title="Privado entre el entrenador y sus deportistas"
+                          className="flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.01] opacity-60 cursor-not-allowed" style={cssVar(t.c)}>
+                          <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>🔒</span>
+                          <div className="min-w-0 text-left"><p className="text-[12.5px] font-semibold text-gray-300">{t.l}</p><p className="text-[10.5px] text-gray-500 truncate">Privado</p></div>
+                        </div>
+                      ) : (
                         <button key={t.l} onClick={() => router.push(t.h)} className="tp-tile flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]" style={cssVar(t.c)}>
                           <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar(t.c)}>{t.ic}</span>
                           <div className="min-w-0 text-left"><p className="text-[12.5px] font-semibold text-gray-200">{t.l}</p><p className="text-[10.5px] text-gray-500 truncate">{t.s}</p></div>
@@ -780,6 +828,7 @@ export default function Dashboard() {
                             <p className="text-[13px] font-medium text-gray-200 truncate group-hover:text-white transition">{s.disciplina}{s.zona ? ' · ' + s.zona : ''}</p>
                             <p className="text-[11px] text-gray-500">{s.etiqueta}{s.min ? ' · ~' + fmtMin(s.min) : ''}</p>
                           </div>
+                          <EtiquetaCambiada por={s.cambiadaPor} compacta />
                         </button>
                       ))}
                     </div>

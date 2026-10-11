@@ -66,6 +66,9 @@ export default function AdminPage() {
   const [pestana, setPestana] = useState<Pestana>('cuentas')
   const [resumen, setResumen] = useState<any>(null)
   const [cuentas, setCuentas] = useState<any[]>([])
+  /* Quién tiene la marca de director (supabase/director-1-base.sql). Aparte de
+     admin_cuentas() a propósito: así no hubo que tocar esa función. */
+  const [directores, setDirectores] = useState<Set<string>>(new Set())
   const [invitaciones, setInvitaciones] = useState<any[]>([])
   const [entrenadores, setEntrenadores] = useState<any[]>([])
   const [salud, setSalud] = useState<any[]>([])
@@ -135,6 +138,9 @@ export default function AdminPage() {
 
     setResumen(r.data)
     setCuentas(c.data || [])
+    const dir = await supabase.rpc('admin_directores')
+    if (dir.error) setError(prev => (prev ? prev + ' · ' : '') + 'directores: ' + dir.error!.message)
+    setDirectores(new Set(((dir.data || []) as { id_perfil: string }[]).map(d => d.id_perfil)))
     setInvitaciones(i.data || [])
     setEntrenadores(e.data || [])
     setSalud(s.data || [])
@@ -326,6 +332,13 @@ export default function AdminPage() {
     await cargarTodo()
   }
 
+  const cambiarDirector = async (id: string, nombre: string, si: boolean) => {
+    if (!si && !confirm('¿Quitarle la marca de director a ' + nombre + '?\n\nDejará de ver los espacios de sus entrenadores en el acto. Sus relaciones se guardan por si se la vuelves a poner.')) return
+    const { error: err } = await supabase.rpc('admin_poner_director', { _id: id, _si: si })
+    if (err) { setError(err.message); return }
+    await cargarTodo()
+  }
+
   const copiarEventos = () => {
     navigator.clipboard.writeText(eventosComoTexto(eventos))
     setCopiadoEventos(true)
@@ -454,6 +467,15 @@ export default function AdminPage() {
                           </Chip>
                           <button onClick={() => cambiarCupo(c.id, c.nombre || c.email, c.cupo_deportistas)}
                             className="text-gray-500 hover:text-orange-400 text-xs underline transition">cambiar cupo</button>
+                          {/* La marca de director: ve «Mis entrenadores» y puede trabajar con
+                              otros entrenadores. Quitarla no borra sus relaciones: las deja
+                              en pausa por si se le vuelve a poner. */}
+                          <button role="switch" aria-checked={directores.has(c.id)} onClick={() => cambiarDirector(c.id, c.nombre || c.email, !directores.has(c.id))}
+                            className={'text-xs px-2 py-0.5 rounded-full border transition ' + (directores.has(c.id)
+                              ? 'border-teal-400/50 bg-teal-500/15 text-teal-200 hover:bg-teal-500/25'
+                              : 'border-gray-700 text-gray-500 hover:text-gray-300')}>
+                            {directores.has(c.id) ? '🧭 Director' : 'Hacer director'}
+                          </button>
                         </div>
                       </div>
                       <p className="text-gray-600 text-[11px] mt-2">

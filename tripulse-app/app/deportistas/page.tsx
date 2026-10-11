@@ -7,6 +7,9 @@ import { calcularEdad } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargarGrupos, contarMiembros, crearGrupo, type Grupo } from '@/lib/grupos'
+import { getEspacio, type Espacio } from '@/lib/espacio'
+import ListaEspacio from '@/components/ListaEspacio'
+import SeccionDirectores from '@/components/SeccionDirectores'
 
 function calcularFCMaxima(fechaNacimiento: string): number | null {
   const edad = calcularEdad(fechaNacimiento)
@@ -58,6 +61,11 @@ export default function Deportistas() {
      por línea: es lo más rápido de teclear con una lista delante. */
   const [nuevosTexto, setNuevosTexto] = useState('')
 
+  /* Un director en el espacio de otro entrenador ve SU lista, con candados
+     (components/ListaEspacio). Lo de esta página —crear, grupos, evaluados— es
+     de su propio equipo. */
+  const [espacio, setEspacioPagina] = useState<Espacio | null>(null)
+  useEffect(() => { setEspacioPagina(getEspacio()) }, [])
   useEffect(() => { cargarDeportistas(); cargarLosGrupos() }, [])
 
   const cargarDeportistas = async () => {
@@ -142,6 +150,15 @@ export default function Deportistas() {
     setEnlaceInvitacion(url)
     setGenerandoEnlace(null)
   }
+
+  if (espacio) return (
+    <main className="min-h-screen bg-gray-950 text-white">
+      <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
+        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
+      </nav>
+      <ListaEspacio espacio={espacio} />
+    </main>
+  )
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -332,6 +349,11 @@ export default function Deportistas() {
             )}
           </section>
         )}
+
+        {/* ===== DIRECTORES =====
+            Si trabaja con un director (o uno se lo ha pedido): qué deportista
+            tiene abierto cada uno. Sale sola solo cuando hay algo. */}
+        <SeccionDirectores deportistas={deportistas.map(d => ({ id: d.id, nombre: d.nombre }))} />
       </div>
       {/* Modal enlace invitación */}
       {enlaceInvitacion && (

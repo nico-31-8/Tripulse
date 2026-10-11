@@ -36,7 +36,7 @@ export interface MetricasPanel {
   indices: { perTexto: string; perColor: string; planTexto: string; planColor: string; n: number } | null
   tests: { ultima: string | null }
   semana: { fecha: string; dow: string; sesiones: { color: string }[] }[]
-  agenda: { fecha: string; etiqueta: string; disciplina: string; color: string; zona: string | null; min: number | null }[]
+  agenda: { fecha: string; etiqueta: string; disciplina: string; color: string; zona: string | null; min: number | null; cambiadaPor: string | null }[]
   general: { comunicacion: number; ejercicios: number; papelera: number }
 }
 
@@ -338,7 +338,7 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
     if (testTablas[i] === 'test3_ciclismo') tests.ftp = row.ftp ?? null
   })
 
-  const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado'
+  const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado, cambiada_por'
 
   /* LO QUE ESTÁ EN LA PAPELERA NO CUENTA.
    Ninguna de las siete consultas de este fichero filtraba `eliminada`, y
@@ -484,6 +484,8 @@ const VIVAS = FILTRO_VIVAS
       color: DISC_META[s.disciplina]?.color || '#94a3b8',
       zona: t0?.zona_entrenamiento || null,
       min: minutosEfectivos(s, estimAg[s.id]),
+      /* Si la cambió alguien de la dirección (sesion.cambiada_por). */
+      cambiadaPor: s.cambiada_por || null,
     }
   })
 

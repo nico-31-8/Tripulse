@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual, perfilActual, deportistaActual } from '@/lib/sesion'
+import { getEspacio, setEspacio, EVENTO_ESPACIO, type Espacio } from '@/lib/espacio'
+import { setAtletaActivo } from '@/lib/atletaActivo'
 
 const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
 
@@ -52,6 +54,11 @@ export default function Sidebar() {
   // El enlace al panel solo lo ven las cuentas de plataforma. Esconderlo es
   // cosmética: el candado de verdad está en cada función SQL de /admin.
   const [esPlataforma, setEsPlataforma] = useState(false)
+  /* «Mis entrenadores» solo para directores, por lo mismo que «Plataforma»: es
+     cosmética, el candado está en las funciones director_* de la base. */
+  const [esDirector, setEsDirector] = useState(false)
+  // El espacio del entrenador en el que trabaja un director (lib/espacio).
+  const [espacio, setEsp] = useState<Espacio | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -68,8 +75,9 @@ export default function Sidebar() {
         const dep = await deportistaActual()
         setDepId(dep?.id ?? null)
       } else {
-        const { data } = await supabase.rpc('soy_plataforma')
-        setEsPlataforma(!!data)
+        const [pla, dir] = await Promise.all([supabase.rpc('soy_plataforma'), supabase.rpc('soy_director')])
+        setEsPlataforma(!!pla.data)
+        setEsDirector(!!dir.data)
       }
     }
     comprobar()
@@ -79,6 +87,27 @@ export default function Sidebar() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    const leer = () => setEsp(getEspacio())
+    leer()
+    window.addEventListener(EVENTO_ESPACIO, leer)
+    window.addEventListener('storage', leer)
+    return () => {
+      window.removeEventListener(EVENTO_ESPACIO, leer)
+      window.removeEventListener('storage', leer)
+    }
+  }, [])
+
+  /* La marca de director se vuelve a mirar cada vez que se abre el menú: si la
+     plataforma la pone (o la quita) con la página ya cargada, el enlace a «Mis
+     entrenadores» aparece sin tener que recargar. Es una consulta pequeña. */
+  useEffect(() => {
+    if (!abierto || rol === 'deportista' || !rol) return
+    let vivo = true
+    supabase.rpc('soy_director').then(({ data, error }) => { if (vivo && !error) setEsDirector(!!data) })
+    return () => { vivo = false }
+  }, [abierto, rol])
 
   // Cierra el menú al cambiar de página
   useEffect(() => {
@@ -104,11 +133,25 @@ export default function Sidebar() {
   if (!autenticado || RUTAS_PUBLICAS.includes(pathname) || esModoEntreno(pathname)) return null
 
   const esDeportista = rol === 'deportista'
+  const enEspacio = !esDeportista && !!espacio
+  /* El director ve «Mis entrenadores» justo debajo de Deportistas. Dentro del
+     espacio de otro entrenador, Comunicación se queda con candado: el chat es
+     entre ese entrenador y sus deportistas. */
+  const modulosCoach = modulosEntrenador.flatMap(m =>
+    m.href === '/deportistas' && esDirector
+      ? [m, { icon: '🧭', titulo: 'Mis entrenadores', href: '/entrenadores' }]
+      : [m])
   const modulos = esDeportista
     ? modulosDeportistaFn(depId)
     : esPlataforma
-      ? [...modulosEntrenador, { icon: '🛠', titulo: 'Plataforma', href: '/admin' }]
-      : modulosEntrenador
+      ? [...modulosCoach, { icon: '🛠', titulo: 'Plataforma', href: '/admin' }]
+      : modulosCoach
+  const bloqueado = (href: string) => enEspacio && href === '/comunicacion'
+  const salirDelEspacio = () => {
+    setAtletaActivo(null)
+    setEspacio(null)
+    router.push('/entrenadores')
+  }
   const dashboardHref = esDeportista ? '/dashboard-deportista' : '/dashboard'
 
   return (
@@ -136,7 +179,20 @@ export default function Sidebar() {
           (abierto ? 'translate-x-0' : '-translate-x-full')}
       >
         <nav className="flex-1 py-2 overflow-y-auto">
-          {modulos.map(m => (
+          {enEspacio && (
+            <div className="px-3 pt-1 pb-2 mb-1 border-b border-gray-800">
+              <p className="text-[11px] text-teal-300 tracking-wide truncate">Espacio de {espacio?.nombre || 'tu entrenador'}</p>
+              <button onClick={salirDelEspacio}
+                className="mt-1 text-sm text-teal-200 hover:text-white transition">← Salir del espacio</button>
+            </div>
+          )}
+          {modulos.map(m => bloqueado(m.href) ? (
+            <div key={m.titulo} title="Privado entre el entrenador y sus deportistas"
+              className="w-full flex items-center gap-3 px-3 py-3 text-left opacity-50 cursor-not-allowed">
+              <span className="text-xl flex-shrink-0">{m.icon}</span>
+              <span className="text-gray-400 text-sm whitespace-nowrap">{m.titulo} 🔒</span>
+            </div>
+          ) : (
             <button key={m.titulo} onClick={() => router.push(m.href)}
               className={'w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left ' +
                 (pathname === m.href ? 'bg-gray-800 border-l-2 border-orange-500' : '')}>

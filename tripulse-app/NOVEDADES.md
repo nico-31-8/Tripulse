@@ -14,6 +14,52 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 11 de octubre de 2026 · Llega el director: un entrenador que dirige a otros entrenadores
+
+**Si no trabajas con un director, para ti no cambia nada.** Todo lo de abajo
+solo aparece cuando hay uno.
+
+**Qué es un director.** Un entrenador con sus propios deportistas que, además,
+trabaja con otros entrenadores: puede entrar en el espacio de cada uno, ver a
+sus deportistas, planificar, cambiar sesiones y pasar tests. La marca de
+director la pone la plataforma.
+
+**Cómo se empieza.** El director entra en **🧭 Mis entrenadores** (en el menú y
+arriba del panel) y añade a un entrenador: invitándolo con un código si es
+nuevo, o con el correo con el que ya usa TRIPULSE. **El entrenador tiene que
+aceptar.** Cada entrenador tiene un solo director.
+
+**Cada deportista lo abre su entrenador.** Al entrar en tu espacio, el director
+ve a todos tus deportistas, pero de los que no le has abierto solo ve el nombre,
+con un candado. Para verlos te pide acceso, y a ti te llega arriba del panel:
+**Darle acceso** o **No darlo**. Lo puedes quitar cuando quieras desde
+**Deportistas → Directores** o desde la ficha de cada uno.
+
+**Lo que ve con el deportista abierto:** su plan, sus sesiones, sus tests, sus
+zonas, su wellness y su salud. **Lo que no ve nunca:** vuestro chat y tus
+cobros.
+
+**Cada cambio que hace te llega.** Arriba del panel te sale «Tu director ha
+cambiado…», con la sesión y qué tocó, y al deportista le llega a su inicio. La
+sesión queda marcada con **✎ cambiada por** y el nombre del director, en el
+calendario y en la propia sesión.
+
+**Tests, zonas y plantillas, compartidos.** El director y cada entrenador con
+el que trabaja usan los tests propios (también los del laboratorio), las zonas
+propias y las plantillas del otro, y los dos ven cómo avanza un deportista en
+un test. **Se usan, no se cambian**: salen marcados «de …» y solo los edita o
+los borra quien los creó. En el laboratorio, si cambias un test que no es tuyo,
+se guarda una copia tuya.
+
+**El deportista lo sabe.** En **Mi perfil → Quién puede ver tu plan** ve a su
+entrenador y, si se lo has abierto, al director.
+
+**Dos correcciones de seguridad que no notarás:** un mensaje del chat ya solo
+puede ir a un deportista tuyo (antes la base dejaba escribir a cualquiera), y
+un test propio ya solo sirve para apuntar mediciones a deportistas tuyos.
+
+---
+
 ## 9 de octubre de 2026 · La valoración de la sesión era la de su primera tarea
 
 **⚠ Esto puede cambiar el RPE y la FC que ves en algunas sesiones ya hechas.**

@@ -47,6 +47,7 @@ import {
   contextosDe, guardarTestsDeCampo, resumenDeTests, testsDeHoy, diasHastaCarreraA,
   type Contextos, type ResultadoGuardado,
 } from '@/lib/dirigir-tests'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 /* El icono sale del catálogo (lib/disciplinas). «Triatlón» se queda aquí: es
    un tipo de test, no una disciplina que se programe. */
@@ -154,7 +155,7 @@ export default function DirigirTests() {
     const user = await usuarioActual()
     if (!user) return
     const { data } = await supabase.from('deportista').select('id, nombre')
-      .eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
+      .eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre')
     const lista = (data || []) as Deportista[]
     setDeportistas(lista)
     if (lista.length) setContextos(await contextosDe(supabase, lista.map(d => d.id)))

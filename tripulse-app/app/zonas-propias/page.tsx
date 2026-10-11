@@ -38,6 +38,7 @@ import {
   type TestConMediciones,
 } from '@/lib/referencia-propia'
 import { MESES_CORTOS } from '@/lib/fechas'
+import { sociosDeDireccion, duenosCompartidos, deQuien } from '@/lib/compartido-direccion'
 import { mmss } from '@/lib/medicion'
 
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
@@ -64,6 +65,10 @@ export default function ZonasPropiasPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
   const [zonas, setZonas] = useState<ZonaEntrenador[]>([])
+  /* Las zonas que te comparte la dirección (tu director, o los entrenadores que
+     diriges). Van APARTE y de solo lectura: el editor de arriba guarda todas sus
+     filas de una vez y no puede llevar dentro zonas de otro. */
+  const [ajenas, setAjenas] = useState<{ de: string; zonas: ZonaEntrenador[] }[]>([])
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
 
@@ -94,6 +99,14 @@ export default function ZonasPropiasPage() {
     ])
     setZonas(leerZonas(zs))
     setDeportistas(deps || [])
+    const socios = await sociosDeDireccion()
+    if (socios.length) {
+      const { data: otras } = await supabase.from('zona_entrenador').select('*')
+        .in('id_entrenador', socios.map(s => s.id)).eq('archivada', false).order('orden')
+      const porDueno = new Map<string, any[]>()
+      for (const z of (otras || []) as any[]) porDueno.set(z.id_entrenador, [...(porDueno.get(z.id_entrenador) || []), z])
+      setAjenas([...porDueno.entries()].map(([id, filas]) => ({ de: deQuien(id, user.id, socios) || 'otro entrenador', zonas: leerZonas(filas) })))
+    } else setAjenas([])
     /* Se ESPERA a tener sus referencias antes de quitar el «Cargando…». Si no,
        las zonas colgadas de una referencia propia se pintan un instante como
        «le falta el test», que es mentira y encima asusta.
@@ -123,8 +136,10 @@ export default function ZonasPropiasPage() {
   /** Los tests del entrenador con las mediciones de ese atleta. */
   const recargarTests = async (id: number) => {
     const user = await usuarioActual()
+    /* Los tuyos y los compartidos en la dirección: una zona tuya puede colgar de
+       un test de tu director, y la de él se calcula con el suyo. */
     const { data: defs } = user
-      ? await supabase.from('test_definicion').select('*').eq('id_entrenador', user.id).eq('archivado', false)
+      ? await supabase.from('test_definicion').select('*').in('id_entrenador', await duenosCompartidos(user.id)).eq('archivado', false)
       : { data: [] as FilaDefinicion[] }
 
     const filas: FilaDefinicion[] = defs || []
@@ -520,6 +535,24 @@ export default function ZonasPropiasPage() {
             )}
           </div>
         </div>
+
+        {/* ---- las compartidas en la dirección: se usan, no se cambian ---- */}
+        {ajenas.map(g => (
+          <div key={g.de} className={tarjeta}>
+            <p className="font-semibold text-[15px]">Las de {g.de}</p>
+            <p className="text-gray-500 text-xs mt-1 mb-3">Las compartís en la dirección: salen al prescribir una sesión igual que las tuyas. Solo quien las creó las cambia.</p>
+            <div className="flex flex-col gap-1.5">
+              {g.zonas.map(z => (
+                <div key={z.id ?? z.sigla} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-gray-800/60 px-3 py-2 text-sm">
+                  <b className="text-white">{z.sigla}</b>
+                  <span className="text-gray-300">{z.nombre}</span>
+                  <span className="text-gray-500 text-xs">{z.deporte}</span>
+                  <span className="text-gray-400 text-xs tabular-nums">{z.pctMin}–{z.pctMax} %{z.ref ? ' de un test propio' : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
 
         {/* ---- cómo le quedan a un atleta ---- */}
         <div className={tarjeta}>

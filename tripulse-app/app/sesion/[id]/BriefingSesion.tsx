@@ -33,6 +33,7 @@ import { esBloque } from '@/lib/bloque-formato'
 import ResumenBloque from '@/components/ResumenBloque'
 import { emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 
 
 // Qué se le pide en cada tarea: distancia, tiempo o repeticiones, con las series
@@ -230,6 +231,8 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
             {emojiDisciplina(sesion.disciplina)} {etiquetaDisciplina(sesion.disciplina)}
           </span>
           <span className="text-[13px] text-gray-500">{fechaLarga(sesion.fecha_sesion)}</span>
+          {/* Si la cambió el director de su entrenador, que lo sepa aquí también. */}
+          <EtiquetaCambiada por={sesion.cambiada_por} className="mt-1" />
           {minutos ? (
             <span className="text-[46px] font-extrabold tracking-tight leading-none tabular-nums mt-1">
               {minutos} <span className="text-[17px] font-medium text-gray-400">min</span>

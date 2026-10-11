@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { setAtletaActivo } from '@/lib/atletaActivo'
+import { setEspacio } from '@/lib/espacio'
 import CampoPassword from '@/components/CampoPassword'
 
 export default function Login() {
@@ -26,6 +27,8 @@ export default function Login() {
     if (data.user) {
       // Login fresco: olvidamos el deportista activo para que el entrenador vea el selector.
       setAtletaActivo(null)
+      // Y el espacio de otro entrenador: se entra siempre en el propio.
+      setEspacio(null)
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.user.id).single()
       if (perfil?.rol === 'deportista') {
         const { data: dep } = await supabase.from('deportista').select('id, id_entrenador').eq('id_usuario', data.user.id).single()

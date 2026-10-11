@@ -12,6 +12,7 @@ import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
 import type { TestsDeportista } from '@/lib/duracion'
 import { etiquetaDisciplina, chipDisciplina, claseDisciplina, DEPORTES } from '@/lib/disciplinas'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
@@ -278,7 +279,7 @@ export default function MisSesiones() {
                             onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); router.push('/sesion/' + s.id) } }}
                             className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full cursor-pointer">
                             <div>
-                              <p className="font-medium text-sm">{s.disciplina}</p>
+                              <p className="font-medium text-sm">{s.disciplina} <EtiquetaCambiada por={s.cambiada_por} compacta /></p>
                               {/* En una sesión HECHA el RPE que existe es el que reportó, no el
                                   que se estimó: las que se apunta el atleta ni siquiera tienen
                                   estimado, así que salía «RPE est: —» habiendo puesto un 7. */}
@@ -424,7 +425,7 @@ export default function MisSesiones() {
                           <div className="flex items-center gap-3">
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
                             <div>
-                              <p className="font-medium text-sm">{s.disciplina}</p>
+                              <p className="font-medium text-sm">{s.disciplina} <EtiquetaCambiada por={s.cambiada_por} compacta /></p>
                               <p className="text-gray-400 text-xs">{duracionSesionTexto(s, s.dur_estimada)} · RPE {s.rpe_estimado || '—'}</p>
                               {intensidades[s.id]?.length > 0 && (
                                 <p className="text-orange-300/90 text-xs font-mono tabular-nums">@ {intensidades[s.id].join(' · ')}</p>

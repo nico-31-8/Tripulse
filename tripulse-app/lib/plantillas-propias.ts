@@ -7,6 +7,7 @@
 // Requiere supabase/plantilla-sesion.sql.
 import { cargaZona } from './zonas'
 import { usuarioActual } from './sesion'
+import { sociosDeDireccion, deQuien } from './compartido-direccion'
 import type { BloqueP } from './plantillas'
 import { vecesDe } from './bloques-tarea'
 
@@ -18,6 +19,9 @@ export interface PlantillaPropia {
   objetivo: string | null
   bloques: BloqueP[]
   created_at?: string
+  /** De quién es si la comparte la dirección (tu director, o un entrenador al
+   *  que diriges). null si es tuya. Una compartida se aplica, no se borra. */
+  de?: string | null
 }
 
 export const ERROR_MIGRACION_PLANTILLAS =
@@ -28,13 +32,19 @@ function faltaTabla(e: any): boolean {
   return t.includes('plantilla_sesion') || t.includes('pgrst205') || t.includes('42p01')
 }
 
+/* Sin filtrar por dueño a propósito: la base devuelve las tuyas y las que te
+   comparte la dirección (supabase/director-3-compartido.sql), y aquí se marca
+   de quién es cada una. */
 export async function cargarPropias(supabase: any, disciplina: string): Promise<PlantillaPropia[]> {
   const { data, error } = await supabase.from('plantilla_sesion')
-    .select('id, nombre, disciplina, zona, objetivo, bloques, created_at')
+    .select('id, nombre, disciplina, zona, objetivo, bloques, created_at, id_entrenador')
     .eq('disciplina', disciplina)
     .order('created_at', { ascending: false })
   if (error) return []   // sin migración o sin permisos: el panel sigue funcionando con las del sistema
-  return data || []
+  const filas = (data || []) as (PlantillaPropia & { id_entrenador?: string | null })[]
+  if (!filas.length) return []
+  const [user, socios] = await Promise.all([usuarioActual(), sociosDeDireccion()])
+  return filas.map(({ id_entrenador, ...p }) => ({ ...p, de: deQuien(id_entrenador, user?.id ?? null, socios) }))
 }
 
 // Convierte las tareas de una sesión en los bloques de una plantilla.

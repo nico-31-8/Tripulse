@@ -7,6 +7,7 @@ import AsistenteFlotante from '../components/AsistenteFlotante'
 import NavDeportista from '../components/NavDeportista'
 import CazaErrores from '../components/CazaErrores'
 import AvisoMantenimiento from '../components/AvisoMantenimiento'
+import FranjaEspacio from '../components/FranjaEspacio'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -67,6 +68,9 @@ export default function RootLayout({
         {/* Arriba del todo y en TODAS las pantallas, incluida la de entrar: es
             contra la que se choca cuando la app está caída. Se apaga solo. */}
         <AvisoMantenimiento />
+        {/* El director que trabaja en el espacio de uno de sus entrenadores lo ve
+            siempre, en todas las pantallas. Decide sola si aparece. */}
+        <FranjaEspacio />
         <Sidebar />
         {children}
         {/* El asistente vive en todos los módulos. Él decide si aparece: solo para

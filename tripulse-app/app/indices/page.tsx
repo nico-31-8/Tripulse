@@ -8,6 +8,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { hoyISO, sumarDias } from '@/lib/fechas'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 function calcularIndices(tarea: any, fcUmbral: number, rpeEstimado: number) {
   if (!tarea.fc_media || !tarea.rpe_reportado || !fcUmbral) return null
@@ -58,7 +59,7 @@ export default function IndicesPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
       const d0 = (deps || []).find(d => d.id === getAtletaActivo())

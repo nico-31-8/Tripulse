@@ -28,6 +28,7 @@ import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { horasMinutos } from '@/lib/medicion'
 import { cargarProgresos, porGrupoMuscular, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
    acumulador de abajo DESCARTA lo que no tenga casilla, así que una disciplina
@@ -185,7 +186,7 @@ export default function VolumenPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
       const act = getAtletaActivo()

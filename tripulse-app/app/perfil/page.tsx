@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import MaterialDeportista from '@/components/MaterialDeportista'
 import Cargando from '@/components/Cargando'
 import RelojPerfil from '@/components/RelojPerfil'
+import QuienVeMiPlan from '@/components/QuienVeMiPlan'
 import { usuarioActual } from '@/lib/sesion'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
@@ -294,6 +295,9 @@ export default function PerfilPage() {
         {esDeportista ? (
           <>
             <SeccionEntrenador perfil={perfil} entrenador={entrenador} onDesvincularse={() => { setEntrenador(null) }} />
+            {/* Quién ve su plan: su entrenador y, si se lo ha abierto, el director
+                de su entrenador. Sale solo si tiene entrenador. */}
+            <QuienVeMiPlan />
             {/* Suspense porque la tarjeta lee ?reloj= de la dirección (la vuelta
                 de Polar), y Next exige esa frontera para usar useSearchParams. */}
             <Suspense fallback={null}><RelojPerfil /></Suspense>

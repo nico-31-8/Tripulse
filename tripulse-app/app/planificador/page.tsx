@@ -22,6 +22,8 @@ import { contextoDeSemanas, avisoDe, porDefecto, type SemanaCandidata } from '@/
 import { MIN_MINUTOS, MAX_MINUTOS, moverA, cambiarDuracion, quitar, alternativasDe, cambiarSesion, resumenEdicion, textoResumen, type RellenoEditable } from '@/lib/editar-semana'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { getEspacio, filtrarPorEspacio } from '@/lib/espacio'
+import { usuarioActual } from '@/lib/sesion'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { cargaZona } from '@/lib/zonas'
 import { construirContextoTexto } from '@/lib/asistente'
@@ -99,10 +101,15 @@ export default function Planificador() {
   const [volcado, setVolcado] = useState<ResultadoVolcado | null>(null)
 
   useEffect(() => { (async () => {
-    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima').order('nombre')
-    setDeportistas(data || [])
-    const activo = (data || []).find(d => d.id === getAtletaActivo())
-    if (activo) await elegir(activo, data || [])
+    /* La lista se pide sin filtrar (así salen también las fichas de grupo) y se
+       acota aquí: a un director la base le da además los deportistas que otros
+       entrenadores le han abierto, y no pueden salir mezclados con los suyos. */
+    const user = await usuarioActual()
+    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima, id_entrenador').order('nombre')
+    const lista = user ? filtrarPorEspacio(data || [], user.id, getEspacio()?.id ?? null) : (data || [])
+    setDeportistas(lista)
+    const activo = lista.find(d => d.id === getAtletaActivo())
+    if (activo) await elegir(activo, lista)
     setCargando(false)
   })() }, [])
 

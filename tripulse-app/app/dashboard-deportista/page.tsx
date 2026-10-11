@@ -3,6 +3,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import AvisoMaterial from '@/components/AvisoMaterial'
+import AvisosDirector from '@/components/AvisosDirector'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
 import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
@@ -102,7 +104,7 @@ export default function DashboardDeportista() {
          vez de dos ramas.
          Y con eso desaparece el fallo que ya se parcheó aquí: las libres iban
          por su lado porque las del plan cortaban si no había microciclos. */
-      const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, duracion_real, notas_entrenador'
+      const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, duracion_real, notas_entrenador, cambiada_por'
       const [macros, ses, refs] = await Promise.all([
         supabase.from('macrociclo').select('id').eq('id_deportista', dep.id).limit(1),
         // `duracion_real` va en el SELECT o el arreglo no sirve de nada: sin
@@ -271,6 +273,11 @@ export default function DashboardDeportista() {
             que esta siempre enseña a no leerlos. */}
         <AvisoMaterial idDeportista={deportista?.id} className="mb-4" />
 
+        {/* Si el director de su entrenador ha cambiado algo de su plan, o su
+            entrenador le ha abierto el plan a alguien: se lo decimos aquí, con
+            quién lo hizo. Solo sale si hay algo. */}
+        <AvisosDirector papel="deportista" className="mb-4" />
+
         {/* Invitaciones a un club (fuera del módulo social: se aceptan desde aquí) */}
         <InvitacionesClub />
 
@@ -297,6 +304,7 @@ export default function DashboardDeportista() {
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: col + '33', color: col }}>{s.disciplina}</span>
                     <span className="text-gray-400 text-xs">{duracionSesionTexto(s.duracion_minutos, s.dur_estimada)}</span>
                     <span className="text-gray-400 text-xs">· RPE {s.rpe_estimado || '—'}</span>
+                    <EtiquetaCambiada por={s.cambiada_por} />
                   </div>
                   {s.notas_entrenador && <p className="text-gray-500 text-xs italic mb-3">"{s.notas_entrenador}"</p>}
                   {steps.length > 0 && (

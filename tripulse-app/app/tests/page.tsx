@@ -6,6 +6,7 @@ import { calcularEdad } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 export default function TestsPage() {
   const router = useRouter()
@@ -16,7 +17,7 @@ export default function TestsPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(data || [])
       // Si hay un deportista activo, entramos directo a sus tests (sin volver a elegir).
       const act = getAtletaActivo()

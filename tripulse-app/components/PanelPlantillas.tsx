@@ -175,6 +175,7 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
                     {p.zona}
                   </span>
                   <span className="text-xs text-white flex-1 truncate">{p.nombre}</span>
+                  {p.de && <span className="text-[9.5px] font-semibold px-1.5 py-px rounded-full bg-teal-500/15 text-teal-200 border border-teal-400/30 flex-shrink-0" title={'Compartida en la dirección: es de ' + p.de}>{p.de.split(' ')[0]}</span>}
                   <span className="text-gray-600 text-[10px] flex-shrink-0">{volumenDe(p.bloques)}</span>
                 </button>
                 {esta && (
@@ -186,8 +187,11 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
                         className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs py-1.5 rounded-lg font-medium transition disabled:opacity-50">
                         {aplicando ? 'Aplicando…' : 'Aplicar a esta sesión'}
                       </button>
-                      <button onClick={() => eliminar(p)} title="Borrar plantilla"
-                        className="px-2 text-gray-600 hover:text-red-400 text-xs transition">🗑</button>
+                      {/* Una compartida se aplica, pero solo la borra quien la hizo. */}
+                      {!p.de && (
+                        <button onClick={() => eliminar(p)} title="Borrar plantilla"
+                          className="px-2 text-gray-600 hover:text-red-400 text-xs transition">🗑</button>
+                      )}
                     </div>
                   </div>
                 )}

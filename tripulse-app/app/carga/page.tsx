@@ -17,6 +17,7 @@ import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, c
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { colorDisciplina, DEPORTES, etiquetaDisciplina } from '@/lib/disciplinas'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -125,7 +126,7 @@ export default function CargaPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
       const act = getAtletaActivo()

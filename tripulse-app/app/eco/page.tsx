@@ -18,6 +18,7 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import { colorDisciplina, cortoDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
+import { entrenadorEfectivo } from '@/lib/espacio'
 
 const DISCIPLINAS = DISCIPLINAS_SICAT
 
@@ -384,7 +385,7 @@ export default function EcoPage() {
     const cargar = async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false)
+      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
       const act = getAtletaActivo()

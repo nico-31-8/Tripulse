@@ -19,6 +19,7 @@ import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import DisciplinasDeportista from '@/components/DisciplinasDeportista'
 import { chipDisciplina, colorDisciplina, emojiDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
+import AccesoDirectorFicha from '@/components/AccesoDirectorFicha'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 
@@ -480,6 +481,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             </div>
           </div>
         </div>
+
+        {/* Si trabaja con un director: si ve a este deportista, y abrirlo o
+            cerrarlo desde aquí mismo. Sale solo cuando hay director. */}
+        {!deportista.solo_test && !deportista.id_grupo && <AccesoDirectorFicha idDeportista={Number(id)} />}
 
         {/* Pestañas */}
         <div className="flex gap-1 border-b border-gray-800 mb-6 flex-wrap">

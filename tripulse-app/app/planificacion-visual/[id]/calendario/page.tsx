@@ -31,6 +31,7 @@ import { BotonGuiaZonas } from '@/components/GuiaZonas'
 import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
 import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -1299,6 +1300,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                     carreras de la misma semana es la zona.
                                     Con varias, la más dura y cuántas más hay. */}
                                 <span className="text-xs truncate" title={s.zonas?.length ? s.zonas.join(' · ') : undefined}>
+                                  {/* La cambió alguien de la dirección: en la casilla solo cabe la
+                                      marca; el nombre sale al abrir el día o la sesión. */}
+                                  {s.cambiada_por && <span className="text-teal-200 mr-0.5" title="Cambiada desde la dirección">✎</span>}
                                   {s.zonas?.length > 0
                                     ? <b>{s.zonas[0]}{s.zonas.length > 1 ? '+' + (s.zonas.length - 1) : ''}</b>
                                     : s.disciplina?.slice(0, 3)}
@@ -1562,6 +1566,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                         {getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}
                         {s.estado === 'Realizada' ? ' · hecha' : ''}
                       </span>
+                      <EtiquetaCambiada por={s.cambiada_por} compacta className="mt-1" />
                     </span>
                     <span className="text-gray-600 text-sm flex-shrink-0">→</span>
                   </button>

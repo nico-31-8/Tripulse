@@ -35,6 +35,8 @@ import InstrumentosTest from '@/components/InstrumentosTest'
 import { useBloqueoDeSalida, AvisoDeSalida, BarraDeTest } from '@/components/PantallaDeTest'
 import { puedeFijar, propuestaPropia, origenDe } from '@/lib/ancla-propia'
 import { fijarZonas } from '@/lib/zonas-desde-test'
+import { entrenadorEfectivo } from '@/lib/espacio'
+import { sociosDeDireccion, duenosCompartidos, deQuien } from '@/lib/compartido-direccion'
 
 const SIGNO: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', '(': '(', ')': ')' }
 const OPS = ['+', '-', '*', '/', '^', '(', ')']
@@ -113,7 +115,9 @@ const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', '
    lib/fechas-sin-reloj que lo impide, y hace bien. */
 const hoy = () => hoyISO()
 
-interface FilaTest { id: number; nombre: string; deporte: string; def: DefinicionTest; mediciones: number }
+/* `de`: de quién es si lo comparte tu director o un entrenador al que diriges
+   (lib/compartido-direccion). Se pasa igual; editarlo y archivarlo, solo su dueño. */
+interface FilaTest { id: number; nombre: string; deporte: string; def: DefinicionTest; mediciones: number; de: string | null }
 
 export default function TestsPropiosPage() {
   const router = useRouter()
@@ -159,12 +163,14 @@ export default function TestsPropiosPage() {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
+    const socios = await sociosDeDireccion()
     const [{ data: defs }, { data: deps }] = await Promise.all([
-      supabase.from('test_definicion').select('*').eq('id_entrenador', user.id)
+      /* Los tuyos y los compartidos en la dirección. */
+      supabase.from('test_definicion').select('*').in('id_entrenador', await duenosCompartidos(user.id))
         .eq('archivado', false).order('created_at', { ascending: false }),
-      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre'),
     ])
-    const filas = (defs || []) as { id: number; nombre: string; deporte: string; modelo?: unknown }[]
+    const filas = (defs || []) as { id: number; nombre: string; deporte: string; modelo?: unknown; id_entrenador?: string | null }[]
     const ids = filas.map(d => d.id)
     /* Cuántas mediciones tiene cada uno, en UNA consulta y no una por test:
        con diez tests serían diez viajes para pintar un contador. */
@@ -182,6 +188,7 @@ export default function TestsPropiosPage() {
     setTests(filas.filter(d => !d.modelo).map(d => ({
       id: d.id, nombre: d.nombre, deporte: d.deporte,
       def: leerDefinicion(d), mediciones: cuenta[d.id] || 0,
+      de: deQuien(d.id_entrenador, user.id, socios),
     })))
     setDeportistas(deps || [])
     setCargando(false)
@@ -451,7 +458,9 @@ export default function TestsPropiosPage() {
                     <div key={t.id} className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4 flex justify-between items-center gap-4 flex-wrap">
                       <div className="min-w-0">
                         <div className="font-semibold">{t.nombre}
-                          <span className="text-gray-500 text-xs font-normal"> · {t.deporte}</span></div>
+                          <span className="text-gray-500 text-xs font-normal"> · {t.deporte}</span>
+                          {t.de && <span className="ml-2 align-middle text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-200 border border-teal-400/30">de {t.de}</span>}
+                        </div>
                         <div className="text-gray-500 text-xs mt-0.5">
                           {t.def.campos.length} campo{t.def.campos.length === 1 ? '' : 's'} ·
                           {' '}produce {t.def.resultados.map(r => r.nombre).join(', ') || '— nada'}
@@ -461,10 +470,13 @@ export default function TestsPropiosPage() {
                       <div className="flex items-center gap-2 flex-wrap justify-end">
                         {referencias.map(h => <span key={h.indice}>{chipAncla(h.resultado.ancla, t.deporte)}</span>)}
                         <button onClick={() => abrirAtleta(t)} className={btnSec}>Pasar a un atleta</button>
-                        <button onClick={() => abrirEditor(t)} title="Editar"
-                          className="text-gray-500 hover:text-orange-400 px-2 py-1 rounded transition">✏️</button>
-                        <button onClick={() => archivar(t)} title="Archivar"
-                          className="text-gray-500 hover:text-red-400 px-2 py-1 rounded transition">🗄</button>
+                        {/* Uno compartido se pasa igual, pero solo su dueño lo edita o lo archiva. */}
+                        {!t.de && <>
+                          <button onClick={() => abrirEditor(t)} title="Editar"
+                            className="text-gray-500 hover:text-orange-400 px-2 py-1 rounded transition">✏️</button>
+                          <button onClick={() => archivar(t)} title="Archivar"
+                            className="text-gray-500 hover:text-red-400 px-2 py-1 rounded transition">🗄</button>
+                        </>}
                       </div>
                     </div>
                   )

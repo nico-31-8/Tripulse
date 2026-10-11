@@ -52,6 +52,8 @@ import InterruptoresAviso from '@/components/InterruptoresAviso'
    `isFinite`, una casilla VACÍA metía un 0 en la fórmula: `Number('')` es 0 y
    0 es finito. `numeroONada` devuelve null para el vacío. */
 import { numeroONada } from '@/lib/corregir-sesion'
+import { entrenadorEfectivo } from '@/lib/espacio'
+import { sociosDeDireccion, duenosCompartidos, deQuien } from '@/lib/compartido-direccion'
 
 const LLAVE = 'tp_laboratorio_v1'
 /* LA AYUDA SE RECUERDA APARTE DEL BORRADOR, y a propósito: es de quien usa la
@@ -76,7 +78,9 @@ const PRUEBA = '-1'
 const ATLETA_PRUEBA: Atleta[] = [{ id: -1, nombre: 'Probando' }]
 
 interface Atleta { id: number; nombre: string }
-interface Guardado { id: number; nombre: string; deporte: string; def: TestLab; mediciones: number }
+/* `de`: de quién es, si no es tuyo (un test compartido por tu director o por un
+   entrenador al que diriges, lib/compartido-direccion). null si es tuyo. */
+interface Guardado { id: number; nombre: string; deporte: string; def: TestLab; mediciones: number; de: string | null }
 const clon = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
 
@@ -148,6 +152,9 @@ export default function Laboratorio() {
   const [guardados, setGuardados] = useState<Guardado[]>([])
   const [deportistas, setDeportistas] = useState<Atleta[]>([])
   const [editandoId, setEditandoId] = useState<number | null>(null)
+  /* El test abierto es de otro (compartido en la dirección): se usa y se pasa,
+     pero «Guardar» hace una copia tuya en vez de cambiar el suyo. */
+  const [ajenoDe, setAjenoDe] = useState<string | null>(null)
   const [fecha, setFecha] = useState(() => hoyISO())
   const [guardando, setGuardando] = useState(false)
   const [atletaHist, setAtletaHist] = useState<number | null>(null)
@@ -351,10 +358,11 @@ export default function Laboratorio() {
     return m
   }
 
-  const empezarCon = (t: TestLab, conPaso: number, id: number | null = null) => {
+  const empezarCon = (t: TestLab, conPaso: number, id: number | null = null, de: string | null = null) => {
     setTest(t); setProto(protoVacio(t))
     setAtletas([]); setMed(cajasVacias(t, [])); setActivo(0)
     setEditandoId(id)
+    setAjenoDe(de)
     marcas.current = {}; setReloj(null); setPidiendo(null)
     setPaso(conPaso); setVista('editor')
   }
@@ -384,7 +392,7 @@ export default function Laboratorio() {
     const g = guardados.find(x => x.id === id)
     if (!g) { decir('mal', 'Ese test ya no está en tu lista.'); return }
 
-    empezarCon(clon(g.def), 4, g.id)
+    empezarCon(clon(g.def), 4, g.id, g.de)
     setVista('pasar')
     const f = p.get('fecha')
     if (f) setFecha(f)
@@ -405,15 +413,18 @@ export default function Laboratorio() {
     const user = await usuarioActual()
     if (!user) return
     setUserId(user.id)
+    const socios = await sociosDeDireccion()
     const [{ data: defs }, { data: deps }] = await Promise.all([
       /* Se piden TODAS las columnas y no una lista: si la columna «modelo»
          todavía no existe en esta base, pedirla por su nombre daría un error de
          consulta y la pantalla entera se quedaría en blanco. Así, simplemente
          no hay tests del modelo nuevo y el laboratorio sigue sirviendo para
          montar y probar. */
-      supabase.from('test_definicion').select('*').eq('id_entrenador', user.id)
+      /* Los tuyos y los compartidos en la dirección (tu director, o los
+         entrenadores que diriges): se pueden usar todos. */
+      supabase.from('test_definicion').select('*').in('id_entrenador', await duenosCompartidos(user.id))
         .eq('archivado', false).order('created_at', { ascending: false }),
-      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id)
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', entrenadorEfectivo(user.id))
         .eq('solo_test', false).order('nombre'),
     ])
     const ids: number[] = []
@@ -423,7 +434,10 @@ export default function Laboratorio() {
       /* Sin modelo es un test de /tests-propios: aquí ni se ofrece, para no
          enseñar una versión mutilada de algo que allí está entero. */
       if (!def) continue
-      mios.push({ id: Number(d.id), nombre: String(d.nombre || ''), deporte: String(d.deporte || ''), def, mediciones: 0 })
+      mios.push({
+        id: Number(d.id), nombre: String(d.nombre || ''), deporte: String(d.deporte || ''), def, mediciones: 0,
+        de: deQuien(d.id_entrenador as string | null, user.id, socios),
+      })
       ids.push(Number(d.id))
     }
     if (ids.length) {
@@ -482,13 +496,17 @@ export default function Laboratorio() {
     if (pegasDe(test).length) { decir('mal', 'Hay cosas por arreglar antes de guardarlo'); return }
     setGuardando(true)
     const fila = paraGuardar(test, userId)
-    const { data, error } = editandoId
+    /* Un test de otro no se cambia: se guarda una COPIA tuya y el suyo sigue
+       igual. Las mediciones ya hechas con el suyo se quedan con el suyo. */
+    const copia = ajenoDe !== null
+    const { data, error } = editandoId && !copia
       ? await supabase.from('test_definicion').update(fila).eq('id', editandoId).select('id').single()
       : await supabase.from('test_definicion').insert(fila).select('id').single()
     setGuardando(false)
     if (error) { decir('mal', 'No se pudo guardar: ' + error.message); return }
     if (data?.id) setEditandoId(Number(data.id))
-    decir('ok', editandoId ? 'Test actualizado.' : 'Test creado.')
+    decir('ok', copia ? 'Copia guardada como tuya. El de ' + ajenoDe + ' sigue igual.' : editandoId ? 'Test actualizado.' : 'Test creado.')
+    if (copia) setAjenoDe(null)
     await cargar()
   }
 
@@ -561,14 +579,21 @@ export default function Laboratorio() {
         <span className="ml-2 text-[10px] uppercase tracking-wider text-violet-300 border border-violet-400/40 bg-violet-500/10 rounded-full px-2 py-0.5">
           en pruebas
         </span>
+        {ajenoDe && vista !== 'plantillas' && (
+          <span className="ml-2 text-[10.5px] font-semibold text-teal-200 border border-teal-400/40 bg-teal-500/10 rounded-full px-2 py-0.5"
+            title="Puedes pasarlo y ver cómo va. Para cambiarlo, guarda una copia tuya.">
+            test de {ajenoDe}
+          </span>
+        )}
       </span>
       <div className="flex gap-2 flex-shrink-0">
         {vista !== 'plantillas' && (
           <button onClick={() => { setVista('plantillas'); setPidiendo(null) }} className={btnSec + ' ' + btnMini}>← Otro test</button>
         )}
         {vista === 'editor' && (
-          <button onClick={guardarTest} disabled={guardando} className={btnSec + ' ' + btnMini}>
-            {guardando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Guardar test'}
+          <button onClick={guardarTest} disabled={guardando} className={btnSec + ' ' + btnMini}
+            title={ajenoDe ? 'Es de ' + ajenoDe + ': se guarda una copia tuya y el suyo no cambia' : undefined}>
+            {guardando ? 'Guardando…' : ajenoDe ? 'Guardar una copia mía' : editandoId ? 'Guardar cambios' : 'Guardar test'}
           </button>
         )}
         {vista === 'editor' && editandoId !== null && (
@@ -597,16 +622,20 @@ export default function Laboratorio() {
           </div>
           {guardados.length > 0 && (
             <div className={tarjeta}>
-              <p className="font-bold text-[15px]">Tus tests</p>
-              <p className="text-gray-500 text-xs mt-1">Los que ya has montado aquí. Se abren para seguir tocándolos o para pasarlos.</p>
+              <p className="font-bold text-[15px]">{guardados.some(g => g.de) ? 'Tus tests y los compartidos' : 'Tus tests'}</p>
+              <p className="text-gray-500 text-xs mt-1">
+                Los que ya has montado aquí. Se abren para seguir tocándolos o para pasarlos.
+                {guardados.some(g => g.de) && ' Los compartidos en la dirección se usan igual; para cambiarlos se guarda una copia tuya.'}
+              </p>
               <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))' }}>
                 {guardados.map(g => (
-                  <button key={g.id} onClick={() => empezarCon(clon(g.def), 4, g.id)}
+                  <button key={g.id} onClick={() => empezarCon(clon(g.def), 4, g.id, g.de)}
                     className="bg-[#0d1420] border border-gray-800 hover:border-orange-500 rounded-xl p-3 text-left flex flex-col gap-1 transition">
                     <span className="font-semibold text-[13.5px]">{g.nombre}</span>
                     <span className="text-[11.5px] text-gray-500">
                       {g.deporte} · {g.mediciones === 0 ? 'sin pasar todavía' : g.mediciones + (g.mediciones === 1 ? ' medición' : ' mediciones')}
                     </span>
+                    {g.de && <span className="self-start text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-200 border border-teal-400/30">de {g.de}</span>}
                   </button>
                 ))}
               </div>
@@ -913,7 +942,9 @@ export default function Laboratorio() {
                   if (!test) return
                   const nuevo: TestLab = { ...clon(test), pantalla: tienePantalla(p) ? p : undefined }
                   setTest(nuevo)
-                  if (editandoId && userId) {
+                  /* En un test de otro, la pantalla se queda en esta visita: el
+                     test es suyo y no se le cambia por la espalda. */
+                  if (editandoId && userId && !ajenoDe) {
                     const { error } = await supabase.from('test_definicion')
                       .update(paraGuardar(nuevo, userId)).eq('id', editandoId)
                     if (error) decir('mal', 'No se ha podido guardar la pantalla: ' + error.message)
