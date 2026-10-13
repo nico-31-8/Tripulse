@@ -14,6 +14,68 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 13 de octubre de 2026 · FMS y Nine Test analizados en vídeo
+
+**Qué es.** En la ficha de tests de cada deportista hay una pestaña nueva,
+**🎥 Movimiento**, para pasarle el **FMS** o el **Nine Test** prueba a prueba,
+con vídeo o apuntando la nota a mano. Es un analizador como Kinovea dentro de
+la app.
+
+**Cómo funciona.**
+- Grabas con la cámara del móvil, o eliges una foto, y lo abres en el visor:
+  fotograma a fotograma, a cámara lenta, con lupa para colocar bien cada punto.
+- Herramientas para medir encima: línea, ángulo, plomada, horizontal,
+  distancia y **palma**. La palma es la regla: las distancias salen en palmas
+  del propio deportista, que es como se mide la movilidad de hombro.
+- **Los puntos siguen al cuerpo.** Un ángulo dibujado va con la rodilla al
+  avanzar o al reproducir. Si un punto se pierde, el vídeo se para y lo
+  arrastras a su sitio. A la derecha sale la **gráfica del ángulo** en todo el
+  movimiento, con su mínimo y su máximo, y un botón para ir a cada uno.
+- **Detectar el cuerpo.** La app coloca el esqueleto en todo el vídeo y mide
+  sola los ángulos de perfil, diciendo **cuánto fiarse de cada uno**:
+  - Rodilla, tronco y tibia: «fiable».
+  - Cadera: «con margen».
+  - De frente: no da ningún número. El valgo se juzga a ojo, porque con una
+    sola cámara el plano frontal sale mal.
+
+  El punto que el detector adivina sale en ámbar para que lo corrijas. La
+  primera vez baja el detector (unos 42 MB) y después queda guardado.
+- **Suelo.** Si el móvil no estaba recto, marcas el suelo con dos toques y todo
+  lo que es «frente a la vertical» o «a la horizontal» se mide contra él.
+- **Nota sugerida, solo donde se puede medir:** movilidad de hombro, elevación
+  de pierna recta y las sentadillas profundas. En las sentadillas dice a qué
+  apunta y con qué condición: las rodillas de frente y la pica no las ve, y si
+  fue con alza lo marcas tú. Cerca de un umbral dice «en el límite». **La nota
+  la pones tú siempre.** La sugerencia se guarda al lado para ver con el tiempo
+  cuántas veces coincidís.
+- Las pruebas de dos lados se puntúan por separado y cuenta el peor. Las de
+  dolor del FMS ponen a 0 su prueba.
+- **El vídeo no sale de tu móvil.** Se guarda solo el fotograma con lo
+  dibujado, y solo si marcas que el deportista ha dado su permiso.
+
+**El resultado.** Una barra por prueba, con una raya gris en la nota de la vez
+anterior. Arriba sale lo más bajo y si hay diferencia entre lados, y debajo los
+fotogramas guardados. Lleva un aviso que conviene recordar: el total sirve para
+seguir a la persona consigo misma, **no para predecir lesiones**.
+
+**Lo que ve tu deportista.** En *Mis tests*, pestaña Movimiento, sus notas y
+los fotogramas que guardaste con su permiso. No puede cambiarlas.
+
+**Cómo grabar.**
+- Móvil quieto y recto (el nivel de la cámara ayuda).
+- A la altura de la cadera y a unos 3 m, con el cuerpo entero dentro.
+- De perfil o de frente según la prueba.
+- Descalzo y con ropa ajustada.
+- Tres intentos, y vale el mejor.
+
+**A tener en cuenta en el móvil:**
+- Detectar el cuerpo va más lento que en el ordenador: un vídeo de 10 s puede
+  tardar cerca de un minuto, y se puede parar a mitad.
+- Los vídeos del iPhone grabados en «alta eficiencia» pueden no abrirse en un
+  ordenador con Windows. Para eso, grabar en «más compatible».
+
+---
+
 ## 11 de octubre de 2026 · Serie a serie: cada serie con sus repeticiones, su peso y su esfuerzo
 
 **Qué es.** Hasta ahora todas las series de un ejercicio eran iguales

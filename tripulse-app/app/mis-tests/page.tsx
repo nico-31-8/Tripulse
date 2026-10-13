@@ -6,13 +6,14 @@ import { usuarioActual } from '@/lib/sesion'
 import { TablaZonas2 } from '@/components/TablaZonas2'
 import { colorDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
+import MovimientoDeportista from '@/components/movimiento/MovimientoDeportista'
 
 export default function MisTests() {
   const router = useRouter()
   const [deportista, setDeportista] = useState<any>(null)
   const [tests, setTests] = useState<any>({ carrera: [], natacion: [], ciclismo: [], fuerza: [] })
   const [loading, setLoading] = useState(true)
-  const [pestana, setPestana] = useState<'carrera'|'natacion'|'ciclismo'|'fuerza'>('carrera')
+  const [pestana, setPestana] = useState<'carrera'|'natacion'|'ciclismo'|'fuerza'|'movimiento'>('carrera')
 
   useEffect(() => {
     const cargar = async () => {
@@ -68,7 +69,16 @@ export default function MisTests() {
               {etiquetaConEmoji(p.disc)}
             </button>
           ))}
+          {/* No es una disciplina: son el FMS y el Nine Test, que su entrenador
+              valora en vídeo. Aquí ve sus notas y sus fotogramas. */}
+          <button onClick={() => setPestana('movimiento')}
+            className={'px-4 py-2.5 text-sm font-medium transition border-b-2 ' +
+              (pestana === 'movimiento' ? 'border-orange-500 text-sky-300' : 'border-transparent text-gray-400 hover:text-white')}>
+            🎥 Movimiento
+          </button>
         </div>
+
+        {pestana === 'movimiento' && deportista && <MovimientoDeportista idDeportista={deportista.id} />}
 
         {/* CARRERA */}
         {pestana === 'carrera' && (

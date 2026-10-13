@@ -17,20 +17,24 @@ import { herramientasDe, avisoDe } from '@/lib/herramientas-test'
 import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/catalogo-tests'
 import { emojiDisciplina } from '@/lib/disciplinas'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import PestanaMovimiento from '@/components/movimiento/PestanaMovimiento'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
 
 /* Las pestañas. «triatlon» es nueva y no tiene test clásico detrás: existe
    porque el brick y el decoupling son de la batería y no son de un deporte
    suelto. Todo lo que hay bajo esa pestaña sale del catálogo. */
-const TABS = ['carrera', 'natacion', 'ciclismo', 'fuerza', 'triatlon'] as const
+/* «movimiento» tampoco tiene test clásico: son las baterías que se valoran
+   mirando el movimiento en vídeo (FMS, Nine Test), con su propia pantalla
+   (components/movimiento). */
+const TABS = ['carrera', 'natacion', 'ciclismo', 'fuerza', 'triatlon', 'movimiento'] as const
 const ETIQUETA_TAB: Record<string, string> = {
   carrera: '🏃 Carrera', natacion: '🏊 Natación', ciclismo: '🚴 Ciclismo',
-  fuerza: '🏋️ Fuerza', triatlon: '🔀 Triatlón',
+  fuerza: '🏋️ Fuerza', triatlon: '🔀 Triatlón', movimiento: '🎥 Movimiento',
 }
 const TITULO_TAB: Record<string, string> = {
   carrera: 'Carrera', natacion: 'Natación', ciclismo: 'Ciclismo',
-  fuerza: 'Fuerza', triatlon: 'Triatlón',
+  fuerza: 'Fuerza', triatlon: 'Triatlón', movimiento: 'Movimiento',
 }
 /** De la pestaña a la disciplina del catálogo de tests de campo. */
 const DISCIPLINA_TAB: Record<string, Disciplina> = {
@@ -672,6 +676,12 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           ))}
         </div>
 
+        {/* La pestaña de movimiento tiene su propia pantalla: lo de abajo es de
+            los tests de crono y de campo, y con ella no pinta nada. */}
+        {tab === 'movimiento' ? (
+          <PestanaMovimiento idDeportista={Number(id)} deportista={deportista}
+            onPermiso={en => setDeportista((d: any) => ({ ...d, permiso_fotogramas_en: en }))} />
+        ) : (<>
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <h3 className="text-xl font-bold">{TITULO_TAB[tab]}</h3>
           {tab !== 'fuerza' && tab !== 'triatlon' && (
@@ -1111,6 +1121,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
             </div>
           </div>
         )}
+        </>)}
 
         </div>{/* /columna de los tests */}
 

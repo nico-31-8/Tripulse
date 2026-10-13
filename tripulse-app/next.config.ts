@@ -70,6 +70,12 @@ const CSP = [
      una imagen es aceptable: lo que no queremos es que se carguen SCRIPTS de
      cualquier sitio, y eso ya está cerrado arriba. */
   "img-src 'self' data: blob: https:",
+  /* El analizador de vídeo (pestaña Movimiento de Tests) abre el vídeo como un
+     archivo local, con una URL `blob:`. Sin esta línea manda `default-src` y el
+     navegador NO lo reproduce en producción —en local la política solo avisa, y
+     ahí no se nota—. El vídeo no sale del dispositivo: no hace falta abrir
+     ningún servidor. */
+  "media-src 'self' blob:",
   `connect-src 'self' ${SUPABASE} ${SUPABASE_WS} https://*.ingest.de.sentry.io`,
   /* Los vídeos de los ejercicios se ven incrustados desde YouTube. */
   "frame-src https://www.youtube.com https://youtube.com",
