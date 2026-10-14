@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   mismaRef, mismoDeporte, opcionesDeRef, buscarOpcion, valorDe,
-  aplicarPct, tramoDe, leerValor,
+  aplicarPct, tramoDe, leerValor, esPulsaciones,
   type TestConMediciones, type ValorRef,
 } from './referencia-propia'
 import type { DefinicionTest, Medicion, ResultadoTest } from './test-definicion'
@@ -213,5 +213,23 @@ describe('cómo se lee un número', () => {
 
   it('sin unidad, solo el número', () => {
     expect(leerValor(73, '')).toBe('73')
+  })
+})
+
+describe('las pulsaciones, enteras', () => {
+  it('reconoce cómo se escriben las pulsaciones, y no confunde el VO2 en l/min', () => {
+    for (const u of ['lpm', 'LPM', 'l.p.m.', 'ppm', 'bpm', 'pulsaciones', 'pulsaciones/min', 'puls/min', 'pul/min', 'latidos por minuto', 'lat/min']) {
+      expect(esPulsaciones(u)).toBe(true)
+    }
+    for (const u of ['l/min', 'L/min', 'ml/kg/min', 'km/h', 'W', 's/100m', '']) {
+      expect(esPulsaciones(u)).toBe(false)
+    }
+  })
+
+  it('un 85 % de 150 lpm se lee 128; lo demás conserva los decimales', () => {
+    expect(leerValor(127.5, 'lpm')).toBe('128 lpm')
+    expect(leerValor(127.5, 'lpm', true)).toBe('128')
+    expect(leerValor(3.456, 'l/min')).toBe('3,46 l/min')
+    expect(leerValor(76.843, 's/100m', true)).toBe('76,84')
   })
 })

@@ -245,11 +245,29 @@ export function tramoDe(v: ValorRef, pctMin: number, pctMax: number): { desde: n
 }
 
 /**
+ * Si la unidad es de pulsaciones. La escribe el entrenador a mano, así que se
+ * aceptan las formas de siempre: lpm, ppm, bpm, pulsaciones, latidos/min…
+ * NO «l/min»: eso es el VO₂ en litros por minuto, y lleva decimales.
+ */
+export function esPulsaciones(unidad: string): boolean {
+  const u = String(unidad || '').toLowerCase().replace(/[\s.]/g, '')
+  return /^(lpm|ppm|bpm|puls|pulsaciones|latidos)((\/|por)min(uto)?)?$/.test(u)
+    || /^(pul|lat)\/min$/.test(u)
+}
+
+/**
  * Un número en la unidad que escribió el entrenador, sin adornos.
  *
  * NO SE INTENTA PASAR 73 A «1:13». La unidad es texto libre: interpretarla para
  * embellecerla es exactamente el paso donde se cuelan los números que mienten.
  * Se enseña lo que se calculó, con la unidad tal como la escribió.
+ *
+ * Con DOS decimales, salvo las pulsaciones, que van enteras: un 85 % de 150
+ * lpm se lee 128, no 127,5 (un pulsómetro no marca medias pulsaciones).
+ * `sinUnidad`: el número solo, para el primero de un «128 – 150 lpm», sin
+ * perder la unidad, que es la que decide cómo se redondea.
  */
-export const leerValor = (n: number, unidad: string): string =>
-  (Math.round(n * 100) / 100).toString().replace('.', ',') + (unidad ? ' ' + unidad : '')
+export const leerValor = (n: number, unidad: string, sinUnidad = false): string => {
+  const f = esPulsaciones(unidad) ? 1 : 100
+  return (Math.round(n * f) / f).toString().replace('.', ',') + (unidad && !sinUnidad ? ' ' + unidad : '')
+}

@@ -28,7 +28,7 @@
 
 import { ZONAS_RESISTENCIA, rangoDeZona, nivelDeRpe, cargaZona, type CargaZona, type CopiaZona } from './zonas'
 import { mmss } from './medicion'
-import { aplicarPct, valorDe, opcionesDeRef, type TestConMediciones } from './referencia-propia'
+import { aplicarPct, leerValor, valorDe, opcionesDeRef, type TestConMediciones } from './referencia-propia'
 import { fichaDe, type ZonaEntrenador } from './zonas-entrenador'
 
 /** Cómo se escribe el rango de una zona sobre su referencia. */
@@ -311,11 +311,11 @@ export function textoTramo(t: Tramo | null): string {
   }
   /* Cualquier otra unidad la escribió el entrenador a mano: se enseña tal cual,
      sin intentar embellecerla. Interpretarla para adornarla es justo el paso
-     donde se cuelan los números que mienten. */
-  const n = (x: number) => (Math.round(x * 100) / 100).toString().replace('.', ',')
-  return t.desde === t.hasta
-    ? n(t.desde) + ' ' + t.unidad
-    : n(t.desde) + '–' + n(t.hasta) + ' ' + t.unidad
+     donde se cuelan los números que mienten. Se redondea como en todas partes
+     (leerValor): las pulsaciones, enteras. Si al redondear los dos extremos
+     quedan iguales, se lee uno solo. */
+  const a = leerValor(t.desde, t.unidad, true), b = leerValor(t.hasta, t.unidad, true)
+  return a === b ? a + ' ' + t.unidad : a + '–' + b + ' ' + t.unidad
 }
 
 // ------------------------------------------------------------

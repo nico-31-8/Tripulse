@@ -569,3 +569,17 @@ describe('el objetivo de una tarea ya prescrita', () => {
     expect(cuelgaDeTestPropio({ zona_entrenamiento: 'AEL' })).toBe(false)
   })
 })
+
+describe('el tramo en pulsaciones', () => {
+  it('sale en enteros: 85–100 % de un VT1 de 150 lpm es 128–150 lpm', () => {
+    expect(textoTramo({ desde: 127.5, hasta: 150, unidad: 'lpm', inverso: false })).toBe('128–150 lpm')
+  })
+
+  it('si al redondear los dos extremos quedan iguales, se lee uno solo', () => {
+    expect(textoTramo({ desde: 150.2, hasta: 150.4, unidad: 'ppm', inverso: false })).toBe('150 ppm')
+  })
+
+  it('otra unidad escrita a mano sigue con sus decimales', () => {
+    expect(textoTramo({ desde: 3.456, hasta: 3.9, unidad: 'l/min', inverso: false })).toBe('3,46–3,9 l/min')
+  })
+})

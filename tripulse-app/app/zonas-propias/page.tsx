@@ -262,7 +262,7 @@ export default function ZonasPropiasPage() {
       if (!t) return null
       const [a, b] = [t.desde, t.hasta].sort((p, q) => p - q)
       return {
-        texto: leerValor(a, '') + ' – ' + leerValor(b, v.unidad),
+        texto: leerValor(a, v.unidad, true) + ' – ' + leerValor(b, v.unidad),
         nota: o.etiqueta + ' = ' + leerValor(v.valor, v.unidad) + ' · ' + fechaCorta(v.fecha),
       }
     }

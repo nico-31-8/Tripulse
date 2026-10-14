@@ -14,6 +14,22 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 14 de octubre de 2026 · Las pulsaciones de tus zonas, enteras
+
+Cuando una zona tuya cuelga de una referencia en pulsaciones (un VT1, el
+umbral de un test tuyo), el objetivo salía con decimales: el 85–100 % de
+150 lpm se leía «127,5–150 lpm». Ahora sale entero: **«128–150 lpm»**. Igual en
+la tarea de la sesión, en lo que ve tu deportista y en *Zonas propias*.
+
+**Lo que cambia para tu deportista:** el extremo de su objetivo en pulsaciones
+puede moverse media pulsación al redondear. La zona y la carga no cambian; solo
+cómo se escribe el número.
+
+Cuentan como pulsaciones lpm, ppm, bpm, «pulsaciones» y «latidos/min». Las
+demás unidades siguen con sus decimales, por ejemplo el VO₂ en l/min.
+
+---
+
 ## 13 de octubre de 2026 · FMS y Nine Test analizados en vídeo
 
 **Qué es.** En la ficha de tests de cada deportista hay una pestaña nueva,
