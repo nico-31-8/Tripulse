@@ -9,6 +9,10 @@ import { esDisciplinaDeFuerza, emojiDisciplina, etiquetaDisciplina } from '@/lib
 import { esBloque, leerResultado } from '@/lib/bloque-formato'
 import { realDeTarea, valoracionDeSesion } from '@/lib/lo-que-hizo'
 import ResumenBloque from '@/components/ResumenBloque'
+import { limpiar } from '@/lib/copiar-sesion'
+
+/* Las series llegan dentro de su ejercicio o de su tarea y se guardan aparte. */
+const SUS_SERIES = new Set(['series_realizadas'])
 
 
 // Con qué se controló la serie. Las series antiguas no lo traen: eran RIR, que
@@ -73,10 +77,14 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
+    /* UNA RONDA. Los ejercicios ya venían dentro de las tareas y se volvían a
+       pedir aparte; y las series anotadas iban en una tercera ronda. Ahora
+       todo llega anidado: las series de fuerza dentro de su ejercicio y las de
+       resistencia dentro de su tarea. */
     const [{ data: tar }, { data: ses }] = await Promise.all([
       supabase
         .from('tarea')
-        .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
+        .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*, series_realizadas(*)), series_realizadas(*)')
         .eq('id_sesion', sesionId)
         .order('orden'),
       supabase.from('sesion').select('rpe_reportado').eq('id', sesionId).maybeSingle(),
@@ -84,32 +92,29 @@ export default function DatosReales({ sesionId, disciplina }: { sesionId: number
     setRpeSesion((ses as { rpe_reportado: number | null } | null)?.rpe_reportado ?? null)
 
     if (tar?.length) {
-      // Cargar ejercicios manualmente
-      const tareaIds = tar.map(t => t.id)
-      const { data: ejs } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
-      const tarConEjs = tar.map(t => ({
-        ...t,
-        ejercicios: ejs?.filter(e => e.id_tarea === t.id) || []
-      }))
-      setTareas(tarConEjs)
+      const filas = tar as any[]
+      /* Los ejercicios en el orden en que se guardaron, como cuando llegaban en
+         su propia consulta, y sin sus series dentro: esas van aparte. */
+      setTareas(filas.map(t => ({
+        ...limpiar(t, SUS_SERIES),
+        ejercicios: ((t.ejercicios || []) as any[]).slice()
+          .sort((a, b) => Number(a.id) - Number(b.id))
+          .map(e => limpiar(e, SUS_SERIES)),
+      })) as TareaFila[])
 
       /* Las series anotadas, POR LOS DOS LADOS: en fuerza cuelgan del
          ejercicio y en resistencia de la propia tarea. Antes solo se pedían
          las del ejercicio, así que las de resistencia —que ahora sí se
          guardan— no llegaban y el total se seguía estimando. */
-      const ejIds = ejs?.map(e => e.id) || []
-      const [porEj, porTarea] = await Promise.all([
-        ejIds.length
-          ? supabase.from('series_realizadas').select('*').in('id_ejercicio', ejIds).order('numero_serie')
-          : Promise.resolve({ data: [] as SerieFila[] }),
-        tareaIds.length
-          ? supabase.from('series_realizadas').select('*').in('id_tarea', tareaIds).order('numero_serie')
-          : Promise.resolve({ data: [] as SerieFila[] }),
-      ])
+      const todas = filas.flatMap(t => [
+        ...((t.ejercicios || []) as any[]).flatMap(e => e.series_realizadas || []),
+        ...(t.series_realizadas || []),
+      ]) as SerieFila[]
       /* Por id, que una fila puede venir por los dos caminos. */
       const unicas = new Map<number, SerieFila>()
-      for (const s of [...(porEj.data || []), ...(porTarea.data || [])] as SerieFila[]) unicas.set(s.id, s)
-      setSeriesReales([...unicas.values()])
+      for (const s of todas) unicas.set(s.id, s)
+      setSeriesReales([...unicas.values()]
+        .sort((a, b) => (Number((a as { numero_serie?: number }).numero_serie) || 0) - (Number((b as { numero_serie?: number }).numero_serie) || 0)))
     }
     setLoading(false)
   }, [sesionId])

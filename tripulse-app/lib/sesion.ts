@@ -52,12 +52,26 @@ function unaSolaVez(r: Ranura, consulta: () => Promise<any>): Promise<any> {
   return r.enVuelo
 }
 
-/** El usuario autenticado, o null si no hay sesión. */
+/**
+ * El usuario autenticado, o null si no hay sesión.
+ *
+ * DE LA SESIÓN GUARDADA, NO DEL SERVIDOR. Era `getUser()`, que pregunta a
+ * Supabase quién eres: un viaje de red entero al abrir la app, y casi todas
+ * las pantallas esperan a saberlo antes de pedir nada más. `getSession()` lo
+ * lee del navegador, y solo sale a la red cuando el token ha caducado y toca
+ * renovarlo.
+ *
+ * No abre ningún agujero: aquí el usuario solo sirve para filtrar y para
+ * decidir qué se enseña. Quien manda es la RLS, que valida el token en cada
+ * consulta; una sesión manipulada en el navegador no ve nada que no sea suyo.
+ * Las rutas de /api siguen validando contra el servidor con su propio
+ * `getUser(token)`.
+ */
 export function usuarioActual(): Promise<any> {
   return unaSolaVez(rUsuario, async () => {
-    const { data, error } = await supabase.auth.getUser()
+    const { data, error } = await supabase.auth.getSession()
     if (error) throw error
-    return data.user ?? null
+    return data.session?.user ?? null
   })
 }
 

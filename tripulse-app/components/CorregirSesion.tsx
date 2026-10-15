@@ -31,6 +31,7 @@ import { hoyISO } from '@/lib/fechas'
 import { rellenarRpeTareas } from '@/lib/rpe-sesion'
 import { controlDe } from '@/lib/control-esfuerzo'
 import { esDisciplinaDeFuerza } from '@/lib/disciplinas'
+import { limpiar } from '@/lib/copiar-sesion'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import {
   comoDarlaPorHecha, filaNuevaDeSerie, parcheDetalle, parcheDistancia, parcheDuracion,
@@ -86,6 +87,10 @@ interface Tarea {
 }
 
 const txt = (v: number | null | undefined): string => (v == null ? '' : String(v))
+/* Lo que llega anidado (ejercicios en la tarea, series en el ejercicio) y se
+   guarda en su propia lista. */
+const SUS_EJERCICIOS = new Set(['ejercicios'])
+const SUS_SERIES = new Set(['series_realizadas'])
 
 const vacioTarea = (t: Tarea): CamposTarea => ({
   rpe_reportado: txt(t.rpe_reportado),
@@ -142,28 +147,25 @@ export default function CorregirSesion({ sesion, estimadaMin, onCambio }: {
   /* Lo de dentro solo se pide al abrir la corrección: la ficha de sesión ya
      hace diez consultas al entrar, y esto no hace falta para pintar un botón. */
   const cargar = useCallback(async () => {
+    /* UNA consulta: los ejercicios dentro de cada tarea y las series hechas
+       dentro de cada ejercicio. Eran tres en fila, cada una esperando a los
+       ids de la anterior. */
     const { data: tar } = await supabase.from('tarea')
-      .select('id, disciplina, orden, rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, notas_post, sensacion_general, p_distancia(metros_reales), p_duracion(tiempo_real)')
+      .select('id, disciplina, orden, series, bloques, formato, formato_config, rpe_reportado, fc_media, sensacion_tecnica, dolor_muscular, notas_post, sensacion_general, p_distancia(metros_reales), p_duracion(tiempo_real), ejercicios(id, id_tarea, nombre, series, control_tipo, series_realizadas(id, id_ejercicio, numero_serie, ejercicio_numero, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo))')
       .eq('id_sesion', sesion.id).order('orden')
-    const ts = (tar || []) as unknown as Tarea[]
+    const filas = (tar || []) as unknown as (Tarea & { ejercicios?: (Ejercicio & { series_realizadas?: Serie[] })[] })[]
+    const ts = filas.map(t => limpiar(t, SUS_EJERCICIOS) as Tarea)
     setTareas(ts)
     setCTareas(Object.fromEntries(ts.map(t => [t.id, vacioTarea(t)])))
     setCRes(Object.fromEntries(ts.map(t => [t.id, vacioResistencia(t)])))
 
-    const ids = ts.map(t => t.id)
-    const { data: ejs } = ids.length
-      ? await supabase.from('ejercicios').select('id, id_tarea, nombre, series, control_tipo').in('id_tarea', ids)
-      : { data: [] }
-    const es = (ejs || []) as Ejercicio[]
+    /* En el orden en que se guardaron, como cuando llegaban en su propia consulta. */
+    const conSeries = filas.flatMap(t => t.ejercicios || []).sort((a, b) => Number(a.id) - Number(b.id))
+    const es = conSeries.map(e => limpiar(e, SUS_SERIES) as Ejercicio)
     setEjercicios(es)
 
-    const idsEj = es.map(e => e.id)
-    const { data: srs } = idsEj.length
-      ? await supabase.from('series_realizadas')
-        .select('id, id_ejercicio, numero_serie, ejercicio_numero, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo')
-        .in('id_ejercicio', idsEj).order('numero_serie')
-      : { data: [] }
-    const ss = (srs || []) as Serie[]
+    const ss = conSeries.flatMap(e => e.series_realizadas || [])
+      .sort((a, b) => (Number(a.numero_serie) || 0) - (Number(b.numero_serie) || 0))
     setSeries(ss)
 
     /* Una casilla por serie PRESCRITA, no por fila guardada: las filas solo
@@ -231,19 +233,23 @@ export default function CorregirSesion({ sesion, estimadaMin, onCambio }: {
       .update(parcheDeSesion(cSesion, sesion.rpe_reportado)).eq('id', sesion.id)
     if (error) { setGuardando(false); alert('No se ha podido guardar: ' + error.message); return }
 
+    /* TODO LO DEMÁS A LA VEZ. Cada escritura toca su fila y ninguna depende de
+       otra: iban una detrás de otra —tres por tarea y una por serie—, y una
+       sesión de fuerza de seis ejercicios eran treinta esperas en fila. */
+    const escrituras: PromiseLike<unknown>[] = []
     for (const t of tareas) {
       const c = cTareas[t.id]
       const r = cRes[t.id]
       /* El detalle de las series va en la tarea, así que se escribe con lo
          demás en vez de en otra consulta. */
       const parche = { ...(c ? parcheDeTarea(c) : {}), ...(r && !esFuerzaTarea(t) ? parcheDetalle(r) : {}) }
-      if (Object.keys(parche).length) await supabase.from('tarea').update(parche).eq('id', t.id)
+      if (Object.keys(parche).length) escrituras.push(supabase.from('tarea').update(parche).eq('id', t.id))
 
       if (r && !esFuerzaTarea(t)) {
         /* Solo si la tarea TIENE esa medida: crear una fila de prescripción
            que nadie prescribió sería inventarse la sesión. */
-        if (t.p_distancia?.length) await supabase.from('p_distancia').update(parcheDistancia(r)).eq('id_tarea', t.id)
-        if (t.p_duracion?.length) await supabase.from('p_duracion').update(parcheDuracion(r)).eq('id_tarea', t.id)
+        if (t.p_distancia?.length) escrituras.push(supabase.from('p_distancia').update(parcheDistancia(r)).eq('id_tarea', t.id))
+        if (t.p_duracion?.length) escrituras.push(supabase.from('p_duracion').update(parcheDuracion(r)).eq('id_tarea', t.id))
       }
     }
 
@@ -254,17 +260,18 @@ export default function CorregirSesion({ sesion, estimadaMin, onCambio }: {
         const c = cSeries[llave(ej.id, n)]
         if (!c) continue
         const fila = series.find(x => x.id_ejercicio === ej.id && x.numero_serie === n && (x.ejercicio_numero ?? 1) === 1)
-        if (fila) await supabase.from('series_realizadas').update(parcheDeSerie(c)).eq('id', fila.id)
+        if (fila) escrituras.push(supabase.from('series_realizadas').update(parcheDeSerie(c)).eq('id', fila.id))
         else {
           const nueva = filaNuevaDeSerie(ej.id, n, ej.control_tipo, c)
           if (nueva) nuevas.push(nueva)
         }
       }
     }
-    if (nuevas.length) {
-      const { error: e2 } = await supabase.from('series_realizadas').insert(nuevas)
-      if (e2) { setGuardando(false); alert('No se han podido escribir las series nuevas: ' + e2.message); return }
-    }
+    const [{ error: e2 }] = await Promise.all([
+      nuevas.length ? supabase.from('series_realizadas').insert(nuevas) : Promise.resolve({ error: null }),
+      ...escrituras,
+    ])
+    if (e2) { setGuardando(false); alert('No se han podido escribir las series nuevas: ' + e2.message); return }
 
     setGuardando(false)
     setModo('no')

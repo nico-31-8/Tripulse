@@ -68,14 +68,12 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
     setAplicando(true)
 
     if (reemplazar && nTareas > 0) {
-      const { data: previas } = await supabase.from('tarea').select('id').eq('id_sesion', sesionId)
-      const ids = (previas || []).map((t: any) => t.id)
-      if (ids.length) {
-        // Los parámetros cuelgan de la tarea: si se borra la tarea sin ellos, quedan huérfanos.
-        await supabase.from('p_distancia').delete().in('id_tarea', ids)
-        await supabase.from('p_duracion').delete().in('id_tarea', ids)
-        await supabase.from('tarea').delete().eq('id_sesion', sesionId)
-      }
+      /* UNA orden en vez de cuatro en fila (pedir los ids, borrar metros,
+         borrar minutos, borrar tareas): lo que cuelga de una tarea se borra con
+         ella, en cascada en la base. Y si no se puede, se para: antes seguía y
+         la plantilla se sumaba a las tareas viejas en vez de sustituirlas. */
+      const { error } = await supabase.from('tarea').delete().eq('id_sesion', sesionId)
+      if (error) { alert('No se han podido quitar las tareas de antes, así que la plantilla no se ha aplicado.\n\n' + error.message); setAplicando(false); return }
     }
 
     const err = await aplicarBloques(supabase, sesionId, disciplina, bloques, reemplazar ? 0 : (ordenBase ?? nTareas))

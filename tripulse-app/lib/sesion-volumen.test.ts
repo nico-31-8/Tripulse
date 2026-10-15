@@ -123,3 +123,26 @@ describe('la duración estimada', () => {
     expect(conVolumen([ses(1)], [], [], [], [], TESTS)[0].dur_estimada.minutos).toBe(0)
   })
 })
+
+/* Una zona propia solo sabe lo que pesa —y a qué ritmo va— mirando su copia.
+   El calendario pedía las tareas sin ella, así que un «N3» del entrenador se
+   cronometraba como si fuera la zona del catálogo que se llamase igual. */
+describe('las zonas propias, con su copia', () => {
+  const tarea = (copia: unknown) => ({ id: 10, id_sesion: 1, series: 1, zona_entrenamiento: 'N3', disciplina: 'Carrera', zona_copia: copia })
+  const COPIA_SUAVE = { sigla: 'N3', nombre: 'Rodaje', nivel: 1, rpe: 3 }
+  const COPIA_DURA = { sigla: 'N3', nombre: 'Umbral', nivel: 5, rpe: 8 }
+  const minutos = (copia: unknown) =>
+    conVolumen([ses(1)], [tarea(copia)], [{ id_tarea: 10, metros_planeados: 10000 }], [], [], TESTS)[0].dur_estimada.minutos
+
+  it('la duración sale del ritmo de la copia', () => {
+    expect(minutos(COPIA_SUAVE)).toBeGreaterThan(minutos(COPIA_DURA))
+  })
+
+  it('y el orden de las zonas, de su nivel', () => {
+    const r = conVolumen([ses(1)], [
+      { id: 10, id_sesion: 1, series: 1, zona_entrenamiento: 'AEL', disciplina: 'Carrera' },
+      { id: 11, id_sesion: 1, series: 1, zona_entrenamiento: 'N3', disciplina: 'Carrera', zona_copia: COPIA_DURA },
+    ], [], [], [], TESTS)
+    expect(r[0].zonas).toEqual(['N3', 'AEL'])
+  })
+})

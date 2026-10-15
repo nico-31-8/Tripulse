@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularDuracionEstimada, medirDuracion, type TareaDuracion, type TestsDeportista } from './duracion'
+import { calcularDuracionEstimada, medirDuracion, TOPE_TAREA_SEG, type TareaDuracion, type TestsDeportista } from './duracion'
 
 const tests: TestsDeportista = { vam: 15, css: 1.4, ftp: 250 }
 
@@ -218,5 +218,54 @@ describe('el ritmo de referencia cuando falta el test', () => {
     }], {}, { conReferencia: true })
     expect(r.estimable).toBe(true)
     expect(r.usoReferencia).toBe(false)
+  })
+})
+
+/* EL CASO QUE LO TRAJO (15-10-2026). Una sesión de carrera con «4 × 1.000.000 m»
+   —1.000 km por serie; se quería poner 1.000 m— se estimaba en ~240 horas, y a
+   RPE 8 dejaba la barra de su semana en el lienzo en 134.359 con las de al lado
+   en 1.500. Una tarea así no se suma: se avisa. */
+describe('una tarea imposible no se suma', () => {
+  const calentamiento: TareaDuracion = { disciplina: 'Carrera', series: 1, zona_entrenamiento: 'AEL', p_distancia: [{ metros_planeados: 1200 }] }
+  const milKm: TareaDuracion = { disciplina: 'Carrera', series: 4, zona_entrenamiento: 'PAE', p_distancia: [{ metros_planeados: 1_000_000 }] }
+
+  it('4 × 1.000 km de carrera: no cuenta, y lo dice', () => {
+    const solo = calcularDuracionEstimada([calentamiento], tests)
+    const r = calcularDuracionEstimada([calentamiento, milKm], tests)
+    expect(r.datoImposible).toBe(true)
+    expect(r.segundos).toBe(solo.segundos)        // lo demás de la sesión sigue contando
+    expect(r.estimable).toBe(true)
+    expect(r.minutos).toBeLessThan(30)
+  })
+
+  it('si todo lo que tiene es imposible, queda sin estimar y avisada, no a cero callado', () => {
+    const r = calcularDuracionEstimada([milKm], tests)
+    expect(r.estimable).toBe(false)
+    expect(r.datoImposible).toBe(true)
+  })
+
+  it('una sesión normal no se marca', () => {
+    expect(calcularDuracionEstimada([calentamiento], tests).datoImposible).toBe(false)
+  })
+
+  /* El tope es UN DÍA, no una sesión larga: un fondo de 40 km o una tirada de
+     seis horas en bici por tiempo siguen contando enteros. */
+  it('lo largo pero posible sigue contando', () => {
+    const fondo: TareaDuracion = { disciplina: 'Carrera', series: 1, zona_entrenamiento: 'AEL', p_distancia: [{ metros_planeados: 40_000 }] }
+    const tirada: TareaDuracion = { disciplina: 'Ciclismo', series: 1, p_duracion: [{ tiempo_planeado: 6 * 3600 }] }
+    const r = calcularDuracionEstimada([fondo, tirada], tests)
+    expect(r.datoImposible).toBe(false)
+    expect(r.segundos).toBeGreaterThan(6 * 3600)
+  })
+
+  it('vale igual para la fuerza: 10.000 repeticiones por serie no son una sesión', () => {
+    const t: TareaDuracion = { disciplina: 'Fuerza', series: 4, ejercicios: [{ repeticiones: 10_000 }] }
+    const r = calcularDuracionEstimada([t], tests)
+    expect(r.datoImposible).toBe(true)
+    expect(r.estimable).toBe(false)
+  })
+
+  it('el tope es un día entero', () => {
+    expect(TOPE_TAREA_SEG).toBe(86_400)
   })
 })

@@ -68,14 +68,29 @@ export default function MisSemanas({
   useEffect(() => {
     let vivo = true
     const cargar = async () => {
-      const { data: ms } = await supabase.from('mesociclo')
-        .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
-        .eq('id_deportista', idDeportista).order('fecha_inicio')
+      /* TODO A LA VEZ. Los microciclos llevan su deportista, así que no hace
+         falta esperar a los mesociclos para pedirlos; y las competiciones y lo
+         hecho tampoco dependen de nada. Eran tres rondas en fila. */
+      /* Las competiciones y lo que ha hecho de verdad en las últimas cuatro
+         semanas —lo que hace que el plan reaccione en vez de repetirse— no
+         dependen una de otra. Y «hoy» es el del reloj del atleta, no el de UTC:
+         con `toISOString()`, quien abriera esto de madrugada perdía un día de
+         historial y ganaba uno que aún no ha pasado. */
+      const hoy = hoyISO()
+      const [{ data: ms }, { data: micros }, comps, hechas] = await Promise.all([
+        supabase.from('mesociclo')
+          .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
+          .eq('id_deportista', idDeportista).order('fecha_inicio'),
+        supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').eq('id_deportista', idDeportista),
+        supabase.from('competicion')
+          .select('fecha').eq('id_deportista', idDeportista).order('fecha'),
+        vivas(supabase.from('sesion')
+          .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
+          .eq('id_deportista', idDeportista)
+          .gte('fecha_sesion', sumarDias(hoy, -28)).lt('fecha_sesion', hoy)),
+      ])
       const lista: MesoFila[] = (ms || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
 
-      const { data: micros } = lista.length
-        ? await supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').in('id_mesociclo', lista.map(m => m.id))
-        : { data: [] as any[] }
       const ua: Record<number, (number | null)[]> = {}
       lista.forEach(m => {
         const suyos = (micros || []).filter((mi: any) => mi.id_mesociclo === m.id)
@@ -84,21 +99,6 @@ export default function MisSemanas({
           return suyos.find((x: any) => String(x.fecha_inicio).slice(0, 10) === obj)?.ua_planificada ?? null
         })
       })
-
-      /* Las competiciones y lo que ha hecho de verdad en las últimas cuatro
-         semanas —lo que hace que el plan reaccione en vez de repetirse— no
-         dependen una de otra. Y «hoy» es el del reloj del atleta, no el de UTC:
-         con `toISOString()`, quien abriera esto de madrugada perdía un día de
-         historial y ganaba uno que aún no ha pasado. */
-      const hoy = hoyISO()
-      const [comps, hechas] = await Promise.all([
-        supabase.from('competicion')
-          .select('fecha').eq('id_deportista', idDeportista).order('fecha'),
-        vivas(supabase.from('sesion')
-          .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
-          .eq('id_deportista', idDeportista)
-          .gte('fecha_sesion', sumarDias(hoy, -28)).lt('fecha_sesion', hoy)),
-      ])
 
       if (!vivo) return
       setMesos(lista); setUaPorMeso(ua)
@@ -157,8 +157,9 @@ export default function MisSemanas({
     if (!meso) return
     setTrabajando(true)
     const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
-    const out: Generada[] = []
-    for (const s of semanas) {
+    /* Lo que ya hay en cada semana se pregunta a la vez: era una espera por
+       semana, una detrás de otra. */
+    const out: Generada[] = await Promise.all(semanas.map(async s => {
       const e: EntradaSemana = entradaDeSemana(s, base)
       const forma = formaDeSemana(e)
       const plan = rellenarSemana({
@@ -167,8 +168,8 @@ export default function MisSemanas({
         nivel, fase: s.fase,
       })
       const yaHay = s.lunes ? await loQueYaHay(supabase, idDeportista, s.lunes).catch(() => null) : null
-      out.push({ ...s, plan, yaHay })
-    }
+      return { ...s, plan, yaHay }
+    }))
     setGeneradas(out); setConfirmando(false); setTrabajando(false)
   }
 
@@ -211,11 +212,21 @@ export default function MisSemanas({
 
       setRodando(true)
       const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
-      let puestas = 0
-      for (const { s: x } of candidatas) {
-        if (!vivo || !x.lunes) break
+      /* LAS SEMANAS A LA VEZ: cada una mira lo que tiene y se vuelca por su
+         lado (iban una detrás de otra, y cada una son varias esperas). Una
+         semana sale UNA vez aunque dos mesociclos se solapen: en fila, la
+         segunda veía lo que había puesto la primera y no lo repetía; a la vez
+         no lo vería, y la semana saldría doble. */
+      const vistas = new Set<string>()
+      const unicas = candidatas.filter(({ s: x }) => {
+        if (!x.lunes || vistas.has(x.lunes)) return false
+        vistas.add(x.lunes)
+        return true
+      })
+      const porSemana = await Promise.all(unicas.map(async ({ s: x }) => {
+        if (!vivo || !x.lunes) return 0
         const yaHay = await loQueYaHay(supabase, idDeportista, x.lunes).catch(() => 1)
-        if (yaHay) continue          // esa semana ya tiene algo: no se toca
+        if (yaHay || !vivo) return 0          // esa semana ya tiene algo: no se toca
         const e: EntradaSemana = entradaDeSemana(x, base)
         const forma = formaDeSemana(e)
         const plan = rellenarSemana({
@@ -227,8 +238,9 @@ export default function MisSemanas({
           idDeportista, lunes: x.lunes, relleno: plan.relleno,
           aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelDePlantilla(nivel)) || [],
         })
-        if (!r.error) puestas += r.creadas
-      }
+        return r.error ? 0 : r.creadas
+      }))
+      const puestas = porSemana.reduce((a, n) => a + n, 0)
       if (!vivo) return
       setRodando(false)
       setRodado(puestas)
@@ -246,9 +258,10 @@ export default function MisSemanas({
     setTrabajando(true); setConfirmando(false)
     const nivelP = nivelDePlantilla(nivel)
     const out = [...generadas]
-    for (let i = 0; i < out.length; i++) {
-      const s = out[i]
-      if (!s.lunes) continue
+    /* Las semanas a la vez, y cada una se pinta según termina (iban en fila,
+       varias esperas cada una). */
+    await Promise.all(out.map(async (s, i) => {
+      if (!s.lunes) return
       const r = await volcarSemana(supabase, {
         idDeportista, lunes: s.lunes, relleno: s.plan.relleno,
         aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
@@ -261,7 +274,7 @@ export default function MisSemanas({
       if (fallos.length) {
         setDetalle(d => [...d, ...fallos.slice(0, 3).map((x: any) => x.dia + ': ' + x.error)])
       }
-    }
+    }))
     setTrabajando(false)
     onCambio?.()
   }

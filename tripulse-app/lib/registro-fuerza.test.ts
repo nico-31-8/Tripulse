@@ -20,18 +20,26 @@ const PLANCHA: EjercicioRegistro = {
 
 function sbFalso(op: { falla?: string } = {}) {
   const escritas: any[] = []
+  const llamadas: string[] = []
   let n = 100
   return {
     escritas,
+    llamadas,
     from(tabla: string) {
       return {
         insert(v: any) {
           const filas = Array.isArray(v) ? v : [v]
-          if (op.falla === tabla) return { select: () => ({ single: () => Promise.resolve({ data: null, error: { message: 'no va' } }) }), then: undefined, error: { message: 'no va' } } as any
+          llamadas.push(tabla)
+          if (op.falla === tabla) {
+            const mal = { data: null, error: { message: 'no va' } }
+            const p: any = Promise.resolve(mal); p.single = () => Promise.resolve(mal)
+            return { select: () => p, then: undefined, error: mal.error } as any
+          }
           escritas.push(...filas.map((f: any) => ({ ...f, _tabla: tabla })))
-          const res = { data: { id: ++n }, error: null }
+          /* Un id por fila, como la base: ahora los ejercicios se escriben de golpe. */
+          const lista = { data: filas.map(() => ({ id: ++n })), error: null }
           return {
-            select: () => ({ single: () => Promise.resolve(res) }),
+            select: () => { const p: any = Promise.resolve(lista); p.single = () => Promise.resolve({ data: lista.data[0], error: null }); return p },
             // Para el insert de series, que no pide select
             then: (r: any) => r({ error: null }),
           }
@@ -146,6 +154,24 @@ describe('guardarRegistroFuerza', () => {
     expect(tablas).toContain('tarea')
     expect(tablas).toContain('ejercicios')
     expect(tablas.filter(t => t === 'series_realizadas')).toHaveLength(3)
+  })
+
+  /* Lo que lo hacía lento: dos esperas por ejercicio. Ahora es UNA escritura por
+     tabla, y cada serie tiene que acabar colgando de SU ejercicio. */
+  it('varios ejercicios: una escritura por tabla y cada serie con el suyo', async () => {
+    const sb = sbFalso()
+    const r = await guardarRegistroFuerza(sb, { ...base, ejercicios: [SENTADILLA, PLANCHA] })
+    expect(r.error).toBeNull()
+    expect(sb.llamadas.filter(t => t === 'tarea')).toHaveLength(1)
+    expect(sb.llamadas.filter(t => t === 'ejercicios')).toHaveLength(1)
+    const ejs = sb.escritas.filter(e => e._tabla === 'ejercicios')
+    expect(ejs.map(e => e.nombre)).toEqual(['Sentadilla', 'Plancha'])
+    /* La plancha es el segundo ejercicio, así que se lleva el id más alto de
+       los dos: sus series (por tiempo) tienen que colgar de él. */
+    const series = sb.escritas.filter(e => e._tabla === 'series_realizadas')
+    const idPlancha = Math.max(...series.map(x => x.id_ejercicio))
+    expect(series.filter(x => x.id_ejercicio === idPlancha).every(x => x.tiempo_real != null)).toBe(true)
+    expect(series.filter(x => x.id_ejercicio !== idPlancha).every(x => x.repeticiones_reales != null)).toBe(true)
   })
 
   it('la sesión nace REALIZADA y como del deportista', async () => {
@@ -279,18 +305,21 @@ describe('actualizarRegistroFuerza', () => {
           insert(v: any) {
             const filas = Array.isArray(v) ? v : [v]
             if (op.fallaInsert === tabla) {
-              return {
-                select: () => ({ single: () => Promise.resolve({ data: null, error: { message: 'no va' } }) }),
-                then: (r: any) => r({ error: { message: 'no va' } }),
-              }
+              const mal = { data: null, error: { message: 'no va' } }
+              const p: any = Promise.resolve(mal); p.single = () => Promise.resolve(mal)
+              return { select: () => p, then: (r: any) => r({ error: mal.error }) }
             }
             ops.push({ op: 'insert', tabla, n: filas.length })
-            const res = { data: { id: ++n }, error: null }
-            return { select: () => ({ single: () => Promise.resolve(res) }), then: (r: any) => r({ error: null }) }
+            const lista = { data: filas.map(() => ({ id: ++n })), error: null }
+            return {
+              select: () => { const p: any = Promise.resolve(lista); p.single = () => Promise.resolve({ data: lista.data[0], error: null }); return p },
+              then: (r: any) => r({ error: null }),
+            }
           },
           select() {
             const q: any = {
-              eq: () => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] }),
+              /* Las tareas viejas, con sus ejercicios dentro. */
+              eq: () => Promise.resolve({ data: [{ id: 1, ejercicios: [{ id: 11 }] }, { id: 2, ejercicios: [] }] }),
               in: () => Promise.resolve({ data: [{ id: 11 }] }),
             }
             return q

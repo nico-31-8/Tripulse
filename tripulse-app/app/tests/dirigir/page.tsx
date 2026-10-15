@@ -154,12 +154,18 @@ export default function DirigirTests() {
   const cargar = async () => {
     const user = await usuarioActual()
     if (!user) return
+    /* Los grupos no dependen de los deportistas: van a la vez, y los
+       contextos detrás, que sí necesitan sus ids. Eran tres rondas en fila. */
+    const pGrupos = cargarGrupos(supabase)
     const { data } = await supabase.from('deportista').select('id, nombre')
       .eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre')
     const lista = (data || []) as Deportista[]
     setDeportistas(lista)
-    if (lista.length) setContextos(await contextosDe(supabase, lista.map(d => d.id)))
-    const { grupos: gs } = await cargarGrupos(supabase)
+    const [ctxs, { grupos: gs }] = await Promise.all([
+      lista.length ? contextosDe(supabase, lista.map(d => d.id)) : Promise.resolve(null),
+      pGrupos,
+    ])
+    if (ctxs) setContextos(ctxs)
     setGruposEntreno(gs)
   }
 

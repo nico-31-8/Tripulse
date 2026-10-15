@@ -41,21 +41,19 @@ export default function HoyEntrenas({ deportistas }: Props) {
 
     const lista = (ses || []) as any[]
 
-    /* Los grupos de las emisiones que salgan, en DOS consultas y no una por
-       emisión. Con cinco grupos entrenando hoy serían diez viajes para pintar
-       cinco títulos. */
+    /* Los grupos de las emisiones que salgan, en UNA consulta y no una por
+       emisión: el nombre del grupo viene dentro de cada emisión. Con cinco
+       grupos entrenando hoy serían diez viajes para pintar cinco títulos.
+       Va en su propia consulta, no anidado en el de las sesiones: si fallara,
+       se quedaría sin título, no sin la lista de hoy. */
     const emisiones = [...new Set(lista.map(s => s.id_emision).filter(Boolean))] as string[]
     const grupos: Record<string, GrupoDeEmision> = {}
     if (emisiones.length) {
       const { data: ems } = await supabase.from('grupo_entreno_emision')
-        .select('id, id_grupo').in('id', emisiones)
-      const idsG = [...new Set((ems || []).map((e: any) => e.id_grupo).filter(Boolean))]
-      const { data: gs } = idsG.length
-        ? await supabase.from('grupo_entreno').select('id, nombre').in('id', idsG)
-        : { data: [] as any[] }
-      const nombreDe = new Map((gs || []).map((g: any) => [String(g.id), g.nombre as string]))
-      for (const e of ems || []) {
-        grupos[String(e.id)] = { idGrupo: String(e.id_grupo), nombre: nombreDe.get(String(e.id_grupo)) || 'Grupo' }
+        .select('id, id_grupo, grupo_entreno(nombre)').in('id', emisiones)
+      for (const e of (ems || []) as any[]) {
+        const g = Array.isArray(e.grupo_entreno) ? e.grupo_entreno[0] : e.grupo_entreno
+        grupos[String(e.id)] = { idGrupo: String(e.id_grupo), nombre: g?.nombre || 'Grupo' }
       }
     }
 

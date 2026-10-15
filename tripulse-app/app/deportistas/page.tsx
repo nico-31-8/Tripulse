@@ -10,6 +10,7 @@ import { cargarGrupos, contarMiembros, crearGrupo, type Grupo } from '@/lib/grup
 import { getEspacio, type Espacio } from '@/lib/espacio'
 import ListaEspacio from '@/components/ListaEspacio'
 import SeccionDirectores from '@/components/SeccionDirectores'
+import QuitarDeportista from '@/components/QuitarDeportista'
 
 function calcularFCMaxima(fechaNacimiento: string): number | null {
   const edad = calcularEdad(fechaNacimiento)
@@ -40,7 +41,7 @@ export default function Deportistas() {
   const [deportistas, setDeportistas] = useState<any[]>([])
   /* Los que solo hacen tests. Van aparte y plegados: no son su equipo, pero
      tiene que poder llegar a su ficha para ver lo que midió. */
-  const [evaluados, setEvaluados] = useState<{ id: number; nombre: string }[]>([])
+  const [evaluados, setEvaluados] = useState<{ id: number; nombre: string; id_usuario?: string | null }[]>([])
   const [verEvaluados, setVerEvaluados] = useState(false)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [nombre, setNombre] = useState('')
@@ -51,6 +52,10 @@ export default function Deportistas() {
   const [error, setError] = useState('')
   const [enlaceInvitacion, setEnlaceInvitacion] = useState<string | null>(null)
   const [generandoEnlace, setGenerandoEnlace] = useState<number | null>(null)
+  /* A quién se está quitando: abre el modal que pregunta antes
+     (components/QuitarDeportista). Antes no había forma de quitar a nadie. */
+  const [quitando, setQuitando] = useState<{ id: number; nombre: string; id_usuario?: string | null } | null>(null)
+  const [avisoQuitar, setAvisoQuitar] = useState('')
   // Grupos de entrenamiento: el mismo entreno para varios a la vez.
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [nMiembros, setNMiembros] = useState<Record<string, number>>({})
@@ -73,7 +78,7 @@ export default function Deportistas() {
     if (!user) { router.push('/login'); return }
     const [suyos, soloTest] = await Promise.all([
       supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false),
-      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
+      supabase.from('deportista').select('id, nombre, id_usuario').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
     ])
     if (suyos.error) setError('Error al cargar: ' + suyos.error.message)
     setDeportistas(suyos.data || [])
@@ -97,8 +102,8 @@ export default function Deportistas() {
     if (err) setError(err)
     else {
       setNombreGrupo(''); setElegidos([]); setNuevosTexto(''); setFormGrupo(false)
-      await cargarDeportistas()
-      await cargarLosGrupos()
+      // Las dos listas a la vez: no dependen una de otra (iban en fila).
+      await Promise.all([cargarDeportistas(), cargarLosGrupos()])
     }
     setLoading(false)
   }
@@ -182,6 +187,12 @@ export default function Deportistas() {
           </div>
         </div>
         {error && <div className="bg-red-900 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+        {avisoQuitar && (
+          <div role="status" className="bg-green-950/60 border border-green-800 text-green-200 px-4 py-3 rounded-lg mb-4 text-sm flex justify-between items-start gap-3">
+            <span>{avisoQuitar}</span>
+            <button onClick={() => setAvisoQuitar('')} aria-label="Cerrar aviso" className="text-green-400 hover:text-white leading-none">×</button>
+          </div>
+        )}
         {mostrarForm && (
           <form onSubmit={crearDeportista} className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800 flex flex-col gap-4">
             <h3 className="font-bold text-lg">Nuevo deportista</h3>
@@ -302,7 +313,7 @@ export default function Deportistas() {
         ) : (
           <div className="grid gap-4">
             {deportistas.map(d => (
-              <div key={d.id} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition flex justify-between items-center">
+              <div key={d.id} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
                 <div>
                   <h3 className="font-bold text-lg">{d.nombre}</h3>
                   <p className="text-gray-400 text-sm">
@@ -312,11 +323,15 @@ export default function Deportistas() {
                     HRV basal: {d.hrv_basal || '—'} ms
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button onClick={() => generarEnlaceInvitacion(d)}
                     disabled={generandoEnlace === d.id}
                     className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-orange-500">
                     {generandoEnlace === d.id ? 'Generando...' : '🔗 Invitar'}
+                  </button>
+                  <button onClick={() => setQuitando(d)}
+                    className="text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
+                    Quitar
                   </button>
                   <a href={`/deportistas/${d.id}`} className="text-orange-500 hover:underline text-sm">Ver perfil →</a>
                 </div>
@@ -339,11 +354,18 @@ export default function Deportistas() {
             {verEvaluados && (
               <div className="grid gap-2 mt-3">
                 {evaluados.map(d => (
-                  <button key={d.id} onClick={() => router.push('/tests/' + d.id)}
-                    className="bg-gray-900 rounded-xl px-5 py-3.5 border border-gray-800 hover:border-gray-700 transition text-left flex items-center justify-between gap-3">
-                    <span className="font-semibold text-[14px]">{d.nombre}</span>
-                    <span className="text-gray-500 text-[12px]">Ver sus tests →</span>
-                  </button>
+                  <div key={d.id}
+                    className="bg-gray-900 rounded-xl border border-gray-800 hover:border-gray-700 transition flex items-center gap-2 pr-3">
+                    <button onClick={() => router.push('/tests/' + d.id)}
+                      className="flex-1 min-w-0 px-5 py-3.5 text-left flex items-center justify-between gap-3">
+                      <span className="font-semibold text-[14px] truncate">{d.nombre}</span>
+                      <span className="text-gray-500 text-[12px] shrink-0">Ver sus tests →</span>
+                    </button>
+                    <button onClick={() => setQuitando(d)} aria-label={'Quitar a ' + d.nombre}
+                      className="shrink-0 text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
+                      Quitar
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -355,6 +377,17 @@ export default function Deportistas() {
             tiene abierto cada uno. Sale sola solo cuando hay algo. */}
         <SeccionDirectores deportistas={deportistas.map(d => ({ id: d.id, nombre: d.nombre }))} />
       </div>
+      {quitando && (
+        <QuitarDeportista deportista={quitando} onCerrar={() => setQuitando(null)}
+          onHecho={hecho => {
+            setDeportistas(prev => prev.filter(x => x.id !== quitando.id))
+            setEvaluados(prev => prev.filter(x => x.id !== quitando.id))
+            setAvisoQuitar(hecho === 'borrar'
+              ? quitando.nombre + ' se ha borrado.'
+              : quitando.nombre + ' ya no es tu deportista. Conserva su cuenta y su historial.')
+            setQuitando(null)
+          }} />
+      )}
       {/* Modal enlace invitación */}
       {enlaceInvitacion && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4">

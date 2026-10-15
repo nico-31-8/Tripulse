@@ -118,7 +118,16 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
 
-    const { data: ses } = await supabase.from('sesion').select('*').eq('id', id).single()
+    /* DOS RONDAS en vez de seis. La sesión y sus tareas —con todo lo que cuelga
+       de ellas, los ejercicios incluidos— solo necesitan el id: a la vez. Lo
+       demás (el plan, los tests, la técnica, los vídeos y la última vez de cada
+       ejercicio) va todo junto en la segunda. Antes cada cosa esperaba a la
+       anterior, y los ejercicios se pedían DOS veces: venían ya dentro de las
+       tareas y luego se volvían a pedir aparte. */
+    const [{ data: ses }, tar] = await Promise.all([
+      supabase.from('sesion').select('*').eq('id', id).single(),
+      supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden'),
+    ])
     setSesion(ses)
     // El reloj arranca al ENTRAR, porque ahora se entra directo a entrenar (antes lo
     // arrancaba el botón de la vista previa). Si ya venía arrancado y se recargó la
@@ -130,7 +139,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       } else {
         const ahora = Date.now()
         setInicioMs(ahora)
-        await supabase.from('sesion').update({ hora_inicio: new Date(ahora).toISOString() }).eq('id', id)
+        /* Sin esperar: es apuntar la hora de empezar, y nada de la pantalla
+           depende de que la base conteste. */
+        supabase.from('sesion').update({ hora_inicio: new Date(ahora).toISOString() }).eq('id', id).then(() => {})
       }
     }
     /* De siete viajes encadenados a uno.
@@ -144,8 +155,42 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
      * Y esto es la pantalla del ATLETA mientras entrena, muchas veces con el
      * móvil y mala cobertura. Es donde más se nota. */
     const depIdLocal: number | null = ses?.id_deportista ?? null
+    const filasTar = (tar.data || []) as TareaEjec[]
+    const tareaIds = filasTar.map(t => t.id)
+    /* Los ejercicios, de dentro de sus tareas, en el orden en que se guardaron
+       (el que tenían cuando llegaban en su propia consulta). */
+    const ejsCrudos = filasTar
+      .flatMap(t => ((t as unknown as { ejercicios?: EjercicioEjec[] }).ejercicios) || [])
+      .slice().sort((a, b) => Number((a as { id?: number }).id) - Number((b as { id?: number }).id))
 
-    const [mesos, micros, mismoDia, an, dep, tar] = await Promise.all([
+    /* Modo mejora: la última vez que se hizo cada ejercicio (por nombre +
+       deportista). Va en la misma ronda que todo lo demás: los nombres ya están.
+       Y LOS ENCADENADOS. El segundo ejercicio de una superserie no se
+       preguntaba nunca, así que ahí no salía «la última vez» aunque el atleta
+       llevara meses haciéndolo. Va por otra función porque su nombre vive en
+       otra columna (`ejercicio_encadenado_nombre`) y sus series llevan
+       `ejercicio_numero = 2`; la hermana mira las dos columnas y devuelve las
+       del lado que coincida. */
+    const nombres = [...new Set(ejsCrudos.map(e => e.nombre).filter(Boolean))]
+    const encadenados = [...new Set(
+      ejsCrudos.map(e => e.ejercicio_encadenado_nombre).filter((n): n is string => !!n && !nombres.includes(n)),
+    )]
+    const hist: HistorialFuerza = {}
+    const traer = async (nombre: string, rpc: string) => {
+      const { data } = await supabase.rpc(rpc, { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
+      if (data && data.length) {
+        const dias = Math.max(0, Math.round((new Date(ses.fecha_sesion).getTime() - new Date(data[0].fecha).getTime()) / 86400000))
+        hist[nombre] = { dias, series: data }
+      }
+    }
+    const pHistorial = depIdLocal && ejsCrudos.length
+      ? Promise.all([
+          ...nombres.map(n => traer(n, 'ultima_ejecucion_fuerza')),
+          ...encadenados.map(n => traer(n, 'ultima_ejecucion_encadenado')),
+        ]).then(() => true)
+      : Promise.resolve(false)
+
+    const [mesos, micros, mismoDia, an, dep, tarConTecnica, ejs, hayHistorial] = await Promise.all([
       depIdLocal ? supabase.from('mesociclo').select('id, fecha_inicio, id_macrociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       depIdLocal ? supabase.from('microciclo').select('id, fecha_inicio, tipo, id_mesociclo').eq('id_deportista', depIdLocal) : Promise.resolve({ data: [] }),
       /* Por deportista y fecha, no por los microciclos del plan: así cuenta
@@ -157,7 +202,14 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
          sueltas que hacían justo esto; cargarReferencias ya las trae, y en esta
          pantalla —el atleta entrenando, con el móvil— tres viajes menos se notan. */
       depIdLocal ? cargarReferencias(supabase, depIdLocal) : Promise.resolve(null),
-      supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', id).order('orden'),
+      // Si el entrenador manda un drill, el deportista tiene que ver cuál es y cómo se
+      // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
+      conTecnica(tar.data),
+      /* El vídeo NO sale de la copia guardada, sale de la biblioteca. Ver
+         lib/video-ejercicio: la copia se hacía al prescribir, así que un vídeo
+         añadido después no llegaba nunca al atleta. */
+      conVideos(ejsCrudos as EjercicioEjec[] | null, supabase),
+      pHistorial,
     ])
 
     if (depIdLocal) {
@@ -174,9 +226,6 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         ses.fecha_sesion, microsDelPlan(ses.id_microciclo, listaMesos, listaMicros)))
       setOtraSesionHoy(hayOtraSesionEseDia((mismoDia.data || []) as { id: number; estado: string | null }[], Number(id)))
     }
-    // Si el entrenador manda un drill, el deportista tiene que ver cuál es y cómo se
-    // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
-    const tarConTecnica = await conTecnica(tar.data)
     setTareas(tarConTecnica)
     /* Sin esperar: la pantalla ya está, y lo único que falta hasta que lleguen
        es el ritmo de las tareas que cuelgan de un test del entrenador. */
@@ -192,15 +241,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     }
     // Se entra directo a entrenar, pero si no hay nada que registrar eso sería una
     // pantalla vacía: en ese caso se abre por el plan, que sí explica que está vacío.
-    if (!tar.data || !tar.data.length) setFase('preview')
-    // Cargar ejercicios de todas las tareas
-    if (tar.data && tar.data.length > 0) {
-      const tareaIds = (tar.data as TareaEjec[]).map(t => t.id)
-      /* El vídeo NO sale de la copia guardada, sale de la biblioteca. Ver
-         lib/video-ejercicio: la copia se hacía al prescribir, así que un vídeo
-         añadido después no llegaba nunca al atleta. */
-      const { data: ejsCrudos } = await supabase.from('ejercicios').select('*').in('id_tarea', tareaIds)
-      const ejs = await conVideos(ejsCrudos as EjercicioEjec[] | null, supabase)
+    if (!filasTar.length) setFase('preview')
+    if (filasTar.length > 0) {
       const ejMap: Record<number, EjercicioEjec[]> = {}
       tareaIds.forEach((tid: number) => { ejMap[tid] = [] })
       ejs.forEach(e => {
@@ -208,33 +250,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         ejMap[e.id_tarea].push(e)
       })
       setEjerciciosPorTarea(ejMap)
-
-      // Modo mejora: la última vez que se hizo cada ejercicio (por nombre + deportista).
-      if (depIdLocal && ejs && ejs.length) {
-        const nombres = [...new Set(ejs.map(e => e.nombre).filter(Boolean))]
-        /* Y LOS ENCADENADOS. El segundo ejercicio de una superserie no se
-           preguntaba nunca, así que ahí no salía «la última vez» aunque el
-           atleta llevara meses haciéndolo. Va por otra función porque su
-           nombre vive en otra columna (`ejercicio_encadenado_nombre`) y sus
-           series llevan `ejercicio_numero = 2`; la hermana mira las dos
-           columnas y devuelve las del lado que coincida. */
-        const encadenados = [...new Set(
-          ejs.map(e => e.ejercicio_encadenado_nombre).filter((n): n is string => !!n && !nombres.includes(n)),
-        )]
-        const hist: HistorialFuerza = {}
-        const traer = async (nombre: string, rpc: string) => {
-          const { data } = await supabase.rpc(rpc, { _dep: depIdLocal, _nombre: nombre, _antes: ses.fecha_sesion })
-          if (data && data.length) {
-            const dias = Math.max(0, Math.round((new Date(ses.fecha_sesion).getTime() - new Date(data[0].fecha).getTime()) / 86400000))
-            hist[nombre] = { dias, series: data }
-          }
-        }
-        await Promise.all([
-          ...nombres.map(n => traer(n, 'ultima_ejecucion_fuerza')),
-          ...encadenados.map(n => traer(n, 'ultima_ejecucion_encadenado')),
-        ])
-        setHistorialFuerza(hist)
-      }
+      if (hayHistorial) setHistorialFuerza(hist)
     }
     setLoading(false)
   }, [id])
@@ -277,6 +293,19 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     const ejById: Record<number, EjercicioEjec> = {}
     Object.values(ejerciciosPorTarea).flat().forEach(e => { ejById[e.id] = e })
 
+    /* EN TRES TANDAS, no una escritura detrás de otra. Se guardaba tarea a
+       tarea y cada cosa esperando a la anterior: con seis tareas eran más de
+       veinte esperas con el atleta delante del botón. Ahora:
+         1. todo lo que no depende de nada, a la vez (los borrados de lo que se
+            va a reescribir, el resumen y los metros de cada tarea, el resultado
+            de cada bloque y lo del día);
+         2. lo que tiene que ir DESPUÉS de su borrado: las series nuevas;
+         3. y al final, como siempre, la sesión marcada como hecha y su material.
+       Las dos primeras tocan columnas distintas de las mismas filas, así que no
+       se pisan aunque vayan a la vez. */
+    const tanda1: PromiseLike<unknown>[] = []
+    const tanda2: (() => PromiseLike<unknown>)[] = []
+
     const ejIdsTocados = Object.keys(seriesFuerza).map(Number)
     if (ejIdsTocados.length) {
       // Se BORRA lo anterior de esos ejercicios antes de insertar. Esta tabla solo
@@ -285,7 +314,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       // enseñaba duplicadas y la referencia del modo mejora ("la última vez que
       // hiciste este ejercicio") quedaba corrupta. Solo se tocan los ejercicios que
       // el atleta ha rellenado ahora; lo que no ha tocado se queda como estaba.
-      await supabase.from('series_realizadas').delete().in('id_ejercicio', ejIdsTocados)
+      tanda1.push(supabase.from('series_realizadas').delete().in('id_ejercicio', ejIdsTocados))
     }
 
     // Un solo insert en vez de uno por serie: una sesión de fuerza de 4 ejercicios
@@ -326,11 +355,11 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         })
       }
     }
-    if (filasSeries.length) await supabase.from('series_realizadas').insert(filasSeries)
+    if (filasSeries.length) tanda2.push(() => supabase.from('series_realizadas').insert(filasSeries))
 
     /* El resultado de cada bloque: es lo que se compara la próxima vez. */
     for (const [idT, res] of Object.entries(resultadosBloque)) {
-      if (leerResultado(res)) await supabase.from('tarea').update({ resultado: res }).eq('id', Number(idT))
+      if (leerResultado(res)) tanda1.push(supabase.from('tarea').update({ resultado: res }).eq('id', Number(idT)))
     }
 
     // Guardar resultados de cada tarea con detalle por series
@@ -350,9 +379,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           return 'S' + (i+1) + '[' + parts.join(' ') + ']'
         }).join(' | ')
       if (seriesData) {
-        await supabase.from('tarea').update({
+        tanda1.push(supabase.from('tarea').update({
           sensacion_general: seriesData
-        }).eq('id', tarea.id)
+        }).eq('id', tarea.id))
       }
 
       /* ============================================================
@@ -396,12 +425,14 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         }))
 
       if (filasSerie.length) {
-        await supabase.from('series_realizadas').delete()
-          .eq('id_tarea', tarea.id).eq('anotado_por', 'deportista')
-        const { error: eSer } = await supabase.from('series_realizadas').insert(filasSerie)
-        /* Si esto falla, el total vuelve a calcularse multiplicando, que es
-           justo el fallo que se está arreglando. Hay que enterarse. */
-        if (eSer) alert('No se han podido guardar las series de una tarea: ' + eSer.message)
+        tanda1.push(supabase.from('series_realizadas').delete()
+          .eq('id_tarea', tarea.id).eq('anotado_por', 'deportista'))
+        tanda2.push(async () => {
+          const { error: eSer } = await supabase.from('series_realizadas').insert(filasSerie)
+          /* Si esto falla, el total vuelve a calcularse multiplicando, que es
+             justo el fallo que se está arreglando. Hay que enterarse. */
+          if (eSer) alert('No se han podido guardar las series de una tarea: ' + eSer.message)
+        })
       }
 
       /* `p_distancia`/`p_duracion` SIGUEN llevando el valor de UNA serie, y no
@@ -411,28 +442,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
          anotadas, el total se SUMA de ellas en vez de multiplicarse. */
       const s0 = r['serie_0']
       if (s0) {
-        if (tarea.p_distancia?.[0] && s0.metros) await supabase.from('p_distancia').update({ metros_reales: Number(s0.metros) }).eq('id_tarea', tarea.id)
-        if (tarea.p_duracion?.[0] && s0.tiempo) await supabase.from('p_duracion').update({ tiempo_real: mmssASegundos(s0.tiempo) }).eq('id_tarea', tarea.id)
+        if (tarea.p_distancia?.[0] && s0.metros) tanda1.push(supabase.from('p_distancia').update({ metros_reales: Number(s0.metros) }).eq('id_tarea', tarea.id))
+        if (tarea.p_duracion?.[0] && s0.tiempo) tanda1.push(supabase.from('p_duracion').update({ tiempo_real: mmssASegundos(s0.tiempo) }).eq('id_tarea', tarea.id))
       }
     }
-    // Marcar sesión como realizada y guardar post-sesión.
-    // duracion_real solo se escribe si hay un número: si el atleta dejó la casilla
-    // vacía se conserva lo que hubiera, en vez de machacarlo con un null.
-    const durReal = Number(duracionRealInput)
-    /* El RPE va TAMBIÉN en la sesión: la carga real, la forma y el resumen
-       semanal lo leen de ahí, y sin él lo sustituían por el planificado. */
-    const rpeSesion = rpeDeSesion(rpe, esBrick ? tareas.map(t => postBloques[t.id]?.rpe ?? rpe) : undefined)
-    await supabase.from('sesion').update({
-      estado: 'Realizada',
-      ...(durReal > 0 ? { duracion_real: Math.round(durReal) } : {}),
-      ...(rpeSesion != null ? { rpe_reportado: rpeSesion, rpe_origen: 'atleta' } : {}),
-    }).eq('id', id)
-
-    /* Con qué la hizo. Va aquí y no antes porque hasta que la sesión no está
-       cerrada no hay nada que contar: los kilómetros de un material salen de
-       sus sesiones realizadas. */
-    const errMaterial = await guardarMaterialDeSesion(supabase, Number(id), materialElegido)
-    if (errMaterial) console.warn('material:', errMaterial)
 
     if (tareas.length > 0) {
       // El dolor, las notas y la HRV son del DÍA: van igual en todos los bloques.
@@ -444,21 +457,44 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       if (esBrick) {
         // Cada bloque guarda SU esfuerzo, que es lo que deja al SICAT distinguir
         // si el coste vino de la bici o de la carrera.
-        await Promise.all(tareas.map(t => supabase.from('tarea').update({
+        for (const t of tareas) tanda1.push(supabase.from('tarea').update({
           ...delDia,
           rpe_reportado: postBloques[t.id]?.rpe ?? rpe,
           sensacion_tecnica: postBloques[t.id]?.sensacion ?? sensacion,
           fc_media: fcMedia ? Number(fcMedia) : null,
-        }).eq('id', t.id)))
+        }).eq('id', t.id))
       } else {
-        await supabase.from('tarea').update({
+        tanda1.push(supabase.from('tarea').update({
           ...delDia,
           rpe_reportado: rpe,
           sensacion_tecnica: sensacion,
           fc_media: fcMedia ? Number(fcMedia) : null,
-        }).eq('id_sesion', Number(id))
+        }).eq('id_sesion', Number(id)))
       }
     }
+
+    await Promise.all(tanda1)
+    await Promise.all(tanda2.map(f => f()))
+
+    // Marcar sesión como realizada y guardar post-sesión.
+    // duracion_real solo se escribe si hay un número: si el atleta dejó la casilla
+    // vacía se conserva lo que hubiera, en vez de machacarlo con un null.
+    const durReal = Number(duracionRealInput)
+    /* El RPE va TAMBIÉN en la sesión: la carga real, la forma y el resumen
+       semanal lo leen de ahí, y sin él lo sustituían por el planificado. */
+    const rpeSesion = rpeDeSesion(rpe, esBrick ? tareas.map(t => postBloques[t.id]?.rpe ?? rpe) : undefined)
+    /* Con qué la hizo. Va con la sesión y no antes porque hasta que la sesión
+       no está cerrada no hay nada que contar: los kilómetros de un material
+       salen de sus sesiones realizadas. Las dos a la vez: no se pisan. */
+    const [, errMaterial] = await Promise.all([
+      supabase.from('sesion').update({
+        estado: 'Realizada',
+        ...(durReal > 0 ? { duracion_real: Math.round(durReal) } : {}),
+        ...(rpeSesion != null ? { rpe_reportado: rpeSesion, rpe_origen: 'atleta' } : {}),
+      }).eq('id', id),
+      guardarMaterialDeSesion(supabase, Number(id), materialElegido),
+    ])
+    if (errMaterial) console.warn('material:', errMaterial)
     setFase('resumen')
     setGuardando(false)
   }

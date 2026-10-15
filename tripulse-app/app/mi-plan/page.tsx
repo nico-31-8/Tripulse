@@ -59,12 +59,15 @@ export default function MiPlan() {
       const { data: d } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDep(d)
       if (d) {
-        setYaTiene(await planesExistentes(supabase, d.id))
-        setEstadoPlan(await estadoDelPlan(supabase, d.id))
-        const [{ data: an }, { data: disp }] = await Promise.all([
+        /* Las cuatro a la vez: ninguna depende de otra. Iban en fila. */
+        const [yaTiene, estado, { data: an }, { data: disp }] = await Promise.all([
+          planesExistentes(supabase, d.id),
+          estadoDelPlan(supabase, d.id),
           supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
           supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
         ])
+        setYaTiene(yaTiene)
+        setEstadoPlan(estado)
         setAnamnesis(an)
         // Minutos reales de cada día a partir de sus franjas horarias.
         const porDia = new Map<string, number>()

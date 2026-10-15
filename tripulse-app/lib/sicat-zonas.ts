@@ -179,6 +179,14 @@ export async function attachZonaPico(sesiones: any[]): Promise<any[]> {
   const ids = sesiones.map(s => s.id).filter(Boolean)
   if (!ids.length) return sesiones.map(s => ({ ...s, zonaPico: null }))
   const { data: tareas } = await supabase.from('tarea').select('id_sesion, zona_entrenamiento, zona_copia').in('id_sesion', ids)
+  return conZonaPico(sesiones, tareas)
+}
+
+/**
+ * La cuenta de `attachZonaPico`, sin consultas: para quien ya trae las tareas
+ * (por ejemplo, dentro de sus sesiones) y no quiere pedirlas otra vez.
+ */
+export function conZonaPico(sesiones: any[], tareas: any[] | null | undefined): any[] {
   /* Se guardan las TAREAS enteras, no sus siglas: la copia congelada viaja
      con ellas y es lo único que sabe lo que pesa una zona propia. */
   const porSes: Record<number, { zona_entrenamiento?: string | null; zona_copia?: unknown }[]> = {}

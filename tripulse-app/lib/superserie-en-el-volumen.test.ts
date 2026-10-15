@@ -116,6 +116,10 @@ describe('nadie cuenta series sin pedir las columnas', () => {
     }
     const cte = /SELECT_EJERCICIOS_SEMANA\s*=\s*\n?\s*'([^']*)'/.exec(src)
     if (cte) out.push(cte[1])
+    /* Y los que van ANIDADOS en otra consulta (`tarea(…, ejercicios(…))`),
+       que es como se piden ahora para no esperar una ronda más. Los que
+       arman su lista con la constante ya los mira la línea de arriba. */
+    for (const m of src.matchAll(/ejercicios\(([^()']*)\)/g)) out.push(m[1])
     return out
   }
 

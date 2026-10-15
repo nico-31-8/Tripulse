@@ -56,24 +56,35 @@ export default function DiaDeTest({ sesion, idDeportista, editable, onCambio }: 
      ninguno, verá que hay test pero no cuál, y eso también está contemplado.
      Los de la batería no consultan nada: están en el código. */
   const cargar = useCallback(async () => {
-    const { data } = await supabase.from('test_definicion')
-      .select('id, nombre, deporte').eq('archivado', false).order('nombre')
+    const soloVer = !editable || !idDeportista
+    /* A la vez: los tests, si es la ficha de un grupo, y las mediciones del
+       propio deportista, que es lo normal. Solo si resulta ser un grupo hay que
+       volver a por las de sus miembros. Eran tres o cuatro esperas en fila. */
+    const [{ data }, rDep, rMeds] = await Promise.all([
+      supabase.from('test_definicion')
+        .select('id, nombre, deporte').eq('archivado', false).order('nombre'),
+      /* ¿Es la ficha de un grupo? Un grupo se planifica como si fuera una persona
+         (tiene ficha de `deportista` con `id_grupo`), así que la sesión no se
+         distingue de la de nadie: hay que preguntarlo. */
+      soloVer ? Promise.resolve({ data: null }) : supabase.from('deportista')
+        .select('id_grupo').eq('id', idDeportista).maybeSingle(),
+      soloVer ? Promise.resolve({ data: [] }) : supabase.from('test_medicion')
+        .select('id_definicion, fecha').in('id_deportista', [idDeportista]),
+    ])
     setMios((data || []) as Def[])
-    if (!editable || !idDeportista) return
+    if (soloVer) return
 
-    /* ¿Es la ficha de un grupo? Un grupo se planifica como si fuera una persona
-       (tiene ficha de `deportista` con `id_grupo`), así que la sesión no se
-       distingue de la de nadie: hay que preguntarlo. */
-    const { data: d } = await supabase.from('deportista')
-      .select('id_grupo').eq('id', idDeportista).maybeSingle()
+    const d = rDep.data as { id_grupo?: string | null } | null
     const ids = d?.id_grupo
       ? (await miembrosDe(supabase, d.id_grupo)).map(m => Number(m.id_deportista))
       : [idDeportista]
     setDeportistas(ids)
 
-    const { data: m } = ids.length
-      ? await supabase.from('test_medicion').select('id_definicion, fecha').in('id_deportista', ids)
-      : { data: [] }
+    const { data: m } = !d?.id_grupo
+      ? rMeds
+      : ids.length
+        ? await supabase.from('test_medicion').select('id_definicion, fecha').in('id_deportista', ids)
+        : { data: [] }
     setMeds((m || []) as { id_definicion: number; fecha: string }[])
   }, [editable, idDeportista])
 

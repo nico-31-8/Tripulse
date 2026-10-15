@@ -70,24 +70,32 @@ export default function CobrosPage() {
   const cargar = useCallback(async () => {
     const user = await usuarioActual()
     if (!user) return
-    const { data: deps } = await supabase.from('deportista')
-      .select('id, nombre').eq('id_entrenador', user.id).order('nombre')
+    /* UNA RONDA. Las cuatro tablas no esperan a la lista de deportistas: su
+       RLS ya deja ver solo las filas de los deportistas cuyo entrenador eres
+       tú, que es justo esa lista. Se pedían después, con sus ids, y eran dos
+       esperas en fila en cada carga y después de cada apunte. Aun así se
+       recortan aquí a los de la lista, por si algún día la política cambia.
+
+       Todo el histórico, no solo el mes: quien te debe agosto sigue
+       debiéndotelo en septiembre, y el saldo es de siempre. Son tres tablas
+       pequeñas. */
+    const [{ data: deps }, t, c, p, l] = await Promise.all([
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).order('nombre'),
+      supabase.from('tarifa').select('*'),
+      supabase.from('cargo').select('*'),
+      supabase.from('cobro').select('*'),
+      supabase.from('cobros_lista').select('id_deportista'),
+    ])
     const lista = (deps || []) as Dep[]
     setDeportistas(lista)
     if (!lista.length) { setCargando(false); return }
 
-    const ids = lista.map(d => d.id)
-    /* Todo el histórico, no solo el mes: quien te debe agosto sigue debiéndotelo
-       en septiembre, y el saldo es de siempre. Son tres tablas pequeñas. */
-    const [t, c, p, l] = await Promise.all([
-      supabase.from('tarifa').select('*').in('id_deportista', ids),
-      supabase.from('cargo').select('*').in('id_deportista', ids),
-      supabase.from('cobro').select('*').in('id_deportista', ids),
-      supabase.from('cobros_lista').select('id_deportista').in('id_deportista', ids),
-    ])
-    const lTarifas = (t.data || []) as Tarifa[]
-    let lCargos = (c.data || []) as Cargo[]
-    const lLista = ((l.data || []) as { id_deportista: number }[]).map(x => x.id_deportista)
+    const suyos = new Set(lista.map(d => d.id))
+    const deLaLista = <T extends { id_deportista: number }>(filas: unknown): T[] =>
+      ((filas || []) as T[]).filter(x => suyos.has(x.id_deportista))
+    const lTarifas = deLaLista<Tarifa>(t.data)
+    let lCargos = deLaLista<Cargo>(c.data)
+    const lLista = deLaLista<{ id_deportista: number }>(l.data).map(x => x.id_deportista)
 
     /* LA CUOTA DEL MES SALE SOLA. Antes había que darle a un botón, y ponerle
        tarifa a alguien sin ver nada después es exactamente lo que hace pensar
@@ -102,19 +110,18 @@ export default function CobrosPage() {
         .filter((x): x is NonNullable<typeof x> => !!x)
         .filter(x => !lCargos.some(y => y.id_deportista === x.id_deportista && y.mes === x.mes && y.tipo === 'mensual'))
       if (faltan.length) {
-        const { error } = await supabase.from('cargo').insert(faltan)
+        /* Las cuotas nuevas vuelven con el alta: se suman a las que había sin
+           volver a pedirlas todas. */
+        const { data: puestas, error } = await supabase.from('cargo').insert(faltan).select('*')
         if (error) mal('No se han podido poner las cuotas del mes: ' + error.message)
-        else {
-          const { data } = await supabase.from('cargo').select('*').in('id_deportista', ids)
-          lCargos = (data || []) as Cargo[]
-        }
+        else lCargos = [...lCargos, ...((puestas || []) as Cargo[])]
       }
     }
 
     setEnLista(lLista)
     setTarifas(lTarifas)
     setCargos(lCargos)
-    setCobros((p.data || []) as Cobro[])
+    setCobros(deLaLista<Cobro>(p.data))
     setCargando(false)
   /* El mes va en las dependencias a proposito: cambiar de mes tiene que volver
      a mirar, y de paso poner las cuotas de ese mes si le faltan. */

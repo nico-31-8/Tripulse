@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   BLOQUE_VACIO, type BloqueRegistro, seriesDe, bloqueTieneAlgo, bloquesQueCuentan,
   totalDe, resumenTotal, tareaDe, medicionDe, bloquesDesdeSesion,
+  guardarRegistroResistencia, actualizarRegistroResistencia,
 } from './registro-resistencia'
 
 const b = (p: Partial<BloqueRegistro>): BloqueRegistro => ({ ...BLOQUE_VACIO, ...p })
@@ -131,5 +132,93 @@ describe('traer una sesión para corregirla', () => {
 
   it('una tarea sin medición no revienta', () => {
     expect(bloquesDesdeSesion([{ zona_entrenamiento: null, series: null }])[0].cantidad).toBe('')
+  })
+})
+
+/* ------------------------------------------------------------------
+   Guardar lo apuntado: de golpe, y sin perder los metros por el ritmo
+   ------------------------------------------------------------------ */
+
+function sbFalso(o: { rechazaRitmo?: boolean; falla?: string } = {}) {
+  const ops: { op: string; tabla: string; filas?: any[] }[] = []
+  let n = 100
+  const from = (tabla: string) => ({
+    insert(v: any) {
+      const filas = Array.isArray(v) ? v : [v]
+      ops.push({ op: 'insert', tabla, filas })
+      const mal = o.falla === tabla || (o.rechazaRitmo && filas.some(f => 'ritmo_objetivo' in f))
+      const res = mal ? { data: null, error: { message: 'no va en ' + tabla } } : { data: filas.map(() => ({ id: ++n })), error: null }
+      return {
+        select: () => { const p: any = Promise.resolve(res); p.single = () => Promise.resolve(mal ? res : { data: res.data![0], error: null }); return p },
+        then: (r: any) => r({ error: res.error }),
+      }
+    },
+    select() { const q: any = { eq: () => Promise.resolve({ data: [{ id: 1 }] }) }; return q },
+    delete() {
+      const fin = (campo: string) => (_c: string, v: any) => { ops.push({ op: 'delete:' + campo, tabla, filas: [v] }); return Promise.resolve({ error: null }) }
+      return { eq: fin('eq'), in: fin('in') }
+    },
+    update() { const q: any = { eq: () => q, is: () => Promise.resolve({ error: null }), then: (r: any) => r({ error: null }) }; return q },
+  })
+  return { ops, from, inserts: (t: string) => ops.filter(x => x.op === 'insert' && x.tabla === t) }
+}
+
+const base = { idDeportista: 14, disciplina: 'Carrera', fecha: '2026-10-15', idMicrociclo: null, realizada: true, duracionMinutos: 40, rpe: 6, notas: null }
+const SERIES = b({ zona: 'AEM', series: '6', cantidad: '400', unidad: 'm', ritmo: '1:30' })
+const CALMA = b({ zona: 'AER', cantidad: '10', unidad: 'min' })
+
+describe('guardarRegistroResistencia', () => {
+  /* Iba bloque a bloque: tres esperas por cada uno. */
+  it('todas las tareas en UNA escritura, y cada medición en su tabla con su tarea', async () => {
+    const sb = sbFalso()
+    const r = await guardarRegistroResistencia(sb, { ...base, bloques: [SERIES, CALMA] })
+    expect(r.error).toBeNull()
+    expect(sb.inserts('tarea')).toHaveLength(1)
+    const [t] = sb.inserts('tarea')
+    expect(t.filas!.map(f => f.orden)).toEqual([1, 2])
+    /* Sesión 101, tareas 102 y 103: los metros con la primera y el tiempo con la segunda. */
+    expect(sb.inserts('p_distancia')[0].filas).toEqual([{ id_tarea: 102, metros_planeados: 400, metros_reales: 400, ritmo_objetivo: '1:30' }])
+    expect(sb.inserts('p_duracion')[0].filas![0]).toMatchObject({ id_tarea: 103 })
+    expect(r.aviso).toBeNull()
+  })
+
+  /* LA GARANTÍA DE SIEMPRE: el ritmo no se lleva por delante los metros. */
+  it('si el ritmo no entra, los metros sí, y se avisa', async () => {
+    const sb = sbFalso({ rechazaRitmo: true })
+    const r = await guardarRegistroResistencia(sb, { ...base, bloques: [SERIES] })
+    expect(r.error).toBeNull()
+    expect(r.aviso).toMatch(/ritmos/)
+    expect(sb.inserts('p_distancia').at(-1)!.filas![0]).not.toHaveProperty('ritmo_objetivo')
+    expect(sb.inserts('p_distancia').at(-1)!.filas![0].metros_planeados).toBe(400)
+  })
+
+  it('si fallan las tareas, la sesión se va entera', async () => {
+    const sb = sbFalso({ falla: 'tarea' })
+    const r = await guardarRegistroResistencia(sb, { ...base, bloques: [SERIES] })
+    expect(r.idSesion).toBeNull()
+    expect(sb.ops.some(x => x.op.startsWith('delete') && x.tabla === 'sesion')).toBe(true)
+  })
+})
+
+describe('actualizarRegistroResistencia', () => {
+  it('escribe lo nuevo de golpe y DESPUÉS borra lo viejo', async () => {
+    const sb = sbFalso()
+    const r = await actualizarRegistroResistencia(sb, 400, { ...base, bloques: [SERIES, CALMA] })
+    expect(r.error).toBeNull()
+    expect(sb.inserts('tarea')).toHaveLength(1)
+    const orden = sb.ops.map(x => x.op + ':' + x.tabla)
+    const borradoViejo = orden.findIndex(x => x === 'delete:in:tarea')
+    const ultimoInsert = orden.map((x, i) => x.startsWith('insert') ? i : -1).filter(i => i >= 0).pop()!
+    expect(ultimoInsert).toBeLessThan(borradoViejo)
+  })
+
+  it('si fallan las mediciones, se quita solo lo nuevo', async () => {
+    const sb = sbFalso({ falla: 'p_duracion' })
+    const r = await actualizarRegistroResistencia(sb, 400, { ...base, bloques: [SERIES, CALMA] })
+    expect(r.error).toMatch(/No se ha borrado nada/)
+    const borrados = sb.ops.filter(x => x.op === 'delete:in' && x.tabla === 'tarea')
+    expect(borrados).toHaveLength(1)
+    /* Sin sesión nueva que crear, las tareas nuevas son la 101 y la 102. */
+    expect(borrados[0].filas![0]).toEqual([101, 102])
   })
 })

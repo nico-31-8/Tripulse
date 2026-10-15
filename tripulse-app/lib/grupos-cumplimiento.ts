@@ -4,6 +4,10 @@
 // entrenamientos y hasta ahora no había ningún sitio donde ver qué ha pasado con
 // ellos. El dato ya estaba en la base — cada copia es una sesión normal con su
 // estado —, solo había que juntarlo.
+import { limpiar } from './copiar-sesion'
+
+/* La emisión llega dentro de cada sesión solo para filtrar por grupo. */
+const CON_SU_EMISION = new Set(['grupo_entreno_emision'])
 
 export type EstadoSesion = 'Realizada' | 'Planificada' | 'Cancelada'
 
@@ -80,18 +84,16 @@ export async function cargarCumplimiento(
   const vacio: Cumplimiento = { columnas: [], filas: [], hechas: 0, mandadas: 0 }
   if (!miembros.length) return vacio
 
-  const { data: emis } = await sb.from('grupo_entreno_emision').select('id').eq('id_grupo', idGrupo)
-  const idsEmi = (emis || []).map((e: any) => e.id)
-  if (!idsEmi.length) return vacio
-
+  /* Una consulta: las sesiones que vienen de una emisión de ESTE grupo, con el
+     cruce dentro. Eran dos (las emisiones del grupo, y luego sus sesiones). */
   const { data } = await sb.from('sesion')
-    .select('id, id_emision, id_deportista, fecha_sesion, disciplina, estado')
-    .in('id_emision', idsEmi).in('id_deportista', miembros.map(m => m.id_deportista))
+    .select('id, id_emision, id_deportista, fecha_sesion, disciplina, estado, grupo_entreno_emision!inner(id_grupo)')
+    .eq('grupo_entreno_emision.id_grupo', idGrupo).in('id_deportista', miembros.map(m => m.id_deportista))
     .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
     .or('eliminada.is.null,eliminada.eq.false')
     .order('fecha_sesion')
 
-  return construirCumplimiento(data || [], miembros)
+  return construirCumplimiento(((data || []) as any[]).map(s => limpiar(s, CON_SU_EMISION)), miembros)
 }
 
 // Porcentaje redondeado. Sin nada mandado NO se devuelve 0: cero de cero no es un

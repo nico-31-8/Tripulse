@@ -43,9 +43,11 @@ export default function BotonMovilidad({ idSesion, ordenBase, onHecho, clase }: 
        un 5 por defecto (lib/panel-metricas). O sea que una sesión de movilidad
        sin RPE pesaba como una de calidad suave y se colaba en el CTL. FLEX es
        RPE 1–3, así que el 2 es su punto medio.
-       Solo se rellena si está vacío: si el entrenador puso un número, es suyo. */
-    const { data: s } = await supabase.from('sesion').select('rpe_estimado').eq('id', idSesion).single()
-    if (!s?.rpe_estimado) await supabase.from('sesion').update({ rpe_estimado: 2 }).eq('id', idSesion)
+       Solo se rellena si está vacío: si el entrenador puso un número, es suyo.
+       Una sola escritura que ya lleva la condición (era leerlo y después
+       escribirlo): «vacío» es sin número o con un cero, como antes. */
+    await supabase.from('sesion').update({ rpe_estimado: 2 }).eq('id', idSesion)
+      .or('rpe_estimado.is.null,rpe_estimado.eq.0')
 
     setGuardando(null)
     setAbierto(false)

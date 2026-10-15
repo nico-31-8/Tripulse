@@ -35,13 +35,15 @@ export default function AvisosDirector({ papel, className = '' }: { papel: Papel
   const cargar = useCallback(async () => {
     /* Si las funciones no existen todavía, o falla la red, aquí no sale nada:
        es un aviso, no puede tumbar el panel. */
-    const a = await supabase.rpc('mis_avisos_director', { _solo_sin_leer: true, _limite: 30 })
+    /* Las tres a la vez: las del entrenador no dependen de los avisos. */
+    const esEntrenador = papel === 'entrenador'
+    const [a, v, p] = await Promise.all([
+      supabase.rpc('mis_avisos_director', { _solo_sin_leer: true, _limite: 30 }),
+      esEntrenador ? supabase.rpc('entrenador_mis_directores') : Promise.resolve(null),
+      esEntrenador ? supabase.rpc('entrenador_accesos') : Promise.resolve(null),
+    ])
     setAvisos(a.error ? [] : ((a.data || []) as AvisoDirector[]))
-    if (papel === 'entrenador') {
-      const [v, p] = await Promise.all([
-        supabase.rpc('entrenador_mis_directores'),
-        supabase.rpc('entrenador_accesos'),
-      ])
+    if (esEntrenador && v && p) {
       setVinculos(v.error ? [] : ((v.data || []) as Vinculo[]).filter(x => x.estado === 'pendiente'))
       setPeticiones(p.error ? [] : ((p.data || []) as Peticion[]).filter(x => x.estado === 'pendiente'))
     }

@@ -27,6 +27,7 @@ import {
 } from '@/lib/registro-resistencia'
 import { cargarReferencias, type Tests } from '@/lib/referencia-zona'
 import { esDisciplinaDeFuerza, DISCIPLINAS_DE_FUERZA, etiquetaConEmoji } from '@/lib/disciplinas'
+import { limpiar } from '@/lib/copiar-sesion'
 
 /* Aquí el atleta apunta lo que entrena por su cuenta, sea lo que sea.
    Es UNA sola puerta a propósito. Antes había dos: un modal que solo guardaba
@@ -52,6 +53,8 @@ type Paso = { fecha: string; series: any[] }
 type Resumida = { id: number; fecha: string; nombres: string[]; series: number }
 
 const DESCANSO_POR_DEFECTO = 120
+/* Las series de cada ejercicio llegan dentro de él y se pasan aparte. */
+const SUS_SERIES = new Set(['series_realizadas'])
 
 /* Los valores van SIN tilde porque es lo que escriben las demás pantallas en
    `sesion.disciplina` (microciclo, mesociclo, grupo). Escribir «Natación» aquí
@@ -69,6 +72,10 @@ export default function Apuntar() {
   const router = useRouter()
   const [dep, setDep] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
+  /* Sus semanas del plan, traídas al abrir: al guardar una sesión nueva hay que
+     saber en cuál cae, y preguntarlo entonces era una espera más con el dedo en
+     el botón. No dependen del día que elija. */
+  const [micros, setMicros] = useState<{ id: number; fecha_inicio: string; duracion_dias: number | null }[] | null>(null)
   const [biblioteca, setBiblioteca] = useState<EjercicioBib[]>([])
 
   // `?sesion=` se lee del navegador y no con useSearchParams para no obligar a
@@ -153,21 +160,34 @@ export default function Apuntar() {
     const bibQ = bibliotecaQ()
 
     /* Las últimas sesiones de fuerza, para poder elegir cuál repetir. Solo la
-       cabecera; los ejercicios de cada una se traen al elegirla. */
+       cabecera y el nombre de sus ejercicios, que vienen DENTRO (eran dos
+       consultas más, una detrás de otra); las series de cada una se traen al
+       elegirla. */
     const listaQ = vivas(supabase.from('sesion')
-      .select('id, fecha_sesion')
+      .select('id, fecha_sesion, tarea(id, ejercicios(nombre, series))')
       .eq('id_deportista', d.id).in('disciplina', DISCIPLINAS_DE_FUERZA).eq('estado', 'Realizada'))
       .order('fecha_sesion', { ascending: false }).limit(12)
 
-    const [bib, lista, refs] = await Promise.all([bibQ, listaQ, cargarReferencias(supabase, d.id)])
+    /* ¿Venimos a corregir una? Se pide YA, a la vez que lo demás: no depende
+       de nada de ello. */
+    const params = new URLSearchParams(window.location.search)
+    const idSes = Number(params.get('sesion') || 0)
+    const pCorregir = idSes ? leerParaCorregir(idSes) : Promise.resolve(null)
+
+    const misSemanasQ = supabase.from('microciclo')
+      .select('id, fecha_inicio, duracion_dias').eq('id_deportista', d.id)
+
+    const [bib, lista, refs, paraCorregir, misSemanas] = await Promise.all([
+      bibQ, listaQ, cargarReferencias(supabase, d.id), pCorregir, misSemanasQ,
+    ])
+    /* Si falló, se queda en null y se pregunta al guardar, como antes. */
+    if (!misSemanas.error) setMicros(misSemanas.data || [])
     setBiblioteca(bib.data || [])
-    await resumirSesiones(lista.data || [])
+    resumirSesiones(lista.data || [])
     setTests(refs.tests)
     setFcMax(refs.fcMax)
     setFcReposo(refs.fcReposo)
     setSistema(refs.sistema)
-
-    const params = new URLSearchParams(window.location.search)
 
     /* `?fecha=` viene de quien nos manda desde otra pantalla ya con un día
        elegido — el alta de sesión de /mis-sesiones. Sin esto, cambiar de
@@ -181,71 +201,53 @@ export default function Apuntar() {
       if (disc !== 'Fuerza') setBloques([{ ...BLOQUE_VACIO }])
     }
 
-    // ¿Venimos a corregir una?
-    const idSes = Number(params.get('sesion') || 0)
-    if (idSes) await abrirParaCorregir(idSes, d.id)
+    if (paraCorregir) abrirParaCorregir(paraCorregir, d.id)
 
     setCargando(false)
   }
 
-  /** Los nombres de los ejercicios de cada sesión, para que la lista diga cuál es cuál. */
-  const resumirSesiones = async (filas: any[]) => {
-    if (!filas.length) { setSesiones([]); return }
-    const ids = filas.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion').in('id_sesion', ids)
-    const idsTarea = (tareas || []).map((t: any) => t.id)
-    const { data: ejs } = idsTarea.length
-      ? await supabase.from('ejercicios').select('nombre, series, id_tarea').in('id_tarea', idsTarea)
-      : { data: [] as any[] }
-
-    const sesionDe = new Map((tareas || []).map((t: any) => [t.id, t.id_sesion]))
-    const porSesion = new Map<number, { nombres: string[]; series: number }>()
-    for (const e of ejs || []) {
-      const id = sesionDe.get(e.id_tarea)
-      if (id == null) continue
-      const acc = porSesion.get(id) || { nombres: [], series: 0 }
-      if (e.nombre) acc.nombres.push(e.nombre)
-      acc.series += Number(e.series) || 0
-      porSesion.set(id, acc)
-    }
-    setSesiones(filas.map(s => ({
-      id: s.id, fecha: s.fecha_sesion,
-      nombres: porSesion.get(s.id)?.nombres || [],
-      series: porSesion.get(s.id)?.series || 0,
-    })))
+  /** Los nombres de los ejercicios de cada sesión, para que la lista diga cuál es
+      cuál. Vienen dentro de cada sesión (ver `listaQ`). */
+  const resumirSesiones = (filas: any[]) => {
+    setSesiones(filas.map(s => {
+      const ejs = (s.tarea || []).flatMap((t: any) => t.ejercicios || [])
+      return {
+        id: s.id, fecha: s.fecha_sesion,
+        nombres: ejs.map((e: any) => e.nombre).filter(Boolean),
+        series: ejs.reduce((a: number, e: any) => a + (Number(e.series) || 0), 0),
+      }
+    }))
   }
 
-  /** Los ejercicios de una sesión, con lo que se hizo. Sirve para repetir y para corregir. */
+  /** Los ejercicios de una sesión, con lo que se hizo. Sirve para repetir y para corregir.
+      UNA consulta: las series que hizo vienen dentro de cada ejercicio y los
+      ejercicios dentro de cada tarea. Eran tres en fila. */
   const ejerciciosDe = async (idSesion: number): Promise<EjercicioRegistro[]> => {
-    const { data: tareas } = await supabase.from('tarea').select('id').eq('id_sesion', idSesion).order('orden')
-    const idsTarea = (tareas || []).map((t: any) => t.id)
-    if (!idsTarea.length) return []
-
-    const { data: ejs } = await supabase.from('ejercicios')
-      .select('id, nombre, ejercicio_id, grupo_muscular, series, repeticiones, intensidad, control_tipo, id_tarea')
-      .in('id_tarea', idsTarea)
-    const idsEj = (ejs || []).map((e: any) => e.id)
-    const { data: series } = idsEj.length
-      ? await supabase.from('series_realizadas')
-        .select('id_ejercicio, numero_serie, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo, ejercicio_numero')
-        .in('id_ejercicio', idsEj)
-      : { data: [] as any[] }
-
-    const porEj = new Map<number, any[]>()
-    for (const x of series || []) {
-      const l = porEj.get(Number(x.id_ejercicio))
-      if (l) l.push(x); else porEj.set(Number(x.id_ejercicio), [x])
-    }
+    const { data: tareas } = await supabase.from('tarea')
+      .select('id, orden, ejercicios(id, nombre, ejercicio_id, grupo_muscular, series, repeticiones, intensidad, control_tipo, id_tarea, series_realizadas(id_ejercicio, numero_serie, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo, ejercicio_numero))')
+      .eq('id_sesion', idSesion).order('orden')
     // En el orden de las tareas, que es el orden en que se entrenó.
-    const orden = new Map(idsTarea.map((id: number, i: number) => [id, i]))
-    const ordenados = [...(ejs || [])].sort((a, b) => (orden.get(a.id_tarea) ?? 99) - (orden.get(b.id_tarea) ?? 99))
-    return ejerciciosDesdeSesion(ordenados, porEj)
+    const ejs: any[] = (tareas || []).flatMap((t: any) => t.ejercicios || [])
+    const porEj = new Map<number, any[]>(ejs.map(e => [Number(e.id), e.series_realizadas || []]))
+    return ejerciciosDesdeSesion(ejs.map(e => limpiar(e, SUS_SERIES)), porEj)
   }
 
-  const abrirParaCorregir = async (idSesion: number, idDep: number) => {
-    const { data: s } = await supabase.from('sesion')
-      .select('id, fecha_sesion, duracion_minutos, rpe_reportado, rpe_estimado, estado, notas_entrenador, origen, disciplina, id_deportista')
-      .eq('id', idSesion).maybeSingle()
+  /* Lo que hace falta para corregir una sesión, TODO a la vez: la sesión, su
+     material, y sus ejercicios y sus bloques (los dos, que es más barato que
+     esperar a saber cuál de los dos es). Eran hasta seis esperas en fila. */
+  const leerParaCorregir = async (idSesion: number) => {
+    const [{ data: s }, material, ejs, bls] = await Promise.all([
+      supabase.from('sesion')
+        .select('id, fecha_sesion, duracion_minutos, rpe_reportado, rpe_estimado, estado, notas_entrenador, origen, disciplina, id_deportista')
+        .eq('id', idSesion).maybeSingle(),
+      materialDeSesion(supabase, idSesion),
+      ejerciciosDe(idSesion),
+      bloquesDe(idSesion),
+    ])
+    return { s, material, ejs, bls }
+  }
+
+  const abrirParaCorregir = ({ s, material, ejs, bls }: Awaited<ReturnType<typeof leerParaCorregir>>, idDep: number) => {
     /* Solo las suyas y solo las que se apuntó él. Lo que le prescribe el
        entrenador se corrige en la pantalla de ejecución, no aquí. */
     if (!s || Number(s.id_deportista) !== Number(idDep) || s.origen !== 'deportista') {
@@ -255,7 +257,7 @@ export default function Apuntar() {
     const hecha = s.estado === 'Realizada'
     setEditando(s.id)
     /* Lo que tuviera elegido: corregir una sesion no puede borrarle el material. */
-    setMaterialElegido(await materialDeSesion(supabase, s.id))
+    setMaterialElegido(material)
     setDisciplina(s.disciplina || 'Fuerza')
     setRealizada(hecha)
     setFecha(String(s.fecha_sesion).slice(0, 10))
@@ -263,8 +265,8 @@ export default function Apuntar() {
     setRpe(String((hecha ? s.rpe_reportado : s.rpe_estimado) ?? ''))
     setNotas(s.notas_entrenador || '')
 
-    if (esDisciplinaDeFuerza(s.disciplina)) setEjercicios(await ejerciciosDe(s.id))
-    else setBloques(await bloquesDe(s.id))
+    if (esDisciplinaDeFuerza(s.disciplina)) setEjercicios(ejs)
+    else setBloques(bls)
   }
 
   /** Los bloques de una sesión de resistencia ya guardada, para corregirla. */
@@ -295,12 +297,13 @@ export default function Apuntar() {
     let vivo = true
     ;(async () => {
       const nuevo: Record<string, Historial> = {}
-      for (const nombre of [...new Set(ejercicios.map(e => e.nombre))]) {
+      /* Todos a la vez: iban de uno en uno, un viaje por ejercicio. */
+      await Promise.all([...new Set(ejercicios.map(e => e.nombre))].map(async nombre => {
         const { data } = await supabase.rpc('ultima_ejecucion_fuerza', { _dep: dep.id, _nombre: nombre, _antes: fecha })
         if (data?.length) {
           nuevo[nombre] = { dias: Math.max(0, diasEntre(String(data[0].fecha).slice(0, 10), fecha)), series: data }
         }
-      }
+      }))
       if (vivo) setHistorial(nuevo)
     })()
     return () => { vivo = false }
@@ -337,7 +340,8 @@ export default function Apuntar() {
     if (!traidos.length) setError('Esa sesión no tenía ejercicios que traer.')
     else {
       setEjercicios(prev => [...prev, ...traidos])
-      if (dep) for (const t of traidos) await traerHistorial(t.nombre, dep.id)
+      /* Todos a la vez, y cada nombre una vez: iban de uno en uno. */
+      if (dep) await Promise.all([...new Set(traidos.map(t => t.nombre))].map(n => traerHistorial(n, dep.id)))
     }
     setTrayendo(false); setHojaAbierta(false)
   }
@@ -350,39 +354,21 @@ export default function Apuntar() {
     setAbiertas(p => ({ ...p, [nombre]: abierta }))
     if (!abierta || progresion[nombre] || !dep) return
 
-    const { data: ejs } = await supabase.from('ejercicios').select('id, id_tarea').eq('nombre', nombre)
-    const idsTarea = [...new Set((ejs || []).map((e: any) => e.id_tarea))]
-    if (!idsTarea.length) { setProgresion(p => ({ ...p, [nombre]: [] })); return }
-
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion').in('id', idsTarea)
-    const idsSes = [...new Set((tareas || []).map((t: any) => t.id_sesion))]
-    const { data: ses } = idsSes.length
-      ? await vivas(supabase.from('sesion').select('id, fecha_sesion')
-        .in('id', idsSes).eq('id_deportista', dep.id).eq('estado', 'Realizada'))
-        .order('fecha_sesion', { ascending: false }).limit(6)
-      : { data: [] as any[] }
-
-    const fechaDeSesion = new Map((ses || []).map((s: any) => [s.id, String(s.fecha_sesion).slice(0, 10)]))
-    const sesionDeTarea = new Map((tareas || []).map((t: any) => [t.id, t.id_sesion]))
-    const fechaDeEj = new Map<number, string>()
-    for (const e of ejs || []) {
-      const f = fechaDeSesion.get(sesionDeTarea.get(e.id_tarea))
-      if (f) fechaDeEj.set(Number(e.id), f)
-    }
-
-    const idsEj = [...fechaDeEj.keys()]
-    const { data: series } = idsEj.length
-      ? await supabase.from('series_realizadas')
-        .select('id_ejercicio, numero_serie, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo, ejercicio_numero')
-        .in('id_ejercicio', idsEj)
-      : { data: [] as any[] }
+    /* UNA consulta: sus seis últimas sesiones hechas que llevan ese ejercicio,
+       con el ejercicio y sus series dentro. Eran cuatro en fila —los ejercicios
+       con ese nombre, sus tareas, sus sesiones y por último sus series—. */
+    const { data: ses } = await vivas(supabase.from('sesion')
+      .select('id, fecha_sesion, tarea!inner(id, ejercicios!inner(id, nombre, series_realizadas(id_ejercicio, numero_serie, peso_real, repeticiones_reales, tiempo_real, control_real, control_tipo, ejercicio_numero)))')
+      .eq('id_deportista', dep.id).eq('estado', 'Realizada').eq('tarea.ejercicios.nombre', nombre))
+      .order('fecha_sesion', { ascending: false }).limit(6)
 
     const porFecha = new Map<string, any[]>()
-    for (const s of series || []) {
-      const f = fechaDeEj.get(Number(s.id_ejercicio))
-      if (!f) continue
-      const l = porFecha.get(f)
-      if (l) l.push(s); else porFecha.set(f, [s])
+    for (const s of ses || []) {
+      const f = String(s.fecha_sesion).slice(0, 10)
+      for (const t of s.tarea || []) for (const e of t.ejercicios || []) for (const x of e.series_realizadas || []) {
+        const l = porFecha.get(f)
+        if (l) l.push(x); else porFecha.set(f, [x])
+      }
     }
     const pasos = [...porFecha.entries()]
       .map(([f, ss]) => ({ fecha: f, series: ss.slice().sort((a, b) => (a.numero_serie || 0) - (b.numero_serie || 0)) }))
@@ -427,9 +413,14 @@ export default function Apuntar() {
 
     /* En qué semana del plan cae, si es que tiene plan. Sin esto la sesión queda
        suelta y no suma en la vista de semana del entrenador. */
-    const { data: micros } = await supabase.from('microciclo')
-      .select('id, fecha_inicio, duracion_dias').eq('id_deportista', dep.id)
-    const idMicrociclo = microDelDia(micros || [], fecha)?.id ?? null
+    const enSuSemana = (lista: any[] | null | undefined) => microDelDia(lista || [], fecha)?.id ?? null
+    let idMicrociclo = micros ? enSuSemana(micros) : null
+    /* Si con lo traído al abrir no cae en ninguna, se pregunta otra vez: el
+       entrenador ha podido crearle la semana mientras tenía esto abierto. */
+    if (idMicrociclo == null) {
+      idMicrociclo = enSuSemana((await supabase.from('microciclo')
+        .select('id, fecha_inicio, duracion_dias').eq('id_deportista', dep.id)).data)
+    }
 
     const r = esFuerza
       ? await guardarRegistroFuerza(supabase, { idDeportista: dep.id, fecha, idMicrociclo, ...comun, ejercicios })

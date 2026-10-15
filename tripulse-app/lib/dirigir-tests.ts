@@ -131,11 +131,12 @@ export async function guardarTestsDeCampo(
     }
   }
 
-  const resultados: ResultadoGuardado[] = []
-  for (const x of conFila) {
+  /* Falló el lote: uno a uno, cada uno por su lado y a la vez (iban en fila).
+     El parte, en el orden de la lista. */
+  const resultados: ResultadoGuardado[] = await Promise.all(conFila.map(async x => {
     const { error } = await supabase.from('test_campo').insert(x.fila)
-    resultados.push({ id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: !error, filas: error ? 0 : 1 })
-  }
+    return { id_deportista: x.p.id_deportista, nombre: x.p.nombre, ok: !error, filas: error ? 0 : 1 }
+  }))
   return { error: null, resultados }
 }
 

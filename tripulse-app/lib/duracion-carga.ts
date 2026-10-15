@@ -25,8 +25,7 @@ export async function estimarDuraciones(
   /** Ver `OpcionesDuracion`. Apagado por defecto: se enciende donde se ha revisado. */
   opciones: OpcionesDuracion = {},
 ): Promise<Record<number, ResultadoDuracion>> {
-  const out: Record<number, ResultadoDuracion> = {}
-  if (!sesionIds.length) return out
+  if (!sesionIds.length) return {}
 
   const { data: tareas } = await supabase
     .from('tarea')
@@ -34,16 +33,64 @@ export async function estimarDuraciones(
     .in('id_sesion', sesionIds)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
-  const { data: dists } = tareaIds.length
-    ? await supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds)
-    : { data: [] }
-  const { data: durs } = tareaIds.length
-    ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds)
-    : { data: [] }
-  const { data: ejs } = tareaIds.length
-    ? await supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds)
-    : { data: [] }
+  /* Las tres a la vez: ninguna necesita a otra, y en fila eran dos esperas de
+     más en cada pantalla que enseña una duración estimada. */
+  const nada = Promise.resolve({ data: [] })
+  const [{ data: dists }, { data: durs }, { data: ejs }] = await Promise.all([
+    tareaIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds) : nada,
+    tareaIds.length ? supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds) : nada,
+    tareaIds.length ? supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds) : nada,
+  ])
 
+  return duracionesDe(sesionIds, tareas, dists, durs, ejs, tests, opciones)
+}
+
+/**
+ * Las tareas DENTRO de una consulta de sesiones, con todo lo que hace falta
+ * para estimar cuánto duran: `.select('id, fecha_sesion, ' + TAREAS_PARA_DURACION)`.
+ *
+ * Es lo mismo que pide `estimarDuraciones` (un test lo comprueba), pero en la
+ * misma ronda que las sesiones en vez de en dos más detrás. Una sola lista para
+ * todas las pantallas que lo usan: si cada una escribiera la suya, la primera
+ * columna nueva se le olvidaría a alguna.
+ */
+export const TAREAS_PARA_DURACION =
+  'tarea(id, id_sesion, orden, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config, '
+  + 'p_distancia(id_tarea, metros_planeados), p_duracion(id_tarea, tiempo_planeado), ejercicios(' + SELECT_EJERCICIOS_CONTEO + '))'
+
+const comoLista = (x: unknown): any[] => Array.isArray(x) ? x : x ? [x] : []
+
+/** Las tareas de unas sesiones que las traen dentro (TAREAS_PARA_DURACION), en su orden. */
+export function tareasAnidadas(sesiones: { tarea?: unknown }[] | null | undefined): any[] {
+  return (sesiones || []).flatMap(s => comoLista(s?.tarea)
+    .slice().sort((a: any, b: any) => (a.orden ?? Infinity) - (b.orden ?? Infinity) || Number(a.id) - Number(b.id)))
+}
+
+/** `duracionesDe` para sesiones que traen sus tareas dentro (TAREAS_PARA_DURACION). */
+export function duracionesDeAnidadas(
+  sesiones: { id: number; tarea?: unknown }[] | null | undefined,
+  tests: TestsDeportista | ((sesionId: number) => TestsDeportista),
+  opciones: OpcionesDuracion = {},
+): Record<number, ResultadoDuracion> {
+  const tareas = tareasAnidadas(sesiones)
+  const hijas = (k: string) => tareas.flatMap(t => comoLista(t[k]))
+  return duracionesDe((sesiones || []).map(s => s.id), tareas, hijas('p_distancia'), hijas('p_duracion'), hijas('ejercicios'), tests, opciones)
+}
+
+/**
+ * La cuenta de `estimarDuraciones`, sin consultas: para quien ya trae las
+ * tareas y sus parámetros en otra consulta y no quiere pedirlos dos veces.
+ */
+export function duracionesDe(
+  sesionIds: number[],
+  tareas: any[] | null | undefined,
+  dists: any[] | null | undefined,
+  durs: any[] | null | undefined,
+  ejs: any[] | null | undefined,
+  tests: TestsDeportista | ((sesionId: number) => TestsDeportista),
+  opciones: OpcionesDuracion = {},
+): Record<number, ResultadoDuracion> {
+  const out: Record<number, ResultadoDuracion> = {}
   for (const sid of sesionIds) {
     const tarSes = (tareas || []).filter((t: any) => t.id_sesion === sid)
     const tareasDur = tarSes.map((t: any) => ({
@@ -56,6 +103,9 @@ export async function estimarDuraciones(
       formato: t.formato,
       formato_config: t.formato_config,
       zona_entrenamiento: t.zona_entrenamiento,
+      /* Se pedía y no se pasaba: una zona propia se cronometraba con el ritmo
+         de la zona del catálogo que se llamase igual. */
+      zona_copia: t.zona_copia,
       p_distancia: (dists || []).filter((d: any) => d.id_tarea === t.id),
       p_duracion: (durs || []).filter((d: any) => d.id_tarea === t.id),
       ejercicios: (ejs || []).filter((e: any) => e.id_tarea === t.id),

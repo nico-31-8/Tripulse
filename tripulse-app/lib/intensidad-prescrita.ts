@@ -171,25 +171,36 @@ export async function intensidadesPorSesion(
   supabase: any,
   sesionIds: number[],
 ): Promise<Record<number, string[]>> {
-  const out: Record<number, string[]> = {}
-  if (!sesionIds.length) return out
+  if (!sesionIds.length) return {}
 
   const { data: tareas } = await supabase.from('tarea')
     .select('id, id_sesion, orden').in('id_sesion', sesionIds).order('orden')
   const ids = (tareas || []).map((t: any) => t.id)
-  if (!ids.length) return out
+  if (!ids.length) return {}
 
   const [dist, dur] = await Promise.all([
     supabase.from('p_distancia').select('*').in('id_tarea', ids),
     supabase.from('p_duracion').select('*').in('id_tarea', ids),
   ])
+  return intensidadesDe(tareas, dist.data, dur.data)
+}
 
+/**
+ * La cuenta de `intensidadesPorSesion`, sin consultas: para quien ya trae las
+ * tareas y sus metros y tiempos y no quiere pedirlos otra vez. Las tareas, en
+ * su orden: es el orden en que salen las intensidades.
+ */
+export function intensidadesDe(
+  tareas: { id: number; id_sesion: number; orden?: number | null }[] | null | undefined,
+  dist: any[] | null | undefined,
+  dur: any[] | null | undefined,
+): Record<number, string[]> {
+  const out: Record<number, string[]> = {}
   const porTarea: Record<number, string> = {}
-  for (const fila of [...(dist.data || []), ...(dur.data || [])]) {
+  for (const fila of [...(dist || []), ...(dur || [])]) {
     const v = limpio(fila?.ritmo_objetivo)
     if (v) porTarea[fila.id_tarea] = v
   }
-
   for (const t of tareas || []) {
     const v = porTarea[t.id]
     if (v) (out[t.id_sesion] ||= []).push(v)

@@ -125,6 +125,37 @@ export function valorCanonico(u: UnidadMedicion, valor: string): number {
   }
 }
 
+/* Lo más que se entrena DE UNA VEZ, por serie y por deporte, en km. Es el
+   umbral para preguntar, no para prohibir: un fondo de ultra o una brevet
+   existen, y se guardan si el entrenador dice que sí. */
+const TOPE_SERIE_KM: Record<string, { km: number; nombre: string }> = {
+  carrera: { km: 60, nombre: 'carrera' },
+  natacion: { km: 15, nombre: 'natación' },
+  ciclismo: { km: 400, nombre: 'bici' },
+}
+
+/**
+ * ¿Una distancia por serie que no se entrena nunca? La frase para preguntarlo
+ * antes de guardar, o null si es normal.
+ *
+ * La trajo un «4 × 1.000.000 m» de carrera (15-10-2026): 1.000 km por serie
+ * —se quería poner 1.000 m, y lo más probable es que fuera la unidad «km» con
+ * un 1000 detrás—. Se guardó sin que nada dijera nada, el atleta lo tenía en su
+ * sesión, y la barra de carga de esa semana se fue a 134.359.
+ */
+export function distanciaSospechosa(
+  disciplina: string | null | undefined, metrosPorSerie: number, series?: number | null,
+): string | null {
+  const clave = String(disciplina || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const tope = TOPE_SERIE_KM[clave]
+  const km = (Number(metrosPorSerie) || 0) / 1000
+  if (!(km > (tope?.km ?? 100))) return null
+  const veces = series && series > 1 ? series + ' × ' : ''
+  return '«' + veces + km.toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' km»'
+    + (tope ? ' de ' + tope.nombre : '') + ' por serie es más de lo que se entrena de una vez.'
+    + ' Si querías metros, revisa la unidad o los ceros.'
+}
+
 // Lee la medición ya guardada de una tarea (para rellenar el modal de edición).
 // Devuelve la unidad más natural: metros, segundos o reps. El entrenador puede
 // cambiarla a km / min / mm:ss en el propio modal si lo prefiere.
@@ -157,7 +188,8 @@ export async function guardarMedicion(
   const valor = destino ? valorCanonico(tipo, valorStr) : 0
   const tablas = ['p_distancia', 'p_duracion', 'p_repeticiones'] as const
 
-  for (const tabla of tablas) {
+  /* Las tres tablas a la vez: cada una toca solo lo suyo (iban en fila). */
+  await Promise.all(tablas.map(async tabla => {
     const fila = t?.[tabla]?.[0]
     const esDestino = tabla === destino && valor > 0
     if (esDestino) {
@@ -173,5 +205,5 @@ export async function guardarMedicion(
       // Cambió de tipo (o se quitó la medición): la fila vieja sobra.
       await supabase.from(tabla).delete().eq('id', fila.id)
     }
-  }
+  }))
 }

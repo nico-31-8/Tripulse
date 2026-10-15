@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // El módulo importa supabase a nivel de módulo (ver el patrón anotado en
 // tripulse-analitica-wellness-sicat): sin esto revienta al importarlo sin env vars.
 vi.mock('./supabase', () => ({ supabase: {} }))
-vi.mock('./sicat-zonas', () => ({ attachZonaPico: async (s: any[]) => s }))
+vi.mock('./sicat-zonas', () => ({ conZonaPico: (s: any[]) => s }))
 
 const { construirContextoTexto } = await import('./asistente')
 

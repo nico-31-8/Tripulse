@@ -17,7 +17,6 @@
 // resumen: subir reps al mismo peso es progresar, y es la forma más corriente
 // de hacerlo.
 
-import { vivas } from './papelera'
 
 /** Una serie anotada, como sale de la base. */
 export interface SerieAnotada {
@@ -187,6 +186,17 @@ export const claveDeEjercicio = (e: { ejercicio_id?: number | null; nombre?: str
 // Traerlo de la base
 // ------------------------------------------------------------
 
+/* Un embed de PostgREST llega como objeto, como lista de uno o como nada. */
+const una = (x: unknown): Record<string, unknown> | null =>
+  (Array.isArray(x) ? x[0] : x) as Record<string, unknown> | null ?? null
+
+/** La fecha de la sesión de un ejercicio que la trae dentro, si no está en la papelera. */
+function fechaViva(ejercicio: unknown): string | null {
+  const s = una(una(una(ejercicio)?.tarea)?.sesion)
+  if (!s || s.eliminada === true || !s.fecha_sesion) return null
+  return String(s.fecha_sesion)
+}
+
 /**
  * El historial de un ejercicio para un atleta.
  *
@@ -205,43 +215,24 @@ export async function cargarHistorial(
   const cliente = sb as { from: (t: string) => any }
   if (!idDeportista) return []
 
-  /* Primero las prescripciones de ese ejercicio: por enlace si lo hay, y si no
-     por nombre. Sin esto no se sabe qué series son de este ejercicio. */
-  let q = cliente.from('ejercicios').select('id')
+  /* UNA consulta. Cada serie anotada trae DENTRO su ejercicio, la tarea de ese
+     ejercicio y la sesión de esa tarea, que es donde vive la fecha. Eran cinco
+     en fila: las prescripciones de ese ejercicio, sus series, otra vez las
+     prescripciones para saber su tarea, las tareas y por último las sesiones.
+     El ejercicio se reconoce por su ENLACE A LA BIBLIOTECA si lo hay, y si no
+     por nombre. */
+  let q = cliente.from('series_realizadas')
+    .select('peso_real, repeticiones_reales, control_real, control_tipo, numero_serie, id_ejercicio, ejercicios!inner(ejercicio_id, nombre, tarea!inner(sesion!inner(fecha_sesion, eliminada)))')
+    .eq('id_deportista', idDeportista)
   q = ejercicio?.id != null
-    ? q.eq('ejercicio_id', ejercicio.id)
-    : q.ilike('nombre', (ejercicio?.nombre || '').trim())
-  const { data: prescripciones } = await q
-  const ids = (prescripciones || []).map((e: { id: number }) => e.id)
-  if (!ids.length) return []
-
-  const { data } = await cliente.from('series_realizadas')
-    .select('peso_real, repeticiones_reales, control_real, control_tipo, numero_serie, id_ejercicio')
-    .eq('id_deportista', idDeportista).in('id_ejercicio', ids)
+    ? q.eq('ejercicios.ejercicio_id', ejercicio.id)
+    : q.ilike('ejercicios.nombre', (ejercicio?.nombre || '').trim())
+  const { data } = await q
   if (!data?.length) return []
-
-  /* La fecha vive en la sesión, no en la serie. Se piden las tareas y las
-     sesiones de esas prescripciones en dos viajes y se cruzan aquí. */
-  const { data: ejs } = await cliente.from('ejercicios').select('id, id_tarea').in('id', ids)
-  const tareaDe = new Map((ejs || []).map((e: { id: number; id_tarea: number }) => [e.id, e.id_tarea]))
-  const idsTarea = [...new Set([...tareaDe.values()].filter(Boolean))]
-  if (!idsTarea.length) return []
-
-  const { data: tareas } = await cliente.from('tarea').select('id, id_sesion').in('id', idsTarea)
-  const sesionDe = new Map((tareas || []).map((t: { id: number; id_sesion: number }) => [t.id, t.id_sesion]))
-  const idsSesion = [...new Set([...sesionDe.values()].filter(Boolean))]
-  if (!idsSesion.length) return []
-
-  const { data: sesiones } = await vivas(cliente.from('sesion')
-    .select('id, fecha_sesion').in('id', idsSesion))
-  const fechaDe = new Map((sesiones || [])
-    .map((s: { id: number; fecha_sesion: string }) => [s.id, s.fecha_sesion]))
 
   const series: SerieAnotada[] = []
   for (const r of data as Record<string, unknown>[]) {
-    const tarea = tareaDe.get(r.id_ejercicio as number)
-    const sesion = tarea != null ? sesionDe.get(tarea) : undefined
-    const fecha = sesion != null ? fechaDe.get(sesion) : undefined
+    const fecha = fechaViva(r.ejercicios)
     if (!fecha) continue   // de la papelera, o sin sesión viva
     series.push({
       fecha: fecha as string,
@@ -283,36 +274,19 @@ export async function cargarProgresos(
   const cliente = sb as { from: (t: string) => any }
   if (!idDeportista) return []
 
+  /* UNA consulta, como en cargarHistorial: cada serie con su ejercicio, y la
+     fecha de su sesión dentro. Eran cuatro en fila. */
   const { data: series } = await cliente.from('series_realizadas')
-    .select('id_ejercicio, peso_real, repeticiones_reales, control_real, control_tipo, numero_serie')
+    .select('id_ejercicio, peso_real, repeticiones_reales, control_real, control_tipo, numero_serie, ejercicios(id, nombre, grupo_muscular, ejercicio_id, tarea(sesion(fecha_sesion, eliminada)))')
     .eq('id_deportista', idDeportista)
   if (!series?.length) return []
 
-  const idsEj = [...new Set((series as { id_ejercicio: number }[]).map(r => r.id_ejercicio).filter(Boolean))]
-  if (!idsEj.length) return []
-
-  const { data: ejs } = await cliente.from('ejercicios')
-    .select('id, id_tarea, nombre, grupo_muscular, ejercicio_id').in('id', idsEj)
-  const porEj = new Map((ejs || []).map((e: Record<string, unknown>) => [e.id as number, e]))
-
-  const idsTarea = [...new Set((ejs || []).map((e: { id_tarea: number }) => e.id_tarea).filter(Boolean))]
-  if (!idsTarea.length) return []
-  const { data: tareas } = await cliente.from('tarea').select('id, id_sesion').in('id', idsTarea)
-  const sesionDe = new Map((tareas || []).map((t: { id: number; id_sesion: number }) => [t.id, t.id_sesion]))
-
-  const idsSesion = [...new Set([...sesionDe.values()].filter(Boolean))]
-  if (!idsSesion.length) return []
-  /* La papelera no cuenta: una sesión tirada no es historial de nadie. */
-  const { data: sesiones } = await vivas(cliente.from('sesion')
-    .select('id, fecha_sesion').in('id', idsSesion))
-  const fechaDe = new Map((sesiones || [])
-    .map((s: { id: number; fecha_sesion: string }) => [s.id, s.fecha_sesion]))
-
   const porClave = new Map<string, { nombre: string; grupo: string | null; series: SerieAnotada[] }>()
   for (const r of series as Record<string, unknown>[]) {
-    const e = porEj.get(r.id_ejercicio as number) as Record<string, unknown> | undefined
+    const e = una(r.ejercicios) as Record<string, unknown> | null
     if (!e) continue
-    const fecha = fechaDe.get(sesionDe.get(e.id_tarea as number) as number)
+    /* La papelera no cuenta: una sesión tirada no es historial de nadie. */
+    const fecha = fechaViva(e)
     if (!fecha) continue
     const clave = claveDeEjercicio({
       ejercicio_id: e.ejercicio_id as number | null,

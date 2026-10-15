@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { intensidadGuardada, queEnsenar, aGuardar, intensidadesPorSesion, queSeMide, intensidadSinSitio } from './intensidad-prescrita'
+import { intensidadGuardada, queEnsenar, aGuardar, intensidadesPorSesion, intensidadesDe, queSeMide, intensidadSinSitio } from './intensidad-prescrita'
 
 /* Mismo apaño que en duracion-carga.test: como supabase llega por parámetro,
    la función se puede probar entera sin conexión. `order` está porque la
@@ -137,6 +137,30 @@ describe('intensidadesPorSesion', () => {
       p_distancia: [{ id_tarea: 1, ritmo_objetivo: '  ' }],
     }), [10])
     expect(out).toEqual({})
+  })
+})
+
+/* La misma cuenta sin consultas, para «Mis sesiones», que ya trae las tareas y sus
+   metros en su propia ronda. Tiene que dar EXACTAMENTE lo mismo: si no, la lista
+   enseñaría una intensidad distinta según por dónde se cargase. */
+describe('intensidadesDe', () => {
+  const base = {
+    tarea: [
+      { id: 1, id_sesion: 10, orden: 1 },
+      { id: 2, id_sesion: 10, orden: 2 },
+      { id: 3, id_sesion: 20, orden: 1 },
+    ],
+    p_distancia: [{ id_tarea: 1, ritmo_objetivo: '4:00 /km' }, { id_tarea: 3, ritmo_objetivo: '  ' }],
+    p_duracion: [{ id_tarea: 2, ritmo_objetivo: '95–105% VAM' }],
+  }
+
+  it('da lo mismo que intensidadesPorSesion con los mismos datos', async () => {
+    const conConsultas = await intensidadesPorSesion(fakeSupabase(base), [10, 20])
+    expect(intensidadesDe(base.tarea, base.p_distancia, base.p_duracion)).toEqual(conConsultas)
+  })
+
+  it('sin nada, vacío', () => {
+    expect(intensidadesDe(null, null, null)).toEqual({})
   })
 })
 

@@ -9,6 +9,7 @@ import Cargando from '@/components/Cargando'
 import RelojPerfil from '@/components/RelojPerfil'
 import QuienVeMiPlan from '@/components/QuienVeMiPlan'
 import { usuarioActual } from '@/lib/sesion'
+import { quitarDeportista } from '@/lib/quitar-deportista'
 
 function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
   const router = useRouter()
@@ -60,7 +61,12 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
     if (!confirm('¿Seguro que quieres desvincularte de tu entrenador?')) return
     const { data: dep } = await supabase.from('deportista').select('id').eq('id_usuario', perfil.id).single()
     if (!dep) return
-    await supabase.from('deportista').update({ id_entrenador: null }).eq('id', dep.id)
+    /* Por la misma función que usa el entrenador al quitarlo
+       (lib/quitar-deportista): así también se cierran sus grupos con él y los
+       accesos de director que le dio. Soltar solo el entrenador dejaba los dos
+       abiertos, y el permiso de un director podía volver a valer con otro. */
+    const r = await quitarDeportista(supabase, dep.id)
+    if (r.error) { alert('No se ha podido desvincular.\n\n' + r.error); return }
     onDesvincularse()
   }
 

@@ -103,16 +103,20 @@ export default function ZonasPropiasPage() {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
-    const [{ data: cs }, { data: zs }, { data: deps }] = await Promise.all([
+    /* TRES RONDAS en vez de seis. Los socios de la dirección se preguntan ya en
+       la primera (no dependen de nada), y luego las zonas de los socios, las
+       referencias del atleta y los tests van a la vez. */
+    const [{ data: cs }, { data: zs }, { data: deps }, socios] = await Promise.all([
       supabase.from('zona_clasificacion').select('*').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
       supabase.from('zona_entrenador').select('*').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
       supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
+      sociosDeDireccion(),
     ])
     const mias = leerClasificaciones(cs, zs)
     setDeportistas(deps || [])
 
-    const socios = await sociosDeDireccion()
-    if (socios.length) {
+    const cargarAjenas = async () => {
+      if (!socios.length) { setAjenas([]); return }
       const ids = socios.map(s => s.id)
       const [{ data: ocs }, { data: ozs }] = await Promise.all([
         supabase.from('zona_clasificacion').select('*').in('id_entrenador', ids).eq('archivada', false).order('orden'),
@@ -125,14 +129,17 @@ export default function ZonasPropiasPage() {
           (ozs || []).filter((z: { id_entrenador: string }) => z.id_entrenador === id),
         ).filter(c => !c.suelta),
       })).filter(g => g.clasifs.length > 0))
-    } else setAjenas([])
+    }
 
     /* SE ESPERA A TENER LOS TESTS antes de quitar el «Cargando…»: de sus
        definiciones salen los nombres de los hitos. Y se recargan aunque ya
        hubiera un atleta elegido: si no, después de guardar la lista de hitos se
        quedaba con la foto de al abrir la pantalla. */
     const dep = depActivo ?? (deps || [])[0]?.id ?? null
-    const t = dep != null ? await elegirDeportista(dep) : await recargarTests(null)
+    const [t] = await Promise.all([
+      dep != null ? elegirDeportista(dep) : recargarTests(null),
+      cargarAjenas(),
+    ])
 
     /* Las sueltas (las que guardó la app publicada sin clasificación) llegan
        sin nombre: se les pone el de la cabecera que tenían. */
@@ -151,9 +158,10 @@ export default function ZonasPropiasPage() {
   /** Los números del atleta: los de la app y los de los tests propios. */
   const elegirDeportista = async (id: number): Promise<TestConMediciones[]> => {
     setDepActivo(id)
-    const r = await cargarReferencias(supabase, id)
+    /* Sus referencias y sus tests a la vez: no dependen unos de otros. */
+    const [r, t] = await Promise.all([cargarReferencias(supabase, id), recargarTests(id)])
     setRefs({ vam: Number(r.tests?.vam) || 0, ftp: Number(r.tests?.ftp) || 0, css: Number(r.tests?.css) || 0 })
-    return recargarTests(id)
+    return t
   }
 
   /** Los tests del entrenador (y de su dirección) con las mediciones de ese atleta. */
@@ -325,8 +333,12 @@ export default function ZonasPropiasPage() {
     }
     setGuardando(true)
     try {
-      for (let k = 0; k < clasifs.length; k++) {
-        const c = clasifs[k]
+      /* LAS CLASIFICACIONES A LA VEZ, cada una por su lado: iban una detrás de
+         otra, tres esperas cada una. Se puede porque la sigla solo tiene que ser
+         única DENTRO de su clasificación (el índice va por id_clasificacion):
+         lo que escribe una no choca con lo de otra. Dentro de cada una, el
+         orden sigue: ella, después sus zonas viejas y al final las nuevas. */
+      await Promise.all(clasifs.map(async (c, k) => {
         const fila = clasificacionParaGuardar({ ...c, orden: k }, userId)
         let id = c.id
         if (id) {
@@ -340,7 +352,8 @@ export default function ZonasPropiasPage() {
         /* Las que ya existían van por su id (para actualizar en vez de crear
            otra con la misma sigla, que el índice único rechazaría) y las nuevas
            aparte: mezcladas en una sola llamada, las nuevas viajarían con id
-           nulo. */
+           nulo. Y las viejas PRIMERO: si una cede su sigla a una nueva, la nueva
+           solo cabe cuando la vieja ya la ha soltado. */
         const filas = c.zonas.map((z, j) => ({ id: z.id, fila: paraGuardar({ ...z, orden: j, deporte: c.deporte }, userId, id) }))
         const viejas = filas.filter(f => f.id).map(f => ({ id: f.id, ...f.fila }))
         const nuevas = filas.filter(f => !f.id).map(f => f.fila)
@@ -352,7 +365,7 @@ export default function ZonasPropiasPage() {
           const { error } = await supabase.from('zona_entrenador').insert(nuevas)
           if (error) throw error
         }
-      }
+      }))
     } catch (e) {
       setGuardando(false)
       decir('mal', 'No se pudo guardar: ' + ((e as { message?: string })?.message || String(e)))

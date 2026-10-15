@@ -6,13 +6,17 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
-import { estimarDuraciones, duracionSesionTexto, minutosEfectivos } from '@/lib/duracion-carga'
+import { duracionesDeAnidadas, duracionSesionTexto, minutosEfectivos, TAREAS_PARA_DURACION } from '@/lib/duracion-carga'
+import { limpiar } from '@/lib/copiar-sesion'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import type { TestsDeportista } from '@/lib/duracion'
 import { hayBloques, bloquesDe, vecesDe } from '@/lib/bloques-tarea'
 import { chipDisciplina, claseDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
+
+/* Lo que llega anidado en cada sesión: sirve para la duración y no se guarda con ella. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 
 export default function MisAnalisis() {
   const router = useRouter()
@@ -35,18 +39,22 @@ export default function MisAnalisis() {
          eran tres para la cadena y dos más para las dos ramas, y encima el
          `limit(20)` se aplicaba a CADA rama por separado y se recortaba
          después: con 20 del plan y 20 libres se pedían 40 para tirar la mitad. */
-      const { data: ses } = await vivas(supabase.from('sesion').select('*')
-        .eq('id_deportista', dep.id).eq('estado', 'Realizada'))
-        .order('fecha_sesion', { ascending: false }).limit(20)
-
-      const [tc, tn, tci] = await Promise.all([
+      /* Y A LA VEZ QUE SUS TESTS, con sus tareas dentro: eran cuatro esperas
+         en fila (las sesiones, los tests, y las tareas y sus metros para la
+         duración estimada) y ahora es una. La duración sale de la misma cuenta
+         que estimarDuraciones (lib/duracion-carga). */
+      const [{ data: filas }, tc, tn, tci] = await Promise.all([
+        vivas(supabase.from('sesion').select('*, ' + TAREAS_PARA_DURACION)
+          .eq('id_deportista', dep.id).eq('estado', 'Realizada'))
+          .order('fecha_sesion', { ascending: false }).limit(20),
         supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
       ])
       const testsDep: TestsDeportista = { vam: tc.data?.[0]?.vam, css: tn.data?.[0]?.css, ftp: tci.data?.[0]?.ftp }
-      const durs = await estimarDuraciones(supabase, (ses || []).map((s: any) => s.id), testsDep)
-      setSesiones((ses || []).map((s: any) => ({ ...s, dur_estimada: durs[s.id] })))
+      const ses = (filas || []) as any[]
+      const durs = duracionesDeAnidadas(ses, testsDep)
+      setSesiones(ses.map(s => ({ ...limpiar(s, CON_SUS_TAREAS), dur_estimada: durs[s.id] })))
       setLoading(false)
     }
     cargar()

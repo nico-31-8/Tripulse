@@ -29,12 +29,15 @@ import { horasMinutos } from '@/lib/medicion'
 import { cargarProgresos, porGrupoMuscular, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
 import { entrenadorEfectivo } from '@/lib/espacio'
+import { limpiar } from '@/lib/copiar-sesion'
 
 /* Un cubo con una casilla por disciplina del catálogo. NO es un adorno: el
    acumulador de abajo DESCARTA lo que no tenga casilla, así que una disciplina
    que falte aquí desaparece de las barras y sigue contando en el total —las
    barras dejan de sumar el total y nada avisa—. Le pasaba al híbrido en las
    vistas de evolución por semanas y por meses. */
+/* Lo que llega anidado en cada sesión: sirve para el volumen y no se guarda con ella. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 const cuboDisc = (): Record<string, number> => Object.fromEntries(DEPORTES.map(d => [d, 0]))
 
 /** Minutos → "1h20" / "45′". */
@@ -220,12 +223,17 @@ export default function VolumenPage() {
        ahora se dice explícito con `not is null`, que significa lo mismo pero se
        lee. */
     const hoyIso = hoyISO()
+    /* Los objetivos de series no dependen de nada de esto: se piden ya y se
+       recogen al final, donde se ponían. Iban en una ronda propia, la última. */
+    const pObjetivos = cargarObjetivos(supabase, dep.id)
+    /* Y las sesiones traen DENTRO sus tareas, y cada tarea sus metros, sus
+       tiempos y sus ejercicios: eran dos rondas más, una detrás de otra. */
     const [mesosQ, sesQ, planQ, refs] = await Promise.all([
       supabase.from('mesociclo')
         .select('id, fecha_inicio, duracion_semanas, objetivo, tid_objetivo')
         .eq('id_deportista', dep.id),
       vivas(supabase.from('sesion')
-        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado, tarea(id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config, p_distancia(id_tarea, metros_planeados), p_duracion(id_tarea, tiempo_planeado), ejercicios(id_tarea, nombre, repeticiones, repeticiones_max, series_detalle, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular))')
         .eq('id_deportista', dep.id).eq('estado', 'Realizada')
         .gte('fecha_sesion', desdeStr)).order('fecha_sesion'),
       vivas(supabase.from('sesion').select('fecha_sesion, estado')
@@ -240,8 +248,9 @@ export default function VolumenPage() {
     const tests = refs.tests
 
     setMesociclos(mesosQ.data || [])
-    const sesiones = sesQ.data || []
-    if (!sesiones.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setLoadingDatos(false); return }
+    const filasSes = (sesQ.data || []) as any[]
+    const sesiones = filasSes.map(s => limpiar(s, CON_SUS_TAREAS)) as any[]
+    if (!sesiones.length) { setDatosDias([]); setDatosSemanas([]); setVolSesionRaw([]); setObjetivos(await pObjetivos); setLoadingDatos(false); return }
 
     // Adherencia: planificadas vs realizadas, solo hasta HOY — una sesión futura
     // todavía no es una sesión perdida.
@@ -255,18 +264,12 @@ export default function VolumenPage() {
     })
     setAdherenciaSem(adh)
 
-    const sesIds = sesiones.map(s => s.id)
-    const { data: tareas } = await supabase.from('tarea').select('id, id_sesion, orden, zona_entrenamiento, zona_copia, disciplina, series, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config').in('id_sesion', sesIds)
-    const tareaIds = tareas?.map(t => t.id) || []
-
-    // Los tres tipos de parámetro no dependen unos de otros: van juntos.
-    const [{ data: distancias }, { data: duraciones }, { data: ejercicios }] = tareaIds.length
-      ? await Promise.all([
-          supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
-          supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-          supabase.from('ejercicios').select('id_tarea, nombre, repeticiones, repeticiones_max, series_detalle, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular').in('id_tarea', tareaIds),
-        ])
-      : [{ data: [] }, { data: [] }, { data: [] }]
+    /* Las tareas y sus tres tipos de parámetro, de dentro de las sesiones. */
+    const aLista = (x: unknown): any[] => Array.isArray(x) ? x : x ? [x] : []
+    const tareas = filasSes.flatMap(s => aLista(s.tarea))
+    const distancias = tareas.flatMap(t => aLista(t.p_distancia))
+    const duraciones = tareas.flatMap(t => aLista(t.p_duracion))
+    const ejercicios = tareas.flatMap(t => aLista(t.ejercicios))
 
     /* SOLO PARA SABER QUE TAREAS LLEVAN DISTANCIA. Los metros ya NO se suman de
        aqui: este mapa guardaba los metros POR SERIE y se sumaban tal cual, asi
@@ -438,7 +441,7 @@ export default function VolumenPage() {
        clasificar». El total de este gráfico salía menor que el de verdad sin
        que nada lo dijera. */
     setDatosMusculo(seriesPorGrupo(ejercicios as any, dias))
-    setObjetivos(await cargarObjetivos(supabase, dep.id))
+    setObjetivos(await pObjetivos)
 
     // Carga: guardamos las sesiones en bruto y derivamos sesión/semana/mes vía useMemo
     // (así el toggle SICAT recalcula al vuelo sin volver a consultar la base de datos).

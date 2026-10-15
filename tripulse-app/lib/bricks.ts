@@ -235,12 +235,19 @@ export function zonaPicoBrick(v: BrickValor): string {
 
 // Materializa el brick de una sesión ya creada: reemplaza sus tareas por los
 // bloques y guarda las transiciones. Idempotente (borra y reescribe).
-export async function guardarBrick(supabase: any, idSesion: number, v: BrickValor): Promise<string | null> {
-  const { data: previas } = await supabase.from('tarea').select('id').eq('id_sesion', idSesion)
-  const previasIds = (previas || []).map((t: any) => t.id)
-  if (previasIds.length) {
-    await supabase.from('p_duracion').delete().in('id_tarea', previasIds)
-    await supabase.from('tarea').delete().eq('id_sesion', idSesion)
+/* Tres esperas en vez de seis. El tiempo de cada tarea se va con ella (la base
+   lo borra en cascada), así que no hace falta pedir antes sus ids ni borrarlo
+   aparte; y el tiempo de los bloques y las transiciones de la sesión no
+   dependen uno de otro. Si las viejas no se pueden borrar se para ahí: antes se
+   seguía y la sesión acababa con las tareas viejas Y las nuevas.
+   `recienCreada`: la sesión se acaba de insertar y no tiene tareas que borrar,
+   así que esa espera también sobra. */
+export async function guardarBrick(
+  supabase: any, idSesion: number, v: BrickValor, { recienCreada = false }: { recienCreada?: boolean } = {},
+): Promise<string | null> {
+  if (!recienCreada) {
+    const { error: eBorrar } = await supabase.from('tarea').delete().eq('id_sesion', idSesion)
+    if (eBorrar) return eBorrar.message
   }
 
   const { data: creadas, error } = await supabase.from('tarea').insert(
@@ -250,7 +257,7 @@ export async function guardarBrick(supabase: any, idSesion: number, v: BrickValo
       zona_entrenamiento: b.zona,
       orden: i + 1,
     })),
-  ).select()
+  ).select('id, orden')
   if (error) return error.message
 
   // Cada bloque lleva su duración: es lo que reparte el volumen entre deportes.
@@ -258,14 +265,13 @@ export async function guardarBrick(supabase: any, idSesion: number, v: BrickValo
     const b = v.bloques[t.orden - 1]
     return b ? { id_tarea: t.id, tiempo_planeado: b.minutos * 60 } : null
   }).filter(Boolean)
-  if (durs.length) {
-    const { error: eDur } = await supabase.from('p_duracion').insert(durs)
-    if (eDur) return eDur.message
-  }
 
-  const { error: eSes } = await supabase.from('sesion')
-    .update({ transiciones: v.transiciones }).eq('id', idSesion)
-  if (eSes) return faltaMigracion(eSes) ? ERROR_MIGRACION : eSes.message
+  const [rDur, rSes] = await Promise.all([
+    durs.length ? supabase.from('p_duracion').insert(durs) : Promise.resolve({ error: null }),
+    supabase.from('sesion').update({ transiciones: v.transiciones }).eq('id', idSesion),
+  ])
+  if (rDur.error) return rDur.error.message
+  if (rSes.error) return faltaMigracion(rSes.error) ? ERROR_MIGRACION : rSes.error.message
   return null
 }
 
@@ -280,19 +286,20 @@ function faltaMigracion(e: any): boolean {
 }
 
 // Reconstruye el BrickValor de una sesión existente (para editarla).
+/* Una ronda: la sesión y sus tareas a la vez, y el tiempo de cada bloque
+   DENTRO de su tarea. Eran tres esperas en fila. */
 export async function cargarBrick(supabase: any, idSesion: number): Promise<BrickValor> {
-  const { data: ses } = await supabase.from('sesion').select('transiciones').eq('id', idSesion).single()
-  const { data: tareas } = await supabase.from('tarea')
-    .select('id, disciplina, zona_entrenamiento, orden').eq('id_sesion', idSesion).order('orden')
-  const ids = (tareas || []).map((t: any) => t.id)
-  const { data: durs } = ids.length
-    ? await supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', ids)
-    : { data: [] }
+  const [{ data: ses }, { data: tareas }] = await Promise.all([
+    supabase.from('sesion').select('transiciones').eq('id', idSesion).single(),
+    supabase.from('tarea')
+      .select('id, disciplina, zona_entrenamiento, orden, p_duracion(id_tarea, tiempo_planeado)').eq('id_sesion', idSesion).order('orden'),
+  ])
+  const primera = (x: any) => (Array.isArray(x) ? x[0] : x) || null
   return {
     bloques: (tareas || []).map((t: any) => ({
       disciplina: t.disciplina,
       zona: t.zona_entrenamiento || 'AEL',
-      minutos: Math.round(((durs || []).find((d: any) => d.id_tarea === t.id)?.tiempo_planeado || 0) / 60),
+      minutos: Math.round((primera(t.p_duracion)?.tiempo_planeado || 0) / 60),
     })),
     transiciones: ses?.transiciones || [],
   }

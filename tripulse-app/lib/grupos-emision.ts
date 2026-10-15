@@ -82,9 +82,12 @@ export async function microsDeVarios(sb: any, ids: number[]): Promise<Map<number
  * camino que ya usa el calendario al pegar una plantilla en una semana sin planificar:
  * sin esto, medio grupo se quedaría fuera por no tener mesociclo montado.
  *
- * Va uno a uno y NO se para en el primer fallo: con ocho personas, que uno falle no
- * puede dejar a los otros siete sin su entrenamiento. Se devuelve el parte de cada
- * uno para poder decir exactamente quién sí y quién no.
+ * Va A LA VEZ para todos y NO se para en el primer fallo: con ocho personas, que
+ * uno falle no puede dejar a los otros siete sin su entrenamiento. Se devuelve el
+ * parte de cada uno, en el orden de la lista, para poder decir exactamente quién
+ * sí y quién no. Iban uno detrás de otro, tres esperas por persona: con ocho,
+ * veinticuatro en fila; ahora son las de uno solo, porque cada miembro tiene su
+ * propia sesión y nada de uno depende de otro.
  */
 export async function emitirSesion(
   sb: any,
@@ -104,15 +107,16 @@ export async function emitirSesion(
   if (!fecha) return { idEmision: null, resultados: [], error: 'Falta la fecha.' }
   if (!disciplina) return { idEmision: null, resultados: [], error: 'Falta la disciplina.' }
 
-  const { data: emi, error: eE } = await sb.from('grupo_entreno_emision')
-    .insert({ id_grupo: idGrupo, nombre: nombre || null }).select('id').single()
+  /* La emisión y los microciclos de TODOS, a la vez y una sola vez (antes los
+     microciclos se pedían dentro del bucle, y después detrás de la emisión). */
+  const [{ data: emi, error: eE }, microsPorDep] = await Promise.all([
+    sb.from('grupo_entreno_emision')
+      .insert({ id_grupo: idGrupo, nombre: nombre || null }).select('id').single(),
+    microsDeVarios(sb, miembros.map(m => m.id_deportista)),
+  ])
   if (eE || !emi) return { idEmision: null, resultados: [], error: eE?.message || 'No se pudo abrir la emisión.' }
 
-  // Los microciclos de TODOS, una vez. Antes se pedían dentro del bucle.
-  const microsPorDep = await microsDeVarios(sb, miembros.map(m => m.id_deportista))
-
-  const resultados: ResultadoMiembro[] = []
-  for (const m of miembros) {
+  const resultados: ResultadoMiembro[] = await Promise.all(miembros.map(async (m): Promise<ResultadoMiembro> => {
     try {
       const micro = microDelDia(microsPorDep.get(Number(m.id_deportista)) || [], fecha)
 
@@ -125,17 +129,14 @@ export async function emitirSesion(
         id_emision: emi.id,
       }).select('id').single()
 
-      if (eS || !ses) {
-        resultados.push({ ...m, ok: false, enSuPlan: !!micro, error: eS?.message || 'No se pudo crear la sesión' })
-        continue
-      }
+      if (eS || !ses) return { ...m, ok: false, enSuPlan: !!micro, error: eS?.message || 'No se pudo crear la sesión' }
 
       const eB = bloques.length ? await aplicarBloques(sb, ses.id, disciplina, bloques) : null
-      resultados.push({ ...m, ok: !eB, enSuPlan: !!micro, error: eB || undefined })
+      return { ...m, ok: !eB, enSuPlan: !!micro, error: eB || undefined }
     } catch (e: any) {
-      resultados.push({ ...m, ok: false, enSuPlan: false, error: e?.message || 'Error inesperado' })
+      return { ...m, ok: false, enSuPlan: false, error: e?.message || 'Error inesperado' }
     }
-  }
+  }))
 
   // Si no le llegó a nadie, la emisión no representa nada: se borra en vez de dejar
   // una fila fantasma que luego aparecería en el historial como si se hubiera mandado.

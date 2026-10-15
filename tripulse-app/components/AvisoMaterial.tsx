@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { cargarKmDeMateriales, comoSeLlama, type Material } from '@/lib/material'
+import { kmDesdeEnlaces, separarUsos, USOS_DEL_MATERIAL, comoSeLlama } from '@/lib/material'
 
 export default function AvisoMaterial({ idDeportista, className = '' }: {
   idDeportista: number | null | undefined
@@ -31,11 +31,12 @@ export default function AvisoMaterial({ idDeportista, className = '' }: {
     const mirar = async () => {
       if (!idDeportista) return
       try {
-        const { data } = await supabase.from('material').select('*')
+        // Con sus usos dentro: una consulta menos antes de contar los kilómetros.
+        const { data } = await supabase.from('material').select('*, ' + USOS_DEL_MATERIAL)
           .eq('id_deportista', idDeportista).eq('jubilado', false)
-        const lista = (data || []) as Material[]
+        const { materiales: lista, enlaces } = separarUsos(data)
         if (!lista.length || !vivo) return
-        const km = await cargarKmDeMateriales(supabase, lista)
+        const km = await kmDesdeEnlaces(supabase, lista, enlaces)
         if (!vivo) return
         setFrases(lista
           .map(m => ({ m, k: km[m.id] }))

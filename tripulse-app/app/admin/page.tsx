@@ -115,13 +115,21 @@ export default function AdminPage() {
   const [limpiando, setLimpiando] = useState(false)
 
   const cargarTodo = useCallback(async () => {
-    const [r, c, i, e, s, ev] = await Promise.all([
+    /* TODO A LA VEZ. Los directores, el buzón y los avisos iban detrás, en dos
+       rondas más, y ninguno depende de lo de arriba. El buzón y los avisos se
+       leen directo de sus tablas, no por RPC: la política ya deja pasar solo a
+       la plataforma, así que no hace falta una función que vuelva a comprobar
+       lo mismo. */
+    const [r, c, i, e, s, ev, dir, sug, av] = await Promise.all([
       supabase.rpc('admin_resumen'),
       supabase.rpc('admin_cuentas'),
       supabase.rpc('admin_invitaciones'),
       supabase.rpc('admin_entrenadores'),
       supabase.rpc('admin_salud'),
       supabase.rpc('admin_eventos', { _limite: 100 }),
+      supabase.rpc('admin_directores'),
+      supabase.from('sugerencia').select('*').order('creada_en', { ascending: false }).limit(100),
+      supabase.from('aviso_app').select('*').order('desde', { ascending: false }).limit(10),
     ])
 
     // Los errores se ENSEÑAN. La primera versión hacía `data || []` a secas, así
@@ -138,21 +146,12 @@ export default function AdminPage() {
 
     setResumen(r.data)
     setCuentas(c.data || [])
-    const dir = await supabase.rpc('admin_directores')
     if (dir.error) setError(prev => (prev ? prev + ' · ' : '') + 'directores: ' + dir.error!.message)
     setDirectores(new Set(((dir.data || []) as { id_perfil: string }[]).map(d => d.id_perfil)))
     setInvitaciones(i.data || [])
     setEntrenadores(e.data || [])
     setSalud(s.data || [])
     setEventos(ev.data || [])
-
-    /* El buzón y los avisos se leen directo de sus tablas, no por RPC: la
-       política ya deja pasar solo a la plataforma, así que no hace falta una
-       función que vuelva a comprobar lo mismo. */
-    const [sug, av] = await Promise.all([
-      supabase.from('sugerencia').select('*').order('creada_en', { ascending: false }).limit(100),
-      supabase.from('aviso_app').select('*').order('desde', { ascending: false }).limit(10),
-    ])
     setSugerencias(sug.data || [])
     setAvisos(av.data || [])
   }, [])

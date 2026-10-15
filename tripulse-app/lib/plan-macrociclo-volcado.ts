@@ -12,6 +12,7 @@
 // es que quede feo: es que su propio dueño no lo puede leer.
 import { semanasDelMesociclo } from './plan-mesociclo'
 import { tipoMicrociclo } from './microciclo-tipos'
+import { idsEnOrden } from './copiar-sesion'
 import type { Temporada } from './plan-macrociclo'
 import type { DistanciaTri } from './distribucion-zonas'
 
@@ -60,8 +61,6 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
   }).select().single()
   if (eMacro || !macro) return { idMacrociclo: null, mesos: 0, micros: 0, error: eMacro?.message || 'No se pudo crear el macrociclo.' }
 
-  let mesos = 0, micros = 0
-
   /**
    * Deshacer a mano lo que se lleve creado.
    *
@@ -69,39 +68,43 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
    * si el tercero falla, los dos primeros ya están escritos. Sin esto el atleta
    * se queda con medio plan Y con la pantalla diciéndole que ya tiene uno, que
    * es la peor combinación posible — ni sirve ni deja crear otro.
+   *
+   * Basta con borrar el macrociclo: sus mesociclos y sus semanas cuelgan de él
+   * con ON DELETE CASCADE y se van con él. Eran tres consultas más en fila
+   * (pedir los mesos, borrar sus semanas, borrarlos a ellos).
    */
   const deshacer = async (motivo: string) => {
-    const { data: ms } = await sb.from('mesociclo').select('id').eq('id_macrociclo', macro.id)
-    const ids = (ms || []).map((m: any) => m.id)
-    if (ids.length) await sb.from('microciclo').delete().in('id_mesociclo', ids)
-    await sb.from('mesociclo').delete().eq('id_macrociclo', macro.id)
     await sb.from('macrociclo').delete().eq('id', macro.id)
     return { idMacrociclo: null, mesos: 0, micros: 0, error: motivo }
   }
 
-  for (const b of t.bloques) {
-    const { data: meso, error: eMeso } = await sb.from('mesociclo').insert({
-      id_macrociclo: macro.id,
-      id_deportista: o.idDeportista,
-      objetivo: b.nombre,
-      tipo: b.tipo,
-      fecha_inicio: b.lunes,
-      duracion_semanas: b.semanas,
-      // La intensidad relativa del bloque, para que el lienzo lo pinte con
-      // altura. Es una escala 1–10 y aquí solo hay tres alturas honestas.
-      intensidad_relativa: b.clase === 'competicion' ? 8 : b.clase === 'transmutacion' ? 7 : b.clase === 'descarga' ? 3 : 5,
-    }).select().single()
-    if (eMeso || !meso) return deshacer(eMeso?.message || 'No se pudo crear un mesociclo.')
-    mesos++
+  /* TRES ESCRITURAS EN TOTAL, y no dos por bloque. Los mesociclos van de golpe
+     —la base reparte los ids en el orden en que van las filas
+     (lib/copiar-sesion: idsEnOrden)— y después las semanas de TODOS en otra.
+     Eran un mesociclo y sus semanas, uno detrás de otro: con ocho bloques,
+     dieciséis esperas con el atleta delante. */
+  const { data: creados, error: eMeso } = await sb.from('mesociclo').insert(t.bloques.map(b => ({
+    id_macrociclo: macro.id,
+    id_deportista: o.idDeportista,
+    objetivo: b.nombre,
+    tipo: b.tipo,
+    fecha_inicio: b.lunes,
+    duracion_semanas: b.semanas,
+    // La intensidad relativa del bloque, para que el lienzo lo pinte con
+    // altura. Es una escala 1–10 y aquí solo hay tres alturas honestas.
+    intensidad_relativa: b.clase === 'competicion' ? 8 : b.clase === 'transmutacion' ? 7 : b.clase === 'descarga' ? 3 : 5,
+  }))).select('id')
+  const idsMeso = eMeso ? null : idsEnOrden(creados, t.bloques.length)
+  if (!idsMeso) return deshacer(eMeso?.message || 'No se pudo crear un mesociclo.')
 
+  const filas = t.bloques.flatMap((b, k) => {
     // Las semanas del bloque, con su carga: de aquí sale cuál es la de descarga,
     // que es lo que distingue un microciclo de otro en el calendario.
     const semanas = semanasDelMesociclo({
       tipo: b.tipo, semanas: b.semanas, horasReferencia: 10, distancia: o.distancia, lunes: b.lunes,
     })
-
-    const filas = semanas.map((s, i) => ({
-      id_mesociclo: meso.id,
+    return semanas.map((s, i) => ({
+      id_mesociclo: idsMeso[k],
       id_deportista: o.idDeportista,
       objetivo: 'Semana ' + (i + 1) + ' — ' + b.nombre,
       // «Taper» NO existe en el CHECK de la base: era lo que reventaba el
@@ -114,30 +117,28 @@ export async function crearTemporada(sb: any, o: OpcionesTemporada): Promise<Res
       // propia suposición como si fuera una decisión.
       ua_planificada: null,
     }))
-    let { error: eMicro } = await sb.from('microciclo').insert(filas)
+  })
+  let { error: eMicro } = await sb.from('microciclo').insert(filas)
 
-    /* `microciclo.tipo` tiene un CHECK con una lista cerrada de valores, y esa
-       lista NO está en el repo: el esquema completo vive solo en la base. Dos
-       pantallas de la app ya discrepan sobre ella —el lienzo escribe
-       «Recuperación» con tilde y la ficha del microciclo compara contra
-       «Recuperacion» sin ella—, así que adivinar cuál pasa el CHECK es tirar una
-       moneda.
+  /* `microciclo.tipo` tiene un CHECK con una lista cerrada de valores, y esa
+     lista NO está en el repo: el esquema completo vive solo en la base. Dos
+     pantallas de la app ya discrepan sobre ella —el lienzo escribe
+     «Recuperación» con tilde y la ficha del microciclo compara contra
+     «Recuperacion» sin ella—, así que adivinar cuál pasa el CHECK es tirar una
+     moneda.
 
-       Lo que SÍ está probado es que «Carga» entra: es lo que inserta
-       /mis-sesiones desde hace tiempo. Así que si el CHECK rechaza el valor
-       fino, se reintenta con el seguro. Perder el color verde de la semana de
-       descarga en el calendario es un precio ridículo comparado con no poder
-       crear el plan — y nada funcional depende de este campo: si una semana es
-       de descarga se deduce del patrón del mesociclo, no de aquí. */
-    if (eMicro && /tipo_check/i.test(eMicro.message || '')) {
-      const seguras = filas.map(f => ({ ...f, tipo: 'Carga' }))
-      const r = await sb.from('microciclo').insert(seguras)
-      eMicro = r.error
-    }
-
-    if (eMicro) return deshacer(eMicro.message)
-    micros += filas.length
+     Lo que SÍ está probado es que «Carga» entra: es lo que inserta
+     /mis-sesiones desde hace tiempo. Así que si el CHECK rechaza el valor
+     fino, se reintenta con el seguro. Perder el color verde de la semana de
+     descarga en el calendario es un precio ridículo comparado con no poder
+     crear el plan — y nada funcional depende de este campo: si una semana es
+     de descarga se deduce del patrón del mesociclo, no de aquí. */
+  if (eMicro && /tipo_check/i.test(eMicro.message || '')) {
+    const seguras = filas.map(f => ({ ...f, tipo: 'Carga' }))
+    const r = await sb.from('microciclo').insert(seguras)
+    eMicro = r.error
   }
 
-  return { idMacrociclo: macro.id, mesos, micros, error: null }
+  if (eMicro) return deshacer(eMicro.message)
+  return { idMacrociclo: macro.id, mesos: t.bloques.length, micros: filas.length, error: null }
 }

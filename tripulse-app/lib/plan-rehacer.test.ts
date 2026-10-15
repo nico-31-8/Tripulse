@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { puedeRehacer, borrarPlan, DIAS_ESPERA, type EstadoPlan } from './plan-rehacer'
+import { puedeRehacer, borrarPlan, borrarMesociclo, resumenDelBorrado, DIAS_ESPERA, type EstadoPlan } from './plan-rehacer'
 
 const HOY = '2026-08-20'
 const estado = (p: Partial<EstadoPlan> = {}): EstadoPlan =>
@@ -55,45 +55,56 @@ describe('cuándo se puede rehacer', () => {
   })
 })
 
-/** Doble mínimo que apunta lo que se actualiza y lo que se borra. */
-function sbFalso(sesiones: { id: number; estado: string }[]) {
+/** Doble que FILTRA de verdad: guarda las sesiones del plan (todas colgando de
+    la semana 501), aplica cada filtro de la consulta y apunta lo que se
+    actualiza y lo que se borra. Un doble que contesta siempre lo mismo daría
+    verde aunque el filtro estuviera mal escrito. */
+function sbFalso(sesiones: { id: number; estado: string | null }[]) {
   const acciones: string[] = []
-  let sueltas: number[] = []
-  const from = (tabla: string) => ({
-    select: (_c?: string) => {
-      const resp = (data: any) => {
-        const r = { data, error: null }
-        return { ...r, then: (f: any) => f(r) }
-      }
-      const enc: any = {
-        eq: (col: string, val: any) => {
-          if (tabla === 'mesociclo') return resp([{ id: 10 }])
-          return resp([])
-        },
-        in: (_c: string, _v: any[]) => ({
-          eq: (_c2: string, estado: string) => resp(sesiones.filter(s => s.estado === estado)),
-          ...resp(sesiones.filter(s => !sueltas.includes(s.id))),
-        }),
-      }
-      return enc
-    },
-    update: (_v: any) => ({
-      in: (_c: string, ids: number[]) => {
-        acciones.push('soltar:' + ids.length)
-        sueltas = ids
-        const r = { error: null }
-        return { ...r, then: (f: any) => f(r) }
+  /* Con qué ids se pregunta por las sesiones: el fallo era usar los del mesociclo. */
+  const consultas: { tabla: string; col: string; v: any[] }[] = []
+  const parches: { tabla: string; v: any }[] = []
+  const filas = sesiones.map(x => ({ ...x, id_microciclo: 501 as number | null, eliminada: false }))
+  const from = (tabla: string) => {
+    const filtros: ((f: any) => boolean)[] = []
+    let op: 'select' | 'update' | 'delete' = 'select'
+    let valores: any = null
+    const q: any = {
+      select: () => q,
+      update: (v: any) => { op = 'update'; valores = v; return q },
+      delete: () => { op = 'delete'; return q },
+      eq: (c: string, v: any) => { filtros.push(f => f[c] === v); return q },
+      in: (c: string, vs: any[]) => { consultas.push({ tabla, col: c, v: vs }); filtros.push(f => vs.includes(f[c])); return q },
+      or: (expr: string) => {
+        // Solo entiende el que se usa: «sin estado, o con uno que no sea Realizada».
+        expect(expr).toBe('estado.is.null,estado.neq.Realizada')
+        filtros.push(f => f.estado == null || f.estado !== 'Realizada')
+        return q
       },
-    }),
-    delete: () => {
-      const r = { error: null }
-      return {
-        in: (_c: string, _v: any) => { acciones.push('borrar:' + tabla); return { ...r, then: (f: any) => f(r) } },
-        eq: (_c: string, _v: any) => { acciones.push('borrar:' + tabla); return { ...r, then: (f: any) => f(r) } },
-      }
-    },
-  })
-  return { api: { from }, acciones }
+      then: (ok: any, ko: any) => {
+        let r: any = { data: [], error: null }
+        if (tabla === 'mesociclo' && op === 'select') {
+          r = { data: [{ id: 10, microciclo: [{ id: 501 }, { id: 502 }] }], error: null }
+        } else if (tabla === 'microciclo' && op === 'select') {
+          r = { data: [{ id: 501 }, { id: 502 }], error: null }
+        } else if (tabla === 'sesion') {
+          const tocadas = filas.filter(f => filtros.every(fn => fn(f)))
+          if (op === 'update') {
+            tocadas.forEach(f => Object.assign(f, valores))
+            parches.push({ tabla, v: valores })
+            acciones.push((valores.eliminada ? 'papelera:' : 'soltar:') + tocadas.length)
+          }
+          r = { data: tocadas.map(f => ({ id: f.id })), error: null }
+        } else if (op === 'delete') {
+          acciones.push('borrar:' + tabla)
+          r = { error: null }
+        }
+        return Promise.resolve(r).then(ok, ko)
+      },
+    }
+    return q
+  }
+  return { api: { from }, acciones, consultas, parches, filas }
 }
 
 describe('borrar el plan', () => {
@@ -111,6 +122,19 @@ describe('borrar el plan', () => {
     expect(acciones.slice(1).some(a => a.startsWith('borrar:'))).toBe(true)
   })
 
+  /* EL FALLO QUE SE LLEVABA LO ENTRENADO: las sesiones se buscaban con los ids
+     de los MESOciclos. No salía ninguna, nadie las soltaba, y al borrar los
+     microciclos la clave ajena (on delete cascade) las borraba todas, también
+     las realizadas y sin pasar por la papelera. */
+  it('busca las sesiones por sus MICROciclos, no por los mesociclos', async () => {
+    const { api, consultas } = sbFalso([{ id: 1, estado: 'Realizada' }, { id: 3, estado: 'Planificada' }])
+    const r = await borrarPlan(api as any, 7, 99)
+    const deSesion = consultas.filter(c => c.tabla === 'sesion' && c.col === 'id_microciclo')
+    expect(deSesion.length).toBeGreaterThan(0)
+    expect(deSesion.every(c => c.v.join() === '501,502')).toBe(true)
+    expect(r.sueltas).toBe(1)
+  })
+
   it('sin realizadas no suelta nada y borra igual', async () => {
     const { api } = sbFalso([{ id: 3, estado: 'Planificada' }])
     const r = await borrarPlan(api as any, 7, 99)
@@ -124,28 +148,59 @@ describe('nada se borra de verdad', () => {
      borrarla. En todas las demas pantallas es `eliminada = true` y se puede
      recuperar; aqui era un delete irreversible. */
   it('las planificadas van a la papelera, no al vacio', async () => {
-    const parches: any[] = []
-    const from = (tabla: string) => ({
-      select: () => ({
-        eq: () => { const r = { data: tabla === 'mesociclo' ? [{ id: 10 }] : [], error: null }; return { ...r, then: (f: any) => f(r) } },
-        in: () => ({
-          eq: () => { const r = { data: [], error: null }; return { ...r, then: (f: any) => f(r) } },
-          ...(() => { const r = { data: [{ id: 1 }, { id: 2 }], error: null }; return { ...r, then: (f: any) => f(r) } })(),
-        }),
-      }),
-      update: (v: any) => ({
-        in: () => { parches.push({ tabla, v }); const r = { error: null }; return { ...r, then: (f: any) => f(r) } },
-      }),
-      delete: () => {
-        const r = { error: null }
-        return { in: () => ({ ...r, then: (f: any) => f(r) }), eq: () => ({ ...r, then: (f: any) => f(r) }) }
-      },
-    })
-    await borrarPlan({ from } as any, 7, 99)
+    const { api, parches } = sbFalso([{ id: 1, estado: 'Planificada' }, { id: 2, estado: 'Planificada' }])
+    const r = await borrarPlan(api as any, 7, 99)
     const aPapelera = parches.find(p => p.v.eliminada === true)
     expect(aPapelera, 'ninguna sesion marcada como eliminada').toBeTruthy()
     // Y despegadas del microciclo, o la clave ajena se las lleva igual.
-    expect(aPapelera.v.id_microciclo).toBeNull()
-    expect(aPapelera.v.id_deportista).toBe(7)
+    expect(aPapelera!.v.id_microciclo).toBeNull()
+    expect(aPapelera!.v.id_deportista).toBe(7)
+    expect(r.borradas).toBe(2)
+  })
+
+  /* Con un «distinto de Realizada» a secas, una sesión SIN estado no cumple
+     ninguno de los dos filtros (en SQL, null no es distinto de nada): se
+     quedaba colgando del microciclo y la cascada se la llevaba de verdad. */
+  it('una sesion sin estado tambien va a la papelera, no se la lleva la cascada', async () => {
+    const { api, filas } = sbFalso([{ id: 1, estado: null }, { id: 2, estado: 'Realizada' }])
+    const r = await borrarPlan(api as any, 7, 99)
+    expect(r.borradas).toBe(1)
+    expect(r.sueltas).toBe(1)
+    expect(filas.every(f => f.id_microciclo === null)).toBe(true)
+    expect(filas.find(f => f.id === 2)!.eliminada).toBe(false)   // la entrenada se suelta, no se tira
+  })
+
+  /* Lo de debajo del plan se va en cascada con él: una orden y no tres. */
+  it('el plan se borra con UNA orden, despues de despegar las sesiones', async () => {
+    const { api, acciones } = sbFalso([{ id: 1, estado: 'Realizada' }, { id: 3, estado: 'Planificada' }])
+    await borrarPlan(api as any, 7, 99)
+    expect(acciones).toEqual(['soltar:1', 'papelera:1', 'borrar:macrociclo'])
+  })
+})
+
+/* El lienzo y la vista de bloques borraban el plan a ciegas, sesiones
+   incluidas, y con una sesión de fuerza hecha ni se podía: sus series cuelgan
+   del ejercicio y la base paraba el borrado (comprobado el 15-10-2026 contra
+   el plan de Dani Diaz). Ahora borran como «Rehacer el plan». */
+describe('borrar desde el lienzo y la vista de bloques', () => {
+  it('borrar un mesociclo suelta sus hechas, tira las demás a la papelera y borra solo ese mesociclo', async () => {
+    const { api, acciones, filas } = sbFalso([{ id: 1, estado: 'Realizada' }, { id: 3, estado: 'Planificada' }])
+    const r = await borrarMesociclo(api as any, 7, 10)
+    expect(r.error).toBeNull()
+    expect(acciones).toEqual(['soltar:1', 'papelera:1', 'borrar:mesociclo'])
+    expect(filas.every(f => f.id_microciclo === null)).toBe(true)
+  })
+
+  it('devuelve cuáles fueron a la papelera, para quitarlas de la pantalla', async () => {
+    const { api } = sbFalso([{ id: 1, estado: 'Realizada' }, { id: 3, estado: 'Planificada' }, { id: 4, estado: null }])
+    const r = await borrarPlan(api as any, 7, 99)
+    expect([...r.idsPapelera].sort()).toEqual([3, 4])
+  })
+
+  it('el aviso dice qué ha pasado con sus sesiones', () => {
+    expect(resumenDelBorrado({ sueltas: 2, borradas: 5 }))
+      .toBe('Borrado. 2 sesiones hechas siguen en el calendario, fuera del plan; 5 planificadas están en la papelera.')
+    expect(resumenDelBorrado({ sueltas: 1, borradas: 0 })).toBe('Borrado. 1 sesión hecha sigue en el calendario, fuera del plan.')
+    expect(resumenDelBorrado({ sueltas: 0, borradas: 0 })).toBe('Borrado.')
   })
 })

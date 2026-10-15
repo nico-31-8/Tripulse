@@ -58,16 +58,17 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
 
   useEffect(() => {
     const cargar = async () => {
-      const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', dep.id)
-      const ids = (macs || []).map((m: any) => m.id)
-      const { data: me } = ids.length
-        ? await supabase.from('mesociclo').select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
-            .in('id_macrociclo', ids).order('fecha_inicio')
-        : { data: [] }
+      /* A la vez y sin pasar por el macrociclo: `mesociclo.id_deportista` dice
+         de quién es (Fase A), como en la cadena del mesociclo. Eran tres
+         esperas en fila. */
+      const [{ data: me }, { data: c }] = await Promise.all([
+        supabase.from('mesociclo').select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
+          .eq('id_deportista', dep.id).order('fecha_inicio'),
+        supabase.from('competicion').select('nombre, fecha')
+          .eq('id_deportista', dep.id).order('fecha'),
+      ])
       setMesos((me || []) as MesoFila[])
       setSelId((me || [])[0]?.id ?? null)
-      const { data: c } = await supabase.from('competicion').select('nombre, fecha')
-        .eq('id_deportista', dep.id).order('fecha')
       setCompetis((c || []).map((x: any) => ({ nombre: x.nombre, fecha: String(x.fecha).slice(0, 10) })))
       setCargando(false)
     }
@@ -114,18 +115,21 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
     if (!generadas) return
     setConfirmando(false)
     const nivelP = nivelDePlantilla(base.nivel)
-    const lineas: string[] = []
-    for (let i = 0; i < generadas.length; i++) {
+    /* TODAS A LA VEZ (iban semana a semana, varias esperas cada una). El parte
+       sale en el orden de las semanas aunque terminen en otro: cada línea va a
+       su sitio según cae. */
+    const lineas: string[] = generadas.map(() => '')
+    setVolcando(generadas.length === 1 ? semanas[0].lunes! : generadas.length + ' semanas')
+    await Promise.all(generadas.map(async (g, i) => {
       const lunes = semanas[i].lunes!
-      setVolcando(lunes)
       const r = await volcarSemana(supabase, {
-        idDeportista: dep.id, lunes, relleno: generadas[i].relleno,
+        idDeportista: dep.id, lunes, relleno: g.relleno,
         aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
       })
-      lineas.push('Semana ' + (i + 1) + ' (' + lunes + '): ' + r.creadas + ' sesiones' +
-        (r.error ? ' · ' + r.error : ''))
-      setParte([...lineas])
-    }
+      lineas[i] = 'Semana ' + (i + 1) + ' (' + lunes + '): ' + r.creadas + ' sesiones' +
+        (r.error ? ' · ' + r.error : '')
+      setParte(lineas.filter(Boolean))
+    }))
     setVolcando(null)
   }
 

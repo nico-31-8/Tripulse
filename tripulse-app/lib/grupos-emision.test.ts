@@ -140,6 +140,24 @@ describe('emitirSesion', () => {
     expect(r.idEmision).toBe('e1')
   })
 
+  /* Iban uno detrás de otro: tres esperas por persona, veinticuatro en fila con
+     ocho. Cada miembro tiene su propia sesión, así que van a la vez, y el parte
+     sigue saliendo en el orden de la lista aunque termine antes el segundo. */
+  it('va a la vez para todos, y el parte sale en el orden de la lista', async () => {
+    const sb = sbFalso()
+    const visto: string[] = []
+    const aplicar = async (_sb: any, idSesion: number) => {
+      visto.push('entra ' + idSesion)
+      await new Promise(r => setTimeout(r, idSesion === 1 ? 15 : 0))
+      visto.push('sale ' + idSesion)
+      return null
+    }
+    const r = await emitirSesion(sb, { ...BASE, miembros: MIEMBROS, aplicarBloques: aplicar })
+    expect(visto.slice(0, 2)).toEqual(['entra 1', 'entra 2'])
+    expect(visto.at(-1)).toBe('sale 1')
+    expect(r.resultados.map(x => x.nombre)).toEqual(['Ana', 'Luis'])
+  })
+
   /* Una emisión que no le llegó a nadie no representa nada: aparecería en el
      historial como si se hubiera mandado algo. */
   it('si no le llega a nadie, borra la emisión', async () => {

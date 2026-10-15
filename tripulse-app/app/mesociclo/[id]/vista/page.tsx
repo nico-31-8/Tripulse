@@ -8,7 +8,11 @@ import Cargando from '@/components/Cargando'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona, ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
+import { copiarSesiones, limpiar } from '@/lib/copiar-sesion'
 import { colorDisciplina, cortoDisciplina, esDisciplinaDeFuerza, etiquetaDisciplina, TODAS } from '@/lib/disciplinas'
+
+/* Lo que llega anidado en cada sesión y se guarda aparte. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 
 // Colores por tipo de mesociclo (hex, para estilos inline)
 const C_MESO: Record<string, string> = {
@@ -51,31 +55,43 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   useEffect(() => { cargar() }, [id])
 
   /*
-   * De ocho viajes encadenados a cuatro rondas.
+   * De ocho viajes encadenados a DOS rondas.
    *
    * El macrociclo ya no hace de puente para saber de quién es el bloque:
    * `mesociclo.id_deportista` lo dice. Se sigue pidiendo, pero solo por su
    * `fecha_inicio` —el origen de la numeración de semanas— y ya no bloquea a
    * los demás.
+   *
+   * Las semanas solo necesitan el id de la URL, así que van con el propio
+   * mesociclo. Y las tareas llegan DENTRO de sus sesiones, en la misma
+   * consulta: eran dos esperas más, una detrás de otra.
    */
   const cargar = async () => {
-    const { data: m } = await supabase.from('mesociclo').select('*').eq('id', id).maybeSingle()
+    const [{ data: m }, micros] = await Promise.all([
+      supabase.from('mesociclo').select('*').eq('id', id).maybeSingle(),
+      supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true }),
+    ])
     // Aquí ya había un `return` seco: la consulta terminaba sin resultado y la
     // pantalla se quedaba cargando eternamente sin que nadie lo dijera.
     if (!m) { setNoExiste(true); return }
     setMeso(m)
     setDepId(m.id_deportista)
+    const mi = micros.data || []
+    const microIds = mi.map((x: any) => x.id)
 
     // ---- Ronda 2: todo lo que cuelga del mesociclo, a la vez ----
-    const [micros, macro, dep, hermanos, borrador] = await Promise.all([
-      supabase.from('microciclo').select('*').eq('id_mesociclo', id).order('fecha_inicio', { ascending: true }),
+    const [macro, dep, hermanos, borrador, ses] = await Promise.all([
       supabase.from('macrociclo').select('id, fecha_inicio').eq('id', m.id_macrociclo).maybeSingle(),
       supabase.from('deportista').select('sistema_zonas').eq('id', m.id_deportista).maybeSingle(),
       supabase.from('mesociclo').select('id, fecha_inicio').eq('id_macrociclo', m.id_macrociclo).order('fecha_inicio', { ascending: true }),
       supabase.from('dibujo_borrador').select('sesiones_zonas').eq('id_deportista', m.id_deportista).maybeSingle(),
+      microIds.length
+        ? vivas(supabase.from('sesion')
+            .select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen, tarea(id, id_sesion, zona_entrenamiento, zona_copia)')
+            .in('id_microciclo', microIds))
+        : Promise.resolve({ data: [] as any[] }),
     ])
 
-    const mi = micros.data || []
     setMicros(mi)
     setSistemaZonas(dep.data?.sistema_zonas || 1)
 
@@ -91,20 +107,12 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
       setZonas(todasZonas.filter(z => semanasMeso.has(z.semana)))
     }
 
-    // ---- Ronda 3: las sesiones de ESTAS semanas ----
-    const microIds = mi.map((x: any) => x.id)
-    if (!microIds.length) { setSesiones([]); return }
-    const { data: ses } = await vivas(supabase.from('sesion')
-      .select('id, disciplina, fecha_sesion, rpe_estimado, rpe_reportado, estado, modo_fuerza, zona_fuerza, id_microciclo, origen')
-      .in('id_microciclo', microIds))
-    setSesiones(ses || [])
-
-    // ---- Ronda 4: sus bloques ----
-    if (ses?.length) {
-      const { data: tar } = await supabase.from('tarea')
-        .select('id, id_sesion, zona_entrenamiento, zona_copia').in('id_sesion', ses.map((x: any) => x.id))
-      setTareas(tar || [])
-    }
+    /* Las tareas se separan de su sesión al guardarlas: el resto de la
+       pantalla las busca en su propia lista. Se escribe siempre, también
+       vacía: antes, al borrar la última sesión, quedaban las de antes. */
+    const filas = (ses.data || []) as any[]
+    setSesiones(filas.map(s => limpiar(s, CON_SUS_TAREAS)))
+    setTareas(filas.flatMap(s => s.tarea || []))
   }
 
   // --- Acciones del modo edición ---
@@ -118,9 +126,11 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
   const eliminarSesion = async (sesId: number) => {
     if (!confirm('¿Mover esta sesión a la papelera?')) return
     setSesiones(prev => prev.filter(x => x.id !== sesId))
+    setTareas(prev => prev.filter(t => t.id_sesion !== sesId))
     setSelSes(null)
-    await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
-    await cargar()
+    /* Ya ha salido de la vista: solo se recarga si la base dice que no. */
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    if (error) { alert('No se pudo mover a la papelera: ' + error.message); await cargar() }
   }
 
   const copiarSesion = (s: any) => { setClipboard(s); setSelSes(null) }
@@ -159,41 +169,21 @@ export default function VistaCiclo({ params }: { params: Promise<{ id: string }>
     if (esFuerza) await supabase.from('sesion').update({ zona_fuerza: sigla }).eq('id', sesId)
   }
 
-  // Copia profunda: clona la sesión + sus tareas + prescripciones (distancia/tiempo/reps) + ejercicios.
+  /* Copia profunda —sesión, tareas, metros, tiempos, repeticiones, ejercicios—
+     en lib/copiar-sesion. Aquí se copiaba TODO, también lo que el atleta hizo:
+     pegar una sesión ya entrenada arrastraba su RPE, su FC y sus metros reales
+     al encargo nuevo. Y tarea a tarea, una espera por cada una. */
   const pegarSesion = async (fecha: string, microId: number) => {
     if (!clipboard || ocupado) return
     setOcupado(true)
     try {
-      const { data: src } = await supabase.from('sesion').select('*').eq('id', clipboard.id).single()
-      if (!src) { setOcupado(false); return }
-      const { id: _sid, created_at: _sc, ...rest } = src as any
-      const { data: ins, error } = await supabase.from('sesion').insert({
-        ...rest, fecha_sesion: fecha, id_microciclo: microId,
-        estado: 'Planificada', rpe_reportado: null, duracion_real: null, eliminada: false,
-      }).select('id').single()
-      if (error || !ins) { alert('Error al pegar la sesión: ' + (error?.message || '')); setOcupado(false); return }
-
-      const { data: srcTareas } = await supabase.from('tarea').select('*').eq('id_sesion', clipboard.id).order('orden', { ascending: true })
-      if (srcTareas?.length) {
-        const idMap: Record<number, number> = {}
-        for (const t of srcTareas as any[]) {
-          const { id: _tid, created_at: _tc, ...trest } = t
-          const { data: nt } = await supabase.from('tarea').insert({ ...trest, id_sesion: ins.id }).select('id').single()
-          if (nt) idMap[t.id] = nt.id
-        }
-        const oldIds = (srcTareas as any[]).map(t => t.id)
-        const [pd, pdur, pr, ej] = await Promise.all([
-          supabase.from('p_distancia').select('*').in('id_tarea', oldIds),
-          supabase.from('p_duracion').select('*').in('id_tarea', oldIds),
-          supabase.from('p_repeticiones').select('*').in('id_tarea', oldIds),
-          supabase.from('ejercicios').select('*').in('id_tarea', oldIds),
-        ])
-        const clonar = async (res: any, tabla: string) => {
-          const filas = (res.data || []).map((r: any) => { const { id: _i, created_at: _c, ...rr } = r; return { ...rr, id_tarea: idMap[r.id_tarea] } }).filter((r: any) => r.id_tarea)
-          if (filas.length) await supabase.from(tabla).insert(filas)
-        }
-        await Promise.all([clonar(pd, 'p_distancia'), clonar(pdur, 'p_duracion'), clonar(pr, 'p_repeticiones'), clonar(ej, 'ejercicios')])
-      }
+      const r = await copiarSesiones(supabase, [{
+        origen: clipboard.id,
+        campos: { fecha_sesion: fecha, id_microciclo: microId, id_deportista: depId, origen: 'entrenador' },
+        ...(depId != null ? { idDeportista: depId } : {}),
+      }])
+      if (r.ids[0] == null) alert('Error al pegar la sesión: ' + (r.error || ''))
+      else if (r.error) alert(r.error)
       await cargar()
     } catch (e: any) { alert('Error al pegar: ' + e.message) }
     setOcupado(false)

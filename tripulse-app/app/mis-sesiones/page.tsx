@@ -5,11 +5,12 @@ import { supabase } from '@/lib/supabase'
 import { aISO, hoyISO, lunesDe } from '@/lib/fechas'
 import { porDia, diasHasta, cuentaAtras, type CompeticionCal } from '@/lib/competiciones-calendario'
 import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
-import { intensidadesPorSesion } from '@/lib/intensidad-prescrita'
+import { intensidadesDe } from '@/lib/intensidad-prescrita'
 import { vivas } from '@/lib/papelera'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
-import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
+import { duracionesDe, duracionSesionTexto } from '@/lib/duracion-carga'
+import { SELECT_EJERCICIOS_CONTEO } from '@/lib/cardio-fuerza'
 import type { TestsDeportista } from '@/lib/duracion'
 import { etiquetaDisciplina, chipDisciplina, claseDisciplina, DEPORTES } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
@@ -96,8 +97,13 @@ export default function MisSesiones() {
 
     /* Las del plan y las libres, en UNA consulta. Antes eran dos ramas y una
        cadena de tres saltos, con las libres colgando de un `if` que solo se
-       llegaba a evaluar por casualidad después. */
-    const [ses, refs, comps] = await Promise.all([
+       llegaba a evaluar por casualidad después.
+
+       Y con ellas, A LA VEZ, sus tareas y lo que cuelga de ellas, pedidas por
+       deportista: la duración estimada y la intensidad de cada sesión salen de
+       ahí. Antes esperaban a tener las sesiones, y luego cada una de las dos
+       pedía otra vez las tareas y otra vez sus metros: cuatro rondas más. */
+    const [ses, refs, comps, tar, dis, dur, ejs] = await Promise.all([
       vivas(supabase.from('sesion').select('*').eq('id_deportista', d.id)),
       cargarReferencias(supabase, d.id),
       /* Todas, no solo las futuras: al mirar atrás en el calendario la carrera
@@ -110,15 +116,23 @@ export default function MisSesiones() {
          y el atleta se queda sin ninguna competición sin que nada avise. Con
          `*` viene lo que haya, y prioridadDe() ya devuelve 'B' cuando falta. */
       supabase.from('competicion').select('*').eq('id_deportista', d.id).order('fecha'),
+      supabase.from('tarea')
+        .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config, orden')
+        .eq('id_deportista', d.id).order('orden'),
+      /* `*` y no la lista: es lo que pedía intensidadesPorSesion, que necesita
+         el ritmo guardado de las dos tablas. */
+      supabase.from('p_distancia').select('*').eq('id_deportista', d.id),
+      supabase.from('p_duracion').select('*').eq('id_deportista', d.id),
+      supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).eq('id_deportista', d.id),
     ])
     setCompeticiones(comps.data || [])
     const todas = ses.data || []
     const testsDep: TestsDeportista = refs.tests
-    const [durs, ints] = await Promise.all([
-      estimarDuraciones(supabase, todas.map((s: any) => s.id), testsDep),
-      intensidadesPorSesion(supabase, todas.map((s: any) => s.id)),
-    ])
-    setIntensidades(ints)
+    /* Las mismas cuentas que estimarDuraciones e intensidadesPorSesion, con lo
+       que ya ha llegado (lib/duracion-carga y lib/intensidad-prescrita). */
+    const ids = todas.map((s: any) => s.id)
+    const durs = duracionesDe(ids, tar.data, dis.data, dur.data, ejs.data, testsDep)
+    setIntensidades(intensidadesDe(tar.data, dis.data, dur.data))
     setSesiones(todas.map((s: any) => ({ ...s, dur_estimada: durs[s.id] })).sort((a: any, b: any) => (a.fecha_sesion < b.fecha_sesion ? -1 : 1)))
     setLoading(false)
   }

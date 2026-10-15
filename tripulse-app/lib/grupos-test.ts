@@ -203,11 +203,13 @@ export async function guardarTestsDelGrupo(
     return { resultados: listas.map(l => ({ id_deportista: l.id_deportista, nombre: l.nombre, ok: true })), error: null }
   }
 
-  const resultados: ResultadoGuardado[] = []
-  for (const l of listas) {
+  /* Falló el lote: uno a uno, para guardar los que se pueda y decir cuál no.
+     Cada uno por su lado y a la vez (iban en fila); el parte, en el orden de la
+     lista. */
+  const resultados: ResultadoGuardado[] = await Promise.all(listas.map(async l => {
     const { error: e } = await sb.from(tabla).insert(l.fila)
-    resultados.push({ id_deportista: l.id_deportista, nombre: l.nombre, ok: !e, error: e?.message })
-  }
+    return { id_deportista: l.id_deportista, nombre: l.nombre, ok: !e, error: e?.message }
+  }))
   if (!resultados.some(r => r.ok)) {
     return { resultados, error: error.message || 'No se pudo guardar ninguno.' }
   }

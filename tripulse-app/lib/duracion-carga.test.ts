@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { SELECT_EJERCICIOS_CONTEO } from './cardio-fuerza'
 import {
-  estimarDuraciones, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos,
+  estimarDuraciones, duracionesDe, duracionesDeAnidadas, tareasAnidadas, TAREAS_PARA_DURACION, minutosEfectivos, duracionSesionTexto, minutosCarga, origenMinutos,
   minutosPlanificados, cargaPlanificada, cargaReal, mmss, mmssCorto,
 } from './duracion-carga'
 import type { ResultadoDuracion } from './duracion'
@@ -162,6 +165,69 @@ describe('estimarDuraciones — carga en lote', () => {
       }), [10], { vam: null, css: null, ftp: null }))[10]
     expect(conTest.estimable).toBe(true)
     expect(sinTest.faltanTests).toBe(true)
+  })
+})
+
+/* La cuenta sin consultas: la usan las pantallas que ya traen las tareas en su
+   propia ronda (la portada del deportista, «Mis sesiones»). Tiene que dar
+   EXACTAMENTE lo mismo que estimarDuraciones. */
+describe('duracionesDe', () => {
+  const tablas = {
+    tarea: [
+      { id: 1, id_sesion: 10, disciplina: 'Carrera', series: 1, zona_entrenamiento: 'AEL' },
+      { id: 2, id_sesion: 10, disciplina: 'Fuerza', series: 3, descanso_segundos: 60 },
+      { id: 3, id_sesion: 20, disciplina: 'Natacion', series: 4, zona_entrenamiento: 'AEM' },
+    ],
+    p_distancia: [{ id_tarea: 1, metros_planeados: 8000 }, { id_tarea: 3, metros_planeados: 100 }],
+    p_duracion: [],
+    ejercicios: [{ id_tarea: 2, repeticiones: 10 }],
+  }
+
+  it('da lo mismo que estimarDuraciones con los mismos datos', async () => {
+    const conConsultas = await estimarDuraciones(fakeSupabase(tablas), [10, 20, 30], TESTS)
+    const sinConsultas = duracionesDe([10, 20, 30], tablas.tarea, tablas.p_distancia, tablas.p_duracion, tablas.ejercicios, TESTS)
+    expect(sinConsultas).toEqual(conConsultas)
+  })
+
+  /* Se pedía la copia de la zona y no se pasaba: una zona propia se cronometraba
+     con el ritmo de la del catálogo que se llamase igual. */
+  it('una zona propia dura lo que dice SU copia', () => {
+    const conCopia = (nivel: number) => duracionesDe([10], [
+      { id: 1, id_sesion: 10, disciplina: 'Carrera', series: 1, zona_entrenamiento: 'N3', zona_copia: { sigla: 'N3', nombre: 'N3', nivel, rpe: nivel } },
+    ], [{ id_tarea: 1, metros_planeados: 10000 }], [], [], TESTS)[10].minutos
+    expect(conCopia(1)).toBeGreaterThan(conCopia(5))
+  })
+})
+
+/* Las tareas DENTRO de las sesiones: varias pantallas las piden así para no
+   esperar dos rondas más. Tienen que llevar lo mismo que pide estimarDuraciones,
+   o la misma sesión duraría distinto según por dónde se cargase. */
+describe('TAREAS_PARA_DURACION', () => {
+  it('pide cada columna que pide estimarDuraciones, y los ejercicios con el cardio', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'duracion-carga.ts'), 'utf8')
+    const m = src.match(/from\('tarea'\)\s*\.select\('([^']*)'\)/)
+    expect(m).not.toBeNull()
+    for (const col of m![1].split(',').map(c => c.trim())) expect(TAREAS_PARA_DURACION).toMatch(new RegExp('\\b' + col + '\\b'))
+    expect(TAREAS_PARA_DURACION).toContain('ejercicios(' + SELECT_EJERCICIOS_CONTEO + ')')
+  })
+
+  it('duracionesDeAnidadas da lo mismo que duracionesDe con las tareas sueltas', () => {
+    const sesiones = [
+      { id: 10, tarea: [
+        { id: 2, id_sesion: 10, orden: 2, disciplina: 'Fuerza', series: 3, descanso_segundos: 60, p_distancia: [], p_duracion: [], ejercicios: [{ id_tarea: 2, repeticiones: 10 }] },
+        { id: 1, id_sesion: 10, orden: 1, disciplina: 'Carrera', series: 1, zona_entrenamiento: 'AEL', p_distancia: [{ id_tarea: 1, metros_planeados: 8000 }], p_duracion: [], ejercicios: [] },
+      ] },
+      { id: 20, tarea: [] },
+    ]
+    const sueltas = duracionesDe([10, 20],
+      [{ id: 1, id_sesion: 10, disciplina: 'Carrera', series: 1, zona_entrenamiento: 'AEL' }, { id: 2, id_sesion: 10, disciplina: 'Fuerza', series: 3, descanso_segundos: 60 }],
+      [{ id_tarea: 1, metros_planeados: 8000 }], [], [{ id_tarea: 2, repeticiones: 10 }], TESTS)
+    expect(duracionesDeAnidadas(sesiones, TESTS)).toEqual(sueltas)
+  })
+
+  it('tareasAnidadas las devuelve en su orden', () => {
+    expect(tareasAnidadas([{ tarea: [{ id: 5, orden: 2 }, { id: 4, orden: 1 }] }]).map(t => t.id)).toEqual([4, 5])
+    expect(tareasAnidadas(null)).toEqual([])
   })
 })
 

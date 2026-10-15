@@ -222,7 +222,11 @@ export function expandirEnBloques(
 }
 
 // Carga de Supabase las tareas (y sus parámetros) de unas sesiones y las expande
-// en bloques. Un solo viaje por tabla para todas las sesiones.
+// en bloques.
+//
+// UN SOLO VIAJE: los metros, los tiempos y los ejercicios llegan DENTRO de cada
+// tarea. Eran dos rondas —las tareas, y después lo suyo con la lista de ids—, y
+// esto lo usan seis pantallas, varias al abrir.
 export async function cargarBloques(
   supabase: any,
   sesiones: SesionAtribuible[],
@@ -233,18 +237,10 @@ export async function cargarBloques(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado, bloques, descanso_bloques_segundos, formato, formato_config')
+    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, descanso_segundos, rpe_reportado, bloques, descanso_bloques_segundos, formato, formato_config, p_distancia(id_tarea, metros_planeados, metros_reales), p_duracion(id_tarea, tiempo_planeado), ejercicios(' + SELECT_EJERCICIOS_CONTEO + ')')
     .in('id_sesion', ids)
-  const tareaIds = (tareas || []).map((t: any) => t.id)
 
-  const [dists, durs, ejs] = tareaIds.length
-    ? await Promise.all([
-        supabase.from('p_distancia').select('id_tarea, metros_planeados, metros_reales').in('id_tarea', tareaIds),
-        supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-        supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds),
-      ])
-    : [{ data: [] }, { data: [] }, { data: [] }]
-
+  const lista = (x: unknown): any[] => Array.isArray(x) ? x : x ? [x] : []
   const enriquecidas: TareaAtribuible[] = (tareas || []).map((t: any) => ({
     id: t.id,
     id_sesion: t.id_sesion,
@@ -259,9 +255,9 @@ export async function cargarBloques(
     formato_config: t.formato_config,
     zona_entrenamiento: t.zona_entrenamiento,
     rpe_reportado: t.rpe_reportado,
-    p_distancia: (dists.data || []).filter((d: any) => d.id_tarea === t.id),
-    p_duracion: (durs.data || []).filter((d: any) => d.id_tarea === t.id),
-    ejercicios: (ejs.data || []).filter((e: any) => e.id_tarea === t.id),
+    p_distancia: lista(t.p_distancia),
+    p_duracion: lista(t.p_duracion),
+    ejercicios: lista(t.ejercicios),
   }))
 
   return expandirEnBloques(sesiones, enriquecidas, opts)

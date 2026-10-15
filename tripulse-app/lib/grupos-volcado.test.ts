@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  limpiar, volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio, sesionesQueLeFaltan,
+  volcar, resumenVolcado, volcadoPrevio, apartarVolcadoPrevio, sesionesQueLeFaltan,
 } from './grupos-volcado'
 
 describe('sesionesQueLeFaltan', () => {
@@ -116,60 +116,37 @@ describe('apartarVolcadoPrevio', () => {
   })
 })
 
-describe('limpiar', () => {
-  /* El fallo que esto evita: al copiar con {...resto}, cada fila arrastra el
-     id_deportista de la FICHA DEL GRUPO. La copia acabaría siendo del grupo y no de
-     la persona, y como la RLS mira justo esa columna, el atleta no vería su propia
-     sesión. Nada falla a la vista. */
-  it('quita el id_deportista, que es el que arruina la copia', () => {
-    expect(limpiar({ id_deportista: 99, disciplina: 'Carrera' })).toEqual({ disciplina: 'Carrera' })
-  })
-
-  /* En modo entreno el ritmo guardado LE GANA al calculado: copiarlo le mostraría a
-     todos el ritmo de otro. */
-  it('quita el ritmo_objetivo', () => {
-    expect(limpiar({ metros_planeados: 1000, ritmo_objetivo: '4:12' })).toEqual({ metros_planeados: 1000 })
-  })
-
-  it('quita lo que pasó y deja lo que se planeó', () => {
-    const r = limpiar({
-      id: 7, created_at: 'x', id_sesion: 3, id_microciclo: 4, id_emision: 'e',
-      estado: 'Realizada', rpe_reportado: 9, duracion_real: 61, eliminada: true,
-      sensacion_tecnica: 4, disciplina: 'Natacion', zona_entrenamiento: 'AEM', series: 4,
-    })
-    expect(r).toEqual({ disciplina: 'Natacion', zona_entrenamiento: 'AEM', series: 4 })
-  })
-
-  it('con null o vacío no revienta', () => {
-    expect(limpiar(null)).toEqual({})
-    expect(limpiar({})).toEqual({})
-  })
-})
-
+/* Cliente de mentira para volcar: lee el grupo (con las hijas anidadas en cada
+   tarea, como las devuelve PostgREST) y apunta cada inserción. Las inserciones
+   son de golpe: `v` es la lista de filas. */
 function sbFalso(opciones: { fallaSesionN?: number } = {}) {
   const ops: any[] = []
   let n = 100, nSes = 0
   const datos: Record<string, any[]> = {
-    sesion: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera', id_deportista: 99, estado: 'Planificada' }],
-    tarea: [{ id: 11, id_sesion: 1, orden: 1, zona_entrenamiento: 'AEM', id_deportista: 99 }],
-    p_distancia: [{ id: 21, id_tarea: 11, metros_planeados: 1000, ritmo_objetivo: '4:12', id_deportista: 99 }],
-    p_duracion: [], p_repeticiones: [], ejercicios: [],
+    sesion: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera', id_deportista: 99, estado: 'Planificada', origen: 'entrenador', test: { origen: 'bateria', clave: '6min' } }],
+    tarea: [{
+      id: 11, id_sesion: 1, orden: 1, zona_entrenamiento: 'AEM', id_deportista: 99,
+      p_distancia: [{ id: 21, id_tarea: 11, metros_planeados: 1000, ritmo_objetivo: '4:12', id_deportista: 99 }],
+      p_duracion: [], p_repeticiones: [], ejercicios: [],
+    }],
   }
   const api = (tabla: string) => ({
     insert(v: any) {
       ops.push({ op: 'insert', tabla, v })
-      if (Array.isArray(v)) return Promise.resolve({ error: null })
+      const filas = Array.isArray(v) ? v : [v]
+      const resp = () => {
+        if (tabla === 'sesion') {
+          nSes++
+          if (nSes === opciones.fallaSesionN) return { data: null, error: { message: 'RLS' } }
+        }
+        return { data: filas.map(() => ({ id: ++n })), error: null }
+      }
       return {
-        select: () => ({
-          single: () => {
-            if (tabla === 'grupo_entreno_emision') return Promise.resolve({ data: { id: 'e1' }, error: null })
-            if (tabla === 'sesion') {
-              nSes++
-              if (nSes === opciones.fallaSesionN) return Promise.resolve({ data: null, error: { message: 'RLS' } })
-            }
-            return Promise.resolve({ data: { id: ++n }, error: null })
-          },
-        }),
+        select: () => {
+          if (tabla === 'grupo_entreno_emision') return { single: () => Promise.resolve({ data: { id: 'e1' }, error: null }) }
+          return Promise.resolve(resp())
+        },
+        then: (r: any, j: any) => Promise.resolve({ error: null }).then(r, j),
       }
     },
     delete() { return { eq: (_c: string, val: any) => { ops.push({ op: 'delete', tabla, val }); return Promise.resolve({ error: null }) } } },
@@ -194,47 +171,60 @@ const BASE = {
   microDelDia: (ms: any[]) => ms[0] || null,
 }
 const MIEMBROS = [{ id_deportista: 1, nombre: 'Ana' }, { id_deportista: 2, nombre: 'Luis' }]
+const inserciones = (sb: any, tabla: string) => sb.ops.filter((o: any) => o.op === 'insert' && o.tabla === tabla)
 
 describe('volcar', () => {
+  /* El fallo que esto evita: al copiar con {...resto}, cada fila arrastra el
+     id_deportista de la FICHA DEL GRUPO. La copia acabaría siendo del grupo y no de
+     la persona, y como la RLS mira justo esa columna, el atleta no vería su propia
+     sesión. Nada falla a la vista. */
   it('copia la sesión a cada miembro con SU id_deportista, no el del grupo', async () => {
     const sb = sbFalso()
     const r = await volcar(sb, { ...BASE, miembros: MIEMBROS })
     expect(r.error).toBeNull()
-    const ses = sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')
-    expect(ses.map(s => s.v.id_deportista)).toEqual([1, 2])
-    expect(ses.every(s => s.v.id_deportista !== 99)).toBe(true)
+    const ses = inserciones(sb, 'sesion')
+    expect(ses.map((s: any) => s.v[0].id_deportista)).toEqual([1, 2])
+    expect(ses.every((s: any) => s.v[0].id_deportista !== 99)).toBe(true)
   })
 
   it('las tareas y sus hijas también van al dueño correcto', async () => {
     const sb = sbFalso()
     await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]] })
-    const tar = sb.ops.find(o => o.op === 'insert' && o.tabla === 'tarea')
-    expect(tar.v.id_deportista).toBe(1)
-    const pd = sb.ops.find(o => o.op === 'insert' && o.tabla === 'p_distancia')
+    const [tar] = inserciones(sb, 'tarea')
+    expect(tar.v[0].id_deportista).toBe(1)
+    const [pd] = inserciones(sb, 'p_distancia')
     expect(pd.v[0].id_deportista).toBe(1)
     expect(pd.v[0].metros_planeados).toBe(1000)
   })
 
+  /* En modo entreno el ritmo guardado LE GANA al calculado: copiarlo le mostraría a
+     todos el ritmo de otro. */
   it('no arrastra el ritmo del grupo', async () => {
     const sb = sbFalso()
     await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]] })
-    const pd = sb.ops.find(o => o.op === 'insert' && o.tabla === 'p_distancia')
-    expect(pd.v[0].ritmo_objetivo).toBeUndefined()
+    const [pd] = inserciones(sb, 'p_distancia')
+    expect(pd.v[0]).not.toHaveProperty('ritmo_objetivo')
+  })
+
+  /* Un día de test del grupo llega a cada miembro: la lista es de lo que NO se copia. */
+  it('el test del día viaja con la sesión', async () => {
+    const sb = sbFalso()
+    await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]] })
+    expect(inserciones(sb, 'sesion')[0].v[0].test).toEqual({ origen: 'bateria', clave: '6min' })
   })
 
   it('todas las copias comparten la misma emisión', async () => {
     const sb = sbFalso()
     await volcar(sb, { ...BASE, miembros: MIEMBROS })
-    const ses = sb.ops.filter(o => o.op === 'insert' && o.tabla === 'sesion')
-    expect(ses.every(s => s.v.id_emision === 'e1')).toBe(true)
+    expect(inserciones(sb, 'sesion').every((s: any) => s.v[0].id_emision === 'e1')).toBe(true)
   })
 
   it('quien no tiene semana la recibe igual, como sesión libre', async () => {
     const sb = sbFalso()
     const r = await volcar(sb, { ...BASE, miembros: [MIEMBROS[0]], microDelDia: () => null })
-    const ses = sb.ops.find(o => o.op === 'insert' && o.tabla === 'sesion')
-    expect(ses.v.id_microciclo).toBeNull()
-    expect(ses.v.origen).toBe('entrenador')
+    const [ses] = inserciones(sb, 'sesion')
+    expect(ses.v[0].id_microciclo).toBeNull()
+    expect(ses.v[0].origen).toBe('entrenador')
     expect(r.resultados[0].enSuPlan).toBe(0)
     expect(r.resultados[0].creadas).toBe(1)
   })
@@ -245,6 +235,21 @@ describe('volcar', () => {
     expect(r.resultados[0].creadas).toBe(0)
     expect(r.resultados[0].fallos).toBe(1)
     expect(r.resultados[1].creadas).toBe(1)
+  })
+
+  /* Lo que hacía esperar al entrenador: una escritura por sesión, otra por tarea…
+     y todo persona tras persona. Ahora cada persona son tres escrituras —sesiones,
+     tareas, lo que cuelga— sea la semana que sea. */
+  it('una escritura por tabla y persona, no una por fila', async () => {
+    const sb = sbFalso()
+    await volcar(sb, {
+      ...BASE, miembros: MIEMBROS,
+      sesiones: [{ id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera' }, { id: 1, fecha_sesion: '2026-03-04', disciplina: 'Carrera' }],
+    })
+    expect(inserciones(sb, 'sesion')).toHaveLength(2)
+    expect(inserciones(sb, 'sesion').every((s: any) => s.v.length === 2)).toBe(true)
+    expect(inserciones(sb, 'tarea')).toHaveLength(2)
+    expect(inserciones(sb, 'p_distancia')).toHaveLength(2)
   })
 
   it('sin sesiones ni miembros no abre emisión', async () => {
@@ -300,8 +305,8 @@ describe('las semanas de los miembros se piden UNA vez', () => {
     })
     const ses = sb.ops.filter((o: any) => o.op === 'insert' && o.tabla === 'sesion')
     expect(ses).toHaveLength(2)
-    expect(ses[0].v.id_microciclo).toBe(30)
-    expect(ses[1].v.id_microciclo).toBeNull()
-    expect(ses[1].v.id_deportista).toBe(2)
+    expect(ses[0].v[0].id_microciclo).toBe(30)
+    expect(ses[1].v[0].id_microciclo).toBeNull()
+    expect(ses[1].v[0].id_deportista).toBe(2)
   })
 })

@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  cargarKmDeMateriales, comoSeLlama, siLeSumo, valeParaLaSesion,
+  kmDesdeEnlaces, separarUsos, USOS_DEL_MATERIAL, comoSeLlama, siLeSumo, valeParaLaSesion,
   type Material, type KmDeMaterial,
 } from '@/lib/material'
 
@@ -40,11 +40,12 @@ export default function ElegirMaterial({ idDeportista, disciplinas, metrosPorDis
 
   const cargar = useCallback(async () => {
     if (!idDeportista) { setCargado(true); return }
-    const { data } = await supabase.from('material').select('*')
+    // Con sus usos dentro: una consulta menos antes de contar los kilómetros.
+    const { data } = await supabase.from('material').select('*, ' + USOS_DEL_MATERIAL)
       .eq('id_deportista', idDeportista).eq('jubilado', false)
-    const lista = (data || []) as Material[]
+    const { materiales: lista, enlaces } = separarUsos(data)
     setMateriales(lista)
-    setKm(await cargarKmDeMateriales(supabase, lista))
+    setKm(await kmDesdeEnlaces(supabase, lista, enlaces))
     setCargado(true)
   }, [idDeportista])
 

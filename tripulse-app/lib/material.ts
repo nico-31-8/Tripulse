@@ -172,21 +172,67 @@ export async function cargarKmDeMateriales(
   supabase: SupabaseClient,
   materiales: Material[],
 ): Promise<Record<number, KmDeMaterial>> {
-  const vacio = () => Object.fromEntries(materiales.map(m => [m.id, kmDeMaterial(m, [])]))
   if (!materiales.length) return {}
 
+  /* Cada enlace trae DENTRO su sesión: eran dos consultas en fila (los enlaces,
+     y luego esas sesiones por sus ids). Las de la papelera se quedan fuera aquí,
+     como hacía el filtro de la segunda. */
   const ids = materiales.map(m => m.id)
-  const { data: enlaces } = await supabase
-    .from('sesion_material').select('id_sesion, id_material').in('id_material', ids)
-  if (!enlaces?.length) return vacio()
+  const { data: filas } = await supabase
+    .from('sesion_material')
+    .select('id_sesion, id_material, sesion(id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, transiciones, eliminada)')
+    .in('id_material', ids)
+  return kmDesdeEnlaces(supabase, materiales, (filas || []) as Enlace[])
+}
 
-  const idsSesion = [...new Set(enlaces.map((e: { id_sesion: number }) => e.id_sesion))]
-  const { data: sesiones } = await supabase
-    .from('sesion')
-    .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, transiciones')
-    .in('id', idsSesion)
-    .or('eliminada.is.null,eliminada.eq.false')
-  if (!sesiones?.length) return vacio()
+/**
+ * Lo mismo, con los usos ya traídos DENTRO de cada material: la consulta del
+ * material lleva `material.select('*, ' + USOS_DEL_MATERIAL)` y esto se ahorra
+ * pedirlos aparte, que era una espera más en cada pantalla de material.
+ * Devuelve los materiales ya sin los usos dentro, que es lo que se guarda.
+ */
+export const USOS_DEL_MATERIAL =
+  'sesion_material(id_sesion, id_material, sesion(id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, transiciones, eliminada))'
+
+export async function kmDeMaterialesConUsos(
+  supabase: SupabaseClient,
+  filas: unknown,
+): Promise<{ materiales: Material[]; km: Record<number, KmDeMaterial> }> {
+  const { materiales, enlaces } = separarUsos(filas)
+  if (!materiales.length) return { materiales, km: {} }
+  return { materiales, km: await kmDesdeEnlaces(supabase, materiales, enlaces) }
+}
+
+export type Enlace = { id_sesion: number; id_material: number; sesion?: unknown }
+
+/** Los materiales tal cual se guardan, y aparte los usos que venían dentro. */
+export function separarUsos(filas: unknown): { materiales: Material[]; enlaces: Enlace[] } {
+  const materiales: Material[] = []
+  const enlaces: Enlace[] = []
+  for (const f of (filas || []) as (Material & { sesion_material?: Enlace[] | null })[]) {
+    const { sesion_material: usos, ...m } = f
+    materiales.push(m as Material)
+    enlaces.push(...(usos || []))
+  }
+  return { materiales, enlaces }
+}
+
+export async function kmDesdeEnlaces(
+  supabase: SupabaseClient,
+  materiales: Material[],
+  enlaces: Enlace[],
+): Promise<Record<number, KmDeMaterial>> {
+  const vacio = () => Object.fromEntries(materiales.map(m => [m.id, kmDeMaterial(m, [])]))
+  if (!enlaces.length) return vacio()
+
+  const unaDe = (x: unknown) => (Array.isArray(x) ? x[0] : x) as (SesionAtribuible & { eliminada?: boolean | null }) | null
+  const porId = new Map<number, SesionAtribuible>()
+  for (const e of enlaces) {
+    const s = unaDe(e.sesion)
+    if (s && !s.eliminada) porId.set(Number(s.id), s)
+  }
+  const sesiones = [...porId.values()]
+  if (!sesiones.length) return vacio()
 
   const bloques = await cargarBloques(supabase, sesiones as SesionAtribuible[])
   const porSesion: Record<number, typeof bloques> = {}

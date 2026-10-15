@@ -27,6 +27,8 @@ export interface TareaCruda {
   series?: number | null
   disciplina?: string | null
   zona_entrenamiento?: string | null
+  /** La copia de una zona propia: sin ella, su nivel y su ritmo serían los del catálogo. */
+  zona_copia?: unknown
   descanso_segundos?: number | null
   /** En bloques: 3 × (2 × 400). Ver lib/bloques-tarea. */
   bloques?: number | null
@@ -135,6 +137,9 @@ export function conVolumen(
         formato: t.formato,
         formato_config: t.formato_config,
         zona_entrenamiento: t.zona_entrenamiento,
+        /* La duración de una zona propia sale del ritmo de SU copia: sin ella
+           se estimaba con la zona del catálogo que se llamase igual. */
+        zona_copia: t.zona_copia,
         p_distancia: d,
         p_duracion: u,
         ejercicios: ejer.get(t.id) || [],

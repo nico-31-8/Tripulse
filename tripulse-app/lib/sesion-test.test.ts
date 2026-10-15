@@ -15,7 +15,7 @@ import {
   testHecho, ultimaVezDelTest,
 } from './sesion-test'
 import { CATALOGO } from './catalogo-tests'
-import { SIN_COPIAR } from './grupos-volcado'
+import { SIN_COPIAR_SESION } from './copiar-sesion'
 
 describe('lo guardado se lee a la defensiva', () => {
   it('uno de la batería', () => {
@@ -125,11 +125,12 @@ describe('si ya está hecho', () => {
 
 describe('al grupo se le puede poner', () => {
   it('el test viaja al volcar, porque la lista es de lo que NO se copia', () => {
-    /* Un día de test de un grupo llega a cada miembro porque `limpiar` copia
-       todo lo que no esté en `SIN_COPIAR`. Si alguien mete ahí «test» pensando
+    /* Un día de test de un grupo llega a cada miembro —y al pegarlo en el
+       calendario— porque lib/copiar-sesion copia todo lo que no esté en
+       `SIN_COPIAR_SESION`. Si alguien mete ahí «test» pensando
        que es un dato de la ficha del grupo, el volcado dejaría a todos sin
        test y la pantalla del grupo seguiría enseñándolo. */
-    expect(SIN_COPIAR.has('test')).toBe(false)
+    expect(SIN_COPIAR_SESION.has('test')).toBe(false)
   })
 })
 

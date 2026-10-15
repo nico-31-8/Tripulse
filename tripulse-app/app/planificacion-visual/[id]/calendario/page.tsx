@@ -32,7 +32,7 @@ import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
 import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
-import { columnasPrescripcion, repsDePrescripcion } from '@/lib/repeticiones'
+import { copiarSesiones, type DestinoCopia } from '@/lib/copiar-sesion'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -201,29 +201,46 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   useEffect(() => { if (panelPlantillas) cargarPropias(supabase, plantDisc).then(setPlantPropias) }, [panelPlantillas, plantDisc])
 
   /*
-   * DE CATORCE VIAJES EN SERIE A TRES RONDAS.
+   * DE CATORCE VIAJES EN SERIE A UNA SOLA RONDA.
    *
    * Esto encadenaba: deportista → test1 → test2 → test3 → macrociclo →
    * competición → semana bloqueada → sesiones libres → mesociclo → microciclo →
    * sesiones del plan → tareas → distancias → duraciones → ejercicios. Cada una
-   * esperando a la anterior, y es la pantalla más pesada de la app.
+   * esperando a la anterior, y es la pantalla más pesada de la app. Luego quedó
+   * en tres rondas: sesiones, después sus tareas, después lo de las tareas.
    *
-   * LA SIMPLIFICACIÓN DE FONDO: las sesiones se piden UNA vez por deportista, no
-   * dos (las del plan por microciclo + las libres por separado). `id_deportista`
-   * está en todas las filas —lo garantiza la política RLS de `sesion`, que
-   * filtra justamente por ese campo— así que una sola consulta las cubre. De
-   * paso desaparece la clase de fallo que ya mordió aquí: las libres iban
-   * detrás de tres `return` que cortaban si faltaba plan, y a quien no tenía
-   * macrociclo no se le cargaban nunca.
+   * LA SIMPLIFICACIÓN DE FONDO: todo se pide POR DEPORTISTA, también las tareas
+   * y lo que cuelga de ellas. `id_deportista` está en cada fila de la cadena
+   * —lo rellenan los disparadores al insertar y la RLS mira justo esa columna—,
+   * así que no hace falta esperar a saber los ids de las sesiones para pedir sus
+   * tareas. Medido el 15-10-2026: ninguna tarea, distancia, duración ni
+   * ejercicio sin él o con uno distinto del de su sesión. Las tareas de la
+   * papelera llegan también y no se usan: `conVolumen` solo mira las de las
+   * sesiones que le pasan.
    *
-   * Mesociclos y microciclos también van por deportista, que es lo mismo que
-   * salía de encadenar macro → meso → micro.
+   * Cada ronda que se quita son 100-300 ms en cada carga y después de cada
+   * cambio, que es cuando el entrenador está mirando la pantalla.
    */
+  const pedirSesiones = (depId: number) => Promise.all([
+    vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)).order('fecha_sesion'),
+    /* Con la copia de la zona: sin ella, una zona propia se ordenaba y se
+       cronometraba como la del catálogo que se llame igual. */
+    supabase.from('tarea')
+      .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
+      .eq('id_deportista', depId),
+    supabase.from('p_distancia').select('id_tarea, metros_planeados').eq('id_deportista', depId),
+    supabase.from('p_duracion').select('id_tarea, tiempo_planeado').eq('id_deportista', depId),
+    supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).eq('id_deportista', depId),
+  ])
+
+  // El volumen, la duración y las zonas: lógica pura, en lib/sesion-volumen.
+  const montarSesiones = ([ses, tar, dis, dur, ejs]: Awaited<ReturnType<typeof pedirSesiones>>, testsDep: TestsDeportista) =>
+    conVolumen((ses.data || []) as any[], tar.data as any[], dis.data, dur.data, ejs.data as any[], testsDep)
+
   const cargarDatos = async () => {
     const depId = Number(id)
 
-    // ---- Ronda 1: todo lo que solo depende del deportista ----
-    const [dep, refs, mac, comps, bloqs, me, mi, ses, defs] = await Promise.all([
+    const [dep, refs, mac, comps, bloqs, me, mi, defs, lote] = await Promise.all([
       supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
       // VAM/CSS/FTP para estimar los ritmos por zona, de la misma función que
       // usan la ficha de sesión y el panel de la semana.
@@ -233,11 +250,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       supabase.from('semana_bloqueada').select('*').eq('id_deportista', depId),
       supabase.from('mesociclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
       supabase.from('microciclo').select('*').eq('id_deportista', depId).order('fecha_inicio'),
-      vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)).order('fecha_sesion'),
       /* Solo el nombre, y solo para poder escribir CUÁL test lleva un día:
          la marca del calendario sin el nombre obliga a abrir la sesión. Los de
          la batería no consultan nada, están en el código. */
       supabase.from('test_definicion').select('id, nombre'),
+      pedirSesiones(depId),
     ])
 
     setDeportista(dep.data)
@@ -250,27 +267,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setMesos(me.data || [])
     setMicros(mi.data || [])
     setTestsPropios((defs.data || []) as { id: number; nombre: string }[])
+    setSesiones(montarSesiones(lote, testsDep))
+  }
 
-    const sesiones = (ses.data || []) as any[]
-    if (!sesiones.length) { setSesiones([]); return }
-
-    // ---- Ronda 2: las tareas de esas sesiones ----
-    const { data: tareas } = await supabase.from('tarea')
-      .select('id, id_sesion, series, disciplina, zona_entrenamiento, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
-      .in('id_sesion', sesiones.map(x => x.id))
-
-    const tareaIds = (tareas || []).map(t => t.id)
-    if (!tareaIds.length) { setSesiones(conVolumen(sesiones, [], [], [], [], testsDep)); return }
-
-    // ---- Ronda 3: los tres tipos de parámetro, a la vez ----
-    const [dists, durs, ejs] = await Promise.all([
-      supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tareaIds),
-      supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tareaIds),
-      supabase.from('ejercicios').select(SELECT_EJERCICIOS_CONTEO).in('id_tarea', tareaIds),
-    ])
-
-    // El volumen, la duración y las zonas: lógica pura, en lib/sesion-volumen.
-    setSesiones(conVolumen(sesiones, tareas, dists.data, durs.data, ejs.data, testsDep))
+  /* Después de crear, pegar o editar una sesión solo cambian las sesiones: no
+     hace falta volver a pedir el deportista, sus tests, el plan ni las
+     competiciones. */
+  const cargarSesiones = async () => {
+    setSesiones(montarSesiones(await pedirSesiones(Number(id)), tests))
   }
 
   const mesesAMostrar = Array.from({ length: rango }, (_, i) => {
@@ -324,7 +328,16 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       })()
     : '')
 
-  const toast = (msg: string) => { setMostrarToast(msg); setTimeout(() => setMostrarToast(''), 2500) }
+  /* Cada aviso trae su duración, y al llegar otro se olvida el temporizador del
+     anterior: con uno suelto por aviso, el «Pegando…» del principio borraba a
+     los 2,5 s el aviso de que ya estaba pegada. */
+  const [toastMs, setToastMs] = useState(2500)
+  useEffect(() => {
+    if (!mostrarToast) return
+    const t = setTimeout(() => setMostrarToast(''), toastMs)
+    return () => clearTimeout(t)
+  }, [mostrarToast, toastMs])
+  const toast = (msg: string, ms = 2500) => { setToastMs(ms); setMostrarToast(msg) }
 
   // Propuesta del asistente: llega por localStorage desde la tarjeta y entra por el
   // MISMO flujo que una plantilla del catálogo. La IA no ha escrito nada: el clic
@@ -357,50 +370,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   }, [])
 
   // COPIAR SESIÓN
-  const copiarTareasASesion = async (idOrigen: number, idDestino: number) => {
-    const { data: tareas } = await supabase
-      .from('tarea')
-      .select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)')
-      .eq('id_sesion', idOrigen)
-      .order('orden', { ascending: true })
-    if (!tareas || tareas.length === 0) return
-    for (const tarea of tareas) {
-      const { data: t } = await supabase.from('tarea').insert({
-        id_sesion: idDestino,
-        zona_entrenamiento: tarea.zona_entrenamiento,
-        disciplina: tarea.disciplina,
-        series: tarea.series,
-        descanso_segundos: tarea.descanso_segundos,
-        /* Los bloques viajan con la copia: sin ellos, copiar un 3 × (2 × 400)
-           dejaba un 2 × 400 en el día de destino. */
-        bloques: tarea.bloques ?? null,
-        descanso_bloques_segundos: tarea.descanso_bloques_segundos ?? null,
-        /* Y el formato de un bloque (AMRAP…): sin él llegaría como líneas sueltas sin series. */
-        formato: tarea.formato ?? null,
-        formato_config: tarea.formato_config ?? null,
-        comentario: tarea.comentario,
-        orden: tarea.orden,
-      }).select().single()
-      if (!t) continue
-      const pd = Array.isArray(tarea.p_distancia) ? tarea.p_distancia[0] : tarea.p_distancia
-      if (pd) await supabase.from('p_distancia').insert({ id_tarea: t.id, metros_planeados: pd.metros_planeados, ritmo_objetivo: pd.ritmo_objetivo ?? null })
-      const pu = Array.isArray(tarea.p_duracion) ? tarea.p_duracion[0] : tarea.p_duracion
-      if (pu) await supabase.from('p_duracion').insert({ id_tarea: t.id, tiempo_planeado: pu.tiempo_planeado, potencia_objetivo: pu.potencia_objetivo ?? null })
-      const pr = Array.isArray(tarea.p_repeticiones) ? tarea.p_repeticiones[0] : tarea.p_repeticiones
-      /* Con el tope del rango: copiando solo el mínimo, pegar una sesión convertía
-         «8-10» en «8». Se lee y se escribe con lib/repeticiones, que arma las dos
-         columnas juntas. */
-      if (pr) await supabase.from('p_repeticiones').insert({ id_tarea: t.id, ...columnasPrescripcion(repsDePrescripcion(pr)) })
-      // Ejercicios de fuerza de la tarea (antes se perdían al copiar → tarea vacía).
-      const ejs = Array.isArray(tarea.ejercicios) ? tarea.ejercicios : (tarea.ejercicios ? [tarea.ejercicios] : [])
-      if (ejs.length) {
-        await supabase.from('ejercicios').insert(ejs.map((e: any) => {
-          const { id: _i, created_at: _c, id_tarea: _t, ...rr } = e
-          return { ...rr, id_tarea: t.id }
-        }))
-      }
-    }
-  }
+  /* La copia entera —sesión, tareas, metros, tiempos, repeticiones, ejercicios—
+     vive en lib/copiar-sesion: aquí iba tarea a tarea, unos veinte viajes en
+     serie por sesión, y se dejaba fuera la zona propia, la técnica, el test del
+     día de test, las transiciones del brick y la nutrición. */
+  const destinoEn = (origen: number, fecha: string, idMicro: number): DestinoCopia => ({
+    origen,
+    campos: { fecha_sesion: fecha, id_microciclo: idMicro, id_deportista: Number(id), origen: 'entrenador' },
+    idDeportista: Number(id),
+  })
 
   const copiarSesion = (ses: any, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -419,6 +397,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     // semana asignada, aunque a mano sí se pudiera crear ahí.
     const micro = getMicroDelDia(f)
     setLoading(true)
+    toast('Creando la sesión…', 30000)
     const { data: nueva } = await supabase.from('sesion').insert({
       id_microciclo: micro ? micro.id : null,
       ...(micro ? {} : { id_deportista: Number(id), origen: 'entrenador' }),
@@ -426,23 +405,27 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       fecha_sesion: f,
       estado: 'Planificada',
     }).select().single()
+    let fallo = ''
     if (nueva) {
-      const err = await aplicarBloques(supabase, nueva.id, plantillaEnMano.disciplina, plantillaEnMano.bloques)
-      if (err) { toast('Sesión creada, pero error al aplicar la plantilla'); }
-      // Si venía del asistente, se deja constancia de QUÉ se propuso, para poder
-      // medir después cuántas se aceptan sin retocar. Va en un update aparte y con
-      // el error ignorado a propósito: si supabase/propuesta-ia.sql todavía no se
-      // ha ejecutado, la sesión debe crearse igual — se pierde la marca, no el
-      // trabajo del entrenador.
-      if (plantillaEnMano.propuesta) {
-        await supabase.from('sesion').update({ propuesta_ia: plantillaEnMano.propuesta }).eq('id', nueva.id)
-      }
-    }
+      /* Los bloques y la marca del asistente no dependen uno del otro: a la vez. */
+      const [err] = await Promise.all([
+        aplicarBloques(supabase, nueva.id, plantillaEnMano.disciplina, plantillaEnMano.bloques),
+        // Si venía del asistente, se deja constancia de QUÉ se propuso, para poder
+        // medir después cuántas se aceptan sin retocar. Va en un update aparte y con
+        // el error ignorado a propósito: si supabase/propuesta-ia.sql todavía no se
+        // ha ejecutado, la sesión debe crearse igual — se pierde la marca, no el
+        // trabajo del entrenador.
+        plantillaEnMano.propuesta
+          ? supabase.from('sesion').update({ propuesta_ia: plantillaEnMano.propuesta }).eq('id', nueva.id)
+          : null,
+      ])
+      if (err) fallo = 'Sesión creada, pero error al aplicar la plantilla'
+    } else fallo = 'No se pudo crear la sesión'
     // Consumida: ya no debe re-armarse si se vuelve a entrar al calendario.
     try { localStorage.removeItem(LLAVE_PROPUESTA) } catch { /* da igual */ }
     // La plantilla NO se suelta: así se puede pegar en varios días seguidos.
-    await cargarDatos()
-    toast('«' + plantillaEnMano.nombre + '» aplicada al ' + f.slice(8) + '/' + f.slice(5, 7))
+    await cargarSesiones()
+    toast(fallo || '«' + plantillaEnMano.nombre + '» aplicada al ' + f.slice(8) + '/' + f.slice(5, 7), fallo ? 5000 : 2500)
     setLoading(false)
   }
 
@@ -451,24 +434,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const micro = getMicroDelDia(f)
     if (!micro) { toast('Ese día no tiene semana asignada'); return }
     setLoading(true)
-    const { data: sesNueva } = await supabase.from('sesion').insert({
-      id_microciclo: micro.id,
-      disciplina: sesionCopiada.disciplina,
-      fecha_sesion: f,
-      duracion_minutos: sesionCopiada.duracion_minutos,
-      rpe_estimado: sesionCopiada.rpe_estimado,
-      notas_entrenador: sesionCopiada.notas_entrenador,
-      zona_fuerza: sesionCopiada.zona_fuerza ?? null,
-      modo_fuerza: sesionCopiada.modo_fuerza ?? null,
-      zona_resistencia: sesionCopiada.zona_resistencia ?? null,
-      modo_resistencia: sesionCopiada.modo_resistencia ?? null,
-      usar_cronometro: sesionCopiada.usar_cronometro ?? null,
-      estado: 'Planificada'
-    }).select().single()
-    if (sesNueva) await copiarTareasASesion(sesionCopiada.id, sesNueva.id)
+    toast('Pegando la sesión…', 30000)
+    const r = await copiarSesiones(supabase, [destinoEn(sesionCopiada.id, f, micro.id)])
     setSesionCopiada(null)
-    await cargarDatos()
-    toast('Sesión pegada con todas sus tareas')
+    await cargarSesiones()
+    if (r.ids[0] == null) toast('No se pudo pegar la sesión: ' + r.error, 6000)
+    else toast(r.error || 'Sesión pegada con todas sus tareas', r.error ? 6000 : 2500)
     setLoading(false)
   }
 
@@ -491,31 +462,31 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const lunesOrigen = new Date(semanaCopiada)
     const lunesDest = new Date(lunesDestino)
     const diffDias = Math.round((lunesDest.getTime() - lunesOrigen.getTime()) / (1000 * 60 * 60 * 24))
+    /* La semana entera de una vez: con lib/copiar-sesion son cuatro viajes a
+       la base, sean dos sesiones o diez. Antes era una sesión detrás de otra, y
+       cada una tarea a tarea. */
+    const destinos: DestinoCopia[] = []
+    let sinSemana = 0
     for (const s of sesionesSemana) {
       const fechaOrigen = new Date(s.fecha_sesion)
       fechaOrigen.setDate(fechaOrigen.getDate() + diffDias)
       const nuevaFecha = aISO(fechaOrigen)
       const micro = getMicroDelDia(nuevaFecha)
-      if (!micro) continue
-      const { data: sesNueva2 } = await supabase.from('sesion').insert({
-        id_microciclo: micro.id,
-        disciplina: s.disciplina,
-        fecha_sesion: nuevaFecha,
-        duracion_minutos: s.duracion_minutos,
-        rpe_estimado: s.rpe_estimado,
-        notas_entrenador: s.notas_entrenador,
-        // Al pegar la semana se conserva el tipo de sesión (antes se perdía).
-        modo_fuerza: s.modo_fuerza ?? null,
-        zona_fuerza: s.zona_fuerza ?? null,
-        modo_resistencia: s.modo_resistencia ?? null,
-        zona_resistencia: s.zona_resistencia ?? null,
-        estado: 'Planificada'
-      }).select().single()
-      if (sesNueva2) await copiarTareasASesion(s.id, sesNueva2.id)
+      if (!micro) { sinSemana++; continue }
+      destinos.push(destinoEn(s.id, nuevaFecha, micro.id))
     }
+    toast('Pegando la semana…', 30000)
+    const r = await copiarSesiones(supabase, destinos)
     setSemanaCopiada(null)
-    await cargarDatos()
-    toast(`${sesionesSemana.length} sesiones pegadas con sus tareas`)
+    await cargarSesiones()
+    /* Lo que de verdad se pegó: antes decía las de la semana de origen aunque
+       alguna se hubiera quedado fuera por no tener semana en el destino. */
+    const pegadas = r.ids.filter(x => x != null).length
+    toast([
+      pegadas ? `${pegadas} ${pegadas === 1 ? 'sesión pegada' : 'sesiones pegadas'} con sus tareas` : 'No se ha pegado ninguna sesión',
+      sinSemana ? `${sinSemana} ${sinSemana === 1 ? 'cae' : 'caen'} en días sin semana asignada` : '',
+      r.error || '',
+    ].filter(Boolean).join(' · '), r.error || sinSemana ? 6000 : 2500)
     setLoading(false)
   }
 
@@ -599,7 +570,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setBrick(ses.disciplina === 'Brick' ? await cargarBrick(supabase, ses.id) : BRICK_VACIO)
     setModalTipo('editarSesion')
   }
-  const borrarSesion = async (sesId: number, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('¿Mover esta sesión a la papelera?')) return; await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId); await cargarDatos() }
+  /* Sale de la vista sin esperar a la base: no hay nada que recalcular, solo
+     quitarla. Si la base dice que no, se recarga y vuelve a su sitio. */
+  const borrarSesion = async (sesId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('¿Mover esta sesión a la papelera?')) return
+    setSesiones(prev => prev.filter(s => s.id !== sesId))
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    if (error) { toast('No se pudo mover a la papelera: ' + error.message, 5000); await cargarSesiones() }
+  }
 
   /**
    * Arrastrar una sesión a otro día.
@@ -614,15 +593,15 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     if (!s || s.fecha_sesion === fechaDestino) return
     const micro = getMicroDelDia(fechaDestino)
     const nuevoMicro = micro?.id ?? null
-    setSesiones(prev => prev.map(x => x.id === sesId
-      ? { ...x, fecha_sesion: fechaDestino, id_microciclo: nuevoMicro } : x))
     const parche: any = { fecha_sesion: fechaDestino, id_microciclo: nuevoMicro }
     // Sin microciclo hay que dejar dicho de quién es, o la sesión no aparece en
     // ninguna consulta: las libres se buscan por id_deportista.
     if (!nuevoMicro) { parche.id_deportista = Number(id); parche.origen = s.origen || 'entrenador' }
+    setSesiones(prev => prev.map(x => x.id === sesId ? { ...x, ...parche } : x))
+    /* Ya está pintada en su día nuevo, con lo mismo que va a la base: solo se
+       recarga si la base dice que no, para devolverla adonde estaba. */
     const { error } = await supabase.from('sesion').update(parche).eq('id', sesId)
-    if (error) { setMostrarToast('No se pudo mover: ' + error.message); setTimeout(() => setMostrarToast(''), 4000) }
-    await cargarDatos()
+    if (error) { toast('No se pudo mover: ' + error.message, 4000); await cargarSesiones() }
   }
 
   const guardarEdicionSesion = async (e: React.FormEvent) => {
@@ -632,7 +611,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     // El modo de resistencia solo tiene sentido con Zonas 2 (con Z1–Z7 no se usa).
     const esRes = zonas2 && DISC_RESISTENCIA.includes(sesionDisc)
     if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); setLoading(false); return }
-    await supabase.from('sesion').update({
+    const parche = {
       disciplina: sesionDisc,
       duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
       rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
@@ -641,12 +620,20 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       zona_fuerza: (esF && sesionModoFuerza === 'simple') ? (sesionZonaFuerza || null) : null,
       modo_resistencia: esRes ? sesionModoRes : null,
       zona_resistencia: (esRes && sesionModoRes === 'simple') ? (sesionZonaRes || null) : null,
-    }).eq('id', sesionEditando.id)
-    if (esB) {
-      const err = await guardarBrick(supabase, sesionEditando.id, brick)
-      if (err) { alert('Los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
     }
-    setSesionEditando(null); setBrick(BRICK_VACIO); setModalTipo(null); await cargarDatos(); setLoading(false)
+    /* La fila de la sesión y los bloques del brick, a la vez: los bloques solo
+       necesitan el id, que ya está. Y el error de la fila se mira (antes no: si
+       la base la rechazaba, el modal se cerraba como si nada). */
+    const [{ error: eSes }, errBrick] = await Promise.all([
+      supabase.from('sesion').update(parche).eq('id', sesionEditando.id),
+      esB ? guardarBrick(supabase, sesionEditando.id, brick) : Promise.resolve(null),
+    ])
+    if (eSes) { alert('No se han podido guardar los cambios de la sesión.\n\n' + eSes.message); setLoading(false); return }
+    if (errBrick) { alert('Los bloques del brick NO se han guardado.\n\n' + errBrick); setLoading(false); return }
+    /* Se pinta ya con lo cambiado; la recarga de abajo rehace el volumen. */
+    const idEditada = sesionEditando.id
+    setSesiones(prev => prev.map(s => s.id === idEditada ? { ...s, ...parche } : s))
+    setSesionEditando(null); setBrick(BRICK_VACIO); setModalTipo(null); await cargarSesiones(); setLoading(false)
   }
   // Comprueba el error, como guardarMeso. Antes no lo hacía: si el insert se
   // rechazaba, el modal se cerraba, la pantalla se recargaba y no aparecía nada ni
@@ -694,7 +681,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     // Aun así se comprueba si alguna semana cubre esa fecha; si la hay, se engancha
     // (igual que hace el deportista desde "Mis sesiones") para que cuente en el plan.
     const microDeLaFecha = sesionLibre ? getMicroDelDia(fechaSel) : microSel
-    const { data: nueva } = await supabase.from('sesion').insert({
+    const { data: nueva, error: errNueva } = await supabase.from('sesion').insert({
       id_microciclo: microDeLaFecha ? microDeLaFecha.id : null,
       ...(microDeLaFecha ? {} : { id_deportista: Number(id), origen: 'entrenador' }),
       disciplina: sesionDisc, fecha_sesion: fechaSel,
@@ -706,16 +693,24 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       modo_resistencia: esRes ? sesionModoRes : null,
       zona_resistencia: (esRes && sesionModoRes === 'simple') ? (sesionZonaRes || null) : null,
     }).select().single()
+    /* Antes, si la base no la aceptaba, el modal se cerraba y no aparecía nada:
+       un guardado que falla en silencio se lee como «esto no funciona». */
+    if (!nueva) {
+      alert('No se ha podido crear la sesión' + (esB ? ', así que el brick no se ha guardado' : '') + (errNueva ? ':\n\n' + errNueva.message : '.'))
+      setLoading(false); return
+    }
     if (esB) {
-      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setLoading(false); return }
-      const err = await guardarBrick(supabase, nueva.id, brick)
+      const err = await guardarBrick(supabase, nueva.id, brick, { recienCreada: true })
       if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
     }
+    /* Se pinta ya con lo de su fila (el brick, con la duración de sus bloques),
+       y la recarga de abajo le pone las tareas y lo confirma. */
+    setSesiones(prev => [...prev, ...conVolumen([nueva], [], [], [], [], tests)])
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas('')
     setSesionModoFuerza('simple'); setSesionZonaFuerza(''); setBrick(BRICK_VACIO)
     setSesionModoRes('simple'); setSesionZonaRes('')
     setSesionLibre(false)
-    setModalTipo(null); await cargarDatos(); setLoading(false)
+    setModalTipo(null); await cargarSesiones(); setLoading(false)
   }
 
   const guardarCompeticion = async (e: React.FormEvent) => {
@@ -732,10 +727,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     const { error } = await supabase.from('competicion').update({ prioridad: pr }).eq('id', compId)
     setLoading(false)
     if (error) {
-      setMostrarToast(/prioridad|column/i.test(error.message)
+      toast(/prioridad|column/i.test(error.message)
         ? 'Falta ejecutar supabase/competicion-prioridad.sql en la base de datos.'
-        : 'No se pudo cambiar: ' + error.message)
-      setTimeout(() => setMostrarToast(''), 5000)
+        : 'No se pudo cambiar: ' + error.message, 5000)
       return
     }
     setCompSel({ ...compSel, prioridad: pr })
@@ -798,7 +792,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
           sesiones={sesiones} competiciones={competiciones}
           fecha={desplazar} hoy={hoy}
           onCerrar={() => setDesplazar(null)}
-          onHecho={async () => { await cargarDatos(); setMostrarToast('Plan movido'); setTimeout(() => setMostrarToast(''), 3000) }} />
+          onHecho={async () => { await cargarDatos(); toast('Plan movido', 3000) }} />
       )}
 
       {/* Toast */}

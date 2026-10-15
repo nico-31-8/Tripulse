@@ -14,6 +14,139 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 15 de octubre de 2026 · Ya se puede quitar a un deportista
+
+Hasta ahora se podía añadir deportistas, pero no quitarlos. En **Deportistas**
+cada uno tiene un botón **Quitar** (también los de *Evaluados*), y en su ficha
+está al final de **Editar**. Lo que hace depende de si tiene cuenta propia:
+- **Con cuenta** (entra en la app con su usuario): se **desvincula**. Sale de tu
+  lista y de tus grupos, y te libera un hueco del cupo. Conserva su cuenta, su
+  plan y todo su historial, y puede volver contigo con un código. Tú dejas de
+  ver sus datos y su libreta de cobros, y si se lo habías abierto a un
+  director, ese acceso se cierra.
+- **Sin cuenta** (una ficha que creaste tú): se **borra entera**, con su plan,
+  sus sesiones, sus tests, su wellness, su material y sus cobros. Como no se
+  puede deshacer, hay que escribir su nombre para confirmarlo.
+
+Cuando es **el propio deportista** quien se desvincula desde su perfil, ahora
+también sale de los grupos de su entrenador y se cierran los accesos de
+director. Antes seguía apuntado en esos grupos, y si algo fallaba no lo decía.
+
+**Números que pueden cambiar:** ninguno de los atletas que se quedan. Al quitar a
+alguien, deja de contar en tu cupo y en los grupos de los que salga.
+
+---
+
+## 15 de octubre de 2026 · La app, más rápida al cargar y al guardar (y pegar sesiones ya no pierde nada)
+
+**Más rápida.** Cada pregunta a la base de datos tarda entre 0,1 y 0,3
+segundos, y varias pantallas hacían una detrás de otra, esperando cada una a
+la anterior aunque no la necesitaran. Ahora se hacen a la vez:
+- **Calendario.** Pegar una sesión era una espera por cada tarea y por cada
+  dato de cada tarea; una semana entera, más de cien. Ahora son cinco, se pegue
+  una sesión o diez. Crear, mover, editar y borrar una sesión se ve **al
+  momento**.
+- **Ficha del deportista:** de diez esperas en fila a una.
+- **Portada del deportista** (lo primero que ve al abrir la app): de hasta
+  diez a tres.
+- **Panel principal, Comunicación, Mis sesiones, lienzo de periodización,
+  vista del mesociclo, vista de la semana, la propia sesión, Carga, Volumen,
+  Material, Cobros, Zonas propias y los tests:** menos esperas cada una.
+- **Volcar el plan de un grupo:** iba persona a persona y tarea a tarea; ahora
+  se hace para todos a la vez.
+- Al abrir la app ya no se pregunta al servidor quién eres antes de empezar a
+  cargar nada.
+
+**Y al guardar, lo mismo.** Lo que más se nota:
+- **Montar una sesión.** Cada fila de la tabla eran tres o cuatro esperas, y
+  «Guardar todas» las hacía fila a fila: cinco ejercicios, quince esperas.
+  Ahora se guardan todas a la vez, y cada una sigue en su sitio.
+- **Generar la planificación en el lienzo:** un plan de seis meses eran unas
+  setenta esperas en fila; ahora, unas pocas.
+- **Crear la temporada en «Mi plan»:** de unas dieciséis a tres. **Generar
+  semanas** (las del plan, las de un mesociclo, el planificador): todas las
+  sesiones a la vez.
+- **Mandar una sesión a un grupo:** iba persona a persona (con ocho, veinticuatro
+  esperas); ahora a todos a la vez. Igual al **dirigir a pie de pista** y al
+  **corregir una sesión hecha**, que guardaba serie a serie.
+- **Bricks, plantillas, vista de la semana y de bloques:** menos esperas, y lo
+  que creas aparece al momento. La vista de la semana ya no se queda en
+  «Cargando…» cada vez que sueltas algo.
+
+**Arreglos que salieron por el camino:**
+- **Rehacer el plan en «Mi plan» borraba lo entrenado.** Buscaba las sesiones
+  del plan en el sitio equivocado, así que no encontraba ninguna: al borrar el
+  plan viejo se iban TODAS sus sesiones de verdad, también las ya hechas, y sin
+  pasar por la papelera. Ahora las hechas se quedan en el calendario (fuera del
+  plan) y las planificadas van a la papelera, que es lo que decía la pantalla.
+- **Borrar un macrociclo o un mesociclo** (en la vista de bloques y en el
+  lienzo) ya **no borra lo entrenado**: las sesiones hechas se quedan en el
+  calendario, fuera del plan, y las planificadas van a la papelera, de donde se
+  recuperan. Antes se borraba todo, y en la vista de bloques con un clic en el
+  cubo, sin preguntar; ahora pregunta. Y si el plan tenía alguna sesión de
+  fuerza ya hecha con sus series apuntadas, ni siquiera se podía: fallaba sin
+  decirlo y el plan volvía a aparecer al recargar.
+- **Borrar una tarea en la que el deportista ya apuntó series** no se puede
+  (se perdería lo que entrenó). Antes desaparecía de la pantalla y volvía al
+  recargar; ahora se queda y lo dice.
+- **Editar una tarea de fuerza que el deportista ya hizo** dejaba el ejercicio
+  repetido en la tarea. Ahora se corrige en su sitio y sus series siguen con él.
+- **Cambiar la duración de un mesociclo ya funciona** (en «Mover en el tiempo»
+  del calendario, y al generar el lienzo después de alargar o acortar un
+  bloque). Nunca había llegado a funcionar: decía que faltaba algo en la base,
+  y era verdad. Al acortar, las sesiones de las semanas que sobran se sueltan
+  del plan o van a la papelera, como elijas; nunca se borran.
+- **El entrenador de un grupo ya puede mover el plan del grupo y cambiarle la
+  duración.** Hasta ahora le decía «sin permiso».
+- **Guardados que fallaban callados** ahora avisan: crear una sesión en la vista
+  de semana o de bloques, editarla en el calendario, crear una semana o editar
+  un macrociclo, borrar en el lienzo.
+- **Devolver una sesión al pool:** si no se podía mandar a la papelera, la
+  unidad volvía igual y quedaban las dos, la sesión y su unidad. Ya no.
+- **Bricks y plantillas:** si no se podían quitar los bloques o las tareas de
+  antes, los nuevos se sumaban encima. Ahora se para y lo dice.
+- **Una tarea nueva que no se terminaba de guardar** (sin su ejercicio o sin
+  sus metros) se quedaba vacía en la sesión, a la vista del atleta, y al
+  reintentarlo salía otra. Ahora se quita la que quedó a medias.
+- **Un dato mal tecleado ya no dispara la barra de carga.** Una tarea de
+  «4 × 1.000.000 m» de carrera —mil kilómetros por serie; se quería poner
+  1.000 m— contaba como unas 240 horas y ponía su semana del lienzo en 134.359,
+  con las de al lado en 1.500. Ahora una tarea que duraría más de un día entero
+  no se suma, y se avisa: punto ámbar en el lienzo y aviso en la sesión. Y el
+  editor pregunta antes de guardar una distancia por serie desproporcionada
+  (más de 60 km corriendo, 15 nadando o 400 en bici).
+
+**Pegar sesiones ya no pierde nada.** Al copiar y pegar en el calendario se
+quedaban por el camino:
+- la **zona propia** de cada tarea (llegaba como la zona de la app que se
+  llamase igual);
+- la **técnica** de las tareas de técnica;
+- el **test** de un día de test;
+- los **valores por defecto** de la sesión, las **transiciones** de un brick y
+  la **nutrición**.
+
+Ahora viaja todo lo que prescribiste. Y si algo no se puede pegar, lo dice: antes
+fallaba en silencio.
+
+En la **vista del mesociclo**, pegar una sesión que el atleta ya había hecho
+copiaba también lo que hizo —su RPE, su pulso, sus metros reales, sus
+comentarios— a la sesión nueva. Ya no: la copia es un encargo nuevo.
+
+**Números que pueden cambiar:**
+- La **duración estimada** («~45 min») de las sesiones con **zonas propias**,
+  en el calendario, en la portada del deportista y en *Mis sesiones*: ahora
+  sale del ritmo de SU zona. Antes se calculaba con el de la zona de la app que
+  se llamase igual. Las sesiones con zonas de la app no cambian.
+- El **orden de las zonas** en las casillas del calendario, cuando son zonas
+  propias: ahora van por su intensidad de verdad.
+- Al pegar una semana, el aviso dice **cuántas se pegaron de verdad**: antes
+  contaba también las que caían en días sin semana asignada y no se pegaban.
+- Lo que va más rápido al guardar no cambia ningún número: solo tarda menos.
+- Una sesión con una tarea imposible (más de un día entero) baja su duración
+  estimada y su carga: esa tarea deja de contarse hasta que se corrija.
+
+---
+
 ## 15 de octubre de 2026 · Clasificaciones de zonas: tus zonas, de hito en hito
 
 **Qué es.** En *Zonas propias* ya no hay un solo montón de zonas por deporte:

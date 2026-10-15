@@ -117,20 +117,28 @@ export default function DirigirGrupo({ params }: { params: Promise<{ id: string 
     const cerrado = e.modo === 'corriendo' ? pararGrupo(e, Date.now()) : e
     setE(cerrado)
 
-    for (const f of conSesion) {
-      if (f.idTarea == null) continue
+    /* CADA ATLETA POR SU LADO Y A LA VEZ: iban uno detrás de otro, tres
+       esperas cada uno, con el grupo entero esperando a pie de pista. Dentro de
+       cada atleta el orden sigue: borrar lo anotado antes, escribir lo nuevo y
+       solo entonces darle la sesión por hecha. El aviso, del primero de la
+       lista que falle. */
+    const fallos = await Promise.all(conSesion.map(async f => {
+      if (f.idTarea == null) return null
       const filas = filasDeAtleta(cerrado, f.id_deportista, f.idTarea)
-      if (!filas.length) continue
+      if (!filas.length) return null
       await supabase.from('series_realizadas').delete()
         .eq('id_tarea', f.idTarea).eq('anotado_por', 'entrenador')
       const { error } = await supabase.from('series_realizadas').insert(filas)
-      if (error) {
-        alert('No se han podido guardar las series de ' + f.nombre + ': ' + error.message
-          + '\n\n¿Está corrido supabase/dirigir-sesion.sql?')
-        setGuardando(false)
-        return
-      }
+      if (error) return { nombre: f.nombre, error }
       await supabase.from('sesion').update({ estado: 'Realizada' }).eq('id', f.idSesion)
+      return null
+    }))
+    const fallo = fallos.find(Boolean)
+    if (fallo) {
+      alert('No se han podido guardar las series de ' + fallo.nombre + ': ' + fallo.error.message
+        + '\n\n¿Está corrido supabase/dirigir-sesion.sql?')
+      setGuardando(false)
+      return
     }
     setGuardando(false)
     router.push('/grupo/' + id + '/dia')

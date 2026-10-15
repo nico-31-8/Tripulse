@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { hoyISO, lunesDe } from '@/lib/fechas'
 import { cadenaDeMesos, ajustarCadena, type EstadoReal, type MesoDeCadena } from '@/lib/plan-cadena'
 import { serieForma, formaFiable, calcularACWR, estadoTSB, estadoACWR, HISTORIA_MINIMA_FORMA } from '@/lib/panel-metricas'
-import { cargaReal, estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
+import { cargaReal, duracionesDeAnidadas, minutosCarga, TAREAS_PARA_DURACION } from '@/lib/duracion-carga'
 import type { ResultadoDuracion } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { sesionLarga } from '@/lib/progresion'
@@ -56,19 +56,19 @@ export default function PlanCadena({ dep, mesos, horasReferencia, distancia, com
          microciclo lleva su `id_deportista` desde la Fase A, así que se pide por
          él. Y las sesiones, también: «las de su plan» + «las libres» eran dos
          consultas para la misma respuesta. */
+      /* Y TODO EN UNA RONDA: las tareas de esas sesiones vienen dentro de ellas
+         (para estimar su duración) y el wellness va a la vez. Eran tres rondas. */
       const sel = 'id, fecha_sesion, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado'
-      const [{ data: micros }, { data: sesRaw }] = await Promise.all([
+      const [{ data: micros }, { data: sesRaw }, wellQ] = await Promise.all([
         supabase.from('microciclo').select('id, fecha_inicio, ua_planificada').eq('id_deportista', dep.id),
-        supabase.from('sesion').select(sel).eq('id_deportista', dep.id)
+        supabase.from('sesion').select(sel + ', ' + TAREAS_PARA_DURACION).eq('id_deportista', dep.id)
           .gte('fecha_sesion', desde).or('eliminada.is.null,eliminada.eq.false'),
-      ])
-      const mios = micros || []
-      const ses: any[] = sesRaw || []
-      const [dur, wellQ] = await Promise.all([
-        ses.length ? estimarDuraciones(supabase, ses.map(s => s.id), {}) : Promise.resolve({} as Record<number, ResultadoDuracion>),
         supabase.from('wellness').select('*').eq('id_deportista', dep.id)
           .gte('fecha', sumarDias(hoy, -45)).order('fecha', { ascending: false }),
       ])
+      const mios = micros || []
+      const ses: any[] = sesRaw || []
+      const dur: Record<number, ResultadoDuracion> = duracionesDeAnidadas(ses, {})
 
       // Carga de lo REALIZADO por día: la carga que no se hizo no fatiga.
       const hechas = ses.filter(s => s.estado === 'Realizada')

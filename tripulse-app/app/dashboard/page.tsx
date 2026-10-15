@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { sugerenciasDelAtleta } from '@/lib/sugerencias-entrenador'
-import { cargarKmDeMateriales, comoSeLlama, type Material } from '@/lib/material'
+import { kmDeMaterialesConUsos, USOS_DEL_MATERIAL, comoSeLlama, type Material, type KmDeMaterial } from '@/lib/material'
 import { usuarioActual } from '@/lib/sesion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
@@ -84,16 +84,25 @@ export default function Dashboard() {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       setUserId(user.id)
-      const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
-      setPerfil(p)
       supabase.rpc('soy_plataforma').then(({ data }) => setEsPlataforma(!!data))
       supabase.rpc('soy_director').then(({ data }) => setEsDirector(!!data))
       const esp = getEspacio()
       setEspacioPanel(esp)
-      if (esp) await cargarRoster(esp)
-      const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre')
+      /* El perfil, el roster del espacio, los deportistas y si alguno tiene plan
+         no dependen unos de otros: iban en fila, cuatro esperas antes de pintar
+         la entrada. El plan se pregunta por los deportistas del entrenador con
+         un cruce, sin esperar a tener sus ids; es lo mismo que antes, que
+         filtraba por esa lista (ver el checklist de primeros pasos). */
+      const [{ data: p }, , { data: deps }, { data: macros }] = await Promise.all([
+        supabase.from('perfiles').select('*').eq('id', user.id).single(),
+        esp ? cargarRoster(esp) : null,
+        supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false).order('nombre'),
+        supabase.from('macrociclo').select('id, deportista!inner(id_entrenador, solo_test)')
+          .eq('deportista.id_entrenador', entrenadorEfectivo(user.id)).eq('deportista.solo_test', false).limit(1),
+      ])
+      setPerfil(p)
       setDeportistas(deps || [])
-      // ¿Alguno de sus deportistas ya tiene plan? (para el checklist de primeros pasos)
+      setTienePlan(!!macros?.length)
       const depIds = (deps || []).map((d: any) => d.id)
       /* Lo que tiene sin revisar en Comunicación. Sin await: es un aviso, no
          puede retrasar ni tumbar el panel si falla. */
@@ -104,10 +113,6 @@ export default function Dashboard() {
          enseguida y los avisos aparecen cuando llegan. Si falla, un Map vacío
          para que el panel del atleta sepa que tiene que pedir los suyos. */
       cargarDatosDeVarios(supabase, depIds).then(setDatosEquipo).catch(() => setDatosEquipo(new Map()))
-      if (depIds.length) {
-        const { data: macros } = await supabase.from('macrociclo').select('id').in('id_deportista', depIds).limit(1)
-        setTienePlan(!!macros?.length)
-      }
       setCargando(false)
       // Si venimos de un módulo con un atleta activo, abrimos su panel directamente.
       // (En un login fresco el activo está vacío → se muestra el selector.)
@@ -175,6 +180,20 @@ export default function Dashboard() {
        mesociclo pasaba antes por el macrociclo solo para acotar: con
        `mesociclo.id_deportista` (Fase A) sobra ese salto. */
     const hoyStr = hoyISO()
+    /* EL MATERIAL QUE TOCA CAMBIAR. Hasta ahora ese aviso solo existía si el
+       entrenador entraba en la pestaña Material a mirarlo; aquí sale donde ya
+       mira. Se piden aparte y SOLO del atleta activo: la cuenta de kilómetros
+       son tres viajes más, y el panel mira a uno, no a los veinte. Se lanza YA,
+       a la vez que lo de abajo (iba detrás, una ronda más), y lo de abajo se
+       pinta sin esperarlo. */
+    const pMaterial = Promise.resolve(supabase.from('material').select('*, ' + USOS_DEL_MATERIAL)
+      .eq('id_deportista', dep.id).eq('jubilado', false))
+      .then(async ({ data: mats }) => {
+        const { materiales: lista, km } = await kmDeMaterialesConUsos(supabase, mats)
+        return { lista, km }
+      })
+      // Sin la cuenta de kilómetros el panel sigue: solo falta ese aviso.
+      .catch(() => ({ lista: [] as Material[], km: {} as Record<number, KmDeMaterial> }))
     const [ts, wells, comp, mesos, an] = await Promise.all([
       supabase.from('tarea_entrenador').select('*').eq('id_deportista', dep.id)
         .order('hecho').order('created_at', { ascending: false }),
@@ -195,14 +214,8 @@ export default function Dashboard() {
     setWellSpark(listaWell.slice(0, 8).reverse().map((w: any) => bienestar(w.score_wellness) ?? 0))
     setProximaComp(comp.data?.[0] || null)
 
-    /* EL MATERIAL QUE TOCA CAMBIAR. Hasta ahora ese aviso solo existía si el
-       entrenador entraba en la pestaña Material a mirarlo; aquí sale donde ya
-       mira. Se piden aparte y SOLO del atleta activo: la cuenta de kilómetros
-       son tres viajes más, y el panel mira a uno, no a los veinte. */
-    const { data: mats } = await supabase.from('material').select('*')
-      .eq('id_deportista', dep.id).eq('jubilado', false)
-    const kmMat = await cargarKmDeMateriales(supabase, (mats || []) as Material[])
-    const materialSug = ((mats || []) as Material[]).map(m => {
+    const { lista: mats, km: kmMat } = await pMaterial
+    const materialSug = mats.map(m => {
       const k = kmMat[m.id]
       return {
         nombre: comoSeLlama(m),

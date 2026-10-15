@@ -7,9 +7,8 @@
 // cada uno recarga la sesión entera antes de dejarte pulsar el siguiente. Montar
 // una sesión de fuerza es sobre todo esperar.
 //
-// QUÉ HACE ESTO. Recorre las filas EN ORDEN y las escribe una detrás de otra.
-// El botón de cada fila se queda donde está: quien quiera guardar solo una,
-// guarda solo una.
+// QUÉ HACE ESTO. Escribe todas las filas listas de una vez. El botón de cada
+// fila se queda donde está: quien quiera guardar solo una, guarda solo una.
 //
 // NO ES UNA TRANSACCIÓN, Y NO SE FINGE QUE LO SEA. Supabase desde el navegador
 // no las tiene: si la tercera falla, las dos primeras ya están escritas. Así que
@@ -18,9 +17,12 @@
 // cuando entraron 3 sería el peor final posible: el entrenador cierra la sesión
 // creyendo que está montada.
 //
-// EN ORDEN Y NO A LA VEZ, a propósito. El orden de las tareas dentro de la
-// sesión es el orden en que se escriben, y una sesión de fuerza no se hace en
-// cualquier orden. Lanzarlas en paralelo iría más rápido y llegarían barajadas.
+// A LA VEZ, Y CADA UNA EN SU SITIO. Hasta el 15-10-2026 iban una detrás de
+// otra para que no llegaran barajadas, pero el sitio de una tarea no lo da el
+// momento en que llega a la base: lo da su número de `orden`, que se reparte
+// AQUÍ, antes de escribir nada y en el orden de las filas, y que es lo que mira
+// cada pantalla para colocarlas (todas ordenan por `orden`). Cinco ejercicios
+// eran quince esperas en fila; ahora son las de uno solo.
 
 import type { FilaFuerza, FilaResistencia } from './copiar-tarea'
 import { filaCardioCompleta } from './cardio-fuerza'
@@ -97,40 +99,52 @@ export function cuantasListas<T>(filas: T[], estado: (f: T) => Estado): number {
 }
 
 /**
- * Escribe las filas listas, una detrás de otra.
+ * Escribe las filas listas, todas a la vez, cada una con su número de orden.
  *
  * EL ORDEN ARRANCA DESPUÉS DE LAS TAREAS QUE YA TIENE LA SESIÓN. Volver a
  * empezar en 1 dejaría dos tareas peleándose por el mismo puesto, y las dos
  * vistas las pintarían en un orden distinto cada una (ver lib/tareas-orden).
  *
  * El contador solo avanza cuando se CREA algo: una fila que edita una tarea que
- * ya existe conserva su sitio y no gasta número.
+ * ya existe conserva su sitio y no gasta número. Quién crea se sabe antes de
+ * escribir —es la que no trae `idTarea`, que es justo lo que contestan los
+ * `escribir` de la tabla—, y por eso los números se pueden repartir de
+ * antemano. Una que falla deja su número sin usar: el hueco no descoloca nada,
+ * porque se ordena por el número y no contando.
  */
 export async function guardarEnOrden<T>(
   filas: T[],
   yaHay: number,
   estado: (f: T) => Estado,
   escribir: (fila: T, orden: number) => Promise<{ error?: string; creada?: boolean }>,
+  creara: (fila: T) => boolean = (f: T) => !(f as { idTarea?: unknown } | null)?.idTarea,
 ): Promise<Parte<T>> {
   const parte: Parte<T> = { guardadas: [], fallidas: [], incompletas: [], vacias: [] }
   let orden = (yaHay || 0) + 1
 
+  const aEscribir: { i: number; fila: T; orden: number }[] = []
   for (let i = 0; i < (filas || []).length; i++) {
     const fila = filas[i]
     const e = estado(fila)
     if (e === 'vacia') { parte.vacias.push(i); continue }
     if (e === 'incompleta') { parte.incompletas.push(i); continue }
-
-    let r: { error?: string; creada?: boolean }
-    try {
-      r = await escribir(fila, orden)
-    } catch (err: any) {
-      r = { error: err?.message || 'Error inesperado' }
-    }
-
-    if (r?.error) parte.fallidas.push({ i, fila, error: r.error })
-    else { parte.guardadas.push(i); if (r?.creada !== false) orden++ }
+    aEscribir.push({ i, fila, orden })
+    if (creara(fila)) orden++
   }
+
+  const resultados = await Promise.all(aEscribir.map(async ({ fila, orden: n }) => {
+    try {
+      return await escribir(fila, n)
+    } catch (err: any) {
+      return { error: err?.message || 'Error inesperado' }
+    }
+  }))
+
+  resultados.forEach((r, k) => {
+    const { i, fila } = aEscribir[k]
+    if (r?.error) parte.fallidas.push({ i, fila, error: r.error })
+    else parte.guardadas.push(i)
+  })
   return parte
 }
 

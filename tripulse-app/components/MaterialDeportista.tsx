@@ -19,7 +19,7 @@ import { supabase } from '@/lib/supabase'
 import { hoyISO, fechaLarga } from '@/lib/fechas'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import {
-  kmDeMaterial, cargarKmDeMateriales, comoSeLlama,
+  kmDeMaterial, kmDesdeEnlaces, separarUsos, USOS_DEL_MATERIAL, comoSeLlama,
   type Material, type KmDeMaterial,
 } from '@/lib/material'
 
@@ -60,14 +60,16 @@ export default function MaterialDeportista({ idDeportista, soyYo = false }: {
   const { aviso, mal, ok } = useAviso(5)
 
   const cargar = useCallback(async () => {
+    /* Con sus usos DENTRO: eran una consulta más, en fila, antes de poder
+       contar los kilómetros. */
     const { data } = await supabase
-      .from('material').select('*').eq('id_deportista', idDeportista)
+      .from('material').select('*, ' + USOS_DEL_MATERIAL).eq('id_deportista', idDeportista)
       .order('jubilado').order('tipo').order('nombre')
-    const lista = (data || []) as Material[]
+    const { materiales: lista, enlaces } = separarUsos(data)
     setMateriales(lista)
     /* Los kilómetros van en su propio viaje: la lista se pinta antes y el
        número aparece cuando llega, en vez de dejar la pestaña en blanco. */
-    setKm(await cargarKmDeMateriales(supabase, lista))
+    setKm(await kmDesdeEnlaces(supabase, lista, enlaces))
     setCargando(false)
   }, [idDeportista])
 

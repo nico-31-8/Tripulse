@@ -38,6 +38,7 @@ import IconoDisciplina from '@/components/IconoDisciplina'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
 import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
+import { borrarPlan, borrarMesociclo, resumenDelBorrado } from '@/lib/plan-rehacer'
 import { colorDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
@@ -129,6 +130,16 @@ function semLabel(fi: string, i: number): string {
     d.setDate(d.getDate() + i * 7)
     return d.getDate() + ' ' + MESES_SEM[d.getMonth()]
   } catch { return 'S' + (i + 1) }
+}
+
+/* Como Promise.all, pero si algo falla espera a que termine lo demás antes de
+   lanzar el primer error: con Promise.all, el aviso saldría con escrituras
+   todavía en marcha por detrás. */
+async function todasOFallo<T>(promesas: Promise<T>[]): Promise<T[]> {
+  const r = await Promise.allSettled(promesas)
+  const mal = r.find((x): x is PromiseRejectedResult => x.status === 'rejected')
+  if (mal) throw mal.reason
+  return r.map(x => (x as PromiseFulfilledResult<T>).value)
 }
 
 function semFecha(fi: string, i: number): string {
@@ -388,15 +399,38 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   // Carga inicial — detecta si hay ciclos existentes
   useEffect(() => {
     const init = async () => {
-      const { data: depData } = await supabase.from('deportista').select('*').eq('id', id).single()
-      setDep(depData)
-      // Los tests son solo para la guía de zonas: sin ellos enseña porcentajes,
-      // con ellos los ritmos reales de este atleta. Que falten no rompe nada.
-      const [tCarr, tNat, tCic] = await Promise.all([
+      /* LAS COMPETICIONES SE PIDEN AL ABRIR, siempre.
+
+         Antes solo se recargaban DESPUES de crear o borrar una desde esta
+         misma pantalla, asi que al entrar la lista arrancaba vacia y se
+         quedaba vacia: el codigo que pinta la bandera existia y funcionaba,
+         pero nunca tenia nada que pintar. Una carrera creada desde el
+         calendario no aparecia aqui jamas.
+
+         Va en el efecto de montaje y no dentro de `cargarExistente` porque
+         aquella solo corre con ?editar=1, y al lienzo se llega por tres
+         caminos (plan nuevo, elegir uno, y editar). Sin esperarla: no
+         depende de nada de lo de abajo. */
+      recargarComps()
+
+      /* UNA RONDA en vez de tres en fila: el deportista, sus tests y lo que ya
+         tiene planificado solo dependen del id de la dirección. */
+      const [{ data: depData }, tCarr, tNat, tCic, { data: macs }, { data: bor }] = await Promise.all([
+        supabase.from('deportista').select('*').eq('id', id).single(),
+        // Los tests son solo para la guía de zonas: sin ellos enseña porcentajes,
+        // con ellos los ritmos reales de este atleta. Que falten no rompe nada.
         supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
         supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+        /* SE PREGUNTA POR LAS DOS COSAS: el plan confirmado y el dibujo
+           guardado. Antes solo por el primero, y un dibujo sin «Generar
+           planificación» detrás no existía para esta pantalla. */
+        supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio'),
+        supabase.from('dibujo_borrador')
+          .select('fecha_inicio, total_semanas, macros, mesos, updated_at')
+          .eq('id_deportista', id).maybeSingle(),
       ])
+      setDep(depData)
       /* El sexo entra aquí porque de él sale el ritmo de referencia cuando al
          atleta le faltan los tests. Sin él se usa el punto medio de los dos. */
       const t = {
@@ -409,28 +443,6 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       // leerlos antes de que React lo haya aplicado.
       testsRef.current = t
 
-      /* LAS COMPETICIONES SE PIDEN AL ABRIR, siempre.
-
-         Antes solo se recargaban DESPUES de crear o borrar una desde esta
-         misma pantalla, asi que al entrar la lista arrancaba vacia y se
-         quedaba vacia: el codigo que pinta la bandera existia y funcionaba,
-         pero nunca tenia nada que pintar. Una carrera creada desde el
-         calendario no aparecia aqui jamas.
-
-         Va en el efecto de montaje y no dentro de `cargarExistente` porque
-         aquella solo corre con ?editar=1, y al lienzo se llega por tres
-         caminos (plan nuevo, elegir uno, y editar). */
-      recargarComps()
-
-      /* SE PREGUNTA POR LAS DOS COSAS: el plan confirmado y el dibujo guardado.
-         Antes solo por el primero, y un dibujo sin «Generar planificación»
-         detrás no existía para esta pantalla. */
-      const [{ data: macs }, { data: bor }] = await Promise.all([
-        supabase.from('macrociclo').select('*').eq('id_deportista', id).order('fecha_inicio'),
-        supabase.from('dibujo_borrador')
-          .select('fecha_inicio, total_semanas, macros, mesos, updated_at')
-          .eq('id_deportista', id).maybeSingle(),
-      ])
       if (hayDibujoGuardado(bor)) setBorradorPendiente(bor)
       if (macs && macs.length > 0) setMacrosExistentes(macs)
 
@@ -1065,11 +1077,50 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     if (!fechaInicio) { avisarLienzo('El lienzo no tiene fecha de inicio.'); return }
     if (macros.length === 0) { avisarLienzo('Dibuja al menos un macrociclo antes de generar la planificación.'); return }
     setGenerando(true)
-    // Acortar un bloque saca sesiones del plan. Se cuentan para decirlo al
-    // final: es un cambio en los datos del atleta, no un detalle de dibujo.
-    let sueltas = 0
     try {
-      for (const mac of macros) {
+      /* Lo que la base tiene de cada mesociclo, de UNA vez: hace falta para
+         saber si el bloque se ha movido o ha cambiado de tamaño en el lienzo
+         (ver más abajo), y se pedía uno a uno, justo antes de tocarlo. */
+      const { data: mesosBd } = await supabase.from('mesociclo')
+        .select('id, fecha_inicio, duracion_semanas').eq('id_deportista', Number(id))
+      const enBdDe = new Map(((mesosBd || []) as { id: number; fecha_inicio: string; duracion_semanas: number | null }[])
+        .map(m => [m.id, m]))
+
+      /* Las semanas de un mesociclo: las que ya existen se actualizan y las que
+         faltan se crean, todas a la vez y las nuevas de golpe. Se buscaba cada
+         semana por su fecha, una a una, y luego se escribía: dos esperas por
+         semana, con un plan de seis meses delante. `existentes` se lee DESPUÉS
+         de mover el bloque, así que las fechas ya son las nuevas. */
+      const sincronizarSemanas = async (meDbId: number, me: MesoD, existentes: { id: number; fecha_inicio: string }[]) => {
+        const porFecha = new Map(existentes.map(m => [String(m.fecha_inicio).slice(0, 10), m.id]))
+        const cambios: PromiseLike<unknown>[] = []
+        const nuevas: Record<string, unknown>[] = []
+        // Actualizar microciclos — NUNCA borrar sesiones ni tareas
+        for (let wi = me.si; wi <= me.sf; wi++) {
+          const sem = sems.find(s => s.i === wi)
+          const fechaMicro = semFecha(fechaInicio, wi)
+          const datos = {
+            objetivo: 'Semana ' + (wi - me.si + 1) + ' — ' + me.nombre,
+            tipo: tipoMicrociclo(sem?.tipo),
+            ua_planificada: sem?.ua || null,
+          }
+          const yaEsta = porFecha.get(fechaMicro)
+          // Si ya existe, solo se actualizan UA y tipo — no se tocan sesiones.
+          if (yaEsta) cambios.push(supabase.from('microciclo').update(datos).eq('id', yaEsta))
+          // Y si no, se crea sin sesiones.
+          else nuevas.push({ id_mesociclo: meDbId, ...datos, fecha_inicio: fechaMicro, duracion_dias: 7 })
+        }
+        await Promise.all([...cambios, nuevas.length ? supabase.from('microciclo').insert(nuevas) : null])
+      }
+
+      /* LOS MACROCICLOS A LA VEZ, y dentro de cada uno sus mesociclos a la vez:
+         cada uno escribe lo suyo y ninguno toca lo de otro (mover y
+         redimensionar trabajan sobre UN mesociclo, con arrastrar a false). Iba
+         todo en fila, y un plan de seis meses eran cerca de setenta esperas una
+         detrás de otra. Si algo falla se espera a que acabe lo demás antes de
+         decirlo: avisar con escrituras corriendo todavía por detrás dejaría la
+         pantalla diciendo una cosa y la base haciendo otra. */
+      const porMacro = await todasOFallo(macros.map(async (mac): Promise<number> => {
         const fechaMac = semFecha(fechaInicio, mac.si)
         const durMac = mac.sf - mac.si + 1
         let macDbId = mac.dbId
@@ -1086,15 +1137,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
             id_deportista: Number(id), objetivo: mac.nombre,
             fecha_inicio: fechaMac, duracion_semanas: durMac, tipo_periodizacion: mac.tipo || null
           }).select().single()
-          if (!md) continue
+          if (!md) return 0
           macDbId = md.id
           setMacros(p => p.map(m => m.id === mac.id ? { ...m, dbId: md.id } : m))
         }
 
-        for (const me of mesos.filter(m => m.macroId === mac.id)) {
+        const porMeso = await todasOFallo(mesos.filter(m => m.macroId === mac.id).map(async (me): Promise<number> => {
           const fechaMe = semFecha(fechaInicio, me.si)
           const durMe = me.sf - me.si + 1
           let meDbId = me.dbId
+          // Acortar un bloque saca sesiones del plan. Se cuentan para decirlo al
+          // final: es un cambio en los datos del atleta, no un detalle de dibujo.
+          let sueltas = 0
 
           if (meDbId) {
             /* ANTES DE TOCAR LA FILA: si el bloque se ha movido o ha cambiado de
@@ -1112,8 +1166,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                `arrastrar: false` en el cambio de duración porque el lienzo coloca
                cada mesociclo en su sitio de forma absoluta: si además dejáramos
                que la función empujase a los posteriores, se moverían dos veces. */
-            const { data: enBd } = await supabase.from('mesociclo')
-              .select('fecha_inicio, duracion_semanas').eq('id', meDbId).single()
+            const enBd = enBdDe.get(meDbId)
             if (enBd) {
               const delta = diasEntre(String(enBd.fecha_inicio).slice(0, 10), fechaMe)
               if (delta !== 0) {
@@ -1127,50 +1180,33 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
               }
             }
             // La fecha y la duración ya las han dejado bien las funciones de
-            // arriba; esto es el nombre, el tipo y la intensidad.
-            await supabase.from('mesociclo').update({
-              objetivo: me.nombre, tipo: me.tipo,
-              fecha_inicio: fechaMe, duracion_semanas: durMe, intensidad_relativa: me.intensidad
-            }).eq('id', meDbId)
+            // arriba; esto es el nombre, el tipo y la intensidad. Y a la vez,
+            // sus semanas tal como han quedado después de moverlo.
+            const [, { data: existentes }] = await Promise.all([
+              supabase.from('mesociclo').update({
+                objetivo: me.nombre, tipo: me.tipo,
+                fecha_inicio: fechaMe, duracion_semanas: durMe, intensidad_relativa: me.intensidad
+              }).eq('id', meDbId),
+              supabase.from('microciclo').select('id, fecha_inicio').eq('id_mesociclo', meDbId),
+            ])
+            await sincronizarSemanas(meDbId, me, existentes || [])
           } else {
             // Crear meso nuevo
             const { data: med } = await supabase.from('mesociclo').insert({
               id_macrociclo: macDbId, objetivo: me.nombre, tipo: me.tipo,
               fecha_inicio: fechaMe, duracion_semanas: durMe, intensidad_relativa: me.intensidad
             }).select().single()
-            if (!med) continue
-            meDbId = med.id
+            if (!med) return 0
+            meDbId = med.id as number
             setMesos(p => p.map(m => m.id === me.id ? { ...m, dbId: med.id } : m))
+            // Recién creado no tiene semanas: todas son nuevas.
+            await sincronizarSemanas(meDbId, me, [])
           }
-
-          // Actualizar microciclos — NUNCA borrar sesiones ni tareas
-          for (let wi = me.si; wi <= me.sf; wi++) {
-            const sem = sems.find(s => s.i === wi)
-            const fechaMicro = semFecha(fechaInicio, wi)
-            // Buscar si ya existe un microciclo para esta fecha
-            const { data: microExist } = await supabase.from('microciclo')
-              .select('id').eq('id_mesociclo', meDbId).eq('fecha_inicio', fechaMicro).single()
-            if (microExist) {
-              // Solo actualizar UA y tipo — no tocar sesiones
-              await supabase.from('microciclo').update({
-                objetivo: 'Semana ' + (wi - me.si + 1) + ' — ' + me.nombre,
-                tipo: tipoMicrociclo(sem?.tipo),
-                ua_planificada: sem?.ua || null
-              }).eq('id', microExist.id)
-            } else {
-              // Crear microciclo nuevo sin sesiones
-              await supabase.from('microciclo').insert({
-                id_mesociclo: meDbId,
-                objetivo: 'Semana ' + (wi - me.si + 1) + ' — ' + me.nombre,
-                tipo: tipoMicrociclo(sem?.tipo),
-                fecha_inicio: fechaMicro,
-                duracion_dias: 7,
-                ua_planificada: sem?.ua || null
-              })
-            }
-          }
-        }
-      }
+          return sueltas
+        }))
+        return porMeso.reduce((a, n) => a + n, 0)
+      }))
+      const sueltas = porMacro.reduce((a, n) => a + n, 0)
       setGenerado(true)
       setModoEdicion(true)
       /* Lo que acaba de escribirse ES el dibujo, así que la foto del plan pasa
@@ -1199,17 +1235,18 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     // Si ya existe en BD (dbId), borrarlo en cascada. Es DESTRUCTIVO (se lleva mesos, semanas
     // y SESIONES), así que se confirma. Antes solo se quitaba del canvas y reaparecía al recargar.
     if (mac?.dbId) {
-      if (!confirm('¿Borrar este macrociclo y TODO su contenido (mesociclos, semanas y sesiones)? No se puede deshacer.')) return
-      const { data: mesosDb } = await supabase.from('mesociclo').select('id').eq('id_macrociclo', mac.dbId)
-      if (mesosDb?.length) {
-        const { data: microsDb } = await supabase.from('microciclo').select('id').in('id_mesociclo', mesosDb.map(m => m.id))
-        if (microsDb?.length) {
-          await supabase.from('sesion').delete().in('id_microciclo', microsDb.map(m => m.id))
-          await supabase.from('microciclo').delete().in('id_mesociclo', mesosDb.map(m => m.id))
-        }
-        await supabase.from('mesociclo').delete().eq('id_macrociclo', mac.dbId)
-      }
-      await supabase.from('macrociclo').delete().eq('id', mac.dbId)
+      if (!confirm('¿Borrar este macrociclo con sus mesociclos y semanas?\n\n'
+        + 'Las sesiones ya hechas se quedan en el calendario, fuera del plan. Las planificadas van a la papelera, de donde se pueden recuperar.')) return
+      /* LO ENTRENADO NO SE BORRA (lib/plan-rehacer, lo mismo que «Rehacer el
+         plan»): las sesiones hechas se sueltan del plan y las planificadas van
+         a la papelera; después la base se lleva los mesociclos y las semanas en
+         cascada. Antes se borraba todo, y con una sesión de fuerza ya hecha ni
+         se podía —sus series cuelgan del ejercicio y la base paraba el
+         borrado—: fallaba sin decirlo y el macrociclo volvía al recargar. */
+      const r = await borrarPlan(supabase, Number(id), mac.dbId)
+      if (r.error) { alert('No se ha podido borrar el macrociclo: ' + r.error); return }
+      setSesionesProg(prev => prev.filter(s => !r.idsPapelera.includes(s.id)))
+      okLienzo(resumenDelBorrado(r))
     }
     setMacros(p => p.filter(m => m.id !== macId))
     setMesos(p => p.filter(m => m.macroId !== macId))
@@ -1217,13 +1254,13 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const borrarMeso = async (mesoId: string) => {
     const me = mesos.find(m => m.id === mesoId)
     if (me?.dbId) {
-      if (!confirm('¿Borrar este mesociclo y sus semanas y sesiones? No se puede deshacer.')) return
-      const { data: microsDb } = await supabase.from('microciclo').select('id').eq('id_mesociclo', me.dbId)
-      if (microsDb?.length) {
-        await supabase.from('sesion').delete().in('id_microciclo', microsDb.map(m => m.id))
-        await supabase.from('microciclo').delete().eq('id_mesociclo', me.dbId)
-      }
-      await supabase.from('mesociclo').delete().eq('id', me.dbId)
+      if (!confirm('¿Borrar este mesociclo con sus semanas?\n\n'
+        + 'Las sesiones ya hechas se quedan en el calendario, fuera del plan. Las planificadas van a la papelera, de donde se pueden recuperar.')) return
+      // Lo mismo que el macrociclo, con un solo mesociclo.
+      const r = await borrarMesociclo(supabase, Number(id), me.dbId)
+      if (r.error) { alert('No se ha podido borrar el mesociclo: ' + r.error); return }
+      setSesionesProg(prev => prev.filter(s => !r.idsPapelera.includes(s.id)))
+      okLienzo(resumenDelBorrado(r))
     }
     setMesos(p => p.filter(m => m.id !== mesoId))
   }
@@ -1347,7 +1384,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
   const uaPorSemana = sems.map(s => {
     const fechaSem = semFecha(fechaInicio, s.i)
-    if (!fechaSem) return { plan: s.ua || 0, prog: 0, real: 0, sesiones: 0, sinContenido: 0, conReferencia: 0, enBici: 0 }
+    if (!fechaSem) return { plan: s.ua || 0, prog: 0, real: 0, sesiones: 0, sinContenido: 0, conReferencia: 0, enBici: 0, imposibles: 0 }
     const lunes = new Date(fechaSem + 'T12:00:00')
     const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6)
     const sessSem = sesionesProg.filter(se => {
@@ -1371,7 +1408,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       !se.duracion_real && !se.duracion_minutos && !duraciones[se.id]?.estimable).length
     const conReferencia = sessSem.filter(se => duraciones[se.id]?.usoReferencia).length
     const enBici = sessSem.filter(se => duraciones[se.id]?.avisoCiclismo).length
-    return { plan: s.ua || 0, prog, real, sesiones: sessSem.length, sinContenido, conReferencia, enBici }
+    /* Con una tarea mal tecleada (más de un día entero) que ya no se suma: la
+       barra es más baja de lo que será cuando se corrija, y hay que decirlo. */
+    const imposibles = sessSem.filter(se => duraciones[se.id]?.datoImposible).length
+    return { plan: s.ua || 0, prog, real, sesiones: sessSem.length, sinContenido, conReferencia, enBici, imposibles }
   })
 
   /**
@@ -1383,6 +1423,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   const porQueLaBarra = (u: (typeof uaPorSemana)[number]): string | null => {
     if (u.sesiones === 0) return null   // Sin sesiones, el hueco es la verdad.
     const partes: string[] = []
+    /* Lo primero, porque es lo que más mueve la barra y se arregla en un minuto. */
+    if (u.imposibles > 0) {
+      partes.push(u.imposibles === 1
+        ? 'Una sesión tiene una tarea que duraría más de un día (¿los metros o la unidad?): no cuenta hasta que la corrijas.'
+        : u.imposibles + ' sesiones tienen una tarea que duraría más de un día (¿los metros o la unidad?): no cuentan hasta que las corrijas.')
+    }
     if (u.sinContenido > 0) {
       partes.push(u.sinContenido === u.sesiones
         ? 'Las ' + u.sesiones + ' sesiones están sin contenido: no hay nada que contar.'

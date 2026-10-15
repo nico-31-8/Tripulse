@@ -13,7 +13,7 @@ import { hoyISO, sumarDias, indiceDia, DIAS_SEMANA } from './fechas'
 import { FILTRO_VIVAS } from './papelera'
 import { cargarMetricasPanel, fmtMin, escalaTSBTexto, escalaACWRTexto, type MetricasPanel } from './panel-metricas'
 import { analizarWellness } from './wellness-analisis'
-import { attachZonaPico } from './sicat-zonas'
+import { conZonaPico } from './sicat-zonas'
 import { minutosCarga } from './duracion-carga'
 
 const ZONAS_TXT = ZONAS_RESISTENCIA
@@ -93,8 +93,39 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
 
   p.push(`Deportista: ${dep.nombre}${dep.fc_maxima ? ` · FCmáx ${dep.fc_maxima} ppm` : ''}`)
 
-  let m: MetricasPanel | null = null
-  try { m = await cargarMetricasPanel(supabase, dep) } catch { /* sin métricas */ }
+  /* TODO A LA VEZ. Se pedía cada parte detrás de la anterior —las métricas, el
+     wellness, los tests, las sesiones y sus zonas, la competición, la
+     anamnesis— y ninguna necesitaba a otra: siete esperas en fila antes de que
+     el asistente pudiera empezar a contestar. Cada parte sigue pudiendo fallar
+     sola sin dejar a las demás sin decir, y el texto sale igual y en el mismo
+     orden. Las zonas de las sesiones vienen DENTRO de ellas. */
+  const nada = () => null
+  const [mRes, rWell, rTests, rSes, rComp, rAn] = await Promise.all([
+    cargarMetricasPanel(supabase, dep).catch(nada),
+    Promise.resolve(supabase.from('wellness').select('*')
+      .eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)).catch(nada),
+    Promise.all([
+      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
+    ]).catch(nada),
+    Promise.resolve(supabase.from('sesion')
+      .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado, tarea(id_sesion, zona_entrenamiento, zona_copia)')
+      .or(FILTRO_VIVAS)
+      .eq('id_deportista', dep.id).eq('estado', 'Realizada')
+      .gte('fecha_sesion', sumarDias(hoyISO(), -21))
+      .order('fecha_sesion', { ascending: false }).limit(14)).catch(nada),
+    Promise.resolve(supabase.from('competicion').select('nombre, fecha, tipo')
+      .eq('id_deportista', dep.id).gte('fecha', hoyISO()).order('fecha').limit(1)).catch(nada),
+    Promise.resolve(supabase.from('anamnesis')
+      .select('estado, anios_triatlon, nivel_competitivo, distancias_completadas, ' +
+              'disciplina_fuerte, disciplina_debil, deporte_anterior, volumen_semanal, dias_semana, ' +
+              'tiene_potenciometro, usa_pulsometro, mide_hrv, horas_sueno, nivel_estres, ' +
+              'prueba_objetivo, prueba_fecha, prueba_distancia, objetivo_principal, mensaje_entrenador')
+      .eq('id_deportista', dep.id).maybeSingle()).catch(nada),
+  ])
+
+  const m: MetricasPanel | null = mRes
   if (m?.carga) p.push(m.carga.fiable
     ? `Frescura (TSB): ${m.carga.tsb} → ${m.carga.label}`
     : `Frescura (TSB): ${m.carga.tsb}, AÚN SIN BASE (solo ${m.carga.dias} días de historia de 42): es el modelo arrancando, no hables de sobrecarga por ella`)
@@ -111,18 +142,15 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   }
 
   try {
-    const { data: wells } = await supabase.from('wellness').select('*')
-      .eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)
-    const an = analizarWellness(wells || [])
-    if (an.readiness) p.push(`Wellness / readiness: ${an.readiness.label} — ${an.readiness.recomendacion}`)
+    if (rWell) {
+      const an = analizarWellness(rWell.data || [])
+      if (an.readiness) p.push(`Wellness / readiness: ${an.readiness.label} — ${an.readiness.recomendacion}`)
+    }
   } catch { /* sin wellness */ }
 
   try {
-    const [tc, tn, tci] = await Promise.all([
-      supabase.from('test1_carrera').select('vam').not('vam', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test2_natacion').select('css').not('css', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-      supabase.from('test3_ciclismo').select('ftp').not('ftp', 'is', null).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1),
-    ])
+    if (!rTests) throw new Error('sin tests')
+    const [tc, tn, tci] = rTests
     const t = [
       tc.data?.[0]?.vam ? `VAM ${tc.data[0].vam} km/h` : null,
       tci.data?.[0]?.ftp ? `FTP ${tci.data[0].ftp} W` : null,
@@ -135,13 +163,8 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   // "¿cómo le fue el martes?": con esto sí, y sin ellas el asistente solo puede
   // decir "no lo sé" a media conversación.
   try {
-    const { data: ses } = await supabase.from('sesion')
-      .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, estado')
-      .or(FILTRO_VIVAS)
-      .eq('id_deportista', dep.id).eq('estado', 'Realizada')
-      .gte('fecha_sesion', sumarDias(hoyISO(), -21))
-      .order('fecha_sesion', { ascending: false }).limit(14)
-    const conZona = await attachZonaPico(ses || [])
+    const ses: any[] = rSes?.data || []
+    const conZona = conZonaPico(ses, ses.flatMap(s => s.tarea || []))
     if (conZona.length) {
       p.push('Sesiones realizadas (21 días, de más reciente a más antigua):')
       conZona.forEach((s: any) => {
@@ -155,9 +178,7 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   } catch { /* sin sesiones recientes */ }
 
   try {
-    const hoyIso = hoyISO()
-    const { data: comp } = await supabase.from('competicion').select('nombre, fecha, tipo')
-      .eq('id_deportista', dep.id).gte('fecha', hoyIso).order('fecha').limit(1)
+    const comp = rComp?.data
     if (comp?.[0]) {
       const dias = Math.ceil((new Date(comp[0].fecha).getTime() - Date.now()) / 86400000)
       p.push(`Próxima competición: ${comp[0].nombre} (${comp[0].tipo}) en ${dias} días`)
@@ -171,12 +192,10 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   // piscina — y el entrenador tenía que cazarlo al leerlo.
   // La anamnesis ya recogía todo esto; simplemente no llegaba hasta aquí.
   try {
-    const { data: an } = await supabase.from('anamnesis')
-      .select('estado, anios_triatlon, nivel_competitivo, distancias_completadas, ' +
-              'disciplina_fuerte, disciplina_debil, deporte_anterior, volumen_semanal, dias_semana, ' +
-              'tiene_potenciometro, usa_pulsometro, mide_hrv, horas_sueno, nivel_estres, ' +
-              'prueba_objetivo, prueba_fecha, prueba_distancia, objetivo_principal, mensaje_entrenador')
-      .eq('id_deportista', dep.id).maybeSingle()
+    /* Si la consulta falló, se calla como antes (no se dice «sin rellenar»
+       de algo que no se ha podido leer). */
+    if (!rAn) throw new Error('sin anamnesis')
+    const an = rAn.data
 
     // «Enviada» no significa «completa»: la parte de salud y la de entrenamiento
     // se rellenan por separado, y hay atletas con la anamnesis enviada y toda la

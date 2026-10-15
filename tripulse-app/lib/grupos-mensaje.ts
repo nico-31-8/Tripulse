@@ -72,13 +72,13 @@ export async function mandarAlGrupo(
   }
 
   // Falló el lote. Se va uno a uno para que llegue a todos los que se pueda y
-  // para poder decir exactamente quién se quedó fuera y por qué.
-  const resultados: ResultadoMensaje[] = []
-  for (const m of miembros) {
+  // para poder decir exactamente quién se quedó fuera y por qué. Cada uno por
+  // su lado y a la vez (iban en fila): el parte sale en el orden de la lista.
+  const resultados: ResultadoMensaje[] = await Promise.all(miembros.map(async m => {
     const fila = filasDeMensaje(idEntrenador, [m], texto)[0]
     const { error: e } = await sb.from('mensajes').insert(fila)
-    resultados.push({ ...m, ok: !e, error: e?.message })
-  }
+    return { ...m, ok: !e, error: e?.message }
+  }))
 
   if (!resultados.some(r => r.ok)) {
     return { resultados, error: error.message || 'No se pudo mandar a nadie.' }

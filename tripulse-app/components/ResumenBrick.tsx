@@ -43,16 +43,24 @@ export default function ResumenBrick({ sesionId, transiciones, editable = false,
     if (!editando) return
     if (!brickValido(editando)) { alert(queFaltaAlBrick(editando)); return }
     setGuardando(true)
-    const err = await guardarBrick(supabase, sesionId, editando)
+    /* Los bloques y la duración de la sesión, A LA VEZ: los dos solo necesitan
+       el id. La duración y el RPE de la sesión salen de sus bloques: si
+       cambian, se recalculan. */
+    const [err, { error: eSes }] = await Promise.all([
+      guardarBrick(supabase, sesionId, editando),
+      supabase.from('sesion').update({
+        duracion_minutos: editando.bloques.reduce((a, b) => a + b.minutos, 0),
+        rpe_estimado: rpeBrick(editando),
+      }).eq('id', sesionId),
+    ])
     if (err) { alert('No se han podido guardar los bloques.\n\n' + err); setGuardando(false); return }
-    // La duración y el RPE de la sesión salen de sus bloques: si cambian, se recalculan.
-    await supabase.from('sesion').update({
-      duracion_minutos: editando.bloques.reduce((a, b) => a + b.minutos, 0),
-      rpe_estimado: rpeBrick(editando),
-    }).eq('id', sesionId)
+    if (eSes) alert('Los bloques se han guardado, pero no la duración ni el RPE de la sesión.\n\n' + eSes.message)
+    /* Lo guardado es lo que hay en pantalla: se queda tal cual, sin volver a
+       leerlo de la base (era otra espera más antes de soltar el botón). */
+    setValor(editando)
+    setMinutos(editando.bloques.map(b => b.minutos))
     setEditando(null)
     setGuardando(false)
-    await cargar()
     /* Aquí había un `window.location.reload()`. La razón era buena —la tabla
        de tareas y la cabecera leen de la BD al montar, y la duración de la
        sesión acaba de cambiar— pero la solución era la más bruta posible:

@@ -121,17 +121,21 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
 
-    const { data: g } = await supabase.from('grupo_entreno')
-      .select('id, nombre, descripcion').eq('id', id).maybeSingle()
+    /* DOS RONDAS en vez de cinco en fila. El grupo, sus miembros y los
+       deportistas del entrenador solo necesitan el id: a la vez. Después, los
+       tests y el cumplimiento de los miembros, también a la vez. */
+    const [{ data: g }, ms, { data: todos }] = await Promise.all([
+      supabase.from('grupo_entreno')
+        .select('id, nombre, descripcion').eq('id', id).maybeSingle(),
+      miembrosDe(supabase, id),
+      // Los deportistas del entrenador que NO están en el grupo, para poder añadirlos.
+      supabase.from('deportista')
+        .select('id, nombre').eq('id_entrenador', user.id),
+    ])
     if (!g) { setNoExiste(true); return }
     setGrupo(g)
-
-    const ms = await miembrosDe(supabase, id)
     setMiembros(ms)
 
-    // Los deportistas del entrenador que NO están en el grupo, para poder añadirlos.
-    const { data: todos } = await supabase.from('deportista')
-      .select('id, nombre').eq('id_entrenador', user.id)
     const dentro = new Set(ms.map(m => String(m.id_deportista)))
     setFuera((todos || []).filter((d: any) => !dentro.has(String(d.id))))
 
@@ -147,10 +151,12 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
         }
         return por
       }
-      const [c, n, b] = await Promise.all([
+      const [c, n, b, cumplimiento] = await Promise.all([
         supabase.from('test1_carrera').select('id_deportista, vam').in('id_deportista', ids).order('fecha', { ascending: false }),
         supabase.from('test2_natacion').select('id_deportista, css').in('id_deportista', ids).order('fecha', { ascending: false }),
         supabase.from('test3_ciclismo').select('id_deportista, ftp').in('id_deportista', ids).order('fecha', { ascending: false }),
+        cargarCumplimiento(supabase, id,
+          ms.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })), cDesde, cHasta),
       ])
       const vam = ultimo(c.data, 'vam'), css = ultimo(n.data, 'css'), ftp = ultimo(b.data, 'ftp')
       const mapa: Record<string, any> = {}
@@ -159,8 +165,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
         mapa[k] = { vam: vam[k], css: css[k], ftp: ftp[k] }
       }
       setTests(mapa)
-      setCump(await cargarCumplimiento(supabase, id,
-        ms.map(m => ({ id_deportista: m.id_deportista, nombre: m.nombre })), cDesde, cHasta))
+      setCump(cumplimiento)
     } else { setTests({}); setCump(null) }
   }
 
@@ -214,8 +219,11 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
     // Un año por delante: el horizonte de cualquier planificación real.
     const hasta365 = sumarDias(hoy, 365)
 
-    const delGrupo = await sesionesDelGrupo(supabase, ficha, hoy, hasta365)
-    const tiene = await loQueYaTiene(supabase, id, m.id_deportista, hoy, hasta365)
+    /* Las dos a la vez: lo del grupo y lo que ya tiene no dependen una de otra. */
+    const [delGrupo, tiene] = await Promise.all([
+      sesionesDelGrupo(supabase, ficha, hoy, hasta365),
+      loQueYaTiene(supabase, id, m.id_deportista, hoy, hasta365),
+    ])
     const faltan = sesionesQueLeFaltan(delGrupo, tiene)
 
     if (!faltan.length) {
@@ -266,13 +274,16 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
   // tiene deshacer: mirarlo antes es más barato que limpiarlo después.
   const mirarQueHay = async () => {
     setOcupado(true); setError(''); setParteVolcado(null)
+    // Y de paso, qué hay ya volcado ahí: repetir el mismo rango es lo normal en
+    // cuanto corriges algo, y sin avisar dejaría a todos con las sesiones dobles.
+    /* Va a la vez que lo del grupo: no depende de la ficha. */
+    const pPrevio = volcadoPrevio(supabase, id, miembros.map(m => m.id_deportista), desde, hasta)
     const { id: ficha, error: e } = idFicha ? { id: idFicha, error: null } : await fichaDeGrupo(supabase, id)
     if (e || !ficha) { setError(e || 'No se pudo leer el plan del grupo.'); setOcupado(false); return }
     setIdFicha(ficha)
-    setAVolcar(await sesionesDelGrupo(supabase, ficha, desde, hasta))
-    // Y de paso, qué hay ya volcado ahí: repetir el mismo rango es lo normal en
-    // cuanto corriges algo, y sin avisar dejaría a todos con las sesiones dobles.
-    setPrevio(await volcadoPrevio(supabase, id, miembros.map(m => m.id_deportista), desde, hasta))
+    const [aVolcarYa, previoYa] = await Promise.all([sesionesDelGrupo(supabase, ficha, desde, hasta), pPrevio])
+    setAVolcar(aVolcarYa)
+    setPrevio(previoYa)
     setOcupado(false)
   }
 

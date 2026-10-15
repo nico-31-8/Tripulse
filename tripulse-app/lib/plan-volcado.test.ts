@@ -100,6 +100,29 @@ describe('en que microciclo cae', () => {
 })
 
 describe('el volcado', () => {
+  /* Iban una detrás de otra: tres esperas por sesión, dieciocho en fila en una
+     semana de seis. Ahora van a la vez; la más lenta termina la última y el
+     parte sigue saliendo en el orden de la semana. */
+  it('las sesiones de la semana se crean a la vez, y el parte sale en su orden', async () => {
+    const s = semanaDe()
+    const sb = fakeSb()
+    const visto: string[] = []
+    let primera = -1
+    const aplicar = vi.fn(async (_sb: any, idSesion: number) => {
+      if (primera < 0) primera = idSesion
+      visto.push('entra ' + idSesion)
+      await new Promise(r => setTimeout(r, idSesion === primera ? 15 : 0))
+      visto.push('sale ' + idSesion)
+      return null
+    })
+    const r = await volcarSemana(sb, opts({ relleno: s.relleno, aplicarBloques: aplicar }))
+    const entradas = visto.filter(v => v.startsWith('entra')).length
+    expect(entradas).toBeGreaterThan(1)
+    expect(visto.slice(0, entradas).every(v => v.startsWith('entra'))).toBe(true)
+    expect(visto.at(-1)).toBe('sale ' + primera)
+    expect(r.parte.map(p => p.dia)).toEqual(s.relleno.map(x => x.dia))
+  })
+
   it('crea una sesion por cada una de la semana, en su fecha', async () => {
     const s = semanaDe()
     const sb = fakeSb()

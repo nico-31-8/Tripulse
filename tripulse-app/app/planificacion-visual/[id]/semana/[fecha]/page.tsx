@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { semanasEntre, sumarDias, hoyISO, soloDia } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
+import { limpiar } from '@/lib/copiar-sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { cargaZona } from '@/lib/zonas'
 import { prioridadDe, defDe } from '@/lib/competicion-prioridad'
@@ -21,6 +22,9 @@ import { chipDisciplina, claseDisciplina, cortoDisciplina, emojiDisciplina, esDi
    compara con mayúsculas, `types.includes(...)` no encuentra nunca nada. */
 const TIPO_SESION = 'application/x-tripulse-sesion'
 const esArrastreDeSesion = (e: React.DragEvent) => e.dataTransfer.types.includes(TIPO_SESION)
+
+/* Las tareas llegan dentro de cada sesión; fuera de ella no se guardan. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -51,6 +55,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   useRequireEntrenador()
   const [dep, setDep] = useState<any>(null)
   const [microciclo, setMicrociclo] = useState<any>(null)
+  /* Los mesociclos del deportista, para crear la semana al vuelo sin ir a
+     buscarlos. null = no se pudieron traer: se piden en ese momento. */
+  const [mesos, setMesos] = useState<{ id: number; fecha_inicio: string; duracion_semanas: number }[] | null>(null)
   const [sesiones, setSesiones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<string | null>(null) // fecha seleccionada
@@ -91,7 +98,8 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
   useEffect(() => { cargar() }, [id, fecha])
 
   /*
-   * DE OCHO VIAJES EN SERIE A DOS RONDAS.
+   * DE OCHO VIAJES EN SERIE A UNA RONDA (fueron dos hasta el 15-10-2026: las
+   * tareas iban detrás de las sesiones; ahora vienen dentro).
    *
    * Encadenaba deportista → macrociclo → mesociclo → microciclo → sesiones del
    * micro → sesiones libres → borrador → tareas → distancias → duraciones.
@@ -114,37 +122,58 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
    * semana. De paso, esto cuadra el recuento con el panel del entrenador, que ya
    * iba por fecha.
    */
-  const cargar = async () => {
-    setLoading(true)
+  /* Lo que pinta la tarjeta: simple/compleja + siglas, y en un brick la
+     secuencia de deportes (🚴 AEM → 🏃 AEM). Sin tareas con zona, la de la
+     propia sesión: la misma regla que el lienzo (zonasDeSesion). Antes solo se
+     miraba la de fuerza, y una sesión de carrera o bici creada en el calendario
+     salía «sin zona» aquí. Vive aparte para que una sesión recién creada se
+     pinte YA con la misma regla, sin esperar a la recarga. */
+  const conBloques = (s: any, tareas: { zona_entrenamiento?: string | null; disciplina?: string | null }[]) => {
+    let bloques = tareas.filter(t => t.zona_entrenamiento)
+      .map(t => ({ zona: t.zona_entrenamiento as string, disciplina: t.disciplina ?? null }))
+    if (bloques.length === 0) bloques = zonasDeSesion(s).map(zona => ({ zona, disciplina: s.disciplina }))
+    return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
+  }
+
+  /* `enSilencio`: la recarga de después de guardar no pone la pantalla en
+     «Cargando...». Antes cada sesión creada, soltada o devuelta al pool hacía
+     desaparecer la semana entera hasta que volvía. */
+  const cargar = async (enSilencio = false) => {
+    if (!enSilencio) setLoading(true)
     const depId = Number(id)
     const domingo = sumarDias(fecha, 6)
 
-    // ---- Ronda 1: todo lo que depende solo del deportista y la fecha ----
-    const [dep, macs, micros, ses, borrador, compsQ] = await Promise.all([
+    /* UNA SOLA RONDA. Las tareas de cada sesión vienen DENTRO de ella (eran una
+       segunda espera, detrás de las sesiones), y los mesociclos se traen ya
+       para que soltar algo en una semana sin crear no tenga que ir a buscarlos
+       en dos viajes más. */
+    const [dep, macs, micros, ses, borrador, compsQ, mesQ] = await Promise.all([
       supabase.from('deportista').select('*').eq('id', depId).maybeSingle(),
       supabase.from('macrociclo').select('id, fecha_inicio').eq('id_deportista', depId).order('fecha_inicio'),
       supabase.from('microciclo').select('*').eq('id_deportista', depId),
-      vivas(supabase.from('sesion').select('*').eq('id_deportista', depId)
+      vivas(supabase.from('sesion').select('*, tarea(id, id_sesion, zona_entrenamiento, disciplina, orden)').eq('id_deportista', depId)
         .gte('fecha_sesion', fecha).lte('fecha_sesion', domingo)).order('fecha_sesion'),
       supabase.from('dibujo_borrador').select('id, sesiones_zonas').eq('id_deportista', depId).maybeSingle(),
       /* LAS COMPETICIONES DE LA SEMANA. Esta pantalla no sabia que existian: se
          planificaban siete dias sin ver que el domingo habia carrera. */
       supabase.from('competicion').select('id, nombre, fecha, prioridad').eq('id_deportista', depId)
         .gte('fecha', fecha).lte('fecha', domingo).order('fecha'),
+      supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').eq('id_deportista', depId),
     ])
 
     setDep(dep.data)
     if (macs.data?.length) setWeekIndex(semanasEntre(macs.data[0].fecha_inicio, fecha))
     setMicrociclo((micros.data || []).find((m: any) => soloDia(m.fecha_inicio) === fecha) || null)
+    setMesos(mesQ.error ? null : (mesQ.data || []))
     setBorradorId(borrador.data?.id ?? null)
     setSesZonasAll(borrador.data?.sesiones_zonas || [])
     /* La fecha se recorta como en el lienzo: segun de donde venga puede traer hora. */
     setComps((compsQ.data || []).map(c => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
 
-    const sesiones_cargadas = (ses.data || []) as any[]
-    setSesiones(sesiones_cargadas)
+    const filas = (ses.data || []) as any[]
+    const sesiones_cargadas = filas.map(s => limpiar(s, CON_SUS_TAREAS))
 
-    if (!sesiones_cargadas.length) { setUaProg(0); setUaReal(0); setLoading(false); return }
+    if (!sesiones_cargadas.length) { setSesiones([]); setUaProg(0); setUaReal(0); setLoading(false); return }
 
     /* UA «programada» de la semana = Σ (RPE estimado × duración) de cada sesión.
        Antes sumaba metros_planeados + tiempo_planeado —metros y segundos como si
@@ -156,26 +185,9 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     setUaReal(Math.round(sesiones_cargadas.reduce((a, s) =>
       a + (s.rpe_reportado ? s.rpe_reportado * (s.duracion_minutos || 0) : 0), 0)))
 
-    // ---- Ronda 2: los bloques de cada sesión ----
-    const { data: tareasData } = await supabase.from('tarea')
-      .select('id, id_sesion, zona_entrenamiento, disciplina, orden')
-      .in('id_sesion', sesiones_cargadas.map(s => s.id)).order('orden')
-
-    // Para la tarjeta: simple/compleja + siglas, y en un brick la secuencia de
-    // deportes (🚴 AEM → 🏃 AEM).
-    const bloquesPorSes: Record<number, { zona: string; disciplina: string | null }[]> = {}
-    ;(tareasData || []).forEach((t: any) => {
-      if (!t.zona_entrenamiento) return
-      ;(bloquesPorSes[t.id_sesion] ||= []).push({ zona: t.zona_entrenamiento, disciplina: t.disciplina })
-    })
-    setSesiones(sesiones_cargadas.map((s: any) => {
-      let bloques = bloquesPorSes[s.id] || []
-      /* Sin tareas con zona, la de la propia sesión: la misma regla que el
-         lienzo (zonasDeSesion). Antes solo se miraba la de fuerza, y una sesión
-         de carrera o bici creada en el calendario salía «sin zona» aquí. */
-      if (bloques.length === 0) bloques = zonasDeSesion(s).map(zona => ({ zona, disciplina: s.disciplina }))
-      return { ...s, _bloques: bloques, _zonas: bloques.map(b => b.zona) }
-    }))
+    /* Las tareas de cada una, en su orden (antes las ordenaba la consulta). */
+    setSesiones(filas.map((f, i) => conBloques(sesiones_cargadas[i],
+      [...(f.tarea || [])].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0) || a.id - b.id))))
     setLoading(false)
   }
 
@@ -190,17 +202,26 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
    */
   const obtenerOcrearMicrociclo = async (avisar: (texto: string) => void): Promise<number | null> => {
     if (microciclo?.id) return microciclo.id
-    const { data: macs } = await supabase.from('macrociclo').select('id').eq('id_deportista', id)
-    if (!macs?.length) { avisar('Este deportista no tiene macrociclo: móntalo primero en el Dibujo.'); return null }
-    const macIds = macs.map((m: any) => m.id)
-    const { data: mes } = await supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').in('id_macrociclo', macIds)
     // Encontrar el meso que contiene esta fecha
-    const mesoContenedor = mes?.find((me: any) => {
+    const contiene = (lista: any[] | null | undefined) => (lista || []).find((me: any) => {
       const ini = new Date(me.fecha_inicio + 'T12:00:00')
       const fin = new Date(ini); fin.setDate(ini.getDate() + me.duracion_semanas * 7)
       const d = new Date(fecha + 'T12:00:00')
       return d >= ini && d < fin
     })
+    /* Con los mesociclos traídos al cargar, la semana se crea sin más espera
+       que la de crearla. Si ahí no cae en ninguno se pregunta otra vez —el plan
+       ha podido cambiar en otra pestaña—, y entonces el macrociclo y sus
+       mesociclos a la vez: eran dos viajes uno detrás de otro. */
+    let mesoContenedor = contiene(mesos)
+    if (!mesoContenedor) {
+      const [{ data: macs }, { data: mes }] = await Promise.all([
+        supabase.from('macrociclo').select('id').eq('id_deportista', id),
+        supabase.from('mesociclo').select('id, fecha_inicio, duracion_semanas').eq('id_deportista', id),
+      ])
+      if (!macs?.length) { avisar('Este deportista no tiene macrociclo: móntalo primero en el Dibujo.'); return null }
+      mesoContenedor = contiene(mes)
+    }
     if (!mesoContenedor) { avisar('Esta semana no cae en ningún mesociclo. Genera la planificación primero desde el Dibujo.'); return null }
     const { data: nuevoMicro } = await supabase.from('microciclo').insert({
       id_mesociclo: mesoContenedor.id,
@@ -223,7 +244,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     if (!microId) { setGuardando(false); return }
 
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
-    const { data: nueva } = await supabase.from('sesion').insert({
+    const { data: nueva, error: errNueva } = await supabase.from('sesion').insert({
       id_microciclo: microId,
       disciplina: disc,
       fecha_sesion: fechaDia,
@@ -233,15 +254,24 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
       estado: 'Planificada',
       usar_cronometro: cronometro,
     }).select().single()
+    /* Antes solo lo decía si era un brick: con cualquier otra, el modal se
+       cerraba y la sesión no aparecía, sin más. */
+    if (!nueva) {
+      alert('No se ha podido crear la sesión' + (esB ? ', así que el brick no se ha guardado' : '') + (errNueva ? ':\n\n' + errNueva.message : '.'))
+      setGuardando(false); return
+    }
     if (esB) {
-      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setGuardando(false); return }
-      const err = await guardarBrick(supabase, nueva.id, brick)
+      const err = await guardarBrick(supabase, nueva.id, brick, { recienCreada: true })
       if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setGuardando(false); return }
     }
 
+    /* Se pinta ya en su día, con sus bloques si es un brick; la recarga de
+       abajo lo confirma y rehace la carga de la semana. */
+    const bloquesBrick = esB ? brick.bloques.map(b => ({ zona_entrenamiento: b.zona, disciplina: b.disciplina })) : []
+    setSesiones(prev => [...prev, conBloques(nueva, bloquesBrick)])
     setDisc(''); setDuracion(''); setRpe(''); setNotas(''); setCronometro(false); setBrick(BRICK_VACIO)
     setModal(null)
-    await cargar()
+    await cargar(true)
     setGuardando(false)
   }
 
@@ -266,8 +296,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         'arrástrala arriba al pool en vez de borrarla.'
       : 'Mover esta sesión a la papelera?'
     if (!confirm(texto)) return
-    await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    /* Sale de la vista sin esperar a la base. Si la base dice que no, vuelve, y
+       su unidad del dibujo no se toca: borrarla con la sesión aún viva dejaba
+       una sesión sin la unidad que la hizo. */
     setSesiones(p => p.filter(s => s.id !== sesId))
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    if (error) { alert('No se ha podido mover a la papelera.\n\n' + error.message); await cargar(true); return }
     if (enlazados.length) await persistirZonas(borrarConSuChip(sesZonasAll, sesId))
   }
 
@@ -325,17 +359,16 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     }).select().single()
     if (errSes || !nuevaSesion) { alert('Error creando la sesión: ' + (errSes?.message || '')); setGuardando(false); return }
 
-    if (chipBrick) {
-      // El brick materializa una tarea por bloque, cada una con su propio deporte.
-      const err = await guardarBrick(supabase, nuevaSesion.id, chipBrick)
-      if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setGuardando(false); return }
-    } else if (!(esFuerza && !compleja)) {
-      // Fuerza simple deja la zona a nivel de sesión (zona_fuerza) sin tarea, como en el resto
-      // de la app. Resistencia (siempre) y fuerza compleja materializan una tarea por zona.
-      const tareas = chips.map((c, i) => ({ id_sesion: nuevaSesion.id, zona_entrenamiento: c.zona, disciplina, orden: i + 1 }))
-      const { error: errTar } = await supabase.from('tarea').insert(tareas)
-      if (errTar) alert('Sesión creada, pero error al crear las tareas: ' + errTar.message)
-    }
+    // Fuerza simple deja la zona a nivel de sesión (zona_fuerza) sin tarea, como en el resto
+    // de la app. Resistencia (siempre) y fuerza compleja materializan una tarea por zona.
+    const tareas = chipBrick || (esFuerza && !compleja) ? []
+      : chips.map((c, i) => ({ id_sesion: nuevaSesion.id, zona_entrenamiento: c.zona, disciplina, orden: i + 1 }))
+
+    /* Se pinta ya en el día donde se soltó (con sus bloques), sin esperar a
+       que se escriban las tareas ni a la recarga. */
+    setSesiones(prev => [...prev, conBloques(nuevaSesion, chipBrick
+      ? chipBrick.bloques.map(b => ({ zona_entrenamiento: b.zona, disciplina: b.disciplina }))
+      : tareas)])
 
     // Los chips usados se marcan como hechos: siguen visibles en el canvas de periodización
     // pero salen del pool de "por arrastrar".
@@ -343,9 +376,24 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     // Y se quedan con el id de la sesión que acaban de formar. Ese enlace es lo
     // único que permite deshacer esto después: sin él, devolver la sesión al
     // pool sería adivinar qué chips la hicieron. Ver lib/devolver-al-pool.ts.
-    await persistirZonas(sesZonasAll.map(z =>
-      chips.some(c => c.id === z.id) ? { ...z, hecho: true, id_sesion: nuevaSesion.id } : z))
-    await cargar()
+    //
+    // Va A LA VEZ que las tareas: solo necesita el id de la sesión, que ya está.
+    const [errBloques] = await Promise.all([
+      chipBrick
+        // El brick materializa una tarea por bloque, cada una con su propio deporte.
+        ? guardarBrick(supabase, nuevaSesion.id, chipBrick, { recienCreada: true })
+        : tareas.length
+          ? supabase.from('tarea').insert(tareas).then(({ error }: { error: { message: string } | null }) => error?.message ?? null)
+          : Promise.resolve(null),
+      persistirZonas(sesZonasAll.map(z =>
+        chips.some(c => c.id === z.id) ? { ...z, hecho: true, id_sesion: nuevaSesion.id } : z)),
+    ])
+    if (errBloques) {
+      alert(chipBrick
+        ? 'Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + errBloques
+        : 'Sesión creada, pero error al crear las tareas: ' + errBloques)
+    }
+    await cargar(true)
     setGuardando(false)
   }
 
@@ -440,9 +488,12 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
     const zonas = zonasQueVuelven(s)
 
     setSesiones(prev => prev.filter(x => x.id !== sesId))
-    await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    /* Si la base no la manda a la papelera, la unidad no vuelve. Antes no se
+       miraba: volvía igual y quedaban la sesión viva Y su unidad en el pool. */
+    const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
+    if (error) { alert('No se ha podido devolver al pool.\n\n' + error.message); await cargar(true); return }
     await persistirZonas(devolverAlPool(sesZonasAll, { id: sesId, disciplina: s.disciplina, zonas }, weekIndex))
-    await cargar()
+    await cargar(true)
   }
 
   // Mueve una sesión ya colocada a otro día de la misma semana (corregir el día).

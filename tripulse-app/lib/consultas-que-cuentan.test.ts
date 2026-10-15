@@ -46,11 +46,18 @@ interface Consulta { fichero: string; columnas: string }
 /** Las columnas literales que se piden a una tabla, fichero a fichero. */
 function consultasA(tabla: string): Consulta[] {
   const re = new RegExp("from\\(\\s*'" + tabla + "'\\s*\\)\\s*\\.select\\(\\s*'([^']*)'", 'g')
+  /* Y las que van ANIDADAS dentro de otra consulta —`tarea(…, ejercicios(…))`—,
+     que es como se piden ahora muchas para no esperar una ronda más. Solo las
+     de una lista escrita entera: las que la arman con una constante compartida
+     las vigila el test de esa constante. */
+  const anidada = new RegExp('\\b' + tabla + '\\(([^()\']*)\\)', 'g')
   const out: Consulta[] = []
   for (const f of ficheros()) {
     const texto = fs.readFileSync(f, 'utf8')
-    for (const m of texto.matchAll(re)) {
-      out.push({ fichero: path.relative(RAIZ, f).split(path.sep).join('/'), columnas: m[1] })
+    const fichero = path.relative(RAIZ, f).split(path.sep).join('/')
+    for (const m of texto.matchAll(re)) out.push({ fichero, columnas: m[1] })
+    for (const sel of texto.matchAll(/\.select\(\s*'([^']*)'/g)) {
+      for (const m of sel[1].matchAll(anidada)) out.push({ fichero, columnas: m[1] })
     }
   }
   return out

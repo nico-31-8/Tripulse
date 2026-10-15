@@ -11,6 +11,7 @@ import ConstructorBrick from '@/components/ConstructorBrick'
 import { BRICK_VACIO, brickValido, queFaltaAlBrick, rpeBrick, guardarBrick, type BrickValor } from '@/lib/bricks'
 import { tiposDeMeso } from '@/lib/periodizacion'
 import { paraProgramar, TODAS, etiquetaDisciplina, claseDisciplina } from '@/lib/disciplinas'
+import { borrarPlan } from '@/lib/plan-rehacer'
 
 const COLOR_MESO: Record<string, string> = {
   'Acumulación': 'bg-orange-500', 'Acumulacion': 'bg-orange-500',
@@ -24,6 +25,15 @@ const COLOR_MICRO: Record<string, string> = {
   'Competición': 'bg-blue-400', 'Competicion': 'bg-blue-400',
 }
 const DIAS = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom']
+
+/* Ordena por un campo de fecha como lo hacía la consulta que se repetía después
+   de cada alta (`order(campo)`: ascendente, y lo que no tiene fecha al final).
+   Con la fila nueva en la mano, colocarla en su sitio ahorra pedir la lista otra
+   vez. */
+const enOrden = (campo: string) => (a: any, b: any) => {
+  const x = String(a?.[campo] ?? ''), y = String(b?.[campo] ?? '')
+  return x === y ? 0 : !x ? 1 : !y ? -1 : x.localeCompare(y)
+}
 
 function fechaLocal(d: Date): string {
   const y = d.getFullYear()
@@ -159,22 +169,14 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     })()
   }, [id])
 
-  const cargarNavMesos = async (macroId: number) => {
-    if (navMesos[macroId]) return
-    const { data } = await supabase.from('mesociclo').select('*').eq('id_macrociclo', macroId).order('fecha_inicio')
-    setNavMesos(prev => ({ ...prev, [macroId]: data || [] }))
-  }
-
-  const cargarNavMicros = async (mesoId: number) => {
-    if (navMicros[mesoId]) return
-    const { data } = await supabase.from('microciclo').select('*').eq('id_mesociclo', mesoId).order('fecha_inicio')
-    setNavMicros(prev => ({ ...prev, [mesoId]: data || [] }))
-  }
-
+  /* La lista que se abre sirve también al panel lateral. Pinchar en el panel
+     pedía la MISMA lista dos veces, una detrás de otra (una para el panel y
+     otra para el centro). */
   const verMesos = async (mac: any) => {
     setMacroSel(mac)
     const { data } = await supabase.from('mesociclo').select('*').eq('id_macrociclo', mac.id).order('fecha_inicio')
     setMesos(data || [])
+    setNavMesos(prev => ({ ...prev, [mac.id]: data || [] }))
     setNivel('meso')
   }
 
@@ -182,12 +184,13 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     setMesoSel(meso)
     const { data } = await supabase.from('microciclo').select('*').eq('id_mesociclo', meso.id).order('fecha_inicio')
     setMicros(data || [])
+    setNavMicros(prev => ({ ...prev, [meso.id]: data || [] }))
     setNivel('micro')
   }
 
   const verSesiones = async (micro: any) => {
     setMicroSel(micro)
-    const { data } = await supabase.from('sesion').select('*').eq('id_microciclo', micro.id).or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion')
+    const { data } = await vivas(supabase.from('sesion').select('*').eq('id_microciclo', micro.id)).order('fecha_sesion')
     setSesiones(data || [])
     setNivel('sesiones')
   }
@@ -201,14 +204,20 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const guardarMeso = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error: errMeso } = await supabase.from('mesociclo').insert({
+    const { data: nuevo, error: errMeso } = await supabase.from('mesociclo').insert({
       id_macrociclo: macroSel.id, objetivo: mesoObj, tipo: mesoTipo,
       fecha_inicio: mesoFecha, duracion_semanas: Number(mesoDuracion),
       intensidad_relativa: mesoIntensidad ? Number(mesoIntensidad) : null
-    })
-    if (errMeso) { alert('Error: ' + errMeso.message); setLoading(false); return }
-    const { data: mesoData } = await supabase.from('mesociclo').select('*').eq('id_macrociclo', macroSel.id).order('fecha_inicio')
-    setMesos(mesoData || [])
+    }).select().single()
+    if (errMeso || !nuevo) { alert('Error: ' + (errMeso?.message || 'no se ha creado el bloque.')); setLoading(false); return }
+    /* El alta devuelve la fila: se coloca en su sitio sin volver a pedir la
+       lista. Y llega también a la tarjeta del macrociclo y al panel, que antes
+       no se enteraban hasta recargar la página. */
+    const idMacro = macroSel.id
+    const conNuevo = (l: any[]) => [...l, nuevo].sort(enOrden('fecha_inicio'))
+    setMesos(conNuevo)
+    setMesosPorMacro(prev => ({ ...prev, [idMacro]: conNuevo(prev[idMacro] || []) }))
+    setNavMesos(prev => prev[idMacro] ? { ...prev, [idMacro]: conNuevo(prev[idMacro]) } : prev)
     setMesoObj(''); setMesoTipo(''); setMesoFecha(''); setMesoDuracion(''); setMesoIntensidad('')
     setLoading(false)
   }
@@ -216,9 +225,15 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const guardarMicro = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await supabase.from('microciclo').insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: microFecha, duracion_dias: 7 })
-    const { data } = await supabase.from('microciclo').select('*').eq('id_mesociclo', mesoSel.id).order('fecha_inicio')
-    setMicros(data || [])
+    const { data: nuevo, error } = await supabase.from('microciclo')
+      .insert({ id_mesociclo: mesoSel.id, objetivo: microObj, tipo: microTipo, fecha_inicio: microFecha, duracion_dias: 7 })
+      .select().single()
+    /* Antes no se miraba: si la base no la aceptaba, el modal se cerraba igual. */
+    if (error || !nuevo) { alert('No se ha podido crear la semana: ' + (error?.message || '')); setLoading(false); return }
+    const idMeso = mesoSel.id
+    const conNuevo = (l: any[]) => [...l, nuevo].sort(enOrden('fecha_inicio'))
+    setMicros(conNuevo)
+    setNavMicros(prev => prev[idMeso] ? { ...prev, [idMeso]: conNuevo(prev[idMeso]) } : prev)
     setModalMicro(false)
     setMicroObj(''); setMicroTipo(''); setMicroFecha('')
     setLoading(false)
@@ -230,19 +245,24 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
     const esB = sesionDisc === 'Brick'
     if (esB && !brickValido(brick)) { alert(queFaltaAlBrick(brick)); setLoading(false); return }
     // El brick manda en duración y RPE: salen de sus bloques, no de los campos manuales.
-    const { data: nueva } = await supabase.from('sesion').insert({
+    const { data: nueva, error: errNueva } = await supabase.from('sesion').insert({
       id_microciclo: microSel.id, disciplina: sesionDisc, fecha_sesion: diaSeleccionado,
       duracion_minutos: esB ? brick.bloques.reduce((a, b) => a + b.minutos, 0) : (sesionDuracion ? Number(sesionDuracion) : null),
       rpe_estimado: esB ? (sesionRpe ? Number(sesionRpe) : rpeBrick(brick)) : (sesionRpe ? Number(sesionRpe) : null),
       notas_entrenador: sesionNotas, estado: 'Planificada', usar_cronometro: sesionCronometro
     }).select().single()
+    /* Antes solo lo decía si era un brick: con cualquier otra el modal se
+       cerraba y la sesión no aparecía, sin más. */
+    if (!nueva) {
+      alert('No se ha podido crear la sesión' + (esB ? ', así que el brick no se ha guardado' : '') + (errNueva ? ':\n\n' + errNueva.message : '.'))
+      setLoading(false); return
+    }
     if (esB) {
-      if (!nueva) { alert('No se ha podido crear la sesión, así que el brick no se ha guardado.'); setLoading(false); return }
-      const err = await guardarBrick(supabase, nueva.id, brick)
+      const err = await guardarBrick(supabase, nueva.id, brick, { recienCreada: true })
       if (err) { alert('Sesión creada, pero los bloques del brick NO se han guardado.\n\n' + err); setLoading(false); return }
     }
-    const { data } = await vivas(supabase.from('sesion').select('*').eq('id_microciclo', microSel.id)).order('fecha_sesion')
-    setSesiones(data || [])
+    /* La fila vuelve con el alta: a su día, sin volver a pedir la semana. */
+    setSesiones(prev => [...prev, nueva].sort(enOrden('fecha_sesion')))
     setModalSesion(false)
     setSesionDisc(''); setSesionDuracion(''); setSesionRpe(''); setSesionNotas(''); setSesionCronometro(false)
     setBrick(BRICK_VACIO)
@@ -263,34 +283,37 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
   const guardarEditarMacro = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await supabase.from("macrociclo").update({
+    const { data: editado, error } = await supabase.from("macrociclo").update({
       objetivo: editMacroObj,
       duracion_semanas: Number(editMacroDuracion),
       fecha_inicio: editMacroFecha,
       tipo_periodizacion: editMacroPeriodizacion || null,
-    }).eq("id", macroEditando.id)
-    const { data } = await supabase.from("macrociclo").select("*").eq("id_deportista", id).order("fecha_inicio")
-    setMacros(data || [])
+    }).eq("id", macroEditando.id).select().single()
+    /* Antes no se miraba: si la base no lo aceptaba, el modal se cerraba igual. */
+    if (error || !editado) { alert('No se han podido guardar los cambios: ' + (error?.message || '')); setLoading(false); return }
+    setMacros(prev => prev.map(m => m.id === editado.id ? editado : m).sort(enOrden('fecha_inicio')))
     setModalEditarMacro(false)
     setMacroEditando(null)
     setLoading(false)
   }
 
+  /* BORRAR EL PLAN NO BORRA LO ENTRENADO. Las sesiones hechas se quedan en el
+     calendario, fuera del plan, y las planificadas van a la papelera; después
+     se borra el macrociclo y la base se lleva sus bloques y sus semanas en
+     cascada (lib/plan-rehacer, lo mismo que «Rehacer el plan»).
+
+     Antes se borraba todo a mano, sesiones incluidas, y con una sesión de
+     fuerza ya hecha ni siquiera se podía: sus series apuntadas cuelgan del
+     ejercicio y la base paraba el borrado. Fallaba sin decirlo y el plan volvía
+     al recargar. Y PREGUNTA ANTES: bastaba un clic en el cubo. */
   const borrarMacro = async (macId: number) => {
+    const mac = macros.find(m => m.id === macId)
+    if (!confirm('¿Borrar «' + (mac?.objetivo || 'este macrociclo') + '» con sus bloques y semanas?\n\n'
+      + 'Las sesiones que ya hizo se quedan en su calendario, fuera del plan. Las planificadas van a la papelera, de donde se pueden recuperar.')) return
     setLoading(true)
-    // Borrar en cascada
-    const { data: mesos } = await supabase.from("mesociclo").select("id").eq("id_macrociclo", macId)
-    if (mesos?.length) {
-      const { data: micros } = await supabase.from("microciclo").select("id").in("id_mesociclo", mesos.map(m => m.id))
-      if (micros?.length) {
-        await supabase.from("sesion").delete().in("id_microciclo", micros.map(m => m.id))
-        await supabase.from("microciclo").delete().in("id_mesociclo", mesos.map(m => m.id))
-      }
-      await supabase.from("mesociclo").delete().eq("id_macrociclo", macId)
-    }
-    await supabase.from("macrociclo").delete().eq("id", macId)
-    const { data } = await supabase.from("macrociclo").select("*").eq("id_deportista", id).order("fecha_inicio")
-    setMacros(data || [])
+    const r = await borrarPlan(supabase, Number(id), macId)
+    if (r.error) { alert('No se ha podido borrar: ' + r.error); setLoading(false); return }
+    setMacros(prev => prev.filter(m => m.id !== macId))
     setLoading(false)
   }
 
@@ -335,9 +358,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                   <div key={mac.id}>
                     <button
                       onClick={async () => {
-                        const n = macroExpandido === mac.id ? null : mac.id
-                        setMacroExpandido(n)
-                        if (n) await cargarNavMesos(mac.id)
+                        setMacroExpandido(macroExpandido === mac.id ? null : mac.id)
                         await verMesos(mac)
                       }}
                       className={'w-full text-left px-3 py-2 text-xs hover:bg-gray-800 transition flex justify-between items-center ' +
@@ -349,9 +370,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                       <div key={meso.id}>
                         <button
                           onClick={async () => {
-                            const n = mesoExpandido === meso.id ? null : meso.id
-                            setMesoExpandido(n)
-                            if (n) await cargarNavMicros(meso.id)
+                            setMesoExpandido(mesoExpandido === meso.id ? null : meso.id)
                             await verMicros(meso)
                           }}
                           className={'w-full text-left pl-5 pr-3 py-1.5 text-xs hover:bg-gray-800 transition flex justify-between items-center ' +

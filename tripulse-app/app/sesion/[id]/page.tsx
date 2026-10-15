@@ -16,6 +16,8 @@ import SelectorEjercicio from '@/components/SelectorEjercicio'
 import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
+import { borrarTareaEntera, vaciarMedicion } from '@/lib/borrar-tarea'
+import { insertarMedicion } from '@/lib/insertar-medicion'
 import { cargaZona } from '@/lib/zonas'
 
 import DatosReales from './DatosReales'
@@ -42,7 +44,7 @@ import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
-import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, type UnidadMedicion } from '@/lib/medicion'
+import { tablaMedicion, valorCanonico, detectarMedicion, guardarMedicion, distanciaSospechosa, type UnidadMedicion } from '@/lib/medicion'
 import { intensidadGuardada, aGuardar } from '@/lib/intensidad-prescrita'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import {
@@ -73,6 +75,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
      perdería en silencio. */
   const [aCopiar, setACopiar] = useState<{ token: number; tareas: any[] } | null>(null)
   const contadorCopia = useRef(0)
+  const cargasTareas = useRef(0)
   const pedirCopia = (tareas: any[]) => setACopiar({ token: ++contadorCopia.current, tareas })
   const [tareas, setTareas] = useState<any[]>([])
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
@@ -291,24 +294,44 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
    * acotado al macrociclo que toca se hace en memoria (lib/contexto-sesion).
    * Un atleta con dos temporadas sigue viendo «semana 2 de 4» de la suya.
    */
+  // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él,
+  // una sesión de fuerza en el briefing diría «4 series» de nada.
+  // `intensidad` y el control (tipo + valor) hacen falta para el briefing
+  // del atleta: sin ellos leía «4 × 8 reps» y nada más — ni con cuánto peso
+  // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
+  // sesiones anteriores a que el control tuviera columnas propias.
+  const pedirTareas = () => ordenarTareasQuery(
+    supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, repeticiones_max, series_detalle, encadenado_repeticiones_max, encadenado_series_detalle, medida, cantidad, orden, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, encadenado_grupo_muscular, encadenado_control_tipo, encadenado_control_valor, encadenado_notas_ejecucion, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id))
+
+  /* La técnica y los vídeos de las tareas son dos consultas más a la
+     biblioteca, y se esperaban ANTES de empezar la ronda 2: dos viajes en fila
+     con la pantalla a medias. Ahora van a la vez que ella, y las tareas se
+     pintan en cuanto están —sin técnica ni vídeos que buscar, enseguida—.
+     El contador es por si llega antes la recarga de después de guardar: una
+     respuesta vieja no pisa a la nueva. */
+  const pintarTareas = (tar: any[] | null) => {
+    const llamada = ++cargasTareas.current
+    conTecnica(tar)
+      .then(t => conVideosEnTareas(t, supabase))
+      .then(listas => { if (cargasTareas.current === llamada) setTareas(listas) })
+  }
+
+  /* Después de editar una tarea solo han cambiado las tareas: releer la ficha
+     entera eran dos rondas más (la sesión, y después su plan, sus tests y su
+     wellness) para enseñar lo mismo. */
+  const recargarTareas = async () => { pintarTareas((await pedirTareas()).data) }
+
   const cargarDatos = async () => {
     // ---- Ronda 1: lo que no depende de nada ----
     const [user, { data: ses }, { data: tar }] = await Promise.all([
       usuarioActual(),
       supabase.from('sesion').select('*').eq('id', id).single(),
-      // El nombre del ejercicio vive en `ejercicios`, no en la tarea: sin él,
-      // una sesión de fuerza en el briefing diría «4 series» de nada.
-      // `intensidad` y el control (tipo + valor) hacen falta para el briefing
-      // del atleta: sin ellos leía «4 × 8 reps» y nada más — ni con cuánto peso
-      // ni hasta dónde apretar. `notas_ejecucion` es el rescate del RIR de las
-      // sesiones anteriores a que el control tuviera columnas propias.
-      ordenarTareasQuery(
-        supabase.from('tarea').select('*, p_duracion(*), p_distancia(*), p_repeticiones(*), ejercicios(repeticiones, repeticiones_max, series_detalle, encadenado_repeticiones_max, encadenado_series_detalle, medida, cantidad, orden, nombre, tipo_serie, ejercicio_id, url_video, ejercicio_encadenado_nombre, ejercicio_encadenado_id, encadenado_series, encadenado_repeticiones, encadenado_intensidad, encadenado_grupo_muscular, encadenado_control_tipo, encadenado_control_valor, encadenado_notas_ejecucion, escalones_drop, grupo_muscular, intensidad, control_tipo, control_valor, notas_ejecucion, cardio_modo, cardio_medida, cardio_valor, cardio_zona, cardio_objetivo)').eq('id_sesion', id)),
+      pedirTareas(),
     ])
 
     setSesion(ses)
     if (!ses) { setNoExiste(true); return }
-    setTareas(await conVideosEnTareas(await conTecnica(tar), supabase))
+    pintarTareas(tar)
     // Sin id_emision no se pregunta nada: no cuesta ni una consulta en las
     // sesiones individuales, que son la mayoría.
     nombreDelGrupo(supabase, ses.id_emision).then(setNombreGrupo)
@@ -384,11 +407,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   const borrarTarea = async (tareaId: number) => {
     if (!confirm('¿Borrar esta tarea?')) return
-    await supabase.from('p_distancia').delete().eq('id_tarea', tareaId)
-    await supabase.from('p_duracion').delete().eq('id_tarea', tareaId)
-    await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaId)
-    await supabase.from('ejercicios').delete().eq('id_tarea', tareaId)
-    await supabase.from('tarea').delete().eq('id', tareaId)
+    // Si la base dice que no, se queda en pantalla y se dice por qué.
+    const err = await borrarTareaEntera(supabase, tareaId)
+    if (err) { alert(err); return }
     setTareas(prev => prev.filter(t => t.id !== tareaId))
   }
 
@@ -468,17 +489,28 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       comentario: configSerie || null,
     }
     let tarea: any = null
+    let errorEditar = ''
+    /* Si el ejercicio viejo tiene series apuntadas no se puede borrar: se
+       actualiza en su sitio (ver escribirFilaF en la tabla). Antes se insertaba
+       otro y la tarea quedaba con el ejercicio dos veces. */
+    let ejercicioSigue = false
     if (tareaEditandoId) {
-      const { error } = await supabase.from('tarea').update(campos).eq('id', tareaEditandoId)
-      if (error) { setError('Error: ' + error.message); setLoading(false); return }
       // El ejercicio se reescribe entero en vez de parchearse: es una fila con
       // doce columnas de las que la mitad dependen del tipo de serie, y
       // actualizar solo algunas deja mezclas imposibles (un drop set con los
       // escalones del superset anterior).
-      if (ejercicioSel) {
-        await supabase.from('ejercicios').delete().eq('id_tarea', tareaEditandoId)
-        await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaEditandoId)
-      }
+      /* A la vez que la tarea, como en la tabla (tareas-tabla, escribirFilaR):
+         si la tarea no entra, el ejercicio nuevo se escribe igual —el viejo ya
+         se ha borrado— y el error se enseña con el formulario abierto. */
+      const [{ error }, rEj] = await Promise.all([
+        supabase.from('tarea').update(campos).eq('id', tareaEditandoId),
+        ...(ejercicioSel ? [
+          supabase.from('ejercicios').delete().eq('id_tarea', tareaEditandoId),
+          supabase.from('p_repeticiones').delete().eq('id_tarea', tareaEditandoId),
+        ] : []),
+      ])
+      if (error) errorEditar = 'Error: ' + error.message
+      ejercicioSigue = !!rEj?.error
       tarea = { id: tareaEditandoId }
     } else {
       const { data, error: errorTarea } = await supabase.from('tarea').insert({
@@ -491,7 +523,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     // campos de la tarea: no hay nada que reescribir en `ejercicios`.
     if (tarea && ejercicioSel) {
       const ejBib2 = ejercicioSel2
-      const { error: errorEjercicio } = await supabase.from('ejercicios').insert({
+      const filaEj = {
         id_tarea: tarea.id,
         // El id de la biblioteca: el vídeo se resuelve con él al leer, no se copia.
         ejercicio_id: ejercicioSel.id,
@@ -506,12 +538,21 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         descanso_segundos: descansoFuerza ? Number(descansoFuerza) : null,
         notas_ejecucion: (rir ? 'RIR: ' + rir : '') + (configSerie ? ' · ' + configSerie : ''),
         url_video: ejercicioSel.url_video || null
-      })
-      if (errorEjercicio) { setError('Error al guardar ejercicio: ' + errorEjercicio.message); setLoading(false); return }
+      }
+      const { error: errorEjercicio } = ejercicioSigue
+        ? await supabase.from('ejercicios').update(filaEj).eq('id_tarea', tarea.id)
+        : await supabase.from('ejercicios').insert(filaEj)
+      if (errorEjercicio) {
+        /* Recién creada y sin su ejercicio, se borra: el formulario sigue
+           abierto, y reintentarlo dejaría detrás una tarea vacía. */
+        if (!tareaEditandoId) await borrarTareaEntera(supabase, tarea.id)
+        setError(errorEditar || 'Error al guardar ejercicio: ' + errorEjercicio.message); setLoading(false); return
+      }
     }
+    if (errorEditar) { setError(errorEditar); setLoading(false); return }
     // Editando hay filas hijas que se han reescrito: releer es más fiable que
-    // recomponer el estado a mano.
-    if (tareaEditandoId) await cargarDatos()
+    // recomponer el estado a mano. Solo las tareas: lo demás no ha cambiado.
+    if (tareaEditandoId) await recargarTareas()
     else setTareas(prev => [...prev, {
       ...tarea,
       p_duracion: [],
@@ -524,6 +565,12 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
   const crearTarea = async (e: React.FormEvent) => {
     e.preventDefault()
+    /* La misma pregunta que en la tabla (lib/medicion): una distancia por serie
+       que no se entrena nunca suele ser la unidad o un cero de más. */
+    if (tablaMedicion(tipoMedicion as UnidadMedicion) === 'p_distancia') {
+      const duda = distanciaSospechosa(disciplina, valorCanonico(tipoMedicion as UnidadMedicion, metros), Number(series) || 1)
+      if (duda && !confirm(duda + '\n\n¿Guardarlo así de todos modos?')) return
+    }
     setLoading(true)
     setError('')
     const orden = ultimoOrden(tareas) + 1
@@ -536,15 +583,18 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
       tecnica_id: tecnicaId ? Number(tecnicaId) : null,
     }
     let tarea: any = null
+    let errorEditar = ''
     if (tareaEditandoId) {
-      const { error } = await supabase.from('tarea').update(campos).eq('id', tareaEditandoId)
-      if (error) { setError('Error: ' + error.message); setLoading(false); return }
       // Las tres tablas de medición: una tarea solo puede tener una, así que se
       // limpian todas antes de escribir. Cambiar de metros a minutos dejando la
       // vieja contaría el volumen dos veces sin que nada se queje.
-      await supabase.from('p_distancia').delete().eq('id_tarea', tareaEditandoId)
-      await supabase.from('p_duracion').delete().eq('id_tarea', tareaEditandoId)
-      await supabase.from('p_repeticiones').delete().eq('id_tarea', tareaEditandoId)
+      /* A la vez que la tarea (ver crearTareaFuerza): si la tarea no entra, la
+         medición nueva se escribe igual y el error se enseña. */
+      const [{ error }] = await Promise.all([
+        supabase.from('tarea').update(campos).eq('id', tareaEditandoId),
+        vaciarMedicion(supabase, tareaEditandoId),
+      ])
+      if (error) errorEditar = 'Error: ' + error.message
       tarea = { id: tareaEditandoId }
     } else {
       const { data, error: errorTarea } = await supabase.from('tarea').insert({
@@ -570,31 +620,30 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
        agosto y esta vista se quedó atrás, que es cómo dos pantallas del mismo
        editor acaban guardando cosas distintas. */
     const _ritmo = aGuardar(ritmoManual)
-    /* El mismo segundo paso que en la tabla: si fuera dentro del insert y la
-       columna fallara, se caería la fila entera y la tarea quedaría sin
-       distancia ni tiempo. Separado, lo peor que pasa es que no haya ritmo. */
-    const _guardarRitmo = async (tablaR: 'p_distancia' | 'p_duracion', idFila: number) => {
-      if (!_ritmo) return
-      const { error } = await supabase.from(tablaR).update({ ritmo_objetivo: _ritmo }).eq('id', idFila)
-      if (error) console.warn('[tripulse] ritmo_objetivo no se guardó en ' + tablaR + ':', error.message)
+    /* Una recién creada cuya medición no entra se borra: el formulario sigue
+       abierto, y reintentarlo dejaría detrás una tarea vacía. */
+    const fallo = async (texto: string) => {
+      if (!tareaEditandoId && tarea) await borrarTareaEntera(supabase, tarea.id)
+      setError(errorEditar || texto); setLoading(false)
     }
+    /* Lo mismo que en la tabla: la intensidad no puede tumbar la fila. Si con
+       ella falla, se guarda sin ella (lib/insertar-medicion), y en el caso
+       normal es una escritura y no dos. */
     if (_tabla === 'p_distancia' && tarea) {
-      const { data: pdNueva, error: errPd } = await supabase.from('p_distancia')
-        .insert({ id_tarea: tarea.id, metros_planeados: _valorC }).select().single()
-      if (errPd) { setError('Error al guardar la distancia: ' + errPd.message); setLoading(false); return }
-      if (pdNueva) await _guardarRitmo('p_distancia', pdNueva.id)
+      const errPd = await insertarMedicion(supabase, 'p_distancia', { id_tarea: tarea.id, metros_planeados: _valorC }, _ritmo)
+      if (errPd) { await fallo('Error al guardar la distancia: ' + errPd.message); return }
     }
     else if (_tabla === 'p_duracion' && tarea) {
       /* Antes se insertaba el tiempo y la intensidad se tiraba: «30 min a
          140-150 ppm» le llegaba al atleta como «30 min». Ni siquiera había
          dónde escribirla —la casilla solo salía en bloques por distancia—. */
-      const { data: puNueva, error: errPu } = await supabase.from('p_duracion')
-        .insert({ id_tarea: tarea.id, tiempo_planeado: _valorC }).select().single()
-      if (errPu) { setError('Error al guardar la duración: ' + errPu.message); setLoading(false); return }
-      if (puNueva) await _guardarRitmo('p_duracion', puNueva.id)
+      const errPu = await insertarMedicion(supabase, 'p_duracion', { id_tarea: tarea.id, tiempo_planeado: _valorC }, _ritmo)
+      if (errPu) { await fallo('Error al guardar la duración: ' + errPu.message); return }
     }
     else if (_tabla === 'p_repeticiones' && tarea) await supabase.from('p_repeticiones').insert({ id_tarea: tarea.id, repeticiones_planteadas: _valorC })
-    if (tareaEditandoId) await cargarDatos()
+    if (errorEditar) { setError(errorEditar); setLoading(false); return }
+    // Solo las tareas: lo demás de la ficha no ha cambiado (ver recargarTareas).
+    if (tareaEditandoId) await recargarTareas()
     else setTareas(prev => [...prev, {
       ...tarea,
       p_duracion: _tabla === 'p_duracion' ? [{ tiempo_planeado: _valorC }] : [],
@@ -900,6 +949,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         )}
         {!sesion.duracion_minutos && durEstimada.faltanTests && !durEstimada.usoReferencia && (
           <p className="text-yellow-500/80 text-xs">⚠️ Faltan tests del deportista para estimar el ritmo de algunas tareas.</p>
+        )}
+        {/* Una tarea mal tecleada (4 × 1.000.000 m) ya no se suma: se dice
+            dónde, para que se corrija en vez de quedarse escondida. */}
+        {!esDeportista && durEstimada.datoImposible && (
+          <p className="text-yellow-500/80 text-xs">
+            ⚠️ Hay una tarea que duraría <b>más de un día entero</b>: revisa sus metros o su unidad. Mientras tanto
+            no cuenta ni en la duración estimada ni en la carga.
+          </p>
         )}
 
         {sesion.estado === 'Realizada' && (

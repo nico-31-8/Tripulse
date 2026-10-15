@@ -34,10 +34,13 @@ import path from 'node:path'
 const RAIZ = path.resolve(__dirname, '..')
 
 /** Donde el alcance SÍ es el plan, y por qué. */
+/* Bloques y el Dibujo estuvieron aquí hasta el 15-10-2026: borraban a mano las
+   sesiones de los microciclos del plan que se deshacía. Ahora borran el
+   macrociclo (o el mesociclo) y la base se lleva sus semanas y esas mismas
+   sesiones en cascada, sin pedirlas: las libres siguen sin tocarse, porque no
+   cuelgan de ningún microciclo. */
 const PUEDEN: Record<string, string> = {
   'app/mesociclo/[id]/vista/page.tsx': 'Es la vista de UN mesociclo: sus sesiones son, por definición, las de sus microciclos. Una sesión libre no está en ningún mesociclo.',
-  'app/planificacion-visual/[id]/bloques/page.tsx': 'BORRA las sesiones del plan que se deshace. Por deportista se llevaría por delante las que él se añadió.',
-  'app/planificacion-visual/[id]/dibujo/page.tsx': 'Lo mismo: borrar las sesiones de los microciclos que desaparecen del lienzo.',
   'lib/plan-rehacer.ts': 'Rehacer un plan: mira y toca las sesiones DE ese plan, no las del atleta.',
 }
 

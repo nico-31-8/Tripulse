@@ -24,6 +24,11 @@ import { esDisciplinaDeFuerza } from './disciplinas'
 import { vivas } from './papelera'
 import { cargarBloques } from './atribucion'
 import { conRondasHechas } from './series-por-grupo'
+import { limpiar } from './copiar-sesion'
+
+/* Lo que llega anidado y se usa por separado. */
+const CON_SUS_TAREAS = new Set(['tarea'])
+const CON_SUS_EJERCICIOS = new Set(['ejercicios'])
 
 /** Un bloque de `lib/atribucion`, con lo poco que hace falta aquí. */
 export interface BloqueSemana {
@@ -292,30 +297,28 @@ export async function cargarSemana(
      Con `vivas` y no con el `.or(...)` a mano: el convenio tiene su sitio
      (lib/papelera) y escribirlo aquí otra vez es la manera de que un día uno de
      los dos se quede sin el `is.null` y desaparezca el histórico entero. */
+  /* Con sus tareas y los ejercicios de cada tarea DENTRO: eran tres rondas en
+     fila (las sesiones, sus tareas, y luego los ejercicios y los bloques) y
+     ahora son dos. Solo los bloques, que necesitan los metros y los tiempos,
+     siguen en su propia consulta (lib/atribucion). */
   const { data: todas } = await vivas(sb.from('sesion')
-    .select('id, fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado')
+    .select('id, fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, tarea(id, id_sesion, formato, formato_config, resultado, ejercicios(' + SELECT_EJERCICIOS_SEMANA + '))')
     .eq('id_deportista', idDeportista)
     .gte('fecha_sesion', desde).lte('fecha_sesion', hasta))
 
-  const lista = (todas || []) as { id: number; estado?: string | null }[]
+  const lista = (todas || []) as { id: number; estado?: string | null; tarea?: any[] }[]
   const realizadas = lista.filter(s => s.estado === 'Realizada')
-  const sesiones = opciones.hecho ? realizadas : lista
-  if (!sesiones.length) return { ...vacio, sesiones: lista.length, realizadas: realizadas.length }
+  const elegidas = opciones.hecho ? realizadas : lista
+  if (!elegidas.length) return { ...vacio, sesiones: lista.length, realizadas: realizadas.length }
 
-  const ids = sesiones.map(s => s.id)
-  /* Las tareas primero porque los ejercicios cuelgan de ellas; lo demás, en
-     paralelo. Pedir las tareas dos veces —una aquí y otra dentro de la consulta
-     de ejercicios— era un viaje de más por cada vez que se abre el panel. */
-  const { data: tareas } = await sb.from('tarea')
-    .select('id, id_sesion, formato, formato_config, resultado').in('id_sesion', ids)
-  const idsTarea = (tareas || []).map((t: { id: number }) => t.id)
+  const sesiones = elegidas.map(s => limpiar(s, CON_SUS_TAREAS))
+  const tareas = elegidas.flatMap(s => (s.tarea || []).map((t: any) => limpiar(t, CON_SUS_EJERCICIOS)))
+  /* En el orden en que se guardaron, que es el que tenían cuando llegaban en
+     su propia consulta. */
+  const ejs = elegidas.flatMap(s => (s.tarea || []).flatMap((t: any) => t.ejercicios || []))
+    .sort((a: any, b: any) => Number(a.id) - Number(b.id))
 
-  const [{ data: ejs }, bloques] = await Promise.all([
-    idsTarea.length
-      ? sb.from('ejercicios').select(SELECT_EJERCICIOS_SEMANA).in('id_tarea', idsTarea)
-      : Promise.resolve({ data: [] }),
-    cargarBloques(sb, sesiones as never[], { soloPrescrito: !opciones.hecho, estimar: true }),
-  ])
+  const bloques = await cargarBloques(sb, sesiones as never[], { soloPrescrito: !opciones.hecho, estimar: true })
 
   /* En un AMRAP hecho, las series de cada línea son las rondas que hizo, no las
      que se estimaron al programarlo. Solo tiene sentido mirando lo realizado. */

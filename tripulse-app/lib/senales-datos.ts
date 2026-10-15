@@ -12,7 +12,8 @@
 
 import { senalesDeAtleta, type ResultadoSenales, type SesionSenal } from './senales'
 import { cargarReferenciasDeVarios } from './referencia-zona'
-import { estimarDuraciones, minutosCarga } from './duracion-carga'
+import { duracionesDeAnidadas, minutosCarga, TAREAS_PARA_DURACION } from './duracion-carga'
+import type { ResultadoDuracion, TestsDeportista } from './duracion'
 import { vivas } from './papelera'
 import { hoyISO, sumarDias } from './fechas'
 import type { RegistroWellness } from './wellness-analisis'
@@ -86,14 +87,21 @@ export async function cargarDatosDeVarios(
 
   const desde = sumarDias(hoy, -DIAS)
 
-  const [wellQ, sesQ] = await Promise.all([
+  /* UNA RONDA. Eran cuatro en fila: el wellness y las sesiones, luego las
+     referencias de todos (que no dependían de nada), y luego las tareas de esas
+     sesiones y sus metros para estimar cuánto duran. Ahora las tareas llegan
+     DENTRO de las sesiones y las referencias van a la vez. Es lo que pinta las
+     señales y el informe de la entrada del panel, con TODO el equipo. */
+  const selSes = 'id, id_deportista, fecha_sesion, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real'
+  const [wellQ, sesQ, refs] = await Promise.all([
     supabase.from('wellness').select('*').in('id_deportista', limpios)
       .gte('fecha', desde).order('fecha', { ascending: false }),
     /* Todas, no solo las realizadas: las que se quedaron sin hacer son parte de
        lo que hay que mirar. La papelera no cuenta. */
     vivas(supabase.from('sesion')
-      .select('id, id_deportista, fecha_sesion, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real')
+      .select(selSes + ', ' + TAREAS_PARA_DURACION)
       .in('id_deportista', limpios).gte('fecha_sesion', desde).lte('fecha_sesion', hoy)),
+    cargarReferenciasDeVarios(supabase, limpios).catch(() => new Map<number, { tests?: TestsDeportista }>()),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,13 +109,11 @@ export async function cargarDatosDeVarios(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const well: any[] = wellQ?.data || []
 
-  let estimaciones: Awaited<ReturnType<typeof estimarDuraciones>> = {}
+  let estimaciones: Record<number, ResultadoDuracion> = {}
   if (ses.length) {
     try {
-      const refs = await cargarReferenciasDeVarios(supabase, limpios)
       const duenoDe = new Map<number, number>(ses.map(s => [s.id, s.id_deportista]))
-      estimaciones = await estimarDuraciones(supabase, ses.map(s => s.id),
-        sid => refs.get(duenoDe.get(sid) as number)?.tests || {})
+      estimaciones = duracionesDeAnidadas(ses, sid => refs.get(duenoDe.get(sid) as number)?.tests || {})
     } catch { /* sin estimación se usa la duración apuntada */ }
   }
 

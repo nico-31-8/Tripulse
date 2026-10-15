@@ -8,7 +8,7 @@
 //   · índices       → app/indices/page.tsx (calcularIndices, semaforo)
 //   · duración      → lib/duracion-carga.ts (estimarDuraciones)
 
-import { estimarDuraciones, minutosEfectivos } from './duracion-carga'
+import { duracionesDeAnidadas, minutosEfectivos, tareasAnidadas, TAREAS_PARA_DURACION } from './duracion-carga'
 import { hoyISO, lunesDe, sumarDias, diasEntre, indiceDia, soloDia } from './fechas'
 import { horasMinutos } from './medicion'
 import { FILTRO_VIVAS } from './papelera'
@@ -324,20 +324,19 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
     test1_carrera: 'fecha, vam', test2_natacion: 'fecha, css', test3_ciclismo: 'fecha, ftp',
     test_fuerza: 'fecha', tests_libres: 'fecha',
   }
-  const testsRes = await Promise.all(testTablas.map(t =>
-    supabase.from(t).select(testCols[t]).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1)
-  ))
-  let ultimaTest: string | null = null
-  const tests = { vam: null as number | null, css: null as number | null, ftp: null as number | null }
-  testsRes.forEach((r, i) => {
-    const row = r.data?.[0]
-    if (!row) return
-    if (row.fecha && (!ultimaTest || row.fecha > ultimaTest)) ultimaTest = row.fecha
-    if (testTablas[i] === 'test1_carrera') tests.vam = row.vam ?? null
-    if (testTablas[i] === 'test2_natacion') tests.css = row.css ?? null
-    if (testTablas[i] === 'test3_ciclismo') tests.ftp = row.ftp ?? null
-  })
-
+  /* Los valores de los tests, para estimar duraciones. Función y no variable:
+     el volumen de la semana los necesita en cuanto llegan, sin esperar al resto. */
+  const testsDe = (res: any[]) => {
+    const t = { vam: null as number | null, css: null as number | null, ftp: null as number | null }
+    res.forEach((r, i) => {
+      const row = r.data?.[0]
+      if (!row) return
+      if (testTablas[i] === 'test1_carrera') t.vam = row.vam ?? null
+      if (testTablas[i] === 'test2_natacion') t.css = row.css ?? null
+      if (testTablas[i] === 'test3_ciclismo') t.ftp = row.ftp ?? null
+    })
+    return t
+  }
   const selSes = 'id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado, cambiada_por'
 
   /* LO QUE ESTÁ EN LA PAPELERA NO CUENTA.
@@ -350,14 +349,68 @@ export async function cargarMetricasPanel(supabase: any, dep: any): Promise<Metr
    El resto de la app ya lo filtraba así (la vista de semana, el calendario): era
    este fichero el que se había quedado fuera del convenio. Se pone en una
    constante para que la próxima consulta no vuelva a olvidarlo. */
-const VIVAS = FILTRO_VIVAS
+  const VIVAS = FILTRO_VIVAS
+  const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
+  const finStr = sumarDias(hoyStr, 21)
 
-// ---- Carga (frescura): sesiones realizadas 70 días ----
+  /* TODO A LA VEZ. Eran DOCE rondas en fila —los tests, la carga, la semana y
+     sus bloques, las últimas realizadas y sus tareas, la agenda, sus tareas y
+     su duración, y los contadores— y casi nada dependía de lo anterior: todo
+     cuelga del deportista. Es lo que se espera cada vez que el entrenador abre
+     a un atleta en el panel. Lo único que sigue detrás es el volumen de la
+     semana, que necesita sus sesiones y los tests, y va encadenado a esas dos
+     para no esperar a las demás. Las tareas de las realizadas y de la agenda
+     llegan DENTRO de sus sesiones. */
+  const pTests = Promise.all(testTablas.map(t =>
+    supabase.from(t).select(testCols[t]).eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(1)
+  ))
+  // ---- Semana en curso: sesiones planificadas (cualquier estado) ----
+  const pSemana = supabase.from('sesion').select(selSes)
+    .eq('id_deportista', dep.id)
+    .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)
+  const [testsRes, rCarga, rSemana, bloquesSemana, rIndices, rAgenda, ejRes, comRes, papRes] = await Promise.all([
+    pTests,
+    // ---- Carga (frescura): sesiones realizadas 70 días ----
+    supabase.from('sesion').select(selSes)
+      .eq('id_deportista', dep.id)
+      .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS),
+    pSemana,
+    /* Volumen por disciplina: por BLOQUE, no por sesión. Un brick suma sus
+       minutos a la bici y a la carrera por separado, no a una disciplina
+       'Brick' inexistente. */
+    Promise.all([pTests, pSemana]).then(([tr, sr]) => {
+      const s: any[] = sr.data || []
+      return s.length ? cargarBloques(supabase, s, { tests: testsDe(tr) }) : []
+    }),
+    /* ---- Índices: últimas 20 realizadas, con sus tareas dentro ----
+       AQUÍ HABÍA UN FALLO, no solo una cadena: esto pedía las últimas veinte
+       realizadas SOLO de los microciclos del plan, y no tenía la consulta de las
+       libres que sí tienen las demás métricas. Así que las sesiones que se añade el
+       atleta no contaban para los índices de percepción, y un atleta sin plan
+       —`microIds` vacío— no tenía índices en absoluto. */
+    fcUmbral
+      ? supabase.from('sesion')
+          .select('id, rpe_estimado, fecha_sesion, tarea(id_sesion, rpe_reportado, fc_media)').eq('id_deportista', dep.id)
+          .eq('estado', 'Realizada').or(VIVAS).order('fecha_sesion', { ascending: false }).limit(20)
+      : Promise.resolve({ data: null }),
+    // ---- Agenda: próximas sesiones (hoy → +21 días, no realizadas), con sus tareas ----
+    supabase.from('sesion').select(selSes + ', ' + TAREAS_PARA_DURACION)
+      .eq('id_deportista', dep.id).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS),
+    // ---- General: conteos para los accesos secundarios ----
+    supabase.from('ejercicios_biblioteca').select('id', { count: 'exact', head: true }),
+    supabase.from('mensajes').select('id').eq('id_deportista', dep.id).eq('autor', 'deportista').eq('leido', false),
+    supabase.from('sesion').select('id').eq('id_deportista', dep.id).eq('eliminada', true),
+  ])
+  let ultimaTest: string | null = null
+  for (const r of testsRes) {
+    const fecha = r.data?.[0]?.fecha
+    if (fecha && (!ultimaTest || fecha > ultimaTest)) ultimaTest = fecha
+  }
+  const tests = testsDe(testsRes)
+
   /* `any[]` y no `any`: el cliente viene sin tipos y, sin el corchete, los
      `.map` de abajo se quedan sin tipo para su parámetro. */
-  const sesCarga: any[] = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id)
-    .eq('estado', 'Realizada').gte('fecha_sesion', desdeCargaStr).or(VIVAS)).data || []
+  const sesCarga: any[] = rCarga.data || []
   // Hasta HOY: los días de descanso desde la última sesión también cuentan.
   const serieCarga = calcularCargas(sesCarga, hoyISO())
   const ultimaCarga = serieCarga[serieCarga.length - 1]
@@ -369,17 +422,12 @@ const VIVAS = FILTRO_VIVAS
     : null
   const tendencia = serieCarga.slice(-42).map(x => x.tsb)
 
-  // ---- Semana en curso: sesiones planificadas (cualquier estado) ----
-  const sesSemana: any[] = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id)
-    .gte('fecha_sesion', lunesStr).lte('fecha_sesion', domingoStr).or(VIVAS)).data || []
+  const sesSemana: any[] = rSemana.data || []
 
   // Volumen por disciplina. Si hay duración estimable → minutos; si no, conteo de sesiones.
   let volumen: MetricasPanel['volumen'] = null
   if (sesSemana.length) {
-    // Por BLOQUE, no por sesión: un brick suma sus minutos a la bici y a la
-    // carrera por separado, no a una disciplina 'Brick' inexistente.
-    const bloques = await cargarBloques(supabase, sesSemana, { tests })
+    const bloques = bloquesSemana
     const minPorDisc: Record<string, number> = {}
     const nPorDisc: Record<string, number> = {}
     bloques.forEach(b => {
@@ -427,25 +475,16 @@ const VIVAS = FILTRO_VIVAS
 
   // ---- Índices: últimas 20 realizadas + sus tareas ----
   let indices: MetricasPanel['indices'] = null
-  const fcUmbral = dep.fc_maxima ? dep.fc_maxima * 0.85 : 0
-  /* AQUÍ HABÍA UN FALLO, no solo una cadena: esto pedía las últimas veinte
-     realizadas SOLO de los microciclos del plan, y no tenía la consulta de las
-     libres que sí tienen las demás métricas. Así que las sesiones que se añade el
-     atleta no contaban para los índices de percepción, y un atleta sin plan
-     —`microIds` vacío— no tenía índices en absoluto. */
   if (fcUmbral) {
-    const { data: ses } = await supabase.from('sesion')
-      .select('id, rpe_estimado, fecha_sesion').eq('id_deportista', dep.id)
-      .eq('estado', 'Realizada').or(VIVAS).order('fecha_sesion', { ascending: false }).limit(20)
-    const sesIds = (ses || []).map((s: any) => s.id)
-    if (sesIds.length) {
-      const { data: tareas } = await supabase.from('tarea')
-        .select('id_sesion, rpe_reportado, fc_media').in('id_sesion', sesIds)
-        .not('rpe_reportado', 'is', null)
+    const ses: any[] = rIndices.data || []
+    if (ses.length) {
       const perVals: number[] = []
       const planVals: number[] = []
-      ;(ses || []).forEach((s: any) => {
-        const t = (tareas || []).find((x: any) => x.id_sesion === s.id && x.fc_media)
+      ses.forEach((s: any) => {
+        /* La primera tarea con RPE y con pulso: era la consulta aparte, que
+           pedía solo las de RPE apuntado. */
+        const t = (Array.isArray(s.tarea) ? s.tarea : [])
+          .find((x: any) => x.rpe_reportado != null && x.fc_media)
         if (!t || !t.fc_media || !t.rpe_reportado) return
         const cargaObj = (t.fc_media / fcUmbral) * 10
         if (cargaObj <= 0) return
@@ -463,20 +502,16 @@ const VIVAS = FILTRO_VIVAS
   }
 
   // ---- Agenda: próximas sesiones (hoy → +21 días, no realizadas) ----
-  const finStr = sumarDias(hoyStr, 21)
-  const agTodas: any[] = (await supabase.from('sesion').select(selSes)
-    .eq('id_deportista', dep.id).gte('fecha_sesion', hoyStr).lte('fecha_sesion', finStr).or(VIVAS)).data || []
+  const agTodas: any[] = rAgenda.data || []
   const agSes = agTodas
     .filter(s => s.estado !== 'Realizada')
     .sort((a, b) => a.fecha_sesion.localeCompare(b.fecha_sesion))
     .slice(0, 6)
-  const agIds = agSes.map(s => s.id)
-  const { data: agTareas } = agIds.length
-    ? await supabase.from('tarea').select('id_sesion, zona_entrenamiento, zona_copia, orden').in('id_sesion', agIds).order('orden')
-    : { data: [] }
-  const estimAg = agIds.length ? await estimarDuraciones(supabase, agIds, tests) : {}
+  /* Sus tareas vienen dentro: la zona es la de la primera, y la duración sale
+     de la misma cuenta que estimarDuraciones. */
+  const estimAg = duracionesDeAnidadas(agSes, tests)
   const agenda = agSes.map(s => {
-    const t0 = (agTareas || []).find((t: any) => t.id_sesion === s.id)
+    const t0 = tareasAnidadas([s])[0]
     return {
       fecha: s.fecha_sesion,
       etiqueta: etiquetaDia(s.fecha_sesion),
@@ -489,12 +524,6 @@ const VIVAS = FILTRO_VIVAS
     }
   })
 
-  // ---- General: conteos para los accesos secundarios ----
-  const [ejRes, comRes, papRes] = await Promise.all([
-    supabase.from('ejercicios_biblioteca').select('id', { count: 'exact', head: true }),
-    supabase.from('mensajes').select('id').eq('id_deportista', dep.id).eq('autor', 'deportista').eq('leido', false),
-    supabase.from('sesion').select('id').eq('id_deportista', dep.id).eq('eliminada', true),
-  ])
   const general = {
     comunicacion: (comRes.data || []).length,
     ejercicios: ejRes.count || 0,

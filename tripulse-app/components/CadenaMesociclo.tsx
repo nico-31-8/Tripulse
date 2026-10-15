@@ -68,21 +68,20 @@ export default function CadenaMesociclo({
       /* El macrociclo estaba solo para acotar los mesociclos, y
          `mesociclo.id_deportista` ya lo hace. Los mesociclos y las
          competiciones tampoco dependen unos de otros. */
-      const [ms, comps] = await Promise.all([
+      /* Y los microciclos también a la vez: llevan su deportista, así que no
+         hace falta esperar a los mesociclos para pedirlos. */
+      // La UA que el entrenador dibujó, semana a semana. Es lo que hace que la
+      // forma del bloque sea la suya y no la del libro. Se busca por FECHA y no
+      // por posición: un microciclo que falte dejaría el resto desplazado.
+      const [ms, comps, { data: micros }] = await Promise.all([
         supabase.from('mesociclo')
           .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
           .eq('id_deportista', dep.id).order('fecha_inicio'),
         supabase.from('competicion')
           .select('nombre, fecha').eq('id_deportista', Number(dep.id)).order('fecha'),
+        supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').eq('id_deportista', dep.id),
       ])
       const lista: MesoFila[] = (ms.data || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
-
-      // La UA que el entrenador dibujó, semana a semana. Es lo que hace que la
-      // forma del bloque sea la suya y no la del libro. Se busca por FECHA y no
-      // por posición: un microciclo que falte dejaría el resto desplazado.
-      const { data: micros } = lista.length
-        ? await supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').in('id_mesociclo', lista.map(m => m.id))
-        : { data: [] as any[] }
 
       const ua: Record<number, (number | null)[]> = {}
       lista.forEach(m => {
@@ -138,8 +137,9 @@ export default function CadenaMesociclo({
     if (!meso) return
     setGenerando(true)
     const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
-    const out: SemanaGenerada[] = []
-    for (const s of semanas) {
+    /* Las semanas a la vez: lo que ya hay en cada una se pregunta en paralelo
+       (era una espera por semana, una detrás de otra). */
+    const out: SemanaGenerada[] = await Promise.all(semanas.map(async s => {
       const e: EntradaSemana = entradaDeSemana(s, base)
       const forma = formaDeSemana(e)
       const plan = rellenarSemana({
@@ -150,8 +150,8 @@ export default function CadenaMesociclo({
       })
       // Qué hay ya esa semana. Volcar SUMA, y eso hay que saberlo antes.
       const yaHay = s.lunes ? await loQueYaHay(supabase, dep.id, s.lunes).catch(() => null) : null
-      out.push({ ...s, plan, yaHay })
-    }
+      return { ...s, plan, yaHay }
+    }))
     setGeneradas(out)
     setConfirmando(false)
     setGenerando(false)
@@ -162,11 +162,12 @@ export default function CadenaMesociclo({
     setVolcando(true); setConfirmando(false)
     const nivelP = nivelDePlantilla(nivel)
     const out = [...generadas]
-    // Semana a semana, actualizando la tabla según van cayendo: si algo falla a
-    // la mitad, se ve exactamente dónde se quedó en vez de un error suelto.
-    for (let i = 0; i < out.length; i++) {
-      const s = out[i]
-      if (!s.lunes) continue
+    // Actualizando la tabla según van cayendo: si algo falla, se ve exactamente
+    // en qué semana en vez de un error suelto. Y TODAS A LA VEZ: iban semana a
+    // semana, y cada una son varias esperas; cada semana es independiente de
+    // las demás y cada fila se pinta cuando termina la suya.
+    await Promise.all(out.map(async (s, i) => {
+      if (!s.lunes) return
       const r = await volcarSemana(supabase, {
         idDeportista: dep.id,
         lunes: s.lunes,
@@ -176,7 +177,7 @@ export default function CadenaMesociclo({
       })
       out[i] = { ...s, volcada: { creadas: r.creadas, error: r.error } }
       setGeneradas([...out])
-    }
+    }))
     setVolcando(false)
   }
 

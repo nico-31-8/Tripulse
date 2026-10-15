@@ -674,9 +674,14 @@ export async function aplicarBloques(
     if (b.metros) dists.push({ id_tarea: t.id, metros_planeados: b.metros })
     else if (b.segundos) durs.push({ id_tarea: t.id, tiempo_planeado: b.segundos })
   })
-  if (dists.length) await supabase.from('p_distancia').insert(dists)
-  if (durs.length) await supabase.from('p_duracion').insert(durs)
-  return null
+  /* Las dos a la vez: no dependen una de otra (iban en fila). Y su error se
+     devuelve: antes se tiraba, y la sesión quedaba con las tareas y sin metros
+     ni minutos, sin que nadie lo dijera. */
+  const [rD, rU] = await Promise.all([
+    dists.length ? supabase.from('p_distancia').insert(dists) : null,
+    durs.length ? supabase.from('p_duracion').insert(durs) : null,
+  ])
+  return rD?.error?.message ?? rU?.error?.message ?? null
 }
 
 // Volumen total de trabajo del bloque principal (sin calentamiento ni vuelta):

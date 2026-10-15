@@ -21,6 +21,7 @@
 import { volumenDe } from './modo-mejora'
 import { type ControlTipo } from './control-esfuerzo'
 import { rellenarRpeTareas } from './rpe-sesion'
+import { idsEnOrden } from './copiar-sesion'
 
 export interface SerieRegistro {
   peso: string
@@ -213,27 +214,42 @@ export async function guardarRegistroFuerza(
     return { idSesion: null, guardados: 0, error: msg }
   }
 
-  const filasSeries: any[] = []
-  let orden = 1
-  for (const ej of cuentan) {
-    const { data: tarea, error: eT } = await sb.from('tarea').insert(tareaDe(ej, ses.id, orden++)).select('id').single()
-    if (eT || !tarea) return deshacer(eT?.message || 'No se pudo guardar un ejercicio.')
+  /* TODOS LOS EJERCICIOS DE GOLPE: las tareas en una escritura, sus ejercicios
+     en otra y las series en otra, sean dos ejercicios o diez. Iba ejercicio a
+     ejercicio —la tarea, esperar, su ejercicio, esperar—, dos esperas por cada
+     uno. Los ids se emparejan como en lib/copiar-sesion (idsEnOrden). */
+  const r = await escribirEjercicios(sb, ses.id, cuentan, 1)
+  if (r.error) return deshacer(r.error)
 
-    const { data: fila, error: eE } = await sb.from('ejercicios').insert(ejercicioDe(ej, tarea.id)).select('id').single()
-    if (eE || !fila) return deshacer(eE?.message || 'No se pudo guardar un ejercicio.')
-
-    filasSeries.push(...seriesDe(ej, fila.id))
-  }
-
-  if (filasSeries.length) {
-    const { error: eSer } = await sb.from('series_realizadas').insert(filasSeries)
-    if (eSer) return deshacer(eSer.message || 'No se pudieron guardar las series.')
-  }
-
-  // El RPE también en sus tareas: el SICAT y los índices lo leen de ahí.
-  await rellenarRpeTareas(sb, ses.id, rpe)
+  /* Las series y el RPE de las tareas a la vez: no se pisan. El RPE también en
+     sus tareas porque el SICAT y los índices lo leen de ahí. */
+  const [rSer] = await Promise.all([
+    r.series.length ? sb.from('series_realizadas').insert(r.series) : Promise.resolve({ error: null }),
+    rellenarRpeTareas(sb, ses.id, rpe),
+  ])
+  if (rSer?.error) return deshacer(rSer.error.message || 'No se pudieron guardar las series.')
 
   return { idSesion: ses.id, guardados: cuentan.length, error: null }
+}
+
+/**
+ * Escribe las tareas y los ejercicios de una sesión apuntada, cada cosa de
+ * golpe, y devuelve las series listas para insertar. Error en texto, o null.
+ */
+async function escribirEjercicios(
+  sb: any, idSesion: number, cuentan: EjercicioRegistro[], ordenInicial: number,
+): Promise<{ series: any[]; error: string | null; detalle?: any }> {
+  const filasT = cuentan.map((ej, i) => tareaDe(ej, idSesion, ordenInicial + i))
+  const rT = await sb.from('tarea').insert(filasT).select('id')
+  const idsT = rT?.error ? null : idsEnOrden(rT?.data, filasT.length)
+  if (!idsT) return { series: [], error: rT?.error?.message || 'No se pudo guardar un ejercicio.', detalle: rT?.error }
+
+  const filasE = cuentan.map((ej, i) => ejercicioDe(ej, idsT[i]))
+  const rE = await sb.from('ejercicios').insert(filasE).select('id')
+  const idsE = rE?.error ? null : idsEnOrden(rE?.data, filasE.length)
+  if (!idsE) return { series: [], error: rE?.error?.message || 'No se pudo guardar un ejercicio.', detalle: rE?.error }
+
+  return { series: cuentan.flatMap((ej, i) => seriesDe(ej, idsE[i])), error: null }
 }
 
 /**
@@ -346,46 +362,44 @@ export async function actualizarRegistroFuerza(
   const fallo = (e: any) =>
     (e?.message ? e.message + '. ' : '') + 'No se ha borrado nada: tu registro anterior sigue como estaba.'
 
-  // Lo viejo, apuntado antes de tocar nada.
-  const { data: viejas } = await sb.from('tarea').select('id').eq('id_sesion', idSesion)
+  /* Lo viejo, apuntado antes de tocar nada: sus tareas y, dentro, los
+     ejercicios de cada una (eran dos consultas, una al principio y otra entre
+     medias del borrado). */
+  const { data: viejas } = await sb.from('tarea').select('id, ejercicios(id)').eq('id_sesion', idSesion)
   const idsViejos = (viejas || []).map((t: any) => t.id)
+  const idsEjViejos = (viejas || []).flatMap((t: any) => (t.ejercicios || []).map((e: any) => e.id))
 
-  // 1) Lo nuevo, con el orden empezando por detrás de lo viejo para no chocar.
-  const filasSeries: any[] = []
-  let orden = idsViejos.length + 1
-  for (const ej of cuentan) {
-    const { data: tarea, error: eT } = await sb.from('tarea')
-      .insert(tareaDe(ej, idSesion, orden++)).select('id').single()
-    if (eT || !tarea) return { guardados: 0, error: fallo(eT) }
-
-    const { data: fila, error: eE } = await sb.from('ejercicios')
-      .insert(ejercicioDe(ej, tarea.id)).select('id').single()
-    if (eE || !fila) return { guardados: 0, error: fallo(eE) }
-
-    filasSeries.push(...seriesDe(ej, fila.id))
-  }
-  if (filasSeries.length) {
-    const { error: eSer } = await sb.from('series_realizadas').insert(filasSeries)
+  // 1) Lo nuevo, con el orden empezando por detrás de lo viejo para no chocar,
+  //    y de golpe (ver guardarRegistroFuerza).
+  const r = await escribirEjercicios(sb, idSesion, cuentan, idsViejos.length + 1)
+  if (r.error) return { guardados: 0, error: fallo(r.detalle || { message: r.error }) }
+  if (r.series.length) {
+    const { error: eSer } = await sb.from('series_realizadas').insert(r.series)
     if (eSer) return { guardados: 0, error: fallo(eSer) }
   }
 
-  // 2) Y ahora sí, fuera lo viejo. Las series y los ejercicios cuelgan de la
-  //    tarea; si hay borrado en cascada se van solos, y si no, se piden aparte.
-  if (idsViejos.length) {
-    const { data: ejsViejos } = await sb.from('ejercicios').select('id').in('id_tarea', idsViejos)
-    const idsEjViejos = (ejsViejos || []).map((e: any) => e.id)
+  /* 2) Y ahora sí, fuera lo viejo, en su orden (las series antes que su
+        ejercicio, que no se borra en cascada, y la tarea al final). A la vez,
+        la cabecera de la sesión y el RPE de las tareas: no tocan lo que se borra. */
+  const borrarViejo = async () => {
+    if (!idsViejos.length) return
     if (idsEjViejos.length) await sb.from('series_realizadas').delete().in('id_ejercicio', idsEjViejos)
     await sb.from('ejercicios').delete().in('id_tarea', idsViejos)
     await sb.from('tarea').delete().in('id', idsViejos)
   }
-
-  await sb.from('sesion').update({
-    fecha_sesion: fecha,
-    duracion_minutos: duracionMinutos,
-    rpe_reportado: rpe,
-    notas_entrenador: notas || null,
-  }).eq('id', idSesion)
-  await rellenarRpeTareas(sb, idSesion, rpe)
+  /* El RPE de las tareas va DETRÁS del borrado, no a la vez: los dos tocan
+     varias filas de `tarea` de esta sesión, y dos escrituras así a la vez
+     pueden bloquearse una a otra en la base. La cabecera sí va a la vez: es
+     otra tabla. */
+  await Promise.all([
+    borrarViejo().then(() => rellenarRpeTareas(sb, idSesion, rpe)),
+    sb.from('sesion').update({
+      fecha_sesion: fecha,
+      duracion_minutos: duracionMinutos,
+      rpe_reportado: rpe,
+      notas_entrenador: notas || null,
+    }).eq('id', idSesion),
+  ])
 
   return { guardados: cuentan.length, error: null }
 }

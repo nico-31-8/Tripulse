@@ -147,40 +147,49 @@ export default function DirigirSesion({ params }: { params: Promise<{ id: string
     for (const [k, e] of Object.entries(relojes)) cerrados[Number(k)] = parar(e, ahoraMs)
     setRelojes(cerrados)
 
-    for (const t of tareas) {
+    /* LAS TAREAS A LA VEZ, cada una por su lado: iban una detrás de otra, y
+       cada una son dos o tres esperas. Dentro de cada tarea el orden sí
+       importa —borrar lo suyo y DESPUÉS escribirlo—, entre tareas no. */
+    const errores = await Promise.all(tareas.map(async t => {
       const e = cerrados[t.id]
-      if (!e) continue
+      if (!e) return null
       const filas = filasDe(e.series, t.id)
+      const notas = notasDe(e.series)
+      const pNotas = notas ? supabase.from('tarea').update({ notas_ejecucion: notas }).eq('id', t.id) : null
 
       /* Se borran las de este mismo anotador antes de reinsertar: si el
          entrenador corrige y vuelve a guardar, no se duplican. Las del atleta
          NO se tocan aquí — eso lo decide el aviso de más abajo. */
+      let error: { message: string } | null = null
       if (filas.length) {
         await supabase.from('series_realizadas').delete()
           .eq('id_tarea', t.id).eq('anotado_por', 'entrenador')
-        const { error } = await supabase.from('series_realizadas').insert(filas)
-        if (error) {
-          alert('No se han podido guardar las series: ' + error.message
-            + '\n\n¿Está corrido supabase/dirigir-sesion.sql?')
-          setGuardando(false)
-          return
-        }
+        error = (await supabase.from('series_realizadas').insert(filas)).error
       }
-
-      const notas = notasDe(e.series)
-      if (notas) await supabase.from('tarea').update({ notas_ejecucion: notas }).eq('id', t.id)
+      await pNotas
+      return error
+    }))
+    const error = errores.find(Boolean)
+    if (error) {
+      alert('No se han podido guardar las series: ' + error.message
+        + '\n\n¿Está corrido supabase/dirigir-sesion.sql?')
+      setGuardando(false)
+      return
     }
 
     /* El RPE va con su origen. Es la diferencia entre «me dijo que un 9» y
-       «le puse un 9 mirándolo», y el SICAT calcula la carga con ese número. */
-    await supabase.from('sesion').update({
-      estado: 'Realizada',
-      ...(rpe != null ? { rpe_reportado: rpe, rpe_origen: rpeOrigen } : {}),
-      ...(notaSesion.trim() ? { notas_post: notaSesion.trim() } : {}),
-    }).eq('id', id)
-    /* Y en sus bloques, que es donde lo leen el SICAT y los índices de
-       percepción: sin esto, una sesión dirigida no les contaba el esfuerzo. */
-    await rellenarRpeTareas(supabase, Number(id), rpe)
+       «le puse un 9 mirándolo», y el SICAT calcula la carga con ese número.
+       Y en sus bloques, que es donde lo leen el SICAT y los índices de
+       percepción: sin esto, una sesión dirigida no les contaba el esfuerzo.
+       Las dos a la vez: una escribe la sesión y la otra sus tareas. */
+    await Promise.all([
+      supabase.from('sesion').update({
+        estado: 'Realizada',
+        ...(rpe != null ? { rpe_reportado: rpe, rpe_origen: rpeOrigen } : {}),
+        ...(notaSesion.trim() ? { notas_post: notaSesion.trim() } : {}),
+      }).eq('id', id),
+      rellenarRpeTareas(supabase, Number(id), rpe),
+    ])
 
     setGuardando(false)
     router.push('/sesion/' + id)

@@ -3,24 +3,34 @@ import { crearTemporada, planesExistentes } from './plan-macrociclo-volcado'
 import { planDeTemporada } from './plan-macrociclo'
 
 /** Doble de supabase que apunta lo que se le manda a cada tabla. */
+/* Una inserción de golpe devuelve TODAS sus filas, cada una con su id, y
+   cuenta cuántas veces se escribe en cada tabla. */
 function sbFalso(fallos: Record<string, string> = {}) {
   const escrito: Record<string, any[]> = { macrociclo: [], mesociclo: [], microciclo: [] }
+  const llamadas: Record<string, number> = { macrociclo: 0, mesociclo: 0, microciclo: 0 }
   let id = 100
   const api = (tabla: string) => ({
     insert: (filas: any) => {
       const arr = Array.isArray(filas) ? filas : [filas]
-      if (fallos[tabla]) return { select: () => ({ single: async () => ({ data: null, error: { message: fallos[tabla] } }) }), then: undefined as any, error: { message: fallos[tabla] } }
-      escrito[tabla].push(...arr)
-      const conId = { ...arr[0], id: ++id }
-      const res: any = { data: conId, error: null }
-      res.select = () => ({ single: async () => ({ data: conId, error: null }) })
+      llamadas[tabla]++
+      if (fallos[tabla]) {
+        const r = { data: null, error: { message: fallos[tabla] } }
+        return { select: () => ({ single: async () => r, then: (f: any) => f(r) }), then: (f: any) => f(r) }
+      }
+      const conIds = arr.map(fila => ({ ...fila, id: ++id }))
+      escrito[tabla].push(...conIds)
+      const res: any = {}
+      res.select = () => ({
+        single: async () => ({ data: conIds[0], error: null }),
+        then: (r: any) => r({ data: conIds, error: null }),
+      })
       // insert() sin .select() se espera directamente
       res.then = (r: any) => r({ error: null })
       return res
     },
     select: () => ({ eq: () => ({ count: 0 }) }),
   })
-  return { api: { from: api }, escrito }
+  return { api: { from: api }, escrito, llamadas }
 }
 
 const temporada = planDeTemporada({ desde: '2026-01-05', objetivo: '2026-06-07', distancia: 'olimpico' })
@@ -35,6 +45,24 @@ describe('escribir la temporada', () => {
     expect(escrito.macrociclo).toHaveLength(1)
     expect(escrito.mesociclo.length).toBe(temporada.bloques.length)
     expect(r.micros).toBe(temporada.semanas)
+  })
+
+  /* Eran un mesociclo y sus semanas, uno detrás de otro: con ocho bloques,
+     dieciséis esperas. Ahora los mesociclos van de golpe y las semanas de todos
+     en otra, y cada semana tiene que seguir colgando de SU bloque. */
+  it('los bloques van de una vez y las semanas de todos en otra, cada una con su bloque', async () => {
+    const { api, escrito, llamadas } = sbFalso()
+    const r = await crearTemporada(api, { idDeportista: 7, temporada, distancia: 'olimpico', nombre: 'X' })
+    expect(r.error).toBeNull()
+    expect(llamadas).toEqual({ macrociclo: 1, mesociclo: 1, microciclo: 1 })
+    expect(temporada.bloques.length).toBeGreaterThan(1)
+    const mesoPorId = new Map(escrito.mesociclo.map((m: any) => [m.id, m]))
+    for (const semana of escrito.microciclo) {
+      const suyo = mesoPorId.get(semana.id_mesociclo)
+      expect(suyo, semana.objetivo).toBeTruthy()
+      expect(semana.objetivo.endsWith(' — ' + suyo.objetivo)).toBe(true)
+    }
+    expect(r.mesos).toBe(temporada.bloques.length)
   })
 
   /* Las politicas de RLS filtran por id_deportista, que esta desnormalizado en
@@ -87,9 +115,12 @@ function sbConFallos(opts: {
         const r = opts.microciclo(arr)
         return { ...r, then: (f: any) => f(r) } as any
       }
-      const conId = { ...arr[0], id: ++id }
-      const res: any = { data: conId, error: null }
-      res.select = () => ({ single: async () => ({ data: conId, error: null }) })
+      const conIds = arr.map(fila => ({ ...fila, id: ++id }))
+      const res: any = {}
+      res.select = () => ({
+        single: async () => ({ data: conIds[0], error: null }),
+        then: (f: any) => f({ data: conIds, error: null }),
+      })
       res.then = (f: any) => f({ error: null })
       return res
     },
@@ -141,7 +172,8 @@ describe('cuando la base dice que no', () => {
     const r = await crearTemporada(api as any, { idDeportista: 1, temporada, distancia: 'olimpico', nombre: 'Test' } as any)
     expect(r.error).toMatch(/algo se rompió/)
     expect(r.idMacrociclo).toBeNull()
-    expect(borrados).toContain('mesociclo')
-    expect(borrados).toContain('macrociclo')
+    /* Basta con borrar el macrociclo: sus bloques y sus semanas cuelgan de él
+       con ON DELETE CASCADE y se van con él. */
+    expect(borrados).toEqual(['macrociclo'])
   })
 })

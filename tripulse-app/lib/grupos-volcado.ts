@@ -4,7 +4,8 @@
 // sesiones normales que no son de nadie. Volcar = copiarlas al calendario de cada
 // miembro, dentro de la semana que esa persona ya tenga.
 //
-// TRES COSAS QUE HAY QUE QUITAR AL COPIAR, Y LAS TRES SON SILENCIOSAS:
+// La copia en sí es la de siempre (lib/copiar-sesion), con TRES COSAS QUE HAY QUE
+// CUIDAR AL COPIAR A OTRA PERSONA, Y LAS TRES SON SILENCIOSAS:
 //
 //   1. id_deportista. Cada fila de la cadena (sesion, tarea, p_distancia...) lleva
 //      el suyo, y al copiar con {...resto} se arrastra el de la FICHA DEL GRUPO. La
@@ -14,11 +15,13 @@
 //
 //   2. ritmo_objetivo. Se guarda, y en modo entreno el guardado LE GANA al
 //      calculado. La ficha del grupo no tiene tests, así que vendría vacío... salvo
-//      que alguien los ponga. Se pone a null a propósito: así cada atleta ve el ritmo
-//      que sale de SUS tests, que es el sentido entero de esto.
+//      que alguien los ponga. Se quita a propósito (`sinRitmo`): así cada atleta ve
+//      el ritmo que sale de SUS tests, que es el sentido entero de esto.
 //
 //   3. Lo que pasó, no lo que se planeó: estado, rpe_reportado, duracion_real. Una
-//      copia es un encargo nuevo, no el historial de otro.
+//      copia es un encargo nuevo, no el historial de otro. Eso ya lo quita
+//      lib/copiar-sesion para todo el mundo.
+import { leerOrigen, escribirCopias, type DestinoCopia } from './copiar-sesion'
 
 export interface SesionDelGrupo {
   id: number
@@ -34,21 +37,6 @@ export interface ResultadoVolcado {
   fallos: number
   enSuPlan: number
   error?: string
-}
-
-export const SIN_COPIAR = new Set([
-  'id', 'created_at', 'id_deportista', 'id_sesion', 'id_tarea', 'id_microciclo',
-  'id_emision', 'estado', 'rpe_reportado', 'duracion_real', 'eliminada',
-  'sensacion_tecnica', 'sensacion_general', 'notas_post', 'ritmo_objetivo',
-])
-
-// Deja solo lo que describe el ENTRENAMIENTO. Todo lo demás se pone después, a mano,
-// para que no dependa de qué columnas tenga la tabla el día de mañana: si se añade
-// una que no debería copiarse, esta lista es el único sitio que hay que tocar.
-export function limpiar(fila: any): any {
-  const salida: any = {}
-  for (const k of Object.keys(fila || {})) if (!SIN_COPIAR.has(k)) salida[k] = fila[k]
-  return salida
 }
 
 export async function sesionesDelGrupo(
@@ -68,15 +56,14 @@ export async function sesionesDelGrupo(
 export async function loQueYaTiene(
   sb: any, idGrupo: string, idDeportista: number, desde: string, hasta: string,
 ): Promise<{ fecha_sesion: string; disciplina: string }[]> {
-  const { data: emis } = await sb.from('grupo_entreno_emision').select('id').eq('id_grupo', idGrupo)
-  const idsEmi = (emis || []).map((e: any) => e.id)
-  if (!idsEmi.length) return []
+  /* Una consulta: las sesiones que vienen de una emisión de ESTE grupo, con el
+     cruce dentro. Eran dos (las emisiones del grupo, y luego sus sesiones). */
   const { data } = await sb.from('sesion')
-    .select('fecha_sesion, disciplina')
-    .in('id_emision', idsEmi).eq('id_deportista', idDeportista)
+    .select('fecha_sesion, disciplina, grupo_entreno_emision!inner(id_grupo)')
+    .eq('grupo_entreno_emision.id_grupo', idGrupo).eq('id_deportista', idDeportista)
     .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
     .or('eliminada.is.null,eliminada.eq.false')
-  return data || []
+  return ((data || []) as any[]).map(s => ({ fecha_sesion: s.fecha_sesion, disciplina: s.disciplina }))
 }
 
 // De las sesiones del grupo, las que a esa persona le faltan.
@@ -111,13 +98,11 @@ export async function volcadoPrevio(
   const vacio: VolcadoPrevio = { planificadas: [], realizadas: 0, personas: 0 }
   if (!idsMiembros.length) return vacio
 
-  const { data: emis } = await sb.from('grupo_entreno_emision').select('id').eq('id_grupo', idGrupo)
-  const idsEmi = (emis || []).map((e: any) => e.id)
-  if (!idsEmi.length) return vacio
-
+  /* Una consulta: las sesiones que vienen de una emisión de ESTE grupo, con el
+     cruce dentro. Eran dos (las emisiones del grupo, y luego sus sesiones). */
   const { data } = await sb.from('sesion')
-    .select('id, estado, id_deportista')
-    .in('id_emision', idsEmi).in('id_deportista', idsMiembros)
+    .select('id, estado, id_deportista, grupo_entreno_emision!inner(id_grupo)')
+    .eq('grupo_entreno_emision.id_grupo', idGrupo).in('id_deportista', idsMiembros)
     .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
     .or('eliminada.is.null,eliminada.eq.false')
 
@@ -143,9 +128,14 @@ export async function apartarVolcadoPrevio(sb: any, ids: number[]): Promise<stri
 /**
  * Copia las sesiones del grupo al calendario de cada miembro.
  *
- * Va persona a persona y sesión a sesión sin pararse en el primer fallo: con ocho
- * personas, que una falle no puede dejar a las otras siete sin su semana. Devuelve
- * el parte de cada una.
+ * Cada persona por su lado y sin pararse en el primer fallo: con ocho personas,
+ * que una falle no puede dejar a las otras siete sin su semana. Devuelve el parte
+ * de cada una.
+ *
+ * Y TODAS A LA VEZ. Iba persona a persona, sesión a sesión y tarea a tarea: con
+ * ocho personas y una semana de seis sesiones eran varios cientos de viajes en
+ * serie, y el entrenador esperando delante. Ahora el grupo se lee una vez y cada
+ * persona son tres escrituras (sesiones, tareas, lo que cuelga), en paralelo.
  */
 export async function volcar(
   sb: any,
@@ -167,76 +157,53 @@ export async function volcar(
   if (!sesiones.length) return { idEmision: null, resultados: [], error: 'No hay nada que volcar en esas fechas.' }
   if (!miembros.length) return { idEmision: null, resultados: [], error: 'El grupo no tiene a nadie.' }
 
-  const { data: emi, error: eE } = await sb.from('grupo_entreno_emision')
-    .insert({ id_grupo: idGrupo, nombre: nombre || null }).select('id').single()
+  /* Lo del grupo se lee UNA vez —sesiones, tareas y lo que cuelga— y las semanas de
+     todos también: con 8 personas serían 8 lecturas de lo mismo. Y a la vez que se
+     abre la emisión, que no depende de ninguna de las dos (iba antes, sola). */
+  const [{ data: emi, error: eE }, origen, microsPorDep] = await Promise.all([
+    sb.from('grupo_entreno_emision')
+      .insert({ id_grupo: idGrupo, nombre: nombre || null }).select('id').single(),
+    leerOrigen(sb, sesiones.map(s => s.id)),
+    microsDeTodos(miembros.map(m => m.id_deportista)),
+  ])
   if (eE || !emi) return { idEmision: null, resultados: [], error: eE?.message || 'No se pudo abrir la emisión.' }
 
-  // Las tareas del grupo se leen UNA vez, no una por miembro: con 8 personas y 6
-  // sesiones serían 48 lecturas de lo mismo.
-  const ids = sesiones.map(s => s.id)
-  const [srcSes, srcTar] = await Promise.all([
-    sb.from('sesion').select('*').in('id', ids),
-    sb.from('tarea').select('*').in('id_sesion', ids).order('orden'),
-  ])
-  const porSesion = (srcSes.data || []).reduce((a: any, s: any) => { a[s.id] = s; return a }, {})
-  const tareasDe = (idSes: number) => (srcTar.data || []).filter((t: any) => t.id_sesion === idSes)
-
-  const idsTareas = (srcTar.data || []).map((t: any) => t.id)
-  const hijas = idsTareas.length ? await Promise.all([
-    sb.from('p_distancia').select('*').in('id_tarea', idsTareas),
-    sb.from('p_duracion').select('*').in('id_tarea', idsTareas),
-    sb.from('p_repeticiones').select('*').in('id_tarea', idsTareas),
-    sb.from('ejercicios').select('*').in('id_tarea', idsTareas),
-  ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
-  const TABLAS = ['p_distancia', 'p_duracion', 'p_repeticiones', 'ejercicios']
-
-  const microsPorDep = await microsDeTodos(miembros.map(m => m.id_deportista))
-
-  const resultados: ResultadoVolcado[] = []
-
-  for (const m of miembros) {
+  const resultados = await Promise.all(miembros.map(async (m): Promise<ResultadoVolcado> => {
     const parte: ResultadoVolcado = { ...m, creadas: 0, fallos: 0, enSuPlan: 0 }
     try {
       const micros = microsPorDep.get(Number(m.id_deportista)) || []
+      const enSuPlan: boolean[] = []
+      const destinos: DestinoCopia[] = sesiones.map(s => {
+        const fecha = origen.sesiones.get(Number(s.id))?.fecha_sesion ?? s.fecha_sesion
+        const micro = microDelDia(micros, fecha)
+        enSuPlan.push(!!micro)
+        return {
+          origen: s.id,
+          /* Las mismas claves en todas: en una inserción de golpe, la que falta
+             en una fila se escribe como null. */
+          campos: {
+            fecha_sesion: fecha,
+            id_microciclo: micro ? micro.id : null,
+            id_deportista: m.id_deportista,
+            origen: 'entrenador',
+            id_emision: emi.id,
+          },
+          idDeportista: m.id_deportista,
+        }
+      })
 
-      for (const s of sesiones) {
-        const src = porSesion[s.id]
-        if (!src) { parte.fallos++; continue }
-        const micro = microDelDia(micros, src.fecha_sesion)
-
-        const { data: nueva, error: eS } = await sb.from('sesion').insert({
-          ...limpiar(src),
-          id_deportista: m.id_deportista,
-          id_microciclo: micro ? micro.id : null,
-          ...(micro ? {} : { origen: 'entrenador' }),
-          estado: 'Planificada',
-          id_emision: emi.id,
-        }).select('id').single()
-
-        if (eS || !nueva) { parte.fallos++; continue }
+      const r = await escribirCopias(sb, origen, destinos, { sinRitmo: true })
+      r.ids.forEach((nueva, k) => {
+        if (nueva == null) { parte.fallos++; return }
         parte.creadas++
-        if (micro) parte.enSuPlan++
-
-        const mapa: Record<number, number> = {}
-        for (const t of tareasDe(s.id)) {
-          const { data: nt } = await sb.from('tarea')
-            .insert({ ...limpiar(t), id_sesion: nueva.id, id_deportista: m.id_deportista })
-            .select('id').single()
-          if (nt) mapa[t.id] = nt.id
-        }
-
-        for (let i = 0; i < TABLAS.length; i++) {
-          const filas = (hijas[i].data || [])
-            .filter((r: any) => mapa[r.id_tarea])
-            .map((r: any) => ({ ...limpiar(r), id_tarea: mapa[r.id_tarea], id_deportista: m.id_deportista }))
-          if (filas.length) await sb.from(TABLAS[i]).insert(filas)
-        }
-      }
+        if (enSuPlan[k]) parte.enSuPlan++
+      })
+      if (r.error) parte.error = r.error
     } catch (e: any) {
       parte.error = e?.message || 'Error inesperado'
     }
-    resultados.push(parte)
-  }
+    return parte
+  }))
 
   if (!resultados.some(r => r.creadas > 0)) {
     await sb.from('grupo_entreno_emision').delete().eq('id', emi.id)

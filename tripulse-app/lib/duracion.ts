@@ -138,7 +138,26 @@ export interface ResultadoDuracion {
    * persona. El número sirve para ver la forma, no para comparar.
    */
   usoReferencia: boolean
+  /**
+   * Alguna tarea duraría más de un día entero (ver TOPE_TAREA_SEG): es un dato
+   * mal tecleado, y NO se ha sumado. Quien enseñe la duración o la carga tiene
+   * que decirlo, para que se corrija la tarea.
+   */
+  datoImposible?: boolean
 }
+
+/**
+ * Lo más que puede durar UNA tarea: un día entero.
+ *
+ * Por encima no hay entrenamiento posible; hay un dato mal tecleado. El caso que
+ * lo trajo (15-10-2026): «4 × 1.000.000 m» de carrera —1.000 km por serie, se
+ * quería poner 1.000 m— que se estimaba en unas 240 horas, y a RPE 8 ponía la
+ * barra de la semana en el lienzo en 134.359 cuando las de al lado iban por
+ * 1.500. Una sola tarea así se come la escala entera y con ella las demás semanas.
+ * Ahora esa tarea no se suma y se avisa (`datoImposible`), que es lo honrado: el
+ * número bueno no se sabe, pero el malo seguro que no lo es.
+ */
+export const TOPE_TAREA_SEG = 24 * 3600
 
 // ------------------------------------------------------------
 // Duración real medida en el modo entreno
@@ -267,8 +286,17 @@ export function calcularDuracionEstimada(
   let avisoCiclismo = false
   let faltanTests = false
   let usoReferencia = false
+  let datoImposible = false
   const conReferencia = opciones.conReferencia !== false
   let ejerciciosFuerza = 0   // nº de tareas de fuerza estimadas (para transiciones)
+
+  /* Una tarea que duraría más de un día no se suma: es un dato mal tecleado
+     (ver TOPE_TAREA_SEG). Se dice, y se sigue con las demás. */
+  const cabe = (seg: number): boolean => {
+    if (seg <= TOPE_TAREA_SEG) return true
+    datoImposible = true
+    return false
+  }
 
   for (const t of tareas) {
     /* UN BLOQUE (AMRAP 12′, 4 rondas…) dura lo que dice su formato, no series ×
@@ -278,7 +306,7 @@ export function calcularDuracionEstimada(
       const d = duracionBloque(t.formato as Formato, leerConfig(t.formato_config),
         ordenarLineas(t.ejercicios as LineaBloque[] | null),
         l => segCardioPorSerie(l as EjercicioDuracion, tests))
-      if (d.segundos > 0) {
+      if (d.segundos > 0 && cabe(d.segundos)) {
         segundos += d.segundos
         ejerciciosFuerza++
         algunaEstimada = true
@@ -310,9 +338,11 @@ export function calcularDuracionEstimada(
 
       if (trabajo > 0) {
         const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
-        segundos += trabajo + descanso
-        ejerciciosFuerza++
-        algunaEstimada = true
+        if (cabe(trabajo + descanso)) {
+          segundos += trabajo + descanso
+          ejerciciosFuerza++
+          algunaEstimada = true
+        }
       }
       continue
     }
@@ -324,11 +354,14 @@ export function calcularDuracionEstimada(
          bloques. Las dos cuentas son de lib/bloques-tarea, que es el único
          sitio que sabe qué es un bloque. Sin bloques dan exactamente lo de
          antes: series × trabajo + (series − 1) × descanso. */
-      segundos += trabajoSerie.seg * vecesDe(t) + descansoTotalDe(t)
-      algunaEstimada = true
-      /* Se estimó, pero con un ritmo que no es suyo: sigue haciendo falta el
-         test y hay que decirlo donde se enseñe el número. */
-      if (trabajoSerie.referencia) { usoReferencia = true; faltanTests = true }
+      const segTarea = trabajoSerie.seg * vecesDe(t) + descansoTotalDe(t)
+      if (cabe(segTarea)) {
+        segundos += segTarea
+        algunaEstimada = true
+        /* Se estimó, pero con un ritmo que no es suyo: sigue haciendo falta el
+           test y hay que decirlo donde se enseñe el número. */
+        if (trabajoSerie.referencia) { usoReferencia = true; faltanTests = true }
+      }
     } else {
       // No estimable: distinguir el porqué para el aviso
       const metros = t.p_distancia?.[0]?.metros_planeados
@@ -350,5 +383,6 @@ export function calcularDuracionEstimada(
     avisoCiclismo,
     faltanTests,
     usoReferencia,
+    datoImposible,
   }
 }

@@ -120,25 +120,20 @@ export default function PanelSemana({
     if (!idDeportista) return
     setCargando(true)
     const domingo = sumarDias(lunes, 6)
+    /* Con sus tareas DENTRO: eran dos consultas en fila, la segunda esperando a
+       los ids de la primera. Cada sesión con las suyas en su orden. */
     const { data: ses } = await supabase.from('sesion')
-      .select('id, fecha_sesion, disciplina, estado, id_microciclo, duracion_minutos, origen')
+      .select('id, fecha_sesion, disciplina, estado, id_microciclo, duracion_minutos, origen, tarea(' + SELECT_TAREA + ')')
       .eq('id_deportista', idDeportista)
       .gte('fecha_sesion', lunes).lte('fecha_sesion', domingo)
       .or('eliminada.is.null,eliminada.eq.false')
       .order('fecha_sesion')
 
-    const ids = (ses || []).map((s: any) => s.id)
-    const { data: tar } = ids.length
-      ? await supabase.from('tarea').select(SELECT_TAREA).in('id_sesion', ids).order('orden')
-      : { data: [] as any[] }
-
-    const porSesion = new Map<number, any[]>()
-    ;(tar || []).forEach((t: any) => {
-      const lista = porSesion.get(t.id_sesion) || []
-      lista.push(t)
-      porSesion.set(t.id_sesion, lista)
-    })
-    setSesiones((ses || []).map((s: any) => ({ ...s, tareas: porSesion.get(s.id) || [] })))
+    setSesiones((ses || []).map(({ tarea, ...s }: any) => ({
+      ...s,
+      tareas: ((tarea || []) as any[]).slice()
+        .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity) || Number(a.id) - Number(b.id)),
+    })))
     setCargando(false)
   }, [idDeportista, lunes])
 

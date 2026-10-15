@@ -95,12 +95,19 @@ export async function crearGrupo(
   const porCrear = [...new Set((nuevos || []).map(n => (n || '').trim()).filter(Boolean))]
   if (!idsDeportistas.length && !porCrear.length) return { id: null, error: 'Elige a alguien o añade a alguien nuevo.' }
 
-  const { data: g, error: eG } = await sb.from('grupo_entreno')
-    .insert({ id_entrenador: idEntrenador, nombre: limpio, descripcion: descripcion?.trim() || null })
-    .select('id').single()
-  if (eG || !g) return { id: null, error: faltaEsquema(eG) ? ERROR_FALTA_ESQUEMA : (eG?.message || 'No se pudo crear el grupo.') }
-
-  const { ids: idsNuevos, error: eN } = await crearEvaluados(sb, idEntrenador, porCrear)
+  /* El grupo y las fichas de la gente nueva, a la vez: no dependen uno de
+     otras (iban en fila). Si falla cualquiera de los dos, se deshace el otro:
+     ni un grupo vacío ni fichas sueltas en «Evaluados». */
+  const [{ data: g, error: eG }, { ids: idsNuevos, error: eN }] = await Promise.all([
+    sb.from('grupo_entreno')
+      .insert({ id_entrenador: idEntrenador, nombre: limpio, descripcion: descripcion?.trim() || null })
+      .select('id').single(),
+    crearEvaluados(sb, idEntrenador, porCrear),
+  ])
+  if (eG || !g) {
+    if (idsNuevos.length) await sb.from('deportista').delete().in('id', idsNuevos)
+    return { id: null, error: faltaEsquema(eG) ? ERROR_FALTA_ESQUEMA : (eG?.message || 'No se pudo crear el grupo.') }
+  }
   if (eN) {
     await sb.from('grupo_entreno').delete().eq('id', g.id)
     return { id: null, error: eN }
@@ -137,18 +144,20 @@ export async function meterEnGrupo(sb: any, idGrupo: string, idsDeportistas: num
   const reabrir = idsDeportistas.filter(id => yaEstaban.has(String(id)))
   const nuevos = idsDeportistas.filter(id => !yaEstaban.has(String(id)))
 
-  if (reabrir.length) {
-    const { error } = await sb.from('grupo_entreno_miembro')
-      .update({ hasta: null, desde: hoyISO() })
-      .eq('id_grupo', idGrupo).in('id_deportista', reabrir)
-    if (error) return error.message
-  }
-  if (nuevos.length) {
-    const { error } = await sb.from('grupo_entreno_miembro')
-      .insert(nuevos.map(id => ({ id_grupo: idGrupo, id_deportista: id })))
-    if (error) return error.message
-  }
-  return null
+  /* Reabrir a los que ya estuvieron y meter a los nuevos son filas distintas:
+     a la vez (iban en fila). */
+  const [rR, rN] = await Promise.all([
+    reabrir.length
+      ? sb.from('grupo_entreno_miembro')
+        .update({ hasta: null, desde: hoyISO() })
+        .eq('id_grupo', idGrupo).in('id_deportista', reabrir)
+      : null,
+    nuevos.length
+      ? sb.from('grupo_entreno_miembro')
+        .insert(nuevos.map(id => ({ id_grupo: idGrupo, id_deportista: id })))
+      : null,
+  ])
+  return rR?.error?.message ?? rN?.error?.message ?? null
 }
 
 // La ficha de planificación del grupo: para el calendario y el dibujo, un grupo es

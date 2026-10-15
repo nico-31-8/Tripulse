@@ -95,16 +95,24 @@ describe('guardar en orden', () => {
     expect(escribir.mock.calls[0][1]).toBe(1)
   })
 
-  it('se escriben de una en una, no todas a la vez: el orden es el de la sesión', async () => {
+  /* Iban de una en una «para que no llegaran barajadas», y eran tres esperas
+     por fila en fila. El sitio lo da el número, no la llegada: la primera, que
+     es la más lenta, termina la última y sigue siendo la 1. */
+  it('se escriben a la vez, y cada una con SU número aunque terminen en otro orden', async () => {
     const visto: string[] = []
-    const escribir = async (f: FilaFuerza) => {
+    const numeros: Record<string, number> = {}
+    const escribir = async (f: FilaFuerza, orden: number) => {
       visto.push('entra ' + f.ejercicioSelId)
       await new Promise(r => setTimeout(r, f.ejercicioSelId === '1' ? 15 : 0))
       visto.push('sale ' + f.ejercicioSelId)
+      numeros[f.ejercicioSelId] = orden
       return {}
     }
-    await guardarEnOrden(listas(), 0, estadoFuerza, escribir)
-    expect(visto).toEqual(['entra 1', 'sale 1', 'entra 2', 'sale 2', 'entra 3', 'sale 3'])
+    const p = await guardarEnOrden(listas(), 0, estadoFuerza, escribir)
+    expect(visto.slice(0, 3)).toEqual(['entra 1', 'entra 2', 'entra 3'])
+    expect(visto.at(-1)).toBe('sale 1')
+    expect(numeros).toEqual({ 1: 1, 2: 2, 3: 3 })
+    expect(p.guardadas).toEqual([0, 1, 2])
   })
 
   it('una fila que EDITA no gasta número de orden: conserva su sitio', async () => {
@@ -112,6 +120,13 @@ describe('guardar en orden', () => {
     const filas = [filaF({ idTarea: 9 }), filaF({ ejercicioSelId: '2' })]
     await guardarEnOrden(filas, 3, estadoFuerza, escribir)
     expect(escribir.mock.calls.map((c: any) => c[1])).toEqual([4, 4])
+  })
+
+  it('una que edita EN MEDIO tampoco descoloca a las que crean detrás', async () => {
+    const ordenes: number[] = []
+    const filas = [filaF({ ejercicioSelId: '1' }), filaF({ idTarea: 9 }), filaF({ ejercicioSelId: '3' })]
+    await guardarEnOrden(filas, 0, estadoFuerza, async (_, orden) => { ordenes.push(orden); return {} })
+    expect(ordenes).toEqual([1, 2, 2])
   })
 
   it('las vacías y las incompletas ni se intentan', async () => {
@@ -136,10 +151,16 @@ describe('guardar en orden', () => {
     expect(p.fallidas.map(x => x.i)).toEqual([1])
   })
 
-  it('la que falla no gasta número: no deja un hueco en el orden', async () => {
+  /* Con todas a la vez no se sabe que una falla hasta que las demás ya tienen
+     su número, así que la que falla deja el suyo sin usar. Da igual: se ordena
+     por el número, y un hueco (2, 3 sin 1) pinta lo mismo que 1, 2. La que
+     falló, al reintentarla, va detrás de la última, como antes. */
+  it('la que falla deja su número sin usar, y las demás no se mueven', async () => {
     const escribir = vi.fn(async (f: FilaFuerza) => (f.ejercicioSelId === '1' ? { error: 'no' } : {}))
-    await guardarEnOrden(listas(), 0, estadoFuerza, escribir)
-    expect(escribir.mock.calls.map((c: any) => c[1])).toEqual([1, 1, 2])
+    const p = await guardarEnOrden(listas(), 0, estadoFuerza, escribir)
+    expect(escribir.mock.calls.map((c: any) => c[1])).toEqual([1, 2, 3])
+    expect(p.guardadas).toEqual([1, 2])
+    expect(p.fallidas.map(x => x.i)).toEqual([0])
   })
 
   it('una excepción se trata como fallo de esa fila, no revienta el lote', async () => {

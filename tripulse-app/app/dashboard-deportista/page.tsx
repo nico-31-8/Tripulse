@@ -7,7 +7,8 @@ import AvisosDirector from '@/components/AvisosDirector'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import Cargando from '@/components/Cargando'
 import { usuarioActual } from '@/lib/sesion'
-import { estimarDuraciones, duracionSesionTexto } from '@/lib/duracion-carga'
+import { duracionesDe, duracionSesionTexto } from '@/lib/duracion-carga'
+import { limpiar } from '@/lib/copiar-sesion'
 import type { TestsDeportista } from '@/lib/duracion'
 import { analizarWellness } from '@/lib/wellness-analisis'
 
@@ -30,6 +31,9 @@ const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
    ayer como «hoy». `hoyISO` es el único que mira el reloj, y mira el LOCAL,
    que es el día que ve el atleta. */
 const CLAVE_PANEL = 'tp-panel-'
+/* Lo que llega anidado en cada tarea de hoy: sirve para la duración y no viaja
+   a la tarjeta. */
+const ANIDADO_EN_TAREA = new Set(['sesion', 'p_distancia', 'p_duracion', 'ejercicios'])
 
 /* Cabecera de un bloque plegable. El título entero es el botón: en móvil se pulsa
    con el pulgar sin tener que apuntar a un icono de 12 px. `resumen` es lo que se
@@ -77,10 +81,13 @@ export default function DashboardDeportista() {
   const cargar = useCallback(async () => {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
-      const { data: p } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
+      /* El perfil y la ficha solo necesitan saber quién eres: a la vez. */
+      const [{ data: p }, { data: dep }] = await Promise.all([
+        supabase.from('perfiles').select('*').eq('id', user.id).single(),
+        supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle(),
+      ])
       setPerfil(p)
       if (p?.rol !== 'deportista') { router.push('/dashboard'); return }
-      const { data: dep } = await supabase.from('deportista').select('*').eq('id_usuario', user.id).maybeSingle()
       setDeportista(dep)
       if (!dep) return
 
@@ -104,38 +111,57 @@ export default function DashboardDeportista() {
          vez de dos ramas.
          Y con eso desaparece el fallo que ya se parcheó aquí: las libres iban
          por su lado porque las del plan cortaban si no había microciclos. */
+      /* TODA LA PORTADA EN UNA RONDA. Eran siete esperas en fila después de
+         saber quién eres: las sesiones, la duración de las de hoy (que eran otras
+         cuatro consultas encadenadas), sus tareas, sus metros, el wellness, la
+         competición y la anamnesis. Es lo primero que ve el atleta al abrir la
+         app, y en el móvil cada espera son 200-300 ms. Ninguna necesitaba a la
+         anterior: las tareas de hoy se piden por la fecha de su sesión, no por
+         sus ids, y traen dentro lo que cuelga de ellas. */
       const selSes = 'id, disciplina, fecha_sesion, estado, rpe_estimado, duracion_minutos, duracion_real, notas_entrenador, cambiada_por'
-      const [macros, ses, refs] = await Promise.all([
+      const [macros, ses, refs, tarHoy, { data: wells }, { data: comp }, { data: an }] = await Promise.all([
         supabase.from('macrociclo').select('id').eq('id_deportista', dep.id).limit(1),
         // `duracion_real` va en el SELECT o el arreglo no sirve de nada: sin
         // pedirla, duracionSesionTexto sigue enseñando lo planificado.
         vivas(supabase.from('sesion').select(selSes).eq('id_deportista', dep.id)
           .gte('fecha_sesion', desde).lte('fecha_sesion', hasta)),
         cargarReferencias(supabase, dep.id),
+        supabase.from('tarea')
+          .select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config, sesion!inner(fecha_sesion), p_distancia(id_tarea, metros_planeados), p_duracion(id_tarea, tiempo_planeado), ejercicios(id_tarea, repeticiones, repeticiones_max, series_detalle, cardio_modo, cardio_medida, cardio_valor, cardio_zona, medida, cantidad, orden)')
+          .eq('id_deportista', dep.id).eq('sesion.fecha_sesion', hoy).order('orden'),
+        // Wellness (14 registros → readiness) + próxima competición
+        supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14),
+        supabase.from('competicion').select('nombre, fecha, tipo').eq('id_deportista', dep.id).gte('fecha', hoy).order('fecha').limit(1),
+        // Anamnesis: cargar SIEMPRE (también para el deportista que aún no tiene entrenador),
+        // para que el checklist de primeros pasos la muestre como paso pendiente.
+        // Antes solo se leía `estado`, que responde a «¿está la anamnesis larga
+        // enviada?». El alta corta deja la fila en 'borrador' a propósito, así que
+        // por ahí parecía que no había nada. Se traen los campos que de verdad
+        // hacen falta y se decide por ellos.
+        supabase.from('anamnesis')
+          .select('estado, volumen_semanal, dias_semana, nivel_competitivo, declaracion_responsabilidad')
+          .eq('id_deportista', dep.id).maybeSingle(),
       ])
 
       setTienePlan(!!macros.data?.length)
       const sesiones: any[] = ses.data || []
       const sesHoy = sesiones.filter(s => s.fecha_sesion === hoy)
       const testsDep: TestsDeportista = refs.tests
-      const durs = await estimarDuraciones(supabase, sesHoy.map(s => s.id), testsDep)
+
+      /* La duración estimada sale de la MISMA cuenta que estimarDuraciones
+         (lib/duracion-carga), con las tareas que ya han llegado. */
+      const filasHoy = (tarHoy.data || []) as any[]
+      const hijas = (k: string) => filasHoy.flatMap(t => Array.isArray(t[k]) ? t[k] : t[k] ? [t[k]] : [])
+      const durs = duracionesDe(sesHoy.map(s => s.id), filasHoy, hijas('p_distancia'), hijas('p_duracion'), hijas('ejercicios'), testsDep)
       setSesionesHoy(sesHoy.map(s => ({ ...s, dur_estimada: durs[s.id] })))
 
-      const idsHoy = sesHoy.map(s => s.id)
-      if (idsHoy.length) {
-        const { data: tar } = await supabase.from('tarea').select('id, id_sesion, zona_entrenamiento, zona_copia, series, disciplina, orden, bloques, descanso_bloques_segundos, formato, formato_config').in('id_sesion', idsHoy).order('orden')
-        const tarIds = (tar || []).map((t: any) => t.id)
-        const [pd, pdur] = await Promise.all([
-          tarIds.length ? supabase.from('p_distancia').select('id_tarea, metros_planeados').in('id_tarea', tarIds) : { data: [] },
-          tarIds.length ? supabase.from('p_duracion').select('id_tarea, tiempo_planeado').in('id_tarea', tarIds) : { data: [] },
-        ])
-        const mapa: Record<number, any[]> = {}
-        ;(tar || []).forEach((t: any) => {
-          const step = { ...t, metros: (pd.data || []).find((x: any) => x.id_tarea === t.id)?.metros_planeados, seg: (pdur.data || []).find((x: any) => x.id_tarea === t.id)?.tiempo_planeado }
-          ;(mapa[t.id_sesion] ||= []).push(step)
-        })
-        setTareasPorSesion(mapa)
-      }
+      const mapa: Record<number, any[]> = {}
+      const primera = (x: any) => (Array.isArray(x) ? x[0] : x) || null
+      filasHoy.forEach(f => {
+        const step = { ...limpiar(f, ANIDADO_EN_TAREA), metros: primera(f.p_distancia)?.metros_planeados, seg: primera(f.p_duracion)?.tiempo_planeado }
+        ;(mapa[f.id_sesion] ||= []).push(step)
+      })
+      setTareasPorSesion(mapa)
 
       // Semana de un vistazo
       setSemana(LETRAS.map((letra, i) => {
@@ -149,22 +175,9 @@ export default function DashboardDeportista() {
       setCumplimiento(ult28.length ? { pct: Math.round(realizadas / ult28.length * 100), realizadas, planificadas: ult28.length } : null)
       setSemanaPlan(sesiones.filter(s => s.fecha_sesion >= monday && s.fecha_sesion <= hasta).length)
 
-      // Wellness (14 registros → readiness) + próxima competición
-      const { data: wells } = await supabase.from('wellness').select('*').eq('id_deportista', dep.id).order('fecha', { ascending: false }).limit(14)
       setUltimoWellness(wells?.[0] || null)
       setAnalisis(analizarWellness(wells || []))
-      const { data: comp } = await supabase.from('competicion').select('nombre, fecha, tipo').eq('id_deportista', dep.id).gte('fecha', hoy).order('fecha').limit(1)
       setProximaComp(comp?.[0] || null)
-
-      // Anamnesis: cargar SIEMPRE (también para el deportista que aún no tiene entrenador),
-      // para que el checklist de primeros pasos la muestre como paso pendiente.
-      // Antes solo se leía `estado`, que responde a «¿está la anamnesis larga
-      // enviada?». El alta corta deja la fila en 'borrador' a propósito, así que
-      // por ahí parecía que no había nada. Se traen los campos que de verdad
-      // hacen falta y se decide por ellos.
-      const { data: an } = await supabase.from('anamnesis')
-        .select('estado, volumen_semanal, dias_semana, nivel_competitivo, declaracion_responsabilidad')
-        .eq('id_deportista', dep.id).maybeSingle()
       setAnamnesisPendiente(!an || an.estado !== 'enviada')
       setAltaHecha(altaCompleta(an))
   }, [router])

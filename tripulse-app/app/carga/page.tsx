@@ -10,14 +10,18 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 import CargaPorDisciplina from '@/components/CargaPorDisciplina'
 import { calcularSICAT, factorSicat, type SicatResultado } from '@/lib/sicat'
-import { calcularSicatZonas, factorSicatZona, attachZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { calcularSicatZonas, factorSicatZona, conZonaPico, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques } from '@/lib/atribucion'
-import { estimarDuraciones, minutosCarga } from '@/lib/duracion-carga'
+import { duracionesDeAnidadas, minutosCarga, tareasAnidadas, TAREAS_PARA_DURACION } from '@/lib/duracion-carga'
+import { limpiar } from '@/lib/copiar-sesion'
 import { serieForma, estadoTSB as estadoTSBBase, estadoACWR as estadoACWRBase, calcularACWR, progresionACWR, HISTORIA_MINIMA_FORMA, type NivelTSB, type NivelACWR } from '@/lib/panel-metricas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { colorDisciplina, DEPORTES, etiquetaDisciplina } from '@/lib/disciplinas'
 import { entrenadorEfectivo } from '@/lib/espacio'
+
+/* Lo que llega anidado en cada sesión: sirve para la zona y la duración y no se guarda con ella. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 
 const RANGOS = [
   { label: '4 sem', dias: 28 },
@@ -153,23 +157,30 @@ export default function CargaPage() {
 
        Todo eso existía para acotar las sesiones, y `sesion.id_deportista` ya lo
        hace. Las del plan y las libres pasan a ser una sola consulta. */
-    const desdeStr = sumarDias(hoyISO(), -(dias + 42))
-    const { data: baseSes } = await vivas(supabase
-      .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .eq('id_deportista', dep.id)
-      .eq('estado', 'Realizada')
-      .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
-    const todasSesiones = await attachZonaPico(baseSes || [])
-    // Minutos de cada sesión por el criterio único (real > manual > estimada). Antes se
-    // leía `duracion_minutos` a pelo y una sesión sin duración manual valía 0 UA: no
-    // sumaba a CTL/ATL/TSB aunque tuviera el entreno entero planificado.
+    /* UNA RONDA. Eran cinco en fila: las sesiones, sus tareas para la zona
+       pico, los tests, y las tareas otra vez con sus metros para la duración.
+       Ahora las tareas llegan DENTRO de las sesiones —con lo que hace falta
+       para las dos cosas— y los tests van a la vez. */
     /* Los tests, del cargador compartido. Eran tres consultas escritas a mano
        aquí, una cuarta copia de las mismas tres: si cada pantalla decide por su
        cuenta cuál es «el último test», acaban discrepando en cuánto dura una
        sesión y por tanto en la carga. */
-    const { tests } = await cargarReferencias(supabase, dep.id)
-    const estimaciones = await estimarDuraciones(supabase, todasSesiones.map(s => s.id), tests)
+    const desdeStr = sumarDias(hoyISO(), -(dias + 42))
+    const [{ data: baseSes }, { tests }] = await Promise.all([
+      vivas(supabase
+        .from('sesion')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado, ' + TAREAS_PARA_DURACION)
+        .eq('id_deportista', dep.id)
+        .eq('estado', 'Realizada')
+        .gte('fecha_sesion', desdeStr)).order('fecha_sesion'),
+      cargarReferencias(supabase, dep.id),
+    ])
+    const filas = (baseSes || []) as any[]
+    const todasSesiones = conZonaPico(filas.map(s => limpiar(s, CON_SUS_TAREAS)), tareasAnidadas(filas))
+    // Minutos de cada sesión por el criterio único (real > manual > estimada). Antes se
+    // leía `duracion_minutos` a pelo y una sesión sin duración manual valía 0 UA: no
+    // sumaba a CTL/ATL/TSB aunque tuviera el entreno entero planificado.
+    const estimaciones = duracionesDeAnidadas(filas, tests)
     setSesionesRaw(todasSesiones.map(s => ({ ...s, minutos: minutosCarga(s, estimaciones[s.id]) })))
     setLoadingDatos(false)
   }
@@ -206,20 +217,25 @@ export default function CargaPage() {
 
   const cargarDiaria = async (dep: any) => {
     const desdeStr = sumarDias(hoyISO(), -30)
-    const { tests } = await cargarReferencias(supabase, dep.id)
 
     /* La misma cadena otra vez, y aquí con un detalle peor: la consulta de las
        libres NO filtraba la papelera, así que una sesión borrada del atleta
        seguía contando en la visión diaria mientras que las del plan no. Dos
        criterios distintos en la misma pantalla.
-       Ahora es una consulta por deportista, con el mismo filtro para todas. */
-    const { data: sesDia } = await vivas(supabase
-      .from('sesion')
-      .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado')
-      .eq('id_deportista', dep.id)
-      .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
-    const listaDia = sesDia || []
-    const conZona = await attachZonaPico(listaDia)
+       Ahora es una consulta por deportista, con el mismo filtro para todas, a
+       la vez que los tests y con sus tareas DENTRO (para la zona pico y la
+       duración): eran tres rondas antes de los bloques. */
+    const [{ tests }, { data: sesDia }] = await Promise.all([
+      cargarReferencias(supabase, dep.id),
+      vivas(supabase
+        .from('sesion')
+        .select('id, fecha_sesion, disciplina, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real, estado, ' + TAREAS_PARA_DURACION)
+        .eq('id_deportista', dep.id)
+        .gte('fecha_sesion', desdeStr)).order('fecha_sesion'),
+    ])
+    const filasDia = (sesDia || []) as any[]
+    const listaDia = filasDia.map(s => limpiar(s, CON_SUS_TAREAS))
+    const conZona = conZonaPico(listaDia, tareasAnidadas(filasDia))
 
     // Reparto de la UA de cada sesión entre los deportes de sus BLOQUES. En una sesión
     // normal es [{su deporte, 1}] → los números de siempre no se mueven. En un brick, la
@@ -239,10 +255,8 @@ export default function CargaPage() {
        `s.minutos`, y a las sesiones de esta vista nadie se lo ponía. Así que una
        sesión sin `duracion_minutos` valía 0 UA aquí y sus 225 UA en la gráfica
        de arriba, en la misma pantalla. Se piden a la vez que los bloques. */
-    const [bloques, estimaciones] = await Promise.all([
-      cargarBloques(supabase, listaDia, { tests, usarRpeDeBloque: true }),
-      estimarDuraciones(supabase, listaDia.map((s: any) => s.id), tests),
-    ])
+    const estimaciones = duracionesDeAnidadas(filasDia, tests)
+    const bloques = await cargarBloques(supabase, listaDia as any[], { tests, usarRpeDeBloque: true })
     const uaSes: Record<number, number> = {}
     bloques.forEach(b => { uaSes[b.id_sesion] = (uaSes[b.id_sesion] || 0) + b.ua })
     const reparto: Record<number, { disciplina: string; peso: number }[]> = {}

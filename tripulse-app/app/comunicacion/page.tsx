@@ -3,7 +3,6 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
-import { vivas } from '@/lib/papelera'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { colorDisciplina } from '@/lib/disciplinas'
@@ -36,43 +35,41 @@ export default function ComunicacionPage() {
     if (!user) { router.push('/login'); return }
     setUserId(user.id)
 
-    const { data: deps } = await supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre')
+    /* UNA RONDA. Eran cuatro esperas en fila: los deportistas, los mensajes,
+       TODAS las sesiones de todos ellos —sin límite de fechas— y por último las
+       tareas con nota de esas sesiones, con la lista entera de ids en la
+       dirección. Ahora se piden a la vez, y de las tareas solo las que llevan
+       nota, cada una con su sesión dentro. */
+    const [{ data: deps }, { data: msgs }, { data: conNota }] = await Promise.all([
+      supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
+      // Todos los mensajes del entrenador (para lista + hilos).
+      supabase.from('mensajes').select('*').eq('id_entrenador', user.id).order('created_at', { ascending: true }),
+      /* El feedback post-sesión: lo que el atleta escribe al cerrar un
+         entrenamiento. Salía de recorrer macro → meso → micro → sesión → tarea
+         y de reconstruir de quién era cada nota con TRES mapas encadenados.
+
+         `sesion.id_deportista` lo dice directo. Y con eso ENTRA EL FEEDBACK DE
+         LAS SESIONES LIBRES: si el atleta se añadía un entrenamiento por su
+         cuenta y dejaba una nota, esa nota no le llegaba al entrenador — que es
+         exactamente lo contrario de para lo que está esta pantalla.
+
+         Se piden las que la RLS deja ver y abajo se quedan las de SUS
+         deportistas, que es lo que filtraba antes la lista de ids. */
+      supabase.from('tarea')
+        .select('id, id_sesion, notas_post, comentario_leido, rpe_reportado, sesion!inner(id, fecha_sesion, disciplina, id_deportista, eliminada)')
+        .not('notas_post', 'is', null).neq('notas_post', ''),
+    ])
     const deportistas = deps || []
     setDeportistas(deportistas)
-
-    // Todos los mensajes del entrenador (para lista + hilos).
-    const { data: msgs } = await supabase.from('mensajes').select('*').eq('id_entrenador', user.id).order('created_at', { ascending: true })
     setMensajes(msgs || [])
 
-    /* El feedback post-sesión: lo que el atleta escribe al cerrar un
-       entrenamiento. Salía de recorrer macro → meso → micro → sesión → tarea y
-       de reconstruir de quién era cada nota con TRES mapas encadenados.
-
-       `sesion.id_deportista` lo dice directo, así que son dos consultas y un
-       mapa. Y con eso ENTRA EL FEEDBACK DE LAS SESIONES LIBRES: si el atleta se
-       añadía un entrenamiento por su cuenta y dejaba una nota, esa nota no le
-       llegaba al entrenador — que es exactamente lo contrario de para lo que
-       está esta pantalla. */
     let fbRecien: typeof feedback = []
     if (deportistas.length) {
-      const depIds = deportistas.map((d: any) => d.id)
-      const { data: sesiones } = await vivas(supabase.from('sesion')
-        .select('id, fecha_sesion, disciplina, id_deportista')
-        .in('id_deportista', depIds)).order('fecha_sesion', { ascending: false })
-
-      const { data: tareas } = sesiones?.length
-        ? await supabase.from('tarea')
-            .select('id, id_sesion, notas_post, comentario_leido, rpe_reportado')
-            .in('id_sesion', sesiones.map((x: any) => x.id))
-            .not('notas_post', 'is', null).neq('notas_post', '')
-        : { data: [] as any[] }
-
-      const porId = new Map<number, any>()
-      ;(sesiones || []).forEach((x: any) => porId.set(x.id, x))
-
-      const fb = (tareas || []).map((t: any) => {
-        const x = porId.get(t.id_sesion)
-        if (!x) return null
+      const suyos = new Set(deportistas.map((d: any) => d.id))
+      const fb = (conNota || []).map((t: any) => {
+        const x = Array.isArray(t.sesion) ? t.sesion[0] : t.sesion
+        /* Las de la papelera no cuentan, como antes (iban por `vivas`). */
+        if (!x || x.eliminada || !suyos.has(x.id_deportista)) return null
         return { tareaId: t.id, sesionId: x.id, fecha: x.fecha_sesion, disciplina: x.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId: x.id_deportista }
       }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
       fbRecien = fb as any[]

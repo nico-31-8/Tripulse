@@ -435,8 +435,8 @@ export default function TestsPropiosPage() {
     setGuardando(false)
     if (error) { decir('mal', 'No se pudo guardar: ' + error.message); return }
     decir('ok', 'Medición guardada.')
-    await cargarMediciones(testActivo.id, depActivo)
-    await arrancar()
+    // Las dos recargas a la vez: no dependen una de otra (iban en fila).
+    await Promise.all([cargarMediciones(testActivo.id, depActivo), arrancar()])
   }
 
   // ---------- estilos compartidos ----------

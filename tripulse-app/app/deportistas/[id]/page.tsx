@@ -15,11 +15,14 @@ import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import { delProveedor } from '@/lib/noches-reloj'
 import { resumirHecha, type TareaHecha } from '@/lib/sesion-realizada'
+import { limpiar } from '@/lib/copiar-sesion'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import DisciplinasDeportista from '@/components/DisciplinasDeportista'
 import { chipDisciplina, colorDisciplina, emojiDisciplina, etiquetaConEmoji } from '@/lib/disciplinas'
 import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 import AccesoDirectorFicha from '@/components/AccesoDirectorFicha'
+import QuitarDeportista from '@/components/QuitarDeportista'
+import { usuarioActual } from '@/lib/sesion'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 
@@ -32,6 +35,8 @@ function estadoTSB(tsb: number) {
 
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+/* Lo que llega anidado en cada sesión y se guarda aparte. */
+const CON_SUS_TAREAS = new Set(['tarea'])
 
 function DisponibilidadDeportista({ depId }: { depId: number }) {
   const [disponibilidad, setDisponibilidad] = useState<any[]>([])
@@ -166,6 +171,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [editTecCarrera, setEditTecCarrera] = useState('')
   const [editExperiencia, setEditExperiencia] = useState('')
   const [guardandoEdit, setGuardandoEdit] = useState(false)
+  /* Quitarlo de mis deportistas (components/QuitarDeportista). Solo lo ve su
+     entrenador: un director puede abrir la ficha pero no decidir de quién es. */
+  const [soyEntrenador, setSoyEntrenador] = useState(false)
+  const [quitando, setQuitando] = useState(false)
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -190,64 +199,44 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       ].filter(Boolean).join(' ')
     : '')
 
+  /*
+   * UNA SOLA RONDA. Eran diez esperas en fila —el deportista, luego su
+   * anamnesis, luego sus tests, el peso, las zonas, el wellness, el reloj, el
+   * ECO, las sesiones y por último las tareas de esas sesiones— y ninguna
+   * necesitaba a la anterior: todo cuelga del id de la URL. A 100-300 ms cada
+   * una, la ficha tardaba en llenarse uno o dos segundos que no hacían falta.
+   * Las tareas de las últimas sesiones vienen DENTRO de ellas, en la misma
+   * consulta.
+   */
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDeportista(dep)
-    const { data: an } = await supabase.from('anamnesis').select('*').eq('id_deportista', id).maybeSingle()
-    setAnamnesis(an || null)
-
-    const [t1, t2, t3, tf] = await Promise.all([
+    const hoyStr = hoyISO()
+    const [
+      { data: dep }, { data: an }, t1, t2, t3, tf, { data: pesos }, { data: z }, { data: w },
+      rc, rn, { data: eco }, ses42, ses30, ultimas,
+    ] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id', id).single(),
+      supabase.from('anamnesis').select('*').eq('id_deportista', id).maybeSingle(),
       supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(5),
-    ])
-    // Se cogen los dos registros más recientes CON valor (las filas de sprint dejan
-    // vam/css/ftp a null), para poder mostrar la variación respecto al test anterior.
-    const conValor = (rows: any[] | null | undefined, key: string) => (rows || []).filter(r => r[key] != null)
-    const tc = conValor(t1.data, 'vam'), tn = conValor(t2.data, 'css'), tb = conValor(t3.data, 'ftp')
-    setTests({
-      carrera: tc[0], carreraPrev: tc[1],
-      natacion: tn[0], natacionPrev: tn[1],
-      ciclismo: tb[0], ciclismoPrev: tb[1],
-      fuerza: tf.data || [],
-    })
-
-    // Último peso registrado → permite expresar el FTP en W/kg.
-    const { data: pesos } = await supabase.from('registro_peso').select('peso_kg, fecha').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    setPeso(pesos?.[0]?.peso_kg ?? null)
-
-    const { data: z } = await supabase.from('zonas_entrenamiento').select('*').eq('id_deportista', id).order('disciplina').order('numero_zona')
-    setZonas(z || [])
-
-    const { data: w } = await supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1)
-    setUltimoWellness(w?.[0] || null)
-
-    /* El reloj: el entrenador ve SI está conectado y lo que ha llegado. El
-       token no lo ve nunca: vive cifrado y ninguna consulta de aquí lo toca. */
-    const [rc, rn] = await Promise.all([
+      // Último peso registrado → permite expresar el FTP en W/kg.
+      supabase.from('registro_peso').select('peso_kg, fecha').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      supabase.from('zonas_entrenamiento').select('*').eq('id_deportista', id).order('disciplina').order('numero_zona'),
+      supabase.from('wellness').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(1),
+      /* El reloj: el entrenador ve SI está conectado y lo que ha llegado. El
+         token no lo ve nunca: vive cifrado y ninguna consulta de aquí lo toca. */
       supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', id)
         .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('reloj_medicion').select('fecha, proveedor').eq('id_deportista', id).eq('tipo', 'sueno')
         .order('fecha', { ascending: false }).limit(20),
-    ])
-    /* La última noche, del reloj de ahora: si antes tuvo otro, las suyas no cuentan. */
-    const prov = rc.data ? String(rc.data.proveedor) : ''
-    setReloj(prov ? { proveedor: prov, ultimaNoche: delProveedor(rn.data, prov)[0]?.fecha ?? null } : null)
-
-    const { data: eco } = await supabase.from('puntuacion_eco').select('*').eq('id_deportista', id).order('fecha_calculo', { ascending: false }).limit(3)
-    setEcoScores(eco || [])
-
-    /* Aquí había la cadena de tres saltos macrociclo → mesociclo → microciclo
-       para acabar acotando tres consultas de sesiones. Con `sesion.id_deportista`
-       sobra entera, y de paso ENTRAN LAS SESIONES LIBRES: las que el atleta se
-       añade por su cuenta no contaban ni en la curva de forma, ni en la
-       adherencia, ni en «últimas sesiones». O sea que quien entrenaba por libre
-       salía como si no entrenara.
-
-       Las tres consultas van a la vez: ninguna depende de otra. */
-    const hoyStr = hoyISO()
-    const [ses42, ses30, ultimas] = await Promise.all([
+      supabase.from('puntuacion_eco').select('*').eq('id_deportista', id).order('fecha_calculo', { ascending: false }).limit(3),
+      /* Aquí había la cadena de tres saltos macrociclo → mesociclo → microciclo
+         para acabar acotando tres consultas de sesiones. Con `sesion.id_deportista`
+         sobra entera, y de paso ENTRAN LAS SESIONES LIBRES: las que el atleta se
+         añade por su cuenta no contaban ni en la curva de forma, ni en la
+         adherencia, ni en «últimas sesiones». O sea que quien entrenaba por libre
+         salía como si no entrenara. */
       /* 84 días y no 42: el modelo arranca en cero, y con solo 42 días la
          condición de un atleta con años de historia salía siempre por los suelos.
          Los 42 de más son para calentarlo, como hace /carga. Y con
@@ -267,12 +256,38 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
          entraran en `lib/panel-metricas`, la lista de columnas tendría que salir
          de lo que lee ESA librería, no de lo que usa este fichero. */
       /* Con lo REAL: duración y RPE del atleta, y quién la apuntó. Antes solo
-         traía lo planificado y la lista enseñaba el plan como si fuera lo hecho. */
+         traía lo planificado y la lista enseñaba el plan como si fuera lo hecho.
+         Y con lo que apuntó al cerrar cada tarea —sensación, dolor, FC y su
+         comentario—, anidado: era otra espera más, al final de todas. */
       vivas(supabase.from('sesion')
-        .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, origen, notas_post, estado')
+        .select('id, fecha_sesion, disciplina, duracion_minutos, duracion_real, rpe_estimado, rpe_reportado, origen, notas_post, estado, tarea(id_sesion, notas_post, dolor_muscular, sensacion_tecnica, fc_media, rpe_reportado)')
         .eq('id_deportista', Number(id)).eq('estado', 'Realizada'))
         .order('fecha_sesion', { ascending: false }).limit(10),
     ])
+
+    setDeportista(dep)
+    setAnamnesis(an || null)
+    // Quién mira: la sesión ya está en el navegador, no cuesta un viaje.
+    const yo = await usuarioActual()
+    setSoyEntrenador(!!yo && !!dep && dep.id_entrenador === yo.id)
+
+    // Se cogen los dos registros más recientes CON valor (las filas de sprint dejan
+    // vam/css/ftp a null), para poder mostrar la variación respecto al test anterior.
+    const conValor = (rows: any[] | null | undefined, key: string) => (rows || []).filter(r => r[key] != null)
+    const tc = conValor(t1.data, 'vam'), tn = conValor(t2.data, 'css'), tb = conValor(t3.data, 'ftp')
+    setTests({
+      carrera: tc[0], carreraPrev: tc[1],
+      natacion: tn[0], natacionPrev: tn[1],
+      ciclismo: tb[0], ciclismoPrev: tb[1],
+      fuerza: tf.data || [],
+    })
+    setPeso(pesos?.[0]?.peso_kg ?? null)
+    setZonas(z || [])
+    setUltimoWellness(w?.[0] || null)
+    /* La última noche, del reloj de ahora: si antes tuvo otro, las suyas no cuentan. */
+    const prov = rc.data ? String(rc.data.proveedor) : ''
+    setReloj(prov ? { proveedor: prov, ultimaNoche: delProveedor(rn.data, prov)[0]?.fecha ?? null } : null)
+    setEcoScores(eco || [])
 
     /* La curva de forma sale de lib/panel-metricas, la misma que el panel y
        /carga. Aquí estaba la EWMA escrita OTRA VEZ a mano con sus constantes
@@ -292,15 +307,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       })
     }
 
-    setUltimasSesiones(ultimas.data || [])
-    // Lo que apuntó al cerrar cada una: sensación, dolor, FC y su comentario.
-    const idsHechas = (ultimas.data || []).map(s => s.id)
-    if (idsHechas.length) {
-      const { data: th } = await supabase.from('tarea')
-        .select('id_sesion, notas_post, dolor_muscular, sensacion_tecnica, fc_media, rpe_reportado')
-        .in('id_sesion', idsHechas)
-      setTareasHechas((th || []) as TareaHecha[])
-    }
+    /* Las tareas se separan de su sesión: la lista y lo que apuntó al cerrar
+       cada una se leen de sitios distintos. */
+    const ultimasHechas = (ultimas.data || []) as any[]
+    setUltimasSesiones(ultimasHechas.map(s => limpiar(s, CON_SUS_TAREAS)))
+    setTareasHechas(ultimasHechas.flatMap(s => s.tarea || []) as TareaHecha[])
     setLoading(false)
   }
 
@@ -1106,10 +1117,15 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         )}
       </div>
 
+      {quitando && (
+        <QuitarDeportista deportista={deportista} onCerrar={() => setQuitando(false)}
+          onHecho={() => router.push('/deportistas')} />
+      )}
+
       {/* Modal edición */}
       {editando && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-lg font-bold">Editar datos personales</h3>
               <button onClick={() => setEditando(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
@@ -1190,6 +1206,16 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 {guardandoEdit ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </form>
+            {/* Quitarlo, aparte y abajo del todo: lejos de «Guardar» para que no
+                se pulse por error, y con su propia pregunta antes. */}
+            {soyEntrenador && (
+              <div className="border-t border-gray-800 mt-5 pt-4">
+                <button type="button" onClick={() => { setEditando(false); setQuitando(true) }}
+                  className="w-full bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 py-2.5 rounded-lg text-sm transition border border-gray-700 hover:border-red-800">
+                  {deportista.id_usuario ? 'Desvincular de mis deportistas' : 'Borrar esta ficha'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

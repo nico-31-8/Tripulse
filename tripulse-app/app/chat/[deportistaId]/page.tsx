@@ -38,9 +38,15 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
     // Mi rol y la ficha del atleta se buscan por claves distintas: van a la vez.
-    const [perfilQ, depQ] = await Promise.all([
+    /* Y los mensajes también: no dependen de nada. Lo único que espera al rol
+       es marcar como leídos los del otro, y eso no hace falta esperarlo. */
+    const [perfilQ, depQ, { data: msgs }] = await Promise.all([
       supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle(),
       supabase.from('deportista').select('id, nombre, id_entrenador').eq('id', Number(deportistaId)).maybeSingle(),
+      supabase.from('mensajes')
+        .select('*')
+        .eq('id_deportista', Number(deportistaId))
+        .order('created_at', { ascending: true }),
     ])
     const rol = perfilQ.data?.rol === 'deportista' ? 'deportista' : 'entrenador'
     setMiRol(rol)
@@ -51,17 +57,14 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
     } else {
       setEntrenadorId(dep?.id_entrenador || null)
     }
-    await supabase.from('mensajes')
+    setMensajes(msgs || [])
+    setLoading(false)
+    supabase.from('mensajes')
       .update({ leido: true })
       .eq('id_deportista', Number(deportistaId))
       .eq('autor', rol === 'entrenador' ? 'deportista' : 'entrenador')
       .eq('leido', false)
-    const { data: msgs } = await supabase.from('mensajes')
-      .select('*')
-      .eq('id_deportista', Number(deportistaId))
-      .order('created_at', { ascending: true })
-    setMensajes(msgs || [])
-    setLoading(false)
+      .then(() => {})
   }
 
   const enviar = async () => {

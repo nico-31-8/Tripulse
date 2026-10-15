@@ -21,6 +21,15 @@
      Se quedan, y quien mueva el plan tiene que saber que quedarán fuera de
      su microciclo.
    · Las sesiones libres (sin microciclo). No son parte del plan.
+
+   QUIÉN PUEDE (cambiado el 15-10-2026)
+   Los mismos que pueden tocar el plan en la base: `auth_dep_ids()`, que es lo
+   que miran las políticas de mesociclo y microciclo. O sea el deportista, su
+   entrenador, el entrenador de su GRUPO y un director con acceso. Antes era
+   «el dueño o su entrenador» a mano, y eso dejaba fuera al entrenador de un
+   grupo: la ficha del grupo no tiene entrenador propio (es lo que la saca de
+   las listas y del cupo), así que no podía mover ni alargar el plan del grupo
+   aunque la base le dejara editar cada fila.
    ============================================================ */
 
 create or replace function desplazar_ciclo(_nivel text, _id int, _dias int)
@@ -38,8 +47,8 @@ begin
     raise exception 'Nivel no válido: %', _nivel;
   end if;
 
-  /* De quién es el plan. La comprobación de permiso va contra el deportista,
-     igual que el resto de funciones: el dueño o su entrenador. */
+  /* De quién es el plan. La comprobación de permiso va contra el deportista:
+     la misma regla que las políticas de la base (ver arriba, QUIÉN PUEDE). */
   if _nivel = 'macrociclo' then
     select ma.id_deportista into _dep from macrociclo ma where ma.id = _id;
   elsif _nivel = 'mesociclo' then
@@ -58,10 +67,7 @@ begin
     raise exception 'No existe ese %', _nivel;
   end if;
 
-  if not exists (
-    select 1 from deportista d
-     where d.id = _dep and (d.id_usuario = auth.uid() or d.id_entrenador = auth.uid())
-  ) then
+  if _dep not in (select auth_dep_ids()) then
     raise exception 'Sin permiso sobre ese plan';
   end if;
 
@@ -130,6 +136,10 @@ begin
 end $$;
 
 revoke all on function desplazar_ciclo(text, int, int) from public;
+/* Y de anon por su nombre: en este esquema las funciones nuevas nacen con
+   permiso para anon (privilegios por defecto de Supabase), y quitárselo a
+   «public» no se lo quita a él. */
+revoke execute on function desplazar_ciclo(text, int, int) from anon;
 grant execute on function desplazar_ciclo(text, int, int) to authenticated;
 
 
@@ -164,12 +174,16 @@ returns table (
 language plpgsql security definer set search_path = public as $$
 declare
   _dep int;
-  _macro int;
+  /* bigint como los ids de la base. Con int, la llamada a desplazar_ciclo de
+     más abajo no encontraba la función (bigint no pasa solo a int) y alargar
+     o acortar ARRASTRANDO fallaba siempre. Lo destapó el ensayo del
+     15-10-2026, antes de aplicarla por primera vez. */
+  _macro bigint;
   _ini date;
   _antes int;
   _delta int;
   _fin_nuevo date;
-  _ids_fuera int[];
+  _ids_fuera bigint[];
   _n_ses int := 0;
   _n_mesos int := 0;
   _f date;
@@ -191,10 +205,8 @@ begin
     raise exception 'No existe ese mesociclo';
   end if;
 
-  if not exists (
-    select 1 from deportista d
-     where d.id = _dep and (d.id_usuario = auth.uid() or d.id_entrenador = auth.uid())
-  ) then
+  /* La misma regla que las políticas de la base (ver arriba, QUIÉN PUEDE). */
+  if _dep not in (select auth_dep_ids()) then
     raise exception 'Sin permiso sobre ese plan';
   end if;
 
@@ -210,7 +222,7 @@ begin
   select array_agg(mi.id) into _ids_fuera
     from microciclo mi
    where mi.id_mesociclo = _id and mi.fecha_inicio::date >= _fin_nuevo;
-  _ids_fuera := coalesce(_ids_fuera, array[]::int[]);
+  _ids_fuera := coalesce(_ids_fuera, array[]::bigint[]);
 
   if array_length(_ids_fuera, 1) > 0 then
     /* SIEMPRE se despegan del microciclo, en las dos opciones. Si no, al
@@ -254,7 +266,7 @@ begin
          and me.fecha_inicio::date > _ini
        order by me.fecha_inicio
     loop
-      perform * from desplazar_ciclo('mesociclo', _otro.id, _delta * 7);
+      perform * from desplazar_ciclo('mesociclo', _otro.id::int, _delta * 7);
       _n_mesos := _n_mesos + 1;
     end loop;
 
@@ -267,4 +279,5 @@ begin
 end $$;
 
 revoke all on function redimensionar_mesociclo(int, int, boolean, text) from public;
+revoke execute on function redimensionar_mesociclo(int, int, boolean, text) from anon;
 grant execute on function redimensionar_mesociclo(int, int, boolean, text) to authenticated;

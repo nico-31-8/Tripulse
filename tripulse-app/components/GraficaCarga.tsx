@@ -54,11 +54,20 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
     if (!sesiones?.length) { setDatos([]); setLoading(false); return }
 
     const sesIds = sesiones.map((s: any) => s.id)
-    const { data: tareas } = await supabase
-      .from('tarea')
-      .select('id_sesion, rpe_reportado, fc_media')
-      .in('id_sesion', sesIds)
-      .not('rpe_reportado', 'is', null)
+    /* El RPE y la FC de las tareas y los bloques, A LA VEZ: los dos solo
+       necesitan las sesiones, y los bloques esperaban a que llegara lo otro.
+       usarRpeDeBloque: aquí la UA solo sirve de PESO para repartir. En una sesión
+       normal hay un bloque y el peso es 1 pase lo que pase; en un brick, usar el
+       RPE real de cada bloque es exactamente lo que hace que la bici y la carrera
+       se lleven lo suyo. */
+    const [{ data: tareas }, bloques] = await Promise.all([
+      supabase
+        .from('tarea')
+        .select('id_sesion, rpe_reportado, fc_media')
+        .in('id_sesion', sesIds)
+        .not('rpe_reportado', 'is', null),
+      cargarBloques(supabase, sesiones, { estimar: false, usarRpeDeBloque: true }),
+    ])
 
     const sesionesConCarga = sesiones.map((s: any) => {
       const tareasS = (tareas || []).filter((t: any) => t.id_sesion === s.id)
@@ -80,10 +89,6 @@ export default function GraficaCarga({ depId, fcUmbral, modo, fechaInicio, fecha
     // recalcula: se REPARTE entre los bloques según su peso en UA. En una sesión
     // normal hay un solo bloque y el reparto es la identidad; en un brick, cada
     // deporte se lleva lo suyo (ver lib/atribucion).
-    // usarRpeDeBloque: aquí la UA solo sirve de PESO para repartir. En una sesión normal
-    // hay un bloque y el peso es 1 pase lo que pase; en un brick, usar el RPE real de
-    // cada bloque es exactamente lo que hace que la bici y la carrera se lleven lo suyo.
-    const bloques = await cargarBloques(supabase, sesiones, { estimar: false, usarRpeDeBloque: true })
     const uaPorSesion: Record<number, number> = {}
     bloques.forEach(b => { uaPorSesion[b.id_sesion] = (uaPorSesion[b.id_sesion] || 0) + b.ua })
 

@@ -340,25 +340,27 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   useEffect(() => { cargarDatos() }, [id])
 
   const cargarDatos = async () => {
-    const { data: dep } = await supabase.from('deportista').select('*').eq('id', id).single()
-    setDeportista(dep)
-    if (!dep) { setNoExiste(true); return }
     // Seis tablas distintas, ninguna depende de otra: iban en fila por costumbre.
-    const [t1, t2, t3, tf, tl, tc] = await Promise.all([
+    /* Y el deportista y su contexto, tampoco: todo cuelga del id de la
+       dirección, así que va en la misma ronda (eran tres). */
+    const [{ data: dep }, t1, t2, t3, tf, tl, tc, ctxs] = await Promise.all([
+      supabase.from('deportista').select('*').eq('id', id).single(),
       supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test_fuerza').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('tests_libres').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
       supabase.from('test_campo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }),
+      contextosDe(supabase, [Number(id)]),
     ])
+    setDeportista(dep)
+    if (!dep) { setNoExiste(true); return }
     setTests1(t1.data || [])
     setTests2(t2.data || [])
     setTests3(t3.data || [])
     setTestsFuerza(tf.data || [])
     setTestsLibres(tl.data || [])
     setTestsCampo(tc.data || [])
-    const ctxs = await contextosDe(supabase, [Number(id)])
     setContexto(ctxs[Number(id)] ?? {})
   }
 

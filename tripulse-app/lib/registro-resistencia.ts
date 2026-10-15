@@ -27,6 +27,7 @@
 
 import { valorCanonico } from './medicion'
 import { rellenarRpeTareas } from './rpe-sesion'
+import { idsEnOrden } from './copiar-sesion'
 
 export interface BloqueRegistro {
   /** Sigla de Zonas 2 (AEL, AEM…) o «Z3» del sistema clásico. Vacío = sin zona. */
@@ -143,19 +144,34 @@ export function medicionDe(b: BloqueRegistro, idTarea: number): {
 }
 
 /**
- * Escribe la medición de un bloque. Devuelve el error solo si se pierden los
- * metros; que no entre el ritmo se avisa, pero no tira la sesión.
+ * Las mediciones de VARIOS bloques: una inserción por tabla, las dos a la vez,
+ * con el ritmo dentro. Iba bloque a bloque y en dos pasos (los metros, y luego
+ * su ritmo), así que eran dos esperas por bloque más la de su tarea.
+ *
+ * La garantía es la misma que la de `escribirMedicion`: si con el ritmo la base
+ * dice que no, se repite sin él y se avisa (`sinRitmo`); lo que no puede pasar
+ * es perder los metros por no poder guardar el ritmo.
  */
-async function escribirMedicion(sb: any, b: BloqueRegistro, idTarea: number): Promise<{
+async function escribirMediciones(sb: any, bloques: BloqueRegistro[], idsTarea: number[]): Promise<{
   error: string | null; sinRitmo: boolean
 }> {
-  const { tabla, fila, ritmo } = medicionDe(b, idTarea)
-  const { error } = await sb.from(tabla).insert(fila)
-  if (error) return { error: error.message || 'No se pudo guardar la medición de un bloque.', sinRitmo: false }
-  if (!ritmo) return { error: null, sinRitmo: false }
-
-  const { error: eR } = await sb.from(tabla).update({ ritmo_objetivo: ritmo }).eq('id_tarea', idTarea)
-  return { error: null, sinRitmo: !!eR }
+  const porTabla: Record<string, { con: any[]; sin: any[]; hayRitmo: boolean }> = {}
+  bloques.forEach((b, i) => {
+    const { tabla, fila, ritmo } = medicionDe(b, idsTarea[i])
+    const g = (porTabla[tabla] ||= { con: [], sin: [], hayRitmo: false })
+    g.sin.push(fila)
+    g.con.push(ritmo ? { ...fila, ritmo_objetivo: ritmo } : fila)
+    if (ritmo) g.hayRitmo = true
+  })
+  const mal = 'No se pudo guardar la medición de un bloque.'
+  const res = await Promise.all(Object.entries(porTabla).map(async ([tabla, g]) => {
+    const r = await sb.from(tabla).insert(g.con)
+    if (!r?.error) return { error: null, sinRitmo: false }
+    if (!g.hayRitmo) return { error: r.error.message || mal, sinRitmo: false }
+    const r2 = await sb.from(tabla).insert(g.sin)
+    return r2?.error ? { error: r2.error.message || mal, sinRitmo: false } : { error: null, sinRitmo: true }
+  }))
+  return { error: res.find(x => x.error)?.error ?? null, sinRitmo: res.some(x => x.sinRitmo) }
 }
 
 export interface ResultadoResistencia {
@@ -211,16 +227,19 @@ export async function guardarRegistroResistencia(
     return { idSesion: null, guardados: 0, error: msg }
   }
 
-  let orden = 1
+  /* Todos los bloques de golpe: sus tareas en una escritura y sus mediciones
+     en otra (ver escribirMediciones). Iba bloque a bloque, tres esperas por
+     cada uno. Los ids se emparejan como en lib/copiar-sesion. */
   let sinRitmo = false
-  for (const b of cuentan) {
-    const { data: tarea, error: eT } = await sb.from('tarea')
-      .insert(tareaDe(b, ses.id, orden++, disciplina)).select('id').single()
-    if (eT || !tarea) return deshacer(eT?.message || 'No se pudo guardar un bloque.')
+  if (cuentan.length) {
+    const filasT = cuentan.map((b, i) => tareaDe(b, ses.id, i + 1, disciplina))
+    const rT = await sb.from('tarea').insert(filasT).select('id')
+    const ids = rT?.error ? null : idsEnOrden(rT?.data, filasT.length)
+    if (!ids) return deshacer(rT?.error?.message || 'No se pudo guardar un bloque.')
 
-    const m = await escribirMedicion(sb, b, tarea.id)
+    const m = await escribirMediciones(sb, cuentan, ids)
     if (m.error) return deshacer(m.error)
-    if (m.sinRitmo) sinRitmo = true
+    sinRitmo = m.sinRitmo
   }
 
   // El RPE también en sus tareas: el SICAT y los índices lo leen de ahí.
@@ -286,39 +305,49 @@ export async function actualizarRegistroResistencia(
     (typeof e === 'string' ? e + '. ' : e?.message ? e.message + '. ' : '')
     + 'No se ha borrado nada: tu registro anterior sigue como estaba.'
 
-  const nuevas: number[] = []
-  let orden = (idsViejos.length || 0) + 1
+  /* Lo nuevo de golpe, como al crearla (ver guardarRegistroResistencia). Y lo
+     nuevo ANTES de borrar lo viejo: si algo falla, se quita solo lo nuevo y el
+     registro anterior sigue como estaba. */
   let sinRitmo = false
-  for (const b of cuentan) {
-    const { data: tarea, error: eT } = await sb.from('tarea')
-      .insert(tareaDe(b, idSesion, orden++, opciones.disciplina)).select('id').single()
-    if (eT || !tarea) {
-      if (nuevas.length) await sb.from('tarea').delete().in('id', nuevas)
-      return { guardados: 0, error: fallo(eT) }
+  if (cuentan.length) {
+    const orden = (idsViejos.length || 0) + 1
+    const filasT = cuentan.map((b, i) => tareaDe(b, idSesion, orden + i, opciones.disciplina))
+    const rT = await sb.from('tarea').insert(filasT).select('id')
+    const nuevas = rT?.error ? null : idsEnOrden(rT?.data, filasT.length)
+    if (!nuevas) {
+      /* Si entraron pero no se pueden emparejar, se quitan: mejor nada nuevo
+         que unas tareas sin su medición. */
+      const entraron = ((rT?.data || []) as any[]).map(t => t.id)
+      if (entraron.length) await sb.from('tarea').delete().in('id', entraron)
+      return { guardados: 0, error: fallo(rT?.error || 'No se pudo guardar un bloque') }
     }
-    nuevas.push(tarea.id)
 
-    const m = await escribirMedicion(sb, b, tarea.id)
+    const m = await escribirMediciones(sb, cuentan, nuevas)
     if (m.error) {
       await sb.from('tarea').delete().in('id', nuevas)
       return { guardados: 0, error: fallo(m.error) }
     }
-    if (m.sinRitmo) sinRitmo = true
+    sinRitmo = m.sinRitmo
   }
 
-  if (idsViejos.length) await sb.from('tarea').delete().in('id', idsViejos)
-
-  const { error: eS } = await sb.from('sesion').update({
-    disciplina: opciones.disciplina,
-    fecha_sesion: opciones.fecha,
-    estado: opciones.realizada ? 'Realizada' : 'Planificada',
-    duracion_minutos: opciones.duracionMinutos,
-    rpe_estimado: !opciones.realizada && opciones.rpe != null ? opciones.rpe : null,
-    rpe_reportado: opciones.realizada && opciones.rpe != null ? opciones.rpe : null,
-    notas_entrenador: opciones.notas || null,
-  }).eq('id', idSesion)
+  /* Fuera lo viejo y la cabecera, a la vez: son tablas distintas. El RPE de
+     las tareas va DETRÁS del borrado y no a la vez: los dos tocan varias filas
+     de `tarea` de esta sesión, y dos escrituras así a la vez pueden bloquearse
+     una a otra en la base. */
+  const borrarViejas = idsViejos.length ? sb.from('tarea').delete().in('id', idsViejos) : Promise.resolve(null)
+  const [, { error: eS }] = await Promise.all([
+    Promise.resolve(borrarViejas).then(() => opciones.realizada ? rellenarRpeTareas(sb, idSesion, opciones.rpe) : undefined),
+    sb.from('sesion').update({
+      disciplina: opciones.disciplina,
+      fecha_sesion: opciones.fecha,
+      estado: opciones.realizada ? 'Realizada' : 'Planificada',
+      duracion_minutos: opciones.duracionMinutos,
+      rpe_estimado: !opciones.realizada && opciones.rpe != null ? opciones.rpe : null,
+      rpe_reportado: opciones.realizada && opciones.rpe != null ? opciones.rpe : null,
+      notas_entrenador: opciones.notas || null,
+    }).eq('id', idSesion),
+  ])
   if (eS) return { guardados: cuentan.length, error: eS.message }
-  if (opciones.realizada) await rellenarRpeTareas(sb, idSesion, opciones.rpe)
 
   return { guardados: cuentan.length, error: null, aviso: sinRitmo ? AVISO_RITMO : null }
 }

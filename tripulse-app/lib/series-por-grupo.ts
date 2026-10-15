@@ -250,22 +250,20 @@ export async function cargarSeriesDeGrupos(
   dias: number,
   desdeISO: string,
 ): Promise<GrupoSeries[]> {
+  /* UNA consulta: las tareas y sus ejercicios vienen DENTRO de cada sesión.
+     Eran tres en fila —las sesiones, sus tareas y los ejercicios de esas
+     tareas—, cada una esperando a los ids de la anterior. */
   const { data: ses } = await sb.from('sesion')
-    .select('id, eliminada')
+    .select('id, eliminada, tarea(id, formato, formato_config, resultado, ejercicios(id, id_tarea, orden, nombre, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular))')
     .eq('id_deportista', idDeportista).eq('estado', 'Realizada')
     .gte('fecha_sesion', desdeISO)
 
-  const ids = (ses || []).filter((s: any) => !s.eliminada).map((s: any) => s.id)
-  if (!ids.length) return []
+  const tareas = (ses || []).filter((s: any) => !s.eliminada).flatMap((s: any) => s.tarea || [])
+  if (!tareas.length) return []
+  /* En el orden en que se guardaron, que es el que tenían en su propia consulta. */
+  const ejs = tareas.flatMap((t: any) => t.ejercicios || []).sort((a: any, b: any) => Number(a.id) - Number(b.id))
 
-  const { data: tareas } = await sb.from('tarea').select('id, formato, formato_config, resultado').in('id_sesion', ids)
-  const idsTarea = (tareas || []).map((t: any) => t.id)
-  if (!idsTarea.length) return []
-
-  const { data: ejs } = await sb.from('ejercicios')
-    .select('id, id_tarea, orden, nombre, grupo_muscular, series, tipo_serie, cardio_modo, ejercicio_encadenado_id, ejercicio_encadenado_nombre, encadenado_series, encadenado_grupo_muscular').in('id_tarea', idsTarea)
-
-  return seriesPorGrupo(conRondasHechas(tareas || [], ejs || []), dias)
+  return seriesPorGrupo(conRondasHechas(tareas, ejs), dias)
 }
 
 /**

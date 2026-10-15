@@ -89,14 +89,14 @@ export async function loQueYaHay(sb: any, idDeportista: number, lunes: string): 
   return (data as any[] | null)?.length || 0
 }
 
-/** Los microciclos del atleta, para saber si la fecha cae en su plan. */
+/** Los microciclos del atleta, para saber si la fecha cae en su plan.
+ *
+ * Una consulta y no tres en fila (macrociclo → mesociclo → microciclo): el
+ * microciclo lleva su `id_deportista` desde la Fase A y la RLS mira justo esa
+ * columna. Es la misma cadena que se quitó de las demás pantallas. */
 export async function microsDelDeportista(sb: any, idDeportista: number): Promise<any[]> {
-  const { data: mac } = await sb.from('macrociclo').select('id').eq('id_deportista', idDeportista)
-  if (!mac?.length) return []
-  const { data: me } = await sb.from('mesociclo').select('id').in('id_macrociclo', mac.map((m: any) => m.id))
-  if (!me?.length) return []
   const { data: mi } = await sb.from('microciclo')
-    .select('id, fecha_inicio, duracion_dias').in('id_mesociclo', me.map((m: any) => m.id))
+    .select('id, fecha_inicio, duracion_dias').eq('id_deportista', idDeportista)
   return mi || []
 }
 
@@ -169,9 +169,13 @@ export async function escribirBloquesFuerza(
     if (b.repeticiones) reps.push({ id_tarea: t.id, repeticiones_planteadas: b.repeticiones })
     else if (b.segundos) durs.push({ id_tarea: t.id, tiempo_planeado: b.segundos })
   })
-  if (reps.length) await sb.from('p_repeticiones').insert(reps)
-  if (durs.length) await sb.from('p_duracion').insert(durs)
-  return null
+  /* Las dos a la vez (iban en fila), y su error se devuelve: antes se tiraba y
+     la sesión quedaba con sus ejercicios y sin repeticiones ni tiempo. */
+  const [rR, rU] = await Promise.all([
+    reps.length ? sb.from('p_repeticiones').insert(reps) : null,
+    durs.length ? sb.from('p_duracion').insert(durs) : null,
+  ])
+  return rR?.error?.message ?? rU?.error?.message ?? null
 }
 
 export interface OpcionesVolcado {
@@ -191,9 +195,12 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
   if (!o.relleno?.length) return { parte: [], creadas: 0, error: 'La semana está vacía.' }
 
   const micros = await microsDelDeportista(sb, o.idDeportista)
-  const parte: ParteSesion[] = []
 
-  for (const r of o.relleno) {
+  /* TODAS A LA VEZ. Iban una detrás de otra, y cada una son tres esperas (la
+     sesión, sus tareas, lo que cuelga de ellas): una semana de seis sesiones
+     eran dieciocho en fila. Cada sesión es independiente de las demás, y el
+     parte sale igual en el orden de la semana. */
+  const parte: ParteSesion[] = await Promise.all(o.relleno.map(async (r): Promise<ParteSesion> => {
     const fecha = fechaDeDia(o.lunes, r.dia)
     const micro = microDelDia(micros, fecha)
     const disciplina = r.hueco.bloque
@@ -222,16 +229,16 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
            El nombre sigue viajando en el parte que se le enseña al usuario. */
       }).select('id').single()
 
-      if (eS || !ses) { parte.push({ ...base, error: eS?.message || 'No se pudo crear la sesión' }); continue }
+      if (eS || !ses) return { ...base, error: eS?.message || 'No se pudo crear la sesión' }
 
       const err = r.claveFuerza
         ? await aplicarBloquesFuerza(sb, ses.id, r.claveFuerza)
         : await o.aplicarBloques(sb, ses.id, disciplina, o.bloquesDe(r.clave))
-      parte.push({ ...base, ok: !err, error: err || undefined })
+      return { ...base, ok: !err, error: err || undefined }
     } catch (e: any) {
-      parte.push({ ...base, error: e?.message || 'Error inesperado' })
+      return { ...base, error: e?.message || 'Error inesperado' }
     }
-  }
+  }))
 
   const creadas = parte.filter(p => p.ok).length
   return { parte, creadas, error: creadas ? null : 'No se pudo crear ninguna sesión.' }
