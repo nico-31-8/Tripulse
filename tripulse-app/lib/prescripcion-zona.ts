@@ -1,23 +1,28 @@
 // ============================================================
-// TRIPULSE — Prescribir una tarea: referencia → zona → porcentaje
+// TRIPULSE — Prescribir una tarea: deporte → de dónde → zona → porcentaje
 // ============================================================
 //
 // LO QUE CAMBIA. Hasta ahora una tarea solo elegía zona, y la referencia iba
 // implícita: si era carrera, la VAM. Eso dejaba fuera el caso normal — un
-// entrenador que pasa un 6×100, saca «1:13 el 100» y quiere colgar de ahí las
-// zonas de ese nadador. Ese número no es un CSS y no tiene por qué serlo.
+// entrenador que pasa una prueba de esfuerzo, saca su VT1, su VT2 y su VO2máx,
+// y quiere sus propias zonas encima.
 //
-// Ahora la tarea dice las tres cosas, y tarea por tarea:
+// Ahora la tarea dice, tarea por tarea:
 //
-//   deporte  →  qué referencias tiene este atleta
-//   ref      →  de qué número cuelga ESTA tarea
-//   zona     →  cuál de las que cuelgan de esa referencia
+//   deporte  →  qué hay para este atleta
+//   fuente   →  las zonas de la app (sobre su VAM, su FTP, su CSS) o una de
+//               las clasificaciones del entrenador
+//   zona     →  cuál de las de esa fuente
 //   %        →  el de la zona, o uno más fino DENTRO de él
 //
 // EL PORCENTAJE SE AFINA, NO SE PISA. AEL es 65–75 y ahí se queda: cabe un
 // 70–70 o un 68–72, no un 60. Un AEL fuera de su rango no es un AEL, y el RPE
 // y el nivel —de los que salen la carga y la altura de la barra del dibujo—
 // dejarían de significar lo que dicen.
+//
+// Y SOLO SE AFINA UNA ZONA DE UN HITO. «98–102 % de su VT2» está claro; en una
+// zona que va del VT1 + 15 % al VT2 − 5 %, o en una sin techo, un porcentaje
+// no tiene un sentido claro, así que esas se mandan enteras.
 //
 // SOLO EN ZONAS 2. Un atleta en el sistema clásico sigue igual que siempre:
 // elige su Z1…Z7 y no hay referencia que elegir. Es lo que acota el riesgo de
@@ -28,11 +33,17 @@
 
 import { ZONAS_RESISTENCIA, rangoDeZona, nivelDeRpe, cargaZona, type CargaZona, type CopiaZona } from './zonas'
 import { mmss } from './medicion'
-import { aplicarPct, leerValor, valorDe, opcionesDeRef, type TestConMediciones } from './referencia-propia'
-import { fichaDe, type ZonaEntrenador } from './zonas-entrenador'
+import { aplicarPct, leerValor, valorDe, opcionesDeRef, normDeporte, unidadCanonica, type TestConMediciones } from './referencia-propia'
+import {
+  ANCLA_DE, idApp, idPropia, leerIdPropia, hitosDisponibles, buscarHito, valorHito,
+  type HitoDisponible, type ModoRango, type TestsApp,
+} from './hitos'
+import { fichaDe, esDeUnHito, motivoNoUsable, type Clasificacion, type Limite, type ZonaEntrenador } from './zonas-entrenador'
 
-/** Cómo se escribe el rango de una zona sobre su referencia. */
-export type ModoRango = 'pct' | 'seg'
+/* Vivían aquí y los importa media aplicación: se reexportan desde su sitio
+   nuevo (lib/hitos) para no obligar a nadie a cambiar el import. */
+export { ANCLA_DE, idApp, idPropia, leerIdPropia }
+export type { ModoRango, TestsApp }
 
 export interface Referencia {
   /** `app:vam` · `propia:7:0`. Es lo que se congela en la tarea. */
@@ -62,48 +73,56 @@ export interface Referencia {
   ancla?: 'vam' | 'ftp' | 'css'
 }
 
+/** Una clasificación del entrenador como fuente de zonas de una tarea. */
+export interface FuenteClasificacion {
+  /** `clasif:12`. Es lo que se congela en la tarea como `fuente`. */
+  id: string
+  tipo: 'clasif'
+  deporte: string
+  /** Su nombre: «Laboratorio · VT1–VT2–VO2máx». */
+  etiqueta: string
+  clasificacion: Clasificacion
+  /** Sus hitos, resueltos: cómo se llaman y en qué unidad van. */
+  hitos: HitoDisponible[]
+  /** Si el atleta tiene medidos todos sus hitos. Sin ellos se manda igual. */
+  medida: boolean
+}
+
+/** De dónde salen las zonas de una tarea. */
+export type Fuente = Referencia | FuenteClasificacion
+
+export const esClasificacion = (f: Fuente | null | undefined): f is FuenteClasificacion => f?.tipo === 'clasif'
+
 export interface ZonaOfrecida {
   sigla: string
   nombre: string
   color: string
   rpe: number
   nivel: number
-  /** El tramo en el que se puede afinar. `null` en un extremo = sin límite. */
-  rango: [number | null, number | null]
+  /**
+   * El tramo en el que se puede afinar. `null` en un extremo = sin límite.
+   * `null` entero = la zona se manda entera (dos hitos, o sin techo o suelo).
+   */
+  rango: [number | null, number | null] | null
   origen: 'app' | 'propia'
+  /** Sus límites, en una zona de una clasificación. */
+  desde?: Limite | null
+  hasta?: Limite | null
 }
 
-const norm = (d: string): string => {
-  const s = String(d ?? '').trim()
-  return s.startsWith('Nat') ? 'Natacion' : s
-}
+const norm = normDeporte
 const mismoDeporte = (a: string, b: string) => norm(a).toLowerCase() === norm(b).toLowerCase()
 
 // ------------------------------------------------------------
 // Qué referencias tiene este atleta
 // ------------------------------------------------------------
 
-/** La referencia que la app trae para cada deporte. */
-export const ANCLA_DE: Record<string, { ancla: 'vam' | 'ftp' | 'css'; nombre: string; unidad: string; modo: ModoRango; inverso: boolean }> = {
-  Carrera:   { ancla: 'vam', nombre: 'VAM', unidad: 'km/h',  modo: 'pct', inverso: false },
-  Ciclismo:  { ancla: 'ftp', nombre: 'FTP', unidad: 'W',     modo: 'pct', inverso: false },
-  /* El CSS es el único que NO se manda con un porcentaje: sus zonas son un
-     desfase en segundos («CSS +10 a +20 s»). Tratarlo como % daba ritmos
-     absurdos, y por eso la app ya lo guarda aparte. */
-  Natacion:  { ancla: 'css', nombre: 'CSS', unidad: 's/100', modo: 'seg', inverso: true },
-}
+export const idClasif = (id: number): string => 'clasif:' + id
 
-export interface TestsApp { vam?: number | null; ftp?: number | null; css?: number | null }
-
-export const idApp = (ancla: string): string => 'app:' + ancla
-export const idPropia = (idDefinicion: number, indice: number): string => 'propia:' + idDefinicion + ':' + indice
-
-/** `propia:7:0` → `{ idDefinicion: 7, indice: 0 }`. `null` si no es de esa forma. */
-export function leerIdPropia(id: string): { idDefinicion: number; indice: number } | null {
-  const p = String(id ?? '').split(':')
-  if (p[0] !== 'propia' || p.length !== 3) return null
-  const d = Number(p[1]), i = Number(p[2])
-  return Number.isInteger(d) && d > 0 && Number.isInteger(i) && i >= 0 ? { idDefinicion: d, indice: i } : null
+/** `clasif:12` → `12`. `null` si no es de esa forma. */
+export function leerIdClasif(id: string | null | undefined): number | null {
+  const m = /^clasif:(\d+)$/.exec(String(id ?? ''))
+  return m ? Number(m[1]) : null
 }
 
 /**
@@ -153,25 +172,84 @@ export function referenciasDe(
 export const buscarReferencia = (refs: Referencia[], id: string | null | undefined): Referencia | null =>
   (refs || []).find(r => r.id === id) ?? null
 
+/**
+ * De dónde puede sacar sus zonas una tarea de ese deporte: las de la app y las
+ * clasificaciones del entrenador para ese deporte.
+ *
+ * YA NO SE OFRECE UN TEST SUELTO como referencia: lo que colgaba de él eran
+ * sus zonas, y esas ahora viven en una clasificación —la que se creó sola con
+ * el nombre del test—. Ofrecer las dos cosas sería enseñar lo mismo dos veces.
+ *
+ * SOLO LAS QUE EXISTEN EN LA BASE y tienen alguna zona lista: una clasificación
+ * vacía en el desplegable es una puerta a nada.
+ */
+export function fuentesDe(
+  deporte: string,
+  tests: TestsApp | null | undefined,
+  propios: TestConMediciones[] | null | undefined,
+  clasificaciones: Clasificacion[] | null | undefined,
+): Fuente[] {
+  const out: Fuente[] = referenciasDe(deporte, tests, propios).filter(r => r.tipo === 'app')
+  const disponibles = hitosDisponibles(deporte, propios)
+  for (const c of clasificaciones || []) {
+    if (!c.id || c.suelta || !mismoDeporte(c.deporte, deporte)) continue
+    const f = fuenteDeClasificacion(c, disponibles, tests, propios)
+    if (zonasDe(f).length) out.push(f)
+  }
+  return out
+}
+
+/** Una clasificación como fuente, con sus hitos resueltos para este atleta. */
+export function fuenteDeClasificacion(
+  c: Clasificacion,
+  disponibles: HitoDisponible[],
+  tests: TestsApp | null | undefined,
+  propios: TestConMediciones[] | null | undefined,
+): FuenteClasificacion {
+  const hitos = c.hitos.map(id => buscarHito(disponibles, id)).filter((h): h is HitoDisponible => !!h)
+  return {
+    id: idClasif(c.id ?? 0), tipo: 'clasif', deporte: norm(c.deporte), etiqueta: c.nombre,
+    clasificacion: c, hitos,
+    medida: c.hitos.length > 0 && c.hitos.every(h => valorHito(h, tests, propios) !== null),
+  }
+}
+
+export const buscarFuente = (fuentes: Fuente[], id: string | null | undefined): Fuente | null =>
+  (fuentes || []).find(f => f.id === id) ?? null
+
 // ------------------------------------------------------------
-// Qué zonas cuelgan de una referencia
+// Qué zonas cuelgan de una fuente
 // ------------------------------------------------------------
+
+/** Una zona del entrenador tal como se ofrece en una tarea. */
+function ofrecer(z: ZonaEntrenador): ZonaOfrecida | null {
+  const f = fichaDe(z)
+  /* Sin RPE no hay nivel, y sin nivel no hay carga ni altura de barra: esa
+     zona no se ofrece en vez de ofrecerse a medias. */
+  if (f.rpe === null || f.nivel === null) return null
+  return {
+    sigla: z.sigla, nombre: z.nombre, color: z.color, rpe: f.rpe, nivel: f.nivel,
+    rango: esDeUnHito(z) ? [z.desde!.pct, z.hasta!.pct] : null,
+    origen: 'propia', desde: z.desde, hasta: z.hasta,
+  }
+}
 
 /**
- * Las zonas que se pueden mandar sobre esa referencia.
+ * Las zonas que se pueden mandar desde esa fuente.
  *
  * De la app cuelgan las del catálogo, con el rango de SU ancla. De una
- * referencia propia cuelgan solo las zonas del entrenador que apuntan a ella:
- * las del catálogo no, porque un «AEL» está definido como % de la VAM y no
- * significa nada sobre un ritmo de 100 que el entrenador se inventó.
+ * clasificación, sus zonas listas. De un test suelto (las tareas de antes de
+ * las clasificaciones) solo las zonas de un hito que cuelgan de él: las del
+ * catálogo no, porque un «AEL» está definido como % de la VAM y no significa
+ * nada sobre un ritmo de 100 que el entrenador se inventó.
  */
-export function zonasDe(ref: Referencia | null, mias: ZonaEntrenador[] | null | undefined): ZonaOfrecida[] {
-  if (!ref) return []
+export function zonasDe(fuente: Fuente | null, mias?: ZonaEntrenador[] | null): ZonaOfrecida[] {
+  if (!fuente) return []
 
-  if (ref.tipo === 'app') {
+  if (fuente.tipo === 'app') {
     const out: ZonaOfrecida[] = []
     for (const z of ZONAS_RESISTENCIA) {
-      const rango = rangoDeZona(z.sigla, ref.ancla!)
+      const rango = rangoDeZona(z.sigla, fuente.ancla!)
       if (!rango) continue   // PLA no tiene tramo en natación: no se ofrece
       const rpe = (z.rpeMin + z.rpeMax) / 2
       out.push({ sigla: z.sigla, nombre: z.nombre, color: z.color, rpe, nivel: nivelDeRpe(rpe), rango, origen: 'app' })
@@ -179,21 +257,19 @@ export function zonasDe(ref: Referencia | null, mias: ZonaEntrenador[] | null | 
     return out
   }
 
-  const suya = leerIdPropia(ref.id)
-  if (!suya) return []
-  const out: ZonaOfrecida[] = []
-  for (const z of mias || []) {
-    if (!z.ref || z.ref.idDefinicion !== suya.idDefinicion || z.ref.indice !== suya.indice) continue
-    const f = fichaDe(z)
-    /* Sin RPE no hay nivel, y sin nivel no hay carga ni altura de barra: esa
-       zona no se ofrece en vez de ofrecerse a medias. */
-    if (f.rpe === null || f.nivel === null) continue
-    out.push({
-      sigla: z.sigla, nombre: z.nombre, color: z.color, rpe: f.rpe, nivel: f.nivel,
-      rango: [z.pctMin, z.pctMax], origen: 'propia',
-    })
+  if (fuente.tipo === 'clasif') {
+    const zs = fuente.clasificacion.zonas
+    return zs
+      .filter((z, i) => motivoNoUsable(z, i, zs, fuente.clasificacion.hitos) === null)
+      .map(ofrecer)
+      .filter((z): z is ZonaOfrecida => !!z)
   }
-  return out
+
+  if (!leerIdPropia(fuente.id)) return []
+  return (mias || [])
+    .filter(z => esDeUnHito(z) && z.desde!.ref === fuente.id)
+    .map(ofrecer)
+    .filter((z): z is ZonaOfrecida => !!z)
 }
 
 export const buscarZona = (zonas: ZonaOfrecida[], sigla: string | null | undefined): ZonaOfrecida | null =>
@@ -211,9 +287,11 @@ export const buscarZona = (zonas: ZonaOfrecida[], sigla: string | null | undefin
  * duro. `pctVamZona` resuelve ese caso con máximo × 0,92, y las que no tienen
  * techo con su propio suelo. Inventar aquí una tercera regla es cómo el mismo
  * concepto acaba respondiendo distinto según quién pregunte.
+ *
+ * Una zona que se manda entera no tiene tramo que afinar: `null`.
  */
 export function rangoInicial(z: ZonaOfrecida | null): [number, number] | null {
-  if (!z) return null
+  if (!z || !z.rango) return null
   const [lo, hi] = z.rango
   if (lo !== null && hi !== null) return [lo, hi]
   if (hi !== null) return [Math.round(hi * 0.92), hi]
@@ -296,17 +374,20 @@ export function tramoDe(
  */
 export function textoTramo(t: Tramo | null): string {
   if (!t) return ''
-  if (t.unidad === 'km/h') {
+  /* Se decide con la unidad como la entiende la app: un «Km/h» escrito a mano
+     también se lee como ritmo (lib/referencia-propia, `unidadCanonica`). */
+  const u = unidadCanonica(t.unidad)
+  if (u === 'km/h') {
     /* Un tramo afinado a un punto exacto se lee «5:21 /km», no «5:21–5:21».
        Faltaba aquí y sí estaba en las otras dos unidades. */
     const a = mmss(3600 / t.hasta), b = mmss(3600 / t.desde)
     return a === b ? a + ' /km' : a + '–' + b + ' /km'
   }
-  if (t.unidad === 'W') {
+  if (u === 'W') {
     const a = Math.round(t.desde), b = Math.round(t.hasta)
     return a === b ? a + ' W' : a + '–' + b + ' W'
   }
-  if (t.unidad === 's/100') {
+  if (u === 's/100') {
     return t.desde === t.hasta ? mmss(t.desde) + ' /100' : mmss(t.desde) + '–' + mmss(t.hasta) + ' /100'
   }
   /* Cualquier otra unidad la escribió el entrenador a mano: se enseña tal cual,
@@ -318,17 +399,58 @@ export function textoTramo(t: Tramo | null): string {
   return a === b ? a + ' ' + t.unidad : a + '–' + b + ' ' + t.unidad
 }
 
+/** Un número suelto, escrito como los tramos: «5:00 /km», «245 W», «1:16 /100». */
+export function textoPunto(n: number, unidad: string): string {
+  if (!Number.isFinite(n) || n <= 0) return ''
+  const u = unidadCanonica(unidad)
+  if (u === 'km/h') return mmss(3600 / n) + ' /km'
+  if (u === 'W') return Math.round(n) + ' W'
+  if (u === 's/100') return mmss(n) + ' /100'
+  return leerValor(n, unidad)
+}
+
+/**
+ * Una zona sin techo o sin suelo, escrita: «más lento de 5:00 /km», «por
+ * encima de 300 W».
+ *
+ * `lado` es del ESFUERZO, no del número: 'bajo' = menos que esto. En un ritmo
+ * menos esfuerzo es más lento; en vatios o pulsaciones, menos número.
+ */
+export function textoAbierto(n: number, unidad: string, inverso: boolean, lado: 'bajo' | 'alto'): string {
+  const p = textoPunto(n, unidad)
+  if (!p) return ''
+  if (unidadCanonica(unidad) === 'km/h' || inverso) return (lado === 'bajo' ? 'más lento de ' : 'más rápido de ') + p
+  return (lado === 'bajo' ? 'por debajo de ' : 'por encima de ') + p
+}
+
 // ------------------------------------------------------------
 // Lo que se congela en la tarea
 // ------------------------------------------------------------
+
+/** Un límite tal como viaja en la copia: con el nombre de su hito, congelado. */
+export interface LimiteCopia extends Limite {
+  /** «VT1». Para poder explicar la zona aunque el test se archive. */
+  corto: string
+}
 
 export interface CopiaPrescrita extends CopiaZona {
   /** El % que se mandó, que puede ser más fino que el de la zona. */
   pctMin: number
   pctMax: number
-  /** De qué referencia salió, para poder recalcular el ritmo al enseñarlo. */
+  /**
+   * De qué referencia salió el %, para recalcular el ritmo al enseñarlo.
+   * Vacío en una zona que se mandó entera desde una clasificación: ahí no hay
+   * «un» porcentaje, hay dos límites.
+   */
   refId: string
   refEtiqueta: string
+  /** Solo las de una clasificación: `clasif:12`. Es lo que vuelve a la fila al editarla. */
+  fuente?: string
+  /** El nombre de la clasificación, congelado. */
+  clasificacion?: string
+  /** Sus dos límites, ya afinados. `null` = sin límite. */
+  desde?: LimiteCopia | null
+  hasta?: LimiteCopia | null
 }
 
 /**
@@ -342,26 +464,64 @@ export interface CopiaPrescrita extends CopiaZona {
  *
  * Y el PORCENTAJE sí entra, aunque la zona lo tenga: si mandaste un 70 exacto,
  * lo que se hizo ese día fue un 70. Sin guardarlo, cambiar la zona mañana
- * reescribiría el historial.
+ * reescribiría el historial. En una zona de una clasificación entran sus dos
+ * límites, con el % que se mandó y el nombre de su hito.
  */
 export function copiaPrescrita(
-  ref: Referencia | null,
+  fuente: Fuente | null,
   zona: ZonaOfrecida | null,
   pctMin: number | null,
   pctMax: number | null,
 ): CopiaPrescrita | null {
-  if (!ref || !zona) return null
+  if (!fuente || !zona) return null
+  const base = { sigla: zona.sigla, nombre: zona.nombre, color: zona.color, rpe: zona.rpe, nivel: zona.nivel }
+
+  if (fuente.tipo === 'clasif') {
+    const corto = (ref: string) => buscarHito(fuente.hitos, ref)?.corto ?? ''
+    const copiaDe = (l: Limite | null | undefined, pct?: number): LimiteCopia | null =>
+      l ? { ref: l.ref, pct: pct ?? l.pct, corto: corto(l.ref) } : null
+    const comun = { fuente: fuente.id, clasificacion: fuente.etiqueta }
+
+    if (zona.rango && zona.desde && zona.hasta) {
+      /* De un hito: se afina dentro de la zona, como las de la app. */
+      const ini = rangoInicial(zona)
+      const a = acotar(pctMin ?? ini?.[0] ?? null, zona.rango)
+      const b = acotar(pctMax ?? ini?.[1] ?? null, zona.rango)
+      if (a === null || b === null) return null
+      const min = Math.min(a, b), max = Math.max(a, b)
+      return {
+        ...base, pctMin: min, pctMax: max,
+        refId: zona.desde.ref, refEtiqueta: corto(zona.desde.ref),
+        ...comun, desde: copiaDe(zona.desde, min), hasta: copiaDe(zona.hasta, max),
+      }
+    }
+    /* Entera: sus límites tal cual. */
+    if (!zona.desde && !zona.hasta) return null
+    return {
+      ...base, pctMin: 0, pctMax: 0, refId: '', refEtiqueta: '',
+      ...comun, desde: copiaDe(zona.desde), hasta: copiaDe(zona.hasta),
+    }
+  }
+
   const ini = rangoInicial(zona)
   const min = acotar(pctMin ?? ini?.[0] ?? null, zona.rango)
   const max = acotar(pctMax ?? ini?.[1] ?? null, zona.rango)
   if (min === null || max === null) return null
 
   return {
-    sigla: zona.sigla, nombre: zona.nombre, color: zona.color,
-    rpe: zona.rpe, nivel: zona.nivel,
+    ...base,
     pctMin: Math.min(min, max), pctMax: Math.max(min, max),
-    refId: ref.id, refEtiqueta: ref.etiqueta,
+    refId: fuente.id, refEtiqueta: fuente.etiqueta,
   }
+}
+
+function leerLimiteCopia(v: unknown): LimiteCopia | null {
+  const l = v as Record<string, unknown> | null
+  if (!l || typeof l !== 'object') return null
+  const pct = Number(l.pct)
+  const ref = String(l.ref ?? '')
+  if (!ref || !Number.isFinite(pct) || pct <= 0) return null
+  return { ref, pct, corto: String(l.corto ?? '') }
 }
 
 /**
@@ -377,7 +537,7 @@ export function leerCopia(bruto: unknown): CopiaPrescrita | null {
   const sigla = String(c.sigla ?? '').trim()
   if (!sigla) return null
   const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-  return {
+  const out: CopiaPrescrita = {
     sigla,
     nombre: String(c.nombre ?? '').trim() || sigla,
     color: String(c.color ?? '') || '#6b7280',
@@ -385,7 +545,20 @@ export function leerCopia(bruto: unknown): CopiaPrescrita | null {
     pctMin: n(c.pctMin), pctMax: n(c.pctMax),
     refId: String(c.refId ?? ''), refEtiqueta: String(c.refEtiqueta ?? ''),
   }
+  /* Lo de las clasificaciones solo aparece si estaba: una copia de antes
+     vuelve exactamente igual que siempre. */
+  if (c.fuente) out.fuente = String(c.fuente)
+  if (c.clasificacion) out.clasificacion = String(c.clasificacion)
+  if ('desde' in c || 'hasta' in c) {
+    out.desde = leerLimiteCopia(c.desde)
+    out.hasta = leerLimiteCopia(c.hasta)
+  }
+  return out
 }
+
+/** Si la copia es de una zona de una clasificación (lleva sus límites). */
+export const esCopiaDeLimites = (c: CopiaPrescrita | null | undefined): boolean =>
+  !!c && (!!c.desde || !!c.hasta)
 
 // ------------------------------------------------------------
 // La puerta para todo lo que lee tareas guardadas
@@ -438,6 +611,43 @@ export function tareaPico<T extends TareaConZona>(tareas: T[] | null | undefined
 }
 
 /**
+ * El objetivo de dos límites para ese atleta: «4:21–4:13 /km», «más lento de
+ * 5:00 /km».
+ *
+ * TODOS LOS HITOS EN %, también el CSS: en una clasificación cada límite se
+ * lee igual, y el 95 % de un ritmo es más lento. Si falta el número de algún
+ * hito, cadena vacía: un objetivo con medio dato es un objetivo que miente.
+ */
+export function objetivoDeLimites(
+  desde: Limite | null | undefined,
+  hasta: Limite | null | undefined,
+  disciplina: string,
+  tests: TestsApp | null | undefined,
+  propios: TestConMediciones[] | null | undefined,
+): string {
+  if (!desde && !hasta) return ''
+  const hitos = hitosDisponibles(disciplina, propios)
+  let unidad = '', inverso = false
+  const numero = (l: Limite): number | undefined => {
+    const h = buscarHito(hitos, l.ref)
+    const v = valorHito(l.ref, tests, propios)
+    if (!h || !v) return undefined
+    unidad ||= h.unidad
+    if (!inverso) inverso = h.inverso
+    return aplicarPct(v.valor, l.pct, h.inverso) ?? undefined
+  }
+  const a = desde ? numero(desde) : null
+  const b = hasta ? numero(hasta) : null
+  if (a === undefined || b === undefined) return ''
+  if (a !== null && b !== null) {
+    return textoTramo({ desde: Math.min(a, b), hasta: Math.max(a, b), unidad, inverso })
+  }
+  if (b !== null) return textoAbierto(b, unidad, inverso, 'bajo')
+  if (a !== null) return textoAbierto(a, unidad, inverso, 'alto')
+  return ''
+}
+
+/**
  * El objetivo de una tarea ya prescrita, desde su copia.
  *
  * LO USAN EL ENTRENADOR Y EL ATLETA, y por eso vive aquí. El editor lo enseña
@@ -459,11 +669,25 @@ export function objetivoDeCopia(
   tests: TestsApp | null | undefined,
   propios: TestConMediciones[] | null | undefined,
 ): string {
-  if (!copia || !copia.refId) return ''
+  if (!copia) return ''
+  if (esCopiaDeLimites(copia)) return objetivoDeLimites(copia.desde, copia.hasta, disciplina, tests, propios)
+  if (!copia.refId) return ''
   const ref = buscarReferencia(referenciasDe(disciplina, tests, propios), copia.refId)
   return ref ? textoTramo(tramoDe(ref, copia.pctMin, copia.pctMax)) : ''
 }
 
+/**
+ * Los tests del entrenador de los que cuelga una copia: el de su referencia y
+ * los de sus dos límites. Es lo que hay que cargar para poder enseñar su ritmo.
+ */
+export function testsDeCopia(copia: CopiaPrescrita | null | undefined): number[] {
+  if (!copia) return []
+  const ids = [copia.refId, copia.desde?.ref, copia.hasta?.ref]
+    .map(r => leerIdPropia(r || '')?.idDefinicion)
+    .filter((x): x is number => !!x)
+  return [...new Set(ids)]
+}
+
 /** Si esta tarea cuelga de un test del entrenador y no de la referencia de la app. */
 export const cuelgaDeTestPropio = (t: TareaConZona | null | undefined): boolean =>
-  !!leerIdPropia(leerCopia(t?.zona_copia)?.refId || '')
+  testsDeCopia(leerCopia(t?.zona_copia)).length > 0

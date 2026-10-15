@@ -14,6 +14,79 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 15 de octubre de 2026 · Clasificaciones de zonas: tus zonas, de hito en hito
+
+**Qué es.** En *Zonas propias* ya no hay un solo montón de zonas por deporte:
+te creas **clasificaciones**, tantas como quieras (la del laboratorio, la de
+pista, la de técnica…). Cada una tira de unos **hitos** —el VT1, el VT2 y el
+VO₂máx de tu prueba de esfuerzo, o la VAM, el FTP o el CSS de la app— y cada
+zona tiene un **desde** y un **hasta**, cada uno con su hito y su %:
+- una zona puede ir **de un hito a otro**: del VT1 + 15 % al VT2 − 5 %;
+- un límite vacío es **sin límite**: «por debajo de su VT1», «por encima de su
+  VO₂máx».
+
+Todos los hitos de una clasificación van en la misma unidad: para trabajar en
+pulsaciones, otra clasificación.
+
+**La escalera.** Debajo de cada clasificación ves cómo le queda a un deportista
+concreto, con sus números: cada zona en su carril, sobre el mismo eje. La app
+**avisa y no arregla nada sola**:
+- una zona que le queda **al revés**: con el VT1 y el VT2 muy juntos, su VT1 +
+  15 % puede pasar su VT2 − 5 %;
+- dos zonas que **se pisan**;
+- un **hueco** en el que no le toca ninguna.
+
+Si el deportista elegido no tiene hecha la prueba, te dice quién sí la tiene.
+
+**En la sesión.** La casilla de zona es ahora **deporte → clasificación →
+zona**:
+- las zonas de un solo hito («95–105 % de su VT2») se afinan como siempre;
+- las que van de un hito a otro se mandan **enteras**;
+- si a ese deportista una zona no le encaja, sale marcada con ⚠ y se puede
+  mandar igual;
+- sale elegida la clasificación que usaste la última vez con ese deportista y
+  ese deporte.
+
+**Lo que ya tenías no se pierde.** Cada grupo de zonas de antes es ahora una
+clasificación con el mismo nombre («6x100 · Ritmo100») y los mismos números.
+Las sesiones ya mandadas no cambian.
+
+**«¿Para qué sirve?», más claro.** Al crear un test, el desplegable de cada
+resultado va en tres grupos, y debajo te explica cada opción:
+- **Hito para tus zonas propias:** umbral aeróbico (VT1), umbral (VT2),
+  VO₂máx, velocidad máxima, una marca tuya, y un **umbral propio** (nuevo).
+  Cuál elijas no cambia ninguna cuenta: es para que sepas qué guardaste.
+- **Sustituir su VAM, su FTP o su CSS:** es la única forma de que un test tuyo
+  mueva las zonas de la app. Antes lo hacía sin avisar marcar «VO₂máx» en
+  carrera o «umbral» en bici y natación. La plantilla *Test de VAM* del
+  Laboratorio ya viene marcada así.
+- **Solo seguimiento:** su gráfica y nada más.
+
+**«+ Dato tal cual».** En *Tests propios* y en el *Laboratorio*, para apuntar un
+número sin fórmula —el VT1 del informe de tu prueba de esfuerzo—: le pones
+nombre, unidad y para qué sirve, y al pasar el test escribes el número.
+
+**Tests propios, como portada.** Arriba hay dos tarjetas: **Crear un test
+nuevo** (en el Laboratorio, con plantillas, reloj y repeticiones, o uno sencillo)
+y **Pasar un test** (eliges cuál y a quién, y se abre listo). En la lista salen
+también los del Laboratorio.
+
+**Arreglado.** Un test hecho en *Tests propios* puesto como *Día de test* en una
+sesión no se abría: «Pasar el test» acababa en «ese test ya no está en tu
+lista». Ahora se abre con ese deportista y esa fecha.
+
+**Lo que cambia para tu deportista:**
+- **En la pantalla de entrenar sale el objetivo que le mandaste.** Hasta hoy esa
+  pantalla lo calculaba solo por el nombre de la zona: un AEL que afinaste al
+  70 % le salía como el 65–75 % de siempre, y una zona tuya le salía sin ritmo.
+  Ahora sale lo mismo que en su sesión: el ritmo del 70 %, y el de tu zona.
+- En su sesión, bajo una zona de una clasificación, lee de dónde sale: «Entre
+  tu VT1 + 15 % y tu VT2 − 5 %».
+- Una unidad escrita «Km/h» o «KM/H» en un test tuyo se lee ya como ritmo
+  («4:21 /km»), igual que «km/h». Antes salía el número suelto.
+
+---
+
 ## 14 de octubre de 2026 · Las pulsaciones de tus zonas, enteras
 
 Cuando una zona tuya cuelga de una referencia en pulsaciones (un VT1, el

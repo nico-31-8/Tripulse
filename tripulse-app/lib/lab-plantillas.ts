@@ -72,8 +72,10 @@ export const PLANTILLAS: Plantilla[] = [
         { nombre: 'ultimo', unidad: 'km/h', formula: [fnB('ultima', 'vel')] },
         /* La corrección de Montreal por el escalón que no terminó. El
            incremento y la duración salen de SUS CASILLAS, no de un número
-           escrito aquí: cambiarlos para un atleta lento tiene que mover la VAM. */
-        { nombre: 'vam', unidad: 'km/h', ancla: 'vo2max', formula: [
+           escrito aquí: cambiarlos para un atleta lento tiene que mover la VAM.
+           Marcada para SUSTITUIR SU VAM: es un test de VAM, y para eso existe.
+           Fijarla sigue siendo un botón aparte, medición a medición. */
+        { nombre: 'vam', unidad: 'km/h', ancla: 'app', formula: [
           fnB('ultima', 'vel'), { t: 'op', v: '+' }, { t: 'var', v: 'aguanto' },
           { t: 'op', v: '/' }, { t: 'var', v: 'duracion' }, { t: 'op', v: '*' }, { t: 'var', v: 'incremento' },
         ] },

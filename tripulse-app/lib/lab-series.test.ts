@@ -86,22 +86,23 @@ describe('cómo va con el tiempo', () => {
 })
 
 describe('qué resultado puede gobernar las zonas', () => {
-  it('la VAM de un Montreal sí, porque es un VO₂máx en km/h', () => {
+  it('la VAM de un Montreal sí: viene marcada para sustituir su VAM, y en km/h', () => {
     const t = clon(plantillaPorId('vam')!.test)
     const vam = t.resultados.find(r => r.nombre === 'vam')!
     expect(puedeFijarLab(t.deporte, vam).motivo).toBeNull()
     expect(puedeFijarLab(t.deporte, vam).destino?.columna).toBe('vam')
   })
 
-  /* La restricción que más duele, y por eso se explica: la casilla de carrera
-     guarda una VAM, que es un VO₂máx. Un umbral metido ahí bajaría TODAS sus
-     zonas sin que nada fallara. */
-  it('un umbral de carrera NO, y dice por qué', () => {
+  /* La restricción que más duele: la casilla de carrera guarda una VAM, que es
+     un VO₂máx. Un umbral metido ahí bajaría TODAS sus zonas sin que nada
+     fallara. Un umbral es un hito para SUS zonas, y lo otro se pide aparte. */
+  it('un umbral de carrera NO, y dice cómo se pediría', () => {
     const t = clon(plantillaPorId('lactato')!.test)
     const u = t.resultados.find(r => r.nombre === 'umbral_4')!
     const v = puedeFijarLab(t.deporte, u)
     expect(v.destino).toBeNull()
-    expect(v.motivo).toMatch(/mide otra cosa/)
+    expect(v.motivo).toMatch(/hito para tus zonas propias/)
+    expect(v.motivo).toMatch(/Sustituir su VAM/)
   })
 
   it('una marca tuya vale para TUS zonas, no para la casilla de la app', () => {
@@ -109,7 +110,7 @@ describe('qué resultado puede gobernar las zonas', () => {
     const m = t.resultados.find(r => r.nombre === 'media100')!
     const v = puedeFijarLab(t.deporte, m)
     expect(v.destino).toBeNull()
-    expect(v.motivo).toMatch(/colgarle TUS zonas/)
+    expect(v.motivo).toMatch(/tus zonas propias/)
   })
 
   it('una unidad que no se reconoce se rechaza en vez de adivinarla', () => {

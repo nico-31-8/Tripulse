@@ -12,11 +12,13 @@
 // aquí ni tiene ninguna de estas restricciones. Confundir los dos fue el error
 // de encuadre del que salió todo esto.
 //
-// LA MISMA REGLA QUE YA SE APLICA A LOS DE SERIE (ver lib/zonas-desde-test):
-// un test solo puede fijar el ancla si mide LA MISMA MAGNITUD. Allí se dice que
-// el T30 no entra porque da ritmo umbral y eso no es la VAM. Aquí pasa igual, y
-// más veces, porque el sistema de anclas del test propio es más rico que lo que
-// la base sabe guardar.
+// UNA SOLA PUERTA, Y SE ELIGE A PROPÓSITO: la opción «Sustituir su VAM / FTP /
+// CSS» del desplegable «¿Para qué sirve?» (ancla `app`). Hasta el 2026-10-14 la
+// puerta la abría el TIPO: un «VO₂máx» de carrera podía ser su VAM, un «umbral»
+// de bici su FTP. El entrenador no veía esa regla, y marcar «umbral» para colgar
+// zonas propias no debería decir nada de la casilla de la app. Ahora los tipos
+// (VT1, VT2, VO₂máx, una marca…) son hitos para TUS zonas y nada más, y la
+// casilla de la app se pide con su nombre.
 //
 // SOLO HAY TRES COLUMNAS DE ANCLA, una por deporte: `test1_carrera.vam`,
 // `test2_natacion.css` y `test3_ciclismo.ftp`. Y cada una guarda una magnitud
@@ -26,9 +28,9 @@
 //   · ftp — potencia de umbral funcional. Es un umbral, no un VO₂máx.
 //   · css — velocidad crítica de nado, que es la estimación de umbral.
 //
-// De ahí sale la tabla de abajo, y de ahí que un «umbral» de CARRERA no se
-// pueda guardar: metido en la columna `vam` desplazaría todas las zonas de ese
-// atleta hacia abajo, sin que nada fallara. Se dice que no y se explica.
+// Lo que antes impedía la regla —meter un umbral de carrera en la columna `vam`
+// y bajar todas sus zonas sin que nada fallara— ahora lo dice la explicación de
+// la opción, con todas las letras, en el momento de elegirla.
 //
 // Y LAS UNIDADES. El resultado de un test propio lleva la unidad que el
 // entrenador escribió, en texto libre. Guardar 4,3 «m/s» en una columna que
@@ -37,20 +39,8 @@
 
 import { DESTINOS, type Ancla as AnclaColumna, type Destino, type Propuesta } from './zonas-desde-test'
 import { normalizar } from './disciplinas'
-import { tipoDeAncla, type Ancla, type DefinicionTest, type ResultadoTest } from './test-definicion'
+import { ANCLAS, tipoDeAncla, type Ancla, type DefinicionTest, type ResultadoTest } from './test-definicion'
 import { calcularResultados } from './test-definicion'
-
-/**
- * Qué ancla del test propio puede escribir en cada deporte.
- *
- * Una sola por deporte, y no es una simplificación: es que la columna guarda
- * esa magnitud y no otra.
- */
-export const ANCLA_QUE_CABE: Record<string, Ancla> = {
-  Carrera: 'vo2max',
-  Ciclismo: 'umbral',
-  Natacion: 'umbral',
-}
 
 const COLUMNA_DE: Record<string, AnclaColumna> = {
   Carrera: 'vam',
@@ -63,7 +53,70 @@ const COLUMNA_DE: Record<string, AnclaColumna> = {
    natación, y era la TERCERA copia de la misma regla en la app. */
 const normalizaDeporte = (d: string): string => normalizar(String(d ?? '').trim())
 
-const cabeColumna = (dep: string): AnclaColumna => COLUMNA_DE[dep]
+// ------------------------------------------------------------
+// Qué dice cada opción de «¿Para qué sirve?»
+// ------------------------------------------------------------
+//
+// UN SOLO SITIO para la etiqueta y la explicación: las leen /tests-propios y
+// /laboratorio, y dos copias de «qué es un VT1» acabarían diciendo cosas
+// distintas. Las definiciones son las de la base de conocimiento (B1-00 y
+// B1-00b): VT1 ≈ LT1 ≈ 2 mmol/L; VT2 ≈ LT2 ≈ 4 mmol/L, lo que se sostiene de 30
+// a 60 min; la VAM, la velocidad mínima con la que se llega al VO₂máx.
+
+/** Si en ese deporte hay casilla de la app que sustituir. */
+export const haySustituto = (deporte: string): boolean => !!COLUMNA_DE[normalizaDeporte(deporte)]
+
+/** Lo que se lee en el desplegable. La de sustituir dice cuál: su VAM, su FTP, su CSS. */
+export function etiquetaAncla(a: Ancla, deporte: string): string {
+  if (a !== 'app') return ANCLAS[a]?.etiqueta ?? ''
+  const col = COLUMNA_DE[normalizaDeporte(deporte)]
+  return col
+    ? 'Sustituir su ' + DESTINOS[col].nombre + ' (la de la app)'
+    : 'Sustituir la de la app (solo carrera, ciclismo o natación)'
+}
+
+/** Qué es cada tipo, dicho para el entrenador. */
+const QUE_ES: Record<Exclude<Ancla, 'app' | 'nada'>, string> = {
+  umbral_aer: 'El primer umbral (VT1, LT1): donde el lactato empieza a subir —sobre 2 mmol/L— y la respiración se acelera por primera vez. Por debajo queda el rodaje fácil.',
+  umbral: 'El segundo umbral (VT2, LT2): lo más fuerte que aguanta de 30 a 60 minutos, sobre 4 mmol/L. El FTP en bici y el CSS en el agua son este umbral.',
+  vo2max: 'La velocidad o la potencia más baja con la que llega a su VO₂máx: la VAM corriendo, la PAM en bici. Sale de un test de 5–6 minutos o de una prueba progresiva. Apúntala en km/h o en W, no en ml/kg/min: de un consumo de oxígeno no sale un ritmo.',
+  sprint: 'Lo más rápido que va (MSS) o su potencia pico (MPP): esfuerzos de pocos segundos.',
+  propio: 'Un umbral que sacas con tu propio método y que no es ninguno de los de arriba: el de tu test de 30 minutos, el de tu protocolo de pista…',
+  especifica: 'Una marca de rendimiento, no un umbral: el ritmo de su 6×100, su mejor 800…',
+}
+
+const ES_HITO = 'Sirve de hito para tus zonas propias: en Zonas propias lo añades a una clasificación y le cuelgas zonas («del VT1 al VT1 + 15 %»). No toca las zonas de la app.'
+
+/* Qué va en la casilla de la app y qué pasa si se pone otra cosa. Es lo que
+   antes impedía la regla en silencio; ahora se dice al elegir. */
+const QUE_VA: Record<AnclaColumna, string> = {
+  vam: 'su VAM, la velocidad más baja con la que llega a su VO₂máx (la de un test de 5–6 minutos). Si pones un umbral, todas sus zonas de la app bajarán',
+  ftp: 'su FTP, lo más fuerte que aguanta una hora. Si pones su PAM o un VO₂máx, todas sus zonas de bici subirán',
+  css: 'su CSS, su ritmo umbral en el agua. Si pones un ritmo de 100 o 200 m a tope, todas sus zonas de natación irán más rápido de lo que aguanta',
+}
+
+/** Si es uno de los tipos que solo sirven de hito para tus zonas (ni la app, ni seguimiento). */
+export const esHitoPropio = (a: Ancla | undefined): boolean => !!a && a !== 'app' && a !== 'nada'
+
+/** Qué es esa opción, sin la coletilla de para qué sirve (el glosario la dice una vez por grupo). */
+export function queEsAncla(a: Ancla, deporte: string): string {
+  if (a === 'nada') return 'Solo se guarda y se pinta en su gráfica. No sirve de hito ni mueve ninguna zona.'
+  if (a === 'app') {
+    const col = COLUMNA_DE[normalizaDeporte(deporte)]
+    if (!col) return 'Solo en carrera, ciclismo y natación: son los deportes con zonas de la app.'
+    return 'Pasa a ser su ' + DESTINOS[col].nombre + ': cuando lo fijes desde una de sus mediciones, las zonas de la app ' +
+      'de ese deportista (Z1–Z7 y Zonas 2) se calculan con este número. Aquí solo va ' + QUE_VA[col] +
+      '. También sirve de hito para tus zonas propias.'
+  }
+  return QUE_ES[a] ?? ''
+}
+
+/** Para qué sirve un hito de tus zonas: una vez por grupo en el glosario. */
+export const PARA_QUE_HITO = ES_HITO
+
+/** Qué significa elegir esa opción, en ese deporte: lo que se lee debajo del desplegable. */
+export const explicarAncla = (a: Ancla, deporte: string): string =>
+  esHitoPropio(a) ? queEsAncla(a, deporte) + ' ' + ES_HITO : queEsAncla(a, deporte)
 
 // ------------------------------------------------------------
 // Las unidades
@@ -120,34 +173,21 @@ export function puedeFijar(deporte: string, r: ResultadoTest): Veredicto {
   const dep = normalizaDeporte(deporte)
   const columna = COLUMNA_DE[dep]
   if (!columna) {
-    return { motivo: 'Las zonas solo salen de carrera, ciclismo o natación.', destino: null }
+    return { motivo: 'Las zonas de la app solo salen de carrera, ciclismo o natación.', destino: null }
   }
 
   if (tipoDeAncla(r.ancla) === 'seguimiento') {
     return { motivo: 'Está marcado como solo seguimiento.', destino: null }
   }
 
-  const cabe = ANCLA_QUE_CABE[dep]
-
-  if (r.ancla === 'especifica') {
-    /* Una marca suya SÍ es una referencia —puede colgarle sus zonas—, lo que no
-       puede es ocupar la casilla de la app, que espera una magnitud concreta.
-       Se dice así de claro para que no parezca que su marca no vale. */
+  if (r.ancla !== 'app') {
+    /* Un VT1, un umbral, una marca suya… son hitos para SUS zonas, y lo son
+       igual de bien. Que además pase a ser su VAM se pide con su opción: así
+       nadie mete un umbral en la casilla de la VAM por haber marcado «umbral»
+       para colgarle zonas. Se dice así de claro para que no parezca que no vale. */
     return {
-      motivo: 'Una marca tuya sirve para colgarle TUS zonas, pero no para ser el ' +
-        DESTINOS[cabeColumna(dep)].nombre + ' de la app: esa casilla espera un ' +
-        (cabe === 'vo2max' ? 'VO₂máx' : 'umbral') + ' medido.',
-      destino: null,
-    }
-  }
-  if (r.ancla !== cabe) {
-    /* El caso que más va a pasar: un «umbral» de carrera. La columna de carrera
-       guarda la VAM, que es otra velocidad; meterlo ahí bajaría todas sus zonas
-       sin que nada fallara. */
-    return {
-      motivo: 'En ' + dep.toLowerCase() + ' la referencia del atleta es ' +
-        DESTINOS[columna].nombre + ', y eso es un ' +
-        (cabe === 'vo2max' ? 'VO₂máx' : 'umbral') + '. Este resultado mide otra cosa.',
+      motivo: 'Es un hito para tus zonas propias. Para que pase a ser su ' + DESTINOS[columna].nombre +
+        ' y mueva las zonas de la app, elige «' + etiquetaAncla('app', dep) + '».',
       destino: null,
     }
   }
@@ -202,8 +242,7 @@ export function propuestaPropia(
       salida: r.nombre,
       convertir,
       estimado: true,
-      porque: 'Lo declaraste como ' + (r.ancla === 'vo2max' ? 'VO₂máx' : 'umbral') +
-        ' al crear el test.',
+      porque: 'Lo marcaste para sustituir su ' + v.destino.nombre + ' al crear el test.',
     },
     destino: v.destino,
     valor,

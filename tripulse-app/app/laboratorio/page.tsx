@@ -34,12 +34,14 @@ import {
   nuevaClave, protoVacio, medVacia, pegasDe, etiquetaFn, etiquetaFn2, col, fnB, esDmax, GRADO_CURVA, previosParaAntes,
   claveDesdeNombre, claveEsAutomatica,
   type Bloq, type Bloque, type Columna, type Datos, type Funcion,
-  type Funcion2, type Instrumento, type Resultado, type TestLab,
+  type Funcion2, type Instrumento, type TestLab,
 } from '@/lib/lab-constructor'
 import { PLANTILLAS } from '@/lib/lab-plantillas'
 import { deshacer, marcaEn, parcialAhora, primeroLibre, type Marcas } from '@/lib/lab-marcar'
 import { pantallaDe, mover, moverA, alternar, seccionPorClave, tieneReloj, tienePantalla, type ClaveSeccion, type Pantalla } from '@/lib/lab-pantalla'
-import { ANCLAS, ANCLAS_REFERENCIA, DEPORTES_TEST, type Ancla } from '@/lib/test-definicion'
+import { DEPORTES_TEST } from '@/lib/test-definicion'
+import { SelectParaQueSirve, ExplicaParaQueSirve, GlosarioParaQueSirve } from '@/components/ParaQueSirve'
+import { sueltoTalCual, anadirDatoTalCual, nombresDatoTalCual, renombrarResultadoLab, unidadResultadoLab, quitarResultadoLab } from '@/lib/lab-tal-cual'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss } from '@/lib/medicion'
 import { esInverso, seriesDe, conAncla, type Serie } from '@/lib/lab-series'
@@ -164,6 +166,10 @@ export default function Laboratorio() {
   const [reloj, setReloj] = useState<Reloj | null>(null)
   const [ahora, setAhora] = useState(() => Date.now())
   const [cargado, setCargado] = useState(false)
+  /* Si ya llegó la lista de la base (no el borrador de este navegador, que es
+     `cargado`), y los ids de los tests sencillos, que viven en Tests propios. */
+  const [listaLista, setListaLista] = useState(false)
+  const [sencillos, setSencillos] = useState<number[]>([])
   /* Cómo se está mirando la pantalla del test mientras se monta: ancha como
      en un ordenador, o a 375 px como en el móvil. */
   const [comoSeVe, setComoSeVe] = useState<'ancho' | 'movil'>('ancho')
@@ -381,25 +387,36 @@ export default function Laboratorio() {
   const pedido = useRef(false)
   /* La regla del compilador avisa de poner estado desde un efecto, y aquí es
      justo lo que toca: la dirección solo se puede leer ya montados, y esto pasa
-     UNA vez —lo sujeta la bandera— en cuanto la lista de tests ha llegado. */
+     UNA vez —lo sujeta la bandera— en cuanto la lista de tests ha llegado.
+
+     ESPERA A LA LISTA, NO A QUE TENGA ALGO. Esperaba a que hubiera algún test
+     del laboratorio, así que un entrenador sin ninguno llegaba desde una sesión
+     y aquí no pasaba nada: ni el test, ni un aviso. */
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (pedido.current || !guardados.length) return
+    if (pedido.current || !listaLista) return
     pedido.current = true
     const p = new URLSearchParams(window.location.search)
-    const id = Number(p.get('test'))
+    const id = Number(p.get('test')) || Number(p.get('editar'))
     if (!id) return
+    /* UN TEST SENCILLO NO SE ABRE AQUÍ: es de Tests propios y allí está entero.
+       El día de test de una sesión manda aquí cualquier test tuyo, y uno de
+       aquellos acababa en «ya no está en tu lista» siendo tuyo. Se le reenvía
+       con lo mismo que traía: quién y qué día. */
+    if (sencillos.includes(id)) { router.replace('/tests-propios?' + p.toString()); return }
     const g = guardados.find(x => x.id === id)
     if (!g) { decir('mal', 'Ese test ya no está en tu lista.'); return }
 
     empezarCon(clon(g.def), 4, g.id, g.de)
+    /* «editar» lo deja en el editor, como al pulsarlo en «Tus tests». */
+    if (!Number(p.get('test'))) return
     setVista('pasar')
     const f = p.get('fecha')
     if (f) setFecha(f)
     const quienes = (p.get('dep') || '').split(',').map(Number).filter(n => n > 0)
     const elegidos = deportistas.filter(d => quienes.includes(d.id))
     if (elegidos.length) { setAtletas(elegidos); setMed(cajasVacias(g.def, elegidos)) }
-  }, [guardados, deportistas])
+  }, [listaLista, guardados, deportistas, sencillos])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const vaciarDatos = () => {
@@ -429,11 +446,13 @@ export default function Laboratorio() {
     ])
     const ids: number[] = []
     const mios: Guardado[] = []
+    const deAlla: number[] = []
     for (const d of (defs || []) as Record<string, unknown>[]) {
       const def = leerModelo(d.modelo, String(d.nombre || ''), String(d.deporte || 'Carrera'))
       /* Sin modelo es un test de /tests-propios: aquí ni se ofrece, para no
-         enseñar una versión mutilada de algo que allí está entero. */
-      if (!def) continue
+         enseñar una versión mutilada de algo que allí está entero. Se apunta
+         cuál es, para reenviarlo allí si llega pedido por la dirección. */
+      if (!def) { deAlla.push(Number(d.id)); continue }
       mios.push({
         id: Number(d.id), nombre: String(d.nombre || ''), deporte: String(d.deporte || ''), def, mediciones: 0,
         de: deQuien(d.id_entrenador as string | null, user.id, socios),
@@ -448,7 +467,9 @@ export default function Laboratorio() {
       for (const g of mios) g.mediciones = cuenta[g.id] || 0
     }
     setGuardados(mios)
+    setSencillos(deAlla)
     setDeportistas(((deps || []) as { id: number; nombre: string }[]).map(d => ({ id: d.id, nombre: d.nombre })))
+    setListaLista(true)
   }
 
   /* Se pide al montar y nada más: la lista se refresca a mano después de
@@ -1024,7 +1045,7 @@ export default function Laboratorio() {
                   {paso === 2 && <Paso2 test={test} mut={mut} renombrar={renombrar} proto={proto}
                     setProto={setProto} cajas={Object.keys(med)} setMed={setMed}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} avisar={decirMal} />}
-                  {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(cajaActiva)}
+                  {paso === 3 && <Paso3 test={test} mut={mut} datos={datosDe(cajaActiva)} setMed={setMed}
                     pidiendo={pidiendo} setPidiendo={setPidiendo} />}
                   {paso === 4 && (
                     <div className={tarjeta}>
@@ -1955,14 +1976,34 @@ function RelojBloque({ bl, bi, mut, proto, onProgresion, onCrono }: {
 // ============================================================
 // 3 · Qué sale de ahí
 // ============================================================
-function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
+function Paso3({ test, mut, datos, pidiendo, setPidiendo, setMed }: {
   test: TestLab
   mut: (fn: (t: TestLab) => void) => void
   datos: Datos
   pidiendo: Pidiendo | null
   setPidiendo: (p: Pidiendo | null) => void
+  /* La misma firma que usa Paso2: un dato tal cual trae casilla nueva, y las
+     cajas de cada persona tienen que saber que existe. */
+  setMed: (f: (m: Record<string, Datos>) => Record<string, Datos>) => void
 }) {
   const vals = calcular(test, datos)
+  /* Los datos tal cual cuya fórmula se ha pedido ver. Por defecto se esconde:
+     es justo lo que no se quería ver al apuntar un VT1. */
+  const [conFormula, setConFormula] = useState<Set<number>>(new Set())
+
+  const datoTalCual = () => {
+    /* Los nombres se sacan ANTES de `mut`: React puede ejecutar el cambio más
+       tarde, y las cajas de cada persona necesitan la clave ya. */
+    const n = nombresDatoTalCual(test)
+    mut(t => { anadirDatoTalCual(t, n) })
+    setMed(m0 => { const m: Record<string, Datos> = {}; for (const a of Object.keys(m0)) m[a] = { ...m0[a], [n.clave]: '' }; return m })
+  }
+  const quitar = (i: number) => {
+    mut(t => quitarResultadoLab(t, i))
+    setPidiendo(null)
+    /* Los de detrás bajan uno: si no, se abriría la fórmula de otro. */
+    setConFormula(s => new Set([...s].filter(k => k !== i).map(k => (k > i ? k - 1 : k))))
+  }
 
   return (
     <div className={tarjeta}>
@@ -1970,30 +2011,36 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
       <p className="text-gray-500 text-xs mt-1 leading-snug">
         Una columna de un bloque no es un número: hay que decir qué le pides y <b className="text-gray-300">de cuáles</b>. Pulsa una y verás.
       </p>
+      <div className="mt-3"><GlosarioParaQueSirve deporte={test.deporte} /></div>
 
-      <div className="mt-4">
-        {test.resultados.map((r, i) => (
+      <div className="mt-1">
+        {test.resultados.map((r, i) => {
+          /* UN DATO TAL CUAL NO ENSEÑA FÓRMULA: se apunta y ya. Si alguien
+             quiere ponerle una, la pide y se le abre la de siempre. */
+          const talCual = sueltoTalCual(test, i)
+          const casilla = talCual ? test.sueltos.find(c => c.clave === talCual) : null
+          const verFormula = !talCual || conFormula.has(i)
+          return (
           <div key={i} className={caja}>
             <h4 className="flex items-center gap-2 text-[12.5px] font-bold mb-2.5">
               <Pildora tono="med">{r.nombre || 'sin nombre'}</Pildora>
-              <button onClick={() => { mut(t => { t.resultados.splice(i, 1) }); setPidiendo(null) }}
+              {talCual && <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-orange-500/12 border border-orange-500/35 text-orange-300 font-semibold">✍ tal cual</span>}
+              <button onClick={() => quitar(i)} title={talCual ? 'Quitar el dato y su casilla' : 'Quitar'}
                 className="ml-auto text-gray-600 hover:text-red-400 px-1">×</button>
             </h4>
 
             <div className={rejilla} style={REJILLA}>
               <div>
                 <label className={lab} htmlFor={'r' + i + 'n'}>Se llama</label>
+                {/* Renombrar arrastra a los que lo encadenan y, si es tal cual,
+                    lo que se ve en su casilla al pasarlo (lib/lab-tal-cual). */}
                 <input id={'r' + i + 'n'} className={campo + ' font-mono'} value={r.nombre}
-                  onChange={e => mut(t => {
-                    const viejo = t.resultados[i].nombre
-                    t.resultados[i].nombre = e.target.value
-                    for (const x of t.resultados) for (const b of x.formula) if (b.t === 'ref' && b.v === viejo) b.v = e.target.value
-                  })} />
+                  onChange={e => mut(t => renombrarResultadoLab(t, i, e.target.value))} />
               </div>
               <div>
                 <label className={lab} htmlFor={'r' + i + 'u'}>Unidad</label>
                 <input id={'r' + i + 'u'} className={campo} value={r.unidad}
-                  onChange={e => mut(t => { t.resultados[i].unidad = e.target.value })} />
+                  onChange={e => mut(t => unidadResultadoLab(t, i, e.target.value))} />
                 {/* Lo que la app ha deducido de la unidad, y se puede corregir.
                     De esto dependen la flecha de la gráfica y hacia dónde va el
                     porcentaje de una zona colgada de aquí: el 95 % de 1:13 es
@@ -2006,19 +2053,12 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
               </div>
               <div className="min-w-[210px]">
                 <label className={lab} htmlFor={'r' + i + 'a'}>¿Para qué sirve?</label>
-                {/* Agrupado, porque el grupo ES el concepto: todo lo de arriba
-                    es un número del que se pueden colgar zonas, sea un umbral o
-                    una marca suya. */}
-                <select id={'r' + i + 'a'} className={campo} value={r.ancla || 'nada'}
-                  onChange={e => mut(t => { t.resultados[i].ancla = e.target.value as Ancla })}>
-                  <optgroup label="Referencias — se les pueden colgar zonas">
-                    {ANCLAS_REFERENCIA.map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
-                  </optgroup>
-                  <optgroup label="Lo demás">
-                    <option value="nada">{ANCLAS.nada.etiqueta}</option>
-                  </optgroup>
-                </select>
-                <Cabe deporte={test.deporte} r={r} />
+                {/* En grupos, porque el grupo ES el concepto: hito para tus
+                    zonas, sustituir la de la app, o solo su gráfica. El mismo
+                    desplegable que el de Tests propios (components/ParaQueSirve). */}
+                <SelectParaQueSirve id={'r' + i + 'a'} className={campo} value={r.ancla} deporte={test.deporte}
+                  onChange={a => mut(t => { t.resultados[i].ancla = a })} />
+                <ExplicaParaQueSirve ancla={r.ancla} deporte={test.deporte} unidad={r.unidad} />
               </div>
               <label className="flex items-center gap-2 text-gray-400 text-xs pt-5 cursor-pointer select-none">
                 <input type="checkbox" checked={r.graf !== false} className="accent-orange-500"
@@ -2027,50 +2067,53 @@ function Paso3({ test, mut, datos, pidiendo, setPidiendo }: {
             </div>
 
             <div className="mt-2.5">
-              <MontaFormula nombres={nombresDe(test)}
-                formula={r.formula} clave={'res:' + i}
-                escalares={test.sueltos.map(c => c.clave)}
-                series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
-                refs={test.resultados.slice(0, i).filter(x => x.nombre).map(x => x.nombre)}
-                previos={previosParaAntes(test, i)}
-                pidiendo={pidiendo} setPidiendo={setPidiendo}
-                onCambio={f => mut(t => { t.resultados[i].formula = f })} />
+              {verFormula ? (
+                <MontaFormula nombres={nombresDe(test)}
+                  formula={r.formula} clave={'res:' + i}
+                  escalares={test.sueltos.map(c => c.clave)}
+                  series={todasLasColumnas(test).map(x => ({ clave: x.c.clave, veces: x.bl.veces }))}
+                  refs={test.resultados.slice(0, i).filter(x => x.nombre).map(x => x.nombre)}
+                  previos={previosParaAntes(test, i)}
+                  pidiendo={pidiendo} setPidiendo={setPidiendo}
+                  onCambio={f => mut(t => { t.resultados[i].formula = f })} />
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-700 bg-gray-950/60 px-3 py-2.5 flex items-center gap-3 flex-wrap text-[12.5px] text-gray-400">
+                  <span>
+                    ✍ Se apunta <b className="text-gray-200">tal cual</b>: al pasarlo verás la casilla
+                    «<span className="text-gray-200">{casilla?.etiqueta || r.nombre}</span>» y escribes el número. Sin fórmula.
+                  </span>
+                  <button onClick={() => setConFormula(s => new Set(s).add(i))}
+                    className="ml-auto text-[11.5px] text-gray-500 hover:text-gray-300 transition">Usar una fórmula</button>
+                </div>
+              )}
             </div>
 
             {vals[i]?.error && (
               <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-[11.5px] text-amber-200">{vals[i].error}</div>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
-      <button onClick={() => mut(t => { t.resultados.push({ nombre: 'resultado' + (t.resultados.length + 1), unidad: '', formula: [] }) })}
-        className={btnSec}>+ Añadir resultado</button>
+      <div className="flex gap-2 flex-wrap items-center">
+        {/* EL CASO MÁS CORRIENTE, A UN CLIC: un número que te dan hecho —el VT1
+            del informe de la prueba de esfuerzo— y que solo hay que apuntar.
+            Crea la casilla y el resultado de una vez. */}
+        <button onClick={datoTalCual} className={btnSec}
+          title="Un número que se apunta tal cual, sin fórmula: el VT1 de un informe, una marca…">+ Dato tal cual</button>
+        <button onClick={() => mut(t => { t.resultados.push({ nombre: 'resultado' + (t.resultados.length + 1), unidad: '', formula: [] }) })}
+          className={btnSec}>+ Resultado con fórmula</button>
+      </div>
     </div>
   )
 }
 
 
-/**
- * Si este resultado podrá fijar la referencia de la app, dicho AL CREARLO.
- *
- * Antes no se decía en ninguna parte: te enterabas meses después, en la otra
- * pantalla, al ir a fijar zonas y encontrarte con que no se podía.
- */
-function Cabe({ deporte, r }: { deporte: string; r: Resultado }) {
-  if (!r.ancla || r.ancla === 'nada') return null
-  const v = puedeFijarLab(deporte, r)
-  return (
-    <p className={'text-[10.5px] leading-snug mt-1 ' + (v.destino ? 'text-green-400/80' : 'text-gray-500')}>
-      {v.destino
-        ? <>⚓ Puede fijar {v.destino.nombre} del atleta.</>
-        /* Y SE DICE DÓNDE SE USA. «Referencia tuya» a secas era una promesa sin
-           destino: hasta que los tests del laboratorio entraron en el
-           desplegable de referencias, esto no se podía elegir en ningún sitio. */
-        : <>◈ Referencia tuya: {v.motivo} Podrás elegirla al prescribir y para colgarle tus zonas.</>}
-    </p>
-  )
-}
+/* Aquí vivía `Cabe`, la línea de debajo del desplegable «¿Para qué sirve?».
+   Ahora la dice components/ParaQueSirve, la misma que en Tests propios. Su
+   «Podrás elegirla al prescribir» ya no era verdad: un hito se usa en una
+   clasificación de Zonas propias, y es la clasificación la que se elige. */
 
 function Grupo({ et, escalon, children }: { et: string; escalon?: boolean; children: React.ReactNode }) {
   return (
@@ -3633,7 +3676,10 @@ function Historial({
 }) {
   const series = seriesDe(test, mediciones)
   const conDatos = series.filter(s => s.puntos.length >= 2)
-  const anclas = conAncla(test)
+  /* Solo los marcados para sustituir la de la app: los hitos (VT1, VT2…) no
+     tienen nada que fijar aquí, y listarlos con su «no puede» era ruido en
+     una tarjeta que va de fijar. Se usan en Zonas propias. */
+  const anclas = conAncla(test).filter(x => x.r.ancla === 'app')
   /* En orden de fecha UNA VEZ, y de aquí salen la última y el «anterior» de
      cada fila: si cada sitio lo ordenara por su cuenta, un día la tabla
      compararía con una medición y la gráfica con otra. */

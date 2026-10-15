@@ -17,12 +17,13 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
 
-import { cargaDeTarea, objetivoDeCopia, cuelgaDeTestPropio, leerCopia, leerIdPropia } from '@/lib/prescripcion-zona'
-import { testDeFila, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
+import { cargaDeTarea, cuelgaDeTestPropio, leerCopia, esCopiaDeLimites } from '@/lib/prescripcion-zona'
+import { objetivoDeTarea, deDondeSaleTarea, cargarTestsDeTareas } from '@/lib/objetivo-tarea'
+import { explicarLimites, mayuscula } from '@/lib/clasificaciones-zonas'
+import type { TestConMediciones } from '@/lib/referencia-propia'
 import DiaDeTest from '@/components/DiaDeTest'
 import { ritmoObjetivoTexto } from '@/lib/referencia-zona'
 import { intensidadGuardada, queEnsenar } from '@/lib/intensidad-prescrita'
-import { objetivoDeZona, deDondeSale } from '@/lib/referencia-zona'
 import { controlDeEjercicio, textoControl } from '@/lib/control-esfuerzo'
 import { seriesDe, tieneSeriesDistintas, trozosSerie, type SerieVista } from '@/lib/series-detalle'
 import DatosReales from './DatosReales'
@@ -144,22 +145,10 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
     const hacenFalta = (tareas || []).some(cuelgaDeTestPropio)
     if (!hacenFalta) { setTestsPropios([]); return }
     let vivo = true
-    ;(async () => {
-      const ids = [...new Set((tareas || []).map(t => leerIdPropia(leerCopia(t.zona_copia)?.refId || '')?.idDefinicion)
-        .filter((x): x is number => !!x))]
-      if (!ids.length) return
-      const [{ data: defs }, { data: meds }] = await Promise.all([
-        supabase.from('test_definicion').select('*').in('id', ids),
-        supabase.from('test_medicion').select('id_definicion, fecha, datos')
-          .eq('id_deportista', sesion.id_deportista).in('id_definicion', ids),
-      ])
-      if (!vivo) return
-      const porTest: Record<number, { fecha: string; datos: Record<string, unknown> }[]> = {}
-      for (const m of meds || []) (porTest[m.id_definicion] ||= []).push({ fecha: m.fecha, datos: m.datos || {} })
-      /* La fila la lee «testDeFila», que entiende los DOS modelos: leerla
-         aquí a mano era lo que dejaba fuera a los tests del laboratorio. */
-      setTestsPropios((defs || []).map((d: FilaTest) => testDeFila(d, porTest[d.id] || [])))
-    })()
+    /* Los de su referencia y los de los dos límites de cada zona: una zona de
+       una clasificación puede ir del VT1 de un test al VT2 de otro. Los carga
+       lib/objetivo-tarea, lo mismo que la pantalla de ejecución. */
+    cargarTestsDeTareas(supabase, sesion.id_deportista, tareas).then(t => { if (vivo) setTestsPropios(t) })
     return () => { vivo = false }
   }, [tareas, sesion.id_deportista])
   const [guardando, setGuardando] = useState(false)
@@ -392,10 +381,13 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                    calcularlo con la referencia que la app da por defecto al
                    deporte le enseñaría al atleta un número distinto del que ve su
                    entrenador en la misma tarea. Sin copia, el camino de siempre. */
-                const propio = objetivoDeCopia(leerCopia(t.zona_copia), disc, tests, testsPropios)
-                const calc = propio
-                  ? { texto: propio }
-                  : objetivoDeZona(t.zona_entrenamiento, disc, tests || {}, fcMax, fcReposo)
+                /* El mismo cálculo que la pantalla de ejecución (lib/objetivo-tarea):
+                   la copia primero, y si no, la zona por su sigla. */
+                const calc = objetivoDeTarea(t, disc, tests, testsPropios, fcMax, fcReposo)
+                /* De dónde sale, dicho para el atleta: «Entre tu VT1 + 15 % y tu
+                   VT2 − 5 %». La misma frase que lee el entrenador, con «tu». */
+                const copiaT = leerCopia(t.zona_copia)
+                const deDonde = esCopiaDeLimites(copiaT) ? mayuscula(explicarLimites(copiaT!.desde, copiaT!.hasta, 'tu')) : ''
                 const intensidad = queEnsenar(
                   ritmoObjetivoTexto(intensidadGuardada(t), disc),
                   calc?.texto,
@@ -452,6 +444,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                           t.descanso_segundos ? t.descanso_segundos + ' s de descanso' : null,
                         ].filter(Boolean).join(' · ')}
                       </span>
+                      {deDonde && <span className="text-[11.5px] text-gray-500">{copiaT!.nombre} · {deDonde}</span>}
                       {sas && <ListaSeries series={sas} tipo={e0.control_tipo} porTiempo={!!segTarea} />}
                       {sas2 && <ListaSeries series={sas2} tipo={e0.encadenado_control_tipo} porTiempo={false} titulo={e0.ejercicio_encadenado_nombre} />}
                       {linea2 && <span className="text-[11.5px] text-gray-500">{linea2}</span>}
@@ -468,7 +461,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                           {intensidad.principal}
                         </span>
                         {intensidad.gris && (
-                          <span className="font-mono tabular-nums text-[10.5px] text-gray-500" title={propio ? 'De la referencia con la que se prescribió' : deDondeSale('de' in (calc || {}) ? (calc as { de: 'tests' | 'fc' | 'esfuerzo' }).de : 'tests')}>
+                          <span className="font-mono tabular-nums text-[10.5px] text-gray-500" title={deDondeSaleTarea(calc?.de || 'tests')}>
                             {intensidad.gris}
                           </span>
                         )}

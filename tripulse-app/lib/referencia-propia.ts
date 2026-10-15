@@ -132,7 +132,8 @@ export interface ValorRef {
 export const mismaRef = (a: RefPropia | null, b: RefPropia | null): boolean =>
   !!a && !!b && a.idDefinicion === b.idDefinicion && a.indice === b.indice
 
-const normDeporte = (d: string): string => {
+/** «Natación» y «Natacion» son el mismo deporte: la base guarda el segundo. */
+export const normDeporte = (d: string): string => {
   const s = String(d ?? '').trim()
   return s.startsWith('Nat') ? 'Natacion' : s
 }
@@ -242,6 +243,24 @@ export function tramoDe(v: ValorRef, pctMin: number, pctMax: number): { desde: n
   const hasta = aplicarPct(v.valor, pctMax, v.inverso)
   if (desde == null || hasta == null) return null
   return { desde, hasta }
+}
+
+/**
+ * La unidad tal como la entiende la app, venga escrita como venga.
+ *
+ * LA ESCRIBE EL ENTRENADOR A MANO: «km/h», «Km/h», «KM/H», «kmh». Las cuentas
+ * no dependen de esto, pero CÓMO SE ENSEÑA sí: un km/h se lee como ritmo
+ * («4:21 /km») y la app solo reconocía la de minúsculas, así que un «Km/h»
+ * salía como «13,8 Km/h» a secas —y su escalera sin ritmos— sin que nada
+ * fallara. Se usa solo para DECIDIR cómo escribir; lo que se enseña como unidad
+ * es lo que escribió él.
+ */
+export function unidadCanonica(unidad: string): string {
+  const u = String(unidad || '').toLowerCase().replace(/\s/g, '')
+  if (['km/h', 'kmh', 'kph', 'km/hora'].includes(u)) return 'km/h'
+  if (['w', 'vatios', 'watts', 'watt', 'vatio'].includes(u)) return 'W'
+  if (['s/100', 's/100m', 'seg/100', 'seg/100m', 'sg/100', 'sg/100m'].includes(u)) return 's/100'
+  return String(unidad || '').trim()
 }
 
 /**

@@ -25,7 +25,7 @@
 // Este fichero es lógica pura: ni pantalla ni base de datos.
 
 import {
-  evaluar, textoDe, dependencias, motivoNombreMalo, esFuncion,
+  evaluar, textoDe, dependencias, motivoNombreMalo, esFuncion, renombrarEn,
   camposSueltos, seriesQueUsa,
   type Bloque, type Funcion,
 } from './formula'
@@ -51,23 +51,41 @@ export const DEPORTES_TEST: string[] = [
   OTRO_DEPORTE,
 ]
 
-export type Ancla = 'vo2max' | 'umbral' | 'umbral_aer' | 'sprint' | 'especifica' | 'nada'
+/*
+ * «¿PARA QUÉ SIRVE?» un resultado. Contesta a dos preguntas en un solo
+ * desplegable, y por eso va en grupos:
+ *
+ *   · Hito para tus zonas propias — qué es ese número (VT1, VT2, VO₂máx, una
+ *     marca…). Todos sirven igual de hito en una clasificación: el tipo es para
+ *     que el entrenador sepa qué guardó, no cambia ninguna cuenta.
+ *   · Sustituir la de la app — ese número PASA A SER su VAM, su FTP o su CSS, y
+ *     con él se calculan las zonas de la app. Es la ÚNICA puerta a esa casilla
+ *     (lib/ancla-propia), y se elige a propósito.
+ *   · Solo seguimiento — su gráfica y nada más.
+ *
+ * Los valores guardados no cambian de significado: los nuevos son `propio` y
+ * `app`, y una base sin ellos se lee exactamente igual que antes.
+ */
+export type Ancla = 'vo2max' | 'umbral' | 'umbral_aer' | 'sprint' | 'especifica' | 'propio' | 'app' | 'nada'
 export type TipoAncla = 'referencia' | 'seguimiento'
 
 export interface InfoAncla {
-  /** Lo que se lee en el desplegable. */
+  /** Lo que se lee en el desplegable. El de `app` lo pone el deporte (lib/ancla-propia). */
   etiqueta: string
   tipo: TipoAncla
   /** Cómo se le llama en una frase: «reparto del umbral». */
   nombre: string
 }
 
+/* En el orden del desplegable: de menos a más intenso, y luego lo tuyo. */
 export const ANCLAS: Record<Ancla, InfoAncla> = {
-  vo2max:     { etiqueta: 'VO₂máx — VAM, PAM, vVO₂máx',                tipo: 'referencia',  nombre: 'VO₂máx' },
-  umbral:     { etiqueta: 'Umbral — FTP, CSS, VT2, LT2',               tipo: 'referencia',  nombre: 'umbral' },
   umbral_aer: { etiqueta: 'Umbral aeróbico — VT1, LT1',                tipo: 'referencia',  nombre: 'umbral aeróbico' },
+  umbral:     { etiqueta: 'Umbral — VT2, LT2, FTP, CSS',               tipo: 'referencia',  nombre: 'umbral' },
+  vo2max:     { etiqueta: 'VO₂máx — VAM, PAM, vVO₂máx',                tipo: 'referencia',  nombre: 'VO₂máx' },
   sprint:     { etiqueta: 'Velocidad máxima — MSS, MPP',               tipo: 'referencia',  nombre: 'velocidad máxima' },
+  propio:     { etiqueta: 'Umbral propio — con tu método',             tipo: 'referencia',  nombre: 'umbral propio' },
   especifica: { etiqueta: 'Una marca tuya (1:13 el 100, mejor 800…)',  tipo: 'referencia',  nombre: 'marca' },
+  app:        { etiqueta: 'Sustituir la referencia de la app',         tipo: 'referencia',  nombre: 'referencia de la app' },
   nada:       { etiqueta: 'Solo seguimiento',                          tipo: 'seguimiento', nombre: 'seguimiento' },
 }
 
@@ -75,13 +93,21 @@ export const ANCLAS: Record<Ancla, InfoAncla> = {
  * Las que se ofrecen como referencia, en el orden del desplegable.
  *
  * La marca va CON las demás y no aparte: separarlas fue el error de encuadre
- * del que salió todo esto. Lo único que la distingue es que nunca podrá ser la
- * referencia de la app, y de eso ya se encarga otro fichero.
+ * del que salió todo esto.
  */
 export const ANCLAS_REFERENCIA: Ancla[] =
   (Object.keys(ANCLAS) as Ancla[]).filter(a => ANCLAS[a].tipo === 'referencia')
 
-export const esAncla = (a: string): a is Ancla => a in ANCLAS
+/** Los grupos del desplegable «¿Para qué sirve?», en su orden. */
+export const GRUPOS_ANCLA: { titulo: string; anclas: Ancla[] }[] = [
+  { titulo: 'Hito para tus zonas propias', anclas: ['umbral_aer', 'umbral', 'vo2max', 'sprint', 'propio', 'especifica'] },
+  { titulo: 'Para las zonas de la app', anclas: ['app'] },
+  { titulo: 'Lo demás', anclas: ['nada'] },
+]
+
+/* Propia del objeto, no heredada: con `in`, «constructor» o «toString» habrían
+   pasado por anclas. */
+export const esAncla = (a: string): a is Ancla => Object.prototype.hasOwnProperty.call(ANCLAS, a)
 export const tipoDeAncla = (a: string): TipoAncla => (esAncla(a) ? ANCLAS[a].tipo : 'seguimiento')
 
 /**
@@ -171,6 +197,92 @@ export const vecesDe = (c: CampoTest): number => {
 }
 
 export const esSerie = (c: CampoTest): boolean => vecesDe(c) > 1
+
+// ------------------------------------------------------------
+// Un dato que se apunta tal cual
+// ------------------------------------------------------------
+//
+// NO TODO NECESITA FÓRMULA. El VT1 de una prueba de esfuerzo no se calcula: te
+// lo da el informe y lo escribes. En este modelo un resultado sale siempre de
+// campos, así que «tal cual» es un campo y un resultado que es solo ese campo.
+// Se crean juntos, se renombran juntos y se borran juntos: el entrenador ve un
+// dato con su nombre, su unidad y para qué sirve, y ninguna fórmula.
+//
+// NO SE GUARDA NINGUNA MARCA DE «TAL CUAL»: se deduce. Un resultado es tal cual
+// si su fórmula es un campo suelto que no usa nadie más. Así un test de antes
+// que ya estuviera montado así se ve igual, y si alguien le pone una fórmula de
+// verdad deja de serlo solo, sin una marca que se quede diciendo lo contrario.
+
+/** El campo que ese resultado apunta tal cual, o `null` si sale de una fórmula de verdad. */
+export function campoTalCual(def: DefinicionTest, i: number): string | null {
+  const f = def?.resultados?.[i]?.formula || []
+  if (f.length !== 1 || f[0].t !== 'var') return null
+  const clave = String(f[0].v)
+  const c = (def.campos || []).find(x => x.clave === clave)
+  /* Una serie no es un número: «tal cual» no tiene sentido sobre seis 100. */
+  if (!c || esSerie(c)) return null
+  const otros = (def.resultados || []).some((x, k) => k !== i && dependencias(x.formula || []).campos.includes(clave))
+  return otros ? null : clave
+}
+
+/** Un nombre libre que empiece por `base`: `dato_3`, `dato_4`… */
+function nombreLibre(def: DefinicionTest, base: string, desde: number): string {
+  const usados = new Set([...(def.campos || []).map(c => c.clave), ...(def.resultados || []).map(r => r.nombre)])
+  let n = desde
+  while (usados.has(base + n) || usados.has(base + n + '_valor')) n++
+  return base + n
+}
+
+/** El test con un dato tal cual más: su casilla y su resultado, de una vez. */
+export function conDatoTalCual(def: DefinicionTest): DefinicionTest {
+  const nombre = nombreLibre(def, 'dato_', (def.resultados || []).length + 1)
+  /* La casilla no puede llamarse igual que el resultado (las fórmulas los
+     nombran a los dos), así que lleva su coletilla. Lo que se ve al pasarlo es
+     su etiqueta, y esa sí es el nombre del dato. */
+  const clave = nombre + '_valor'
+  return {
+    ...def,
+    campos: [...(def.campos || []), { clave, etiqueta: nombre }],
+    resultados: [...(def.resultados || []), {
+      nombre, unidad: '', ancla: 'nada', formula: [{ t: 'var', v: clave }], graf: true,
+    }],
+  }
+}
+
+/**
+ * Renombra un resultado: sus fórmulas lo siguen y, si es tal cual, lo que se ve
+ * en su casilla al pasarlo también. La etiqueta solo se toca si decía el nombre
+ * de antes (o nada): una que el entrenador escribió a mano —«VT1 (km/h)»— se
+ * respeta.
+ */
+export function renombrarResultado(def: DefinicionTest, i: number, nuevo: string): DefinicionTest {
+  const viejo = def.resultados[i]?.nombre
+  const clave = campoTalCual(def, i)
+  const conNombre = def.resultados.map((r, k) => k === i ? { ...r, nombre: nuevo } : r)
+  return {
+    ...def,
+    campos: clave
+      ? def.campos.map(c => c.clave === clave && (!c.etiqueta || c.etiqueta === viejo) ? { ...c, etiqueta: nuevo } : c)
+      : def.campos,
+    resultados: conNombre.map(r => ({ ...r, formula: renombrarEn([r.formula], 'ref', viejo, nuevo)[0] ?? r.formula })),
+  }
+}
+
+/** Quita un resultado y, si era tal cual, su casilla: sola no la usaría nadie. */
+export function quitarResultado(def: DefinicionTest, i: number): DefinicionTest {
+  const clave = campoTalCual(def, i)
+  return {
+    ...def,
+    campos: clave ? def.campos.filter(c => c.clave !== clave) : def.campos,
+    resultados: def.resultados.filter((_, k) => k !== i),
+  }
+}
+
+/** Qué resultado apunta tal cual esa casilla, o `null`. Para decirlo en la lista de campos. */
+export function resultadoTalCualDe(def: DefinicionTest, clave: string): ResultadoTest | null {
+  const i = (def.resultados || []).findIndex((_, k) => campoTalCual(def, k) === clave)
+  return i >= 0 ? def.resultados[i] : null
+}
 
 /**
  * Lo medido en una serie, SIEMPRE con la longitud que dice el test.

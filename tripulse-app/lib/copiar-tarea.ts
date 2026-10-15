@@ -38,6 +38,13 @@ export interface FilaResistencia {
   ref?: string
   pctMin?: number | null
   pctMax?: number | null
+  /**
+   * La copia con la que volvió de la base, tal cual. Si al guardar la cadena no
+   * se puede rehacer —su clasificación se archivó, o aún no han llegado las del
+   * entrenador— y la fila sigue diciendo lo mismo, se guarda esta: recalcularla
+   * daría nada y la tarea caería al respaldo sin que nadie lo pidiera.
+   */
+  copiaGuardada?: unknown
   series: string
   descanso: string
   tipoMedicion: string
@@ -159,10 +166,14 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     /* La copia congelada vuelve a la fila para poder EDITARLA sin perderla. Al
        duplicar viaja igual: una tarea copiada tiene que salir con la misma
        intensidad que la original, no con la que hoy tenga esa zona. */
+    /* La fuente es la clasificación si la tarea salió de una (`fuente`), y si
+       no la referencia de siempre. Una zona que se mandó entera no lleva «un»
+       porcentaje: vuelve sin él. */
     ...(t.zona_copia ? {
-      ref: String(t.zona_copia.refId || ''),
-      pctMin: Number.isFinite(Number(t.zona_copia.pctMin)) ? Number(t.zona_copia.pctMin) : null,
-      pctMax: Number.isFinite(Number(t.zona_copia.pctMax)) ? Number(t.zona_copia.pctMax) : null,
+      ref: String(t.zona_copia.fuente || t.zona_copia.refId || ''),
+      pctMin: t.zona_copia.refId && Number.isFinite(Number(t.zona_copia.pctMin)) ? Number(t.zona_copia.pctMin) : null,
+      pctMax: t.zona_copia.refId && Number.isFinite(Number(t.zona_copia.pctMax)) ? Number(t.zona_copia.pctMax) : null,
+      copiaGuardada: t.zona_copia,
     } : {}),
     series: t.series != null ? String(t.series) : '',
     descanso: t.descanso_segundos != null ? String(t.descanso_segundos) : '',

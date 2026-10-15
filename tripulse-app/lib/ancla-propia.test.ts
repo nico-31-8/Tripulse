@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  ANCLA_QUE_CABE, UNIDADES_OK, conversionA, puedeFijar, propuestaPropia, origenDe,
+  UNIDADES_OK, conversionA, puedeFijar, propuestaPropia, origenDe,
+  etiquetaAncla, explicarAncla, queEsAncla, esHitoPropio, haySustituto,
 } from './ancla-propia'
+import { GRUPOS_ANCLA, ANCLAS, type Ancla } from './test-definicion'
 import type { DefinicionTest, ResultadoTest } from './test-definicion'
 import type { Bloque } from './formula'
 
@@ -10,7 +12,7 @@ const op = (o: string): Bloque => ({ t: 'op', v: o })
 const num = (n: number): Bloque => ({ t: 'num', v: n })
 
 const res = (extra: Partial<ResultadoTest> = {}): ResultadoTest => ({
-  nombre: 'VAM', unidad: 'km/h', ancla: 'vo2max',
+  nombre: 'VAM', unidad: 'km/h', ancla: 'app',
   formula: [v('metros'), op('/'), num(200)], graf: true, ...extra,
 })
 
@@ -20,13 +22,58 @@ const def = (deporte: string, ...resultados: ResultadoTest[]): DefinicionTest =>
   resultados,
 })
 
-describe('qué ancla cabe en cada deporte', () => {
-  /* Solo hay TRES columnas de ancla en la base, una por deporte, y cada una
-     guarda una magnitud concreta. De ahí que solo quepa una por deporte. */
-  it('carrera guarda un VO₂máx; bici y natación, un umbral', () => {
-    expect(ANCLA_QUE_CABE.Carrera).toBe('vo2max')
-    expect(ANCLA_QUE_CABE.Ciclismo).toBe('umbral')
-    expect(ANCLA_QUE_CABE.Natacion).toBe('umbral')
+describe('el desplegable «¿Para qué sirve?»', () => {
+  it('tres grupos: hito para tus zonas, sustituir la de la app, solo seguimiento', () => {
+    expect(GRUPOS_ANCLA.map(g => g.titulo)).toEqual(['Hito para tus zonas propias', 'Para las zonas de la app', 'Lo demás'])
+    expect(GRUPOS_ANCLA[1].anclas).toEqual(['app'])
+    expect(GRUPOS_ANCLA[2].anclas).toEqual(['nada'])
+  })
+
+  it('NO SE QUEDA NINGUNA OPCIÓN FUERA DEL DESPLEGABLE, ni sale dos veces', () => {
+    const todas = GRUPOS_ANCLA.flatMap(g => g.anclas)
+    expect([...todas].sort()).toEqual((Object.keys(ANCLAS) as Ancla[]).sort())
+  })
+
+  it('el umbral propio está, y la marca y la velocidad máxima siguen', () => {
+    expect(GRUPOS_ANCLA[0].anclas).toContain('propio')
+    expect(GRUPOS_ANCLA[0].anclas).toContain('especifica')
+    expect(GRUPOS_ANCLA[0].anclas).toContain('sprint')
+  })
+
+  it('SUSTITUIR DICE CUÁL: su VAM, su FTP, su CSS', () => {
+    expect(etiquetaAncla('app', 'Carrera')).toContain('su VAM')
+    expect(etiquetaAncla('app', 'Ciclismo')).toContain('su FTP')
+    expect(etiquetaAncla('app', 'Natación')).toContain('su CSS')
+    expect(haySustituto('Fuerza')).toBe(false)
+    expect(etiquetaAncla('app', 'Fuerza')).toContain('solo carrera, ciclismo o natación')
+  })
+
+  it('CADA OPCIÓN TIENE SU EXPLICACIÓN, y ninguna se queda vacía', () => {
+    for (const dep of ['Carrera', 'Ciclismo', 'Natacion', 'Otro']) {
+      for (const a of Object.keys(ANCLAS) as Ancla[]) {
+        expect(explicarAncla(a, dep).length, a + ' en ' + dep).toBeGreaterThan(30)
+      }
+    }
+  })
+
+  it('LA DE SUSTITUIR AVISA DE LO QUE PASA SI SE EQUIVOCA', () => {
+    /* Es lo que antes impedía la regla en silencio: un umbral en la casilla de
+       la VAM baja todas sus zonas. Ahora se dice al elegir. */
+    expect(explicarAncla('app', 'Carrera')).toContain('Si pones un umbral, todas sus zonas de la app bajarán')
+    expect(explicarAncla('app', 'Ciclismo')).toContain('subirán')
+  })
+
+  it('los hitos dicen que sirven para tus zonas y que no tocan las de la app', () => {
+    for (const a of GRUPOS_ANCLA[0].anclas) {
+      expect(esHitoPropio(a)).toBe(true)
+      expect(explicarAncla(a, 'Carrera')).toContain('No toca las zonas de la app')
+    }
+    expect(esHitoPropio('app')).toBe(false)
+    expect(esHitoPropio('nada')).toBe(false)
+  })
+
+  it('el VO₂máx avisa de apuntarlo en km/h o W, no en ml/kg/min', () => {
+    expect(queEsAncla('vo2max', 'Carrera')).toContain('ml/kg/min')
   })
 })
 
@@ -64,30 +111,28 @@ describe('las unidades', () => {
 })
 
 describe('si un resultado puede fijar las zonas', () => {
-  it('un VO₂máx en carrera, en km/h: sí', () => {
+  it('«sustituir su VAM» en carrera, en km/h: sí', () => {
     const r = puedeFijar('Carrera', res())
     expect(r.motivo).toBeNull()
     expect(r.destino?.columna).toBe('vam')
   })
 
-  it('un umbral en bici, en vatios: sí', () => {
-    const r = puedeFijar('Ciclismo', res({ nombre: 'FTP', unidad: 'W', ancla: 'umbral' }))
+  it('«sustituir su FTP» en bici, en vatios: sí', () => {
+    const r = puedeFijar('Ciclismo', res({ nombre: 'FTP', unidad: 'W' }))
     expect(r.motivo).toBeNull()
     expect(r.destino?.columna).toBe('ftp')
   })
 
-  it('UN UMBRAL EN CARRERA NO CABE, y se explica por qué', () => {
-    /* Es el caso que más va a pasar. La columna de carrera guarda la VAM, que es
-       otra velocidad: meter ahí un ritmo umbral bajaría TODAS sus zonas sin que
-       nada fallara. Es la misma regla que ya excluye al T30 en los de serie. */
-    const r = puedeFijar('Carrera', res({ ancla: 'umbral' }))
-    expect(r.motivo).toContain('VAM')
-    expect(r.motivo).toContain('otra cosa')
-    expect(r.destino).toBeNull()
-  })
-
-  it('un VO₂máx en bici tampoco: esa columna guarda un umbral', () => {
-    expect(puedeFijar('Ciclismo', res({ ancla: 'vo2max', unidad: 'W' })).motivo).toContain('umbral')
+  it('UN HITO NO OCUPA LA CASILLA DE LA APP POR SER DEL TIPO QUE ENCAJA', () => {
+    /* Antes un «VO₂máx» de carrera podía ser su VAM sin decirlo. Ahora eso se
+       pide con su opción: marcar «umbral» para colgarle zonas no puede tocar la
+       casilla de la app. Y se dice cómo pedirlo. */
+    for (const ancla of ['vo2max', 'umbral', 'umbral_aer', 'sprint', 'propio'] as Ancla[]) {
+      const r = puedeFijar('Carrera', res({ ancla }))
+      expect(r.destino, ancla).toBeNull()
+      expect(r.motivo, ancla).toContain('Sustituir su VAM')
+    }
+    expect(puedeFijar('Ciclismo', res({ ancla: 'umbral', unidad: 'W' })).destino).toBeNull()
   })
 
   it('lo que es solo seguimiento, ni se plantea', () => {
@@ -95,18 +140,12 @@ describe('si un resultado puede fijar las zonas', () => {
   })
 
   it('UNA MARCA SUYA NO OCUPA LA CASILLA DE LA APP, y se dice sin desanimar', () => {
-    /* Un 1:13 el 100 es una referencia buenísima para colgarle SUS zonas. Lo
-       que no es, es un CSS. El mensaje tiene que dejar claras las dos cosas: si
-       solo dijera «no vale», el entrenador pensaría que su marca no sirve. */
+    /* Un 1:13 el 100 es un hito buenísimo para colgarle SUS zonas. Lo que no
+       es, es un CSS. El mensaje tiene que dejar claras las dos cosas: si solo
+       dijera «no vale», el entrenador pensaría que su marca no sirve. */
     const m = puedeFijar('Natacion', res({ ancla: 'especifica', unidad: 'm/s' })).motivo!
-    expect(m).toContain('TUS zonas')
+    expect(m).toContain('tus zonas propias')
     expect(m).toContain('CSS')
-  })
-
-  it('el umbral aeróbico y la velocidad máxima no tienen dónde guardarse', () => {
-    // Son referencias de verdad, pero la base no tiene columna para ellas.
-    expect(puedeFijar('Carrera', res({ ancla: 'umbral_aer' })).destino).toBeNull()
-    expect(puedeFijar('Carrera', res({ ancla: 'sprint' })).destino).toBeNull()
   })
 
   it('una unidad rara se rechaza diciendo cuáles valen', () => {
@@ -120,7 +159,7 @@ describe('si un resultado puede fijar las zonas', () => {
   })
 
   it('«Natación» con tilde cuenta igual que «Natacion»', () => {
-    expect(puedeFijar('Natación', res({ ancla: 'umbral', unidad: 'm/s' })).destino?.columna).toBe('css')
+    expect(puedeFijar('Natación', res({ unidad: 'm/s' })).destino?.columna).toBe('css')
   })
 })
 
@@ -161,6 +200,10 @@ describe('la propuesta', () => {
     expect(propuestaPropia(conUmbral, 0, { metros: 3200 })).toBeNull()
   })
 
+  it('el porqué que queda guardado dice lo que se eligió', () => {
+    expect(propuestaPropia(cooper, 0, { metros: 3200 })?.aporte.porque).toContain('sustituir su VAM')
+  })
+
   it('un valor de cero o negativo no se guarda', () => {
     const raro = def('Carrera', res({ formula: [v('metros'), op('*'), num(0)] }))
     expect(propuestaPropia(raro, 0, { metros: 3200 })).toBeNull()
@@ -173,7 +216,7 @@ describe('la propuesta', () => {
   it('el segundo resultado también puede ser el que fija', () => {
     const dos = def('Ciclismo',
       res({ nombre: 'pico', unidad: 'W', ancla: 'nada', formula: [v('vatios')] }),
-      res({ nombre: 'FTP', unidad: 'W', ancla: 'umbral', formula: [v('vatios'), op('*'), num(0.75)] }))
+      res({ nombre: 'FTP', unidad: 'W', ancla: 'app', formula: [v('vatios'), op('*'), num(0.75)] }))
     const p = propuestaPropia(dos, 1, { vatios: 400 })
     expect(p?.valor).toBe(300)
     expect(propuestaPropia(dos, 0, { vatios: 400 })).toBeNull()

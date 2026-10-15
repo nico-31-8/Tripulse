@@ -181,10 +181,19 @@ describe('nadie lee la fila de un test por su cuenta', () => {
       const src = fs.readFileSync(f, 'utf8')
       if (!/TestConMediciones/.test(src)) continue
       /* Las dos caras de lo mismo: hay que usar el lector bueno, y no puede
-         quedar por ahí una llamada al que solo entiende el modelo viejo. */
-      if (!/testDeFila\(/.test(src)) malas.push(path.relative(RAIZ, f) + ' (no usa testDeFila)')
+         quedar por ahí una llamada al que solo entiende el modelo viejo.
+         `cargarTestsDeTareas` (lib/objetivo-tarea) cuenta como el bueno: carga
+         los tests de unas tareas y los lee con testDeFila —lo comprueba el
+         test de abajo—. */
+      if (!/testDeFila\(|cargarTestsDeTareas\(/.test(src)) malas.push(path.relative(RAIZ, f) + ' (no usa testDeFila)')
       if (/leerDefinicion\(/.test(src)) malas.push(path.relative(RAIZ, f) + ' (lee la fila a mano)')
     }
     expect(malas, 'arman el test a mano: ' + malas.join(', ')).toEqual([])
+  })
+
+  it('y el atajo de las tareas también pasa por testDeFila', () => {
+    const src = fs.readFileSync(path.join(RAIZ, 'lib', 'objetivo-tarea.ts'), 'utf8')
+    expect(/testDeFila\(/.test(src)).toBe(true)
+    expect(/leerDefinicion\(/.test(src)).toBe(false)
   })
 })

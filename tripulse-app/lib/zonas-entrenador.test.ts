@@ -1,20 +1,25 @@
 import { describe, it, expect } from 'vitest'
 import {
   fichaDe, textoRpe, motivoNoUsable, esUsable, usables, siglasDeLaApp,
-  buscar, copiaDe, resolverBloque, cargaDe, leerZonas, paraGuardar, rangoDe,
-  ZONA_NUEVA, type ZonaEntrenador,
+  buscar, copiaDe, resolverBloque, cargaDe, leerZonas, paraGuardar,
+  leerClasificaciones, clasificacionParaGuardar, motivoClasificacion, zonaSiguiente, esDeUnHito, leerLimite,
+  ZONA_NUEVA, CLASIFICACION_NUEVA, type ZonaEntrenador, type Clasificacion, type Limite,
 } from './zonas-entrenador'
 import { cargaZona } from './zonas'
 
+/** Un tramo de un solo hito: del `a` al `b` % de su VAM. */
+const vam = (a: number, b: number): { desde: Limite; hasta: Limite } =>
+  ({ desde: { ref: 'app:vam', pct: a }, hasta: { ref: 'app:vam', pct: b } })
+
 const z = (extra: Partial<ZonaEntrenador> = {}): ZonaEntrenador => ({
-  deporte: 'Carrera', sigla: 'TMP', nombre: 'Tempo largo', pctMin: 82, pctMax: 88, ref: null,
+  deporte: 'Carrera', sigla: 'TMP', nombre: 'Tempo largo', ...vam(82, 88),
   rpeMin: 5, rpeMax: 6, color: '#a78bfa', orden: 0, ...extra,
 })
 
 const MIAS: ZonaEntrenador[] = [
   z(),
-  z({ sigla: 'SPR', nombre: 'Sprint en cuesta', pctMin: 130, pctMax: 160, rpeMin: 10, rpeMax: null, orden: 1 }),
-  z({ sigla: 'REG', nombre: 'Regenerativo', pctMin: 50, pctMax: 58, rpeMin: 2, rpeMax: null, orden: 2 }),
+  z({ sigla: 'SPR', nombre: 'Sprint en cuesta', ...vam(130, 160), rpeMin: 10, rpeMax: null, orden: 1 }),
+  z({ sigla: 'REG', nombre: 'Regenerativo', ...vam(50, 58), rpeMin: 2, rpeMax: null, orden: 2 }),
 ]
 
 describe('qué produce una zona', () => {
@@ -80,7 +85,29 @@ describe('cuándo una zona se puede usar', () => {
 
   it('los rangos al revés se cazan', () => {
     expect(motivoNoUsable(z({ rpeMin: 8, rpeMax: 5 }), 0, MIAS)).toContain('menor')
-    expect(motivoNoUsable(z({ pctMin: 90, pctMax: 70 }), 0, MIAS)).toContain('menor')
+    expect(motivoNoUsable(z(vam(90, 70)), 0, MIAS)).toContain('menor')
+  })
+
+  it('CON DOS HITOS DISTINTOS, «AL REVÉS» NO SE PROHÍBE AQUÍ', () => {
+    /* Del VT1 + 15 % al VT2 − 5 % está bien para casi todos y al revés para
+       alguien con los dos umbrales muy juntos. Eso depende de cada atleta: se
+       avisa al verlo con él (lib/clasificaciones-zonas), no se prohíbe. */
+    const tempo = z({ desde: { ref: 'propia:9:0', pct: 115 }, hasta: { ref: 'propia:9:1', pct: 95 } })
+    expect(motivoNoUsable(tempo, 0, [tempo])).toBeNull()
+  })
+
+  it('una zona sin ningún límite no es una zona', () => {
+    expect(motivoNoUsable(z({ desde: null, hasta: null }), 0, MIAS)).toContain('límite')
+  })
+
+  it('un límite solo, sí: «por debajo de su VT1» es una zona', () => {
+    expect(motivoNoUsable(z({ desde: null }), 0, MIAS)).toBeNull()
+    expect(motivoNoUsable(z({ hasta: null }), 0, MIAS)).toBeNull()
+  })
+
+  it('un límite sin % o con un hito mal escrito se caza', () => {
+    expect(motivoNoUsable(z({ desde: { ref: 'app:vam', pct: 0 } }), 0, MIAS)).toContain('%')
+    expect(motivoNoUsable(z({ desde: { ref: 'vt1', pct: 90 } }), 0, MIAS)).toContain('hito')
   })
 
   it('un RPE fuera de escala también', () => {
@@ -229,6 +256,12 @@ describe('ida y vuelta con la base', () => {
   it('null o basura no revientan', () => {
     expect(leerZonas(null)).toEqual([])
     expect(leerZonas([{}])[0].sigla).toBe('')
+    expect(leerZonas([{}])[0].desde).toBeNull()
+  })
+
+  it('un orden que falta no deja la lista sin ordenar', () => {
+    // Number(undefined) es NaN, y con NaN el sort no ordena nada.
+    expect(leerZonas([{ sigla: 'B' }, { sigla: 'A', orden: 0 }]).map(x => Number.isFinite(x.orden))).toEqual([true, true])
   })
 
   it('LA SIGLA SE GUARDA EN MAYÚSCULAS, siempre', () => {
@@ -243,59 +276,101 @@ describe('ida y vuelta con la base', () => {
     expect(vuelta.sigla).toBe('TMP')
     expect(vuelta.rpeMin).toBe(5)
     expect(vuelta.rpeMax).toBe(6)
+    expect(vuelta.desde).toEqual({ ref: 'app:vam', pct: 82 })
+    expect(vuelta.hasta).toEqual({ ref: 'app:vam', pct: 88 })
     expect(fichaDe(vuelta).nivel).toBe(3)
   })
 
-  it('una referencia propia va y vuelve entera', () => {
-    const fila = paraGuardar(z({ ref: { idDefinicion: 7, indice: 1 } }), 'u1')
-    expect(fila.ref_definicion).toBe(7)
-    expect(fila.ref_indice).toBe(1)
-    expect(leerZonas([fila])[0].ref).toEqual({ idDefinicion: 7, indice: 1 })
+  it('la clasificación viaja con la zona', () => {
+    expect(paraGuardar(z(), 'u1', 12).id_clasificacion).toBe(12)
+    expect(leerZonas([{ ...paraGuardar(z(), 'u1', 12), id: 1 }])[0].idClasificacion).toBe(12)
+    expect(paraGuardar(z({ idClasificacion: 4 }), 'u1').id_clasificacion).toBe(4)
+    expect(paraGuardar(z(), 'u1').id_clasificacion).toBeNull()
+  })
+
+  it('LA ZONA DE DOS HITOS VA CON LAS COLUMNAS DE ANTES VACÍAS', () => {
+    /* No tiene «un» porcentaje. La app publicada —que solo lee esas columnas—
+       la ve sin terminar y no la ofrece, que es lo correcto: no sabría
+       calcularla. */
+    const tempo = z({ desde: { ref: 'propia:9:0', pct: 115 }, hasta: { ref: 'propia:9:1', pct: 95 } })
+    const fila = paraGuardar(tempo, 'u1', 3)
+    expect([fila.pct_min, fila.pct_max, fila.ref_definicion, fila.ref_indice]).toEqual([null, null, null, null])
+    expect(fila.desde).toEqual({ ref: 'propia:9:0', pct: 115 })
+    expect(leerZonas([fila])[0].hasta).toEqual({ ref: 'propia:9:1', pct: 95 })
+  })
+
+  it('LA DE UN HITO LAS SIGUE ESCRIBIENDO, para la app publicada', () => {
+    const fila = paraGuardar(z({ ...vam(82, 88) }), 'u1')
+    expect([fila.pct_min, fila.pct_max, fila.ref_definicion, fila.ref_indice]).toEqual([82, 88, null, null])
+    const propia = paraGuardar(z({ desde: { ref: 'propia:7:1', pct: 90 }, hasta: { ref: 'propia:7:1', pct: 95 } }), 'u1')
+    expect([propia.pct_min, propia.pct_max, propia.ref_definicion, propia.ref_indice]).toEqual([90, 95, 7, 1])
   })
 
   it('EL RESULTADO 0 NO SE PIERDE POR SER CERO', () => {
     // El primer resultado de un test tiene índice 0, que es falsy. Con un
     // `|| null` de más, todas las zonas colgadas del primer resultado
     // volverían apuntando a la referencia de la app, sin avisar.
-    const fila = paraGuardar(z({ ref: { idDefinicion: 7, indice: 0 } }), 'u1')
+    const fila = paraGuardar(z({ desde: { ref: 'propia:7:0', pct: 90 }, hasta: { ref: 'propia:7:0', pct: 95 } }), 'u1')
     expect(fila.ref_indice).toBe(0)
-    expect(leerZonas([fila])[0].ref).toEqual({ idDefinicion: 7, indice: 0 })
+    const sinLimites = { ...fila, desde: null, hasta: null }
+    expect(leerZonas([sinLimites])[0].desde).toEqual({ ref: 'propia:7:0', pct: 90 })
   })
 
-  it('sin referencia propia, las dos columnas van nulas', () => {
-    const fila = paraGuardar(z(), 'u1')
-    expect(fila.ref_definicion).toBeNull()
-    expect(fila.ref_indice).toBeNull()
-    expect(leerZonas([fila])[0].ref).toBeNull()
+  it('una referencia de la app que no es la de su deporte no se escribe como «la suya»', () => {
+    // La columna vacía significa «la de la app DE SU DEPORTE»: un FTP en una
+    // zona de carrera, leído así, saldría como VAM.
+    const rara = paraGuardar(z({ desde: { ref: 'app:ftp', pct: 80 }, hasta: { ref: 'app:ftp', pct: 90 } }), 'u1')
+    expect([rara.pct_min, rara.pct_max]).toEqual([null, null])
+  })
+
+  it('LAS ZONAS DE ANTES SE LEEN COMO DE UN HITO: el de su columna, o el de la app', () => {
+    expect(leerZonas(filas).every(x => x.desde?.ref === 'app:vam' && x.hasta?.ref === 'app:vam')).toBe(true)
+    expect(leerZonas([{ sigla: 'N', deporte: 'Natacion', pct_min: 90, pct_max: 95 }])[0].desde?.ref).toBe('app:css')
+    expect(leerZonas([{ sigla: 'P', pct_min: 88, pct_max: 94, ref_definicion: 2, ref_indice: 0 }])[0].desde)
+      .toEqual({ ref: 'propia:2:0', pct: 88 })
   })
 
   it('media referencia no cuenta como referencia', () => {
     // Un test sin decir qué resultado apuntaría al primero por accidente.
-    expect(leerZonas([{ sigla: 'A', ref_definicion: 7 }])[0].ref).toBeNull()
-    expect(leerZonas([{ sigla: 'A', ref_indice: 1 }])[0].ref).toBeNull()
+    expect(leerZonas([{ sigla: 'A', pct_min: 80, pct_max: 90, ref_definicion: 7 }])[0].desde?.ref).toBe('app:vam')
+    expect(leerZonas([{ sigla: 'A', pct_min: 80, pct_max: 90, ref_indice: 1 }])[0].desde?.ref).toBe('app:vam')
     // Y un nulo explícito tampoco: Number(null) es 0, que es un índice válido.
-    expect(leerZonas([{ sigla: 'A', ref_definicion: 7, ref_indice: null }])[0].ref).toBeNull()
+    expect(leerZonas([{ sigla: 'A', pct_min: 80, pct_max: 90, ref_definicion: 7, ref_indice: null }])[0].desde?.ref).toBe('app:vam')
   })
 
-  it('las zonas de antes de que esto existiera siguen significando lo mismo', () => {
-    // Ninguna fila vieja tiene esas columnas: todas cuelgan de la de la app.
-    expect(leerZonas(filas).every(x => x.ref === null)).toBe(true)
+  it('SI LA APP PUBLICADA CAMBIÓ EL %, MANDA LO QUE CAMBIÓ', () => {
+    /* Mientras esto no esté subido, la app publicada solo sabe escribir las
+       columnas de antes. Esta las escribe siempre iguales que los límites, así
+       que si no cuadran es que la otra tocó el % después. */
+    const fila = { ...paraGuardar(z(), 'u1', 1), pct_min: 80 }
+    expect(leerZonas([fila])[0].desde).toEqual({ ref: 'app:vam', pct: 80 })
+    // Una zona de dos hitos no la puede tocar la app publicada: sus límites mandan.
+    const tempo = paraGuardar(z({ desde: { ref: 'propia:9:0', pct: 115 }, hasta: { ref: 'propia:9:1', pct: 95 } }), 'u1', 1)
+    expect(leerZonas([tempo])[0].desde).toEqual({ ref: 'propia:9:0', pct: 115 })
+  })
+
+  it('un límite con basura vuelve nulo', () => {
+    expect(leerLimite(null)).toBeNull()
+    expect(leerLimite({ ref: 'app:vam' })).toBeNull()
+    expect(leerLimite({ ref: 'app:vam', pct: -5 })).toBeNull()
+    expect(leerLimite({ ref: 'vt1', pct: 90 })).toBeNull()
+    expect(leerLimite({ ref: 'propia:9:0', pct: '115' })).toEqual({ ref: 'propia:9:0', pct: 115 })
   })
 })
 
-describe('una zona colgada de una referencia propia', () => {
-  const REF = { idDefinicion: 7, indice: 0 }
-  const conRef = z({ ref: REF })
+describe('los hitos que siguen existiendo', () => {
+  const REF = 'propia:7:0'
+  const conRef = z({ desde: { ref: REF, pct: 90 }, hasta: { ref: REF, pct: 95 } })
 
-  it('vale si esa referencia está entre las suyas', () => {
+  it('vale si su hito está en la clasificación', () => {
     expect(motivoNoUsable(conRef, 0, [conRef], [REF])).toBeNull()
   })
 
-  it('NO VALE SI LA REFERENCIA YA NO ESTÁ', () => {
-    /* Pasa de dos formas: archivando el test, o cambiándole el deporte a la
-       zona después de elegirla. Las dos dejan un porcentaje sin nada detrás. */
-    expect(motivoNoUsable(conRef, 0, [conRef], [])).toContain('referencia')
-    expect(motivoNoUsable(conRef, 0, [conRef], [{ idDefinicion: 7, indice: 1 }])).toContain('referencia')
+  it('NO VALE SI EL HITO YA NO ESTÁ', () => {
+    /* Pasa de dos formas: archivando el test, o quitando el hito de la
+       clasificación después de usarlo. Las dos dejan un % sin nada detrás. */
+    expect(motivoNoUsable(conRef, 0, [conRef], [])).toContain('hito')
+    expect(motivoNoUsable(conRef, 0, [conRef], ['propia:7:1'])).toContain('hito')
   })
 
   it('sin la lista no se comprueba, y es a propósito', () => {
@@ -303,20 +378,124 @@ describe('una zona colgada de una referencia propia', () => {
     // cargados ni debería. La comprobación vive donde se editan.
     expect(motivoNoUsable(conRef, 0, [conRef])).toBeNull()
   })
+})
 
-  it('una zona de la app no se ve afectada por la lista', () => {
-    expect(motivoNoUsable(z(), 0, [z()], [])).toBeNull()
+describe('las clasificaciones', () => {
+  const filasC = [
+    { id: 2, id_entrenador: 'u1', nombre: '6x100 · Ritmo100', deporte: 'Natacion', hitos: ['propia:2:0'], orden: 1 },
+    { id: 1, id_entrenador: 'u1', nombre: 'Zonas sobre el CSS', deporte: 'Natacion', hitos: ['app:css', 'basura'], orden: 0 },
+  ]
+  const filasZ = [
+    { id: 3, id_clasificacion: 2, sigla: 'SUA', nombre: 'Suave', deporte: 'Natacion', rpe_min: 3, orden: 0,
+      desde: { ref: 'propia:2:0', pct: 88 }, hasta: { ref: 'propia:2:0', pct: 94 } },
+    { id: 4, id_clasificacion: 2, sigla: 'UMB', nombre: 'Umbral', deporte: 'Natacion', rpe_min: 6, orden: 1,
+      desde: { ref: 'propia:2:0', pct: 98 }, hasta: { ref: 'propia:2:0', pct: 102 } },
+    { id: 6, id_clasificacion: 1, sigla: 'CGL', nombre: 'Glucolítica', deporte: 'Natacion', rpe_min: 9, orden: 0,
+      desde: { ref: 'app:css', pct: 90 }, hasta: { ref: 'app:css', pct: 95 } },
+    { id: 9, id_clasificacion: 77, sigla: 'HUERF', nombre: 'De una archivada', deporte: 'Natacion', rpe_min: 4,
+      desde: { ref: 'app:css', pct: 90 }, hasta: { ref: 'app:css', pct: 95 } },
+  ]
+
+  it('cada una con sus zonas, en su orden', () => {
+    const cs = leerClasificaciones(filasC, filasZ)
+    expect(cs.map(c => c.nombre)).toEqual(['Zonas sobre el CSS', '6x100 · Ritmo100'])
+    expect(cs[1].zonas.map(x => x.sigla)).toEqual(['SUA', 'UMB'])
+    expect(cs[0].zonas.map(x => x.sigla)).toEqual(['CGL'])
+  })
+
+  it('un hito mal escrito no entra', () => {
+    expect(leerClasificaciones(filasC, filasZ)[0].hitos).toEqual(['app:css'])
+  })
+
+  it('LA ZONA DE UNA CLASIFICACIÓN QUE NO LLEGÓ NO SE ENSEÑA', () => {
+    // Su clasificación está archivada: enseñarla suelta la resucitaría.
+    const todas = leerClasificaciones(filasC, filasZ).flatMap(c => c.zonas.map(x => x.sigla))
+    expect(todas).not.toContain('HUERF')
+  })
+
+  it('LAS SUELTAS NO SE PIERDEN: se agrupan como antes, por deporte y referencia', () => {
+    /* Las guarda así la app publicada hasta que se suba esta. */
+    const sueltas = [
+      { id: 20, sigla: 'A1', deporte: 'Ciclismo', pct_min: 80, pct_max: 90, rpe_min: 5 },
+      { id: 21, sigla: 'A2', deporte: 'Ciclismo', pct_min: 90, pct_max: 100, rpe_min: 6 },
+      { id: 22, sigla: 'B1', deporte: 'Ciclismo', pct_min: 90, pct_max: 100, rpe_min: 6, ref_definicion: 5, ref_indice: 1 },
+    ]
+    const cs = leerClasificaciones(filasC, sueltas)
+    const nuevas = cs.filter(c => c.suelta)
+    expect(nuevas).toHaveLength(2)
+    expect(nuevas[0]).toMatchObject({ deporte: 'Ciclismo', hitos: ['app:ftp'] })
+    // Sin id: no existe en la base hasta que se guarde.
+    expect(nuevas[0].id).toBeUndefined()
+    expect(nuevas[0].zonas.map(x => x.sigla)).toEqual(['A1', 'A2'])
+    expect(nuevas[1].hitos).toEqual(['propia:5:1'])
+  })
+
+  it('null no revienta', () => {
+    expect(leerClasificaciones(null, null)).toEqual([])
+  })
+
+  it('lo que se guarda', () => {
+    const c: Clasificacion = { nombre: '  Laboratorio ', deporte: 'Carrera', hitos: ['propia:9:0', 'x'], orden: 2, zonas: [] }
+    expect(clasificacionParaGuardar(c, 'u1')).toEqual({
+      id_entrenador: 'u1', nombre: 'Laboratorio', deporte: 'Carrera', hitos: ['propia:9:0'], orden: 2,
+    })
+  })
+
+  it('cuándo una clasificación no se puede guardar', () => {
+    const c = (extra: Partial<Clasificacion>): Clasificacion =>
+      ({ ...CLASIFICACION_NUEVA(0), nombre: 'Lab', hitos: ['app:vam'], ...extra })
+    expect(motivoClasificacion(c({}))).toBeNull()
+    expect(motivoClasificacion(c({ nombre: ' ' }))).toContain('nombre')
+    expect(motivoClasificacion(c({ hitos: [] }))).toContain('hito')
+    expect(motivoClasificacion(c({ hitos: ['app:vam', 'app:vam'] }))).toContain('repetido')
+  })
+
+  it('LA MISMA SIGLA EN DOS CLASIFICACIONES ES LEGAL; dentro de una, no', () => {
+    const a = z({ idClasificacion: 1, sigla: 'UMB' })
+    const b = z({ idClasificacion: 2, sigla: 'UMB' })
+    expect(motivoNoUsable(a, 0, [a, b])).toBeNull()
+    const c = z({ idClasificacion: 1, sigla: 'umb' })
+    expect(motivoNoUsable(c, 1, [a, c])).toContain('Repetida')
   })
 })
 
-describe('el rango para un atleta', () => {
-  it('sale de su referencia', () => {
-    expect(rangoDe(z(), 16)).toEqual({ min: 16 * 0.82, max: 16 * 0.88 })
+describe('la zona que viene después', () => {
+  const base: Clasificacion = { nombre: 'Lab', deporte: 'Carrera', hitos: ['propia:9:0', 'propia:9:1'], orden: 0, zonas: [] }
+
+  it('la primera es la de abajo del todo: por debajo del primer hito', () => {
+    const n = zonaSiguiente(base)
+    expect(n.desde).toBeNull()
+    expect(n.hasta).toEqual({ ref: 'propia:9:0', pct: 100 })
   })
 
-  it('sin referencia no hay rango, y no se devuelve cero', () => {
-    expect(rangoDe(z(), 0)).toBeNull()
-    expect(rangoDe(z(), NaN)).toBeNull()
+  it('LAS DEMÁS EMPIEZAN DONDE ACABA LA ANTERIOR', () => {
+    const z2 = z({ desde: { ref: 'propia:9:0', pct: 100 }, hasta: { ref: 'propia:9:0', pct: 115 } })
+    const n = zonaSiguiente({ ...base, zonas: [z2] })
+    expect(n.desde).toEqual({ ref: 'propia:9:0', pct: 115 })
+    expect(n.hasta).toEqual({ ref: 'propia:9:0', pct: 125 })
+    // Y es una copia: tocar la nueva no mueve la de antes.
+    n.desde!.pct = 117
+    expect(z2.hasta!.pct).toBe(115)
+  })
+
+  it('sin hitos no se inventa ninguno', () => {
+    const n = zonaSiguiente({ ...base, hitos: [] })
+    expect([n.desde, n.hasta]).toEqual([null, null])
+  })
+
+  it('detrás de una sin techo, se deja en el primer hito', () => {
+    const max = z({ desde: { ref: 'propia:9:1', pct: 105 }, hasta: null })
+    const n = zonaSiguiente({ ...base, zonas: [max] })
+    expect(n.desde).toEqual({ ref: 'propia:9:0', pct: 100 })
+  })
+})
+
+describe('qué zona se puede afinar', () => {
+  it('solo la que tiene los dos límites en el mismo hito', () => {
+    expect(esDeUnHito(z())).toBe(true)
+    expect(esDeUnHito(z({ desde: null }))).toBe(false)
+    expect(esDeUnHito(z({ desde: { ref: 'propia:9:0', pct: 115 }, hasta: { ref: 'propia:9:1', pct: 95 } }))).toBe(false)
+    expect(esDeUnHito(null)).toBe(false)
   })
 })
 
@@ -342,8 +521,8 @@ describe('el deporte es parte de la identidad de la zona', () => {
      (AEL es 65–75 % de VAM pero 56–75 % de FTP). Un «82–88 %» aplicado al FTP
      de alguien daría unos vatios que nadie prescribió. */
   const DOS: ZonaEntrenador[] = [
-    z({ deporte: 'Carrera', sigla: 'TMP', pctMin: 82, pctMax: 88, rpeMin: 5, rpeMax: 6, orden: 0 }),
-    z({ deporte: 'Ciclismo', sigla: 'TMP', pctMin: 76, pctMax: 90, rpeMin: 6, rpeMax: 7, orden: 1 }),
+    z({ deporte: 'Carrera', sigla: 'TMP', ...vam(82, 88), rpeMin: 5, rpeMax: 6, orden: 0 }),
+    z({ deporte: 'Ciclismo', sigla: 'TMP', desde: { ref: 'app:ftp', pct: 76 }, hasta: { ref: 'app:ftp', pct: 90 }, rpeMin: 6, rpeMax: 7, orden: 1 }),
   ]
 
   it('LA MISMA SIGLA PUEDE EXISTIR EN DOS DEPORTES: son dos zonas distintas', () => {

@@ -3,11 +3,12 @@ import {
   ANCLA_DE, idApp, idPropia, leerIdPropia, referenciasDe, buscarReferencia,
   zonasDe, buscarZona, rangoInicial, acotar, seSale, estaAfinada,
   tramoDe, textoTramo, copiaPrescrita, leerCopia, cargaDeTarea, COLUMNAS_ZONA, tareaPico, objetivoDeCopia, cuelgaDeTestPropio,
+  fuentesDe, esClasificacion, idClasif, leerIdClasif, testsDeCopia, textoAbierto, textoPunto,
   type Referencia, type ZonaOfrecida,
 } from './prescripcion-zona'
 import { cargaZona } from './zonas'
 import type { TestConMediciones } from './referencia-propia'
-import type { ZonaEntrenador } from './zonas-entrenador'
+import type { ZonaEntrenador, Clasificacion, Limite } from './zonas-entrenador'
 import type { DefinicionTest, ResultadoTest } from './test-definicion'
 import type { Bloque } from './formula'
 
@@ -33,15 +34,16 @@ const TEST_6X100: TestConMediciones = {
 }
 
 /* Sus zonas, tal como están guardadas: colgando del Ritmo100. */
-const REF_RITMO = { idDefinicion: 2, indice: 0 }
+const RITMO = 'propia:2:0'
+const deRitmo = (a: number, b: number) => ({ desde: { ref: RITMO, pct: a }, hasta: { ref: RITMO, pct: b } })
 const mia = (extra: Partial<ZonaEntrenador> = {}): ZonaEntrenador => ({
-  deporte: 'Natacion', sigla: 'SUA', nombre: 'Suave', pctMin: 88, pctMax: 94,
-  rpeMin: 3, rpeMax: 4, color: '#a78bfa', orden: 0, ref: REF_RITMO, ...extra,
+  deporte: 'Natacion', sigla: 'SUA', nombre: 'Suave', ...deRitmo(88, 94),
+  rpeMin: 3, rpeMax: 4, color: '#a78bfa', orden: 0, ...extra,
 })
 const MIAS: ZonaEntrenador[] = [
   mia(),
-  mia({ sigla: 'UMB', nombre: 'Umbral', pctMin: 98, pctMax: 102, rpeMin: 6, rpeMax: 7, orden: 1 }),
-  mia({ sigla: 'MAX', nombre: 'Máximo', pctMin: 103, pctMax: 107, rpeMin: 8, rpeMax: null, orden: 2 }),
+  mia({ sigla: 'UMB', nombre: 'Umbral', ...deRitmo(98, 102), rpeMin: 6, rpeMax: 7, orden: 1 }),
+  mia({ sigla: 'MAX', nombre: 'Máximo', ...deRitmo(103, 107), rpeMin: 8, rpeMax: null, orden: 2 }),
 ]
 
 const TESTS_APP = { vam: 16, ftp: 245, css: 1.28 }
@@ -190,7 +192,7 @@ describe('qué zonas cuelgan de cada referencia', () => {
   })
 
   it('una zona que apunta a otra referencia no aparece', () => {
-    const otra = [mia({ sigla: 'OTR', ref: { idDefinicion: 9, indice: 0 } })]
+    const otra = [mia({ sigla: 'OTR', desde: { ref: 'propia:9:0', pct: 88 }, hasta: { ref: 'propia:9:0', pct: 94 } })]
     expect(zonasDe(refPropia(), otra)).toHaveLength(0)
   })
 
@@ -581,5 +583,169 @@ describe('el tramo en pulsaciones', () => {
 
   it('otra unidad escrita a mano sigue con sus decimales', () => {
     expect(textoTramo({ desde: 3.456, hasta: 3.9, unidad: 'l/min', inverso: false })).toBe('3,46–3,9 l/min')
+  })
+})
+
+// ============================================================
+// Las clasificaciones del entrenador como fuente de una tarea
+// ============================================================
+
+describe('una clasificación como fuente', () => {
+  const PRUEBA: DefinicionTest = {
+    nombre: 'Prueba de esfuerzo', deporte: 'Carrera',
+    campos: [{ clave: 'vt1', etiqueta: 'VT1' }, { clave: 'vt2', etiqueta: 'VT2' }, { clave: 'vo2', etiqueta: 'VO2máx' }],
+    resultados: [
+      { nombre: 'VT1', unidad: 'km/h', ancla: 'umbral_aer', formula: [v('vt1')], graf: true },
+      { nombre: 'VT2', unidad: 'km/h', ancla: 'umbral', formula: [v('vt2')], graf: true },
+      { nombre: 'VO2máx', unidad: 'km/h', ancla: 'vo2max', formula: [v('vo2')], graf: true },
+    ],
+  }
+  const ANA: TestConMediciones[] = [{
+    id: 9, nombre: 'Prueba de esfuerzo', deporte: 'Carrera', def: PRUEBA,
+    mediciones: [{ fecha: '2026-10-02', datos: { vt1: 12, vt2: 15, vo2: 17.5 } }],
+  }]
+  const VT1 = 'propia:9:0', VT2 = 'propia:9:1', VO2 = 'propia:9:2'
+  const zona = (sigla: string, desde: Limite | null, hasta: Limite | null, orden: number, rpeMin: number | null = 5): ZonaEntrenador => ({
+    idClasificacion: 1, deporte: 'Carrera', sigla, nombre: sigla, desde, hasta, rpeMin, rpeMax: null, color: '#4ade80', orden,
+  })
+  const LAB: Clasificacion = {
+    id: 1, nombre: 'Laboratorio', deporte: 'Carrera', hitos: [VT1, VT2, VO2], orden: 0,
+    zonas: [
+      zona('REG', null, { ref: VT1, pct: 100 }, 0, 2),
+      zona('BASE', { ref: VT1, pct: 100 }, { ref: VT1, pct: 115 }, 1, 3),
+      zona('TEMPO', { ref: VT1, pct: 115 }, { ref: VT2, pct: 95 }, 2, 5),
+      zona('MAX', { ref: VO2, pct: 100 }, null, 3, 10),
+    ],
+  }
+  const fuentes = (clasifs: Clasificacion[] = [LAB]) => fuentesDe('Carrera', { vam: 16 }, ANA, clasifs)
+  const lab = () => fuentes().find(esClasificacion)!
+  const zonaDe = (s: string) => buscarZona(zonasDe(lab()), s)!
+
+  it('LA DE LA APP PRIMERO Y DESPUÉS LAS SUYAS DE ESE DEPORTE', () => {
+    const f = fuentes()
+    expect(f.map(x => x.id)).toEqual(['app:vam', 'clasif:1'])
+    expect(f[1].etiqueta).toBe('Laboratorio')
+    expect(lab().medida).toBe(true)
+  })
+
+  it('YA NO SE OFRECE UN TEST SUELTO: sus zonas viven en su clasificación', () => {
+    expect(fuentes().some(x => x.tipo === 'propia')).toBe(false)
+  })
+
+  it('las de otro deporte, las sueltas y las vacías no se ofrecen', () => {
+    const otra = { ...LAB, id: 2, deporte: 'Ciclismo' }
+    const suelta = { ...LAB, id: undefined, suelta: true }
+    const vacia = { ...LAB, id: 3, zonas: [zona('X', null, { ref: VT1, pct: 100 }, 0, null)] }
+    expect(fuentes([otra, suelta, vacia]).map(x => x.id)).toEqual(['app:vam'])
+  })
+
+  it('el id va y vuelve', () => {
+    expect(idClasif(12)).toBe('clasif:12')
+    expect(leerIdClasif('clasif:12')).toBe(12)
+    expect(leerIdClasif('app:vam')).toBeNull()
+    expect(leerIdClasif('')).toBeNull()
+  })
+
+  it('SE AFINA SOLO LA ZONA DE UN HITO; las demás se mandan enteras', () => {
+    expect(zonaDe('BASE').rango).toEqual([100, 115])
+    expect(zonaDe('TEMPO').rango).toBeNull()
+    expect(zonaDe('REG').rango).toBeNull()
+    expect(zonaDe('MAX').rango).toBeNull()
+    expect(rangoInicial(zonaDe('TEMPO'))).toBeNull()
+  })
+
+  it('el RPE y el nivel salen de la misma escalera que el resto', () => {
+    expect(zonaDe('TEMPO').rpe).toBe(5)
+    expect(zonaDe('MAX').nivel).toBe(7)
+  })
+
+  it('LA DE UN HITO SE CONGELA AFINADA, con sus dos límites', () => {
+    const c = copiaPrescrita(lab(), zonaDe('BASE'), 100, 110)!
+    expect(c).toMatchObject({
+      sigla: 'BASE', pctMin: 100, pctMax: 110, refId: VT1, refEtiqueta: 'VT1',
+      fuente: 'clasif:1', clasificacion: 'Laboratorio',
+      desde: { ref: VT1, pct: 100, corto: 'VT1' }, hasta: { ref: VT1, pct: 110, corto: 'VT1' },
+    })
+    // Y se acota dentro de la zona, igual que las de la app.
+    expect(copiaPrescrita(lab(), zonaDe('BASE'), 90, 130)).toMatchObject({ pctMin: 100, pctMax: 115 })
+  })
+
+  it('LA ENTERA SE CONGELA CON SUS LÍMITES TAL CUAL, sin «un» porcentaje', () => {
+    const c = copiaPrescrita(lab(), zonaDe('TEMPO'), 50, 60)!
+    expect(c).toMatchObject({
+      pctMin: 0, pctMax: 0, refId: '', fuente: 'clasif:1',
+      desde: { ref: VT1, pct: 115, corto: 'VT1' }, hasta: { ref: VT2, pct: 95, corto: 'VT2' },
+    })
+    expect(copiaPrescrita(lab(), zonaDe('REG'), null, null)?.desde).toBeNull()
+  })
+
+  it('va y vuelve de la base sin perder nada', () => {
+    const c = copiaPrescrita(lab(), zonaDe('TEMPO'), null, null)!
+    expect(leerCopia(JSON.parse(JSON.stringify(c)))).toEqual(c)
+  })
+
+  it('UNA COPIA DE ANTES VUELVE EXACTAMENTE IGUAL: sin los campos nuevos', () => {
+    const vieja = { sigla: 'AEL', nombre: 'x', color: '#fff', rpe: 3, nivel: 2, pctMin: 65, pctMax: 75, refId: 'app:vam', refEtiqueta: 'Su VAM' }
+    expect(Object.keys(leerCopia(vieja)!).sort()).toEqual(Object.keys(vieja).sort())
+  })
+
+  it('EL OBJETIVO SALE DE SUS LÍMITES CON LOS NÚMEROS DE HOY', () => {
+    const obj = (s: string, a: number | null = null, b: number | null = null) =>
+      objetivoDeCopia(copiaPrescrita(lab(), zonaDe(s), a, b), 'Carrera', { vam: 16 }, ANA)
+    expect(obj('TEMPO')).toBe('4:13–4:21 /km')
+    expect(obj('REG')).toBe('más lento de 5:00 /km')
+    expect(obj('MAX')).toBe('más rápido de 3:26 /km')
+    // Afinada al 100–110 % de su VT1 (12 km/h): 13,2 km/h → 4:33.
+    expect(obj('BASE', 100, 110)).toBe('4:33–5:00 /km')
+  })
+
+  it('SIN EL NÚMERO DE UN HITO NO HAY OBJETIVO, en vez de uno a medias', () => {
+    const c = copiaPrescrita(lab(), zonaDe('TEMPO'), null, null)
+    const sinVt2: TestConMediciones[] = [{ ...ANA[0], mediciones: [{ fecha: '2026-10-02', datos: { vt1: 12 } }] }]
+    expect(objetivoDeCopia(c, 'Carrera', {}, sinVt2)).toBe('')
+    expect(objetivoDeCopia(c, 'Carrera', {}, [])).toBe('')
+  })
+
+  it('EL CSS COMO HITO VA EN %, no en segundos como las zonas de la app', () => {
+    /* En una clasificación todos los límites se leen igual. CSS 1,28 m/s →
+       78,1 s/100; al 95 % del esfuerzo se tarda más: 82,2 s → 1:22. */
+    const nat: Clasificacion = {
+      id: 5, nombre: 'Sobre el CSS', deporte: 'Natacion', hitos: ['app:css'], orden: 0,
+      zonas: [{ ...zona('CGL', { ref: 'app:css', pct: 95 }, { ref: 'app:css', pct: 100 }, 0), deporte: 'Natacion', idClasificacion: 5 }],
+    }
+    const f = fuentesDe('Natacion', TESTS_APP, [], [nat]).find(esClasificacion)!
+    const c = copiaPrescrita(f, buscarZona(zonasDe(f), 'CGL'), null, null)
+    expect(objetivoDeCopia(c, 'Natacion', TESTS_APP, [])).toBe('1:18–1:22 /100')
+  })
+
+  it('SE SABE QUÉ TESTS HAY QUE CARGAR PARA ENSEÑARLA', () => {
+    const tempo = copiaPrescrita(lab(), zonaDe('TEMPO'), null, null)!
+    expect(testsDeCopia(tempo)).toEqual([9])
+    expect(cuelgaDeTestPropio({ zona_entrenamiento: 'TEMPO', zona_copia: tempo })).toBe(true)
+    const deVam = copiaPrescrita(fuentes()[0], buscarZona(zonasDe(fuentes()[0]), 'AEL'), null, null)
+    expect(testsDeCopia(deVam)).toEqual([])
+  })
+
+  it('LA COPIA ENCAJA EN cargaZona SIN TRADUCIRLA, como todas', () => {
+    const c = copiaPrescrita(lab(), zonaDe('MAX'), null, null)!
+    expect(cargaZona('MAX', c)).toMatchObject({ origen: 'copia', rpe: 10, nivel: 7 })
+  })
+})
+
+describe('una zona sin techo o sin suelo, escrita', () => {
+  it('en ritmo, más lento o más rápido', () => {
+    expect(textoAbierto(12, 'km/h', false, 'bajo')).toBe('más lento de 5:00 /km')
+    expect(textoAbierto(17.5, 'km/h', false, 'alto')).toBe('más rápido de 3:26 /km')
+    expect(textoAbierto(80, 's/100', true, 'bajo')).toBe('más lento de 1:20 /100')
+  })
+
+  it('en vatios o pulsaciones, por debajo o por encima', () => {
+    expect(textoAbierto(250, 'W', false, 'alto')).toBe('por encima de 250 W')
+    expect(textoAbierto(150.4, 'lpm', false, 'bajo')).toBe('por debajo de 150 lpm')
+  })
+
+  it('sin número, nada', () => {
+    expect(textoPunto(0, 'km/h')).toBe('')
+    expect(textoAbierto(NaN, 'W', false, 'alto')).toBe('')
   })
 })

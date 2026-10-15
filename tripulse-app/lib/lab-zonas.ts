@@ -12,8 +12,9 @@
 //
 // LA RESTRICCIÓN QUE MANDA, recordada aquí porque es la que más duele: solo hay
 // tres columnas de ancla y cada una guarda una magnitud concreta. `vam` es un
-// VO₂máx; `ftp` y `css` son umbrales. Así que solo cabe un ancla por deporte, y
-// un «umbral» de carrera se rechaza explicando por qué.
+// VO₂máx; `ftp` y `css` son umbrales. Por eso solo entra lo que el entrenador
+// marcó a propósito como «Sustituir su VAM / FTP / CSS», y esa opción explica
+// al elegirla qué tiene que ir ahí.
 
 import { calcular, comoResultadoViejo, type Resultado, type TestLab, type Datos } from './lab-constructor'
 import { puedeFijar, conversionA, origenDe, type Veredicto } from './ancla-propia'
@@ -67,7 +68,7 @@ export function propuestaLab(test: TestLab, indice: number, datos: Datos, anteri
       /* Estimado a propósito: una fórmula que se ha montado el entrenador no
          tiene detrás la validación que tienen los tests del catálogo. */
       estimado: true,
-      porque: 'Lo declaraste como ' + (r.ancla === 'vo2max' ? 'VO₂máx' : 'umbral') + ' al crear el test.',
+      porque: 'Lo marcaste para sustituir su ' + v.destino.nombre + ' al crear el test.',
     },
     destino: v.destino,
     valor,

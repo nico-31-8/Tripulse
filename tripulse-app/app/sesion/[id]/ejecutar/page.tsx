@@ -6,7 +6,9 @@ import { supabase } from '@/lib/supabase'
 import ElegirMaterial from '@/components/ElegirMaterial'
 import { materialDeSesion, guardarMaterialDeSesion, metrosPorDisciplinaDe } from '@/lib/material'
 import { conVideos } from '@/lib/video-ejercicio'
-import { ritmoObjetivoTexto, objetivoDeZona, deDondeSale, cargarReferencias, type Tests } from '@/lib/referencia-zona'
+import { ritmoObjetivoTexto, cargarReferencias, type Tests } from '@/lib/referencia-zona'
+import { objetivoDeTarea, deDondeSaleTarea, cargarTestsDeTareas } from '@/lib/objetivo-tarea'
+import type { TestConMediciones } from '@/lib/referencia-propia'
 import { intensidadGuardada, queEnsenar, queSeMide } from '@/lib/intensidad-prescrita'
 import { diasHastaCompeticion, microsDelPlan, hayOtraSesionEseDia, type MesoCtx, type MicroCtx } from '@/lib/contexto-sesion'
 import FuerzaRegistro from './FuerzaRegistro'
@@ -48,10 +50,11 @@ function claseZona(zona: string | null | undefined): string {
    dentro. Era la cuarta copia de la misma traducción y ya había divergido una
    vez: la de VAM se separó de la de la ficha de sesión y el mismo Z4 prescribía
    dos ritmos según por dónde entrases.
-   Ahora lo hace `objetivoDeZona` (lib/referencia-zona), que además tiene lo que
-   a esta le faltaba: sin el test, devolvía cadena vacía y la caja del objetivo
-   no se pintaba — el atleta abría un rodaje de 40 minutos sin ninguna
-   referencia de a cuánto ir. */
+   Ahora lo hace `objetivoDeTarea` (lib/objetivo-tarea): primero la copia con
+   la que se prescribió y, si no hay, `objetivoDeZona` (lib/referencia-zona),
+   que tiene lo que a esta le faltaba: sin el test, devolvía cadena vacía y la
+   caja del objetivo no se pintaba — el atleta abría un rodaje de 40 minutos sin
+   ninguna referencia de a cuánto ir. */
 export default function EjecutarSesion({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id } = use(params)
@@ -73,6 +76,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [ejerciciosPorTarea, setEjerciciosPorTarea] = useState<Record<number, EjercicioEjec[]>>({})
   const [guardando, setGuardando] = useState(false)
   const [tests, setTests] = useState<Tests | null>(null)
+  /* Los tests del entrenador de los que cuelga alguna tarea (una zona de una
+     clasificación, un AEL sobre su prueba…): sin ellos, su ritmo no sale. */
+  const [testsPropios, setTestsPropios] = useState<TestConMediciones[]>([])
   const [fcMax, setFcMax] = useState(0)
   const [fcReposo, setFcReposo] = useState(0)
   const [pesoDeportista, setPesoDeportista] = useState<number | null>(null)
@@ -172,6 +178,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     // hace: «AER 4 × 50 m» a secas no es prescribir técnica.
     const tarConTecnica = await conTecnica(tar.data)
     setTareas(tarConTecnica)
+    /* Sin esperar: la pantalla ya está, y lo único que falta hasta que lleguen
+       es el ritmo de las tareas que cuelgan de un test del entrenador. */
+    if (depIdLocal) cargarTestsDeTareas(supabase, depIdLocal, tar.data as TareaEjec[] | null).then(setTestsPropios)
     /* Si ya se hizo, el resultado de cada bloque vuelve a su casilla; y se busca
        la última vez que hizo cada uno, para que tenga algo que superar. */
     const bloquesSes = ((tar.data || []) as TareaEjec[]).filter(t => esBloque(t))
@@ -648,10 +657,15 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                  (supabase/intensidad-en-bloques-por-tiempo.sql) porque un
                  bloque por tiempo perdía la intensidad, y en carrera prescribir
                  por tiempo es lo normal. */
-              const calc = objetivoDeZona(
-                tarea?.zona_entrenamiento,
+              /* EL MISMO CÁLCULO QUE EL BRIEFING (lib/objetivo-tarea): la copia
+                 con la que se prescribió primero. Calculando solo por la sigla,
+                 un AEL afinado al 70 % salía aquí como el 65–75 del catálogo, y
+                 una zona de una clasificación salía sin ritmo. */
+              const calc = objetivoDeTarea(
+                tarea,
                 tarea?.disciplina || sesion?.disciplina || '',
                 tests || {},
+                testsPropios,
                 fcMax,
                 fcReposo,
               )
@@ -671,7 +685,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                         prescrito otra cosa. Sirve para traducir un «95–105% VAM»
                         a un ritmo sin tener que salir de aquí. */}
                     {intensidad.gris && (
-                      <p className="text-[11px] text-gray-500" title={deDondeSale(calc?.de || 'tests')}>{intensidad.gris}</p>
+                      <p className="text-[11px] text-gray-500" title={deDondeSaleTarea(calc?.de || 'tests')}>{intensidad.gris}</p>
                     )}
                   </div>
                 </div>

@@ -15,19 +15,22 @@
 // lib/formula.ts y lib/test-definicion.ts, con sus tests. Aquí solo hay
 // pantalla y consultas: si algo calcula, es que está en el sitio equivocado.
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO } from '@/lib/fechas'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
-  ANCLAS, ANCLAS_REFERENCIA, tipoDeAncla, esInverso, leerDefinicion, calcularResultados, pegasDe, pegaDe,
+  tipoDeAncla, esInverso, leerDefinicion, calcularResultados, pegasDe, pegaDe,
   sePuedeGuardar, seriesDe, referenciasDe, TEST_VACIO,
   esSerie, vecesDe, serieDeDatos, faltanDe, MAX_VECES,
+  campoTalCual, conDatoTalCual, renombrarResultado as renombrarResultadoEn, quitarResultado, resultadoTalCualDe,
   type Ancla, type CampoTest, type DefinicionTest, type InstrumentoCampo,
   type Medicion, type ResultadoTest, type SerieResultado,
 } from '@/lib/test-definicion'
 import { DEPORTES_TEST } from '@/lib/test-definicion'
+import { SelectParaQueSirve, ExplicaParaQueSirve, GlosarioParaQueSirve } from '@/components/ParaQueSirve'
+import { testDeFila, opcionesDeRef } from '@/lib/referencia-propia'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import { renombrarEn, dependencias, FUNCIONES, type Bloque, type Funcion } from '@/lib/formula'
 import { herramientasPropias, seTomaConReloj } from '@/lib/herramientas-propias'
@@ -117,7 +120,21 @@ const hoy = () => hoyISO()
 
 /* `de`: de quién es si lo comparte tu director o un entrenador al que diriges
    (lib/compartido-direccion). Se pasa igual; editarlo y archivarlo, solo su dueño. */
-interface FilaTest { id: number; nombre: string; deporte: string; def: DefinicionTest; mediciones: number; de: string | null }
+interface FilaTest {
+  id: number
+  nombre: string
+  deporte: string
+  /** El de aquí. En uno del laboratorio va vacío: su definición vive en `modelo`. */
+  def: DefinicionTest
+  mediciones: number
+  de: string | null
+  /** Montado en el laboratorio: se pasa y se edita allí. */
+  lab: boolean
+  /** Los nombres de sus resultados, sea del modelo que sea. */
+  produce: string[]
+  /** Sus resultados que valen de hito, con la cara del modelo de aquí. */
+  hitos: ResultadoTest[]
+}
 
 export default function TestsPropiosPage() {
   const router = useRouter()
@@ -180,16 +197,24 @@ export default function TestsPropiosPage() {
     const cuenta: Record<number, number> = {}
     for (const m of meds || []) cuenta[m.id_definicion] = (cuenta[m.id_definicion] || 0) + 1
 
-    /* Los del LABORATORIO se quedan fuera. Un test del modelo nuevo guarda su
-       definición en la columna `modelo` y deja `campos` y `resultados`
-       vacíos, así que aquí saldría como un test sin nada dentro: el entrenador
-       lo abriría, lo vería vacío y acabaría "arreglando" algo que no está roto.
-       Mientras los dos modelos convivan, cada uno enseña los suyos. */
-    setTests(filas.filter(d => !d.modelo).map(d => ({
-      id: d.id, nombre: d.nombre, deporte: d.deporte,
-      def: leerDefinicion(d), mediciones: cuenta[d.id] || 0,
-      de: deQuien(d.id_entrenador, user.id, socios),
-    })))
+    /* LOS DEL LABORATORIO TAMBIÉN SALEN, porque esta es la lista de TUS tests y
+       allí ya funcionan: se crean, se pasan y sirven de hito. Antes se quedaban
+       fuera y había que saber que existía otra pantalla. Lo que NO se hace es
+       abrirlos aquí: un test del laboratorio guarda su definición en `modelo` y
+       este editor lo vería vacío —y alguien acabaría «arreglando» algo que no
+       está roto—. Se pasan y se editan allí, con un clic.
+       `testDeFila` es el único que lee la fila entendiendo los dos modelos. */
+    setTests(filas.map(d => {
+      const t = testDeFila(d, [])
+      const def = leerDefinicion(d)
+      return {
+        id: d.id, nombre: d.nombre, deporte: d.deporte, def, mediciones: cuenta[d.id] || 0,
+        de: deQuien(d.id_entrenador, user.id, socios),
+        lab: !!t.lab,
+        produce: t.lab ? (t.lab.resultados || []).map(r => r.nombre) : def.resultados.map(r => r.nombre),
+        hitos: opcionesDeRef([t], d.deporte).map(o => o.resultado),
+      }
+    }))
     setDeportistas(deps || [])
     setCargando(false)
   }, [router])
@@ -232,11 +257,21 @@ export default function TestsPropiosPage() {
     }
   })
 
-  const renombrarResultado = (i: number, nuevo: string) => setDef(d => {
-    const viejo = d.resultados[i].nombre
-    const conNombre = d.resultados.map((r, k) => k === i ? { ...r, nombre: nuevo } : r)
-    return { ...d, resultados: conNombre.map(r => ({ ...r, formula: renombrarEn([r.formula], 'ref', viejo, nuevo)[0] ?? r.formula })) }
-  })
+  /* Renombrar arrastra las fórmulas que lo encadenan y, si es un dato tal cual,
+     lo que se ve en su casilla al pasarlo (lib/test-definicion). */
+  const renombrarResultado = (i: number, nuevo: string) => setDef(d => renombrarResultadoEn(d, i, nuevo))
+
+  /* Los datos tal cual cuya fórmula se ha pedido ver a mano. Por defecto se
+     esconde: es justo lo que el entrenador no quería ver. */
+  const [conFormula, setConFormula] = useState<Set<number>>(new Set())
+
+  const addDatoTalCual = () => setDef(d => conDatoTalCual(d))
+
+  const quitarRes = (i: number) => {
+    setDef(d => quitarResultado(d, i))
+    /* Los índices de detrás bajan uno: si no, se abriría la fórmula de otro. */
+    setConFormula(s => new Set([...s].filter(k => k !== i).map(k => (k > i ? k - 1 : k))))
+  }
 
   const addResultado = () => setDef(d => ({
     ...d,
@@ -296,23 +331,64 @@ export default function TestsPropiosPage() {
 
   // ---------- pasárselo a un atleta ----------
 
-  const abrirAtleta = async (t: FilaTest) => {
-    setTestActivo(t)
-    setVista('atleta')
-    setEntrada(entradaVacia(t.def))
-    setModoTest(seTomaConReloj(t.def) ? 'campo' : 'mano')
-    setFecha(hoy())
-    const dep = depActivo ?? deportistas[0]?.id ?? null
-    setDepActivo(dep)
-    if (dep) await cargarMediciones(t.id, dep)
-  }
-
+  /* Antes de `abrirAtleta`, que la usa: declarada después, la regla del
+     compilador lo da por error en cuanto algo la llama desde un efecto. */
   const cargarMediciones = async (idDef: number, idDep: number) => {
     const { data } = await supabase.from('test_medicion')
       .select('fecha, datos').eq('id_definicion', idDef).eq('id_deportista', idDep)
       .order('fecha', { ascending: false })
     const filas = (data || []) as { fecha: string; datos: Record<string, unknown> | null }[]
     setMediciones(filas.map(m => ({ fecha: m.fecha, datos: m.datos || {} })))
+  }
+
+  /** Pasárselo a alguien. Puede llegar ya con quién y con la fecha (desde «Pasar un test» o desde una sesión). */
+  const abrirAtleta = async (t: FilaTest, o: { dep?: number | null; fecha?: string | null } = {}) => {
+    /* Uno del laboratorio se pasa allí: aquí no está su definición. */
+    if (t.lab) {
+      router.push('/laboratorio?test=' + t.id + (o.dep ? '&dep=' + o.dep : '') + (o.fecha ? '&fecha=' + o.fecha : ''))
+      return
+    }
+    setTestActivo(t)
+    setVista('atleta')
+    setEntrada(entradaVacia(t.def))
+    setModoTest(seTomaConReloj(t.def) ? 'campo' : 'mano')
+    setFecha(o.fecha || hoy())
+    const pedido = o.dep && deportistas.some(d => d.id === o.dep) ? o.dep : null
+    const dep = pedido ?? depActivo ?? deportistas[0]?.id ?? null
+    setDepActivo(dep)
+    if (dep) await cargarMediciones(t.id, dep)
+  }
+
+  /** Editarlo: uno del laboratorio, en el laboratorio. */
+  const editar = (t: FilaTest) => (t.lab ? router.push('/laboratorio?editar=' + t.id) : abrirEditor(t))
+
+  /* ---------- VENIR CON UN TEST PEDIDO ----------
+     `/tests-propios?test=7&dep=35&fecha=2026-10-08` abre ese test ya listo para
+     pasárselo. Es por donde llega el día de test de una sesión cuando el test
+     es de aquí: el laboratorio, que es adonde manda la sesión, lo reenvía. Sin
+     esto acababa en «ese test ya no está en tu lista» siendo tuyo. */
+  const pedidoUrl = useRef(false)
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (pedidoUrl.current || cargando) return
+    pedidoUrl.current = true
+    const p = new URLSearchParams(window.location.search)
+    const id = Number(p.get('test')) || Number(p.get('editar'))
+    if (!id) return
+    const t = tests.find(x => x.id === id)
+    if (!t) { decir('mal', 'Ese test ya no está en tu lista.'); return }
+    if (t.lab) { router.replace('/laboratorio?' + p.toString()); return }
+    if (p.get('editar')) { abrirEditor(t); return }
+    abrirAtleta(t, { dep: Number((p.get('dep') || '').split(',')[0]) || null, fecha: p.get('fecha') })
+  }, [cargando, tests])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /* «Pasar un test», arriba: cuál y a quién, y se abre listo. */
+  const [pasarId, setPasarId] = useState<number | ''>('')
+  const [pasarDep, setPasarDep] = useState<number | ''>('')
+  const pasar = () => {
+    const t = tests.find(x => x.id === pasarId)
+    if (t) abrirAtleta(t, { dep: pasarDep || null })
   }
 
   /**
@@ -376,14 +452,16 @@ export default function TestsPropiosPage() {
   const btnSec = 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition'
   const tarjeta = 'bg-gray-900 border border-gray-800 rounded-2xl p-5'
 
-  /* Verde = además puede ocupar la casilla de la app. Violeta = es una
-     referencia tuya igual de buena, solo que sus zonas las cuelgas tú. */
-  const chipAncla = (a: Ancla, deporte: string) => {
-    if (tipoDeAncla(a) === 'seguimiento') return null
-    const puede = puedeFijar(deporte, { nombre: '', unidad: '', ancla: a, formula: [], graf: false }).destino
+  /* Verde = sustituye la de la app (su VAM, su FTP, su CSS). Violeta = un hito
+     para tus zonas propias, igual de bueno, solo que sus zonas las cuelgas tú.
+     Recibe el resultado ENTERO: sin su unidad, `puedeFijar` nunca daba el
+     verde, porque la unidad vacía no se reconoce. */
+  const chipAncla = (r: ResultadoTest, deporte: string) => {
+    if (tipoDeAncla(r.ancla) === 'seguimiento') return null
+    const puede = puedeFijar(deporte, r).destino
     return puede
-      ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-300">⚓ {ANCLAS[a].nombre}</span>
-      : <span className="text-[11px] px-2 py-0.5 rounded bg-violet-500/12 border border-violet-400/40 text-violet-300 font-semibold">◈ Referencia tuya</span>
+      ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-300">⚓ Su {puede.nombre}</span>
+      : <span className="text-[11px] px-2 py-0.5 rounded bg-violet-500/12 border border-violet-400/40 text-violet-300 font-semibold">◈ {r.nombre || 'Hito'} · hito tuyo</span>
   }
 
   if (cargando) return <main className="min-h-screen bg-gray-950 text-gray-500 grid place-items-center">Cargando…</main>
@@ -433,46 +511,92 @@ export default function TestsPropiosPage() {
         {/* ═════════ LISTA ═════════ */}
         {vista === 'lista' && (
           <>
-            <div className="flex justify-between items-start gap-4 mb-6 flex-wrap">
-              <div>
-                <h2 className="text-2xl font-bold mb-1">Tests propios</h2>
-                <p className="text-gray-400 text-sm max-w-xl">
-                  Los tuyos, además de los que trae la aplicación. Defines qué datos se rellenan y qué
-                  sale de ellos, y cada resultado dice para qué sirve.
-                </p>
-              </div>
-              <button onClick={nuevoTest} className={btn}>+ Crear test</button>
+            <div className="mb-5">
+              <h2 className="text-2xl font-bold mb-1">Tests propios</h2>
+              <p className="text-gray-400 text-sm max-w-2xl">
+                Los tuyos, además de los que trae la aplicación. Cada resultado dice para qué sirve: un hito
+                para tus zonas, la VAM, el FTP o el CSS de la app, o solo su gráfica.
+              </p>
             </div>
 
+            {/* LAS DOS COSAS QUE SE VIENEN A HACER AQUÍ, a la vista. Antes el
+                laboratorio era un enlace pequeño en la barra de arriba y pasar un
+                test pedía encontrarlo en la lista. */}
+            <div className="grid gap-3 sm:grid-cols-2 mb-7">
+              <div className="rounded-2xl border border-orange-500/30 bg-orange-500/[0.05] p-5 flex flex-col gap-3">
+                <div>
+                  <p className="font-bold text-[16px]">Crear un test nuevo</p>
+                  <p className="text-gray-400 text-[13px] leading-snug mt-1">
+                    En el Laboratorio: con plantillas —Montreal, curva de lactato, 6×100…—, reloj y repeticiones,
+                    o desde cero. Para apuntar un número sin más, «+ Dato tal cual».
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-wrap mt-auto">
+                  <button onClick={() => router.push('/laboratorio')} className={btn}>🧪 Abrir el Laboratorio</button>
+                  <button onClick={nuevoTest} className={btnSec}
+                    title="Solo datos que se apuntan y resultados: sin plantillas ni reloj">Uno sencillo aquí</button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 flex flex-col gap-3">
+                <div>
+                  <p className="font-bold text-[16px]">Pasar un test</p>
+                  <p className="text-gray-400 text-[13px] leading-snug mt-1">
+                    Uno de los tuyos, a quien elijas: se abre listo para apuntar.
+                  </p>
+                </div>
+                {tests.length === 0 ? (
+                  <p className="text-gray-600 text-[12.5px] mt-auto">Todavía no tienes ninguno: créalo primero.</p>
+                ) : (
+                  <div className="flex gap-2 flex-wrap items-center mt-auto">
+                    <select className={campo + ' flex-1 min-w-[150px]'} value={pasarId} aria-label="Qué test"
+                      onChange={e => setPasarId(e.target.value ? Number(e.target.value) : '')}>
+                      <option value="">Elige el test</option>
+                      {tests.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.lab ? ' · Laboratorio' : ''}</option>)}
+                    </select>
+                    <select className={campo + ' flex-1 min-w-[140px]'} value={pasarDep} aria-label="A quién"
+                      onChange={e => setPasarDep(e.target.value ? Number(e.target.value) : '')}>
+                      <option value="">A quién</option>
+                      {deportistas.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                    </select>
+                    <button onClick={pasar} disabled={!pasarId} className={btn}>Pasar →</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <p className="font-semibold text-[15px] mb-2.5">Tus tests</p>
             {tests.length === 0 ? (
-              <div className={tarjeta + ' text-center py-14'}>
+              <div className={tarjeta + ' text-center py-12'}>
                 <div className="text-4xl mb-3">🧪</div>
                 <p className="text-gray-400 mb-1">Todavía no has creado ninguno.</p>
-                <p className="text-gray-600 text-sm">Un test es unos campos que rellenas y una fórmula que sale de ellos.</p>
+                <p className="text-gray-600 text-sm">Créalo arriba: en el Laboratorio, o uno sencillo aquí.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {tests.map(t => {
-                  const referencias = referenciasDe(t.def)
                   return (
                     <div key={t.id} className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4 flex justify-between items-center gap-4 flex-wrap">
                       <div className="min-w-0">
                         <div className="font-semibold">{t.nombre}
                           <span className="text-gray-500 text-xs font-normal"> · {t.deporte}</span>
+                          {t.lab && <span className="ml-2 align-middle text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/12 text-violet-300 border border-violet-400/30">🧪 Laboratorio</span>}
                           {t.de && <span className="ml-2 align-middle text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-200 border border-teal-400/30">de {t.de}</span>}
                         </div>
                         <div className="text-gray-500 text-xs mt-0.5">
-                          {t.def.campos.length} campo{t.def.campos.length === 1 ? '' : 's'} ·
-                          {' '}produce {t.def.resultados.map(r => r.nombre).join(', ') || '— nada'}
+                          {!t.lab && <>{t.def.campos.length} campo{t.def.campos.length === 1 ? '' : 's'} · </>}
+                          produce {t.produce.join(', ') || '— nada'}
                           {t.mediciones > 0 && ' · ' + t.mediciones + ' medición' + (t.mediciones === 1 ? '' : 'es')}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap justify-end">
-                        {referencias.map(h => <span key={h.indice}>{chipAncla(h.resultado.ancla, t.deporte)}</span>)}
+                        {t.hitos.map((r, k) => <span key={k}>{chipAncla(r, t.deporte)}</span>)}
+                        {/* Uno del laboratorio se pasa y se edita allí: aquí no
+                            está su definición. El botón es el mismo. */}
                         <button onClick={() => abrirAtleta(t)} className={btnSec}>Pasar a un atleta</button>
                         {/* Uno compartido se pasa igual, pero solo su dueño lo edita o lo archiva. */}
                         {!t.de && <>
-                          <button onClick={() => abrirEditor(t)} title="Editar"
+                          <button onClick={() => editar(t)} title={t.lab ? 'Editar en el Laboratorio' : 'Editar'}
                             className="text-gray-500 hover:text-orange-400 px-2 py-1 rounded transition">✏️</button>
                           <button onClick={() => archivar(t)} title="Archivar"
                             className="text-gray-500 hover:text-red-400 px-2 py-1 rounded transition">🗄</button>
@@ -567,7 +691,16 @@ export default function TestsPropiosPage() {
                           mientras se monta la fórmula: si el cronómetro escribe
                           segundos y la fórmula está pensada en minutos, el
                           resultado sale mal y NADA falla. */}
-                      <p className="text-gray-400 text-[11.5px] leading-snug">{pistaDeCampo(c)}</p>
+                      <p className="text-gray-400 text-[11.5px] leading-snug">
+                        {/* La casilla de un dato tal cual se dice: si no, parece
+                            un campo suelto que no usa nadie y dan ganas de borrarlo. */}
+                        {resultadoTalCualDe(def, c.clave) && (
+                          <span className="block text-orange-300/90 mb-0.5">
+                            ✍ Es la casilla del dato «{resultadoTalCualDe(def, c.clave)!.nombre}», que se apunta tal cual.
+                          </span>
+                        )}
+                        {pistaDeCampo(c)}
+                      </p>
                       <button onClick={() => setDef(d => ({ ...d, campos: d.campos.filter((_, k) => k !== i) }))}
                         className="text-gray-600 hover:text-red-400 px-2 shrink-0">×</button>
                     </div>
@@ -585,23 +718,31 @@ export default function TestsPropiosPage() {
                 Cada resultado puede usar los <b className="text-gray-300">anteriores</b>. Uno que no usa
                 ninguno va por su cuenta: está para verlo avanzar en su gráfica.
               </p>
+              <GlosarioParaQueSirve deporte={def.deporte} />
 
               {def.resultados.map((r, i) => {
                 const mal = pegaDe(pegas, 'resultado', i)
                 const previos = def.resultados.slice(0, i).filter(p => p.nombre)
                 const dep = dependencias(r.formula)
+                /* UN DATO TAL CUAL NO ENSEÑA FÓRMULA: se apunta y ya. Si alguien
+                   quiere ponerle una, la pide y se le abre la de siempre. */
+                const talCual = campoTalCual(def, i)
+                const casilla = talCual ? def.campos.find(c => c.clave === talCual) : null
+                const verFormula = !talCual || conFormula.has(i)
                 return (
                   <div key={i} className="bg-[#161f2e] border border-gray-800 rounded-xl p-4 mb-3">
                     <div className="flex justify-between items-center gap-2 mb-3">
                       <span className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded-md bg-gray-800 border border-gray-700 grid place-items-center text-[10.5px] text-gray-400 font-bold">{i + 1}</span>
-                        {dep.refs.length > 0
-                          ? <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-violet-500/14 border border-violet-400/40 text-violet-300 font-semibold">↳ sobre {dep.refs.join(', ')}</span>
-                          : dep.campos.length > 0
-                            ? <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-white/4 border border-gray-700 text-gray-400 font-semibold">suelto · de {dep.campos.join(', ')}</span>
-                            : null}
+                        {talCual
+                          ? <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-orange-500/12 border border-orange-500/35 text-orange-300 font-semibold">✍ tal cual</span>
+                          : dep.refs.length > 0
+                            ? <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-violet-500/14 border border-violet-400/40 text-violet-300 font-semibold">↳ sobre {dep.refs.join(', ')}</span>
+                            : dep.campos.length > 0
+                              ? <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-white/4 border border-gray-700 text-gray-400 font-semibold">suelto · de {dep.campos.join(', ')}</span>
+                              : null}
                       </span>
-                      <button onClick={() => setDef(d => ({ ...d, resultados: d.resultados.filter((_, k) => k !== i) }))}
+                      <button onClick={() => quitarRes(i)} title={talCual ? 'Quitar el dato y su casilla' : 'Quitar'}
                         className="text-gray-600 hover:text-red-400 px-1">×</button>
                     </div>
 
@@ -627,20 +768,14 @@ export default function TestsPropiosPage() {
                       </div>
                       <div className="flex-1 min-w-[220px]">
                         <label className={lab}>¿Para qué sirve?</label>
-                        {/* Agrupado, porque el grupo ES el concepto: todo lo de
-                            arriba es un número del que se pueden colgar zonas,
-                            sea un umbral o una marca suya. */}
-                        <select className={campo} value={r.ancla} onChange={e => parcheR(i, { ancla: e.target.value as Ancla })}>
-                          <optgroup label="Referencias — se les pueden colgar zonas">
-                            {ANCLAS_REFERENCIA.map(k => <option key={k} value={k}>{ANCLAS[k].etiqueta}</option>)}
-                          </optgroup>
-                          <optgroup label="Lo demás">
-                            <option value="nada">{ANCLAS.nada.etiqueta}</option>
-                          </optgroup>
-                        </select>
+                        {/* En grupos, porque el grupo ES el concepto: hito para
+                            tus zonas, sustituir la de la app, o solo su gráfica.
+                            El mismo desplegable que el del laboratorio. */}
+                        <SelectParaQueSirve className={campo} value={r.ancla} deporte={def.deporte}
+                          onChange={a => parcheR(i, { ancla: a })} />
                         {/* Se dice AQUÍ, al crearlo, y no meses después cuando el
                             entrenador vaya a fijar zonas y descubra que no puede. */}
-                        <Cabe deporte={def.deporte} r={r} />
+                        <ExplicaParaQueSirve ancla={r.ancla} deporte={def.deporte} unidad={r.unidad} />
                       </div>
                       <label className="flex items-center gap-2 text-gray-400 text-xs pt-6 cursor-pointer select-none">
                         <input type="checkbox" checked={r.graf} className="accent-orange-500"
@@ -648,6 +783,16 @@ export default function TestsPropiosPage() {
                       </label>
                     </div>
 
+                    {!verFormula ? (
+                      <div className="bg-gray-950/60 border border-dashed border-gray-700 rounded-xl px-3 py-2.5 flex items-center gap-3 flex-wrap text-[12.5px] text-gray-400">
+                        <span>
+                          ✍ Se apunta <b className="text-gray-200">tal cual</b>: al pasarlo verás la casilla
+                          «<span className="text-gray-200">{casilla?.etiqueta || r.nombre}</span>» y escribes el número. Sin fórmula.
+                        </span>
+                        <button onClick={() => setConFormula(s => new Set(s).add(i))}
+                          className="ml-auto text-[11.5px] text-gray-500 hover:text-gray-300 transition">Usar una fórmula</button>
+                      </div>
+                    ) : (<>
                     {/* la fórmula, en bloques */}
                     <div className="bg-gray-950/60 border border-dashed border-gray-700 rounded-xl px-3 py-2.5 flex items-center gap-2 min-h-[48px]">
                       <div className="flex gap-1.5 flex-wrap flex-1">
@@ -715,13 +860,21 @@ export default function TestsPropiosPage() {
                       </Paleta>
                       <CajaNumero onAdd={n => addBloque(i, { t: 'num', v: n })} />
                     </div>
+                    </>)}
 
                     {mal && <p className="text-red-300 text-xs mt-3">{mal}</p>}
                   </div>
                 )
               })}
 
-              <button onClick={addResultado} className={btnSec}>+ Añadir resultado</button>
+              <div className="flex gap-2 flex-wrap items-center">
+                {/* EL CASO MÁS CORRIENTE, A UN CLIC: un número que te dan hecho
+                    —el VT1 del informe de la prueba de esfuerzo— y que solo hay
+                    que apuntar. Crea la casilla y el resultado de una vez. */}
+                <button onClick={addDatoTalCual} className={btnSec}
+                  title="Un número que se apunta tal cual, sin fórmula: el VT1 de un informe, una marca…">+ Dato tal cual</button>
+                <button onClick={addResultado} className={btnSec}>+ Resultado con fórmula</button>
+              </div>
             </div>
 
             <Prueba def={def} />
@@ -838,33 +991,9 @@ export default function TestsPropiosPage() {
 // Trozos de pantalla
 // ============================================================
 
-/**
- * Qué va a poder hacer este resultado, dicho al crearlo y no meses después.
- *
- * SON DOS COSAS DISTINTAS y la línea tiene que dejarlo claro: colgarle TUS
- * zonas lo puede hacer cualquier referencia; ocupar la casilla de la app -la
- * VAM, el FTP, el CSS- solo la que mida esa misma magnitud.
- */
-function Cabe({ deporte, r }: { deporte: string; r: ResultadoTest }) {
-  /* EL CASO POR DEFECTO TAMBIÉN SE EXPLICA. «Solo seguimiento» es lo que sale
-     sin tocar nada, así que el camino más normal -creas un resultado y no bajas
-     el desplegable- daba algo que no sirve para colgar zonas sin decirlo en
-     ninguna parte: te enterabas en la otra pantalla, al encontrar el hueco
-     vacío. Callarse aquí era callarse justo donde había que hablar. */
-  if (tipoDeAncla(r.ancla) === 'seguimiento') {
-    return (
-      <p className="text-gray-500 text-[11px] mt-1.5 leading-snug">
-        ◦ Solo para su gráfica. Para colgarle zonas, márcalo como referencia.
-      </p>
-    )
-  }
-  const v = puedeFijar(deporte, r)
-  return v.destino
-    ? <p className="text-green-300/80 text-[11px] mt-1.5 leading-snug">⚓ Podrás colgarle zonas y además fijar su {v.destino.nombre}.</p>
-    : <p className="text-violet-300/75 text-[11px] mt-1.5 leading-snug">
-        ◈ Podrás colgarle zonas propias. <span className="text-gray-500">{v.motivo}</span>
-      </p>
-}
+/* Aquí vivía `Cabe`, la línea de debajo del desplegable «¿Para qué sirve?». Ya
+   no hace falta: la dice components/ParaQueSirve, la misma en el laboratorio,
+   y explica cada opción en vez de solo decir si fija o no. */
 
 /**
  * Que un resultado propio ocupe la casilla de la app: su VAM, su FTP, su CSS.
@@ -931,8 +1060,8 @@ function FijarConEsto({ def, idDefinicion, idDeportista, datos, fecha, avisar }:
             </span>
           ))}
           <span className="text-gray-400">
-            {soloTuyas.length === 1 ? ' es una referencia tuya' : ' son referencias tuyas'}.
-            Cuélgales zonas en <span className="text-gray-300">Herramientas → Zonas propias</span>.
+            {soloTuyas.length === 1 ? ' es un hito tuyo' : ' son hitos tuyos'}.
+            Úsalos en una clasificación de <span className="text-gray-300">Herramientas → Zonas propias</span>.
           </span>
         </div>
       )}
@@ -1019,7 +1148,9 @@ function Prueba({ def }: { def: DefinicionTest }) {
         {def.campos.map(c => (
           <div key={c.clave} style={{ maxWidth: esSerie(c) ? 230 : 150 }}>
             <label className="block text-gray-400 text-[11.5px] mb-1 font-mono">
-              {c.clave}{esSerie(c) && <span className="text-gray-600"> ×{vecesDe(c)}</span>}
+              {/* La de un dato tal cual, con el nombre del dato: su clave
+                  («dato_1_valor») es de la máquina, no del entrenador. */}
+              {resultadoTalCualDe(def, c.clave)?.nombre ?? c.clave}{esSerie(c) && <span className="text-gray-600"> ×{vecesDe(c)}</span>}
             </label>
             {/* Para probar, la serie entera en una casilla separada por espacios:
                 montar aquí seis recuadros sería pedirle al entrenador que pase el

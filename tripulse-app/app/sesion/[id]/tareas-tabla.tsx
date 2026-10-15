@@ -25,12 +25,15 @@ import {
 } from '@/lib/copiar-tarea'
 import { referenciaDeZona, cargarReferencias, ritmoObjetivoTexto, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
-import { leerZonas, type ZonaEntrenador } from '@/lib/zonas-entrenador'
-import { testDeFila, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
+import { leerClasificaciones, type Clasificacion, type Limite } from '@/lib/zonas-entrenador'
+import { testDeFila, normDeporte, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
 import {
-  referenciasDe, buscarReferencia, zonasDe, buscarZona, rangoInicial, acotar,
-  tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia, type Referencia, type ZonaOfrecida,
+  fuentesDe, buscarFuente, esClasificacion, zonasDe, buscarZona, rangoInicial, acotar,
+  tramoDe, textoTramo, copiaPrescrita, leerCopia, objetivoDeCopia,
+  type Fuente, type FuenteClasificacion, type ZonaOfrecida,
 } from '@/lib/prescripcion-zona'
+import { buscarHito, hitosDisponibles } from '@/lib/hitos'
+import { evaluar, avisosDeZona, explicarLimites, type Evaluacion } from '@/lib/clasificaciones-zonas'
 import { aGuardar, intensidadSinSitio, intensidadGuardada, queSeMide } from '@/lib/intensidad-prescrita'
 import { MODALIDADES_CARDIO, modalidadDe, metrosSeQuedanFuera, textoCardio, cuantoPorSerie, valorCardioDeFila as valorCardioDe } from '@/lib/cardio-fuerza'
 import { vecesDe, hayBloques, bloquesDe } from '@/lib/bloques-tarea'
@@ -184,7 +187,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      Solo se piden si el atleta está en Zonas 2: en clásico no hay nada que
      elegir y serían dos consultas por cada apertura de sesión para nada. */
   const [testsPropios, setTestsPropios] = useState<TestConMediciones[]>([])
-  const [zonasMias, setZonasMias] = useState<ZonaEntrenador[]>([])
+  /* Sus clasificaciones de zonas (y las de su dirección), cada una con sus zonas. */
+  const [clasificaciones, setClasificaciones] = useState<Clasificacion[]>([])
+  /* Quién soy: para decir «compartida» en las que son de la dirección. */
+  const [yo, setYo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [tareasGuardadas, setTareasGuardadas] = useState<any[]>([])
   // Aquí vivía el estado del modal de edición (zona, series, descanso, comentario,
@@ -275,24 +281,30 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     if (refs.sistema === 2) cargarLoDelEntrenador()
   }
 
-  /** Los tests y las zonas del entrenador de este atleta. */
+  /** Los tests y las clasificaciones de zonas del entrenador de este atleta. */
   const cargarLoDelEntrenador = async () => {
     const user = await usuarioActual()
     if (!user) return
+    setYo(user.id)
     /* Los tuyos y los compartidos en la dirección (lib/compartido-direccion):
        un director prescribe con los tests y las zonas del entrenador del
        atleta, y el entrenador con los de su director. */
     const duenos = await duenosCompartidos(user.id)
-    const [{ data: defs }, { data: zs }] = await Promise.all([
+    const [{ data: defs }, { data: cs }, { data: zs }] = await Promise.all([
       supabase.from('test_definicion').select('*').in('id_entrenador', duenos).eq('archivado', false),
+      supabase.from('zona_clasificacion').select('*').in('id_entrenador', duenos).eq('archivada', false).order('orden'),
       supabase.from('zona_entrenador').select('*').in('id_entrenador', duenos).eq('archivada', false).order('orden'),
     ])
-    /* Si una zona compartida se llama igual que una tuya en el mismo deporte,
-       manda la tuya: dos «Z3x» en el desplegable no se distinguirían. */
-    const filasZ = (zs || []) as { id_entrenador: string; sigla: string; deporte: string }[]
-    const mias = filasZ.filter(z => z.id_entrenador === user.id)
-    const otras = filasZ.filter(z => z.id_entrenador !== user.id && !mias.some(m => m.sigla === z.sigla && m.deporte === z.deporte))
-    setZonasMias(leerZonas([...mias, ...otras]))
+    /* LAS TUYAS PRIMERO y después las de tu dirección, cada grupo en su orden.
+       Las sueltas (zonas sin clasificación que guardó la app publicada) no se
+       ofrecen hasta que se guarden en Zonas propias. */
+    const suya = (x: { id_entrenador?: string }) => x.id_entrenador === user.id
+    const filasC = (cs || []) as { id_entrenador?: string }[]
+    const filasZ = (zs || []) as { id_entrenador?: string }[]
+    setClasificaciones([
+      ...leerClasificaciones(filasC.filter(suya), filasZ.filter(suya)),
+      ...leerClasificaciones(filasC.filter(x => !suya(x)), filasZ.filter(x => !suya(x))),
+    ].filter(c => !c.suelta))
 
     const ids = (defs || []).map((d: { id: number }) => d.id)
     /* Las mediciones de ESTE atleta en una consulta, no una por test. */
@@ -425,12 +437,14 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const getRef = (codigo: string | null | undefined, disciplina: string) =>
     referenciaDeZona(codigo, disciplina, tests, fcMax, fcReposo)
 
-  /* ---------- la cadena referencia → zona → % ----------
+  /* ---------- la cadena deporte → de dónde → zona → % ----------
      Solo vive en Zonas 2. En clásico estas funciones devuelven listas vacías y
-     la fila se pinta como siempre. */
+     la fila se pinta como siempre. «De dónde» son las zonas de la app (sobre
+     su VAM, su FTP, su CSS) o una de las clasificaciones del entrenador. */
 
-  /** «entre 65 y 75 %», «hasta 65 %», «CSS +10 a +20 s». */
+  /** «entre 65 y 75 %», «hasta 65 %», «CSS +10 a +20 s». Vacío si se manda entera. */
   const textoRango = (z: ZonaOfrecida, seg: boolean): string => {
+    if (!z.rango) return ''
     const u = seg ? ' s' : ' %'
     const [lo, hi] = z.rango
     if (lo === null && hi === null) return ''
@@ -444,28 +458,71 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const SIN_FLECHAS = ' [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none' +
     ' [&::-webkit-outer-spin-button]:appearance-none'
 
-  const refsDeFila = (f: FilaResistencia): Referencia[] =>
-    sistema === 2 && f.disciplina ? referenciasDe(f.disciplina, tests, testsPropios) : []
+  const fuentesDeFila = (f: FilaResistencia): Fuente[] =>
+    sistema === 2 && f.disciplina ? fuentesDe(f.disciplina, tests, testsPropios, clasificaciones) : []
 
-  const refDeFila = (f: FilaResistencia): Referencia | null =>
-    buscarReferencia(refsDeFila(f), f.ref)
+  const fuenteDeFila = (f: FilaResistencia): Fuente | null =>
+    buscarFuente(fuentesDeFila(f), f.ref)
 
   const zonasDeFila = (f: FilaResistencia): ZonaOfrecida[] =>
-    zonasDe(refDeFila(f), zonasMias)
+    zonasDe(fuenteDeFila(f))
 
   const zonaDeFila = (f: FilaResistencia): ZonaOfrecida | null =>
     buscarZona(zonasDeFila(f), f.zona)
 
+  /** Lo que se lee en el desplegable: «Las de la app (su VAM)», «Laboratorio · compartida». */
+  const etiquetaFuente = (fu: Fuente): string =>
+    esClasificacion(fu)
+      ? fu.etiqueta + (yo && fu.clasificacion.idEntrenador && fu.clasificacion.idEntrenador !== yo ? ' · compartida' : '')
+        + (fu.medida ? '' : ' · le faltan hitos')
+      : fu.tipo === 'app'
+        ? 'Las de la app (' + fu.etiqueta.replace(/^Su /, 'su ') + ')' + (fu.medida ? '' : ' · sin test')
+        : fu.etiqueta
+
+  /** Cómo le queda esa clasificación a ESTE atleta: para marcar con ⚠ lo que no le encaja. */
+  const evaluacionDe = (fu: Fuente | null): Evaluacion | null =>
+    esClasificacion(fu) ? evaluar(fu.clasificacion, hitosDisponibles(fu.deporte, testsPropios), tests, testsPropios) : null
+
+  /** De dónde sale una zona de una clasificación: «entre su VT1 + 15 % y su VT2 − 5 %». */
+  const explicacionDe = (fu: FuenteClasificacion, z: ZonaOfrecida): string => {
+    const con = (l?: Limite | null) => (l ? { ...l, corto: buscarHito(fu.hitos, l.ref)?.corto ?? '' } : null)
+    return explicarLimites(con(z.desde), con(z.hasta))
+  }
+
+  /* LA ÚLTIMA QUE USASTE CON ESTE ATLETA EN ESTE DEPORTE sale elegida en las
+     filas nuevas. Se guarda en este navegador: es una comodidad, no un dato, y
+     si se pierde solo cuesta elegirla otra vez. */
+  const claveFuente = (deporte: string) => 'tripulse:fuente:' + deportistaId + ':' + normDeporte(deporte)
+  const fuenteRecordada = (deporte: string): string => {
+    try { return localStorage.getItem(claveFuente(deporte)) || '' } catch { return '' }
+  }
+  const recordarFuente = (deporte: string, id: string) => {
+    try { if (deporte && id) localStorage.setItem(claveFuente(deporte), id) } catch { /* sin almacenamiento: no pasa nada */ }
+  }
+
+  /** Con qué fuente nace una fila de ese deporte: la recordada, o la única que haya. */
+  const fuenteInicial = (deporte: string, soloRecordada = false): string => {
+    if (sistema !== 2 || !deporte) return ''
+    const posibles = fuentesDe(deporte, tests, testsPropios, clasificaciones)
+    const recordada = fuenteRecordada(deporte)
+    if (recordada && posibles.some(p => p.id === recordada)) return recordada
+    return !soloRecordada && posibles.length === 1 ? posibles[0].id : ''
+  }
+
   /**
    * El objetivo de una fila, venga de donde venga.
    *
-   * Con referencia elegida se calcula con ELLA; sin ella, por el camino de
-   * siempre. Así una tarea de antes de todo esto, o la de un atleta en clásico,
-   * sigue enseñando exactamente el mismo número.
+   * Con fuente elegida se calcula con ELLA; sin ella, por el camino de siempre.
+   * Así una tarea de antes de todo esto, o la de un atleta en clásico, sigue
+   * enseñando exactamente el mismo número. Una zona de una clasificación pasa
+   * por su copia: es el MISMO cálculo que verá el atleta en su briefing.
    */
   const objetivoDeFila = (f: FilaResistencia): string => {
-    const r = refDeFila(f)
+    const r = fuenteDeFila(f)
     if (!r) return getRef(f.zona, f.disciplina)?.ritmo || ''
+    if (esClasificacion(r)) {
+      return objetivoDeCopia(copiaPrescrita(r, zonaDeFila(f), f.pctMin ?? null, f.pctMax ?? null), f.disciplina, tests, testsPropios)
+    }
     return textoTramo(tramoDe(r, f.pctMin ?? null, f.pctMax ?? null))
   }
 
@@ -491,22 +548,25 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   /** Al cambiar de deporte se suelta lo que colgaba de él. */
   const cambiarDisciplina = (i: number, disciplina: string) => {
     if (sistema !== 2) { updateR(i, 'disciplina', disciplina); return }
-    /* SI SOLO HAY UNA REFERENCIA, se elige sola: desplegar para elegir lo único
-       que hay es un clic de más en cada tarea de cada sesión. */
-    const posibles = disciplina ? referenciasDe(disciplina, tests, testsPropios) : []
+    /* SI SOLO HAY UNA, se elige sola: desplegar para elegir lo único que hay
+       es un clic de más en cada tarea de cada sesión. Y si con este atleta y
+       este deporte ya usaste una, esa. */
     parcheR(i, {
       disciplina,
-      ref: posibles.length === 1 ? posibles[0].id : '',
+      ref: fuenteInicial(disciplina),
       zona: '', pctMin: null, pctMax: null,
     })
   }
 
-  const cambiarRef = (i: number, ref: string) =>
+  const cambiarRef = (i: number, ref: string) => {
+    const f = filasR[i]
+    if (f?.disciplina) recordarFuente(f.disciplina, ref)
     parcheR(i, { ref, zona: '', pctMin: null, pctMax: null })
+  }
 
   /** Elegir zona trae su rango entero: es lo que se manda si no se afina. */
   const cambiarZonaDe = (i: number, f: FilaResistencia, sigla: string) => {
-    const z = buscarZona(zonasDe(refDeFila(f), zonasMias), sigla)
+    const z = buscarZona(zonasDe(fuenteDeFila(f)), sigla)
     const ini = rangoInicial(z)
     parcheR(i, { esTecnica: false, tecnicaId: '', zona: sigla, pctMin: ini?.[0] ?? null, pctMax: ini?.[1] ?? null })
   }
@@ -587,7 +647,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
    * discrepen, el que manda deja de estar claro.
    */
   const filaConRango = (f: FilaResistencia): FilaResistencia => {
-    if (sistema !== 2 || !f.ref || !f.zona) return f
+    if (sistema !== 2) return f
+    /* Sin fuente fijada en la franja, la última que usaste con este atleta en
+       ese deporte. Solo si la zona con la que nace la fila (la de la sesión)
+       está en ella: una fila «Laboratorio → AEL» no existe. */
+    if (!f.ref && f.disciplina) {
+      const r = fuenteInicial(f.disciplina, true)
+      const con = r ? { ...f, ref: r } : null
+      if (con && (!f.zona || zonaDeFila(con))) f = con
+    }
+    if (!f.ref || !f.zona) return f
     const ini = rangoInicial(zonaDeFila(f))
     return ini ? { ...f, pctMin: ini[0], pctMax: ini[1] } : f
   }
@@ -766,9 +835,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
        Sin referencia elegida va a null, que significa «resuélvela por
        catálogo»: exactamente lo que hacían las 450 tareas de antes de esto y
        lo que siguen haciendo las de un atleta en clásico. */
-    const copia = sistema === 2 && !f.esTecnica
-      ? copiaPrescrita(refDeFila(f), zonaDeFila(f), f.pctMin ?? null, f.pctMax ?? null)
+    let copia = sistema === 2 && !f.esTecnica
+      ? copiaPrescrita(fuenteDeFila(f), zonaDeFila(f), f.pctMin ?? null, f.pctMax ?? null)
       : null
+    /* SI LA CADENA NO SE PUEDE REHACER Y LA FILA DICE LO MISMO QUE SU COPIA, la
+       copia se conserva. Pasa al editar una tarea cuya clasificación se
+       archivó, o si se guarda antes de que lleguen las del entrenador:
+       recalcularla daría null, y la tarea perdería su zona y caería al
+       respaldo sin que nadie lo hubiera pedido. */
+    if (!copia && sistema === 2 && !f.esTecnica && f.copiaGuardada) {
+      const g = leerCopia(f.copiaGuardada)
+      if (g && g.sigla === f.zona && (g.fuente || g.refId) === (f.ref || '')) copia = g
+    }
 
     const campos = {
       zona_entrenamiento: f.zona || null,
@@ -1824,15 +1902,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <option value="">Sin fijar</option>
                     <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
                   </select>)}
-                {/* La referencia por defecto. Solo en Zonas 2 y solo cuando ya se
-                    sabe de qué deporte van a ser las filas: sin deporte no hay
-                    referencias que ofrecer. */}
-                {sistema === 2 && disciplinaPorDefecto() && rotulado('Referencia',
-                  <select value={defectos.resistencia.ref || ''} className={campoDefecto(defectos.resistencia.ref) + ' max-w-[220px]'}
+                {/* De dónde salen las zonas por defecto: las de la app o una
+                    clasificación tuya. Solo en Zonas 2 y solo cuando ya se sabe
+                    de qué deporte van a ser las filas: sin deporte no hay nada
+                    que ofrecer. */}
+                {sistema === 2 && disciplinaPorDefecto() && rotulado('Clasificación',
+                  <select value={defectos.resistencia.ref || ''} className={campoDefecto(defectos.resistencia.ref) + ' max-w-[240px]'}
                     onChange={e => cambiarDefecto('resistencia', 'ref', e.target.value)}>
                     <option value="">Sin fijar</option>
-                    {referenciasDe(disciplinaPorDefecto(), tests, testsPropios).map(r => (
-                      <option key={r.id} value={r.id}>{r.etiqueta}{r.medida ? '' : ' · sin test'}</option>
+                    {fuentesDe(disciplinaPorDefecto(), tests, testsPropios, clasificaciones).map(r => (
+                      <option key={r.id} value={r.id}>{etiquetaFuente(r)}</option>
                     ))}
                   </select>)}
                 {rotulado('Unidad',
@@ -1920,7 +1999,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     Mantenerla sería enseñar dos veces lo mismo a un palmo, que es
                     como acaban discrepando. Y de paso la fila entra sin cortarse. */}
                 <th className={'text-left py-2 px-1.5 ' + (sistema === 2 ? 'w-[430px]' : 'w-[300px]')}>
-                  {sistema === 2 ? 'Deporte · referencia · zona' : 'Zona · disciplina'}
+                  {sistema === 2 ? 'Deporte · clasificación · zona' : 'Zona · disciplina'}
                 </th>
                 <th className="text-left py-2 px-1.5 min-w-[400px]">Prescripción</th>
                 <th className="text-left py-2 px-1.5 w-[100px]">Descanso</th>
@@ -1945,11 +2024,21 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         como estaba — ahí no hay referencia que elegir. */}
                     <td className="py-1.5 px-1.5">
                       {sistema === 2 ? (() => {
-                        const refOfr = refDeFila(f)
+                        const refOfr = fuenteDeFila(f)
                         const zonasOfr = zonasDeFila(f)
                         const zOfr = zonaDeFila(f)
-                        const seg = refOfr?.modo === 'seg'
-                        const propias = zonasOfr.filter(z => z.origen === 'propia')
+                        const clasif = esClasificacion(refOfr) ? refOfr : null
+                        const seg = !!refOfr && !esClasificacion(refOfr) && refOfr.modo === 'seg'
+                        /* Cómo le queda esa clasificación a ESTE atleta: lo que no
+                           le encaja sale con ⚠, y se puede mandar igual. */
+                        const ev = evaluacionDe(refOfr)
+                        const avisosZ = zOfr ? avisosDeZona(ev, zOfr.sigla) : []
+                        /* La de un hito se afina; la que va de un hito a otro, o
+                           sin techo o suelo, se manda entera. */
+                        const entera = !!clasif && !!zOfr && !zOfr.rango
+                        /* Una fila que vuelve de una tarea cuya clasificación ya no
+                           está: se enseña lo que tenía, y al guardar se conserva. */
+                        const guardada = !refOfr && f.ref && f.copiaGuardada ? leerCopia(f.copiaGuardada) : null
                         return (
                           <div className="flex flex-col gap-1.5 w-[414px] max-w-full">
                             <div className="flex gap-1.5">
@@ -1959,15 +2048,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                 <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
                               </select>
                               <select value={f.ref || ''} onChange={e => cambiarRef(i, e.target.value)}
-                                disabled={!f.disciplina} title="De qué número cuelga esta tarea"
+                                disabled={!f.disciplina} title="De dónde salen las zonas de esta tarea"
                                 className={campoBase + ' flex-1 min-w-0 disabled:opacity-40'}>
-                                <option value="">Referencia</option>
-                                {/* «sin test» va en la propia etiqueta: la referencia se
-                                    ofrece igual —de ella cuelgan las zonas— pero conviene
-                                    saber por qué luego no sale ningún ritmo. */}
-                                {refsDeFila(f).map(r => (
-                                  <option key={r.id} value={r.id}>{r.etiqueta}{r.medida ? '' : ' · sin test'}</option>
+                                <option value="">Clasificación</option>
+                                {/* «sin test» va en la propia etiqueta: se ofrece igual
+                                    —de ella cuelgan las zonas— pero conviene saber por
+                                    qué luego no sale ningún ritmo. */}
+                                {fuentesDeFila(f).map(r => (
+                                  <option key={r.id} value={r.id}>{etiquetaFuente(r)}</option>
                                 ))}
+                                {guardada && <option value={f.ref}>{(guardada.clasificacion || guardada.refEtiqueta || 'La de antes') + ' · ya no está'}</option>}
                               </select>
                             </div>
                             <div className="flex gap-1.5 items-center">
@@ -1991,43 +2081,63 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                         </optgroup>
                                       )
                                     })
-                                  : propias.length > 0 && (
-                                      <optgroup label="Tuyas">
-                                        {propias.map(z => <option key={z.sigla} value={z.sigla}>{z.sigla} · {z.nombre}</option>)}
+                                  : clasif && zonasOfr.length > 0 && (
+                                      <optgroup label={clasif.etiqueta}>
+                                        {zonasOfr.map(z => (
+                                          <option key={z.sigla} value={z.sigla}>
+                                            {avisosDeZona(ev, z.sigla).length ? '⚠ ' : ''}{z.sigla} · {z.nombre}
+                                          </option>
+                                        ))}
                                       </optgroup>
                                     )}
+                                {guardada && f.zona && !zOfr && <option value={f.zona}>{f.zona} · {guardada.nombre}</option>}
                               </select>
                               {/* El tramo se AFINA dentro de la zona, no se pisa: un AEL
                                   al 60 % no es un AEL, y su RPE y su nivel —de los que
                                   salen la carga y la altura de la barra del dibujo—
                                   dirían una cosa mientras el ritmo mandado dice otra. */}
-                              <div className={'flex items-center gap-1 flex-none ' + (zOfr ? '' : 'opacity-40')}>
-                                <input type="number" value={f.pctMin ?? ''} disabled={!zOfr}
-                                  onChange={e => updateR(i, 'pctMin', e.target.value === '' ? null : Number(e.target.value))}
-                                  onBlur={() => soltarPct(i, 'pctMin')}
-                                  title={zOfr ? textoRango(zOfr, seg) : ''}
-                                  /* Sin las flechitas del navegador: se comían el tercer
-                                     dígito y «120» se leía «12». */
-                                  className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
-                                <span className="text-gray-600 text-xs">–</span>
-                                <input type="number" value={f.pctMax ?? ''} disabled={!zOfr}
-                                  onChange={e => updateR(i, 'pctMax', e.target.value === '' ? null : Number(e.target.value))}
-                                  onBlur={() => soltarPct(i, 'pctMax')}
-                                  title={zOfr ? textoRango(zOfr, seg) : ''}
-                                  className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
-                                <span className="text-gray-500 text-xs w-3">{seg ? 's' : '%'}</span>
-                              </div>
+                              {entera ? (
+                                <span className="flex-none w-[142px] text-center text-[11.5px] text-gray-500"
+                                  title="Va de un hito a otro, o no tiene techo o suelo: se manda entera">entera</span>
+                              ) : (
+                                <div className={'flex items-center gap-1 flex-none ' + (zOfr ? '' : 'opacity-40')}>
+                                  <input type="number" value={f.pctMin ?? ''} disabled={!zOfr}
+                                    onChange={e => updateR(i, 'pctMin', e.target.value === '' ? null : Number(e.target.value))}
+                                    onBlur={() => soltarPct(i, 'pctMin')}
+                                    title={zOfr ? textoRango(zOfr, seg) : ''}
+                                    /* Sin las flechitas del navegador: se comían el tercer
+                                       dígito y «120» se leía «12». */
+                                    className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
+                                  <span className="text-gray-600 text-xs">–</span>
+                                  <input type="number" value={f.pctMax ?? ''} disabled={!zOfr}
+                                    onChange={e => updateR(i, 'pctMax', e.target.value === '' ? null : Number(e.target.value))}
+                                    onBlur={() => soltarPct(i, 'pctMax')}
+                                    title={zOfr ? textoRango(zOfr, seg) : ''}
+                                    className={campoBase + ' w-[58px] tabular-nums text-center' + SIN_FLECHAS} />
+                                  <span className="text-gray-500 text-xs w-3">{seg ? 's' : '%'}</span>
+                                </div>
+                              )}
                             </div>
                             {zOfr && (
-                              <span className="text-[10.5px] text-gray-600 leading-none">
-                                {textoRango(zOfr, seg)}
+                              <span className="text-[10.5px] text-gray-600 leading-snug">
+                                {clasif
+                                  ? explicacionDe(clasif, zOfr) + ' · RPE ' + String(Math.round(zOfr.rpe * 10) / 10).replace('.', ',')
+                                  : textoRango(zOfr, seg)}
                                 {/* Lo que antes vivía en «Ref. de la zona». Las
                                     pulsaciones y el RPE no salen de la referencia
                                     elegida sino de la zona, así que siguen valiendo
                                     aunque el atleta no tenga el test hecho. */}
-                                {ref?.fc && ' · ' + ref.fc}
-                                {ref?.rpe && ' · ' + ref.rpe}
-                                {refOfr && !refOfr.medida && ' · sin su test no hay ritmo'}
+                                {!clasif && ref?.fc && ' · ' + ref.fc}
+                                {!clasif && ref?.rpe && ' · ' + ref.rpe}
+                                {refOfr && !refOfr.medida && (clasif ? ' · le faltan hitos: sale sin ritmo' : ' · sin su test no hay ritmo')}
+                              </span>
+                            )}
+                            {avisosZ.map((a, k) => (
+                              <span key={k} className="text-[10.5px] leading-snug text-[#ffb4b8]">⚠ {a.titulo}. {a.detalle}</span>
+                            ))}
+                            {guardada && (
+                              <span className="text-[10.5px] leading-snug text-amber-300/80">
+                                Su clasificación ya no está: al guardar se queda como estaba.
                               </span>
                             )}
                           </div>
