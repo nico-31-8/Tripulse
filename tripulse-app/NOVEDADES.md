@@ -14,6 +14,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 16 de octubre de 2026 · Recorridos de las partes avanzadas
+
+Las partes avanzadas ya tienen su recorrido: corto, y solo cuando lo pides,
+con el botón **?** de su pantalla o desde **🎓 Tutoriales**, donde están todas.
+- Hay uno por pantalla: las herramientas de la sesión, los bloques y la vista
+  de semana, el planificador, los grupos, el wellness, la carga, el volumen, el
+  SICAT, los índices, la comunicación, la biblioteca de fuerza, el asistente,
+  los tests y las zonas propias, los cobros, el perfil y la papelera.
+- En una sesión, el botón ? te pregunta qué quieres ver: **lo básico** o **las
+  herramientas** (bloques, serie a serie, días de test, bricks, nutrición…).
+- Cada recorrido enseña solo lo que hay en tu pantalla: el resumen del brick
+  sale en un brick, y «Corregir», en una sesión hecha.
+- **Cinco consejos más**, en ámbar como los otros: a quién le faltan sus días
+  en el planificador, quién no ha rellenado hoy el wellness (a partir de
+  mediodía), las sesiones hechas sin su RPE, el feedback que llevas dos días
+  sin leer y lo que te deben de meses anteriores.
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 16 de octubre de 2026 · Consejos según los datos de cada deportista
 
 Además del recorrido, la app te avisa en ámbar de lo que se puede mejorar en

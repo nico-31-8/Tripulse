@@ -57,7 +57,7 @@ export default function AsistenteEntrenador() {
     <main className="h-screen bg-gray-950 text-white flex flex-col">
       <header className="flex items-center gap-3 px-6 py-4 border-b border-gray-800 flex-shrink-0">
         <div className="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center text-lg flex-shrink-0">🤖</div>
-        <div className="min-w-0">
+        <div className="min-w-0" data-guia="asis.deportista">
           <p className="font-semibold leading-tight">Asistente del entrenador</p>
           <p className="text-gray-500 text-xs truncate">Copiloto para {dep?.nombre} · propone, tú decides</p>
         </div>

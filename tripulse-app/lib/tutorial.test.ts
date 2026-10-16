@@ -4,7 +4,8 @@ import path from 'node:path'
 import {
   CAMINO, ZONAS, pasosDeRecorrido, guiaAutomatica, arrancaSola, zonaDeRuta, zonaAlEntrar,
   mostrarOferta, siguienteDelCamino, rutaDeZona, esCuentaNueva, rellenar, siguienteParada,
-  progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, type Progreso,
+  progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, AVANZADAS, GRUPOS_AVANZADOS, esAvanzada, opcionesDeAyuda,
+  type Progreso, type ZonaTutorial,
 } from './tutorial'
 import { ANCLAS_DE_CONSEJOS } from './consejos'
 
@@ -63,7 +64,7 @@ describe('las anclas existen en las pantallas', () => {
   const todo = fuentes.join('\n')
 
   const anclas = new Set<string>()
-  for (const z of CAMINO) for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) if (p.ancla) anclas.add(p.ancla)
+  for (const z of [...CAMINO, ...AVANZADAS]) for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) if (p.ancla) anclas.add(p.ancla)
 
   for (const a of anclas) {
     it(a, () => {
@@ -154,8 +155,10 @@ describe('qué pantalla es cada zona', () => {
     expect(zonaDeRuta('/tests/dirigir')).toBeNull()
     expect(zonaDeRuta('/tests')).toBeNull()
     expect(zonaDeRuta('/planificacion-visual')).toBeNull()
-    expect(zonaDeRuta('/planificacion-visual/14/bloques')).toBeNull()
-    expect(zonaDeRuta('/carga')).toBeNull()
+    expect(zonaDeRuta('/grupo/abc/dirigir')).toBeNull()
+    expect(zonaDeRuta('/grupo/abc/dia')).toBeNull()
+    expect(zonaDeRuta('/grupo/abc/test')).toBeNull()
+    expect(zonaDeRuta('/laboratorio')).toBeNull()
   })
 
   it('en el Panel, la bienvenida va antes que el propio Panel', () => {
@@ -243,5 +246,70 @@ describe('seguir el camino a mano', () => {
 
   it('a una cuenta nueva le sigue saliendo solo lo que no ha visto', () => {
     expect(queArrancaAlEntrar('/deportistas', null, prog(), true).zona).toBe('deportistas')
+  })
+})
+
+describe('las zonas avanzadas (fase 3)', () => {
+  it('cada zona está en el camino o entre las avanzadas, y solo una vez', () => {
+    const todas = Object.keys(ZONAS) as ZonaTutorial[]
+    for (const z of todas) expect(CAMINO.includes(z) !== AVANZADAS.includes(z)).toBe(true)
+    expect(new Set(AVANZADAS).size).toBe(AVANZADAS.length)
+    expect(GRUPOS_AVANZADOS.flatMap(g => g.zonas)).toEqual(AVANZADAS)
+  })
+
+  it('tienen pasos con título, texto y ancla, y ninguna salida', () => {
+    for (const z of AVANZADAS) {
+      expect(ZONAS[z].id).toBe(z)
+      expect(ZONAS[z].salida).toBeUndefined()
+      for (const p of ZONAS[z].pasos) {
+        expect(p.ancla).toBeTruthy()
+        expect(p.titulo.trim() && p.texto.trim()).toBeTruthy()
+        expect(p.accion).toBeFalsy()
+      }
+    }
+  })
+
+  /* Decidido el 15-10-2026: las avanzadas, solo con el botón ?. */
+  it('nunca arrancan solas, ni a una cuenta nueva', () => {
+    for (const z of AVANZADAS) expect(arrancaSola(z, prog(), true)).toBe(false)
+    expect(zonaAlEntrar('/carga', prog(), true)).toBeNull()
+    expect(zonaAlEntrar('/planificacion-visual/14/bloques', prog(), true)).toBeNull()
+    expect(esAvanzada('carga')).toBe(true)
+    expect(esAvanzada('sesion')).toBe(false)
+  })
+
+  it('pedidas desde la lista, sí arrancan al llegar', () => {
+    expect(queArrancaAlEntrar('/carga', { zona: 'carga', camino: false }, prog(), false).zona).toBe('carga')
+  })
+
+  it('qué pantalla es cada una', () => {
+    expect(zonaDeRuta('/planificacion-visual/14/bloques')).toBe('bloques')
+    expect(zonaDeRuta('/planificacion-visual/14/semana/2026-10-12')).toBe('semana')
+    expect(zonaDeRuta('/grupo/7b0d')).toBe('grupo')
+    expect(zonaDeRuta('/eco')).toBe('sicat')
+    expect(zonaDeRuta('/fuerza')).toBe('biblioteca')
+    expect(zonaDeRuta('/wellness-entrenador')).toBe('wellness')
+    expect(zonaDeRuta('/wellness/14')).toBeNull()
+  })
+
+  it('el botón ? de la sesión ofrece lo básico y las herramientas', () => {
+    expect(opcionesDeAyuda('/sesion/880')).toEqual(['sesion', 'herramientas'])
+    expect(opcionesDeAyuda('/carga')).toEqual(['carga'])
+    expect(opcionesDeAyuda('/tests')).toEqual([])
+  })
+
+  it('dónde se abre cada una desde la lista', () => {
+    expect(rutaDeZona('carga', null)).toBe('/carga')
+    expect(rutaDeZona('sicat', null)).toBe('/eco')
+    expect(rutaDeZona('bloques', null)).toBeNull()
+    expect(rutaDeZona('bloques', 14)).toBe('/planificacion-visual/14/bloques')
+    expect(rutaDeZona('semana', 14)).toMatch(/^\/planificacion-visual\/14\/semana\/\d{4}-\d{2}-\d{2}$/)
+    expect(rutaDeZona('herramientas', 14)).toBeNull()
+    expect(rutaDeZona('grupo', 14)).toBeNull()
+  })
+
+  it('la vista de semana se abre por su lunes', () => {
+    const fecha = rutaDeZona('semana', 14)!.split('/').pop()!
+    expect(new Date(fecha + 'T12:00:00').getDay()).toBe(1)
   })
 })

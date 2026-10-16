@@ -5,6 +5,7 @@ import {
   consejosDelPanel, consejosDeDeportistas, consejosDeLaFicha, consejosDeTests, consejosDeVistas,
   consejosDelLienzo, consejosDelCalendario, consejosDeLaSesion, consejoQueToca, claveConsejo, enReposo,
   pantallaCalladaHoy, consejosActivos, disciplinaPrincipal, nombreCorto, consejoDeLaVisita, ANCLAS_DE_CONSEJOS,
+  consejosDelPlanificador, consejosDelWellness, consejosDeCarga, consejosDeComunicacion, consejosDeCobros, HORA_WELLNESS,
   type Consejo, type DatosPanel, type DatosFicha, type DatosTests, type DatosLienzo, type DatosSesion,
 } from './consejos'
 import { progresoVacio, type MarcaConsejo } from './tutorial'
@@ -315,13 +316,18 @@ const TODOS: Consejo[] = [
   ...consejosDelLienzo({ id: 9999999999, semanas: [{ i: 0, lunes: '2026-10-12', imposibles: 1 }], planGenerado: true, cambiosSinPasar: true, mesos: [{ id: 'm', nombre: '', si: 0, sf: 1 }], semanasConChips: [], semanaActual: 0, competicionesFuturas: 0 }),
   ...consejosDelCalendario({ id: 9999999999, hoy: HOY, bloqueadas: [], sesiones: [{ fecha_sesion: '2026-10-13' }, { fecha_sesion: '2026-10-14' }, { fecha_sesion: '2026-10-15' }] }),
   ...consejosDeLaSesion({ idSesion: 9999999999, idDeportista: 9999999999, nombre: 'Ana', disciplina: 'Natacion', hecha: true, fcMax: null, tieneTestDeLaDisciplina: false, duracionAMano: false, usoReferencia: true, tareasSinZona: [9999999999], tareasImposibles: [9999999999] }),
+  ...consejosDelPlanificador({ id: 9999999999, conCuenta: true, conDisponibilidad: false, diasAnamnesis: null }),
+  ...consejosDelWellness({ hora: 18, hoy: HOY, equipo: [{ id: 1, nombre: 'Ana', conCuenta: true, ultimoWellness: null }] }),
+  ...consejosDeCarga({ id: 9999999999, conCuenta: true, hoy: HOY, sesiones: [{ fecha_sesion: '2026-10-10', estado: 'Realizada', rpe_reportado: null }] }),
+  ...consejosDeComunicacion({ hoy: HOY, feedback: [{ idDeportista: 9999999999, nombre: 'Ana', fecha: '2026-10-01', leido: false }] }),
+  ...consejosDeCobros({ filas: [{ id: 9999999999, nombre: 'Ana', atrasado: 35, desde: '2026-08-19' }] }),
 ]
 
 describe('el catálogo de consejos', () => {
-  it('están todos los del guion: 26 consejos en 8 pantallas', () => {
+  it('están todos los del guion: 31 consejos en 13 pantallas (26 del primer día y 5 de las avanzadas)', () => {
     const unicas = new Set(TODOS.map(c => c.zona + ':' + c.regla))
-    expect(unicas.size).toBe(26)
-    expect(new Set(TODOS.map(c => c.zona)).size).toBe(8)
+    expect(unicas.size).toBe(31)
+    expect(new Set(TODOS.map(c => c.zona)).size).toBe(13)
   })
 
   /* La tabla solo acepta claves de hasta 40 caracteres (supabase/tutorial-progreso.sql). */
@@ -396,5 +402,65 @@ describe('uno por visita', () => {
   })
   it('tras contestar uno, ninguno más en esta visita', () => {
     expect(consejoDeLaVisita(pantalla, 'panel', { mostrado: 'c:panel:sin-tests:14', cerrada: true }, new Map(), ahora)).toBeNull()
+  })
+})
+
+describe('los consejos de las pantallas avanzadas', () => {
+  it('planificador: sin sus días ni su disponibilidad, y solo si puede rellenarlos', () => {
+    const base = { id: 14, conCuenta: true, conDisponibilidad: false, diasAnamnesis: null }
+    expect(reglas(consejosDelPlanificador(base))).toEqual(['sin-dias'])
+    expect(consejosDelPlanificador({ ...base, diasAnamnesis: 4 })).toEqual([])
+    expect(consejosDelPlanificador({ ...base, conDisponibilidad: true })).toEqual([])
+    expect(consejosDelPlanificador({ ...base, conCuenta: false })).toEqual([])
+  })
+
+  it('wellness: quien tiene cuenta y no lo ha rellenado hoy, y solo desde mediodía', () => {
+    const equipo = [
+      { id: 1, nombre: 'Ana Ruiz', conCuenta: true, ultimoWellness: '2026-10-15' },
+      { id: 2, nombre: 'Luis', conCuenta: true, ultimoWellness: HOY },
+      { id: 3, nombre: 'Sin cuenta', conCuenta: false, ultimoWellness: null },
+    ]
+    expect(consejosDelWellness({ hora: HORA_WELLNESS - 1, hoy: HOY, equipo })).toEqual([])
+    const [c] = consejosDelWellness({ hora: HORA_WELLNESS, hoy: HOY, equipo })
+    expect(c.titulo).toBe('Ana no lo ha rellenado hoy')
+    expect(c.texto).toBe('Sin él no ves cómo llega a la sesión. Recuérdaselo por Comunicación.')
+    const varios = consejosDelWellness({ hora: 15, hoy: HOY, equipo: [...equipo, { id: 4, nombre: 'Eva', conCuenta: true, ultimoWellness: null }] })
+    expect(varios[0].titulo).toBe('2 deportistas no lo han rellenado hoy')
+    expect(varios[0].accion).toEqual({ pulsar: 'well.sin-hoy' })
+  })
+
+  it('carga: las hechas sin su RPE de las cuatro últimas semanas', () => {
+    const s = (f: string, estado = 'Realizada', rpe: number | null = null) => ({ fecha_sesion: f, estado, rpe_reportado: rpe })
+    const base = { id: 14, conCuenta: true, hoy: HOY }
+    expect(consejosDeCarga({ ...base, sesiones: [s('2026-10-10', 'Realizada', 6), s('2026-10-11', 'Planificada')] })).toEqual([])
+    expect(consejosDeCarga({ ...base, sesiones: [s('2026-09-01')] })).toEqual([])
+    expect(consejosDeCarga({ ...base, sesiones: [s('2026-10-10')] })[0].titulo).toBe('Una sesión hecha no tiene su RPE')
+    expect(consejosDeCarga({ ...base, sesiones: [s('2026-10-10'), s('2026-10-12')] })[0].titulo).toBe('2 sesiones hechas no tienen su RPE')
+    expect(consejosDeCarga({ ...base, conCuenta: false, sesiones: [s('2026-10-10')] })).toEqual([])
+  })
+
+  it('comunicación: el feedback sin leer de dos días o más, primero quien más lleva esperando', () => {
+    const l = consejosDeComunicacion({ hoy: HOY, feedback: [
+      { idDeportista: 1, nombre: 'Ana', fecha: '2026-10-15', leido: false },
+      { idDeportista: 2, nombre: 'Luis', fecha: '2026-10-12', leido: false },
+      { idDeportista: 2, nombre: 'Luis', fecha: '2026-10-10', leido: false },
+      { idDeportista: 3, nombre: 'Eva', fecha: '2026-10-01', leido: true },
+      { idDeportista: 4, nombre: 'Leo', fecha: '2026-10-13', leido: false },
+    ] })
+    expect(l.map(c => c.sujeto)).toEqual([2, 4])
+    expect(l[0].titulo).toBe('Luis te contó cómo le fue')
+    expect(l[0].texto).toBe('Lleva 6 días sin respuesta.')
+    expect(l[0].accion).toEqual({ pulsar: 'com.conv:2' })
+  })
+
+  it('cobros: lo atrasado, con su importe y desde cuándo', () => {
+    const [c] = consejosDeCobros({ filas: [
+      { id: 1, nombre: 'Ana', atrasado: 0, desde: null },
+      { id: 2, nombre: 'Luis Gil', atrasado: 35.5, desde: '2026-08-19' },
+    ] })
+    expect(c.titulo).toBe('Luis tiene 35,50 € vencidos')
+    expect(c.texto).toBe('Desde el 19 de agosto.')
+    expect(c.accion).toEqual({ pulsar: 'cobros.abrir:2' })
+    expect(consejosDeCobros({ filas: [{ id: 3, nombre: 'Eva', atrasado: 1, desde: null }] })[0].titulo).toBe('Eva tiene 1 € vencido')
   })
 })

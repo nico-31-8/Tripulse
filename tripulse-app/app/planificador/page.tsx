@@ -15,7 +15,7 @@
 // siguiente y va aparte: mientras eso no exista, esta pantalla no puede
 // estropear el calendario de nadie.
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { proximoLunes, hoyISO } from '@/lib/fechas'
 import { contextoDeSemanas, avisoDe, porDefecto, type SemanaCandidata } from '@/lib/semanas-a-planificar'
@@ -37,6 +37,9 @@ import PlanificarMesociclo from '@/components/PlanificarMesociclo'
 import { aplicarBloques, bloquesPorClave, plantillasDe, opcionesDe } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis } from '@/lib/anamnesis-datos'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDelPlanificador } from '@/lib/consejos'
 import { colorDisciplina } from '@/lib/disciplinas'
 
 const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
@@ -63,6 +66,8 @@ export default function Planificador() {
   const [dep, setDep] = useState<any>(null)
   const [anamnesis, setAnamnesis] = useState<any>(null)
   const [disponibilidad, setDisponibilidad] = useState<DiaDisponible[]>([])
+  /* De quién son la anamnesis y la disponibilidad cargadas: el consejo no mira las del anterior. */
+  const [datosDe, setDatosDe] = useState<number | null>(null)
   const [cargando, setCargando] = useState(true)
 
   // Los mandos. Se rellenan solos con lo que sabe la app y se pueden tocar: la
@@ -105,7 +110,7 @@ export default function Planificador() {
        acota aquí: a un director la base le da además los deportistas que otros
        entrenadores le han abierto, y no pueden salir mezclados con los suyos. */
     const user = await usuarioActual()
-    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima, id_entrenador').order('nombre')
+    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima, id_entrenador, id_usuario').order('nombre')
     const lista = user ? filtrarPorEspacio(data || [], user.id, getEspacio()?.id ?? null) : (data || [])
     setDeportistas(lista)
     const activo = lista.find(d => d.id === getAtletaActivo())
@@ -133,6 +138,7 @@ export default function Planificador() {
       porDia.set(f.dia_semana, (porDia.get(f.dia_semana) || 0) + Math.max(0, min(f.hora_fin) - min(f.hora_inicio)))
     })
     setDisponibilidad([...porDia].map(([d2, minutos]) => ({ dia: d2 as DiaSemana, minutos })))
+    setDatosDe(d.id)
   }
 
   /* Las semanas que se pueden elegir, con su contexto. Se recargan al cambiar
@@ -273,6 +279,16 @@ export default function Planificador() {
     ? `Generando una semana para ${dep.nombre}: ${ETIQUETA_DISTANCIA[distancia]}, fase ${DISTRIBUCION_POR_FASE[fase].etiqueta}, ${horas} h en ${dias} días. ${forma.resumen}`
     : '')
 
+  /* El consejo del tutorial (lib/consejos): sin sus días, el reparto va a ciegas. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => conConsejos && dep && datosDe === dep.id
+    ? consejosDelPlanificador({
+        id: dep.id, conCuenta: !!dep.id_usuario, conDisponibilidad: disponibilidad.length > 0,
+        diasAnamnesis: diasDeAnamnesis(anamnesis?.dias_semana),
+      })
+    : null, [conConsejos, dep, datosDe, disponibilidad, anamnesis])
+  useConsejos('planificador', consejos)
+
   if (cargando) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando…</div>
 
   const porDia = new Map<string, typeof semana extends null ? never : any[]>()
@@ -286,11 +302,11 @@ export default function Planificador() {
       <nav className="bg-gray-900 pl-44 pr-5 h-[54px] flex justify-between items-center border-b border-gray-800 gap-4">
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="text-[17px] font-bold tracking-tight leading-none">Planificador</h2>
-          {dep && (<>
+          {dep && (<span data-guia="plan.deportista" className="flex items-baseline gap-3 min-w-0">
             <span className="text-[12.5px] text-gray-500 truncate min-w-0">{dep.nombre}</span>
             <button onClick={() => { setDep(null); setSemana(null); setPaso(1) }}
               className="text-[12.5px] text-orange-400 hover:text-orange-300 transition flex-none">cambiar</button>
-          </>)}
+          </span>)}
         </div>
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition flex-none">← Dashboard</button>
       </nav>
@@ -400,7 +416,7 @@ export default function Planificador() {
           ) : (
           <>
           {/* ---- Paso 1: la forma ---- */}
-          <Seccion n={1} titulo="La forma de la semana" activo={paso === 1}>
+          <Seccion n={1} titulo="La forma de la semana" activo={paso === 1} guia="plan.forma">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <div className="flex h-9 rounded-lg overflow-hidden border border-gray-800 mb-3">
@@ -513,7 +529,7 @@ export default function Planificador() {
                               entera, o vuelves a generarla. Y casi nunca es
                               eso: es «está bien, pero el jueves no puedo». */}
                           {!abierta ? (
-                            <button onClick={() => setEditando(i)}
+                            <button onClick={() => setEditando(i)} data-guia="plan.retocar"
                               className="mt-2 text-[11px] text-gray-500 hover:text-orange-400 transition">
                               Cambiar
                             </button>
@@ -583,7 +599,7 @@ export default function Planificador() {
                   </button>
                 )}
                 {origen === 'ia' && (
-                  <button onClick={generar}
+                  <button data-guia="plan.reglas" onClick={generar}
                     className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
                     Ver la de las reglas
                   </button>
@@ -606,7 +622,7 @@ export default function Planificador() {
                             <span className="text-gray-500 line-through">{a.antes}</span>
                             <span className="text-gray-500"> → </span>
                             <span className="text-white font-medium">{a.despues}</span>
-                            <p className="text-gray-400 text-[11.5px] mt-0.5 leading-relaxed">{a.porque}</p>
+                            <p className="text-gray-400 text-[11.5px] mt-0.5 leading-relaxed" data-guia="plan.porque">{a.porque}</p>
                           </li>
                         ))}
                       </ul>
@@ -743,7 +759,7 @@ export default function Planificador() {
                 )}
 
                 {!confirmando ? (
-                  <button onClick={() => setConfirmando(true)} disabled={volcando}
+                  <button data-guia="plan.volcar" onClick={() => setConfirmando(true)} disabled={volcando}
                     className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50">
                     Volcar al calendario →
                   </button>
@@ -804,9 +820,9 @@ function Dato({ valor, pie }: { valor: string; pie: string }) {
 
 /** Los dos pasos, numerados porque el orden importa de verdad: no se puede ver
     la semana sin haber fijado antes su forma. */
-function Seccion({ n, titulo, activo, children }: { n: number; titulo: string; activo: boolean; children: React.ReactNode }) {
+function Seccion({ n, titulo, activo, children, guia }: { n: number; titulo: string; activo: boolean; children: React.ReactNode; guia?: string }) {
   return (
-    <section className={'mb-5 ' + (activo ? '' : 'opacity-60')}>
+    <section data-guia={guia} className={'mb-5 ' + (activo ? '' : 'opacity-60')}>
       <div className="flex items-baseline gap-2.5 mb-3">
         <span className="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center flex-none bg-orange-500/20 text-orange-400 tabular-nums">{n}</span>
         <h3 className="text-[15px] font-bold tracking-tight">{titulo}</h3>

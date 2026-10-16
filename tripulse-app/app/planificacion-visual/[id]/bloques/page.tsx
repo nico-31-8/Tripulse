@@ -395,7 +395,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
 
             {panelAbierto && (
               <div className="border-t border-gray-800 px-3 py-2">
-                <button onClick={() => setMostrarGraficaPanel(v => !v)}
+                <button onClick={() => setMostrarGraficaPanel(v => !v)} data-guia="bloq.carga"
                   className={'w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition ' +
                     (mostrarGraficaPanel ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700')}>
                   <span>📊</span>
@@ -507,8 +507,8 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                 ))}
               </div>
               {macros.length === 0
-                ? <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📅</div><p>No hay macrociclos todavia.</p></div>
-                : <div className="grid gap-4">{macros.map(m => <MacroCard key={m.id} mac={m} mesos={mesosPorMacro[m.id] || []} onClick={() => verMesos(m)} onEditar={abrirEditarMacro} onBorrar={borrarMacro} />)}</div>
+                ? <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📅</div><p>No hay macrociclos todavía.</p></div>
+                : <div className="grid gap-4" data-guia="bloq.capas">{macros.map(m => <MacroCard key={m.id} mac={m} mesos={mesosPorMacro[m.id] || []} onClick={() => verMesos(m)} onEditar={abrirEditarMacro} onBorrar={borrarMacro} />)}</div>
               }
             </div>
           )}
@@ -520,7 +520,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                   <h2 className="text-2xl font-bold mb-1">{macroSel?.objetivo}</h2>
                   <p className="text-gray-400 text-sm">{macroSel?.duracion_semanas} semanas · Inicio: {macroSel?.fecha_inicio}{macroSel?.tipo_periodizacion ? ' · ' + macroSel?.tipo_periodizacion : ''}</p>
                 </div>
-                <button onClick={() => setModalMeso(true)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">+ Nuevo mesociclo</button>
+                <button onClick={() => setModalMeso(true)} data-guia="bloq.crear" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">+ Nuevo mesociclo</button>
               </div>
               <p className="text-gray-500 text-sm mb-4">Pulsa un bloque para ver sus semanas</p>
               {mesos.length === 0
@@ -547,7 +547,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
                   <h2 className="text-2xl font-bold mb-1">{mesoSel?.objetivo}</h2>
                   <p className="text-gray-400 text-sm">{mesoSel?.tipo} · {mesoSel?.duracion_semanas} semanas</p>
                 </div>
-                <button onClick={() => setModalMicro(true)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">+ Nueva semana</button>
+                <button onClick={() => setModalMicro(true)} data-guia="bloq.crear" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">+ Nueva semana</button>
               </div>
               <p className="text-gray-500 text-sm mb-4">Pulsa una semana para ver sus sesiones</p>
               {micros.length === 0

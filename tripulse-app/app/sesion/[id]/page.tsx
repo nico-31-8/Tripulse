@@ -948,14 +948,16 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* ESTE DÍA ES UN TEST. Va pegado a la cabecera y antes que nada: es lo
             que cambia qué se hace ese día, y el botón de pasarlo tiene que
             estar donde se abre la sesión, no al final del todo. */}
-        <DiaDeTest sesion={sesion} idDeportista={deportistaId} editable onCambio={cargarDatos} />
+        <div data-guia="herr.test" className="empty:hidden"><DiaDeTest sesion={sesion} idDeportista={deportistaId} editable onCambio={cargarDatos} /></div>
 
         {/* CERRARLA POR ÉL Y CORREGIR LO QUE APUNTÓ. Va aquí arriba porque las
             dos preguntas que trae el entrenador al abrir una sesión pasada son
             «¿la hizo?» y «¿eso que puso es verdad?». Decide solo lo que enseña:
             en una sesión futura sin cerrar no pinta nada. */}
-        <CorregirSesion sesion={sesion} estimadaMin={durEstimada.estimable ? durEstimada.minutos : null}
-          onCambio={cargarDatos} />
+        <div data-guia="herr.corregir" className="empty:hidden">
+          <CorregirSesion sesion={sesion} estimadaMin={durEstimada.estimable ? durEstimada.minutos : null}
+            onCambio={cargarDatos} />
+        </div>
 
         {/* Por qué no hay estimación. Sin esto, un «—» parece un fallo de la app. */}
         {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (
@@ -1140,15 +1142,15 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* Resumen del brick: las transiciones NO son tareas (no deben contar como
             carga de ninguna disciplina), así que no pueden salir en la tabla de abajo.
             Aquí es donde se ven, que para eso son un paso entrenable. */}
-        {sesion.disciplina === 'Brick' && <ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId}
-          onGuardado={() => { cargarDatos(); setRecargaTareas(n => n + 1) }} />}
+        {sesion.disciplina === 'Brick' && <div data-guia="herr.brick" className="empty:hidden"><ResumenBrick sesionId={Number(id)} transiciones={sesion.transiciones || []} editable depId={deportistaId}
+          onGuardado={() => { cargarDatos(); setRecargaTareas(n => n + 1) }} /></div>}
 
         {/* LA SEMANA, ENCIMA DE LA TABLA. Aquí es donde se decide qué se le
             manda, así que aquí es donde hace falta saber cuántas series lleva
             ese grupo y cómo va el reparto de zonas. Mirarlo en otra pantalla
             significa salirse de lo que estás montando. Va de la semana de ESTA
             sesión, no de la de hoy. */}
-        {deportistaId && <InfoSemana idDeportista={deportistaId} fecha={sesion.fecha_sesion} />}
+        {deportistaId && <div data-guia="herr.info" className="empty:hidden"><InfoSemana idDeportista={deportistaId} fecha={sesion.fecha_sesion} /></div>}
 
         {vistaTabla && deportistaId ? (
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 overflow-x-auto">
@@ -1434,7 +1436,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
 
         {/* Nutrición y notas: plegadas, con el resumen visible en una línea. Estaban
             delante de las tareas y las tareas son a lo que se viene aquí. */}
-        <button onClick={() => setAbreNutricion(v => !v)}
+        <button onClick={() => setAbreNutricion(v => !v)} data-guia="herr.nutricion"
           className="tp-card w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition text-left">
           <span className="flex items-center gap-3 flex-wrap min-w-0">
             <strong className="text-[13px] font-semibold">🍽 Nutrición</strong>

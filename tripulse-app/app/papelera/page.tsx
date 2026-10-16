@@ -96,7 +96,7 @@ export default function PapeleraPage() {
             <p className="text-sm mt-1">Aquí aparecen las sesiones que borréis tú o el atleta</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3" data-guia="papelera.lista">
             {sesiones.map(s => (
               <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-4">
                 <span className={'text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ' + chipDisciplina(s.disciplina)}>

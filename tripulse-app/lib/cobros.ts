@@ -86,6 +86,26 @@ export function fechaDelCargo(mes: string): string {
 /** El mes de una fecha: «2026-09-14» → «2026-09». */
 export const mesDe = (fecha: string): string => String(fecha || '').slice(0, 7)
 
+/* Un solo sitio para la moneda, por si algún día lleva a alguien fuera. Lo
+   usan la libreta y los consejos del tutorial, que tienen que decir lo mismo. */
+export const eur = (n: number): string =>
+  (Math.round(n * 100) / 100).toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0 }) + ' €'
+
+/**
+ * Desde cuándo debe lo atrasado: el primer cargo de antes de este mes que
+ * sigue sin pagar, imputando lo pagado a los cargos más antiguos primero.
+ * null si lo de antes está pagado.
+ */
+export function vencidoDesde(cargos: Pick<Cargo, 'fecha' | 'importe' | 'mes'>[] | null | undefined, pagado: number, mes: string): string | null {
+  let acumulado = 0
+  const deAntes = (cargos || []).filter(c => c.mes < mes).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
+  for (const c of deAntes) {
+    acumulado = dinero(acumulado + num(c.importe))
+    if (acumulado > pagado) return String(c.fecha).slice(0, 10)
+  }
+  return null
+}
+
 /** El mes de hoy. */
 export const mesActual = (hoy: string = hoyISO()): string => mesDe(hoy)
 

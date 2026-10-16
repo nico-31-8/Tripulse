@@ -210,7 +210,7 @@ export default function IndicesPage() {
             </div>
 
             {sesionesRango.length > 0 && (
-              <div className="tp-card p-5">
+              <div className="tp-card p-5" data-guia="ind.semaforo">
                 <p className="text-sm font-medium text-gray-300 mb-4">Media del período</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Media percepción */}

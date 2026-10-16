@@ -1,6 +1,9 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeCarga } from '@/lib/consejos'
 import { supabase } from '@/lib/supabase'
 import { cargarReferencias } from '@/lib/referencia-zona'
 import { hoyISO, sumarDias } from '@/lib/fechas'
@@ -317,6 +320,13 @@ export default function CargaPage() {
     return dias
   }, [diariaRaw, usarSicat, sicat, pondZona, zonasRes])
 
+  /* El consejo del tutorial (lib/consejos): sus sesiones hechas sin su RPE. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => conConsejos && seleccionado && !loadingDatos
+    ? consejosDeCarga({ id: seleccionado.id, conCuenta: !!seleccionado.id_usuario, hoy: hoyISO(), sesiones: sesionesRaw })
+    : null, [conConsejos, seleccionado, loadingDatos, sesionesRaw])
+  useConsejos('carga', consejos)
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
@@ -381,7 +391,7 @@ export default function CargaPage() {
       <div className="max-w-[1400px] mx-auto px-6 py-6">
 
         {/* Pestañas */}
-        <div className="flex gap-1 border-b border-gray-800 mb-6">
+        <div className="flex gap-1 border-b border-gray-800 mb-6" data-guia="carga.vistas">
           <button onClick={() => setPestana('global')}
             className={'px-5 py-2.5 text-sm font-medium transition border-b-2 ' +
               (pestana === 'global' ? 'border-orange-500 text-orange-400' : 'border-transparent text-gray-400 hover:text-white')}>
@@ -502,7 +512,7 @@ export default function CargaPage() {
                       <p className="text-2xl font-bold text-red-400">{ultimo.atl}</p>
                       <p className="text-xs text-gray-500 mt-1">Carga aguda 7d</p>
                     </div>
-                    <div className={'rounded-xl p-4 border ' + (formaConBase ? estadoTSB(ultimo.tsb).bg : 'bg-gray-900 border-gray-800')}
+                    <div data-guia="carga.forma" className={'rounded-xl p-4 border ' + (formaConBase ? estadoTSB(ultimo.tsb).bg : 'bg-gray-900 border-gray-800')}
                       title={formaConBase ? undefined : 'La frescura se apoya en una media de 42 días que arranca en cero. Con ' + serieCompleta.length + ' días de historia, cualquier semana normal sale como sobrecarga: es el modelo arrancando, no el atleta.'}>
                       <p className="text-xs text-gray-300 mb-1 uppercase tracking-wide">TSB — Frescura</p>
                       <p className={'text-2xl font-bold ' + (formaConBase ? estadoTSB(ultimo.tsb).color : 'text-gray-400')}>{ultimo.tsb > 0 ? '+' : ''}{ultimo.tsb}</p>

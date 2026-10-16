@@ -5,10 +5,11 @@
 // Se abre desde el menú (abajo del todo) o con el botón ? en una pantalla sin
 // recorrido. Arriba, por dónde va el recorrido del primer día y «Seguir»; debajo
 // cada parada con su estado y «Ver». Las que dependen de un deportista se abren
-// con el que tiene elegido; la sesión, desde una sesión.
+// con el que tiene elegido; la sesión, desde una sesión. Al final, las partes
+// avanzadas (fase 3), que solo salen cuando se piden.
 
 import { useEffect } from 'react'
-import { CAMINO, ZONAS, rutaDeZona, siguienteDelCamino, type Progreso, type ZonaTutorial } from '@/lib/tutorial'
+import { AVANZADAS, CAMINO, ZONAS, rutaDeZona, siguienteDelCamino, type Progreso, type ZonaTutorial } from '@/lib/tutorial'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 
 export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
@@ -27,7 +28,9 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
   const proxima = siguienteDelCamino(progreso)
   const motivo = (z: ZonaTutorial): string | null => {
     if (rutaDeZona(z, atleta)) return null
-    return z === 'sesion' ? 'Abre una sesión y pulsa ?' : 'Elige antes un deportista en el Panel'
+    if (z === 'sesion' || z === 'herramientas') return 'Abre una sesión y pulsa ?'
+    if (z === 'grupo') return 'Abre un grupo y pulsa ?'
+    return 'Elige antes un deportista en el Panel'
   }
 
   return (
@@ -86,9 +89,25 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
               )
             })}
           </ul>
-          <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-            Las partes avanzadas (SICAT, volumen, grupos, el planificador…) tendrán pronto su recorrido.
+          <h3 className="text-[14px] font-semibold text-gray-200 mt-6">Partes avanzadas</h3>
+          <p className="text-[12.5px] text-gray-500 mt-1 leading-relaxed">
+            No salen solas: con el botón ? en su pantalla, o desde aquí.
           </p>
+          <ul className="mt-2">
+            {AVANZADAS.map(z => {
+              const m = motivo(z)
+              return (
+                <li key={z} className="flex items-center gap-2.5 py-2.5 border-t border-white/[0.04] text-[13.5px] min-h-[44px]">
+                  <span className="flex-1 min-w-0 text-gray-200">{ZONAS[z].nombre}</span>
+                  {progreso.vistos.has(z) && <span className="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap bg-green-500/10 text-green-400">Visto</span>}
+                  <button type="button" disabled={!!m} title={m || undefined} onClick={() => onVer(z, false)}
+                    className="text-xs bg-gray-800 border border-gray-700 hover:border-orange-500 disabled:opacity-40 disabled:hover:border-gray-700 text-gray-200 px-2.5 py-1 rounded-lg transition">
+                    Ver
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       </aside>
     </div>

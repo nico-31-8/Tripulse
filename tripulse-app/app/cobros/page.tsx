@@ -22,9 +22,12 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { usuarioActual } from '@/lib/sesion'
 import { hoyISO, fechaLarga, MESES_LARGOS } from '@/lib/fechas'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeCobros } from '@/lib/consejos'
 import { fondoDe, inicialDe } from '@/lib/avatar'
 import {
-  mesActual, moverMes, fechaDelCargo, tarifaEn, cargoDeCuota, saldoDe, resumenDelMes,
+  mesActual, moverMes, fechaDelCargo, tarifaEn, cargoDeCuota, saldoDe, resumenDelMes, eur, vencidoDesde,
   MEDIOS, TEXTO_ESTADO,
   type Tarifa, type Cargo, type Cobro, type SaldoDe, type TipoTarifa, type MedioPago,
 } from '@/lib/cobros'
@@ -35,9 +38,6 @@ const mesLargo = (mes: string): string => {
   return (MESES_LARGOS[m - 1] || '') + ' ' + a
 }
 
-/* Un solo sitio para la moneda, por si algún día lleva a alguien fuera. */
-const eur = (n: number): string =>
-  (Math.round(n * 100) / 100).toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0 }) + ' €'
 
 const PINTA: Record<SaldoDe['estado'], string> = {
   'al-dia': 'bg-green-500/15 text-green-300',
@@ -178,6 +178,20 @@ export default function CobrosPage() {
 
   const total = useMemo(() => resumenDelMes(filas.map(f => f.saldo)), [filas])
 
+  /* El consejo del tutorial (lib/consejos): quién debe de meses anteriores. Se
+     mide contra el mes de hoy, no contra el que se esté mirando. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => {
+    if (!conConsejos) return null
+    const hoy = hoyISO(), ahora = mesActual()
+    return consejosDeCobros({ filas: filas.map(({ dep }) => {
+      const suyos = deDep(cargos, dep.id)
+      const s = saldoDe(suyos, deDep(cobros, dep.id), ahora, hoy)
+      return { id: dep.id, nombre: dep.nombre, atrasado: s.atrasado, desde: vencidoDesde(suyos, s.pagado, ahora) }
+    }) })
+  }, [conConsejos, filas, cargos, cobros])
+  useConsejos('cobros', consejos)
+
   const anadirCargo = async (id: number, concepto: string, importe: number, tipo: TipoTarifa) => {
     if (!(importe > 0)) { mal('El importe tiene que ser mayor que cero.'); return }
     setGuardando(true)
@@ -300,7 +314,7 @@ export default function CobrosPage() {
           </p>
         )}
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5" data-guia="cobros.libreta">
           {filas.map(({ dep, tarifa, saldo, tarifas: sus }) => {
             const misCargos = deDep(cargos, dep.id).slice().sort((a, b) => a.fecha < b.fecha ? 1 : -1)
             const misCobros = deDep(cobros, dep.id).slice().sort((a, b) => a.fecha < b.fecha ? 1 : -1)
@@ -308,7 +322,7 @@ export default function CobrosPage() {
             const yaCobradas = misCargos.some(c => c.mes === mes && c.tipo === 'sesion')
 
             return (
-              <div key={dep.id} className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+              <div key={dep.id} data-consejo={'cobros.dep:' + dep.id} className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
                 <div className="flex items-center gap-3 p-3.5 flex-wrap">
                   <span className="w-9 h-9 rounded-full grid place-items-center font-bold text-[13px] flex-none"
                     style={{ background: fondoDe(dep.nombre) }}>{inicialDe(dep.nombre)}</span>
@@ -335,7 +349,7 @@ export default function CobrosPage() {
                       ? TEXTO_ESTADO['al-dia']
                       : TEXTO_ESTADO[saldo.estado] + ' ' + eur(saldo.saldo)}
                   </span>
-                  <button onClick={() => setAbierto(a => a === dep.id ? null : dep.id)}
+                  <button onClick={() => setAbierto(a => a === dep.id ? null : dep.id)} data-consejo={'cobros.abrir:' + dep.id}
                     className="text-[12px] font-bold px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition flex-none">
                     {abierto === dep.id ? 'Cerrar' : 'Ver'}
                   </button>
@@ -468,12 +482,12 @@ function FormularioCobro({ onEnviar, onCargo, onTarifa, guardando, campo, tarifa
           <select className={campo} value={medio} onChange={e => setMedio(e.target.value as MedioPago)}>
             {MEDIOS.map(m => <option key={m.id} value={m.id}>{m.et}</option>)}
           </select></div>
-        <button disabled={guardando} className={boton + ' bg-orange-500 hover:bg-orange-600 text-white'}
+        <button data-guia="cobros.pago" disabled={guardando} className={boton + ' bg-orange-500 hover:bg-orange-600 text-white'}
           onClick={() => { onEnviar(Number(String(importe).replace(',', '.')), fecha, medio); setImporte('') }}>
           Apuntar el pago
         </button>
         <span className="flex-1" />
-        <button onClick={() => setVerTarifa(v => !v)}
+        <button onClick={() => setVerTarifa(v => !v)} data-guia="cobros.tarifa"
           className={boton + ' bg-gray-800 border border-gray-700 text-gray-400 hover:text-white'}>
           {verTarifa ? 'Cerrar' : tarifa ? 'Cambiar la tarifa' : 'Ponerle tarifa'}
         </button>

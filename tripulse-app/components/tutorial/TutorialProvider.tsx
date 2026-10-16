@@ -18,15 +18,16 @@ import { perfilActual, usuarioActual } from '@/lib/sesion'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 import {
   ZONAS, pasosDeRecorrido, zonaDeRuta, mostrarOferta as hayQueOfrecer, esCuentaNueva,
-  rutaDeZona, progresoVacio, queArrancaAlEntrar, pendienteAlSeguir,
+  rutaDeZona, progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, esAvanzada, opcionesDeAyuda,
   type Progreso, type PasoTutorial, type ZonaTutorial, type Pendiente,
 } from '@/lib/tutorial'
 import { cargarProgreso, guardarMarca, quitarMarca, CLAVE_OFERTA, CLAVE_PAUSA } from '@/lib/tutorial-progreso'
 import { claveConsejo, consejoDeLaVisita, consejosActivos, type Consejo, type ZonaConConsejos } from '@/lib/consejos'
 import Recorrido, { type FinDelRecorrido } from './Recorrido'
 import ListaTutoriales from './ListaTutoriales'
+import EleccionDeAyuda from './EleccionDeAyuda'
 import ConsejoEnPantalla from './Consejo'
-import { elementoDeConsejo } from './posicion'
+import { buscarAncla, elementoDeConsejo } from './posicion'
 
 /** Lo que una pantalla le pasa al tutorial: sus consejos de ahora (lib/consejos). */
 export interface PantallaConConsejos {
@@ -38,6 +39,12 @@ export interface PantallaConConsejos {
 
 /** Lo que tarda en salir un consejo: que la pantalla haya terminado de cargar y de moverse. */
 const ESPERA_CONSEJO_MS = 1200
+
+/* Las avanzadas se quedan con los pasos que están en pantalla. Abiertas desde
+   la lista, la página aún se está pintando: se espera a que lo que hay a la
+   vista deje de cambiar (como mucho, lo que espera el primer paso). */
+const ESTABLE_MS = 500
+const ESPERA_AVANZADA_MS = 3000
 
 interface Api {
   /** Es un entrenador y el tutorial está montado. */
@@ -79,6 +86,9 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   const [enCurso, setEnCurso] = useState<EnCurso | null>(null)
   const [modal, setModal] = useState(false)
   const [lista, setLista] = useState(false)
+  /* El botón ? de una pantalla con dos recorridos (la sesión): cuál quiere. */
+  const [eleccion, setEleccion] = useState<ZonaTutorial[] | null>(null)
+  const esperaAvanzada = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [aviso, setAviso] = useState('')
   /* Una zona pedida (desde la lista, o siguiendo el camino) que espera a que cargue su pantalla. */
   const pendiente = useRef<Pendiente | null>(null)
@@ -146,15 +156,41 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     if (idUsuario) quitarMarca(supabase, idUsuario, CLAVE_PAUSA)
   }, [idUsuario])
 
-  const empezar = useCallback((zona: ZonaTutorial, camino: boolean) => {
+  const empezarAvanzada = useCallback((zona: ZonaTutorial, esperar: boolean) => {
+    if (esperaAvanzada.current) clearTimeout(esperaAvanzada.current)
+    const ruta = window.location.pathname
+    const todos = ZONAS[zona].pasos
+    const t0 = Date.now()
+    let vistos = -1, desde = t0
+    const intentar = () => {
+      esperaAvanzada.current = null
+      if (window.location.pathname !== ruta) return
+      const presentes = todos.filter(p => !p.ancla || buscarAncla(p.ancla))
+      if (presentes.length !== vistos) { vistos = presentes.length; desde = Date.now() }
+      const listo = presentes.length > 0 && (!esperar || Date.now() - desde >= ESTABLE_MS)
+      if (!listo && Date.now() - t0 < ESPERA_AVANZADA_MS) { esperaAvanzada.current = setTimeout(intentar, 120); return }
+      const pasos = presentes.length ? presentes : todos
+      setEnCurso(prev => {
+        if (prev) return prev
+        rutaDelRecorrido.current = ruta
+        return { zona, pasos, numInfo: pasos.length }
+      })
+    }
+    intentar()
+  }, [])
+  useEffect(() => () => { if (esperaAvanzada.current) clearTimeout(esperaAvanzada.current) }, [])
+
+  const empezar = useCallback((zona: ZonaTutorial, camino: boolean, esperar = false) => {
     setLista(false)
+    setEleccion(null)
+    if (esAvanzada(zona)) { empezarAvanzada(zona, esperar); return }
     setEnCurso(prev => {
       if (prev) return prev
       const pasos = pasosDeRecorrido(zona, { camino, vistos: progreso.vistos })
       rutaDelRecorrido.current = window.location.pathname
       return { zona, pasos, numInfo: ZONAS[zona].pasos.length }
     })
-  }, [progreso.vistos])
+  }, [progreso.vistos, empezarAvanzada])
 
   /* Al entrar en una pantalla: lo pedido desde la lista, o lo que toque solo. */
   useEffect(() => {
@@ -169,7 +205,7 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     /* Lo pedido se gasta al arrancar, no antes: si la pantalla se repinta en
        estos 700 ms, sigue pedido. */
     const z = r.zona, c = r.camino, resto = r.pendiente
-    const t = setTimeout(() => { pendiente.current = resto; empezar(z, c) }, 700)
+    const t = setTimeout(() => { pendiente.current = resto; empezar(z, c, true) }, 700)
     return () => clearTimeout(t)
   }, [pathname, cargado, esEntrenador, enCurso, progreso, esNuevo, empezar])
 
@@ -212,9 +248,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
 
   const ayuda = useCallback(() => {
     if (enCurso) return
-    const zona = zonaDeRuta(pathname)
-    if (zona) empezar(zona, false)
-    else setLista(true)
+    const opciones = opcionesDeAyuda(pathname)
+    if (opciones.length === 0) setLista(true)
+    else if (opciones.length === 1) empezar(opciones[0], false)
+    else setEleccion(opciones)
   }, [enCurso, pathname, empezar])
 
   const aceptarOferta = useCallback(() => {
@@ -248,8 +285,9 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
 
   /* Nunca a la vez que un recorrido o que la lista de tutoriales. */
   const candidato = useMemo(() => (!conConsejos || enCurso || lista ? null
+    : eleccion ? null
     : consejoDeLaVisita(pantalla, zonaDeRuta(pathname), { mostrado: visitaAqui.mostrado, cerrada: visitaAqui.cerrada }, progreso.consejos, new Date(ahora))),
-  [conConsejos, enCurso, lista, pantalla, visitaAqui.cerrada, visitaAqui.mostrado, pathname, progreso.consejos, ahora])
+  [conConsejos, enCurso, lista, eleccion, pantalla, visitaAqui.cerrada, visitaAqui.mostrado, pathname, progreso.consejos, ahora])
   const claveCandidato = candidato ? claveConsejo(candidato) : null
 
   /* No sale de golpe: espera a que la pantalla acabe de cargar y de moverse. */
@@ -314,6 +352,7 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
           numInfo={enCurso.numInfo} nombre={nombre} onFin={alTerminar} onModal={setModal} />
       )}
       {lista && <ListaTutoriales progreso={progreso} onCerrar={() => setLista(false)} onVer={irA} />}
+      {eleccion && <EleccionDeAyuda opciones={eleccion} onElegir={z => empezar(z, false)} onCerrar={() => setEleccion(null)} />}
       {consejoVisible && (
         <ConsejoEnPantalla key={claveCandidato} consejo={consejoVisible}
           onAhoraNo={() => consejoAhoraNo(consejoVisible)} onHacer={() => consejoHacer(consejoVisible)} />

@@ -522,7 +522,7 @@ export default function TestsPropiosPage() {
             {/* LAS DOS COSAS QUE SE VIENEN A HACER AQUÍ, a la vista. Antes el
                 laboratorio era un enlace pequeño en la barra de arriba y pasar un
                 test pedía encontrarlo en la lista. */}
-            <div className="grid gap-3 sm:grid-cols-2 mb-7">
+            <div className="grid gap-3 sm:grid-cols-2 mb-7" data-guia="tp.inicio">
               <div className="rounded-2xl border border-orange-500/30 bg-orange-500/[0.05] p-5 flex flex-col gap-3">
                 <div>
                   <p className="font-bold text-[16px]">Crear un test nuevo</p>
@@ -532,7 +532,7 @@ export default function TestsPropiosPage() {
                   </p>
                 </div>
                 <div className="flex gap-2 flex-wrap mt-auto">
-                  <button onClick={() => router.push('/laboratorio')} className={btn}>🧪 Abrir el Laboratorio</button>
+                  <button onClick={() => router.push('/laboratorio')} className={btn} data-guia="tp.laboratorio">🧪 Abrir el Laboratorio</button>
                   <button onClick={nuevoTest} className={btnSec}
                     title="Solo datos que se apuntan y resultados: sin plantillas ni reloj">Uno sencillo aquí</button>
                 </div>
@@ -559,7 +559,7 @@ export default function TestsPropiosPage() {
                       <option value="">A quién</option>
                       {deportistas.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
                     </select>
-                    <button onClick={pasar} disabled={!pasarId} className={btn}>Pasar →</button>
+                    <button onClick={pasar} disabled={!pasarId} className={btn} data-guia="tp.pasar">Pasar →</button>
                   </div>
                 )}
               </div>

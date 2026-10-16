@@ -1558,7 +1558,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     return (
       <div className="mt-1.5">
         <button type="button" onClick={() => abrirSeries(i, encadenado)} aria-expanded={ss.abierto}
-          title="Escribir cada serie por separado: repeticiones, peso y esfuerzo"
+          title="Escribir cada serie por separado: repeticiones, peso y esfuerzo" data-guia="herr.serie"
           className="inline-flex items-center gap-1.5 text-xs font-bold pl-1.5 pr-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500/50 transition">
           <span className="w-2.5 text-[11px] text-gray-500" aria-hidden="true">{ss.abierto ? '▾' : '▸'}</span>
           Serie a serie
@@ -1695,7 +1695,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && esFuerza && !esBloque(t) && (
                           <input type="checkbox" checked={marcadas.includes(t.id)}
                             onChange={e => setMarcadas(m => e.target.checked ? [...m, t.id] : m.filter(x => x !== t.id))}
-                            className="w-3.5 h-3.5 accent-pink-400" title="Marcar para agrupar en un bloque" />
+                            className="w-3.5 h-3.5 accent-pink-400" title="Marcar para agrupar en un bloque" data-guia="herr.agrupar" />
                         )}
                         {i + 1}
                       </span>
@@ -2120,7 +2120,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                 <option>Natacion</option><option>Ciclismo</option><option>Carrera</option>
                               </select>
                               <select value={f.ref || ''} onChange={e => cambiarRef(i, e.target.value)}
-                                disabled={!f.disciplina} title="De dónde salen las zonas de esta tarea"
+                                disabled={!f.disciplina} title="De dónde salen las zonas de esta tarea" data-guia="herr.zonas"
                                 className={campoBase + ' flex-1 min-w-0 disabled:opacity-40'}>
                                 <option value="">Clasificación</option>
                                 {/* «sin test» va en la propia etiqueta: se ofrece igual
@@ -2255,7 +2255,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                              serie, encenderlo y olvidarse de escribir doblaría el
                              volumen sin que el entrenador lo hubiera decidido;
                              vacío no multiplica nada hasta que se escribe. */
-                          onClick={() => parcheR(i, { enBloques: !f.enBloques })}
+                          onClick={() => parcheR(i, { enBloques: !f.enBloques })} data-guia="herr.bloques"
                           title={f.enBloques ? 'En bloques — pulsa para volver a una tarea normal' : 'Repetir en bloques: 3 × (2 × 400)'}
                           className={'flex-none text-sm px-1 rounded transition select-none ' +
                             (f.enBloques ? 'text-orange-300 bg-orange-500/15' : 'text-gray-600 hover:text-gray-400')}>
@@ -2666,7 +2666,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       {/* LO QUE HIZO LA ÚLTIMA VEZ, debajo de la fila. Solo se
                           enseña: las casillas siguen siendo lo que escribió el
                           entrenador. */}
-                      <button type="button" onClick={() => verUltimaVez(i)}
+                      <button type="button" onClick={() => verUltimaVez(i)} data-guia="herr.ultima"
                         title="Ver lo que hizo la última vez en este ejercicio"
                         className="flex-none text-[11px] font-bold px-2 py-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-400 hover:text-orange-300 hover:border-orange-500 transition">
                         ↺ última vez

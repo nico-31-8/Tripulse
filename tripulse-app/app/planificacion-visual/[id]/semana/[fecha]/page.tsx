@@ -653,7 +653,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
             con él el sitio donde soltar para deshacer: la vuelta solo existiría
             mientras no hiciera falta. */}
         {(unidadesPool.length > 0 || (borradorId !== null && sesiones.length > 0)) && (
-          <div
+          <div data-guia="sem.pool"
             onDragOver={e => { if (esArrastreDeSesion(e)) e.preventDefault() }}
             onDragEnter={e => { if (esArrastreDeSesion(e)) { e.preventDefault(); setDragOverPool(true) } }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverPool(false) }}
@@ -698,7 +698,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                 </div>
               )}
             </div>
-            <p className="text-gray-600 text-xs mb-3">
+            <p className="text-gray-600 text-xs mb-3" data-guia="sem.fusionar">
               Haz clic en varias zonas de la <span className="text-gray-400">misma disciplina</span> y pulsa Fusionar para crear una sesión compleja, o Eliminar para borrarlas también del dibujo. Arrastra una unidad a un día para programarla, o una sesión de vuelta aquí para deshacerla.
             </p>
 
@@ -778,7 +778,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
         )}
 
         {/* Grid 7 dias */}
-        <div className="grid grid-cols-7 gap-3">
+        <div className="grid grid-cols-7 gap-3" data-guia="sem.dias">
           {dias.map(({ fecha: fechaDia, dia, diaCorto, dayNum }) => {
             const sesiones_dia = sesiones.filter(s => s.fecha_sesion === fechaDia)
             const esHoy = fechaDia === hoy

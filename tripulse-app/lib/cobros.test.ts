@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  vencidoDesde, eur,
   fechaDelCargo, mesDe, moverMes, tarifaEn, cargoDeCuota, saldoDe, resumenDelMes,
   type Tarifa, type Cargo, type Cobro,
 } from './cobros'
@@ -211,5 +212,24 @@ describe('resumenDelMes', () => {
   it('sin nadie, todo a cero', () => {
     const r = resumenDelMes([])
     expect(r).toEqual({ delMes: 0, cobrado: 0, pendiente: 0, atrasado: 0, deben: 0 })
+  })
+})
+
+describe('desde cuándo debe', () => {
+  const c = (fecha: string, importe: number) => ({ fecha, importe, mes: fecha.slice(0, 7) })
+  const cargos = [c('2026-08-01', 40), c('2026-07-01', 40), c('2026-09-01', 40), c('2026-10-01', 40)]
+  it('lo pagado se imputa a lo más antiguo', () => {
+    expect(vencidoDesde(cargos, 0, '2026-10')).toBe('2026-07-01')
+    expect(vencidoDesde(cargos, 40, '2026-10')).toBe('2026-08-01')
+    expect(vencidoDesde(cargos, 60, '2026-10')).toBe('2026-08-01')
+    expect(vencidoDesde(cargos, 80, '2026-10')).toBe('2026-09-01')
+  })
+  it('con lo de antes pagado, o sin cargos, no debe nada atrasado', () => {
+    expect(vencidoDesde(cargos, 120, '2026-10')).toBeNull()
+    expect(vencidoDesde(null, 0, '2026-10')).toBeNull()
+  })
+  it('los euros, como en la libreta', () => {
+    expect(eur(35)).toBe('35 €')
+    expect(eur(35.5)).toBe('35,50 €')
   })
 })

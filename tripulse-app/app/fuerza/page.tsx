@@ -331,7 +331,7 @@ export default function FuerzaPage() {
             <p className="text-gray-400 text-sm">{ejercicios.length} ejercicios · {tests.length} tests</p>
           </div>
           {tab === 'ejercicios' && (
-            <button onClick={() => setModalAñadir(true)}
+            <button onClick={() => setModalAñadir(true)} data-guia="bib.anadir"
               className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
               + Añadir ejercicio
             </button>
@@ -349,13 +349,13 @@ export default function FuerzaPage() {
             className={'px-4 py-1.5 rounded-md text-sm font-medium transition ' + (tab === 'ejercicios' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
             Ejercicios
           </button>
-          <button onClick={() => setTab('tests')}
+          <button onClick={() => setTab('tests')} data-guia="bib.tests"
             className={'px-4 py-1.5 rounded-md text-sm font-medium transition ' + (tab === 'tests' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
             Tests
           </button>
         </div>
 
-        <input type="text" placeholder="Buscar por nombre o descripción…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+        <input type="text" placeholder="Buscar por nombre o descripción…" value={busqueda} onChange={e => setBusqueda(e.target.value)} data-guia="bib.buscar"
           className="bg-gray-900 text-white px-4 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full mb-4 border border-gray-800 text-sm" />
 
         {tab === 'ejercicios' ? (
@@ -424,7 +424,7 @@ export default function FuerzaPage() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {ejerciciosFiltrados.map(ej => (
-                  <div key={ej.id} onClick={() => setEjercicioDetalle(ej)}
+                  <div key={ej.id} onClick={() => setEjercicioDetalle(ej)} data-guia="bib.ejercicio"
                     className="bg-gray-900 rounded-xl border border-gray-800 p-4 hover:border-gray-700 transition cursor-pointer flex flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-sm">
@@ -460,7 +460,7 @@ export default function FuerzaPage() {
                               title="Volver a enseñarlo"
                               className="text-gray-500 hover:text-green-400 text-xs px-1 transition">🙈</button>
                           ) : (
-                            <button onClick={e => { e.stopPropagation(); esconder(ej.id) }}
+                            <button onClick={e => { e.stopPropagation(); esconder(ej.id) }} data-guia="bib.esconder"
                               title="Esconderlo de mis listas (no lo borra para nadie)"
                               className="text-gray-500 hover:text-gray-200 text-xs px-1 transition">👁</button>
                           )

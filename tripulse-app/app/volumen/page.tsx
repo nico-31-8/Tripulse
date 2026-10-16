@@ -781,7 +781,7 @@ export default function VolumenPage() {
             {pestana === 'resistencia' && metrica === 'tiempo' && (
               <div className="flex flex-col gap-4">
                 {/* Selector de subvista */}
-                <div className="flex gap-2 flex-wrap items-center">
+                <div className="flex gap-2 flex-wrap items-center" data-guia="vol.vistas">
                   <button onClick={() => setSubVista('barras')}
                     className={'px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (subVista === 'barras' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
                     📊 Volumen total
@@ -1133,7 +1133,7 @@ export default function VolumenPage() {
                                 <p className="text-[10.5px] text-gray-500 leading-tight">{m.series} en total</p>
                               </div>
                               <button onClick={() => ponerObjetivo(m.grupo, m.objetivo ?? null)}
-                                title="Fijar cuántas series semanales debería llevar"
+                                title="Fijar cuántas series semanales debería llevar" data-guia="vol.series"
                                 className="text-[11px] text-gray-400 hover:text-orange-400 border border-gray-700 hover:border-orange-500/60 rounded-lg px-2 py-1 transition">
                                 {m.objetivo != null ? 'objetivo ' + seriesTexto(m.objetivo) : 'poner objetivo'}
                               </button>

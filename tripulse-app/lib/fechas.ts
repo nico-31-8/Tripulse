@@ -53,6 +53,11 @@ export function hoyISO(): string {
   return aISO(new Date())
 }
 
+/** La hora de ahora, en el reloj de quien está delante (0–23). */
+export function horaActual(): number {
+  return new Date().getHours()
+}
+
 /** Un `Date` al día que marca el reloj LOCAL. */
 export function aISO(d: Date): string {
   const y = d.getFullYear()

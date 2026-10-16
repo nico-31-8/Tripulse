@@ -317,7 +317,7 @@ export default function PerfilPage() {
           </>
         ) : (
           <>
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6" data-guia="perfil.codigo">
               <h3 className="text-xl font-bold mb-2">Código de entrenador</h3>
               <p className="text-gray-400 text-sm mb-4">Comparte este codigo con tus deportistas para que puedan vincularse contigo.</p>
               {perfil.codigo_entrenador && (

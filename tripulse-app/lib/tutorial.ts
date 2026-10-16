@@ -21,9 +21,15 @@
 //
 // Hay un test que comprueba que cada ancla de aquí existe en el código.
 
+import { hoyISO, lunesDe } from './fechas'
+
 export type ZonaTutorial =
   | 'bienvenida' | 'panel' | 'deportistas' | 'ficha' | 'tests'
   | 'vistas' | 'lienzo' | 'calendario' | 'sesion'
+  /* Las avanzadas (fase 3): solo con el botón ? o desde 🎓 Tutoriales. */
+  | 'herramientas' | 'bloques' | 'semana' | 'planificador' | 'grupo' | 'wellness'
+  | 'carga' | 'volumen' | 'sicat' | 'indices' | 'comunicacion' | 'biblioteca' | 'asistente'
+  | 'tests-propios' | 'zonas-propias' | 'cobros' | 'perfil' | 'papelera'
 
 export interface PasoTutorial {
   /** `data-guia` del elemento que brilla. Sin ancla, el pop-up sale en el centro. */
@@ -51,12 +57,35 @@ export interface ZonaDelTutorial {
   despues?: ZonaTutorial
   /** Vídeo corto que sale en el primer pop-up que se enseñe de la zona. */
   video?: string
+  /** En el botón ? de una pantalla con dos recorridos: cómo se llama esta opción y qué enseña. */
+  etiquetaAyuda?: string
+  resumen?: string
 }
 
 /** El recorrido del primer día, en orden. */
 export const CAMINO: ZonaTutorial[] = [
   'bienvenida', 'panel', 'deportistas', 'ficha', 'tests', 'vistas', 'lienzo', 'calendario', 'sesion',
 ]
+
+/** Las avanzadas, agrupadas como en el guion, para 🎓 Tutoriales. Una pantalla, un recorrido. */
+export const GRUPOS_AVANZADOS: { titulo: string; zonas: ZonaTutorial[] }[] = [
+  { titulo: 'Montar una sesión', zonas: ['herramientas'] },
+  { titulo: 'Bloques y vista de semana', zonas: ['bloques', 'semana'] },
+  { titulo: 'Planificador', zonas: ['planificador'] },
+  { titulo: 'Grupos', zonas: ['grupo'] },
+  { titulo: 'Wellness', zonas: ['wellness'] },
+  { titulo: 'Carga, Volumen, SICAT e Índices', zonas: ['carga', 'volumen', 'sicat', 'indices'] },
+  { titulo: 'Comunicación', zonas: ['comunicacion'] },
+  { titulo: 'Biblioteca de Fuerza', zonas: ['biblioteca'] },
+  { titulo: 'Asistente IA', zonas: ['asistente'] },
+  { titulo: 'Tests propios y zonas propias', zonas: ['tests-propios', 'zonas-propias'] },
+  { titulo: 'Cobros, Perfil y Papelera', zonas: ['cobros', 'perfil', 'papelera'] },
+]
+
+export const AVANZADAS: ZonaTutorial[] = GRUPOS_AVANZADOS.flatMap(g => g.zonas)
+
+/** Las avanzadas nunca salen solas: solo con el botón ? o desde la lista (decidido el 15-10-2026). */
+export const esAvanzada = (z: ZonaTutorial): boolean => AVANZADAS.includes(z)
 
 /** Desde cuándo una cuenta cuenta como nueva: a las de antes no les salta nada solo. */
 export const TUTORIAL_DESDE = '2026-10-16T00:00:00Z'
@@ -191,6 +220,7 @@ export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
 
   sesion: {
     id: 'sesion', nombre: 'Montar una sesión',
+    etiquetaAyuda: 'Lo básico', resumen: 'Cómo se monta: sus filas, lo que dura y cómo se guarda.',
     pasos: [
       { ancla: 'sesion.duracion', titulo: 'Lo que dura', texto: 'Se calcula sola con sus zonas y sus tests. Si no te cuadra, la ajustas a mano, y con ↺ vuelve a la estimada.' },
       { ancla: 'sesion.defecto', titulo: 'Lo que se repite, una vez', texto: 'Lo que pongas aquí se rellena solo en cada fila nueva: el control y la intensidad «@».' },
@@ -204,6 +234,180 @@ export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
     /* La última parada no lleva a ninguna: cierra el recorrido. */
     salida: [
       { titulo: 'Ya conoces lo básico', texto: 'El resto de partes tienen su recorrido en el botón ?, y los tienes todos en 🎓 Tutoriales, abajo del menú.', ultimo: 'Terminar' },
+    ],
+  },
+
+  /* ---------------------------------------------------------------
+     Zonas avanzadas (fase 3): solo con el botón ? o desde 🎓 Tutoriales,
+     nunca solas. Sin salida. Un paso cuya ancla no está en pantalla (el
+     brick en una sesión que no lo es, «Corregir» en una sin hacer…) se
+     quita al empezar, para que el «x de n» diga la verdad.
+     --------------------------------------------------------------- */
+
+  herramientas: {
+    id: 'herramientas', nombre: 'Herramientas de la sesión',
+    etiquetaAyuda: 'Herramientas', resumen: 'Bloques, serie a serie, días de test, bricks, nutrición y corregir lo que apuntó.',
+    pasos: [
+      /* El guion juntaba aquí dos botones: el 🔁 de resistencia y la casilla de fuerza. */
+      { ancla: 'herr.bloques', titulo: 'Series en bloques', texto: 'Repite una tarea en bloques: 3 × (2 × 400). El descanso entre bloques va aparte del de entre series.' },
+      { ancla: 'herr.agrupar', titulo: 'Varias en un bloque', texto: 'Marca varias filas y agrúpalas en un bloque: por rondas, AMRAP, EMOM, For time o Tabata.' },
+      { ancla: 'herr.serie', titulo: 'Cada serie, distinta', texto: 'Escribe las repeticiones, el peso y el esfuerzo de cada serie. Tu deportista lo ve igual.' },
+      { ancla: 'herr.ultima', titulo: 'Lo que hizo la última vez', texto: 'En cada ejercicio ves lo que levantó la última vez, para decidir el de hoy.' },
+      { ancla: 'herr.zonas', titulo: 'Tus zonas en una tarea', texto: 'Cada tarea puede usar tus zonas propias en vez de las de la app.' },
+      { ancla: 'herr.info', titulo: 'Cómo va su semana', texto: 'Series por grupo muscular, horas y cuánto va suave, mientras decides qué mandar.' },
+      { ancla: 'herr.test', titulo: 'Día de test', texto: 'Convierte la sesión en un test: tu deportista lo abre ya montado.' },
+      { ancla: 'herr.brick', titulo: 'Bricks', texto: 'Encadenas disciplinas con sus transiciones, y cada bloque cuenta en su deporte.' },
+      { ancla: 'herr.nutricion', titulo: 'Qué come y bebe', texto: 'Lo que debe tomar antes, durante y después de esta sesión.' },
+      { ancla: 'herr.corregir', titulo: 'Si apuntó algo mal', texto: 'Lo corriges tú: dala por hecha, corrige lo que apuntó o devuélvela a planificada.' },
+    ],
+  },
+
+  bloques: {
+    id: 'bloques', nombre: 'Bloques',
+    pasos: [
+      { ancla: 'bloq.capas', titulo: 'Por capas', texto: 'Macrociclo, mesociclo y semana, uno dentro de otro. Pulsa uno para entrar.' },
+      { ancla: 'bloq.crear', titulo: 'Crea a mano', texto: 'Si prefieres no dibujar, aquí creas cada bloque a mano.' },
+      { ancla: 'bloq.carga', titulo: 'Lo planeado y lo hecho', texto: 'La carga real se pinta encima de la planificada.' },
+    ],
+  },
+
+  semana: {
+    id: 'semana', nombre: 'Vista de semana',
+    pasos: [
+      { ancla: 'sem.pool', titulo: 'Esperando su día', texto: 'Lo que dibujaste en el lienzo espera aquí. Arrástralo a un día para crear la sesión.' },
+      { ancla: 'sem.fusionar', titulo: 'Varias en una', texto: 'Marca varias y fusiónalas en una sesión compleja.' },
+      { ancla: 'sem.dias', titulo: '¿Te equivocaste de día?', texto: 'Arrastra una sesión de vuelta arriba y vuelve a esperar su día. Las hechas no vuelven.' },
+    ],
+  },
+
+  planificador: {
+    id: 'planificador', nombre: 'Planificador',
+    pasos: [
+      { ancla: 'plan.deportista', titulo: 'Para quién', texto: 'Monta una semana para el deportista que elijas.' },
+      { ancla: 'plan.forma', titulo: 'Cómo la quieres', texto: 'Eliges la forma y la monta con sus reglas: duro y fácil, el reparto entre deportes y los días que tiene.' },
+      { ancla: 'plan.porque', titulo: 'Por qué cae ahí', texto: 'Cada sesión explica por qué va ese día.' },
+      { ancla: 'plan.retocar', titulo: 'Retócala', texto: 'Cambia o quita lo que quieras. Lo que tocas queda marcado como tuyo.' },
+      { ancla: 'plan.reglas', titulo: 'Compárala', texto: 'Si la ajustó la IA, ves la que montaron las reglas solas.' },
+      { ancla: 'plan.volcar', titulo: 'Pásala a su calendario', texto: 'Hasta que no la vuelcas, no se crea nada en su calendario.' },
+    ],
+  },
+
+  grupo: {
+    id: 'grupo', nombre: 'Grupos',
+    pasos: [
+      { ancla: 'grupo.miembros', titulo: 'Los miembros', texto: 'Quién está en el grupo y cómo va cada sesión: hecha, cancelada, sin hacer o no mandada.' },
+      { ancla: 'grupo.plan', titulo: 'Se planifica como una persona', texto: 'El grupo tiene su calendario y su lienzo. Lo que planificas se manda a cada miembro.' },
+      { ancla: 'grupo.traer', titulo: 'Alguien nuevo en el grupo', texto: 'Le copia lo que el grupo tiene planificado de hoy en adelante.' },
+      { ancla: 'grupo.zonas', titulo: 'Las zonas del grupo', texto: 'Mira qué sistema de zonas usan sus miembros y pone el grupo igual.' },
+      { ancla: 'grupo.dia', titulo: 'Lo de hoy, en una pantalla', texto: 'Qué toca hoy y los ritmos de cada uno.' },
+      { ancla: 'grupo.test', titulo: 'Un test para todos', texto: 'Mete los resultados de todo el grupo de una vez.' },
+    ],
+  },
+
+  wellness: {
+    id: 'wellness', nombre: 'Wellness',
+    pasos: [
+      { ancla: 'well.lista', titulo: 'Tu equipo, de peor a mejor', texto: 'Arriba sale quien peor está hoy.' },
+      { ancla: 'well.filtros', titulo: 'Lo que pide atención', texto: 'Filtra por quien necesita atención o por quien no lo ha rellenado hoy.' },
+      { ancla: 'well.detalle', titulo: 'Su veredicto', texto: 'Qué dicen sus datos hoy, y cada valor comparado con lo suyo de siempre.' },
+    ],
+  },
+
+  carga: {
+    id: 'carga', nombre: 'Carga',
+    pasos: [
+      { ancla: 'carga.vistas', titulo: 'Su carga, de tres formas', texto: 'Global, por disciplina y día a día.' },
+      { ancla: 'carga.forma', titulo: 'Frescura o carga', texto: 'Por encima de cero llega con frescura; por debajo, con carga acumulada.' },
+    ],
+  },
+
+  volumen: {
+    id: 'volumen', nombre: 'Volumen',
+    pasos: [
+      { ancla: 'vol.vistas', titulo: 'Cuánto entrena', texto: 'Por semanas, meses o días. Pulsa una barra para ver ese periodo por dentro.' },
+      { ancla: 'vol.series', titulo: 'Objetivo de series', texto: 'En fuerza, fijas cuántas series por semana debería llevar cada grupo.' },
+    ],
+  },
+
+  sicat: {
+    id: 'sicat', nombre: 'SICAT',
+    pasos: [
+      { ancla: 'sicat.como', titulo: 'El coste de cada zona', texto: 'El SICAT calcula lo que le cuesta cada zona en cada deporte. Aquí te lo explica.' },
+    ],
+  },
+
+  indices: {
+    id: 'indices', nombre: 'Índices',
+    pasos: [
+      { ancla: 'ind.semaforo', titulo: 'Cómo vivió cada sesión', texto: 'Cruza lo que sintió con lo que marcó su pulso, y lo que hizo con lo que planeaste. Te dice si fue una sesión perfecta, si se frenó antes de tiempo o si se pasó.' },
+    ],
+  },
+
+  comunicacion: {
+    id: 'comunicacion', nombre: 'Comunicación',
+    pasos: [
+      { ancla: 'com.lista', titulo: 'Todas tus conversaciones', texto: 'Una por deportista, con lo que tienes sin leer arriba.' },
+      { ancla: 'com.feedback', titulo: 'Cómo le fue', texto: 'Lo que te cuenta al cerrar cada sesión llega aquí como tarjeta.' },
+      { ancla: 'com.responder', titulo: 'Responde citándolo', texto: 'Tu respuesta va enlazada a esa sesión, y con «Ver sesión» la abres.' },
+    ],
+  },
+
+  biblioteca: {
+    id: 'biblioteca', nombre: 'Biblioteca de Fuerza',
+    pasos: [
+      { ancla: 'bib.buscar', titulo: 'Encuentra el ejercicio', texto: 'Por tipo, región, lesión o momento, o por su nombre.' },
+      { ancla: 'bib.ejercicio', titulo: 'Cómo se hace', texto: 'Cada ejercicio lleva su vídeo.' },
+      { ancla: 'bib.anadir', titulo: 'Tus ejercicios', texto: 'Los que añades son tuyos. Si editas uno común, se guarda una copia tuya y el original no cambia.' },
+      { ancla: 'bib.esconder', titulo: 'Lo que no usas', texto: 'Escóndelo de tus listas sin borrarlo para nadie.' },
+      { ancla: 'bib.tests', titulo: 'Tests de fuerza', texto: 'Los tests de valoración, con su protocolo.' },
+    ],
+  },
+
+  asistente: {
+    id: 'asistente', nombre: 'Asistente IA',
+    pasos: [
+      { ancla: 'asis.preguntas', titulo: 'Pregúntale', texto: 'Parte de una pregunta hecha, como «¿Cómo está de frescura y qué le pondría hoy?», o escribe la tuya.' },
+      { ancla: 'asis.deportista', titulo: 'Qué mira', texto: 'Lee los datos del deportista que tienes elegido: su carga, su wellness, sus tests y su competición.' },
+      { ancla: 'asis.respuesta', titulo: 'Propone, decides tú', texto: 'Te aconseja y puede proponerte una sesión, pero no toca su calendario: eso lo haces tú.' },
+    ],
+  },
+
+  'tests-propios': {
+    id: 'tests-propios', nombre: 'Tests propios',
+    pasos: [
+      { ancla: 'tp.inicio', titulo: 'Tus tests', texto: 'Los que has creado tú, con «Crear un test nuevo» y «Pasar un test» a la vista.' },
+      { ancla: 'tp.laboratorio', titulo: 'Construye cualquier test', texto: 'Por bloques de repeticiones y columnas: datos que das, que mides o que salen de una fórmula.' },
+      { ancla: 'tp.pasar', titulo: 'Pásalo con reloj', texto: 'Puedes cronometrarlo, que cante una intensidad que sube sola, o apuntarlo a mano.' },
+    ],
+  },
+
+  'zonas-propias': {
+    id: 'zonas-propias', nombre: 'Zonas propias',
+    pasos: [
+      { ancla: 'zp.inicio', titulo: 'Tus zonas', texto: 'Crea tus clasificaciones de zonas, de hito en hito, y úsalas en las tareas.' },
+    ],
+  },
+
+  cobros: {
+    id: 'cobros', nombre: 'Cobros',
+    pasos: [
+      { ancla: 'cobros.libreta', titulo: 'Tu libreta', texto: 'Cargos y pagos de cada deportista, mes a mes, y lo que tiene vencido.' },
+      { ancla: 'cobros.tarifa', titulo: 'Lo que cobras', texto: 'Pon su tarifa una vez. Si es mensual, la cuota sale sola cada mes; si cobras por sesión, te propone el cargo de las que hizo ese mes.' },
+      { ancla: 'cobros.pago', titulo: 'Cuando te paga', texto: 'Apúntalo y su deuda baja.' },
+    ],
+  },
+
+  perfil: {
+    id: 'perfil', nombre: 'Perfil',
+    pasos: [
+      { ancla: 'perfil.codigo', titulo: 'Tu código de entrenador', texto: 'Con él, un deportista se une a ti al registrarse.' },
+    ],
+  },
+
+  papelera: {
+    id: 'papelera', nombre: 'Papelera',
+    pasos: [
+      { ancla: 'papelera.lista', titulo: 'Nada se pierde', texto: 'Las sesiones borradas, tuyas o del atleta, esperan aquí. Recupéralas o bórralas del todo.' },
     ],
   },
 }
@@ -260,7 +464,7 @@ export function guiaAutomatica(p: Progreso, esNuevo: boolean): boolean {
 
 /** ¿Arranca sola esta zona al entrar? */
 export function arrancaSola(zona: ZonaTutorial, p: Progreso, esNuevo: boolean): boolean {
-  return guiaAutomatica(p, esNuevo) && !p.vistos.has(zona) && !p.saltados.has(zona)
+  return !esAvanzada(zona) && guiaAutomatica(p, esNuevo) && !p.vistos.has(zona) && !p.saltados.has(zona)
 }
 
 /** La pantalla de cada zona. Los tests de un grupo y el dirigir en vivo no son zonas. */
@@ -274,7 +478,27 @@ export function zonaDeRuta(ruta: string): ZonaTutorial | null {
   if (/^\/planificacion-visual\/[^/]+\/dibujo$/.test(r)) return 'lienzo'
   if (/^\/planificacion-visual\/[^/]+\/calendario$/.test(r)) return 'calendario'
   if (/^\/sesion\/[^/]+$/.test(r)) return 'sesion'
-  return null
+  /* Las avanzadas. Dirigir un grupo en vivo, su día y su test no son zonas. */
+  if (/^\/planificacion-visual\/[^/]+\/bloques$/.test(r)) return 'bloques'
+  if (/^\/planificacion-visual\/[^/]+\/semana\/[^/]+$/.test(r)) return 'semana'
+  if (/^\/grupo\/[^/]+$/.test(r)) return 'grupo'
+  const fijas: Record<string, ZonaTutorial> = {
+    '/planificador': 'planificador', '/wellness-entrenador': 'wellness', '/carga': 'carga', '/volumen': 'volumen',
+    '/eco': 'sicat', '/indices': 'indices', '/comunicacion': 'comunicacion', '/fuerza': 'biblioteca',
+    '/asistente': 'asistente', '/tests-propios': 'tests-propios', '/zonas-propias': 'zonas-propias',
+    '/cobros': 'cobros', '/perfil': 'perfil', '/papelera': 'papelera',
+  }
+  return fijas[r] ?? null
+}
+
+/**
+ * Lo que ofrece el botón ? en una pantalla. En la sesión, dos: lo básico y
+ * las herramientas (decidido en el guion). En las demás, el suyo o ninguno.
+ */
+export function opcionesDeAyuda(ruta: string): ZonaTutorial[] {
+  const z = zonaDeRuta(ruta)
+  if (!z) return []
+  return z === 'sesion' ? ['sesion', 'herramientas'] : [z]
 }
 
 /** La zona que arranca sola al entrar en esta pantalla, o null. En el Panel, la bienvenida va antes. */
@@ -334,13 +558,31 @@ export function rutaDeZona(zona: ZonaTutorial, idDeportista: number | null): str
     case 'bienvenida':
     case 'panel': return '/dashboard'
     case 'deportistas': return '/deportistas'
-    case 'sesion': return null
+    case 'sesion':
+    case 'herramientas':
+    case 'grupo': return null
+    case 'planificador': return '/planificador'
+    case 'wellness': return '/wellness-entrenador'
+    case 'carga': return '/carga'
+    case 'volumen': return '/volumen'
+    case 'sicat': return '/eco'
+    case 'indices': return '/indices'
+    case 'comunicacion': return '/comunicacion'
+    case 'biblioteca': return '/fuerza'
+    case 'asistente': return '/asistente'
+    case 'tests-propios': return '/tests-propios'
+    case 'zonas-propias': return '/zonas-propias'
+    case 'cobros': return '/cobros'
+    case 'perfil': return '/perfil'
+    case 'papelera': return '/papelera'
     default:
       if (!idDeportista) return null
       if (zona === 'ficha') return '/deportistas/' + idDeportista
       if (zona === 'tests') return '/tests/' + idDeportista
       if (zona === 'vistas') return '/planificacion-visual/' + idDeportista
       if (zona === 'lienzo') return '/planificacion-visual/' + idDeportista + '/dibujo'
+      if (zona === 'bloques') return '/planificacion-visual/' + idDeportista + '/bloques'
+      if (zona === 'semana') return '/planificacion-visual/' + idDeportista + '/semana/' + lunesDe(hoyISO())
       return '/planificacion-visual/' + idDeportista + '/calendario'
   }
 }

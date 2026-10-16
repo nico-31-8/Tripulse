@@ -24,13 +24,16 @@
 //   la fecha de nacimiento no basta: hay que ponerla.
 // - «Van por RPE» solo es verdad sin FC máxima; con ella, van por pulso.
 
-import { diasEntre, fechaValida, soloDia, sumarDias, proximoLunes, aISO } from './fechas'
+import { diasEntre, fechaValida, soloDia, sumarDias, proximoLunes, aISO, MESES_LARGOS } from './fechas'
+import { eur } from './cobros'
 import { disciplinasDe } from './disciplinas'
 import { DIAS_VALORACION } from './sugerencias-entrenador'
 import { guiaAutomatica, type MarcaConsejo, type Progreso } from './tutorial'
 
 export type ZonaConConsejos =
   | 'panel' | 'deportistas' | 'ficha' | 'tests' | 'vistas' | 'lienzo' | 'calendario' | 'sesion'
+  /* Las pantallas avanzadas que tienen consejo en el guion (fase 3). */
+  | 'planificador' | 'wellness' | 'carga' | 'comunicacion' | 'cobros'
 
 /** Qué hace su botón: ir a otra pantalla, pulsar algo de esta, llevar la vista hasta algo o una acción de la página. */
 export type AccionConsejo = { ir: string } | { pulsar: string } | { mirar: string } | { hacer: string }
@@ -126,10 +129,11 @@ export const ANCLAS_DE_CONSEJOS = {
     'ficha.antecedentes', 'ficha.pestana-anamnesis', 'ficha.editar', 'ficha.fc-maxima',
     'vistas.lienzo', 'lienzo.carga', 'lienzo.generar', 'lienzo.competicion',
     'cal.plantillas', 'cal.vista-lista', 'sesion.intensidad', 'sesion.duracion', 'sesion.lo-que-hizo',
+    'plan.deportista', 'well.sin-hoy', 'carga.forma', 'carga.vistas',
   ],
   porElemento: [
     'dep.invitar', 'dep.perfil', 'tests.test', 'tests.tab', 'lienzo.semana', 'lienzo.meso',
-    'lienzo.zonas', 'cal.semana', 'sesion.tarea', 'sesion.editar',
+    'lienzo.zonas', 'cal.semana', 'sesion.tarea', 'sesion.editar', 'com.conv', 'cobros.dep', 'cobros.abrir',
   ],
 }
 
@@ -605,4 +609,111 @@ export function consejosDeLaSesion(d: DatosSesion): Consejo[] {
     })
   }
   return out
+}
+
+/* ---------------------------------------------------------------
+   Pantallas avanzadas (fase 3). Sus recorridos solo salen con el
+   botón ?, pero sus consejos salen como los demás.
+   --------------------------------------------------------------- */
+
+/** Planificador: sin sus días ni su disponibilidad, el reparto va a ciegas. */
+export function consejosDelPlanificador(d: {
+  id: number; conCuenta: boolean; conDisponibilidad: boolean; diasAnamnesis: number | null
+}): Consejo[] {
+  if (!d.conCuenta || d.conDisponibilidad || d.diasAnamnesis != null) return []
+  return [{
+    zona: 'planificador', regla: 'sin-dias', sujeto: d.id, anclas: ['plan.deportista'],
+    titulo: 'Al planificador le faltan sus días',
+    texto: 'Sin sus días y horas, el reparto va a ciegas. Pídele que rellene la anamnesis.',
+    boton: 'Escribirle', accion: { ir: '/comunicacion?dep=' + d.id },
+  }]
+}
+
+/**
+ * Desde qué hora se avisa de quien no ha rellenado el wellness. Se rellena al
+ * levantarse: a las nueve de la mañana casi nadie lo tiene, y avisar entonces
+ * sería avisar todos los días. (No estaba en el guion.)
+ */
+export const HORA_WELLNESS = 12
+
+export function consejosDelWellness(d: {
+  hora: number; hoy: string
+  equipo: { id: number; nombre: string | null; conCuenta: boolean; ultimoWellness: string | null }[]
+}): Consejo[] {
+  if (d.hora < HORA_WELLNESS) return []
+  const faltan = d.equipo.filter(x => x.conCuenta && soloDia(x.ultimoWellness) !== d.hoy)
+  if (!faltan.length) return []
+  const uno = faltan.length === 1
+  return [{
+    zona: 'wellness', regla: 'sin-hoy', sujeto: 0, anclas: ['well.sin-hoy'],
+    titulo: uno ? frase(nombreCorto(faltan[0].nombre)) + ' no lo ha rellenado hoy' : faltan.length + ' deportistas no lo han rellenado hoy',
+    texto: 'Sin él no ves cómo ' + (uno ? 'llega' : 'llegan') + ' a la sesión. Recuérdaselo por Comunicación.',
+    boton: 'Ver quiénes', accion: { pulsar: 'well.sin-hoy' },
+  }]
+}
+
+/** Las sesiones hechas sin su RPE se miran en las cuatro últimas semanas. */
+const DIAS_SIN_RPE = 28
+
+/**
+ * Carga: sesiones hechas sin el RPE del atleta. La app no las deja a cero —
+ * usa el RPE previsto—, así que el guion («sin RPE no hay carga») no era
+ * verdad, y su botón «Ver cuáles» no tenía adónde llevar: la carga diaria es
+ * una gráfica. Se le escribe, que es lo que pide el texto.
+ */
+export function consejosDeCarga(d: {
+  id: number; conCuenta: boolean; hoy: string
+  sesiones: { fecha_sesion: string | null; estado?: string | null; rpe_reportado?: number | null }[]
+}): Consejo[] {
+  if (!d.conCuenta) return []
+  const desde = sumarDias(d.hoy, -DIAS_SIN_RPE)
+  const n = d.sesiones.filter(s => {
+    const f = soloDia(s.fecha_sesion)
+    return s.estado === 'Realizada' && !s.rpe_reportado && f >= desde && f <= d.hoy
+  }).length
+  if (!n) return []
+  return [{
+    zona: 'carga', regla: 'sin-rpe', sujeto: d.id, anclas: ['carga.forma', 'carga.vistas'],
+    titulo: n === 1 ? 'Una sesión hecha no tiene su RPE' : n + ' sesiones hechas no tienen su RPE',
+    texto: 'Su carga va con el RPE previsto, no con el que sintió. Pídele que lo apunte al terminar.',
+    boton: 'Escribirle', accion: { ir: '/comunicacion?dep=' + d.id },
+  }]
+}
+
+/** Lo que te contó al cerrar una sesión, sin leer desde hace dos días o más. */
+const DIAS_SIN_RESPONDER = 2
+
+export function consejosDeComunicacion(d: {
+  hoy: string
+  feedback: { idDeportista: number; nombre: string | null; fecha: string; leido: boolean }[]
+}): Consejo[] {
+  /* El más antiguo de cada uno, y primero quien más lleva esperando. */
+  const masViejo = new Map<number, (typeof d.feedback)[number]>()
+  for (const f of d.feedback) {
+    const dias = diasDesde(f.fecha, d.hoy)
+    if (f.leido || dias == null || dias < DIAS_SIN_RESPONDER) continue
+    const antes = masViejo.get(f.idDeportista)
+    if (!antes || f.fecha < antes.fecha) masViejo.set(f.idDeportista, f)
+  }
+  return [...masViejo.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(f => ({
+    zona: 'comunicacion' as const, regla: 'feedback', sujeto: f.idDeportista, anclas: ['com.conv:' + f.idDeportista],
+    titulo: frase(nombreCorto(f.nombre)) + ' te contó cómo le fue',
+    texto: 'Lleva ' + diasDesde(f.fecha, d.hoy) + ' días sin respuesta.',
+    boton: 'Responder', accion: { pulsar: 'com.conv:' + f.idDeportista },
+  }))
+}
+
+/** «19 de agosto». */
+const diaYMes = (iso: string): string => Number(iso.slice(8, 10)) + ' de ' + MESES_LARGOS[Number(iso.slice(5, 7)) - 1]
+
+/** Cobros: lo que debe de meses anteriores (lib/cobros: saldoDe y vencidoDesde). */
+export function consejosDeCobros(d: {
+  filas: { id: number; nombre: string | null; atrasado: number; desde: string | null }[]
+}): Consejo[] {
+  return d.filas.filter(f => f.atrasado > 0).map(f => ({
+    zona: 'cobros' as const, regla: 'vencido', sujeto: f.id, anclas: ['cobros.dep:' + f.id],
+    titulo: frase(nombreCorto(f.nombre)) + ' tiene ' + eur(f.atrasado) + (f.atrasado === 1 ? ' vencido' : ' vencidos'),
+    texto: f.desde && fechaValida(f.desde) ? 'Desde el ' + diaYMes(f.desde) + '.' : 'Es de meses anteriores.',
+    boton: 'Ver su libreta', accion: { pulsar: 'cobros.abrir:' + f.id },
+  }))
 }

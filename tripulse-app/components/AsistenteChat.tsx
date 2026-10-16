@@ -114,7 +114,7 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
                   ? <>Estás en <span className="text-white font-medium">{modulo.modulo}</span>. Puedo ayudarte con lo que tienes delante, o con {nombre} en general.</>
                   : <>Pregúntame sobre <span className="text-white font-medium">{nombre}</span>. Tengo su carga, wellness, tests, volumen y sesiones recientes.</>}
               </p>
-              <div className={'grid gap-2 ' + (compacto ? '' : 'sm:grid-cols-2')}>
+              <div data-guia="asis.preguntas" className={'grid gap-2 ' + (compacto ? '' : 'sm:grid-cols-2')}>
                 {sugerencias.map(s => (
                   <button key={s} onClick={() => enviar(s)}
                     className="text-left text-[13px] bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-gray-300 hover:border-gray-600 hover:text-white transition">
@@ -136,7 +136,7 @@ export default function AsistenteChat({ nombre, contexto, modulo, sugerencias, c
                   </div>
                 </div>
               ) : (
-                <div key={i} className="flex flex-col gap-1.5">
+                <div key={i} className="flex flex-col gap-1.5" data-guia="asis.respuesta">
                   <span className="text-[10.5px] uppercase tracking-[.09em] text-gray-600 font-semibold">Asistente</span>
                   <div className="text-[14px] leading-[1.65] text-gray-300">
                     {m.content

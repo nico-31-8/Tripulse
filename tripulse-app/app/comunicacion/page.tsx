@@ -1,6 +1,9 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeComunicacion } from '@/lib/consejos'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
@@ -154,6 +157,17 @@ export default function ComunicacionPage() {
   const threadMsgs = activeId ? mensajes.filter(m => m.id_deportista === activeId) : []
   const threadFbs = activeId ? feedback.filter(f => f.depId === activeId) : []
 
+  /* El consejo del tutorial (lib/consejos): lo que te contó y sigue sin leer. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => {
+    if (!conConsejos || loading) return null
+    const nombres = new Map(deportistas.map(d => [d.id, d.nombre]))
+    return consejosDeComunicacion({ hoy: hoyISO(), feedback: feedback.map(f => ({
+      idDeportista: f.depId, nombre: nombres.get(f.depId) ?? null, fecha: f.fecha, leido: !!f.leido,
+    })) })
+  }, [conConsejos, loading, deportistas, feedback])
+  useConsejos('comunicacion', consejos)
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
 
   return (
@@ -184,11 +198,11 @@ export default function ComunicacionPage() {
                   className={'text-[11.5px] font-semibold px-2.5 py-1.5 rounded-full border transition ' + (filtro === k ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>{l}</button>
               ))}
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2" data-guia="com.lista">
               {convosFiltrados.length === 0 ? (
                 <p className="text-center text-gray-500 text-[13px] py-10">Sin conversaciones que coincidan.</p>
               ) : convosFiltrados.map(c => (
-                <button key={c.id} onClick={() => abrir(c.id)}
+                <button key={c.id} onClick={() => abrir(c.id)} data-consejo={'com.conv:' + c.id}
                   className={'w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition relative ' + (c.id === activeId ? 'bg-white/[0.06]' : 'hover:bg-white/[0.035]')}>
                   {c.id === activeId && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r bg-orange-500" />}
                   <Avatar nombre={c.nombre} />
@@ -237,7 +251,7 @@ export default function ComunicacionPage() {
                   {threadFbs.length > 0 && (
                     <div className="flex flex-col gap-2 mb-1">
                       {threadFbs.slice(0, 3).map(f => (
-                        <div key={f.tareaId} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + colorDisciplina(f.disciplina) }}>
+                        <div key={f.tareaId} data-guia="com.feedback" className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + colorDisciplina(f.disciplina) }}>
                           <div className="flex items-center gap-2 text-[11.5px] font-semibold text-gray-300">
                             <span className="w-5 h-5 rounded-md grid place-items-center flex-shrink-0" style={{ background: colorDisciplina(f.disciplina) + '2e', color: colorDisciplina(f.disciplina) }}>
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5h16v11H9l-4 3.5V16.5H4Z" /></svg>
@@ -247,7 +261,7 @@ export default function ComunicacionPage() {
                           </div>
                           <p className="text-[13px] text-gray-100 italic mt-2 leading-snug">"{f.notas}"</p>
                           <div className="flex items-center gap-3 mt-2">
-                            <button onClick={() => responderFeedback(f)} className="text-[11.5px] font-semibold text-orange-300 hover:text-orange-200 transition">↩ Responder</button>
+                            <button onClick={() => responderFeedback(f)} data-guia="com.responder" className="text-[11.5px] font-semibold text-orange-300 hover:text-orange-200 transition">↩ Responder</button>
                             <button onClick={() => router.push('/sesion/' + f.sesionId)} className="text-[11.5px] text-gray-500 hover:text-gray-300 transition">Ver sesión →</button>
                           </div>
                         </div>

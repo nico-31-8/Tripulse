@@ -455,7 +455,7 @@ export default function ZonasPropiasPage() {
       </nav>
 
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5">
-        <div>
+        <div data-guia="zp.inicio">
           <h2 className="text-2xl font-bold mb-1">Zonas propias</h2>
           <p className="text-gray-400 text-sm max-w-3xl">
             Tus clasificaciones, además de las de la aplicación (que siguen ahí y no se tocan). Cada una tira

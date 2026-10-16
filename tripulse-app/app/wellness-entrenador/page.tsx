@@ -1,8 +1,11 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDelWellness } from '@/lib/consejos'
 import { supabase } from '@/lib/supabase'
-import { sumarDias, hoyISO } from '@/lib/fechas'
+import { sumarDias, hoyISO, horaActual } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import Avatar from '@/components/Avatar'
@@ -188,6 +191,16 @@ export default function WellnessEntrenador() {
     )
   }
 
+  /* El consejo del tutorial (lib/consejos): quien hoy no lo ha rellenado. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => conConsejos && !loading
+    ? consejosDelWellness({
+        hora: horaActual(), hoy: hoyStr,
+        equipo: deportistas.map(d => ({ id: d.id, nombre: d.nombre, conCuenta: !!d.id_usuario, ultimoWellness: d.ultimoWellness?.fecha ?? null })),
+      })
+    : null, [conConsejos, loading, hoyStr, deportistas])
+  useConsejos('wellness', consejos)
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500 text-sm">Cargando…</div>
 
   return (
@@ -210,9 +223,9 @@ export default function WellnessEntrenador() {
                 <svg className="w-4 h-4 text-gray-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                 <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar deportista…" className="flex-1 bg-transparent outline-none text-[13px] placeholder:text-gray-500 min-w-0" />
               </div>
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex gap-1.5 flex-wrap" data-guia="well.filtros">
                 {([['todos', 'Todos'], ['atencion', 'Atención'], ['sin_hoy', 'Sin registrar hoy']] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => setFiltro(k)}
+                  <button key={k} onClick={() => setFiltro(k)} data-guia={k === 'sin_hoy' ? 'well.sin-hoy' : undefined}
                     className={'text-[11.5px] font-semibold px-3 py-1.5 rounded-full border transition ' + (filtro === k ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'text-gray-400 bg-white/[0.04] border-white/[0.06] hover:text-white')}>{l}</button>
                 ))}
               </div>
@@ -222,7 +235,7 @@ export default function WellnessEntrenador() {
             {lista.length === 0 ? (
               <div className="tp-card p-12 text-center text-gray-500 text-[13px]">Nadie coincide con el filtro.</div>
             ) : (
-              <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))' }}>
+              <div className="grid gap-3.5" data-guia="well.lista" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))' }}>
                 {lista.map(d => {
                   const b = bienestar(d.ultimoWellness?.score_wellness)
                   const col = b != null ? colorBienestar(b) : '#6b7280'
@@ -298,7 +311,7 @@ export default function WellnessEntrenador() {
                   <div className="flex flex-col gap-4">
                     {/* Resumen */}
                     {analisis?.readiness && (
-                      <div className="tp-card overflow-hidden" style={{ borderColor: analisis.readiness.color + '44' }}>
+                      <div className="tp-card overflow-hidden" data-guia="well.detalle" style={{ borderColor: analisis.readiness.color + '44' }}>
                         <div className="p-4" style={{ borderLeft: '3px solid ' + analisis.readiness.color, background: analisis.readiness.color + '0d' }}>
                           <p className="text-[20px] font-bold leading-none" style={{ color: analisis.readiness.color }}>{analisis.readiness.label}</p>
                           <p className="text-gray-300 text-[13px] mt-2 leading-snug">{analisis.readiness.recomendacion}</p>

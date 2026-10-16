@@ -389,21 +389,21 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                 falta un botón porque los miembros cambian: metes a alguien que usa
                 otro sistema, o le cambias el suyo, y el grupo se queda hablando el
                 idioma de antes sin que nada lo indique. */}
-            <button onClick={actualizarZonas} disabled={ocupado || miembros.length === 0}
+            <button onClick={actualizarZonas} disabled={ocupado || miembros.length === 0} data-guia="grupo.zonas"
               title="Vuelve a mirar qué sistema de zonas usan sus miembros y pone el grupo igual"
               className="text-gray-400 hover:text-white text-xs border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
               Actualizar zonas
             </button>
             {/* Lo que toca hoy con los números de cada uno, para dirigir el
                 entrenamiento sin abrir diez fichas. Ver app/grupo/[id]/dia. */}
-            <button onClick={() => router.push(`/grupo/${id}/dia`)} disabled={miembros.length === 0}
+            <button onClick={() => router.push(`/grupo/${id}/dia`)} disabled={miembros.length === 0} data-guia="grupo.dia"
               title="Qué toca hoy y los ritmos de cada uno, en una pantalla"
               className="bg-orange-500/90 hover:bg-orange-500 text-white text-xs px-3 py-1.5 rounded-lg transition disabled:opacity-40">
               Hoja del día
             </button>
             {/* Un test lo hace el grupo entero de una sentada: un protocolo y N
                 resultados. Ver app/grupo/[id]/test. */}
-            <button onClick={() => router.push(`/grupo/${id}/test`)} disabled={miembros.length === 0}
+            <button onClick={() => router.push(`/grupo/${id}/test`)} disabled={miembros.length === 0} data-guia="grupo.test"
               title="Meter los resultados de un test de todo el grupo de una vez"
               className="text-gray-400 hover:text-white text-xs border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
               Test del grupo
@@ -421,7 +421,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
         {/* El grupo se planifica como se planifica una persona: mismo calendario y
             mismo dibujo de periodización. Debajo, el grupo tiene su propia ficha de
             planificación, así que su plan no se mezcla con el de nadie. */}
-        <section className="grid sm:grid-cols-2 gap-3">
+        <section className="grid sm:grid-cols-2 gap-3" data-guia="grupo.plan">
           <button onClick={() => abrirPlan('calendario')} disabled={!!abriendoPlan}
             className="bg-gray-900 border border-gray-800 hover:border-orange-500 rounded-xl p-5 text-left transition disabled:opacity-50">
             <p className="font-bold">{abriendoPlan === 'calendario' ? 'Abriendo…' : 'Calendario del grupo'}</p>
@@ -451,7 +451,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        <section>
+        <section data-guia="grupo.miembros">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wide">Quién entrena aquí</h3>
             {fuera.length > 0 && (
@@ -487,7 +487,7 @@ export default function PaginaGrupo({ params }: { params: Promise<{ id: string }
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-none">
-                    <button onClick={() => traerFuturas(m)} disabled={ocupado}
+                    <button onClick={() => traerFuturas(m)} disabled={ocupado} data-guia="grupo.traer"
                       title="Copiarle lo que el grupo tiene planificado de hoy en adelante y él no tenga"
                       className="text-gray-500 hover:text-orange-400 text-xs underline transition disabled:opacity-40">Traer futuras</button>
                     <button onClick={() => router.push('/deportistas/' + m.id_deportista)}

@@ -462,7 +462,7 @@ export default function EcoPage() {
 
       <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
         <h1 className="text-[17px] font-bold tracking-tight truncate">SICAT <span className="text-gray-500 font-normal text-[13px] hidden sm:inline">· coste de entrenamiento individualizado</span></h1>
-        <button onClick={() => setMostrarExplicacion(true)}
+        <button data-guia="sicat.como" onClick={() => setMostrarExplicacion(true)}
           className="flex items-center gap-2 text-[12.5px] font-semibold text-gray-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] px-3 py-1.5 rounded-lg transition flex-shrink-0">
           💡 ¿Cómo funciona?
         </button>
