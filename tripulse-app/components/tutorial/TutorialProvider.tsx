@@ -2,24 +2,27 @@
 // ============================================================
 // El tutorial guiado: quién lo ve, cuándo arranca y qué recuerda
 // ============================================================
-// Envuelve toda la app (app/layout.tsx). Solo hace algo para el ENTRENADOR:
+// Envuelve toda la app (app/layout.tsx). Hace algo para el entrenador y, desde
+// la fase 4, para el deportista (cada uno con su recorrido: lib/tutorial):
 // - Carga una vez lo que ya ha visto (lib/tutorial-progreso).
 // - Al entrar en una pantalla con recorrido, lo arranca si toca
 //   (lib/tutorial: solo a cuentas nuevas o a quien aceptó la tarjeta, y solo
-//   la primera vez). En el Panel, la bienvenida va antes.
-// - El botón ? (en el menú) repite el de la pantalla, o abre la lista.
+//   la primera vez). En su primera pantalla, la bienvenida va antes.
+// - El botón ? (junto a TRIPULSE; en el modo entreno, en su barra) repite el
+//   de la pantalla, o abre la lista.
 // - Mientras un paso tapa la app, la app queda inerte (ni clic ni teclado).
 // Lo que se pinta está en Recorrido; la lista, en ListaTutoriales.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { perfilActual, usuarioActual } from '@/lib/sesion'
+import { deportistaActual, perfilActual, usuarioActual } from '@/lib/sesion'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 import {
   ZONAS, pasosDeRecorrido, zonaDeRuta, mostrarOferta as hayQueOfrecer, esCuentaNueva,
   rutaDeZona, progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, esAvanzada, opcionesDeAyuda,
-  type Progreso, type PasoTutorial, type ZonaTutorial, type Pendiente,
+  bienvenidaDe, pasoQueVale, TUTORIAL_DESDE, TUTORIAL_DEPORTISTA_DESDE,
+  type Progreso, type PasoTutorial, type ZonaTutorial, type Pendiente, type RolTutorial,
 } from '@/lib/tutorial'
 import { cargarProgreso, guardarMarca, quitarMarca, CLAVE_OFERTA, CLAVE_PAUSA } from '@/lib/tutorial-progreso'
 import { claveConsejo, consejoDeLaVisita, consejosActivos, type Consejo, type ZonaConConsejos } from '@/lib/consejos'
@@ -27,7 +30,7 @@ import Recorrido, { type FinDelRecorrido } from './Recorrido'
 import ListaTutoriales from './ListaTutoriales'
 import EleccionDeAyuda from './EleccionDeAyuda'
 import ConsejoEnPantalla from './Consejo'
-import { buscarAncla, elementoDeConsejo } from './posicion'
+import { buscarAncla, elementoDeConsejo, HOJA_PX } from './posicion'
 
 /** Lo que una pantalla le pasa al tutorial: sus consejos de ahora (lib/consejos). */
 export interface PantallaConConsejos {
@@ -47,10 +50,11 @@ const ESTABLE_MS = 500
 const ESPERA_AVANZADA_MS = 3000
 
 interface Api {
-  /** Es un entrenador y el tutorial está montado. */
+  /** Hay alguien con recorrido (entrenador o deportista) y el tutorial está montado. */
   activo: boolean
+  rol: RolTutorial | null
   progreso: Progreso
-  /** La tarjeta del Panel para quien ya usaba la app. */
+  /** La tarjeta de su primera pantalla (el Panel, o «Hoy») para quien ya usaba la app. */
   ofrecer: boolean
   /** El botón ?: el recorrido de esta pantalla o, si no tiene, la lista. */
   ayuda: () => void
@@ -77,7 +81,10 @@ interface EnCurso { zona: ZonaTutorial; pasos: PasoTutorial[]; numInfo: number }
 export default function TutorialProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [esEntrenador, setEsEntrenador] = useState(false)
+  const [rol, setRol] = useState<RolTutorial | null>(null)
+  /* El deportista: su id (las rutas de su wellness y su chat lo llevan) y si
+     tiene entrenador (si no, en vez del chat se le enseña Mi plan). */
+  const [miDeportista, setMiDeportista] = useState<{ id: number; conEntrenador: boolean } | null>(null)
   const [idUsuario, setIdUsuario] = useState<string | null>(null)
   const [nombre, setNombre] = useState('')
   const [esNuevo, setEsNuevo] = useState(false)
@@ -104,16 +111,21 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     const cargar = async () => {
       try {
         const user = await usuarioActual()
-        if (!user) { if (vivo) { setEsEntrenador(false); setCargado(false) } return }
+        if (!user) { if (vivo) { setRol(null); setCargado(false) } return }
         const p = await perfilActual()
-        if (!vivo || p?.rol !== 'entrenador') { if (vivo) setEsEntrenador(false); return }
-        const prog = await cargarProgreso(supabase, user.id)
+        const r: RolTutorial | null = p?.rol === 'entrenador' ? 'entrenador' : p?.rol === 'deportista' ? 'deportista' : null
+        if (!vivo || !r) { if (vivo) setRol(null); return }
+        const [prog, dep] = await Promise.all([
+          cargarProgreso(supabase, user.id),
+          r === 'deportista' ? deportistaActual() : Promise.resolve(null),
+        ])
         if (!vivo) return
         setIdUsuario(user.id)
         setNombre((p?.nombre || '').trim().split(/\s+/)[0] || '')
-        setEsNuevo(esCuentaNueva(user.created_at))
+        setEsNuevo(esCuentaNueva(user.created_at, r === 'deportista' ? TUTORIAL_DEPORTISTA_DESDE : TUTORIAL_DESDE))
         setProgreso(prog)
-        setEsEntrenador(true)
+        setMiDeportista(dep?.id ? { id: dep.id, conEntrenador: !!dep.id_entrenador } : null)
+        setRol(r)
         setCargado(true)
       } catch {
         /* Sin poder saber quién es, el tutorial no se monta: no molesta a nadie. */
@@ -121,11 +133,19 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     }
     cargar()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((evento, s) => {
-      if (!s) { setEsEntrenador(false); setCargado(false); setEnCurso(null); return }
+      if (!s) { setRol(null); setCargado(false); setEnCurso(null); return }
       if (evento === 'SIGNED_IN') cargar()
     })
     return () => { vivo = false; subscription.unsubscribe() }
   }, [])
+
+  /* Qué pasos van: el aparato se mira al empezar; si tiene entrenador, por referencia. */
+  const conEntrenadorRef = useRef(true)
+  useEffect(() => { conEntrenadorRef.current = miDeportista?.conEntrenador ?? true })
+  const opcionesDePasos = useCallback(() => ({ movil: window.innerWidth < HOJA_PX, conEntrenador: conEntrenadorRef.current }), [])
+  /* Dónde está 🎓 Tutoriales: en el móvil del deportista, en «Más». */
+  const dondeLista = useCallback(() => (rol === 'deportista' && window.innerWidth < HOJA_PX ? 'en «Más»' : 'abajo del menú'), [rol])
+  const rolRuta: RolTutorial = rol ?? 'entrenador'
 
   const avisar = useCallback((t: string) => {
     setAviso(t)
@@ -159,7 +179,8 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   const empezarAvanzada = useCallback((zona: ZonaTutorial, esperar: boolean) => {
     if (esperaAvanzada.current) clearTimeout(esperaAvanzada.current)
     const ruta = window.location.pathname
-    const todos = ZONAS[zona].pasos
+    const opciones = opcionesDePasos()
+    const todos = ZONAS[zona].pasos.filter(p => pasoQueVale(p, opciones))
     const t0 = Date.now()
     let vistos = -1, desde = t0
     const intentar = () => {
@@ -177,39 +198,40 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
       })
     }
     intentar()
-  }, [])
+  }, [opcionesDePasos])
   useEffect(() => () => { if (esperaAvanzada.current) clearTimeout(esperaAvanzada.current) }, [])
 
   const empezar = useCallback((zona: ZonaTutorial, camino: boolean, esperar = false) => {
     setLista(false)
     setEleccion(null)
     if (esAvanzada(zona)) { empezarAvanzada(zona, esperar); return }
+    const opciones = opcionesDePasos()
     setEnCurso(prev => {
       if (prev) return prev
-      const pasos = pasosDeRecorrido(zona, { camino, vistos: progreso.vistos })
+      const pasos = pasosDeRecorrido(zona, { camino, vistos: progreso.vistos, ...opciones })
       rutaDelRecorrido.current = window.location.pathname
-      return { zona, pasos, numInfo: ZONAS[zona].pasos.length }
+      return { zona, pasos, numInfo: ZONAS[zona].pasos.filter(p => pasoQueVale(p, opciones)).length }
     })
-  }, [progreso.vistos, empezarAvanzada])
+  }, [progreso.vistos, empezarAvanzada, opcionesDePasos])
 
   /* Al entrar en una pantalla: lo pedido desde la lista, o lo que toque solo. */
   useEffect(() => {
-    if (!cargado || !esEntrenador) return
+    if (!cargado || !rol) return
     /* Cambiar de pantalla a mitad de un recorrido lo cierra sin marcarlo: saldrá otra vez. */
     if (enCurso) {
       if (rutaDelRecorrido.current && rutaDelRecorrido.current !== pathname) setEnCurso(null)
       return
     }
-    const r = queArrancaAlEntrar(pathname, pendiente.current, progreso, esNuevo)
+    const r = queArrancaAlEntrar(pathname, pendiente.current, progreso, esNuevo, rol)
     if (!r.zona) { pendiente.current = r.pendiente; return }
     /* Lo pedido se gasta al arrancar, no antes: si la pantalla se repinta en
        estos 700 ms, sigue pedido. */
     const z = r.zona, c = r.camino, resto = r.pendiente
     const t = setTimeout(() => { pendiente.current = resto; empezar(z, c, true) }, 700)
     return () => clearTimeout(t)
-  }, [pathname, cargado, esEntrenador, enCurso, progreso, esNuevo, empezar])
+  }, [pathname, cargado, rol, enCurso, progreso, esNuevo, empezar])
 
-  const alTerminar = useCallback((r: FinDelRecorrido) => {
+  const alTerminar = useCallback((r: FinDelRecorrido, va?: ZonaTutorial) => {
     const actual = enCurso
     setEnCurso(null)
     setModal(false)
@@ -217,8 +239,8 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     const zona = actual.zona
     if (r === 'visto' || r === 'sigue' || r === 'salida') {
       marcar(zona, 'visto')
-      if (r === 'sigue') pendiente.current = pendienteAlSeguir(zona)
-      if (r === 'salida') avisar('Cuando quieras seguir, está en 🎓 Tutoriales, abajo del menú.')
+      if (r === 'sigue') pendiente.current = pendienteAlSeguir(zona, va)
+      if (r === 'salida') avisar('Cuando quieras seguir, está en 🎓 Tutoriales, ' + dondeLista() + '.')
       const despues = ZONAS[zona].despues
       if (r === 'visto' && despues && !progreso.vistos.has(despues)) {
         setTimeout(() => empezar(despues, true), 350)
@@ -231,46 +253,50 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
       marcar(zona, 'saltado')
       avisar('Puedes repetirlo cuando quieras con el botón ?.')
     }
-  }, [enCurso, marcar, avisar, progreso.vistos, empezar])
+  }, [enCurso, marcar, avisar, progreso.vistos, empezar, dondeLista])
 
   const irA = useCallback((zona: ZonaTutorial, camino: boolean) => {
     setLista(false)
     if (camino) quitarPausa()
-    const ruta = rutaDeZona(zona, getAtletaActivo())
+    /* Las del deportista se abren con el suyo; las del entrenador, con el que tiene elegido. */
+    const ruta = rutaDeZona(zona, rolRuta === 'deportista' ? (miDeportista?.id ?? null) : getAtletaActivo())
     if (!ruta) return
-    if (zonaDeRuta(pathname) === zona || (zona === 'bienvenida' && pathname === '/dashboard')) {
+    const aqui = zonaDeRuta(pathname, rolRuta)
+    /* Ya está en su pantalla (una bienvenida, en la que va después de ella). */
+    if (aqui === zona || (aqui && ZONAS[zona].despues === aqui)) {
       empezar(zona, camino)
       return
     }
     pendiente.current = { zona, camino }
     router.push(ruta)
-  }, [pathname, router, empezar, quitarPausa])
+  }, [pathname, router, empezar, quitarPausa, rolRuta, miDeportista])
 
   const ayuda = useCallback(() => {
     if (enCurso) return
-    const opciones = opcionesDeAyuda(pathname)
+    const opciones = opcionesDeAyuda(pathname, rolRuta)
     if (opciones.length === 0) setLista(true)
     else if (opciones.length === 1) empezar(opciones[0], false)
     else setEleccion(opciones)
-  }, [enCurso, pathname, empezar])
+  }, [enCurso, pathname, empezar, rolRuta])
 
   const aceptarOferta = useCallback(() => {
     marcar(CLAVE_OFERTA, 'aceptada')
     quitarPausa()
     pendiente.current = null
-    if (zonaDeRuta(pathname) === 'panel') empezar('bienvenida', true)
-    else irA('bienvenida', true)
-  }, [marcar, quitarPausa, pathname, empezar, irA])
+    const b = bienvenidaDe(rolRuta)
+    if (zonaDeRuta(pathname, rolRuta) === ZONAS[b].despues) empezar(b, true)
+    else irA(b, true)
+  }, [marcar, quitarPausa, pathname, empezar, irA, rolRuta])
 
   const rechazarOferta = useCallback(() => {
     marcar(CLAVE_OFERTA, 'rechazada')
     marcar(CLAVE_PAUSA, 'pausado')
-    avisar('Vale. Lo tienes cuando quieras en 🎓 Tutoriales, abajo del menú.')
-  }, [marcar, avisar])
+    avisar('Vale. Lo tienes cuando quieras en 🎓 Tutoriales, ' + dondeLista() + '.')
+  }, [marcar, avisar, dondeLista])
 
   /* ---- Los consejos ---- */
 
-  const conConsejos = esEntrenador && cargado && consejosActivos(progreso, esNuevo)
+  const conConsejos = !!rol && cargado && consejosActivos(progreso, esNuevo)
   const ponerConsejos = useCallback((p: PantallaConConsejos) => setPantalla(p), [])
   const quitarConsejos = useCallback((zona: ZonaConConsejos) => setPantalla(p => (p && p.zona === zona ? null : p)), [])
 
@@ -286,8 +312,8 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   /* Nunca a la vez que un recorrido o que la lista de tutoriales. */
   const candidato = useMemo(() => (!conConsejos || enCurso || lista ? null
     : eleccion ? null
-    : consejoDeLaVisita(pantalla, zonaDeRuta(pathname), { mostrado: visitaAqui.mostrado, cerrada: visitaAqui.cerrada }, progreso.consejos, new Date(ahora))),
-  [conConsejos, enCurso, lista, eleccion, pantalla, visitaAqui.cerrada, visitaAqui.mostrado, pathname, progreso.consejos, ahora])
+    : consejoDeLaVisita(pantalla, zonaDeRuta(pathname, rolRuta), { mostrado: visitaAqui.mostrado, cerrada: visitaAqui.cerrada }, progreso.consejos, new Date(ahora))),
+  [conConsejos, enCurso, lista, eleccion, pantalla, visitaAqui.cerrada, visitaAqui.mostrado, pathname, rolRuta, progreso.consejos, ahora])
   const claveCandidato = candidato ? claveConsejo(candidato) : null
 
   /* No sale de golpe: espera a que la pantalla acabe de cargar y de moverse. */
@@ -328,9 +354,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   }, [marcar, cerrarVisita, router])
 
   const api = useMemo<Api>(() => ({
-    activo: esEntrenador && cargado,
+    activo: !!rol && cargado,
+    rol,
     progreso,
-    ofrecer: esEntrenador && cargado && hayQueOfrecer(progreso, esNuevo),
+    ofrecer: !!rol && cargado && hayQueOfrecer(progreso, esNuevo),
     ayuda,
     abrirLista: () => setLista(true),
     aceptarOferta,
@@ -339,7 +366,7 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     consejosActivos: conConsejos,
     ponerConsejos,
     quitarConsejos,
-  }), [esEntrenador, cargado, progreso, esNuevo, ayuda, aceptarOferta, rechazarOferta, irA, conConsejos, ponerConsejos, quitarConsejos])
+  }), [rol, cargado, progreso, esNuevo, ayuda, aceptarOferta, rechazarOferta, irA, conConsejos, ponerConsejos, quitarConsejos])
 
   return (
     <Ctx.Provider value={api}>
@@ -351,7 +378,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
         <Recorrido key={enCurso.zona + ':' + enCurso.pasos.length} zona={enCurso.zona} pasos={enCurso.pasos}
           numInfo={enCurso.numInfo} nombre={nombre} onFin={alTerminar} onModal={setModal} />
       )}
-      {lista && <ListaTutoriales progreso={progreso} onCerrar={() => setLista(false)} onVer={irA} />}
+      {lista && (
+        <ListaTutoriales progreso={progreso} rol={rolRuta} idDeportista={miDeportista?.id ?? null}
+          conEntrenador={miDeportista?.conEntrenador ?? true} onCerrar={() => setLista(false)} onVer={irA} />
+      )}
       {eleccion && <EleccionDeAyuda opciones={eleccion} onElegir={z => empezar(z, false)} onCerrar={() => setEleccion(null)} />}
       {consejoVisible && (
         <ConsejoEnPantalla key={claveCandidato} consejo={consejoVisible}

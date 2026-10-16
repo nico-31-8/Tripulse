@@ -154,7 +154,7 @@ export default function DisponibilidadPage() {
                       </span>
                     )}
                   </div>
-                  <button onClick={() => addFranja(dia)}
+                  <button onClick={() => addFranja(dia)} data-guia="ddisp.anadir"
                     className="text-orange-400 hover:text-orange-300 text-sm transition flex items-center gap-1">
                     <span className="text-lg leading-none">+</span>
                     <span>Añadir franja</span>

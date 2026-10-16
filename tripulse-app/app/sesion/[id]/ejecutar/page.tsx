@@ -24,6 +24,7 @@ import { serieEscrita, seriesHechas, type SerieEscrita } from '@/lib/serie-hecha
 import { esDisciplinaDeFuerza, chipDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
 import { mmss, mmssASegundos } from '@/lib/medicion'
 import { usuarioActual } from '@/lib/sesion'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
@@ -69,6 +70,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   // empezar seguidos). La vista previa se conserva, pero solo de vuelta: el botón
   // «← Plan» de aquí dentro, para consultarla a media sesión.
   const [fase, setFase] = useState<'preview'|'ejecutar'|'post'|'resumen'>('ejecutar')
+  const tutorial = useTutorial()
   const [tareaActual, setTareaActual] = useState(0)
   /* Por tarea, lo escrito en cada serie de resistencia: 'serie_0', 'serie_1'… */
   const [resultados, setResultados] = useState<Record<number, Record<string, SerieEscrita>>>({})
@@ -635,7 +637,15 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <nav className="bg-gray-900 px-4 py-4 flex justify-between items-center border-b border-gray-800">
           <button onClick={() => setFase('preview')} className="text-gray-400 text-sm">← Plan</button>
           <span className="text-orange-500 font-bold text-sm">{tareaActual + 1} / {tareas.length}</span>
-          <button onClick={irAPost} className="text-gray-400 text-sm">Finalizar</button>
+          <div className="flex items-center gap-3">
+            {/* Aquí no sale el menú, así que su ? va en esta barra. Solo al pulsarlo:
+                a mitad de una sesión no salta nada solo (decidido el 16-10-2026). */}
+            {tutorial?.activo && (
+              <button type="button" onClick={tutorial.ayuda} aria-label="Ver cómo funciona el modo entreno" title="Ver cómo funciona el modo entreno"
+                className="w-7 h-7 rounded-full border border-orange-500/50 bg-orange-500/10 text-orange-400 text-sm font-bold grid place-items-center">?</button>
+            )}
+            <button onClick={irAPost} data-guia="dent.terminar" className="text-gray-400 text-sm">Finalizar</button>
+          </div>
         </nav>
 
         {/* Barra de progreso */}
@@ -715,13 +725,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                   <p className="text-xs text-gray-400">
                     {queSeMide(intensidad.principal, tarea?.disciplina || sesion?.disciplina)} objetivo
                   </p>
-                  <div className="text-right leading-tight">
+                  <div className="text-right leading-tight" data-guia="dent.serie">
                     <p className="font-bold text-orange-300 text-lg">{intensidad.principal}</p>
                     {/* Lo que saldría de sus tests, cuando el entrenador ha
                         prescrito otra cosa. Sirve para traducir un «95–105% VAM»
                         a un ritmo sin tener que salir de aquí. */}
                     {intensidad.gris && (
-                      <p className="text-[11px] text-gray-500" title={deDondeSaleTarea(calc?.de || 'tests')}>{intensidad.gris}</p>
+                      <p className="text-[11px] text-gray-500" data-guia="dent.tests" title={deDondeSaleTarea(calc?.de || 'tests')}>{intensidad.gris}</p>
                     )}
                   </div>
                 </div>
@@ -770,7 +780,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                   <div key={serieIdx} className={'rounded-xl p-4 border transition ' + (completada ? 'bg-green-900 border-green-600' : 'bg-gray-800 border-gray-700')}>
                     <div className="flex justify-between items-center mb-3">
                       <span className="font-bold text-sm">Serie {serieIdx + 1}</span>
-                      <button onClick={() => updateResultado(tarea.id, serieKey, { ...serieData, completada: !completada })}
+                      <button onClick={() => updateResultado(tarea.id, serieKey, { ...serieData, completada: !completada })} data-guia="dent.marcar"
                         className={'text-xs px-3 py-1 rounded-full transition ' + (completada ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}>
                         {completada ? '✓ Hecha' : 'Marcar'}
                       </button>

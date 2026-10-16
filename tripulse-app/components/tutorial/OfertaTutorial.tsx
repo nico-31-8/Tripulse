@@ -15,8 +15,9 @@ export default function OfertaTutorial({ className = '' }: { className?: string 
     <div className={'bg-gray-900 border border-orange-500/30 rounded-2xl p-5 ' + className}>
       <p className="font-bold text-lg">🎓 Novedad: ya hay un recorrido guiado</p>
       <p className="text-gray-400 text-sm mt-1.5 leading-relaxed">
-        Te enseña cada parte de la app en unos minutos: el panel, tus deportistas, sus tests y la planificación.
-        Puedes verlo ahora o cuando quieras desde 🎓 Tutoriales, abajo del menú.
+        {t.rol === 'deportista'
+          ? 'Te enseña cada parte de la app en unos minutos: tus sesiones, tu wellness y cómo contar cómo fueron. Puedes verlo ahora o cuando quieras desde 🎓 Tutoriales, en «Más».'
+          : 'Te enseña cada parte de la app en unos minutos: el panel, tus deportistas, sus tests y la planificación. Puedes verlo ahora o cuando quieras desde 🎓 Tutoriales, abajo del menú.'}
       </p>
       <div className="flex gap-2 mt-4 flex-wrap">
         <button type="button" onClick={t.aceptarOferta}

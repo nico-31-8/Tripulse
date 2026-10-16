@@ -17,7 +17,7 @@ function DeportistasVinculados({ entrenadorId }: { entrenadorId: string }) {
   useEffect(() => {
     supabase.from('deportista').select('*').eq('id_entrenador', entrenadorId).then(({ data }) => setDeportistas(data || []))
   }, [entrenadorId])
-  if (deportistas.length === 0) return <p className="text-gray-400 text-sm">No tienes deportistas vinculados todavia.</p>
+  if (deportistas.length === 0) return <p className="text-gray-400 text-sm">No tienes deportistas vinculados todavía.</p>
   return (
     <div className="grid gap-3">
       {deportistas.map(d => (
@@ -89,7 +89,7 @@ function SeccionEntrenador({ perfil, entrenador, onDesvincularse }: { perfil: an
   }
 
   return (
-    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6" data-guia="dper.entrenador">
       <h3 className="text-xl font-bold mb-2">Unirse a un entrenador</h3>
       <p className="text-gray-400 text-sm mb-4">Introduce el codigo de tu entrenador para vincularte y que pueda ver y planificar tus sesiones.</p>
       <form onSubmit={vincularseEntrenador} className="flex flex-col gap-3">
@@ -306,7 +306,7 @@ export default function PerfilPage() {
             <QuienVeMiPlan />
             {/* Suspense porque la tarjeta lee ?reloj= de la dirección (la vuelta
                 de Polar), y Next exige esa frontera para usar useSearchParams. */}
-            <Suspense fallback={null}><RelojPerfil /></Suspense>
+            <div data-guia="dper.reloj" className="empty:hidden"><Suspense fallback={null}><RelojPerfil /></Suspense></div>
             {/* SU ARMARIO. La misma pantalla que ve su entrenador en la ficha,
                 porque es la misma lista: `soyYo` solo cambia los textos. */}
             {idDeportista != null && (
@@ -328,7 +328,7 @@ export default function PerfilPage() {
               )}
               <form onSubmit={guardarCodigo} className="flex flex-col gap-3">
                 <input type="text" placeholder="Ej: NICO2026, TRICLUB" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 font-mono tracking-wider" maxLength={12} required />
-                <p className="text-gray-500 text-xs">Solo letras y numeros, entre 4 y 12 caracteres</p>
+                <p className="text-gray-500 text-xs">Solo letras y números, entre 4 y 12 caracteres</p>
                 {mensaje && <p className={mensaje.includes('correctamente') ? 'text-green-400 text-sm' : 'text-red-400 text-sm'}>{mensaje}</p>}
                 <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-medium transition disabled:opacity-50">{loading ? 'Guardando...' : perfil.codigo_entrenador ? 'Actualizar codigo' : 'Crear codigo'}</button>
               </form>
@@ -341,7 +341,7 @@ export default function PerfilPage() {
         )}
 
         {/* RGPD — Privacidad y datos */}
-        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mt-6">
+        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mt-6" data-guia="dper.privacidad">
           <h3 className="text-xl font-bold mb-2">Privacidad y datos</h3>
           <p className="text-gray-400 text-sm mb-4">Gestiona tus datos personales según tus derechos (RGPD).</p>
 

@@ -286,7 +286,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         {/* Lo que dice el entrenador: arriba y con peso. Es lo único de la pantalla
             donde una persona le está hablando. */}
         {sesion.notas_entrenador && (
-          <div className="rounded-2xl px-4 py-3.5 flex flex-col gap-1.5 border border-orange-500/25 bg-orange-500/[0.07]">
+          <div data-guia="dsesion.nota" className="rounded-2xl px-4 py-3.5 flex flex-col gap-1.5 border border-orange-500/25 bg-orange-500/[0.07]">
             <p className="text-[14.5px] leading-relaxed text-white">{sesion.notas_entrenador}</p>
             {/* La columna se llama `notas_entrenador` por historia, pero en una
                 sesión que se apuntó el propio atleta la nota es SUYA. Firmarla
@@ -350,7 +350,7 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                   «planificado»: la escribió él después de hacerla. */}
               {!realizada ? 'Lo que toca' : (sesion?.origen === 'deportista' ? 'Lo que hiciste' : 'Lo que estaba planificado')}
             </span>
-            <div className="flex flex-col gap-2 mt-2.5">
+            <div className="flex flex-col gap-2 mt-2.5" data-guia="dsesion.tareas">
               {tareas.map(t => {
                 /* Un bloque se lee entero: su formato y todas sus líneas. */
                 if (esBloque(t)) return (
@@ -507,11 +507,11 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         {/* Las dos salidas */}
         {!realizada && !registrando && (
           <div className="flex flex-col gap-2.5">
-            <button onClick={() => router.push('/sesion/' + id + '/ejecutar')}
+            <button onClick={() => router.push('/sesion/' + id + '/ejecutar')} data-guia="dsesion.empezar"
               className="w-full bg-orange-500 hover:bg-orange-600 text-white py-[19px] rounded-2xl font-extrabold text-[17px] tracking-wide transition shadow-[0_16px_34px_-16px_rgba(249,115,22,.75)]">
               ▶ &nbsp;EMPEZAR
             </button>
-            <button onClick={empezarRegistro}
+            <button onClick={empezarRegistro} data-guia="dsesion.registrar"
               className="w-full bg-transparent hover:bg-gray-900 text-gray-300 hover:text-white border border-white/[0.075] py-3.5 rounded-xl text-[13.5px] font-semibold transition">
               Ya la he hecho
               <span className="block text-[11px] font-normal text-gray-500 mt-0.5">Registrar sin el modo entreno</span>

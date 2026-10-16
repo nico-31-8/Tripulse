@@ -36,6 +36,11 @@ const modulosEntrenador = [
 // Los módulos del deportista se construyen con su id (wellness y chat lo necesitan)
 /* Por estas dos entradas pasa el recorrido del primer día (lib/tutorial). */
 const ANCLA_MENU: Record<string, string> = { '/deportistas': 'menu.deportistas', '/planificacion-visual': 'menu.planificacion' }
+/* Y por estas, el del deportista en el ordenador (su href lleva su id: van por el título). */
+const ANCLA_MENU_DEPORTISTA: Record<string, string> = {
+  'Mis sesiones': 'menu.d-sesiones', Wellness: 'menu.d-wellness', 'Mis análisis': 'menu.d-analisis', 'Comunicación': 'menu.d-chat',
+  'Mi plan': 'menu.d-mi-plan',
+}
 
 const modulosDeportistaFn = (depId: number | null) => [
   // Primero el plan: es lo que da sentido a todo lo demás. Un atleta sin plan
@@ -184,7 +189,7 @@ export default function Sidebar() {
       </button>
 
       {/* El botón ?: el recorrido de esta pantalla, o la lista si no tiene (components/tutorial). */}
-      {tutorial?.activo && !esDeportista && (
+      {tutorial?.activo && (
         <button type="button" data-guia="ayuda" onClick={() => { setAbierto(false); tutorial.ayuda() }}
           aria-label="Ver el recorrido de esta pantalla" title="Ver el recorrido de esta pantalla"
           style={{ height: 53, left: anchoMenu }}
@@ -220,7 +225,7 @@ export default function Sidebar() {
               <span className="text-gray-400 text-sm whitespace-nowrap">{m.titulo} 🔒</span>
             </div>
           ) : (
-            <button key={m.titulo} onClick={() => router.push(m.href)} data-guia={esDeportista ? undefined : ANCLA_MENU[m.href]}
+            <button key={m.titulo} onClick={() => router.push(m.href)} data-guia={esDeportista ? ANCLA_MENU_DEPORTISTA[m.titulo] : ANCLA_MENU[m.href]}
               className={'w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left ' +
                 (pathname === m.href ? 'bg-gray-800 border-l-2 border-orange-500' : '')}>
               <span className="text-xl flex-shrink-0">{m.icon}</span>
@@ -230,7 +235,7 @@ export default function Sidebar() {
         </nav>
 
         <div className="border-t border-gray-800 py-2">
-          {tutorial?.activo && !esDeportista && (
+          {tutorial?.activo && (
             <button onClick={() => { setAbierto(false); tutorial.abrirLista() }}
               className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
               <span className="text-xl flex-shrink-0">🎓</span>
@@ -242,7 +247,7 @@ export default function Sidebar() {
             <span className="text-xl flex-shrink-0">◀️</span>
             <span className="text-gray-300 text-sm whitespace-nowrap">Atrás</span>
           </button>
-          <button onClick={() => router.push('/perfil')}
+          <button onClick={() => router.push('/perfil')} data-guia="menu.perfil"
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
             <span className="text-xl flex-shrink-0">⚙️</span>
             <span className="text-gray-300 text-sm whitespace-nowrap">Mi perfil</span>

@@ -2,18 +2,24 @@
 // ============================================================
 // 🎓 Tutoriales: todos los recorridos, con lo ya visto
 // ============================================================
-// Se abre desde el menú (abajo del todo) o con el botón ? en una pantalla sin
+// Se abre desde el menú (abajo del todo; el deportista, en el móvil, desde
+// «Más») o con el botón ? en una pantalla sin
 // recorrido. Arriba, por dónde va el recorrido del primer día y «Seguir»; debajo
 // cada parada con su estado y «Ver». Las que dependen de un deportista se abren
 // con el que tiene elegido; la sesión, desde una sesión. Al final, las partes
-// avanzadas (fase 3), que solo salen cuando se piden.
+// avanzadas (fase 3), que solo salen cuando se piden. Cada uno ve las suyas:
+// el deportista, su recorrido (fase 4).
 
 import { useEffect } from 'react'
-import { AVANZADAS, CAMINO, ZONAS, rutaDeZona, siguienteDelCamino, type Progreso, type ZonaTutorial } from '@/lib/tutorial'
+import { ZONAS, avanzadasDe, caminoDe, rutaDeZona, siguienteDelCamino, type Progreso, type RolTutorial, type ZonaTutorial } from '@/lib/tutorial'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 
-export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
+export default function ListaTutoriales({ progreso, rol, idDeportista, conEntrenador, onCerrar, onVer }: {
   progreso: Progreso
+  rol: RolTutorial
+  /** El deportista que mira: sus rutas lo llevan. Al entrenador no le hace falta. */
+  idDeportista: number | null
+  conEntrenador: boolean
   onCerrar: () => void
   onVer: (zona: ZonaTutorial, camino: boolean) => void
 }) {
@@ -23,14 +29,19 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
     return () => window.removeEventListener('keydown', tecla)
   }, [onCerrar])
 
-  const atleta = getAtletaActivo()
-  const hechas = CAMINO.filter(z => progreso.vistos.has(z)).length
-  const proxima = siguienteDelCamino(progreso)
+  const deportista = rol === 'deportista'
+  const camino = caminoDe(rol)
+  /* Sin entrenador, el chat no tiene con quién. */
+  const avanzadas = avanzadasDe(rol).filter(z => z !== 'd-chat' || conEntrenador)
+  const atleta = deportista ? idDeportista : getAtletaActivo()
+  const hechas = camino.filter(z => progreso.vistos.has(z)).length
+  const proxima = siguienteDelCamino(progreso, rol)
   const motivo = (z: ZonaTutorial): string | null => {
     if (rutaDeZona(z, atleta)) return null
-    if (z === 'sesion' || z === 'herramientas') return 'Abre una sesión y pulsa ?'
+    if (z === 'sesion' || z === 'herramientas' || z === 'd-sesion') return 'Abre una sesión y pulsa ?'
+    if (z === 'd-entreno') return 'Empieza una sesión y pulsa ?'
     if (z === 'grupo') return 'Abre un grupo y pulsa ?'
-    return 'Elige antes un deportista en el Panel'
+    return deportista ? 'Todavía no está disponible' : 'Elige antes un deportista en el Panel'
   }
 
   return (
@@ -50,10 +61,10 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
           <div className="mt-4 rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-4 py-3">
             <div className="flex justify-between text-[13px] font-semibold">
               <span>Recorrido del primer día</span>
-              <span className="tabular-nums text-gray-300">{hechas} de {CAMINO.length}</span>
+              <span className="tabular-nums text-gray-300">{hechas} de {camino.length}</span>
             </div>
             <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden my-2.5">
-              <div className="h-full bg-orange-500 transition-all" style={{ width: (hechas / CAMINO.length * 100) + '%' }} />
+              <div className="h-full bg-orange-500 transition-all" style={{ width: (hechas / camino.length * 100) + '%' }} />
             </div>
             {!proxima ? (
               <p className="text-[12.5px] text-gray-300">Completado.</p>
@@ -69,7 +80,7 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
           </div>
 
           <ul className="mt-3">
-            {CAMINO.map((z, k) => {
+            {camino.map((z, k) => {
               const visto = progreso.vistos.has(z)
               const saltado = !visto && progreso.saltados.has(z)
               const m = motivo(z)
@@ -94,7 +105,7 @@ export default function ListaTutoriales({ progreso, onCerrar, onVer }: {
             No salen solas: con el botón ? en su pantalla, o desde aquí.
           </p>
           <ul className="mt-2">
-            {AVANZADAS.map(z => {
+            {avanzadas.map(z => {
               const m = motivo(z)
               return (
                 <li key={z} className="flex items-center gap-2.5 py-2.5 border-t border-white/[0.04] text-[13.5px] min-h-[44px]">

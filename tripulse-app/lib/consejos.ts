@@ -34,6 +34,8 @@ export type ZonaConConsejos =
   | 'panel' | 'deportistas' | 'ficha' | 'tests' | 'vistas' | 'lienzo' | 'calendario' | 'sesion'
   /* Las pantallas avanzadas que tienen consejo en el guion (fase 3). */
   | 'planificador' | 'wellness' | 'carga' | 'comunicacion' | 'cobros'
+  /* El deportista (fase 4): solo los dos del guion. */
+  | 'd-hoy' | 'd-sesiones'
 
 /** Qué hace su botón: ir a otra pantalla, pulsar algo de esta, llevar la vista hasta algo o una acción de la página. */
 export type AccionConsejo = { ir: string } | { pulsar: string } | { mirar: string } | { hacer: string }
@@ -58,6 +60,9 @@ export interface Consejo {
 export const DIAS_DE_REPOSO = 7
 /** Un test de más de seis semanas «conviene repetirlo» (es lo que ya dicen el Panel y Tests). */
 export const DIAS_TEST_VIEJO = 42
+
+/** Los del deportista hablan de sus propios datos («según tus datos»); los demás, de los de un deportista. */
+export const esDelDeportista = (c: Pick<Consejo, 'zona'>): boolean => c.zona.startsWith('d-')
 
 export function claveConsejo(c: Pick<Consejo, 'zona' | 'regla' | 'sujeto'>): string {
   return 'c:' + c.zona + ':' + c.regla + ':' + c.sujeto
@@ -130,10 +135,12 @@ export const ANCLAS_DE_CONSEJOS = {
     'vistas.lienzo', 'lienzo.carga', 'lienzo.generar', 'lienzo.competicion',
     'cal.plantillas', 'cal.vista-lista', 'sesion.intensidad', 'sesion.duracion', 'sesion.lo-que-hizo',
     'plan.deportista', 'well.sin-hoy', 'carga.forma', 'carga.vistas',
+    'dnav.mas', 'menu', 'dses.vistas',
   ],
   porElemento: [
     'dep.invitar', 'dep.perfil', 'tests.test', 'tests.tab', 'lienzo.semana', 'lienzo.meso',
     'lienzo.zonas', 'cal.semana', 'sesion.tarea', 'sesion.editar', 'com.conv', 'cobros.dep', 'cobros.abrir',
+    'dses.s',
   ],
 }
 
@@ -716,4 +723,54 @@ export function consejosDeCobros(d: {
     texto: f.desde && fechaValida(f.desde) ? 'Desde el ' + diaYMes(f.desde) + '.' : 'Es de meses anteriores.',
     boton: 'Ver su libreta', accion: { pulsar: 'cobros.abrir:' + f.id },
   }))
+}
+
+/* ---------------------------------------------------------------
+   El deportista (fase 4). Solo dos: «Hoy» ya pide el wellness y el
+   reloj por su cuenta. Su botón los calla un día y no siete: lo que
+   piden se acaba al hacerlo, y si vuelve a pasar (otra sesión sin
+   cerrar, otro mensaje) tiene que poder decirlo.
+   --------------------------------------------------------------- */
+
+/** Sesiones: las de las dos últimas semanas que siguen sin cerrar (la misma cuenta que el calendario del entrenador). */
+export function consejosDeMisSesiones(d: {
+  id: number
+  hoy: string
+  conEntrenador: boolean
+  sesiones: { id: number; fecha_sesion: string | null; estado?: string | null }[]
+}): Consejo[] {
+  const desde = sumarDias(d.hoy, -DIAS_SIN_HACER)
+  const sin = d.sesiones
+    .map(s => ({ id: s.id, f: soloDia(s.fecha_sesion), estado: s.estado }))
+    .filter(s => s.f >= desde && s.f < d.hoy && s.estado !== 'Realizada' && s.estado !== 'Cancelada')
+    .sort((a, b) => a.f.localeCompare(b.f) || a.id - b.id)
+  if (!sin.length) return []
+  const n = sin.length, como = n === 1 ? 'cómo fue' : 'cómo fueron'
+  return [{
+    zona: 'd-sesiones', regla: 'sin-cerrar', sujeto: d.id,
+    /* La lista empieza hoy: si la sesión no está a la vista, brilla el cambio de vista. */
+    anclas: ['dses.s:' + sin[0].id, 'dses.vistas'],
+    titulo: n === 1 ? 'Tienes 1 sesión sin cerrar' : 'Tienes ' + n + ' sesiones sin cerrar',
+    texto: d.conEntrenador
+      ? 'Cuéntale a tu entrenador ' + como + ': sin eso no sabe cómo te sienta lo que te manda.'
+      : 'Cuenta ' + como + ': sin eso tu plan no sabe cómo te sienta lo que haces.',
+    boton: n === 1 ? 'Cerrarla' : 'Cerrar la primera',
+    accion: { ir: '/sesion/' + sin[0].id },
+    vuelveEnDias: 1,
+  }]
+}
+
+/** Hoy: lo que su entrenador le ha escrito y no ha leído. */
+export function consejosDeHoy(d: { id: number; sinLeer: number }): Consejo[] {
+  if (d.sinLeer <= 0) return []
+  return [{
+    zona: 'd-hoy', regla: 'sin-leer', sujeto: d.id,
+    /* El chat está en «Más»; en el ordenador, en el menú. */
+    anclas: ['dnav.mas', 'menu'],
+    titulo: 'Tu entrenador te ha escrito',
+    texto: d.sinLeer === 1 ? 'Tienes 1 mensaje sin leer.' : 'Tienes ' + d.sinLeer + ' mensajes sin leer.',
+    boton: d.sinLeer === 1 ? 'Leerlo' : 'Leerlos',
+    accion: { ir: '/chat/' + d.id },
+    vuelveEnDias: 1,
+  }]
 }

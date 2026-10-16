@@ -300,7 +300,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {/* Conclusiones en lenguaje natural */}
-      <div className="p-5 flex flex-col gap-2 border-b border-gray-800">
+      <div data-guia="dwell.analisis" className="p-5 flex flex-col gap-2 border-b border-gray-800">
         {analisis.conclusiones.map((c, i) => {
           const ic = c.tipo === 'rojo' ? '🔴' : c.tipo === 'ambar' ? '🟠' : c.tipo === 'positivo' ? '🟢' : 'ℹ️'
           return (
@@ -366,7 +366,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
 
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold">{mostrarForm ? 'Registro de hoy' : 'Registros recientes'}</h3>
-          <button onClick={() => setMostrarForm(!mostrarForm)} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
+          {/* El tutorial (paso «Cada mañana, un minuto») brilla aquí y no en el formulario: este se ve siempre. */}
+          <button onClick={() => setMostrarForm(!mostrarForm)} data-guia="dwell.registro" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
             {mostrarForm ? 'Cancelar' : '+ Nuevo registro'}
           </button>
         </div>
@@ -380,7 +381,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
             </div>
             {/* LO QUE YA TRAE EL RELOJ. Solo si la noche de ese día ha llegado. */}
             {q.franjaReloj && noche && (
-              <div className="rounded-xl p-4 border border-emerald-900/70 bg-emerald-950/30">
+              <div data-guia="dwell.reloj" className="rounded-xl p-4 border border-emerald-900/70 bg-emerald-950/30">
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <p className="text-emerald-300 font-semibold text-sm">⌚ De tu {nombreReloj(proveedor)}, esa noche</p>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300">Lo pone el reloj</span>
@@ -586,9 +587,9 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
         )}
 
         {registros.length === 0 ? (
-          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">💚</div><p>No hay registros de wellness todavia.</p></div>
+          <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">💚</div><p>No hay registros de wellness todavía.</p></div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-3" data-guia="dwell.historial">
             {registros.map(r => (
               <div key={r.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
                 <div className="flex justify-between items-center">

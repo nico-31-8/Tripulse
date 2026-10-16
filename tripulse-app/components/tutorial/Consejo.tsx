@@ -8,7 +8,7 @@
 // si hay una ventana de la página abierta, se esconde y espera.
 
 import { useEffect, useRef, useState } from 'react'
-import type { Consejo as ConsejoDeDatos } from '@/lib/consejos'
+import { esDelDeportista, type Consejo as ConsejoDeDatos } from '@/lib/consejos'
 import { colocar, hayVentanaAbierta, objetivoDeConsejo } from './posicion'
 
 export default function Consejo({ consejo, onAhoraNo, onHacer }: {
@@ -55,7 +55,7 @@ export default function Consejo({ consejo, onAhoraNo, onHacer }: {
         <span ref={flechaRef} aria-hidden className="tp-guia-flecha ambar" />
         <div className="flex items-center gap-2.5 text-[11px] text-gray-400">
           <span className="font-bold tracking-[.08em] uppercase text-amber-400">💡 Consejo</span>
-          <span>según sus datos</span>
+          <span>{esDelDeportista(consejo) ? 'según tus datos' : 'según sus datos'}</span>
         </div>
         <h3 id="tp-consejo-titulo" className="font-bold text-white mt-2 mb-1.5 text-base text-balance">{consejo.titulo}</h3>
         <p id="tp-consejo-texto" className="text-[13.5px] leading-relaxed text-gray-300">{consejo.texto}</p>

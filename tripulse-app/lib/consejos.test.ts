@@ -6,6 +6,7 @@ import {
   consejosDelLienzo, consejosDelCalendario, consejosDeLaSesion, consejoQueToca, claveConsejo, enReposo,
   pantallaCalladaHoy, consejosActivos, disciplinaPrincipal, nombreCorto, consejoDeLaVisita, ANCLAS_DE_CONSEJOS,
   consejosDelPlanificador, consejosDelWellness, consejosDeCarga, consejosDeComunicacion, consejosDeCobros, HORA_WELLNESS,
+  consejosDeMisSesiones, consejosDeHoy, esDelDeportista,
   type Consejo, type DatosPanel, type DatosFicha, type DatosTests, type DatosLienzo, type DatosSesion,
 } from './consejos'
 import { progresoVacio, type MarcaConsejo } from './tutorial'
@@ -321,13 +322,15 @@ const TODOS: Consejo[] = [
   ...consejosDeCarga({ id: 9999999999, conCuenta: true, hoy: HOY, sesiones: [{ fecha_sesion: '2026-10-10', estado: 'Realizada', rpe_reportado: null }] }),
   ...consejosDeComunicacion({ hoy: HOY, feedback: [{ idDeportista: 9999999999, nombre: 'Ana', fecha: '2026-10-01', leido: false }] }),
   ...consejosDeCobros({ filas: [{ id: 9999999999, nombre: 'Ana', atrasado: 35, desde: '2026-08-19' }] }),
+  ...consejosDeMisSesiones({ id: 9999999999, hoy: HOY, conEntrenador: true, sesiones: [{ id: 9999999999, fecha_sesion: '2026-10-13' }] }),
+  ...consejosDeHoy({ id: 9999999999, sinLeer: 2 }),
 ]
 
 describe('el catálogo de consejos', () => {
-  it('están todos los del guion: 31 consejos en 13 pantallas (26 del primer día y 5 de las avanzadas)', () => {
+  it('están todos los del guion: 33 consejos en 15 pantallas (26 del primer día, 5 de las avanzadas y 2 del deportista)', () => {
     const unicas = new Set(TODOS.map(c => c.zona + ':' + c.regla))
-    expect(unicas.size).toBe(31)
-    expect(new Set(TODOS.map(c => c.zona)).size).toBe(13)
+    expect(unicas.size).toBe(33)
+    expect(new Set(TODOS.map(c => c.zona)).size).toBe(15)
   })
 
   /* La tabla solo acepta claves de hasta 40 caracteres (supabase/tutorial-progreso.sql). */
@@ -462,5 +465,52 @@ describe('los consejos de las pantallas avanzadas', () => {
     expect(c.texto).toBe('Desde el 19 de agosto.')
     expect(c.accion).toEqual({ pulsar: 'cobros.abrir:2' })
     expect(consejosDeCobros({ filas: [{ id: 3, nombre: 'Eva', atrasado: 1, desde: null }] })[0].titulo).toBe('Eva tiene 1 € vencido')
+  })
+})
+
+describe('los consejos del deportista (fase 4)', () => {
+  const ses = (id: number, fecha_sesion: string, estado?: string) => ({ id, fecha_sesion, estado })
+  const base = { id: 14, hoy: HOY, conEntrenador: true }
+
+  it('sin cerrar: las de las dos últimas semanas; ni las de hoy ni las hechas o canceladas', () => {
+    expect(consejosDeMisSesiones({ ...base, sesiones: [ses(1, HOY), ses(2, '2026-10-10', 'Realizada'), ses(3, '2026-10-11', 'Cancelada'), ses(4, '2026-09-20')] })).toEqual([])
+    const [c] = consejosDeMisSesiones({ ...base, sesiones: [ses(7, '2026-10-14'), ses(6, '2026-10-12', 'Planificada'), ses(5, '2026-10-12')] })
+    expect(c.titulo).toBe('Tienes 3 sesiones sin cerrar')
+    expect(c.texto).toBe('Cuéntale a tu entrenador cómo fueron: sin eso no sabe cómo te sienta lo que te manda.')
+    /* La primera es la más antigua; si no está a la vista, brilla el cambio de vista. */
+    expect(c.anclas).toEqual(['dses.s:5', 'dses.vistas'])
+    expect(c.boton).toBe('Cerrar la primera')
+    expect(c.accion).toEqual({ ir: '/sesion/5' })
+  })
+
+  it('una sola, y quien entrena sin entrenador', () => {
+    const [c] = consejosDeMisSesiones({ ...base, conEntrenador: false, sesiones: [ses(9, '2026-10-15')] })
+    expect(c.titulo).toBe('Tienes 1 sesión sin cerrar')
+    expect(c.texto).toBe('Cuenta cómo fue: sin eso tu plan no sabe cómo te sienta lo que haces.')
+    expect(c.boton).toBe('Cerrarla')
+  })
+
+  it('mensajes sin leer de su entrenador', () => {
+    expect(consejosDeHoy({ id: 14, sinLeer: 0 })).toEqual([])
+    const [c] = consejosDeHoy({ id: 14, sinLeer: 3 })
+    expect(c.titulo).toBe('Tu entrenador te ha escrito')
+    expect(c.texto).toBe('Tienes 3 mensajes sin leer.')
+    expect(c.anclas).toEqual(['dnav.mas', 'menu'])
+    expect(c.accion).toEqual({ ir: '/chat/14' })
+    expect(consejosDeHoy({ id: 14, sinLeer: 1 })[0]).toMatchObject({ texto: 'Tienes 1 mensaje sin leer.', boton: 'Leerlo' })
+  })
+
+  it('hablan de tus datos, no de los de un deportista', () => {
+    expect(esDelDeportista(consejosDeHoy({ id: 14, sinLeer: 1 })[0])).toBe(true)
+    expect(esDelDeportista(consejosDeMisSesiones({ ...base, sesiones: [ses(9, '2026-10-15')] })[0])).toBe(true)
+    expect(esDelDeportista(consejosDeComunicacion({ hoy: HOY, feedback: [{ idDeportista: 4, nombre: 'Leo', fecha: '2026-10-01', leido: false }] })[0])).toBe(false)
+  })
+
+  it('su botón los calla un día; «Ahora no», siete', () => {
+    const [c] = consejosDeHoy({ id: 14, sinLeer: 2 })
+    const hace = (h: number) => new Date(ahora.getTime() - h * 3600000).toISOString()
+    expect(enReposo(c, { estado: 'visto', fecha: hace(2) }, ahora)).toBe(true)
+    expect(enReposo(c, { estado: 'visto', fecha: hace(25) }, ahora)).toBe(false)
+    expect(enReposo(c, { estado: 'saltado', fecha: hace(25) }, ahora)).toBe(true)
   })
 })

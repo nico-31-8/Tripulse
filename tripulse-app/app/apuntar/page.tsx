@@ -517,7 +517,7 @@ export default function Apuntar() {
           {/* Para fuerza no hay «la voy a hacer»: se apunta serie a serie
               mientras se entrena, y una serie planeada no tiene kilos reales. */}
           {!esFuerza && (
-            <div className="grid grid-cols-2 gap-1.5 p-3 pb-0">
+            <div className="grid grid-cols-2 gap-1.5 p-3 pb-0" data-guia="dap.que">
               {[{ v: false, et: 'La voy a hacer' }, { v: true, et: 'Ya la hice' }].map(m => (
                 <button key={String(m.v)} onClick={() => setRealizada(m.v)} aria-pressed={realizada === m.v}
                   className={'py-2.5 rounded-xl text-[13.5px] font-semibold transition ' + (realizada === m.v
@@ -527,7 +527,7 @@ export default function Apuntar() {
             </div>
           )}
 
-          <div className="flex gap-1.5 overflow-x-auto p-3" role="group" aria-label="Disciplina">
+          <div className="flex gap-1.5 overflow-x-auto p-3" role="group" aria-label="Disciplina" data-guia="dap.deporte">
             {DISCIPLINAS.map(d => (
               <button key={d.v} onClick={() => cambiarDisciplina(d.v)} aria-pressed={disciplina === d.v}
                 disabled={!!editando}
@@ -545,7 +545,7 @@ export default function Apuntar() {
         </div>
 
         {esFuerza && ejercicios.length === 0 && (
-          <div className="tp-card px-4 py-7 text-center">
+          <div className="tp-card px-4 py-7 text-center" data-guia="dap.series">
             <div className="text-4xl mb-2.5 opacity-90">🏋️</div>
             <p className="text-lg font-bold mb-1.5">¿Qué has hecho hoy?</p>
             <p className="text-gray-500 text-[13px] max-w-[250px] mx-auto leading-relaxed">
@@ -705,7 +705,7 @@ export default function Apuntar() {
 
         {/* Los minutos y el RPE, al final: al empezar no se saben. */}
         {cuentan.length > 0 && (
-          <div className="tp-card p-3.5">
+          <div className="tp-card p-3.5" data-guia="dap.final">
             <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-2.5">
               {realizada ? 'Al terminar' : 'Lo que tienes previsto'}
             </p>

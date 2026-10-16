@@ -6,6 +6,21 @@
 
 export const HOJA_PX = 640
 
+/* Lo que va en una capa fija (la barra de abajo, su «Más», el menú) no se mueve
+   con el scroll. Se mira una vez por elemento: se llama en cada fotograma. */
+const fijos = new WeakMap<HTMLElement, boolean>()
+function enCapaFija(el: HTMLElement): boolean {
+  let v = fijos.get(el)
+  if (v === undefined) {
+    v = false
+    for (let n: HTMLElement | null = el; n && n !== document.body; n = n.parentElement) {
+      if (getComputedStyle(n).position === 'fixed') { v = true; break }
+    }
+    fijos.set(el, v)
+  }
+  return v
+}
+
 /** El elemento de un ancla, si está a la vista de verdad (no escondido ni fuera por un lado). */
 export function buscarAncla(ancla: string): HTMLElement | null {
   const els = document.querySelectorAll<HTMLElement>('[data-guia="' + ancla.replace(/"/g, '') + '"]')
@@ -21,7 +36,7 @@ export function buscarAncla(ancla: string): HTMLElement | null {
   return null
 }
 
-export interface Objetivo { rect: DOMRect; radio: number }
+export interface Objetivo { rect: DOMRect; radio: number; fijo?: boolean }
 
 /**
  * Lo que se ve de un elemento: su caja recortada por los contenedores con
@@ -54,7 +69,7 @@ export function objetivoDeConsejo(anclas: string[]): Objetivo | null {
     if (!a.includes(':')) {
       const el = buscarAncla(a)
       const r = el && cajaVisible(el)
-      if (el && r) return { rect: r, radio: parseFloat(getComputedStyle(el).borderTopLeftRadius) || 8 }
+      if (el && r) return { rect: r, radio: parseFloat(getComputedStyle(el).borderTopLeftRadius) || 8, fijo: enCapaFija(el) }
       continue
     }
     const els = Array.from(document.querySelectorAll<HTMLElement>('[data-consejo="' + a.replace(/"/g, '') + '"]'))
@@ -109,20 +124,26 @@ export function colocar(
   }
   const W = window.innerWidth, H = window.innerHeight
   if (W < HOJA_PX) {
-    /* Móvil: hoja abajo, de lado a lado. */
+    /* Móvil: hoja de lado a lado, abajo. Si lo que brilla está fijo en la mitad
+       de abajo (la barra del deportista, su «Más»), el scroll no lo puede subir
+       por encima de la hoja: la hoja va arriba. */
+    const fijo = objetivo instanceof HTMLElement ? enCapaFija(objetivo) : !!objetivo?.fijo
+    const arriba = !!r && fijo && r.top + r.height / 2 > H / 2
     globo.style.left = '0px'
     globo.style.right = '0px'
-    globo.style.top = 'auto'
-    globo.style.bottom = '0px'
+    globo.style.top = arriba ? '0px' : 'auto'
+    globo.style.bottom = arriba ? 'auto' : '0px'
     globo.style.width = 'auto'
-    globo.style.borderRadius = '20px 20px 0 0'
-    globo.style.paddingBottom = 'calc(18px + env(safe-area-inset-bottom, 0px))'
+    globo.style.borderRadius = arriba ? '0 0 20px 20px' : '20px 20px 0 0'
+    globo.style.paddingTop = arriba ? 'calc(16px + env(safe-area-inset-top, 0px))' : ''
+    globo.style.paddingBottom = arriba ? '' : 'calc(18px + env(safe-area-inset-bottom, 0px))'
     if (flecha) flecha.style.display = 'none'
     return
   }
   globo.style.right = 'auto'
   globo.style.bottom = 'auto'
   globo.style.borderRadius = '16px'
+  globo.style.paddingTop = ''
   globo.style.paddingBottom = ''
   globo.style.width = r ? 'min(360px, calc(100vw - 24px))' : 'min(440px, calc(100vw - 24px))'
   const gw = globo.offsetWidth, gh = globo.offsetHeight, m = 14
@@ -154,7 +175,7 @@ export function colocar(
 
 /** Que el elemento se vea, y en el móvil que quede por encima de la hoja. */
 export function asomar(el: HTMLElement, globo: HTMLDivElement | null) {
-  if (getComputedStyle(el).position === 'fixed' || el.closest('[data-guia-fijo]')) return
+  if (enCapaFija(el) || el.closest('[data-guia-fijo]')) return
   const r = el.getBoundingClientRect(), H = window.innerHeight
   const hoja = window.innerWidth < HOJA_PX
   const reserva = hoja ? Math.min(globo?.offsetHeight || 260, H * 0.5) + 24 : 24

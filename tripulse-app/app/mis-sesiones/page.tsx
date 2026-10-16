@@ -1,6 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { aISO, hoyISO, lunesDe } from '@/lib/fechas'
 import { porDia, diasHasta, cuentaAtras, type CompeticionCal } from '@/lib/competiciones-calendario'
@@ -14,6 +14,9 @@ import { SELECT_EJERCICIOS_CONTEO } from '@/lib/cardio-fuerza'
 import type { TestsDeportista } from '@/lib/duracion'
 import { etiquetaDisciplina, chipDisciplina, claseDisciplina, DEPORTES } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeMisSesiones } from '@/lib/consejos'
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 const DIAS_SEMANA_COMPLETO = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
@@ -38,7 +41,7 @@ function ChipCompeticion({ c, hoy, compacto = false }: { c: CompeticionCal; hoy:
   const def = defDe(prioridadDe(c))
   const dias = diasHasta(c.fecha, hoy)
   return (
-    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 border"
+    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 border" data-guia="dses.carrera"
       style={{ borderColor: def.hex + '80', background: def.hex + '18' }}>
       <span className="text-lg leading-none flex-shrink-0">{def.simbolo}</span>
       <div className="min-w-0 flex-1">
@@ -220,6 +223,13 @@ export default function MisSesiones() {
   const compsPorDia = porDia(competiciones)
   const compsDe = (f: string) => compsPorDia[f] || []
 
+  /* El consejo del tutorial (lib/consejos): las de las dos últimas semanas sin cerrar. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => (!conConsejos || loading || !dep ? null
+    : consejosDeMisSesiones({ id: dep.id, hoy: hoyISO(), conEntrenador: !!dep.id_entrenador, sesiones })),
+  [conConsejos, loading, dep, sesiones])
+  useConsejos('d-sesiones', consejos)
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
 
   return (
@@ -231,7 +241,7 @@ export default function MisSesiones() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mis sesiones</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-guia="dses.vistas">
             <button onClick={() => setVista('lista')} className={`px-3 py-2 rounded-lg text-sm font-medium transition ${vista === 'lista' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>📋</button>
             <button onClick={() => setVista('semana')} className={`px-3 py-2 rounded-lg text-sm font-medium transition ${vista === 'semana' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>📅 Semana</button>
             <button onClick={() => setVista('calendario')} className={`px-3 py-2 rounded-lg text-sm font-medium transition ${vista === 'calendario' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>🗓 Mes</button>
@@ -288,7 +298,7 @@ export default function MisSesiones() {
                     {sesionesDia.length > 0 && (
                       <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-2">
                         {sesionesDia.map(s => (
-                          <div key={s.id} role="button" tabIndex={0}
+                          <div key={s.id} role="button" tabIndex={0} data-guia="dses.sesion" data-consejo={'dses.s:' + s.id}
                             onClick={() => router.push('/sesion/' + s.id)}
                             onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); router.push('/sesion/' + s.id) } }}
                             className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full cursor-pointer">
@@ -312,7 +322,7 @@ export default function MisSesiones() {
                                   @ {intensidades[s.id].join(' · ')}
                                 </p>
                               )}
-                              {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1">"{s.notas_entrenador}"</p>}
+                              {s.notas_entrenador && <p className="text-gray-400 text-xs italic mt-1" data-guia="dses.notas">"{s.notas_entrenador}"</p>}
                             </div>
                             <div className="flex items-center gap-2">
                               {s.origen === 'deportista' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/50 text-orange-300">🙋 Tú</span>}
@@ -330,7 +340,7 @@ export default function MisSesiones() {
                                   un bloque en blanco, así que sirve además para rellenarlas. */}
                               {s.origen === 'deportista' && (
                                 <button onClick={ev => { ev.stopPropagation(); router.push('/apuntar?sesion=' + s.id) }}
-                                  title="Corregir lo que apuntaste"
+                                  title="Corregir lo que apuntaste" data-guia="dses.tuyas"
                                   aria-label="Corregir esta sesión"
                                   className="text-gray-600 hover:text-orange-400 text-sm px-1.5 py-1 rounded transition">✏️</button>
                               )}
@@ -435,7 +445,7 @@ export default function MisSesiones() {
                     )}
                     <div className="px-4 py-3 flex flex-col gap-2">
                       {sesionesDia.map(s => (
-                        <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
+                        <button key={s.id} onClick={() => router.push('/sesion/' + s.id)} data-guia="dses.sesion" data-consejo={'dses.s:' + s.id} className="flex justify-between items-center hover:bg-gray-800 rounded-lg p-2 transition text-left w-full">
                           <div className="flex items-center gap-3">
                             <div className={'w-2 h-10 rounded-full flex-shrink-0 ' + claseDisciplina(s.disciplina)} />
                             <div>

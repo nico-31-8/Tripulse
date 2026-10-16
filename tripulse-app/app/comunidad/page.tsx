@@ -71,7 +71,7 @@ export default function ComunidadPage() {
   return (
     <main className="min-h-screen flex items-center justify-center text-white px-6 py-10">
       <div className="max-w-lg w-full">
-        <div className="text-center mb-8">
+        <div className="text-center mb-8" data-guia="dcom.inicio">
           <p className="text-5xl mb-4">🤝</p>
           <h1 className="text-3xl font-bold mb-3">La comunidad TRIPULSE</h1>
           <p className="text-gray-400 leading-relaxed">

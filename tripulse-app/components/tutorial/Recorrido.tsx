@@ -10,12 +10,13 @@
 //   «reducir movimiento» no late: se queda fija.
 // - Un paso de ACCIÓN deja tocar la pantalla, pero solo lo que brilla: lo
 //   demás no responde mientras tanto. «Hazlo por mí» lo pulsa por él.
-// - En el móvil el pop-up sale abajo, como una hoja.
+// - En el móvil el pop-up sale abajo, como una hoja (arriba, si lo que brilla
+//   es la barra de abajo del deportista: posicion.ts).
 // Las posiciones se recalculan en cada fotograma: así siguen al elemento si la
 // página se mueve, carga algo o se abre un menú.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CAMINO, siguienteParada, rellenar, type PasoTutorial, type ZonaTutorial, ZONAS } from '@/lib/tutorial'
+import { esBienvenida, numeroDeParada, siguienteParada, rellenar, type PasoTutorial, type ZonaTutorial, ZONAS } from '@/lib/tutorial'
 import { buscarAncla, colocar, asomar } from './posicion'
 
 /** 'sigue' = pulsó lo que lleva a la siguiente parada; 'salida' = «Lo sigo otro día». */
@@ -24,6 +25,11 @@ export type FinDelRecorrido = 'visto' | 'sigue' | 'saltado' | 'pausa' | 'salida'
 const ESPERA_PRIMERO_MS = 3000
 const ESPERA_TRAS_ACCION_MS = 2500
 const ESPERA_MS = 1200
+/* Con la pantalla ya pintada (se ve otro paso de la zona), lo que falta no va a
+   llegar: los primeros pasos de quien ya los completó, la sesión de hoy si no
+   tiene. Esperarlo entero dejaba la app quieta y sin nada a la vista. */
+const ESPERA_PRIMERO_CON_PANTALLA_MS = 1500
+const ESPERA_CON_PANTALLA_MS = 500
 
 export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal }: {
   zona: ZonaTutorial
@@ -31,7 +37,8 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
   /** Cuántos pasos son de la propia zona; los demás son la salida a la siguiente parada. */
   numInfo: number
   nombre: string
-  onFin: (r: FinDelRecorrido) => void
+  /** `va`: la parada a la que lleva el paso que lo cerró, si no es la siguiente. */
+  onFin: (r: FinDelRecorrido, va?: ZonaTutorial) => void
   /** true mientras el paso tapa la app; false en un paso de acción, que deja tocarla. */
   onModal: (modal: boolean) => void
 }) {
@@ -64,10 +71,10 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
   const onModalRef = useRef(onModal)
   useEffect(() => { onFinRef.current = onFin; onModalRef.current = onModal })
 
-  const fin = useCallback((r: FinDelRecorrido) => {
+  const fin = useCallback((r: FinDelRecorrido, va?: ZonaTutorial) => {
     if (terminado.current) return
     terminado.current = true
-    onFinRef.current(r)
+    onFinRef.current(r, va)
   }, [])
 
   /* Busca el elemento del paso; si no aparece a tiempo, el paso se salta. */
@@ -75,7 +82,11 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
     let vivo = true
     const p = pasos[i]
     if (!p) return
-    const espera = inicio.current ? ESPERA_PRIMERO_MS : vieneDeAccion.current ? ESPERA_TRAS_ACCION_MS : ESPERA_MS
+    const primero = inicio.current, trasAccion = vieneDeAccion.current
+    const espera = primero ? ESPERA_PRIMERO_MS : trasAccion ? ESPERA_TRAS_ACCION_MS : ESPERA_MS
+    /* Tras una acción no se acorta: lo que se espera es lo que esa acción abre (un menú). */
+    const breve = primero ? ESPERA_PRIMERO_CON_PANTALLA_MS : ESPERA_CON_PANTALLA_MS
+    const pantallaPintada = () => pasos.some((q, k) => k !== i && k < numInfo && !!q.ancla && !!buscarAncla(q.ancla))
     const t0 = Date.now()
     let t: ReturnType<typeof setTimeout>
     const resolver = (e: HTMLElement | null) => {
@@ -87,8 +98,13 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
       if (!p.ancla) { resolver(null); return }
       const e = buscarAncla(p.ancla)
       if (e) { resolver(e); return }
-      if (Date.now() - t0 > espera) {
-        const sig = i + dir.current
+      const pasado = Date.now() - t0
+      const yaPintada = !trasAccion && pasado > breve && pantallaPintada()
+      if (pasado > espera || yaPintada) {
+        let sig = i + dir.current
+        /* Con la pantalla ya pintada, los que vienen detrás y tampoco están se saltan de una vez. */
+        const falta = (k: number) => { const a = pasos[k]?.ancla; return !!a && !buscarAncla(a) }
+        if (yaPintada) while (sig >= 0 && sig < pasos.length && falta(sig)) sig += dir.current
         if (sig >= 0 && sig < pasos.length) setI(sig)
         else if (dir.current > 0) fin('visto')
         else { dir.current = 1; setI(Math.min(i + 1, pasos.length - 1)) }
@@ -98,7 +114,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
     }
     t = setTimeout(buscar, 0)
     return () => { vivo = false; clearTimeout(t) }
-  }, [i, pasos, fin])
+  }, [i, pasos, numInfo, fin])
 
   /* Al estar listo: que se vea el elemento, que entre el pop-up y el foco en el botón principal. */
   useEffect(() => {
@@ -147,7 +163,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
   }, [i])
 
   const saltar = useCallback(() => {
-    if (zona === 'bienvenida' && i === 0) fin('pausa')
+    if (esBienvenida(zona) && i === 0) fin('pausa')
     else fin(enSalida ? 'salida' : 'saltado')
   }, [zona, i, enSalida, fin])
 
@@ -161,7 +177,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
         if (e.type === 'click') {
           vieneDeAccion.current = true
           /* Si cambia de pantalla, se cierra ya: el clic sigue su camino y navega. */
-          if (paso.sale) fin('sigue')
+          if (paso.sale) fin('sigue', paso.va)
           else setTimeout(avanzar, 0)
         }
         return
@@ -191,7 +207,9 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
   const deportista = el?.dataset.guiaNombre || null
   const titulo = rellenar(paso.titulo, { nombre, deportista })
   const texto = rellenar(paso.texto, { nombre, deportista })
-  const sig = siguienteParada(zona)
+  /* A dónde lleva la salida: la siguiente parada o, si este paso se la salta, la suya. */
+  const destino = paso.va ?? siguienteParada(zona)
+  const parada = destino ? numeroDeParada(destino) : null
   const zonaInfo = ZONAS[zona]
   const conVideo = !!zonaInfo.video && primeroMostrado === i && !enSalida
 
@@ -228,7 +246,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
           )}
           <div className="flex items-center gap-2.5 text-[11px] text-gray-400">
             <span className="font-bold tracking-[.08em] uppercase text-orange-400">
-              {enSalida ? (sig ? 'Siguiente parada' : 'Fin del recorrido') : zonaInfo.nombre}
+              {enSalida ? (destino ? 'Siguiente parada' : 'Fin del recorrido') : zonaInfo.nombre}
             </span>
             {!enSalida && numInfo > 1 && (
               <span className="flex items-center gap-1" aria-hidden>
@@ -239,7 +257,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
             )}
             <span className="ml-auto tabular-nums">
               {enSalida
-                ? (sig ? 'parada ' + (CAMINO.indexOf(sig) + 1) + ' de ' + CAMINO.length : '')
+                ? (parada ? 'parada ' + parada.n + ' de ' + parada.de : '')
                 : (numInfo > 1 ? (i + 1) + ' de ' + numInfo : '')}
             </span>
           </div>

@@ -15,6 +15,11 @@ import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { perfilActual, deportistaActual } from '@/lib/sesion'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+
+/* Por estos botones pasa el recorrido del deportista (lib/tutorial). */
+const ANCLA_BARRA: Record<string, string> = { Sesiones: 'dnav.sesiones', Wellness: 'dnav.wellness', 'Análisis': 'dnav.analisis' }
+const ANCLA_MAS: Record<string, string> = { Apuntar: 'dmas.apuntar', Chat: 'dmas.chat', 'Mi perfil': 'dmas.perfil' }
 
 /* Donde la barra estorba: públicas, y el modo entreno, que se usa a pantalla
    completa y con el móvil en la mano entre series. */
@@ -27,6 +32,7 @@ export default function NavDeportista() {
   const [esDeportista, setEsDeportista] = useState(false)
   const [depId, setDepId] = useState<number | null>(null)
   const [masAbierto, setMasAbierto] = useState(false)
+  const tutorial = useTutorial()
 
   useEffect(() => {
     let vivo = true
@@ -97,25 +103,31 @@ export default function NavDeportista() {
             {secundarias.map(s => (
               /* La clave va por el texto, que es único siempre; el href puede ser
                  null mientras carga el id del deportista. */
-              <button key={s.texto} onClick={() => ir(s.href)} disabled={!s.href}
+              <button key={s.texto} onClick={() => ir(s.href)} disabled={!s.href} data-guia={ANCLA_MAS[s.texto]}
                 className={'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] text-left transition disabled:opacity-40 ' +
                   (activa(s.href) ? 'bg-orange-500/15 text-orange-400' : 'text-gray-300 hover:bg-gray-800')}>
                 <span className="text-lg leading-none">{s.icono}</span>{s.texto}
               </button>
             ))}
+            {tutorial?.activo && (
+              <button onClick={() => { setMasAbierto(false); tutorial.abrirLista() }}
+                className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] text-left transition text-orange-300 hover:bg-gray-800">
+                <span className="text-lg leading-none">🎓</span>Tutoriales
+              </button>
+            )}
           </div>
         </>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 sm:hidden bg-gray-900 border-t border-gray-800 grid grid-cols-5">
+      <nav data-guia="dnav.barra" className="fixed bottom-0 left-0 right-0 z-50 sm:hidden bg-gray-900 border-t border-gray-800 grid grid-cols-5">
         {principales.map(p => (
-          <button key={p.texto} onClick={() => ir(p.href)} disabled={!p.href}
+          <button key={p.texto} onClick={() => ir(p.href)} disabled={!p.href} data-guia={ANCLA_BARRA[p.texto]}
             className={'flex flex-col items-center justify-center gap-[3px] min-h-[62px] px-1 pb-1 text-[9.5px] transition disabled:opacity-40 ' +
               (activa(p.href) ? 'text-orange-400' : 'text-gray-500 hover:text-gray-300')}>
             <span className="text-[18px] leading-none">{p.icono}</span>{p.texto}
           </button>
         ))}
-        <button onClick={() => setMasAbierto(v => !v)}
+        <button onClick={() => setMasAbierto(v => !v)} data-guia="dnav.mas"
           className={'flex flex-col items-center justify-center gap-[3px] min-h-[62px] px-1 pb-1 text-[9.5px] transition ' +
             (masAbierto || enSecundarias ? 'text-orange-400' : 'text-gray-500 hover:text-gray-300')}>
           <span className="text-[18px] leading-none">⋯</span>Más

@@ -96,7 +96,8 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <nav className="bg-gray-900 px-4 py-4 flex items-center gap-3 border-b border-gray-800">
+      {/* Empieza después del botón TRIPULSE y su ?, que son fijos y van encima. */}
+      <nav className="bg-gray-900 pl-44 pr-4 py-4 flex items-center gap-3 border-b border-gray-800">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm transition">←</button>
         <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center font-bold text-sm flex-shrink-0">
           {deportista?.nombre?.[0]?.toUpperCase() || '?'}
@@ -107,7 +108,7 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
         </div>
       </nav>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2" data-guia="dchat.conversacion">
         {mensajes.length === 0 && (
           <div className="text-center py-16 text-gray-600">
             <div className="text-4xl mb-3">💬</div>
@@ -132,7 +133,7 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
                       (esMio
                         ? 'bg-orange-700/50 border-orange-300 text-orange-100'
                         : 'bg-gray-700 border-gray-500 text-gray-300')}>
-                      <div className="flex items-center gap-1.5 mb-1 font-medium opacity-80">
+                      <div className="flex items-center gap-1.5 mb-1 font-medium opacity-80" data-guia="dchat.feedback">
                         <span>↩</span>
                         <span>Feedback de sesión</span>
                         {m.contexto_disciplina && <span className="opacity-60">· {m.contexto_disciplina}</span>}

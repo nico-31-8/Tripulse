@@ -345,12 +345,10 @@ export default function PaginaAnamnesis() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-orange-500">TRIPULSE</h1>
-          <p className="text-gray-500 text-xs">Ficha inicial del deportista</p>
-        </div>
+      {/* Header. El TRIPULSE de la izquierda es el botón del menú, fijo y encima:
+          el título va después de él y de su ?, que antes lo tapaban a medias. */}
+      <div className="bg-gray-900 border-b border-gray-800 pl-44 pr-6 min-h-[53px] py-2 flex items-center justify-between gap-3">
+        <h1 className="text-sm font-semibold text-white">Ficha inicial del deportista</h1>
         <div className="text-right">
           {guardando && <p className="text-gray-500 text-xs">Guardando...</p>}
           {!guardando && ultimoGuardado && <p className="text-gray-500 text-xs">Guardado a las {ultimoGuardado}</p>}
@@ -358,7 +356,7 @@ export default function PaginaAnamnesis() {
       </div>
 
       {/* Barra de progreso */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-3">
+      <div className="bg-gray-900 border-b border-gray-800 px-6 py-3" data-guia="danam.secciones">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-medium text-white">Sección {seccion + 1} de {SECCIONES.length}: <span className="text-orange-400">{SECCIONES[seccion]}</span></p>

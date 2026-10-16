@@ -55,7 +55,7 @@ export default function MisTests() {
       <nav className="bg-gray-900 pl-16 pr-6 py-4 flex justify-end items-center border-b border-gray-800">
         <button onClick={() => router.push('/dashboard-deportista')} className="text-gray-400 hover:text-white text-sm transition">← Mi panel</button>
       </nav>
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-6 py-8" data-guia="dtest.lista">
         <h2 className="text-2xl font-bold mb-1">Mis tests</h2>
         <p className="text-gray-400 mb-6 text-sm">Resultados y zonas de entrenamiento generadas por tu entrenador</p>
 

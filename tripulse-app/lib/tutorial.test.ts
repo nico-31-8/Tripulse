@@ -5,6 +5,7 @@ import {
   CAMINO, ZONAS, pasosDeRecorrido, guiaAutomatica, arrancaSola, zonaDeRuta, zonaAlEntrar,
   mostrarOferta, siguienteDelCamino, rutaDeZona, esCuentaNueva, rellenar, siguienteParada,
   progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, AVANZADAS, GRUPOS_AVANZADOS, esAvanzada, opcionesDeAyuda,
+  CAMINO_DEPORTISTA, AVANZADAS_DEPORTISTA, caminoDe, numeroDeParada, pasoQueVale, esBienvenida,
   type Progreso, type ZonaTutorial,
 } from './tutorial'
 import { ANCLAS_DE_CONSEJOS } from './consejos'
@@ -64,7 +65,7 @@ describe('las anclas existen en las pantallas', () => {
   const todo = fuentes.join('\n')
 
   const anclas = new Set<string>()
-  for (const z of [...CAMINO, ...AVANZADAS]) for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) if (p.ancla) anclas.add(p.ancla)
+  for (const z of Object.keys(ZONAS) as ZonaTutorial[]) for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) if (p.ancla) anclas.add(p.ancla)
 
   for (const a of anclas) {
     it(a, () => {
@@ -252,7 +253,8 @@ describe('seguir el camino a mano', () => {
 describe('las zonas avanzadas (fase 3)', () => {
   it('cada zona está en el camino o entre las avanzadas, y solo una vez', () => {
     const todas = Object.keys(ZONAS) as ZonaTutorial[]
-    for (const z of todas) expect(CAMINO.includes(z) !== AVANZADAS.includes(z)).toBe(true)
+    const listas = [CAMINO, AVANZADAS, CAMINO_DEPORTISTA, AVANZADAS_DEPORTISTA]
+    for (const z of todas) expect(listas.filter(l => l.includes(z))).toHaveLength(1)
     expect(new Set(AVANZADAS).size).toBe(AVANZADAS.length)
     expect(GRUPOS_AVANZADOS.flatMap(g => g.zonas)).toEqual(AVANZADAS)
   })
@@ -311,5 +313,136 @@ describe('las zonas avanzadas (fase 3)', () => {
   it('la vista de semana se abre por su lunes', () => {
     const fecha = rutaDeZona('semana', 14)!.split('/').pop()!
     expect(new Date(fecha + 'T12:00:00').getDay()).toBe(1)
+  })
+})
+
+describe('el deportista (fase 4)', () => {
+  it('su camino tiene pasos con título y texto, y su bienvenida va antes que Hoy', () => {
+    expect(caminoDe('deportista')).toEqual(CAMINO_DEPORTISTA)
+    expect(ZONAS['d-bienvenida'].despues).toBe('d-hoy')
+    for (const z of CAMINO_DEPORTISTA) {
+      expect(ZONAS[z].pasos.length).toBeGreaterThan(0)
+      for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) expect(p.titulo.trim() && p.texto.trim()).toBeTruthy()
+    }
+  })
+
+  /* En el móvil se sale por la barra de abajo; en el ordenador, por el menú. En
+     los dos casos la salida tiene que acabar cambiando de pantalla (o cerrando). */
+  for (const movil of [true, false]) {
+    it('cada salida acaba bien en ' + (movil ? 'el móvil' : 'el ordenador'), () => {
+      for (const z of CAMINO_DEPORTISTA) {
+        const salida = (ZONAS[z].salida || []).filter(p => pasoQueVale(p, { movil }))
+        if (z === 'd-bienvenida') { expect(salida).toHaveLength(0); continue }
+        const ultimo = salida[salida.length - 1]
+        if (siguienteParada(z)) expect(ultimo.accion && ultimo.sale).toBe(true)
+        else expect(ultimo.accion).toBeFalsy()
+      }
+    })
+  }
+
+  it('los pasos de móvil no salen en el ordenador, ni al revés', () => {
+    const movil = pasosDeRecorrido('d-hoy', { camino: true, vistos: new Set(), movil: true })
+    const ordenador = pasosDeRecorrido('d-hoy', { camino: true, vistos: new Set(), movil: false })
+    expect(movil.map(p => p.ancla)).toContain('dnav.sesiones')
+    expect(movil.map(p => p.ancla)).not.toContain('menu.d-sesiones')
+    expect(ordenador.map(p => p.ancla)).toContain('menu.d-sesiones')
+    expect(ordenador.map(p => p.ancla)).not.toContain('dnav.sesiones')
+  })
+
+  it('quien entrena sin entrenador ve su plan en vez del chat', () => {
+    const con = pasosDeRecorrido('d-analisis', { camino: true, vistos: new Set(), movil: true, conEntrenador: true })
+    const sin = pasosDeRecorrido('d-analisis', { camino: true, vistos: new Set(), movil: true, conEntrenador: false })
+    expect(con.map(p => p.titulo)).toContain('Habla con tu entrenador')
+    expect(sin.map(p => p.titulo)).not.toContain('Habla con tu entrenador')
+    expect(sin.map(p => p.titulo)).toContain('Tu plan, solo')
+  })
+
+  it('la misma ruta es otra zona para el deportista', () => {
+    expect(zonaDeRuta('/sesion/880')).toBe('sesion')
+    expect(zonaDeRuta('/sesion/880', 'deportista')).toBe('d-sesion')
+    expect(zonaDeRuta('/perfil')).toBe('perfil')
+    expect(zonaDeRuta('/perfil', 'deportista')).toBe('d-perfil')
+    expect(zonaDeRuta('/sesion/880/ejecutar')).toBeNull()
+    expect(zonaDeRuta('/sesion/880/ejecutar', 'deportista')).toBe('d-entreno')
+    expect(zonaDeRuta('/wellness/14', 'deportista')).toBe('d-wellness')
+    expect(zonaDeRuta('/dashboard', 'deportista')).toBeNull()
+    expect(zonaDeRuta('/dashboard-deportista')).toBeNull()
+  })
+
+  it('en Hoy, la bienvenida del deportista va antes', () => {
+    expect(zonaAlEntrar('/dashboard-deportista', prog(), true, 'deportista')).toBe('d-bienvenida')
+    expect(zonaAlEntrar('/dashboard-deportista', prog({ vistos: new Set(['d-bienvenida']) }), true, 'deportista')).toBe('d-hoy')
+    expect(queArrancaAlEntrar('/dashboard-deportista', { zona: 'd-bienvenida', camino: true }, prog(), false, 'deportista').zona).toBe('d-bienvenida')
+  })
+
+  /* Decidido el 16-10-2026: el modo entreno, solo con el botón ?, nunca solo. */
+  it('sus avanzadas (el modo entreno también) nunca arrancan solas', () => {
+    for (const z of AVANZADAS_DEPORTISTA) expect(arrancaSola(z, prog(), true)).toBe(false)
+    expect(zonaAlEntrar('/sesion/880/ejecutar', prog(), true, 'deportista')).toBeNull()
+    expect(opcionesDeAyuda('/sesion/880/ejecutar', 'deportista')).toEqual(['d-entreno'])
+    expect(opcionesDeAyuda('/sesion/880', 'deportista')).toEqual(['d-sesion'])
+  })
+
+  it('su camino y su siguiente parada', () => {
+    expect(siguienteDelCamino(prog(), 'deportista')).toBe('d-bienvenida')
+    expect(siguienteParada('d-hoy')).toBe('d-sesiones')
+    expect(siguienteParada('d-analisis')).toBeNull()
+    expect(pendienteAlSeguir('d-wellness')).toEqual({ zona: 'd-analisis', camino: true })
+    expect(numeroDeParada('d-sesiones')).toEqual({ n: 3, de: 6 })
+    expect(numeroDeParada('panel')).toEqual({ n: 2, de: 9 })
+    expect(numeroDeParada('carga')).toBeNull()
+  })
+
+  it('dónde se abre cada una desde su lista', () => {
+    expect(rutaDeZona('d-hoy', null)).toBe('/dashboard-deportista')
+    expect(rutaDeZona('d-wellness', 14)).toBe('/wellness/14')
+    expect(rutaDeZona('d-wellness', null)).toBeNull()
+    expect(rutaDeZona('d-chat', 14)).toBe('/chat/14')
+    expect(rutaDeZona('d-sesion', 14)).toBeNull()
+    expect(rutaDeZona('d-entreno', 14)).toBeNull()
+  })
+})
+
+describe('el deportista que aún no tiene sesiones (fase 4)', () => {
+  /* Sin ninguna, el paso «Pulsa una sesión» no encuentra qué brillar y se salta
+     solo: lo que queda lleva al wellness, y el camino no se corta ahí. */
+  for (const movil of [true, false]) {
+    it('de Sesiones sigue por el wellness en ' + (movil ? 'el móvil' : 'el ordenador'), () => {
+      const salida = pasosDeRecorrido('d-sesiones', { camino: true, vistos: new Set(), movil }).slice(ZONAS['d-sesiones'].pasos.length)
+      expect(salida[0].ancla).toBe('dses.sesion')
+      const resto = salida.slice(1)
+      expect(resto.length).toBeGreaterThan(0)
+      for (const p of resto) expect(p.va).toBe('d-wellness')
+      expect(resto[resto.length - 1]).toMatchObject({ accion: true, sale: true })
+    })
+  }
+
+  it('al pulsarlo queda pedido el wellness, no la sesión', () => {
+    expect(pendienteAlSeguir('d-sesiones')).toEqual({ zona: 'd-sesion', camino: true })
+    expect(pendienteAlSeguir('d-sesiones', 'd-wellness')).toEqual({ zona: 'd-wellness', camino: true })
+    expect(numeroDeParada('d-wellness')).toEqual({ n: 5, de: 6 })
+  })
+
+  it('un paso con `va` lleva más allá de la siguiente parada de su camino', () => {
+    for (const z of Object.keys(ZONAS) as ZonaTutorial[]) {
+      for (const p of ZONAS[z].salida || []) {
+        if (!p.va) continue
+        const c = caminoDe(CAMINO_DEPORTISTA.includes(z) ? 'deportista' : 'entrenador')
+        expect(c.indexOf(p.va)).toBeGreaterThan(c.indexOf(z) + 1)
+      }
+    }
+  })
+
+  it('sin entrenador, «Mi plan» va en el sitio del chat (lo dice el guion)', () => {
+    for (const movil of [true, false]) {
+      const titulos = (conEntrenador: boolean) => pasosDeRecorrido('d-analisis', { camino: true, vistos: new Set(), movil, conEntrenador }).map(p => p.titulo)
+      expect(titulos(false).indexOf('Tu plan, solo')).toBe(titulos(true).indexOf('Habla con tu entrenador'))
+    }
+  })
+
+  it('las dos bienvenidas', () => {
+    expect(esBienvenida('bienvenida')).toBe(true)
+    expect(esBienvenida('d-bienvenida')).toBe(true)
+    expect(esBienvenida('d-hoy')).toBe(false)
   })
 })

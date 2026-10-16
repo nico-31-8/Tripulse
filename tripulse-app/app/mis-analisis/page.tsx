@@ -103,16 +103,16 @@ export default function MisAnalisis() {
             {depId != null && <MiFuerza idDeportista={depId} />}
 
             {sesiones.length === 0 ? (
-              <div className="text-center py-16 text-gray-500">
+              <div className="text-center py-16 text-gray-500" data-guia="dana.lista">
                 <div className="text-5xl mb-4">📊</div>
                 <p>No tienes sesiones realizadas todavía.</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3" data-guia="dana.lista">
                 {sesiones.map(s => {
                   const ua = (s.rpe_reportado || s.rpe_estimado || 5) * (minutosEfectivos(s, s.dur_estimada) || 0)
                   return (
-                    <button key={s.id} onClick={() => verAnalisis(s)}
+                    <button key={s.id} onClick={() => verAnalisis(s)} data-guia="dana.comparar"
                       className="bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-orange-500 transition text-left w-full">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-3">

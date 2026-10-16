@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 16 de octubre de 2026 · El recorrido guiado, también para tus deportistas
+
+Tus deportistas tienen ahora su propio recorrido, pensado para el móvil:
+«Hoy», sus sesiones, una sesión por dentro, su wellness y sus análisis, y al
+final lo que hay en «Más».
+- Los que se den de alta a partir de ahora lo ven solos la primera vez. Los
+  que ya usaban la app ven una tarjeta en «Hoy» para verlo ahora o no: a nadie
+  le salta de golpe.
+- Todos tienen el botón **?** junto a TRIPULSE, y **🎓 Tutoriales** dentro de
+  «Más».
+- En el modo entreno no sale nada solo: tiene su propio **?** en la barra de
+  arriba, por si lo quieren.
+- Quien entrena sin entrenador (con Mi plan) hace el mismo recorrido, con su
+  plan en el sitio del chat. Y si aún no tiene ninguna sesión, el recorrido
+  se salta la parada de la sesión y sigue por el wellness.
+- **Dos consejos** en ámbar: las sesiones de las dos últimas semanas que
+  siguen sin cerrar («Cuéntale a tu entrenador cómo fueron…») y los mensajes
+  tuyos que no ha leído.
+
+**De paso:** en el chat, el botón TRIPULSE tapaba la flecha y el nombre; en la
+ficha inicial (anamnesis), el título, y en «Mi plan», la etiqueta de arriba en
+el móvil. Corregido. Y tres erratas de sus pantallas («todavia», «numeros»).
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 16 de octubre de 2026 · Recorridos de las partes avanzadas
 
 Las partes avanzadas ya tienen su recorrido: corto, y solo cuando lo pides,

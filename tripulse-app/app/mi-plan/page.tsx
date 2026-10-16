@@ -129,8 +129,8 @@ export default function MiPlan() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-3xl mx-auto px-5 py-10">
-        <p className="text-orange-400/90 text-sm font-medium">Mi plan</p>
+      <div className="max-w-3xl mx-auto px-5 pt-16 pb-10">
+        <p className="text-orange-400/90 text-sm font-medium" data-guia="dplan.inicio">Mi plan</p>
         <h1 className="text-3xl font-bold tracking-tight mt-1">
           {yaTiene > 0 && !verFormulario && !hecho ? '¿Qué me toca ahora?' : '¿A qué te presentas?'}
         </h1>

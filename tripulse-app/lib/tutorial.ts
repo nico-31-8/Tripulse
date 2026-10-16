@@ -15,9 +15,12 @@
 // - Un paso con `accion` espera a que pulse lo que brilla (con «Hazlo por mí»
 //   de reserva). Si además lleva `sale`, ese clic cambia de pantalla y el
 //   recorrido de la zona termina ahí.
-// - Quién lo ve solo: los entrenadores nuevos. A los que ya usaban la app se
-//   les ofrece con una tarjeta; nunca les salta nada solo (decidido el
+// - Quién lo ve solo: las cuentas nuevas. A los que ya usaban la app se les
+//   ofrece con una tarjeta; nunca les salta nada solo (decidido el
 //   16-10-2026). Todos lo tienen con el botón ? y en 🎓 Tutoriales.
+// - El deportista (fase 4) tiene su propio recorrido (CAMINO_DEPORTISTA) y
+//   sus propias zonas, que empiezan por «d-». La misma pantalla (/perfil,
+//   /sesion/…) es otra zona para él: zonaDeRuta mira el rol.
 //
 // Hay un test que comprueba que cada ancla de aquí existe en el código.
 
@@ -30,6 +33,13 @@ export type ZonaTutorial =
   | 'herramientas' | 'bloques' | 'semana' | 'planificador' | 'grupo' | 'wellness'
   | 'carga' | 'volumen' | 'sicat' | 'indices' | 'comunicacion' | 'biblioteca' | 'asistente'
   | 'tests-propios' | 'zonas-propias' | 'cobros' | 'perfil' | 'papelera'
+  /* El deportista (fase 4): su recorrido del primer día y las suyas con el botón ?. */
+  | 'd-bienvenida' | 'd-hoy' | 'd-sesiones' | 'd-sesion' | 'd-wellness' | 'd-analisis'
+  | 'd-apuntar' | 'd-entreno' | 'd-tests' | 'd-chat' | 'd-disponibilidad' | 'd-perfil'
+  | 'd-anamnesis' | 'd-mi-plan' | 'd-comunidad'
+
+/** Quién hace el recorrido: cada uno tiene el suyo. */
+export type RolTutorial = 'entrenador' | 'deportista'
 
 export interface PasoTutorial {
   /** `data-guia` del elemento que brilla. Sin ancla, el pop-up sale en el centro. */
@@ -40,11 +50,17 @@ export interface PasoTutorial {
   accion?: boolean
   /** Ese clic cambia de pantalla: el recorrido de esta zona acaba ahí. */
   sale?: boolean
+  /** La parada a la que lleva, cuando no es la siguiente (se salta una que aún no puede ver). */
+  va?: ZonaTutorial
   /** Texto del botón principal cuando no es «Siguiente» ni «Terminar». */
   primero?: string
   ultimo?: string
   /** Texto del botón de saltar cuando no es «Saltar». */
   saltar?: string
+  /** Solo en el móvil (la barra de abajo) o solo en el ordenador (el menú). */
+  solo?: 'movil' | 'ordenador'
+  /** Solo para quien tiene entrenador, o para quien entrena sin él (Mi plan). */
+  si?: 'con-entrenador' | 'sin-entrenador'
 }
 
 export interface ZonaDelTutorial {
@@ -84,11 +100,39 @@ export const GRUPOS_AVANZADOS: { titulo: string; zonas: ZonaTutorial[] }[] = [
 
 export const AVANZADAS: ZonaTutorial[] = GRUPOS_AVANZADOS.flatMap(g => g.zonas)
 
+/** El recorrido del primer día del deportista (fase 4). «Más» va como salida de la última. */
+export const CAMINO_DEPORTISTA: ZonaTutorial[] = ['d-bienvenida', 'd-hoy', 'd-sesiones', 'd-sesion', 'd-wellness', 'd-analisis']
+
+/** Las del deportista que solo salen con el botón ?. */
+export const AVANZADAS_DEPORTISTA: ZonaTutorial[] = [
+  'd-apuntar', 'd-entreno', 'd-tests', 'd-chat', 'd-disponibilidad', 'd-perfil', 'd-anamnesis', 'd-mi-plan', 'd-comunidad',
+]
+
+export const caminoDe = (rol: RolTutorial): ZonaTutorial[] => (rol === 'deportista' ? CAMINO_DEPORTISTA : CAMINO)
+export const avanzadasDe = (rol: RolTutorial): ZonaTutorial[] => (rol === 'deportista' ? AVANZADAS_DEPORTISTA : AVANZADAS)
+/** La bienvenida de cada uno: va antes que su primera pantalla. */
+export const bienvenidaDe = (rol: RolTutorial): ZonaTutorial => (rol === 'deportista' ? 'd-bienvenida' : 'bienvenida')
+
 /** Las avanzadas nunca salen solas: solo con el botón ? o desde la lista (decidido el 15-10-2026). */
-export const esAvanzada = (z: ZonaTutorial): boolean => AVANZADAS.includes(z)
+export const esAvanzada = (z: ZonaTutorial): boolean => AVANZADAS.includes(z) || AVANZADAS_DEPORTISTA.includes(z)
+
+/** La bienvenida: su «Ahora no» del primer paso deja todo para el botón ?. */
+export const esBienvenida = (z: ZonaTutorial): boolean => z === 'bienvenida' || z === 'd-bienvenida'
+
+/** El camino al que pertenece una parada, del entrenador o del deportista. */
+const caminoDeZona = (z: ZonaTutorial): ZonaTutorial[] | null =>
+  CAMINO.includes(z) ? CAMINO : CAMINO_DEPORTISTA.includes(z) ? CAMINO_DEPORTISTA : null
+
+/** «Parada 3 de 9»: el número de una parada en su camino, o null si no es una parada. */
+export function numeroDeParada(z: ZonaTutorial): { n: number; de: number } | null {
+  const c = caminoDeZona(z)
+  return c ? { n: c.indexOf(z) + 1, de: c.length } : null
+}
 
 /** Desde cuándo una cuenta cuenta como nueva: a las de antes no les salta nada solo. */
 export const TUTORIAL_DESDE = '2026-10-16T00:00:00Z'
+/** Lo mismo para el deportista: el día que se sube su recorrido (fase 4). */
+export const TUTORIAL_DEPORTISTA_DESDE = '2026-10-16T00:00:00Z'
 
 export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
   bienvenida: {
@@ -410,6 +454,180 @@ export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
       { ancla: 'papelera.lista', titulo: 'Nada se pierde', texto: 'Las sesiones borradas, tuyas o del atleta, esperan aquí. Recupéralas o bórralas del todo.' },
     ],
   },
+
+  /* ---------------------------------------------------------------
+     El deportista (fase 4). Guion aprobado el 16-10-2026, pestaña
+     «Deportista» del doc. Se usa sobre todo en el móvil: la salida de cada
+     parada va por la barra de abajo, y en el ordenador por el menú (los
+     pasos llevan `solo`).
+     --------------------------------------------------------------- */
+
+  'd-bienvenida': {
+    id: 'd-bienvenida', nombre: 'Bienvenida', despues: 'd-hoy',
+    pasos: [
+      { titulo: 'Te damos la bienvenida, {nombre}', texto: 'Aquí ves las sesiones que te tocan, las haces y cuentas cómo fueron. Te enseñamos cada parte, una detrás de otra, y puedes parar cuando quieras.', primero: 'Empezar', saltar: 'Ahora no' },
+      { ancla: 'dnav.barra', solo: 'movil', titulo: 'Todo está aquí abajo', texto: 'Hoy, tus sesiones, tu wellness y tus análisis. En «Más» está el resto: apuntar, tus tests, el chat y tu perfil.' },
+      { ancla: 'menu', solo: 'ordenador', titulo: 'Todo está en el menú', texto: 'Tus sesiones, tu wellness, tus análisis y el resto. Pulsa TRIPULSE para abrirlo desde cualquier pantalla.' },
+      { ancla: 'ayuda', titulo: 'Si te lo saltas, está aquí', texto: 'El botón ? repite lo que te enseñamos de la pantalla en la que estás.', ultimo: 'Empezar por hoy →' },
+    ],
+  },
+
+  'd-hoy': {
+    id: 'd-hoy', nombre: 'Hoy',
+    pasos: [
+      { ancla: 'dhoy.primeros', titulo: 'Lo que te falta para empezar', texto: 'Rellenar tu anamnesis y unirte a tu entrenador. Cuando lo completas, desaparece.' },
+      { ancla: 'dhoy.wellness', titulo: 'Cómo amaneces', texto: 'Un minuto cada mañana: cómo has dormido, el cansancio, el estrés y el ánimo. Con eso tu entrenador ajusta lo que te manda.' },
+      { ancla: 'dhoy.sesion', titulo: 'Lo que toca hoy', texto: 'Lo que tienes que hacer y a qué zona. «Empezar sesión» la abre entera.' },
+      { ancla: 'dhoy.semana', titulo: 'Tu semana', texto: 'Un punto por sesión, del color de su deporte. Las que ya hiciste, más intensas.' },
+      { ancla: 'dhoy.progreso', titulo: 'Cómo vas', texto: 'Tu próxima carrera y cuánto de lo planificado has hecho en las cuatro últimas semanas.' },
+      { ancla: 'dhoy.apuntar', titulo: 'Lo que haces por tu cuenta', texto: 'Apunta lo que has hecho fuera del plan, o lo que vas a hacer, para que también cuente.' },
+      { ancla: 'dhoy.reloj', titulo: 'Tu reloj', texto: 'Si lo conectas, tu sueño y tu HRV llegan solos y no tienes que escribirlos.' },
+    ],
+    salida: [
+      { ancla: 'dnav.sesiones', accion: true, sale: true, solo: 'movil', titulo: 'Siguiente parada: tus sesiones', texto: 'Pulsa «Sesiones».' },
+      { ancla: 'menu', accion: true, solo: 'ordenador', titulo: 'Siguiente parada: tus sesiones', texto: 'Abre el menú: pulsa TRIPULSE.' },
+      { ancla: 'menu.d-sesiones', accion: true, sale: true, solo: 'ordenador', titulo: 'Siguiente parada: tus sesiones', texto: 'Pulsa «Mis sesiones».' },
+    ],
+  },
+
+  'd-sesiones': {
+    id: 'd-sesiones', nombre: 'Sesiones',
+    pasos: [
+      { ancla: 'dses.vistas', titulo: 'Como mejor lo veas', texto: 'Por semanas, por meses o en lista.' },
+      { ancla: 'dses.sesion', titulo: 'Lo que te manda', texto: 'Con su zona y su ritmo, sin abrirla. Púlsala para verla entera.' },
+      { ancla: 'dses.notas', titulo: 'Lo que te dice', texto: 'Si tu entrenador te deja una nota en una sesión, la ves aquí.' },
+      { ancla: 'dses.carrera', titulo: 'Tu carrera', texto: 'Con su cuenta atrás y sus notas: la hora de salida o dónde se recoge el dorsal.' },
+      { ancla: 'dses.tuyas', titulo: 'Lo que apuntas tú', texto: 'Las que te apuntas tú llevan «🙋 Tú»: esas las corriges o las borras. Las de tu entrenador, no.' },
+    ],
+    salida: [
+      { ancla: 'dses.sesion', accion: true, sale: true, titulo: 'Siguiente parada: una sesión por dentro', texto: 'Pulsa una sesión para abrirla.' },
+      /* Si aún no tiene ninguna, el paso de arriba se salta solo y se sigue por el wellness. */
+      { ancla: 'dnav.wellness', accion: true, sale: true, va: 'd-wellness', solo: 'movil', titulo: 'Siguiente parada: tu wellness', texto: 'Cuando tengas sesiones, las abres desde aquí. Ahora, pulsa «Wellness».' },
+      { ancla: 'menu', accion: true, va: 'd-wellness', solo: 'ordenador', titulo: 'Siguiente parada: tu wellness', texto: 'Cuando tengas sesiones, las abres desde aquí. Ahora, abre el menú: pulsa TRIPULSE.' },
+      { ancla: 'menu.d-wellness', accion: true, sale: true, va: 'd-wellness', solo: 'ordenador', titulo: 'Siguiente parada: tu wellness', texto: 'Pulsa «Wellness».' },
+    ],
+  },
+
+  'd-sesion': {
+    id: 'd-sesion', nombre: 'Una sesión por dentro',
+    pasos: [
+      { ancla: 'dsesion.nota', titulo: 'Lo que te dice', texto: 'Va arriba: es lo primero que tienes que leer.' },
+      { ancla: 'dsesion.tareas', titulo: 'Qué hacer y a qué ritmo', texto: 'Cada bloque con su zona y su intensidad: ritmo, pulso o vatios, según tus tests.' },
+      { ancla: 'dsesion.empezar', titulo: 'Hazla con la app', texto: 'El modo entreno te lleva serie a serie, con lo que te toca en cada una.' },
+      { ancla: 'dsesion.registrar', titulo: 'O cuéntalo al acabar', texto: 'Si la haces sin el móvil, al terminar pones cuánto duró y cómo fue.' },
+      /* Sin ancla: la ventana del «¿Cómo fue?» solo se abre al terminar. */
+      { titulo: 'Cuéntale cómo fue', texto: 'Al terminar te pregunta tu esfuerzo (RPE), la sensación y si te duele algo. Así tu entrenador ve cómo te sienta lo que te manda.' },
+    ],
+    salida: [
+      { ancla: 'dnav.wellness', accion: true, sale: true, solo: 'movil', titulo: 'Siguiente parada: tu wellness', texto: 'Pulsa «Wellness».' },
+      { ancla: 'menu', accion: true, solo: 'ordenador', titulo: 'Siguiente parada: tu wellness', texto: 'Abre el menú: pulsa TRIPULSE.' },
+      { ancla: 'menu.d-wellness', accion: true, sale: true, solo: 'ordenador', titulo: 'Siguiente parada: tu wellness', texto: 'Pulsa «Wellness».' },
+    ],
+  },
+
+  'd-wellness': {
+    id: 'd-wellness', nombre: 'Wellness',
+    pasos: [
+      { ancla: 'dwell.registro', titulo: 'Cada mañana, un minuto', texto: 'Cómo has dormido, el cansancio, el estrés, el dolor y el ánimo. En cada barra, más alto es mejor.' },
+      { ancla: 'dwell.reloj', titulo: 'Lo que ya trae tu reloj', texto: 'Con un reloj conectado, el sueño, la HRV y el pulso de la noche llegan solos.' },
+      { ancla: 'dwell.analisis', titulo: 'Cómo estás estos días', texto: 'Lo de estos días frente a lo tuyo de siempre, contado en una frase.' },
+      { ancla: 'dwell.historial', titulo: 'Tu evolución', texto: 'Cada mañana que lo rellenas se suma aquí.' },
+    ],
+    salida: [
+      { ancla: 'dnav.analisis', accion: true, sale: true, solo: 'movil', titulo: 'Siguiente parada: tus análisis', texto: 'Pulsa «Análisis».' },
+      { ancla: 'menu', accion: true, solo: 'ordenador', titulo: 'Siguiente parada: tus análisis', texto: 'Abre el menú: pulsa TRIPULSE.' },
+      { ancla: 'menu.d-analisis', accion: true, sale: true, solo: 'ordenador', titulo: 'Siguiente parada: tus análisis', texto: 'Pulsa «Mis análisis».' },
+    ],
+  },
+
+  /* La última parada: «Más» no es una pantalla, es un panel que se abre en la
+     misma, así que su recorrido va como salida de esta y termina el camino. */
+  'd-analisis': {
+    id: 'd-analisis', nombre: 'Análisis',
+    pasos: [
+      { ancla: 'dana.lista', titulo: 'Lo que has hecho', texto: 'Tus sesiones realizadas, de la más reciente a la más antigua.' },
+      { ancla: 'dana.comparar', titulo: 'Lo que te mandaron y lo que hiciste', texto: 'Abre una para compararlo: duración, distancia, ritmo y esfuerzo.' },
+    ],
+    salida: [
+      { ancla: 'dnav.mas', accion: true, solo: 'movil', titulo: 'Lo demás está en «Más»', texto: 'Pulsa «Más».' },
+      { ancla: 'dmas.apuntar', solo: 'movil', titulo: 'Apunta lo que haces', texto: 'Lo que haces por tu cuenta, o la fuerza serie a serie mientras entrenas.' },
+      { ancla: 'dmas.chat', solo: 'movil', si: 'con-entrenador', titulo: 'Habla con tu entrenador', texto: 'Lo que le cuentas al cerrar cada sesión también le llega aquí.' },
+      /* Quien entrena sin entrenador: su plan, en el sitio del chat. En el móvil no está en «Más»: está en el menú. */
+      { ancla: 'menu', solo: 'movil', si: 'sin-entrenador', titulo: 'Tu plan, solo', texto: 'Está en el menú TRIPULSE, en «Mi plan»: la app te monta las semanas hasta tu carrera y las ajusta con lo que vas haciendo.' },
+      { ancla: 'dmas.perfil', solo: 'movil', titulo: 'Tu perfil', texto: 'Conecta tu reloj y únete a tu entrenador con su código.' },
+      { ancla: 'menu', accion: true, solo: 'ordenador', titulo: 'Lo demás, en el menú', texto: 'Abre el menú: pulsa TRIPULSE.' },
+      { ancla: 'menu.d-chat', solo: 'ordenador', si: 'con-entrenador', titulo: 'Habla con tu entrenador', texto: 'Lo que le cuentas al cerrar cada sesión también le llega aquí.' },
+      { ancla: 'menu.d-mi-plan', solo: 'ordenador', si: 'sin-entrenador', titulo: 'Tu plan, solo', texto: 'La app te monta las semanas hasta tu carrera y las ajusta con lo que vas haciendo.' },
+      { ancla: 'menu.perfil', solo: 'ordenador', titulo: 'Tu perfil', texto: 'Conecta tu reloj y únete a tu entrenador con su código.' },
+      { titulo: 'Ya conoces lo básico', texto: 'Cada pantalla tiene su ayuda en el botón ?, y en 🎓 Tutoriales están todas.', ultimo: 'Terminar' },
+    ],
+  },
+
+  /* Las del deportista que solo salen con el botón ?. El modo entreno, también:
+     a mitad de una sesión no es momento de pop-ups (decidido el 16-10-2026). */
+  'd-apuntar': {
+    id: 'd-apuntar', nombre: 'Apuntar',
+    pasos: [
+      { ancla: 'dap.que', titulo: '¿Hecha o por hacer?', texto: 'Es lo primero que eliges: lo que ya hiciste o lo que vas a hacer.' },
+      { ancla: 'dap.deporte', titulo: 'El deporte', texto: 'Pulsa el tuyo.' },
+      { ancla: 'dap.series', titulo: 'Fuerza serie a serie', texto: 'Apunta cada serie mientras entrenas, con su descanso y lo que hiciste la última vez.' },
+      { ancla: 'dap.final', titulo: 'Los minutos y el RPE', texto: 'Van al final: es cuando se saben.' },
+    ],
+  },
+  'd-entreno': {
+    id: 'd-entreno', nombre: 'Modo entreno',
+    pasos: [
+      { ancla: 'dent.serie', titulo: 'La serie de ahora', texto: 'Lo que te toca y a qué intensidad.' },
+      { ancla: 'dent.marcar', titulo: 'Márcala', texto: 'O escribe lo que hiciste: cuenta igual.' },
+      { ancla: 'dent.tests', titulo: 'Lo de tus tests', texto: 'Si te mandan un %, aquí ves el ritmo que te sale.' },
+      { ancla: 'dent.terminar', titulo: 'Al terminar', texto: 'Tu esfuerzo (en un brick, de cada parte), el dolor y tus notas.' },
+    ],
+  },
+  'd-tests': {
+    id: 'd-tests', nombre: 'Mis tests',
+    pasos: [
+      { ancla: 'dtest.lista', titulo: 'Tus tests', texto: 'Los que te han pasado, por deporte, con su fecha. De ellos salen tus zonas.' },
+    ],
+  },
+  'd-chat': {
+    id: 'd-chat', nombre: 'Chat',
+    pasos: [
+      { ancla: 'dchat.conversacion', titulo: 'Con tu entrenador', texto: 'Aquí habláis los dos.' },
+      { ancla: 'dchat.feedback', titulo: 'Lo que cuentas de cada sesión', texto: 'Lo que escribes al cerrarla aparece aquí, y tu entrenador te contesta sobre esa sesión.' },
+    ],
+  },
+  'd-disponibilidad': {
+    id: 'd-disponibilidad', nombre: 'Disponibilidad',
+    pasos: [
+      { ancla: 'ddisp.anadir', titulo: 'Cuándo puedes entrenar', texto: 'Añade los días y horas que tienes. Con eso tu entrenador reparte tu semana.' },
+    ],
+  },
+  'd-perfil': {
+    id: 'd-perfil', nombre: 'Mi perfil',
+    pasos: [
+      { ancla: 'dper.reloj', titulo: 'Conecta tu reloj', texto: 'Tu sueño y tu HRV llegan solos.' },
+      { ancla: 'dper.entrenador', titulo: 'Tu entrenador', texto: 'Únete a tu entrenador con el código que te dé.' },
+      { ancla: 'dper.privacidad', titulo: 'Tus datos', texto: 'Lo que se guarda de ti y cómo descargarlo o borrarlo.' },
+    ],
+  },
+  'd-anamnesis': {
+    id: 'd-anamnesis', nombre: 'Anamnesis',
+    pasos: [
+      { ancla: 'danam.secciones', titulo: 'Lo que necesita saber', texto: 'Tu salud, tus lesiones, tu deporte y tus objetivos: lo que tu entrenador necesita antes de planificarte.' },
+    ],
+  },
+  'd-mi-plan': {
+    id: 'd-mi-plan', nombre: 'Mi plan',
+    pasos: [
+      { ancla: 'dplan.inicio', titulo: 'Tu plan, solo', texto: 'Si entrenas sin entrenador, la app te monta la temporada hasta tu carrera y la ajusta con lo que haces.' },
+    ],
+  },
+  'd-comunidad': {
+    id: 'd-comunidad', nombre: 'Comunidad',
+    pasos: [
+      { ancla: 'dcom.inicio', titulo: 'La comunidad', texto: 'Si quieres, entras. Tus entrenamientos siguen siendo privados.' },
+    ],
+  },
 }
 
 /* ---------------------------------------------------------------
@@ -438,14 +656,23 @@ export function progresoVacio(disponible = true): Progreso {
 
 /** La siguiente parada del recorrido, o null en la última. */
 export function siguienteParada(zona: ZonaTutorial): ZonaTutorial | null {
-  const i = CAMINO.indexOf(zona)
-  return i >= 0 && i < CAMINO.length - 1 ? CAMINO[i + 1] : null
+  const c = caminoDeZona(zona)
+  if (!c) return null
+  const i = c.indexOf(zona)
+  return i < c.length - 1 ? c[i + 1] : null
+}
+
+/** ¿Va este paso en este aparato y para esta persona? (`solo` y `si`) */
+export function pasoQueVale(p: PasoTutorial, { movil = false, conEntrenador = true }: { movil?: boolean; conEntrenador?: boolean } = {}): boolean {
+  if (p.solo && (p.solo === 'movil') !== movil) return false
+  if (p.si && (p.si === 'con-entrenador') !== conEntrenador) return false
+  return true
 }
 
 /** Los pasos de un recorrido: los de la zona y, si va por el camino, su salida. */
 export function pasosDeRecorrido(
   zona: ZonaTutorial,
-  { camino, vistos }: { camino: boolean; vistos: Set<string> },
+  { camino, vistos, movil, conEntrenador }: { camino: boolean; vistos: Set<string>; movil?: boolean; conEntrenador?: boolean },
 ): PasoTutorial[] {
   const z = ZONAS[zona]
   const pasos = [...z.pasos]
@@ -454,7 +681,7 @@ export function pasosDeRecorrido(
     /* A una parada ya vista no se lleva a nadie de vuelta; la última cierra. */
     if (!sig || !vistos.has(sig)) pasos.push(...z.salida)
   }
-  return pasos
+  return pasos.filter(p => pasoQueVale(p, { movil, conEntrenador }))
 }
 
 /** ¿Pueden salir recorridos solos? Solo a los nuevos, o a quien aceptó la tarjeta. */
@@ -467,9 +694,24 @@ export function arrancaSola(zona: ZonaTutorial, p: Progreso, esNuevo: boolean): 
   return !esAvanzada(zona) && guiaAutomatica(p, esNuevo) && !p.vistos.has(zona) && !p.saltados.has(zona)
 }
 
+/** Las pantallas del deportista. La misma ruta (/sesion/…, /perfil) es otra cosa para él. */
+function zonaDelDeportista(r: string): ZonaTutorial | null {
+  if (/^\/sesion\/[^/]+$/.test(r)) return 'd-sesion'
+  if (/^\/sesion\/[^/]+\/ejecutar$/.test(r)) return 'd-entreno'
+  if (/^\/wellness\/[^/]+$/.test(r)) return 'd-wellness'
+  if (/^\/chat\/[^/]+$/.test(r)) return 'd-chat'
+  const fijas: Record<string, ZonaTutorial> = {
+    '/dashboard-deportista': 'd-hoy', '/mis-sesiones': 'd-sesiones', '/mis-analisis': 'd-analisis',
+    '/apuntar': 'd-apuntar', '/mis-tests': 'd-tests', '/disponibilidad': 'd-disponibilidad', '/perfil': 'd-perfil',
+    '/anamnesis': 'd-anamnesis', '/mi-plan': 'd-mi-plan', '/comunidad': 'd-comunidad',
+  }
+  return fijas[r] ?? null
+}
+
 /** La pantalla de cada zona. Los tests de un grupo y el dirigir en vivo no son zonas. */
-export function zonaDeRuta(ruta: string): ZonaTutorial | null {
+export function zonaDeRuta(ruta: string, rol: RolTutorial = 'entrenador'): ZonaTutorial | null {
   const r = ruta.replace(/\/+$/, '') || '/'
+  if (rol === 'deportista') return zonaDelDeportista(r)
   if (r === '/dashboard') return 'panel'
   if (r === '/deportistas') return 'deportistas'
   if (/^\/deportistas\/[^/]+$/.test(r)) return 'ficha'
@@ -495,17 +737,18 @@ export function zonaDeRuta(ruta: string): ZonaTutorial | null {
  * Lo que ofrece el botón ? en una pantalla. En la sesión, dos: lo básico y
  * las herramientas (decidido en el guion). En las demás, el suyo o ninguno.
  */
-export function opcionesDeAyuda(ruta: string): ZonaTutorial[] {
-  const z = zonaDeRuta(ruta)
+export function opcionesDeAyuda(ruta: string, rol: RolTutorial = 'entrenador'): ZonaTutorial[] {
+  const z = zonaDeRuta(ruta, rol)
   if (!z) return []
   return z === 'sesion' ? ['sesion', 'herramientas'] : [z]
 }
 
-/** La zona que arranca sola al entrar en esta pantalla, o null. En el Panel, la bienvenida va antes. */
-export function zonaAlEntrar(ruta: string, p: Progreso, esNuevo: boolean): ZonaTutorial | null {
-  const z = zonaDeRuta(ruta)
+/** La zona que arranca sola al entrar en esta pantalla, o null. En su primera pantalla, la bienvenida va antes. */
+export function zonaAlEntrar(ruta: string, p: Progreso, esNuevo: boolean, rol: RolTutorial = 'entrenador'): ZonaTutorial | null {
+  const z = zonaDeRuta(ruta, rol)
   if (!z) return null
-  if (z === 'panel' && arrancaSola('bienvenida', p, esNuevo)) return 'bienvenida'
+  const b = bienvenidaDe(rol)
+  if (z === ZONAS[b].despues && arrancaSola(b, p, esNuevo)) return b
   return arrancaSola(z, p, esNuevo) ? z : null
 }
 
@@ -516,10 +759,11 @@ export interface Pendiente { zona: ZonaTutorial; camino: boolean }
  * Al pulsar lo que lleva a la siguiente parada, esa parada queda pedida: tiene
  * que arrancar al llegar aunque no le salgan recorridos solos (quien dijo «No,
  * gracias» y luego pulsó «Seguir →»). Antes dependía de lo automático y el
- * camino se cortaba en la segunda parada.
+ * camino se cortaba en la segunda parada. Si el paso lleva `va` (se salta una
+ * parada que aún no puede ver), la pedida es esa.
  */
-export function pendienteAlSeguir(zona: ZonaTutorial): Pendiente | null {
-  const sig = siguienteParada(zona)
+export function pendienteAlSeguir(zona: ZonaTutorial, va?: ZonaTutorial | null): Pendiente | null {
+  const sig = va ?? siguienteParada(zona)
   return sig ? { zona: sig, camino: true } : null
 }
 
@@ -529,17 +773,18 @@ export function pendienteAlSeguir(zona: ZonaTutorial): Pendiente | null {
  * esperando; en otra pantalla con recorrido se olvida.
  */
 export function queArrancaAlEntrar(
-  ruta: string, pendiente: Pendiente | null, p: Progreso, esNuevo: boolean,
+  ruta: string, pendiente: Pendiente | null, p: Progreso, esNuevo: boolean, rol: RolTutorial = 'entrenador',
 ): { zona: ZonaTutorial | null; camino: boolean; pendiente: Pendiente | null } {
-  const aqui = zonaDeRuta(ruta)
+  const aqui = zonaDeRuta(ruta, rol)
   let pedido = pendiente
   if (pedido) {
-    if (aqui === pedido.zona || (pedido.zona === 'bienvenida' && aqui === 'panel')) {
+    /* Una bienvenida se cumple en la pantalla que va después de ella. */
+    if (aqui === pedido.zona || (aqui && ZONAS[pedido.zona].despues === aqui)) {
       return { zona: pedido.zona, camino: pedido.camino, pendiente: null }
     }
     if (aqui) pedido = null
   }
-  return { zona: zonaAlEntrar(ruta, p, esNuevo), camino: true, pendiente: pedido }
+  return { zona: zonaAlEntrar(ruta, p, esNuevo, rol), camino: true, pendiente: pedido }
 }
 
 /** La tarjeta del Panel solo es para quien ya usaba la app y aún no contestó. */
@@ -548,13 +793,31 @@ export function mostrarOferta(p: Progreso, esNuevo: boolean): boolean {
 }
 
 /** La primera parada del recorrido que aún no ha visto. */
-export function siguienteDelCamino(p: Progreso): ZonaTutorial | null {
-  return CAMINO.find(z => !p.vistos.has(z)) ?? null
+export function siguienteDelCamino(p: Progreso, rol: RolTutorial = 'entrenador'): ZonaTutorial | null {
+  return caminoDe(rol).find(z => !p.vistos.has(z)) ?? null
 }
 
-/** Dónde se ve cada zona. Las que dependen de un deportista necesitan el elegido; la sesión, abrir una. */
+/**
+ * Dónde se ve cada zona. Las que dependen de un deportista necesitan el elegido
+ * (para el deportista, él mismo); la sesión, abrir una.
+ */
 export function rutaDeZona(zona: ZonaTutorial, idDeportista: number | null): string | null {
   switch (zona) {
+    case 'd-bienvenida':
+    case 'd-hoy': return '/dashboard-deportista'
+    case 'd-sesiones': return '/mis-sesiones'
+    case 'd-sesion':
+    case 'd-entreno': return null
+    case 'd-wellness': return idDeportista ? '/wellness/' + idDeportista : null
+    case 'd-chat': return idDeportista ? '/chat/' + idDeportista : null
+    case 'd-analisis': return '/mis-analisis'
+    case 'd-apuntar': return '/apuntar'
+    case 'd-tests': return '/mis-tests'
+    case 'd-disponibilidad': return '/disponibilidad'
+    case 'd-perfil': return '/perfil'
+    case 'd-anamnesis': return '/anamnesis'
+    case 'd-mi-plan': return '/mi-plan'
+    case 'd-comunidad': return '/comunidad'
     case 'bienvenida':
     case 'panel': return '/dashboard'
     case 'deportistas': return '/deportistas'

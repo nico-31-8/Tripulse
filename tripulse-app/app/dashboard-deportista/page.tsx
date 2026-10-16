@@ -21,6 +21,10 @@ import { vivas } from '@/lib/papelera'
 import { hoyISO, lunesDe, sumarDias } from '@/lib/fechas'
 import { ResumenDeportista } from '@/components/ResumenSemanal'
 import AvisoConectarReloj, { useRelojConectado } from '@/components/AvisoConectarReloj'
+import OfertaTutorial from '@/components/tutorial/OfertaTutorial'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeHoy } from '@/lib/consejos'
 import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
 import { colorDisciplina } from '@/lib/disciplinas'
 
@@ -261,6 +265,22 @@ export default function DashboardDeportista() {
     </div>
   )
 
+  /* El consejo del tutorial (lib/consejos): lo que su entrenador le ha escrito y
+     no ha leído. Solo se pregunta si le salen consejos: a quien no, ni una consulta. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const [sinLeer, setSinLeer] = useState(0)
+  const depId: number | null = deportista?.id ?? null
+  const conEntrenador = !!deportista?.id_entrenador
+  useEffect(() => {
+    if (!conConsejos || !depId || !conEntrenador) return
+    let vivo = true
+    supabase.from('mensajes').select('id', { count: 'exact', head: true })
+      .eq('id_deportista', depId).eq('autor', 'entrenador').eq('leido', false)
+      .then(({ count }) => { if (vivo) setSinLeer(count ?? 0) })
+    return () => { vivo = false }
+  }, [conConsejos, depId, conEntrenador])
+  useConsejos('d-hoy', conConsejos && depId ? consejosDeHoy({ id: depId, sinLeer }) : null)
+
   if (!perfil) return <Cargando />
 
   return (
@@ -280,7 +300,9 @@ export default function DashboardDeportista() {
 
         {/* Que exista. En su aplicación no había una sola línea que se lo dijera,
             y la conexión vive tres niveles abajo: «Más» → Mi perfil → bajar. */}
-        <AvisoConectarReloj conectado={relojConectado} className="mb-4" />
+        <OfertaTutorial className="mb-4" />
+
+        <div data-guia="dhoy.reloj" className="empty:hidden"><AvisoConectarReloj conectado={relojConectado} className="mb-4" /></div>
 
         {/* El material que toca cambiar. Solo sale si hay algo que decir: un aviso
             que esta siempre enseña a no leerlos. */}
@@ -297,16 +319,18 @@ export default function DashboardDeportista() {
         {/* Primeros pasos. Los pasos que cuentan son los que el atleta puede hacer
             solo (contarme de él, crear su plan); el entrenador va aparte porque
             depende de un tercero y antes dejaba la lista incompleta para siempre. */}
-        <OnboardingDeportista deportista={deportista} altaHecha={altaHecha}
-          anamnesisPendiente={anamnesisPendiente} tienePlan={tienePlan}
-          onVinculado={cargar} />
+        <div data-guia="dhoy.primeros" className="empty:hidden">
+          <OnboardingDeportista deportista={deportista} altaHecha={altaHecha}
+            anamnesisPendiente={anamnesisPendiente} tienePlan={tienePlan}
+            onVinculado={cargar} />
+        </div>
 
         {/* ===== WELLNESS (solo si está PENDIENTE: es una tarea) ===== */}
-        {!wellnessHoy && bloqueWellness}
+        {!wellnessHoy && <div data-guia="dhoy.wellness">{bloqueWellness}</div>}
 
         {/* ===== HERO: sesión de hoy ===== */}
         {sesionesHoy.length > 0 ? (
-          <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col gap-3 mb-4" data-guia="dhoy.sesion">
             {sesionesHoy.map(s => {
               const col = colorDisciplina(s.disciplina)
               const steps = tareasPorSesion[s.id] || []
@@ -350,11 +374,11 @@ export default function DashboardDeportista() {
         )}
 
         {/* ===== WELLNESS (ya registrado: aquí abajo solo informa) ===== */}
-        {wellnessHoy && bloqueWellness}
+        {wellnessHoy && <div data-guia="dhoy.wellness">{bloqueWellness}</div>}
 
         {/* ===== SEMANA DE UN VISTAZO ===== */}
         {semana.length > 0 && (
-          <div className="mb-4">
+          <div className="mb-4" data-guia="dhoy.semana">
             <Cabecera titulo="Esta semana" abierto={abierto('semana')} onClick={() => alternar('semana')}
               resumen={semanaPlan > 0 ? semanaPlan + (semanaPlan === 1 ? ' sesión' : ' sesiones') : undefined} />
             {abierto('semana') && <div className="grid grid-cols-7 gap-1.5">
@@ -381,7 +405,7 @@ export default function DashboardDeportista() {
         {deportista && <ResumenDeportista depId={deportista.id} plegado={!abierto('pasada')} alternar={() => alternar('pasada')} />}
 
         {/* ===== PRÓXIMA CARRERA + CUMPLIMIENTO ===== */}
-        <div className="mb-4">
+        <div className="mb-4" data-guia="dhoy.progreso">
           <Cabecera titulo="Tu progreso" abierto={abierto('progreso')} onClick={() => alternar('progreso')}
             resumen={cumplimiento ? cumplimiento.pct + '% cumplimiento' : undefined} />
           {abierto('progreso') && <div className="grid grid-cols-2 gap-3">
@@ -411,7 +435,7 @@ export default function DashboardDeportista() {
             la vas a hacer o ya la hiciste, y de qué. Dejar los dos sería la
             misma puerta pintada dos veces. */}
         <div className="mb-5">
-          <button onClick={() => router.push('/apuntar')}
+          <button onClick={() => router.push('/apuntar')} data-guia="dhoy.apuntar"
             className="w-full border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-orange-500/60 rounded-xl py-3.5 text-sm transition">
             ＋ Apuntar una sesión
             <span className="block text-gray-600 text-[11.5px] mt-0.5">
