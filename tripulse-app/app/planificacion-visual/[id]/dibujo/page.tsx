@@ -1008,7 +1008,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }
 
   const borrarCompReal = async (compId: number) => {
-    if (!confirm('Borrar esta competicion? Desaparece tambien del calendario.')) return
+    if (!confirm('¿Borrar esta competición? Desaparece también del calendario.')) return
     await supabase.from('competicion').delete().eq('id', compId)
     await recargarComps()
   }
@@ -1582,7 +1582,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           <span className="text-gray-300 text-sm font-medium">Dibujo — {dep.nombre}</span>
           <BotonGuiaZonas tests={tests} fcMax={dep?.fc_maxima} />
           <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-gray-400 hover:text-white text-sm transition">Bloques</button>
-          <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
+          <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} data-guia="lienzo.calendario" className="text-gray-400 hover:text-white text-sm transition">Calendario</button>
         </div>
       </nav>
 
@@ -1592,10 +1592,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
           <div className="w-full max-w-lg">
             <div className="text-center mb-8">
               <div className="text-5xl mb-3">✏️</div>
-              <h2 className="text-2xl font-bold mb-1">Dibujo de Periodizacion</h2>
+              <h2 className="text-2xl font-bold mb-1">Dibujo de periodización</h2>
               <p className="text-gray-400 text-sm">
                 {macrosExistentes.length > 0
-                  ? dep.nombre + ' ya tiene una planificacion creada'
+                  ? dep.nombre + ' ya tiene una planificación creada'
                   : 'Tienes un dibujo a medias de ' + dep.nombre}
               </p>
             </div>
@@ -1618,7 +1618,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         {cuandoBorrador(borradorPendiente) ? ' · lo dejaste el ' + cuandoBorrador(borradorPendiente) : ''}
                       </p>
                       <p className="text-amber-300/80 text-xs mt-2 leading-snug">
-                        Todavía no está volcado: hasta que no le des a «Generar planificacion», el calendario
+                        Todavía no está volcado: hasta que no le des a «Generar planificación», el calendario
                         y la vista de mesociclo no lo ven.
                       </p>
                     </div>
@@ -1632,7 +1632,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <div className="flex items-start gap-4">
                   <div className="text-3xl">📂</div>
                   <div className="flex-1">
-                    <p className="font-bold text-lg text-white mb-1">{cargandoDatos ? 'Cargando...' : 'Editar planificacion existente'}</p>
+                    <p className="font-bold text-lg text-white mb-1">{cargandoDatos ? 'Cargando...' : 'Editar planificación existente'}</p>
                     <p className="text-gray-400 text-sm">Carga los ciclos actuales en el canvas para modificarlos</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {macrosExistentes.map(m => (
@@ -1651,7 +1651,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 <div className="flex items-start gap-4">
                   <div className="text-3xl">🆕</div>
                   <div className="flex-1">
-                    <p className="font-bold text-lg text-white mb-1">Crear planificacion nueva</p>
+                    <p className="font-bold text-lg text-white mb-1">Crear planificación nueva</p>
                     <p className="text-gray-400 text-sm">Empieza desde cero con un nuevo dibujo de temporada</p>
                   </div>
                   <span className="text-gray-500 group-hover:translate-x-1 transition-transform text-lg">→</span>
@@ -1665,9 +1665,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       {/* PANTALLA SETUP */}
       {pantalla === 'setup' && (
         <div className="flex-1 flex items-center justify-center p-8">
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 w-full max-w-md text-center">
+          <div data-guia="lienzo.inicio" className="bg-gray-900 rounded-2xl border border-gray-800 p-8 w-full max-w-md text-center">
             <div className="text-5xl mb-4">✏️</div>
-            <h2 className="text-2xl font-bold mb-2">Nueva planificacion</h2>
+            <h2 className="text-2xl font-bold mb-2">Nueva planificación</h2>
             <p className="text-gray-400 text-sm mb-8">Configura el punto de partida. Luego dibujas arrastrando en el canvas.</p>
             <div className="flex flex-col gap-4 text-left">
               <div>
@@ -1762,9 +1762,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <span className="text-gray-400 text-xs select-none" style={{ minWidth: 20, textAlign: 'center' }}>🔍</span>
                   <button onClick={() => setSemanaW(w => Math.min(SEMANA_W_MAX, w + 10))} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center rounded transition font-bold text-base">+</button>
                 </div>
+                <div data-guia="lienzo.capas" className="flex items-center gap-2">
                 <button onClick={() => setMostrarCurva(v => !v)}
                   className={'text-xs px-2 py-1.5 rounded-lg transition border ' + (mostrarCurva ? 'bg-orange-500/20 border-orange-500/50 text-orange-400' : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300')}
-                  title="Mostrar/ocultar curva de periodizacion teorica">
+                  title="Mostrar u ocultar la curva teórica de periodización">
                   ~ Curva
                 </button>
                 <button onClick={() => setMostrarTendencia(v => !v)}
@@ -1772,7 +1773,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   title="Línea de tendencia: patrón de carga que estás planificando (media móvil 3 semanas)">
                   ∿ Tendencia
                 </button>
-                <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700" title="Exportar">
+                </div>
+                <div data-guia="lienzo.exportar" className="flex items-center gap-1 bg-gray-800 rounded-lg px-1 py-0.5 border border-gray-700" title="Exportar">
                   <button onClick={exportarImagen} disabled={exportando || macros.length === 0}
                     className="text-gray-400 hover:text-white px-2 h-6 flex items-center rounded transition text-xs disabled:opacity-40" title="Descargar imagen PNG">🖼️</button>
                   <button onClick={exportarPDF} disabled={exportando || macros.length === 0}
@@ -1808,10 +1810,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     siempre: si después movías una barra no había forma de volver a
                     generar sin recargar la página. Ahora, en cuanto hay algo
                     pendiente, vuelve a ser el botón de generar. */}
-                <button onClick={generado && !pendiente.hay ? () => router.push('/planificacion-visual/' + id) : generar}
+                <button onClick={generado && !pendiente.hay ? () => router.push('/planificacion-visual/' + id) : generar} data-guia="lienzo.generar"
                   disabled={generando || (!generado && macros.length === 0)}
                   className={'px-5 py-2 rounded-xl text-sm font-bold transition disabled:opacity-50 ' + (generado && !pendiente.hay ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
-                  {generando ? 'Guardando...' : generado && !pendiente.hay ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
+                  {generando ? 'Guardando...' : generado && !pendiente.hay ? 'Ver planificación →' : modoEdicion ? 'Actualizar planificación' : 'Generar planificación'}
                 </button>
               </div>
             </div>
@@ -1866,7 +1868,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     competiciones se pinta encima de LAS CUATRO y de ninguna mas.
                     Asi el alto de la marca sale solo: si alguna fila cambia de
                     altura, la linea la sigue sin que haya que tocar un numero. */}
-                <div className="relative">
+                <div className="relative" data-guia="lienzo.lienzo">
 
                 {/* COMPETICIONES — encima de todo, que es hacia donde apunta el plan.
 
@@ -2016,7 +2018,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {mesos.map(me => {
                     const col = C_MESO[me.tipo] || '#EA580C'
                     return (
-                      <div key={me.id}
+                      <div key={me.id} data-guia={me === mesos[0] ? 'lienzo.meso' : undefined}
                         className="absolute inset-y-1.5 rounded-lg flex items-center px-2 z-10 border overflow-hidden group/meso cursor-pointer"
                         style={{ left: LABEL_W + me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
                         onDoubleClick={e => { clearTimeout(mesoClickTimerRef.current); abrirEditarMeso(me, e) }}
@@ -2141,7 +2143,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </div>
 
                 {/* UA BARS */}
-                <div className="flex items-end bg-gray-950 border-b border-gray-800 relative" style={{ height: UA_H + 36 }}>
+                <div data-guia="lienzo.carga" className="flex items-end bg-gray-950 border-b border-gray-800 relative" style={{ height: UA_H + 36 }}>
                   <div className="flex-shrink-0 w-14" />
                   {[25, 50, 75].map(pct => (
                     <div key={pct} className="absolute border-t border-gray-800/40 pointer-events-none"
@@ -2470,7 +2472,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(normalizar(sz.disciplina))))
                       const C_ZONA = COLOR_ZONA
                       return (
-                        <div key={s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
+                        <div key={s.i} data-guia={s.i === 0 ? 'lienzo.semana' : undefined} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
                           onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonasSel([]) }}>
                           {sesEsta.map((sz, k) => (sz.sinZona || !sz.zona) ? (
@@ -2873,9 +2875,9 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
 
             {/* Competiciones */}
             <div className="bg-gray-900 border-t border-gray-800 px-4 py-2 flex items-center gap-3 flex-shrink-0 overflow-x-auto">
-              <button onClick={() => openCompModal(sems.find(s => !compDeSemana(s.i))?.i ?? 0)}
+              <button onClick={() => openCompModal(sems.find(s => !compDeSemana(s.i))?.i ?? 0)} data-guia="lienzo.competicion"
                 className="bg-yellow-900/40 hover:bg-yellow-900/60 border border-yellow-700/50 text-yellow-400 text-xs px-3 py-1.5 rounded-lg transition flex-shrink-0 font-medium">
-                🏆 + Competicion
+                🏆 + Competición
               </button>
               {compsReales.map(c => (
                 <span key={c.id} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5"
@@ -2886,7 +2888,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   <button onClick={() => borrarCompReal(c.id)} className="text-gray-600 hover:text-red-400 text-xs ml-0.5">x</button>
                 </span>
               ))}
-              {compsReales.length === 0 && <span className="text-gray-700 text-xs">Sin competiciones todavia</span>}
+              {compsReales.length === 0 && <span className="text-gray-700 text-xs">Sin competiciones todavía</span>}
 
               {/* LA CARRERA QUE SE QUEDA FUERA DEL LIENZO.
 
@@ -3033,10 +3035,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       })}
                     </div>
                   )}
-                  <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar}
+                  <button onClick={generado ? () => router.push('/planificacion-visual/' + id) : generar} data-guia="lienzo.generar"
                     disabled={generando || (!generado && macros.length === 0)}
                     className={'w-full py-3 rounded-xl font-bold text-sm transition disabled:opacity-50 ' + (generado ? 'bg-green-600 hover:bg-green-500 text-white' : macros.length === 0 ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white')}>
-                    {generando ? 'Guardando...' : generado ? 'Ver planificacion →' : modoEdicion ? 'Actualizar planificacion' : 'Generar planificacion'}
+                    {generando ? 'Guardando...' : generado ? 'Ver planificación →' : modoEdicion ? 'Actualizar planificación' : 'Generar planificación'}
                   </button>
                 </div>
               )}
@@ -3046,12 +3048,12 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {(!generado && !modoEdicion) ? (
                     <div className="bg-gray-800 rounded-xl p-5 text-center mt-2">
                       <p className="text-3xl mb-2">📅</p>
-                      <p className="text-gray-500 text-xs">Genera la planificacion primero</p>
+                      <p className="text-gray-500 text-xs">Genera la planificación primero</p>
                     </div>
                   ) : sesionesProg.length === 0 ? (
                     <div className="bg-gray-800 rounded-xl p-5 text-center">
                       <p className="text-3xl mb-2">📋</p>
-                      <p className="text-gray-500 text-xs mb-2">No hay sesiones programadas todavia</p>
+                      <p className="text-gray-500 text-xs mb-2">No hay sesiones programadas todavía</p>
                       <button onClick={() => router.push('/planificacion-visual/' + id)} className="text-orange-400 hover:text-orange-300 text-xs transition">Ir a planificar sesiones →</button>
                     </div>
                   ) : (
@@ -3119,7 +3121,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                         ))}
                       </div>
                       <button onClick={() => router.push('/planificacion-visual/' + id)} className="w-full bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-xs text-gray-400 hover:text-white transition">
-                        Ver planificacion completa →
+                        Ver planificación completa →
                       </button>
                     </div>
                   )}
@@ -3200,7 +3202,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
               <input type="text" placeholder="Nombre (ej: Temporada 2026)" value={fNom} onChange={e => setFNom(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveMacro()} autoFocus
                 className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
               <div>
-                <label className="text-gray-400 text-sm mb-1.5 block">Tipo de periodizacion</label>
+                <label className="text-gray-400 text-sm mb-1.5 block">Tipo de periodización</label>
                 <select value={fTipo} onChange={e => setFTipo(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 w-full">
                   <option value="Tradicional">Tradicional</option><option value="Inversa">Inversa</option>
                   <option value="ATR">ATR</option><option value="Ondulatoria">Ondulatoria</option>
@@ -3372,7 +3374,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
       {modal === 'comp' && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="bg-gray-900 rounded-2xl border border-gray-700 p-6 w-full max-w-sm">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-xl">Nueva competicion</h3><button onClick={() => setModal(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button></div>
+            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-xl">Nueva competición</h3><button onClick={() => setModal(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button></div>
             <div className="flex flex-col gap-4">
               <div>
                 {/* Fecha, no semana: la competicion se guarda en la tabla que
@@ -3405,19 +3407,19 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                 </div>
                 <p className="text-[11px] text-gray-600 mt-1.5">{defDe(fCompPrio).taperTexto}</p>
               </div>
-              <input type="text" placeholder="Nombre de la competicion" value={fComp} onChange={e => setFComp(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardarCompReal(false)} autoFocus className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
+              <input type="text" placeholder="Nombre de la competición" value={fComp} onChange={e => setFComp(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardarCompReal(false)} autoFocus className="bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-yellow-500" />
               <AvisoEnLinea aviso={avisoModal} />
               {taperSug.length > 0 ? (
                 <div className="bg-purple-900/30 border border-purple-700/50 rounded-xl p-4">
                   <p className="text-purple-300 text-sm font-bold mb-1">Taper recomendado</p>
-                  <p className="text-gray-400 text-xs mb-3">Reducir carga en S{taperSug.map(i => i + 1).reverse().join(' y S')} antes de la competicion.</p>
+                  <p className="text-gray-400 text-xs mb-3">Reducir carga en S{taperSug.map(i => i + 1).reverse().join(' y S')} antes de la competición.</p>
                   <div className="flex gap-2">
                     <button onClick={() => guardarCompReal(true)} className="flex-1 bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl text-sm font-bold transition">Aplicar taper</button>
                     <button onClick={() => guardarCompReal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-xl text-sm transition">Sin taper</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => guardarCompReal(false)} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-xl font-bold text-white transition">Guardar competicion</button>
+                <button onClick={() => guardarCompReal(false)} className="bg-yellow-600 hover:bg-yellow-500 py-3 rounded-xl font-bold text-white transition">Guardar competición</button>
               )}
             </div>
           </div>

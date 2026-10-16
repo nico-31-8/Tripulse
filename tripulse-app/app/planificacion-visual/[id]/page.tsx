@@ -83,12 +83,15 @@ const VISTAS = [
 ]
 
 // Tarjeta de vista: SVG en reposo, el vídeo (si existe) se reproduce al pasar el ratón.
+/* Las anclas del tutorial (lib/tutorial): una por vista. */
+const ANCLA_VISTA: Record<string, string> = { bloques: 'vistas.bloques', calendario: 'vistas.calendario', canvas: 'vistas.lienzo' }
+
 function VistaCard({ v, index, onGo }: { v: typeof VISTAS[number]; index: number; onGo: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [videoOk, setVideoOk] = useState(true)
   const P = v.Preview
   return (
-    <button onClick={onGo}
+    <button onClick={onGo} data-guia={ANCLA_VISTA[v.key]}
       className="fade-up group relative text-left rounded-3xl border border-gray-800 bg-gray-900/50 overflow-hidden transform-gpu transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.06] hover:z-10 hover:border-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
       style={{ animationDelay: (160 + index * 80) + 'ms' }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 24px 60px -20px ' + v.color + '55'; if (videoOk) videoRef.current?.play().catch(() => {}) }}

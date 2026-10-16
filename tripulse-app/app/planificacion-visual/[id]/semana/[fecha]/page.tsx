@@ -892,7 +892,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
                   <button
                     onClick={() => setModal(fechaDia)}
                     className="w-full mt-auto rounded-xl border border-dashed border-gray-700 hover:border-orange-500/50 hover:bg-orange-500/5 py-2.5 text-gray-600 hover:text-orange-400 text-xs transition text-center">
-                    + Sesion
+                    + Sesión
                   </button>
                 </div>
               </div>
@@ -941,7 +941,7 @@ export default function SemanaPage({ params }: { params: Promise<{ id: string; f
           <div className="bg-gray-900 rounded-2xl border border-gray-700 p-6 w-full max-w-sm">
             <div className="flex justify-between items-center mb-5">
               <div>
-                <h3 className="font-bold text-xl">Nueva sesion</h3>
+                <h3 className="font-bold text-xl">Nueva sesión</h3>
                 <p className="text-gray-400 text-sm mt-0.5">{modal}</p>
               </div>
               <button onClick={() => setModal(null)} className="text-gray-400 hover:text-white text-2xl leading-none">x</button>

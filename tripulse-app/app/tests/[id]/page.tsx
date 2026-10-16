@@ -615,14 +615,14 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
               )}
             </div>
             {hayIntensidades && (
-              <button onClick={() => setMostrarIntensidades(true)}
+              <button onClick={() => setMostrarIntensidades(true)} data-guia="tests.intensidades"
                 className="bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition w-full">
                 🎯 Ver intensidades
               </button>
             )}
           </div>
 
-          <div className="lg:col-span-2 tp-card p-4">
+          <div data-guia="tests.estado" className="lg:col-span-2 tp-card p-4">
             <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
               <p className="text-[13px] font-semibold">Estado actual</p>
               <span className="text-[11px] text-gray-500">último valor de cada test · variación vs. el anterior</span>
@@ -669,7 +669,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         <div>
         <div className="min-w-0">
 
-        <div className="flex gap-2 mb-6 flex-wrap">
+        <div data-guia="tests.pestanas" className="flex gap-2 mb-6 flex-wrap">
           {TABS.map(t => (
             <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null); setModo(null) }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
@@ -734,7 +734,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           <p className="text-[10.5px] font-semibold tracking-widest uppercase text-gray-500 mb-2">
             Tests de {TITULO_TAB[tab].toLowerCase()} <span className="text-orange-400">{testsDelTab.length}</span>
           </p>
-          <div className="flex gap-2 flex-wrap">
+          <div data-guia="tests.lista" className="flex gap-2 flex-wrap">
             {testsDelTab.map(t => (
               <button key={t.id} onClick={() => elegirTest(t)}
                 className={'px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border ' +
@@ -754,10 +754,12 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         <ProtocoloTest tipo={tab} />
 
         {/* GRÁFICAS DE EVOLUCIÓN */}
+        <div data-guia="tests.grafica">
         {tab === 'carrera' && <GraficaEvolucion datos={tests1} dataKey="vam" color="#4ade80" unidad="km/h" label="VAM" />}
         {tab === 'natacion' && <GraficaEvolucion datos={tests2} dataKey="css" color="#60a5fa" unidad="m/s" label="CSS" />}
         {tab === 'ciclismo' && <GraficaEvolucion datos={tests3} dataKey="ftp" color="#facc15" unidad="W" label="FTP" />}
         {tab === 'fuerza' && <GraficaFuerza datos={testsFuerza} />}
+        </div>
 
         {/* ===== ¿CÓMO LO VAS A HACER? =====
             La pregunta va DESPUÉS de elegir el test y ANTES de ver nada, que es
@@ -1128,7 +1130,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         </div>{/* /columna de los tests */}
 
         {/* ===== OTROS TESTS — los que no son del catálogo, guardados ===== */}
-        <button onClick={() => setMostrarOtros(o => !o)}
+        <button onClick={() => setMostrarOtros(o => !o)} data-guia="tests.otros"
           className="mt-2 mb-3 text-[12.5px] text-gray-500 hover:text-gray-300 transition">
           {mostrarOtros ? "▴ Ocultar otros tests" : "▾ Otros tests"}
           <span className="text-gray-600"> · los que apuntas a mano</span>

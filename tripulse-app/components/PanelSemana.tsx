@@ -196,7 +196,7 @@ export default function PanelSemana({
   const { anterior, siguiente } = vecinasDe(dias, abierta)
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-4">
+    <div data-guia="sesion.semana" className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-4">
       <div className={'flex items-center justify-between gap-2 pl-4 pr-2.5 py-2 ' + (abierto ? 'border-b border-gray-800' : '')}>
         <button onClick={plegar} aria-expanded={abierto}
           className="flex items-baseline gap-2.5 py-1 px-1 -mx-1 rounded hover:opacity-80 transition">

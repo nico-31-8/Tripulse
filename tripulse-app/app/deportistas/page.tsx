@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { tokenSeguro } from '@/lib/token-seguro'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -176,12 +177,12 @@ export default function Deportistas() {
           <div className="flex gap-2">
             {/* Un grupo se crea desde donde ya estás creando gente: es la misma
                 pregunta ("¿a quién voy a entrenar?") con otra respuesta. */}
-            <button onClick={() => { setFormGrupo(!formGrupo); setMostrarForm(false) }}
+            <button data-guia="dep.grupo" onClick={() => { setFormGrupo(!formGrupo); setMostrarForm(false) }}
               title="Un grupo entrena lo mismo a la vez, y también sirve para pasar tests a gente que no es tuya"
               className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
               {formGrupo ? 'Cancelar' : '+ Nuevo grupo'}
             </button>
-            <button onClick={() => { setMostrarForm(!mostrarForm); setFormGrupo(false) }} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
+            <button data-guia="dep.nuevo" onClick={() => { setMostrarForm(!mostrarForm); setFormGrupo(false) }} className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg text-sm font-medium transition">
               {mostrarForm ? 'Cancelar' : '+ Nuevo deportista'}
             </button>
           </div>
@@ -312,7 +313,7 @@ export default function Deportistas() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {deportistas.map(d => (
+            {deportistas.map((d, i) => (
               <div key={d.id} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-orange-500 transition flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
                 <div>
                   <h3 className="font-bold text-lg">{d.nombre}</h3>
@@ -324,16 +325,16 @@ export default function Deportistas() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={() => generarEnlaceInvitacion(d)}
+                  <button onClick={() => generarEnlaceInvitacion(d)} data-guia={i === 0 ? 'dep.invitar' : undefined}
                     disabled={generandoEnlace === d.id}
                     className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-orange-500">
                     {generandoEnlace === d.id ? 'Generando...' : '🔗 Invitar'}
                   </button>
-                  <button onClick={() => setQuitando(d)}
+                  <button onClick={() => setQuitando(d)} data-guia={i === 0 ? 'dep.quitar' : undefined}
                     className="text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
                     Quitar
                   </button>
-                  <a href={`/deportistas/${d.id}`} className="text-orange-500 hover:underline text-sm">Ver perfil →</a>
+                  <Link href={`/deportistas/${d.id}`} data-guia={i === 0 ? 'dep.perfil' : undefined} data-guia-nombre={i === 0 ? d.nombre : undefined} className="text-orange-500 hover:underline text-sm">Ver perfil →</Link>
                 </div>
               </div>
             ))}
@@ -346,7 +347,7 @@ export default function Deportistas() {
             están guardados por si algún día acaba entrenándolos. */}
         {evaluados.length > 0 && (
           <section className="mt-10">
-            <button onClick={() => setVerEvaluados(v => !v)}
+            <button data-guia="dep.evaluados" onClick={() => setVerEvaluados(v => !v)}
               className="text-gray-500 hover:text-gray-300 text-[12.5px] transition">
               {verEvaluados ? '▴ Ocultar evaluados' : '▾ Evaluados'}
               <span className="text-gray-600"> · {evaluados.length} · solo tests, fuera de tu equipo</span>

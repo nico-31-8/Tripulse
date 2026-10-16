@@ -1,0 +1,203 @@
+import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import {
+  CAMINO, ZONAS, pasosDeRecorrido, guiaAutomatica, arrancaSola, zonaDeRuta, zonaAlEntrar,
+  mostrarOferta, siguienteDelCamino, rutaDeZona, esCuentaNueva, rellenar, siguienteParada,
+  progresoVacio, type Progreso,
+} from './tutorial'
+
+const prog = (cambios: Partial<Progreso> = {}): Progreso => ({ ...progresoVacio(true), ...cambios })
+
+describe('el catálogo', () => {
+  it('cada parada del camino tiene sus pasos, con título y texto', () => {
+    for (const z of CAMINO) {
+      expect(ZONAS[z].id).toBe(z)
+      expect(ZONAS[z].pasos.length).toBeGreaterThan(0)
+      for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) {
+        expect(p.titulo.trim()).not.toBe('')
+        expect(p.texto.trim()).not.toBe('')
+      }
+    }
+  })
+
+  /* La salida de cada parada tiene que acabar cambiando de pantalla (o cerrar,
+     en la última): si no, el recorrido se quedaría a medias. */
+  it('cada salida acaba en un paso que cambia de pantalla, menos la última, que cierra', () => {
+    for (const z of CAMINO) {
+      const salida = ZONAS[z].salida
+      if (z === 'bienvenida') { expect(salida).toBeUndefined(); continue }
+      expect(salida && salida.length).toBeTruthy()
+      const ultimo = salida![salida!.length - 1]
+      if (siguienteParada(z)) expect(ultimo.accion && ultimo.sale).toBe(true)
+      else expect(ultimo.accion).toBeFalsy()
+    }
+  })
+
+  it('solo pueden quedar los huecos que se rellenan: {nombre} y {deportista}', () => {
+    for (const z of CAMINO) {
+      for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) {
+        const huecos = (p.titulo + ' ' + p.texto).match(/\{[^}]*\}/g) || []
+        for (const h of huecos) expect(['{nombre}', '{deportista}']).toContain(h)
+      }
+    }
+  })
+})
+
+/* EL TEST QUE IMPORTA: cada ancla del catálogo tiene que existir en el código.
+   Si alguien quita o renombra un `data-guia`, el paso se saltaría en silencio. */
+describe('las anclas existen en las pantallas', () => {
+  const raiz = path.resolve(__dirname, '..')
+  const fuentes: string[] = []
+  const recorrer = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) recorrer(p)
+      else if (/\.tsx$/.test(e.name)) fuentes.push(fs.readFileSync(p, 'utf8'))
+    }
+  }
+  recorrer(path.join(raiz, 'app'))
+  recorrer(path.join(raiz, 'components'))
+  const todo = fuentes.join('\n')
+
+  const anclas = new Set<string>()
+  for (const z of CAMINO) for (const p of [...ZONAS[z].pasos, ...(ZONAS[z].salida || [])]) if (p.ancla) anclas.add(p.ancla)
+
+  for (const a of anclas) {
+    it(a, () => {
+      expect(todo.includes("'" + a + "'") || todo.includes('"' + a + '"')).toBe(true)
+    })
+  }
+
+  it('las de más de un sitio solo están donde deben (ninguna sobrante con otro nombre)', () => {
+    const usadas = new Set((todo.match(/data-guia="[a-z][a-z.-]*"/g) || []).map(m => m.slice(11, -1)))
+    for (const u of usadas) expect(anclas.has(u)).toBe(true)
+  })
+})
+
+describe('qué pasos lleva un recorrido', () => {
+  it('la primera vez (por el camino) lleva la salida a la siguiente parada', () => {
+    const pasos = pasosDeRecorrido('deportistas', { camino: true, vistos: new Set() })
+    expect(pasos).toHaveLength(ZONAS.deportistas.pasos.length + ZONAS.deportistas.salida!.length)
+    expect(pasos.at(-1)!.sale).toBe(true)
+  })
+
+  it('repetido con el botón ? no lleva a ningún sitio', () => {
+    expect(pasosDeRecorrido('deportistas', { camino: false, vistos: new Set() })).toHaveLength(ZONAS.deportistas.pasos.length)
+  })
+
+  it('a una parada ya vista no se lleva a nadie de vuelta', () => {
+    const pasos = pasosDeRecorrido('deportistas', { camino: true, vistos: new Set(['ficha']) })
+    expect(pasos).toHaveLength(ZONAS.deportistas.pasos.length)
+  })
+
+  it('la última parada cierra el recorrido aunque no haya siguiente', () => {
+    const pasos = pasosDeRecorrido('sesion', { camino: true, vistos: new Set() })
+    expect(pasos.at(-1)!.titulo).toBe('Ya conoces lo básico')
+  })
+})
+
+describe('quién lo ve solo', () => {
+  it('a una cuenta nueva le sale solo', () => {
+    expect(guiaAutomatica(prog(), true)).toBe(true)
+  })
+
+  /* Decidido el 16-10-2026: a quien ya usaba la app se le ofrece, no le salta. */
+  it('a quien ya usaba la app no le sale nada solo hasta que acepte la tarjeta', () => {
+    expect(guiaAutomatica(prog(), false)).toBe(false)
+    expect(guiaAutomatica(prog({ oferta: 'rechazada' }), false)).toBe(false)
+    expect(guiaAutomatica(prog({ oferta: 'aceptada' }), false)).toBe(true)
+  })
+
+  it('con «Ahora no» ya no sale nada solo, sea nuevo o no', () => {
+    expect(guiaAutomatica(prog({ pausado: true }), true)).toBe(false)
+    expect(guiaAutomatica(prog({ pausado: true, oferta: 'aceptada' }), false)).toBe(false)
+  })
+
+  it('sin la tabla no sale nada solo: no podría recordar que ya lo vio', () => {
+    expect(guiaAutomatica(progresoVacio(false), true)).toBe(false)
+  })
+
+  it('una zona vista o saltada no vuelve a salir sola', () => {
+    expect(arrancaSola('panel', prog({ vistos: new Set(['panel']) }), true)).toBe(false)
+    expect(arrancaSola('panel', prog({ saltados: new Set(['panel']) }), true)).toBe(false)
+    expect(arrancaSola('panel', prog(), true)).toBe(true)
+  })
+
+  it('la tarjeta solo para quien ya estaba y no ha contestado', () => {
+    expect(mostrarOferta(prog(), false)).toBe(true)
+    expect(mostrarOferta(prog(), true)).toBe(false)
+    expect(mostrarOferta(prog({ oferta: 'rechazada' }), false)).toBe(false)
+    expect(mostrarOferta(progresoVacio(false), false)).toBe(false)
+  })
+})
+
+describe('qué pantalla es cada zona', () => {
+  it('las nueve rutas del recorrido', () => {
+    expect(zonaDeRuta('/dashboard')).toBe('panel')
+    expect(zonaDeRuta('/deportistas')).toBe('deportistas')
+    expect(zonaDeRuta('/deportistas/14')).toBe('ficha')
+    expect(zonaDeRuta('/tests/14')).toBe('tests')
+    expect(zonaDeRuta('/planificacion-visual/14')).toBe('vistas')
+    expect(zonaDeRuta('/planificacion-visual/14/dibujo')).toBe('lienzo')
+    expect(zonaDeRuta('/planificacion-visual/14/calendario')).toBe('calendario')
+    expect(zonaDeRuta('/sesion/880')).toBe('sesion')
+  })
+
+  /* Dirigir en vivo no es momento de tutoriales, y la lista de Tests no es la ficha de tests. */
+  it('ni dirigir en vivo ni las pantallas sin recorrido', () => {
+    expect(zonaDeRuta('/sesion/880/dirigir')).toBeNull()
+    expect(zonaDeRuta('/sesion/880/ejecutar')).toBeNull()
+    expect(zonaDeRuta('/tests/dirigir')).toBeNull()
+    expect(zonaDeRuta('/tests')).toBeNull()
+    expect(zonaDeRuta('/planificacion-visual')).toBeNull()
+    expect(zonaDeRuta('/planificacion-visual/14/bloques')).toBeNull()
+    expect(zonaDeRuta('/carga')).toBeNull()
+  })
+
+  it('en el Panel, la bienvenida va antes que el propio Panel', () => {
+    expect(zonaAlEntrar('/dashboard', prog(), true)).toBe('bienvenida')
+    expect(zonaAlEntrar('/dashboard', prog({ vistos: new Set(['bienvenida']) }), true)).toBe('panel')
+    expect(zonaAlEntrar('/dashboard', prog({ vistos: new Set(['bienvenida', 'panel']) }), true)).toBeNull()
+  })
+
+  it('dónde se abre cada zona desde la lista', () => {
+    expect(rutaDeZona('bienvenida', null)).toBe('/dashboard')
+    expect(rutaDeZona('deportistas', null)).toBe('/deportistas')
+    expect(rutaDeZona('ficha', null)).toBeNull()
+    expect(rutaDeZona('ficha', 14)).toBe('/deportistas/14')
+    expect(rutaDeZona('lienzo', 14)).toBe('/planificacion-visual/14/dibujo')
+    expect(rutaDeZona('sesion', 14)).toBeNull()
+  })
+
+  it('la siguiente parada pendiente', () => {
+    expect(siguienteDelCamino(prog())).toBe('bienvenida')
+    expect(siguienteDelCamino(prog({ vistos: new Set(['bienvenida', 'panel']) }))).toBe('deportistas')
+    expect(siguienteDelCamino(prog({ vistos: new Set(CAMINO) }))).toBeNull()
+  })
+})
+
+describe('cuenta nueva o de antes', () => {
+  it('se decide por la fecha de creación de la cuenta', () => {
+    expect(esCuentaNueva('2026-10-20T10:00:00Z', '2026-10-16T00:00:00Z')).toBe(true)
+    expect(esCuentaNueva('2026-09-01T10:00:00Z', '2026-10-16T00:00:00Z')).toBe(false)
+  })
+  it('sin fecha, como de antes: mejor ofrecer que saltar', () => {
+    expect(esCuentaNueva(undefined)).toBe(false)
+    expect(esCuentaNueva('no es una fecha')).toBe(false)
+  })
+})
+
+describe('poner los nombres', () => {
+  it('con nombre', () => {
+    expect(rellenar('Te damos la bienvenida, {nombre}', { nombre: 'Nicolás' })).toBe('Te damos la bienvenida, Nicolás')
+  })
+  it('sin nombre no queda una coma colgando', () => {
+    expect(rellenar('Te damos la bienvenida, {nombre}', {})).toBe('Te damos la bienvenida')
+  })
+  it('sin deportista dice «tu deportista»', () => {
+    expect(rellenar('Abre el panel de {deportista}', {})).toBe('Abre el panel de tu deportista')
+    expect(rellenar('Abre el panel de {deportista}', { deportista: 'Dani' })).toBe('Abre el panel de Dani')
+  })
+})

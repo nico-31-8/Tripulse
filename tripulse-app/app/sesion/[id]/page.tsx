@@ -764,7 +764,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
         {/* La puerta al modo de pie de pista. Solo tiene sentido con bloques ya
             montados: dirigir una sesión vacía no es dirigir nada. */}
         {tareas.length > 0 && (
-          <button onClick={() => router.push('/sesion/' + id + '/dirigir')}
+          <button onClick={() => router.push('/sesion/' + id + '/dirigir')} data-guia="sesion.dirigir"
             title="Apuntar tiempos y notas mientras entrena, a pie de pista"
             className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-orange-500/45 bg-orange-500/12 text-orange-300 hover:bg-orange-500/20 transition">
             ⏱ Dirigir
@@ -836,7 +836,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             <EtiquetaCambiada por={sesion.cambiada_por} />
             {sesion.usar_cronometro && <span className="text-xs bg-blue-900 text-blue-300 px-2.5 py-1 rounded-full">⏱ Cronómetro</span>}
 
-            <div className="flex flex-col">
+            <div data-guia="sesion.duracion" className="flex flex-col">
               <span className="text-[10px] uppercase tracking-wider text-gray-500">Duración</span>
               {editandoDuracion ? (
                 <span className="flex items-center gap-1.5">
@@ -1330,7 +1330,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
               </form>
             )}
             {tareas.length === 0 ? (
-              <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">📋</div><p>No hay tareas todavia.</p></div>
+              <div className="text-center py-12 text-gray-500"><div className="text-4xl mb-3">📋</div><p>No hay tareas todavía.</p></div>
             ) : (
               <div className="grid gap-3">
                 {tareas.map((t, i) => t.id === tareaEditandoId ? (

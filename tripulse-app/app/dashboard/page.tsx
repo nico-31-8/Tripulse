@@ -16,6 +16,7 @@ import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
+import OfertaTutorial from '@/components/tutorial/OfertaTutorial'
 import { ResumenEntrenador, InformeDelAtleta } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
@@ -352,7 +353,7 @@ export default function Dashboard() {
               probaba. Enseñar el enlace es cosmética: el candado de verdad está
               en /api/novedades, que no manda el texto a quien no puede verlo, y
               es allí donde se abrió. */}
-          <button onClick={() => router.push('/novedades')}
+          <button onClick={() => router.push('/novedades')} data-guia="novedades"
             className="text-gray-500 hover:text-white text-sm transition">
             Novedades
           </button>
@@ -367,6 +368,8 @@ export default function Dashboard() {
             ha cambiado algo, o (si él es director) le han contestado. Dentro
             del espacio de otro entrenador no: ahí no está en su casa. */}
         {!espacio && <AvisosDirector papel="entrenador" className="mb-6 max-w-3xl mx-auto" />}
+        {/* A quien ya usaba la app el tutorial se le ofrece aquí, una vez (components/tutorial). */}
+        {!espacio && <OfertaTutorial className="mb-6" />}
         {!espacio && <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />}
         {espacio && !activo ? (
           <EntradaEspacio espacio={espacio} roster={roster} deportistas={deportistas}
@@ -398,12 +401,13 @@ export default function Dashboard() {
             </div>
 
             <p className="fade-up text-gray-500 text-sm mb-10" style={{ animationDelay: '110ms' }}>Elige un deportista para abrir su panel.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8 w-full max-w-lg">
+            <div data-guia="panel.elegir" className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8 w-full max-w-lg">
               {deportistas.map((d, i) => {
                 const [c1] = coloresDe(d.nombre)
                 const sinRevisar = totalDe(porRevisar, d.id)
                 return (
                   <button key={d.id} onClick={() => seleccionar(d)}
+                    data-guia={i === 0 ? 'panel.primer-deportista' : undefined} data-guia-nombre={i === 0 ? d.nombre : undefined}
                     className="fade-up group flex flex-col items-center gap-3.5 rounded-2xl py-4 transition-transform duration-300 ease-out hover:-translate-y-1.5 focus-visible:outline-none"
                     style={{ animationDelay: (160 + i * 70) + 'ms' }}>
                     <span className="relative w-[86px] h-[86px] rounded-[26px] flex items-center justify-center text-[34px] font-bold text-white transition-all duration-300 ease-out group-hover:scale-105 group-hover:rounded-[30px]"
@@ -430,7 +434,7 @@ export default function Dashboard() {
 
             {/* Vista de equipo: cómo fue la semana pasada de cada deportista. */}
             {userId && (
-              <div className="w-full mt-14 text-left fade-up" style={{ animationDelay: '260ms' }}>
+              <div data-guia="panel.equipo" className="w-full mt-14 text-left fade-up" style={{ animationDelay: '260ms' }}>
                 <ResumenEntrenador informes={informesEquipo} deportistas={deportistas} cargando={!datosEquipo} />
               </div>
             )}
@@ -444,7 +448,7 @@ export default function Dashboard() {
             {/* ===== Cabecera: nombre + selector de deportista ===== */}
             <div className="flex items-center justify-between gap-4 mb-7">
               <div className="relative">
-                <button onClick={() => setSwitcherOpen(o => !o)}
+                <button onClick={() => setSwitcherOpen(o => !o)} data-guia="panel.atleta"
                   className="group flex items-center gap-3.5 rounded-2xl -m-1.5 p-1.5 transition hover:bg-white/[0.04]">
                   <div className="relative w-14 h-14 rounded-[20px] flex items-center justify-center text-xl font-bold text-white flex-shrink-0"
                     style={{ background: fondoDe(activo.nombre), boxShadow: '0 8px 22px -8px ' + hc1 + '77' }}>
@@ -508,7 +512,7 @@ export default function Dashboard() {
             </div>
 
             {/* ===== Barra de sesiones (semana en curso) — es la entrada a Planificación ===== */}
-            <button onClick={() => router.push('/planificacion-visual/' + activo.id)}
+            <button onClick={() => router.push('/planificacion-visual/' + activo.id)} data-guia="panel.semana"
               className="tp-card tp-tile w-full flex flex-col sm:flex-row mb-4 text-left group" style={cssVar('#f97316')}>
               <div className="sm:w-56 p-5 border-b sm:border-b-0 sm:border-r border-white/[0.06] flex flex-col justify-center" style={{ background: 'linear-gradient(180deg, #f9731610, transparent)' }}>
                 <p className="text-[11px] font-medium text-gray-500 flex items-center gap-2 mb-2">
@@ -551,7 +555,7 @@ export default function Dashboard() {
             <InformeDelAtleta informe={informesEquipo?.get(activo.id)} className="mb-4" />
 
             {/* ===== KPIs ===== */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <div data-guia="panel.kpis" className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
               {/* Wellness */}
               {/* Módulo de wellness del entrenador. Al abrirlo lee el atleta activo y
                   entra directo a su detalle, así no se pierde el contexto. */}
@@ -702,7 +706,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Herramientas (desplegable) */}
-                <div className="tp-card">
+                <div data-guia="panel.herramientas" className="tp-card">
                   <button onClick={() => setToolsOpen(o => !o)} className="w-full flex items-center gap-3 p-4 text-left">
                     <span className="tp-chip w-9 h-9 text-base flex-shrink-0" style={cssVar('#f97316')}>🔧</span>
                     <div className="flex-1"><p className="text-sm font-semibold">Herramientas</p><p className="text-[11px] text-gray-500">Deportistas, comunicación, biblioteca, comunidad y más</p></div>
@@ -761,7 +765,7 @@ export default function Dashboard() {
               {/* Columna derecha */}
               <div className="flex flex-col gap-5">
                 {/* Necesita tu atención */}
-                <aside className="tp-card p-4">
+                <aside data-guia="panel.atencion" className="tp-card p-4">
                   <div className="flex justify-between items-center mb-3">
                     <p className="font-semibold text-sm">Necesita tu atención</p>
                     {notifs.length > 0 && <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#f9731622', color: '#fdba74' }}>{notifs.length}</span>}
@@ -795,7 +799,7 @@ export default function Dashboard() {
                 </aside>
 
                 {/* Tareas */}
-                <aside className="tp-card p-4">
+                <aside data-guia="panel.tareas" className="tp-card p-4">
                   <div className="flex justify-between items-center mb-3">
                     <p className="font-semibold text-sm">Tareas</p>
                     {tareas.length > 0 && <span className="text-xs text-gray-500">{hechas}/{tareas.length}</span>}

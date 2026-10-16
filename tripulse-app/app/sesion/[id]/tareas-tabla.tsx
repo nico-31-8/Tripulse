@@ -1680,7 +1680,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 const objetivoT = objetivoGuardado(t)
                 return (
-                  <tr key={t.id}
+                  <tr key={t.id} data-guia={i === 0 ? 'sesion.fila' : undefined}
                     draggable={!esDeportista}
                     onDragStart={() => setDragIdx(i)}
                     onDragOver={e => { e.preventDefault(); if (sobreIdx !== i) setSobreIdx(i) }}
@@ -1877,7 +1877,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
           Y lo que se deje sin fijar sale en la fila como hasta ahora — esta
           franja adelanta trabajo, no quita ni un control de abajo. */}
       {!esDeportista && (
-        <div className="mb-3 rounded-xl border border-gray-700 bg-gray-900/70 px-3 py-2.5">
+        <div data-guia="sesion.defecto" className="mb-3 rounded-xl border border-gray-700 bg-gray-900/70 px-3 py-2.5">
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
             <span className="text-[10.5px] font-bold uppercase tracking-wider text-orange-300">
               Por defecto en esta sesión
@@ -2034,7 +2034,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
           5» con dos a medias sería mentir antes de pulsarlo. */}
       {!esDeportista && (esFuerza ? filasF.length : filasR.length) > 1 && (
         <div className="mb-3 flex items-center gap-3 flex-wrap">
-          <button onClick={guardarTodas} disabled={loading || listasParaGuardar === 0}
+          <button onClick={guardarTodas} disabled={loading || listasParaGuardar === 0} data-guia="sesion.guardar"
             title={listasParaGuardar === 0
               ? 'Ninguna fila está lista todavía'
               : 'Guardar de una vez, en este orden'}
@@ -2088,7 +2088,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 const objetivo = objetivoDeFila(f) || ref?.ritmo || ''
                 return (
                   <React.Fragment key={i}>
-                  <tr className="border-b border-gray-800">
+                  <tr className="border-b border-gray-800" data-guia={i === 0 ? 'sesion.fila' : undefined}>
                     <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
                     {/* EN ZONAS 2 EL DEPORTE VA PRIMERO, y no por maquetación: es lo
                         que decide qué referencias tiene este atleta, así que sin él no
@@ -2444,7 +2444,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
             <tbody>
               {filasF.map((f, i) => (
                 <React.Fragment key={i}>
-                <tr className="border-b border-gray-800">
+                <tr className="border-b border-gray-800" data-guia={i === 0 ? 'sesion.fila' : undefined}>
                   <td className="py-1.5 px-1.5 text-orange-400 font-bold tabular-nums">{f.orden}</td>
                   {/* Tipo y cualidad EN HORIZONTAL. Apilados hacían que la fila tuviera
                       dos pisos y descolocaban la alineación de todo lo demás.
@@ -2792,7 +2792,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
       ))}
 
       {!esDeportista && !esFuerza && (
-        <button onClick={() => setFilasR(prev => [...prev, nuevaFilaR()])}
+        <button onClick={() => setFilasR(prev => [...prev, nuevaFilaR()])} data-guia="sesion.anadir"
           className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
           <span>+</span> Añadir tarea
         </button>
@@ -2802,7 +2802,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
           una línea con sus series, como siempre, o un bloque de varias líneas
           que se hacen juntas. Lo ya escrito se puede agrupar o soltar después. */}
       {!esDeportista && esFuerza && (
-        <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/60 p-3.5">
+        <div data-guia="sesion.anadir" className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/60 p-3.5">
           <p className="text-sm font-semibold text-white mb-2.5 mt-0">Añadir a la sesión</p>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1.4fr] gap-2.5">
             <button type="button" onClick={() => setFilasF(prev => [...prev, nuevaFilaF()])}

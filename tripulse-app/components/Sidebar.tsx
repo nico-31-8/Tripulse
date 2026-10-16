@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual, perfilActual, deportistaActual } from '@/lib/sesion'
 import { getEspacio, setEspacio, EVENTO_ESPACIO, type Espacio } from '@/lib/espacio'
 import { setAtletaActivo } from '@/lib/atletaActivo'
+import { useTutorial } from './tutorial/TutorialProvider'
 
 const RUTAS_PUBLICAS = ['/', '/login', '/registro', '/privacidad', '/terminos']
 
@@ -17,7 +18,7 @@ const esModoEntreno = (p: string) => /^\/sesion\/[^/]+\/ejecutar/.test(p)
 
 const modulosEntrenador = [
   { icon: '👥', titulo: 'Deportistas', href: '/deportistas' },
-  { icon: '📅', titulo: 'Planificacion', href: '/planificacion-visual' },
+  { icon: '📅', titulo: 'Planificación', href: '/planificacion-visual' },
   { icon: '🧩', titulo: 'Planificador', href: '/planificador' },
   { icon: '💚', titulo: 'Wellness', href: '/wellness-entrenador' },
   { icon: '📈', titulo: 'Carga', href: '/carga' },
@@ -33,6 +34,9 @@ const modulosEntrenador = [
 ]
 
 // Los módulos del deportista se construyen con su id (wellness y chat lo necesitan)
+/* Por estas dos entradas pasa el recorrido del primer día (lib/tutorial). */
+const ANCLA_MENU: Record<string, string> = { '/deportistas': 'menu.deportistas', '/planificacion-visual': 'menu.planificacion' }
+
 const modulosDeportistaFn = (depId: number | null) => [
   // Primero el plan: es lo que da sentido a todo lo demás. Un atleta sin plan
   // que entra en «Mis sesiones» ve una lista vacía y no sabe por qué.
@@ -63,6 +67,18 @@ export default function Sidebar() {
   const router = useRouter()
   const panelRef = useRef<HTMLDivElement>(null)
   const botonRef = useRef<HTMLButtonElement>(null)
+  const tutorial = useTutorial()
+  /* El botón ? va pegado al de TRIPULSE: se mide su ancho para ponerse al lado. */
+  const [anchoMenu, setAnchoMenu] = useState(132)
+  useEffect(() => {
+    const b = botonRef.current
+    if (!b) return
+    const medir = () => setAnchoMenu(b.offsetWidth || 132)
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(b)
+    return () => ro.disconnect()
+  }, [autenticado])
 
   useEffect(() => {
     const comprobar = async () => {
@@ -159,12 +175,23 @@ export default function Sidebar() {
       {/* Botón trigger - siempre visible */}
       <button
         ref={botonRef}
+        data-guia="menu"
         onClick={() => setAbierto(!abierto)}
         style={{ height: 53 }}
         className={'fixed left-0 top-0 z-50 px-4 flex items-center bg-gray-900 border-r hover:bg-gray-800 transition ' + (abierto ? '' : 'border-b border-gray-800')}
       >
         <span className="text-orange-500 font-bold text-lg">TRIPULSE</span>
       </button>
+
+      {/* El botón ?: el recorrido de esta pantalla, o la lista si no tiene (components/tutorial). */}
+      {tutorial?.activo && !esDeportista && (
+        <button type="button" data-guia="ayuda" onClick={() => { setAbierto(false); tutorial.ayuda() }}
+          aria-label="Ver el recorrido de esta pantalla" title="Ver el recorrido de esta pantalla"
+          style={{ height: 53, left: anchoMenu }}
+          className="fixed top-0 z-50 w-10 flex items-center justify-center bg-gray-900 border-r border-b border-gray-800 hover:bg-gray-800 transition">
+          <span className="w-7 h-7 rounded-full border border-orange-500/50 bg-orange-500/10 text-orange-400 text-sm font-bold grid place-items-center">?</span>
+        </button>
+      )}
 
       {/* Overlay oscuro al abrir */}
       {abierto && (
@@ -193,7 +220,7 @@ export default function Sidebar() {
               <span className="text-gray-400 text-sm whitespace-nowrap">{m.titulo} 🔒</span>
             </div>
           ) : (
-            <button key={m.titulo} onClick={() => router.push(m.href)}
+            <button key={m.titulo} onClick={() => router.push(m.href)} data-guia={esDeportista ? undefined : ANCLA_MENU[m.href]}
               className={'w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left ' +
                 (pathname === m.href ? 'bg-gray-800 border-l-2 border-orange-500' : '')}>
               <span className="text-xl flex-shrink-0">{m.icon}</span>
@@ -203,6 +230,13 @@ export default function Sidebar() {
         </nav>
 
         <div className="border-t border-gray-800 py-2">
+          {tutorial?.activo && !esDeportista && (
+            <button onClick={() => { setAbierto(false); tutorial.abrirLista() }}
+              className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
+              <span className="text-xl flex-shrink-0">🎓</span>
+              <span className="text-orange-300 text-sm font-medium whitespace-nowrap">Tutoriales</span>
+            </button>
+          )}
           <button onClick={() => router.back()}
             className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-800 transition text-left">
             <span className="text-xl flex-shrink-0">◀️</span>

@@ -318,7 +318,7 @@ export default function PerfilPage() {
         ) : (
           <>
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-              <h3 className="text-xl font-bold mb-2">Codigo de entrenador</h3>
+              <h3 className="text-xl font-bold mb-2">Código de entrenador</h3>
               <p className="text-gray-400 text-sm mb-4">Comparte este codigo con tus deportistas para que puedan vincularse contigo.</p>
               {perfil.codigo_entrenador && (
                 <div className="flex items-center gap-3 bg-gray-800 rounded-xl p-4 mb-4">

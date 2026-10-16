@@ -1119,7 +1119,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             <p className="text-gray-400 text-sm">Pulsa un día para planificar</p>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            <button onClick={() => { setFechaSel(hoy); setModalTipo('competicion') }}
+            <button onClick={() => { setFechaSel(hoy); setModalTipo('competicion') }} data-guia="cal.competicion"
               className="flex items-center gap-1.5 bg-yellow-600 hover:bg-yellow-500 text-white text-sm px-3 py-2 rounded-lg transition font-medium">
               🏆 <span>+ Competición</span>
             </button>
@@ -1127,22 +1127,22 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm px-3 py-2 rounded-lg transition">
               ℹ️ <span>Tipos de prueba</span>
             </button>
-            <button onClick={() => { setFechaSel(hoy); setModalTipo('bloquear') }}
+            <button onClick={() => { setFechaSel(hoy); setModalTipo('bloquear') }} data-guia="cal.bloquear"
               className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white text-sm px-3 py-2 rounded-lg transition">
               🚫 <span>Bloquear semana</span>
             </button>
-            <button onClick={() => setPanelPlantillas(v => !v)}
+            <button onClick={() => setPanelPlantillas(v => !v)} data-guia="cal.plantillas"
               className={'flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg transition border ' +
                 (panelPlantillas ? 'bg-orange-500 border-orange-500 text-white' : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300 hover:text-white')}>
               📋 <span>Plantillas</span>
             </button>
             {macros.length > 0 && (
-              <button onClick={() => setDesplazar(hoy)}
+              <button onClick={() => setDesplazar(hoy)} data-guia="cal.mover"
                 className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm px-3 py-2 rounded-lg transition">
                 🔀 <span>Mover en el tiempo</span>
               </button>
             )}
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
+            <div data-guia="cal.vistas" className="flex gap-1 bg-gray-800 rounded-lg p-1">
               <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📅 1 mes
@@ -1238,7 +1238,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     const esHoy = f === hoy
                     const esCopiadaSemana = esSemanaCopiada(f)
                     return (
-                      <div key={f}
+                      <div key={f} data-guia={esHoy ? 'cal.dia' : undefined}
                         onClick={() => tocarDia(f)}
                         onDragOver={e => { if (arrastrando) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
                         onDrop={e => {
@@ -1279,7 +1279,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                         {!bloqueo && (
                           <div className="hidden sm:flex flex-col gap-0.5">
                             {sesDia.map(s => (
-                              <div key={s.id}
+                              <div key={s.id} data-guia="cal.sesion"
                                 onClick={e => { e.stopPropagation(); router.push('/sesion/' + s.id)}}
                                 /* Arrastrar para cambiarla de día. Solo en ratón:
                                    `draggable` no existe en táctil, y ahí ya está
@@ -1322,7 +1322,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                             <div className="text-center py-0.5 flex justify-between items-center px-1">
                               <span className="text-gray-700 text-xs">+</span>
                               {sesDia.length > 0 && (
-                                <button onClick={e => copiarSemana(f, e)} className="text-gray-600 hover:text-purple-400 text-xs transition" title="Copiar semana">📋sem</button>
+                                <button onClick={e => copiarSemana(f, e)} data-guia="cal.copiar-semana" className="text-gray-600 hover:text-purple-400 text-xs transition" title="Copiar semana">📋sem</button>
                               )}
                             </div>
                           </div>
@@ -1706,8 +1706,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 <input type="number" placeholder="Duración en semanas" value={macroDuracion} onChange={e => setMacroDuracion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" required />
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-gray-400 text-xs">Tipo de periodizacion</label>
-                    <button type="button" onClick={() => window.open('/periodizacion', '_blank')} className="text-orange-400 hover:text-orange-300 text-xs transition">📖 ¿Como elegir?</button>
+                    <label className="text-gray-400 text-xs">Tipo de periodización</label>
+                    <button type="button" onClick={() => window.open('/periodizacion', '_blank')} className="text-orange-400 hover:text-orange-300 text-xs transition">📖 ¿Cómo elegir?</button>
                   </div>
                   <select value={tipoPeriodizacion} onChange={e => setTipoPeriodizacion(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
                     <option value="">Sin especificar</option>

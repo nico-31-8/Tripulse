@@ -75,7 +75,7 @@ export default function HoyEntrenas({ deportistas }: Props) {
   if (filas.length === 0) return null
 
   return (
-    <div className="tp-card p-[14px_16px] flex flex-col gap-3">
+    <div data-guia="panel.hoy" className="tp-card p-[14px_16px] flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <p className="text-[13px] font-semibold m-0">Hoy</p>
         <span className="text-[11.5px] text-gray-500">{resumenDeHoy(filas)}</span>

@@ -8,6 +8,7 @@ import NavDeportista from '../components/NavDeportista'
 import CazaErrores from '../components/CazaErrores'
 import AvisoMantenimiento from '../components/AvisoMantenimiento'
 import FranjaEspacio from '../components/FranjaEspacio'
+import TutorialProvider from '../components/tutorial/TutorialProvider'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -65,6 +66,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-950`}>
+        {/* El tutorial guiado envuelve la app entera: solo hace algo para el
+            entrenador, y deja la app inerte mientras un paso la tapa. */}
+        <TutorialProvider>
         {/* Arriba del todo y en TODAS las pantallas, incluida la de entrar: es
             contra la que se choca cuando la app está caída. Se apaga solo. */}
         <AvisoMantenimiento />
@@ -80,6 +84,7 @@ export default function RootLayout({
         <NavDeportista />
         {/* Manda los errores no capturados a evento_app, para verlos en /admin. */}
         <CazaErrores />
+        </TutorialProvider>
       </body>
     </html>
   )

@@ -23,7 +23,7 @@ export default function OnboardingEntrenador({ perfil, numDeportistas, tienePlan
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-6">
+    <div data-guia="panel.primeros" className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <p className="font-bold text-lg">🚀 Primeros pasos</p>
         <span className="text-xs text-gray-400">{hechos} de {pasos.length}</span>
@@ -48,7 +48,7 @@ export default function OnboardingEntrenador({ perfil, numDeportistas, tienePlan
                 <button onClick={copiar} className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-2.5 py-1.5 transition">{copiado ? '✓ Copiado' : '📋 Copiar'}</button>
               </div>
             )}
-            <button onClick={() => router.push('/deportistas')} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Ir a Deportistas →</button>
+            <button data-guia="panel.ir-deportistas" onClick={() => router.push('/deportistas')} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Ir a Deportistas →</button>
           </div>
         )}
       </div>

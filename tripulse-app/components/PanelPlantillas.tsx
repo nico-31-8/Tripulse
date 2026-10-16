@@ -122,7 +122,7 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
   return (
     // Sin margen negativo: el panel es la columna derecha de una fila que empieza en la
     // gráfica, así que ya nace a su altura (ver app/sesion/[id]/page.tsx).
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+    <div data-guia="sesion.plantillas" className="bg-gray-900 rounded-xl border border-gray-800 p-4">
       <p className="font-semibold text-white text-sm mb-1">📋 Plantillas</p>
       <p className="text-gray-500 text-[11px] mb-3 leading-relaxed">
         Guardan zonas, no ritmos: el ritmo lo pone cada atleta con sus tests.

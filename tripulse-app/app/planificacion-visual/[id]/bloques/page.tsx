@@ -499,7 +499,7 @@ export default function PlanificacionVisual({ params }: { params: Promise<{ id: 
 
           {nivel === 'macro' && (
             <div>
-              <h2 className="text-2xl font-bold mb-1">Planificacion — {deportista.nombre}</h2>
+              <h2 className="text-2xl font-bold mb-1">Planificación — {deportista.nombre}</h2>
               <p className="text-gray-400 text-sm mb-4">Pulsa un macrociclo para ver sus bloques</p>
               <div className="flex gap-4 mb-4 flex-wrap">
                 {[['bg-orange-500','Acumulacion'],['bg-yellow-500','Transmutacion'],['bg-red-500','Realizacion'],['bg-green-500','Recuperacion']].map(([c,l]) => (

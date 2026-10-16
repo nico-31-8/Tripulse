@@ -389,7 +389,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               style={{ background: 'radial-gradient(circle, ' + hc1 + '28, transparent 68%)' }} />
             <div className="relative flex items-start gap-5 flex-wrap">
               {/* La foto abre/cierra todos los datos personales. */}
-              <button onClick={() => setAvatarOpen(o => !o)} title="Ver todos los datos personales"
+              <button onClick={() => setAvatarOpen(o => !o)} title="Ver todos los datos personales" data-guia="ficha.foto"
                 className="relative w-[92px] h-[92px] rounded-[28px] grid place-items-center text-[38px] font-extrabold text-white flex-shrink-0 transition hover:-translate-y-0.5"
                 style={{ background: fondoDe(deportista.nombre), boxShadow: '0 18px 40px -14px ' + hc1 + '99' }}>
                 {inicialDe(deportista.nombre)}
@@ -401,7 +401,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                 <p className="text-[13px] text-gray-400 mt-2">
                   {[edad ? edad + ' años' : null, deportista.sexo, deportista.fecha_nacimiento ? 'nacido el ' + deportista.fecha_nacimiento : null, deportista.experiencia_previa].filter(Boolean).join(' · ')}
                 </p>
-                <div className="flex gap-2 mt-3 flex-wrap">
+                <div data-guia="ficha.pastillas" className="flex gap-2 mt-3 flex-wrap">
                   {ultimoWellness && (() => {
                     const b = bienestar(ultimoWellness.score_wellness) ?? 0
                     return <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: colorBienestar(b) + '1f', color: colorBienestar(b) }}>
@@ -415,9 +415,9 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
               </div>
 
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => router.push('/planificacion-visual/' + id)} className="bg-orange-500 hover:bg-orange-400 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Planificación</button>
+                <button data-guia="ficha.planificacion" onClick={() => router.push('/planificacion-visual/' + id)} className="bg-orange-500 hover:bg-orange-400 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Planificación</button>
                 <button onClick={() => router.push('/planificacion-visual/' + id + '/calendario')} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Calendario</button>
-                <button onClick={abrirEdicion} className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Editar datos</button>
+                <button onClick={abrirEdicion} data-guia="ficha.editar" className="bg-white/5 border border-white/[0.075] hover:border-white/20 text-gray-300 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition">Editar datos</button>
               </div>
             </div>
           </div>
@@ -498,7 +498,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         {!deportista.solo_test && !deportista.id_grupo && <AccesoDirectorFicha idDeportista={Number(id)} />}
 
         {/* Pestañas */}
-        <div className="flex gap-1 border-b border-gray-800 mb-6 flex-wrap">
+        <div data-guia="ficha.pestanas" className="flex gap-1 border-b border-gray-800 mb-6 flex-wrap">
           {([
             ['estado', 'Estado'],
             ['zonas', 'Zonas y tests'],
@@ -507,7 +507,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             ['anamnesis', 'Anamnesis'],
             ['material', 'Material'],
           ] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setPestana(k)}
+            <button key={k} onClick={() => setPestana(k)} data-guia={k === 'zonas' ? 'ficha.pestana-zonas' : undefined}
               className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px flex items-center gap-1.5 ' +
                 (pestana === k ? 'border-orange-500 text-orange-300' : 'border-transparent text-gray-400 hover:text-white')}>
               {l}
@@ -526,7 +526,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
         {pestana === 'zonas' && (
           <div className="flex flex-col gap-5">
-            <div className="tp-card p-5">
+            <div data-guia="ficha.sistema-zonas" className="tp-card p-5">
               <h3 className="font-semibold mb-1 text-[15px]">Sistema de zonas</h3>
               <p className="text-gray-500 text-xs mb-4">Define qué zonas de entrenamiento se usan al planificar con este deportista.</p>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -595,7 +595,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                   ) : <p className="text-gray-600 text-[13px]">Sin test</p>}
                 </div>
               </div>
-              <button onClick={() => router.push('/tests/' + id)}
+              <button onClick={() => router.push('/tests/' + id)} data-guia="ficha.ver-tests"
                 className="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm transition">
                 Ver todos los tests →
               </button>

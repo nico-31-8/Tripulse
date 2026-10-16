@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { entrenadorEfectivo } from '@/lib/espacio'
+import { getAtletaActivo } from '@/lib/atletaActivo'
 
 export default function PlanificacionVisualIndex() {
   const router = useRouter()
@@ -16,6 +17,10 @@ export default function PlanificacionVisualIndex() {
       const user = await usuarioActual()
       if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
+      /* Con un deportista elegido en el Panel se va directo a su planificación,
+         como hace Tests: preguntar otra vez a quién es un paso de más. */
+      const activo = getAtletaActivo()
+      if (activo && (data || []).some((d: { id: number }) => d.id === activo)) { router.replace('/planificacion-visual/' + activo); return }
       setDeportistas(data || [])
     }
     cargar()
@@ -27,10 +32,10 @@ export default function PlanificacionVisualIndex() {
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <h2 className="text-2xl font-bold mb-2">Planificacion visual</h2>
-        <p className="text-gray-400 mb-8">Selecciona un deportista para ver su planificacion</p>
+        <h2 className="text-2xl font-bold mb-2">Planificación</h2>
+        <p className="text-gray-400 mb-8">Elige un deportista para ver su planificación.</p>
         {deportistas.length === 0 ? (
-          <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📅</div><p>No tienes deportistas todavia.</p></div>
+          <div className="text-center py-16 text-gray-500"><div className="text-5xl mb-4">📅</div><p>Todavía no tienes deportistas.</p></div>
         ) : (
           <div className="grid gap-4">
             {deportistas.map(d => (
@@ -38,9 +43,9 @@ export default function PlanificacionVisualIndex() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-bold text-lg">{d.nombre}</h3>
-                    <p className="text-gray-400 text-sm">{d.sexo || 'Sin especificar'} · FC max: {d.fc_maxima || '—'} ppm</p>
+                    <p className="text-gray-400 text-sm">{d.sexo || 'Sin especificar'} · FC máx: {d.fc_maxima || '—'} ppm</p>
                   </div>
-                  <span className="text-orange-500">Ver planificacion →</span>
+                  <span className="text-orange-500">Ver planificación →</span>
                 </div>
               </button>
             ))}

@@ -14,6 +14,31 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 16 de octubre de 2026 · Un recorrido guiado por la app
+
+La app ya te enseña cómo funciona cada parte. Un recorrido hace brillar los
+botones importantes, uno detrás de otro, y te explica para qué sirve cada uno.
+- **Si acabas de llegar**, sale solo: la bienvenida y luego las paradas del
+  primer día —tu panel, tus deportistas, su ficha, sus tests, la planificación,
+  el lienzo, el calendario y una sesión—. Al acabar cada parada te lleva a la
+  siguiente: brilla el botón que toca pulsar, y lo pulsas tú.
+- **Si ya usabas la app**, no te salta nada: una tarjeta en el Panel te lo
+  ofrece, y decides si verlo ahora o no.
+- **Cuando quieras:** el botón **?**, junto a TRIPULSE, repite el recorrido de
+  la pantalla en la que estés. Y abajo del menú está **🎓 Tutoriales**, con
+  todos los recorridos y por dónde vas.
+- Se puede saltar en cualquier momento, y lo que saltas no vuelve a salir solo.
+
+**De paso:**
+- **Planificación, desde el menú**, abre directamente la del deportista que
+  tienes elegido, como ya hacía Tests.
+- Arreglados textos sin tilde en Planificación, el lienzo, el calendario, la
+  semana y el perfil («Planificacion», «Competicion», «Codigo de entrenador»…).
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 15 de octubre de 2026 · Ya se puede quitar a un deportista
 
 Hasta ahora se podía añadir deportistas, pero no quitarlos. En **Deportistas**
