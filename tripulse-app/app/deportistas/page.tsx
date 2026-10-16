@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { tokenSeguro } from '@/lib/token-seguro'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calcularEdad } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
@@ -12,6 +12,9 @@ import { getEspacio, type Espacio } from '@/lib/espacio'
 import ListaEspacio from '@/components/ListaEspacio'
 import SeccionDirectores from '@/components/SeccionDirectores'
 import QuitarDeportista from '@/components/QuitarDeportista'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeDeportistas } from '@/lib/consejos'
 
 function calcularFCMaxima(fechaNacimiento: string): number | null {
   const edad = calcularEdad(fechaNacimiento)
@@ -40,6 +43,12 @@ export default function Deportistas() {
   const router = useRouter()
   useRequireEntrenador()
   const [deportistas, setDeportistas] = useState<any[]>([])
+  /* Los consejos del tutorial (lib/consejos): quién no tiene cuenta o le falta la FC máxima. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => conConsejos
+    ? consejosDeDeportistas(deportistas.map(d => ({ id: d.id, nombre: d.nombre, conCuenta: !!d.id_usuario, fcMax: d.fc_maxima ?? null })))
+    : null, [conConsejos, deportistas])
+  useConsejos('deportistas', consejos)
   /* Los que solo hacen tests. Van aparte y plegados: no son su equipo, pero
      tiene que poder llegar a su ficha para ver lo que midió. */
   const [evaluados, setEvaluados] = useState<{ id: number; nombre: string; id_usuario?: string | null }[]>([])
@@ -325,7 +334,7 @@ export default function Deportistas() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={() => generarEnlaceInvitacion(d)} data-guia={i === 0 ? 'dep.invitar' : undefined}
+                  <button onClick={() => generarEnlaceInvitacion(d)} data-guia={i === 0 ? 'dep.invitar' : undefined} data-consejo={'dep.invitar:' + d.id}
                     disabled={generandoEnlace === d.id}
                     className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-orange-500">
                     {generandoEnlace === d.id ? 'Generando...' : '🔗 Invitar'}
@@ -334,7 +343,7 @@ export default function Deportistas() {
                     className="text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
                     Quitar
                   </button>
-                  <Link href={`/deportistas/${d.id}`} data-guia={i === 0 ? 'dep.perfil' : undefined} data-guia-nombre={i === 0 ? d.nombre : undefined} className="text-orange-500 hover:underline text-sm">Ver perfil →</Link>
+                  <Link href={`/deportistas/${d.id}`} data-guia={i === 0 ? 'dep.perfil' : undefined} data-guia-nombre={i === 0 ? d.nombre : undefined} data-consejo={'dep.perfil:' + d.id} className="text-orange-500 hover:underline text-sm">Ver perfil →</Link>
                 </div>
               </div>
             ))}

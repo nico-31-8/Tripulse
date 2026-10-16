@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, use } from 'react'
 import ProtocoloTest from '@/components/ProtocoloTest'
 import { supabase } from '@/lib/supabase'
 import { vamDeMontreal, cssDeDosDistancias, ftpDeRampa, pamDeRampa, ritmoDeVam, ritmoDeCss } from '@/lib/tests-formulas'
@@ -18,6 +18,10 @@ import { CATALOGO, type Contexto, type Disciplina, type ModoTest } from '@/lib/c
 import { emojiDisciplina } from '@/lib/disciplinas'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import PestanaMovimiento from '@/components/movimiento/PestanaMovimiento'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeTests, disciplinaPrincipal, pestanaDeTests } from '@/lib/consejos'
+import { hoyISO } from '@/lib/fechas'
 
 const GRUPOS_MUSCULARES = ['Pectoral','Espalda','Hombro','Biceps','Triceps','Cuadriceps','Isquiotibiales','Gluteos','Gemelos','Core','Otros']
 
@@ -297,6 +301,8 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
      permanentemente para algo que casi nadie usa. Quien lo necesite, lo abre. */
   const [mostrarOtros, setMostrarOtros] = useState(false)
   const [loading, setLoading] = useState(false)
+  /* Si se pudieron leer todos sus tests: sin eso, un consejo diría «no tiene ninguno» sin saberlo. */
+  const [testsOk, setTestsOk] = useState(false)
   const [error, setError] = useState('')
   const [fecha, setFecha] = useState('')
   const [velInicial, setVelInicial] = useState('')
@@ -362,6 +368,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setTestsLibres(tl.data || [])
     setTestsCampo(tc.data || [])
     setContexto(ctxs[Number(id)] ?? {})
+    setTestsOk(![t1, t2, t3, tf, tl, tc].some(r => r.error))
   }
 
   /* Las tres fórmulas viven en lib/tests-formulas: el test de GRUPO usa las
@@ -549,6 +556,36 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
+  /* Los consejos del tutorial (lib/consejos): por qué test empezar, qué disciplina no tiene el suyo… */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => {
+    if (!conConsejos || !deportista || !testsOk) return null
+    const ultimo = (filas: Record<string, unknown>[], col: string): string | null =>
+      (filas.find(f => f[col] != null)?.fecha as string | undefined) ?? null
+    const prin = disciplinaPrincipal(deportista)
+    const empezar = prin ? CLASICOS_TAB[pestanaDeTests(prin)]?.find(c => c.zonas) : null
+    return consejosDeTests({
+      id: Number(id), nombre: deportista.nombre, hoy: hoyISO(), fcMax: deportista.fc_maxima ?? null,
+      disciplinas: deportista.disciplinas, pestana: tab,
+      algunTest: [tests1, tests2, tests3, testsFuerza, testsLibres, testsCampo].some(l => l.length > 0),
+      ultimoConZonas: { Carrera: ultimo(tests1, 'vam'), Natacion: ultimo(tests2, 'css'), Ciclismo: ultimo(tests3, 'ftp') },
+      testParaEmpezar: empezar ? { id: empezar.id, nombre: empezar.nombre } : null,
+    })
+  }, [conConsejos, deportista, testsOk, id, tab, tests1, tests2, tests3, testsFuerza, testsLibres, testsCampo])
+  /* «Pasar este test»: a su pestaña y con el test abierto, como si lo pulsara. */
+  const pasarTestDeZonas = () => {
+    const prin = disciplinaPrincipal(deportista)
+    const p = prin ? pestanaDeTests(prin) : null
+    const c = p ? CLASICOS_TAB[p]?.find(x => x.zonas) : null
+    if (!p || !c) return
+    setTab(p)
+    setTestSel(c.id)
+    setModo(herramientasDe(c.id).length > 0 ? null : 'mano')
+    setTestTipo(c.tipo === 'fuerza' ? 'aerobico' : c.tipo)
+    setMostrarForm(true)
+  }
+  useConsejos('tests', consejos, { 'pasar-test': pasarTestDeZonas })
+
   if (!deportista) return <Cargando noExiste={noExiste} />
 
   const rmPreview = calcularRM()
@@ -671,7 +708,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
 
         <div data-guia="tests.pestanas" className="flex gap-2 mb-6 flex-wrap">
           {TABS.map(t => (
-            <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null); setModo(null) }}
+            <button key={t} onClick={() => { setTab(t); setMostrarForm(false); setTestSel(null); setModo(null) }} data-consejo={'tests.tab:' + t}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === t ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
               {ETIQUETA_TAB[t]}
             </button>
@@ -736,7 +773,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
           </p>
           <div data-guia="tests.lista" className="flex gap-2 flex-wrap">
             {testsDelTab.map(t => (
-              <button key={t.id} onClick={() => elegirTest(t)}
+              <button key={t.id} onClick={() => elegirTest(t)} data-consejo={'tests.test:' + t.id}
                 className={'px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border ' +
                   (testSel === t.id
                     ? 'bg-orange-500/15 border-orange-500/45 text-orange-400 font-semibold'

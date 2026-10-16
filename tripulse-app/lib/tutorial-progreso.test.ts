@@ -18,6 +18,19 @@ describe('de las filas al progreso', () => {
     expect(p.disponible).toBe(true)
   })
 
+  it('los consejos van con su fecha, aparte de las zonas', () => {
+    const p = progresoDeFilas([
+      { clave: 'c:panel:sin-tests:14', estado: 'saltado', actualizado: '2026-10-16T08:00:00Z' },
+      { clave: 'c:ficha:antecedentes:14', estado: 'visto', actualizado: '2026-10-10T08:00:00Z' },
+      /* Sin fecha no se sabe cuándo puede volver: como si no se hubiera contestado. */
+      { clave: 'c:panel:test-viejo:14', estado: 'saltado', actualizado: null },
+    ])
+    expect(p.consejos.get('c:panel:sin-tests:14')).toEqual({ estado: 'saltado', fecha: '2026-10-16T08:00:00Z' })
+    expect(p.consejos.get('c:ficha:antecedentes:14')?.estado).toBe('visto')
+    expect(p.consejos.has('c:panel:test-viejo:14')).toBe(false)
+    expect(p.vistos.size + p.saltados.size).toBe(0)
+  })
+
   it('sin filas: todo por ver', () => {
     const p = progresoDeFilas([])
     expect(p.vistos.size + p.saltados.size).toBe(0)

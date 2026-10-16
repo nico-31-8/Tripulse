@@ -22,8 +22,22 @@ import {
   type Progreso, type PasoTutorial, type ZonaTutorial, type Pendiente,
 } from '@/lib/tutorial'
 import { cargarProgreso, guardarMarca, quitarMarca, CLAVE_OFERTA, CLAVE_PAUSA } from '@/lib/tutorial-progreso'
+import { claveConsejo, consejoDeLaVisita, consejosActivos, type Consejo, type ZonaConConsejos } from '@/lib/consejos'
 import Recorrido, { type FinDelRecorrido } from './Recorrido'
 import ListaTutoriales from './ListaTutoriales'
+import ConsejoEnPantalla from './Consejo'
+import { elementoDeConsejo } from './posicion'
+
+/** Lo que una pantalla le pasa al tutorial: sus consejos de ahora (lib/consejos). */
+export interface PantallaConConsejos {
+  zona: ZonaConConsejos
+  lista: Consejo[]
+  /** Sus acciones propias (`accion: { hacer }`), por referencia: siempre las de su último pintado. */
+  acciones?: { current: Record<string, () => void> | undefined }
+}
+
+/** Lo que tarda en salir un consejo: que la pantalla haya terminado de cargar y de moverse. */
+const ESPERA_CONSEJO_MS = 1200
 
 interface Api {
   /** Es un entrenador y el tutorial está montado. */
@@ -38,6 +52,10 @@ interface Api {
   rechazarOferta: () => void
   /** Ir a la pantalla de una zona y enseñarla (camino = con salida a la siguiente). */
   irA: (zona: ZonaTutorial, camino: boolean) => void
+  /** Si salen consejos: las pantallas solo los calculan entonces. */
+  consejosActivos: boolean
+  ponerConsejos: (p: PantallaConConsejos) => void
+  quitarConsejos: (zona: ZonaConConsejos) => void
 }
 
 const Ctx = createContext<Api | null>(null)
@@ -65,6 +83,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   /* Una zona pedida (desde la lista, o siguiendo el camino) que espera a que cargue su pantalla. */
   const pendiente = useRef<Pendiente | null>(null)
   const rutaDelRecorrido = useRef<string | null>(null)
+  /* Los consejos de la pantalla que se ve, y lo que lleva enseñado en esta
+     visita: uno por visita, y ninguno más tras contestarlo. */
+  const [pantalla, setPantalla] = useState<PantallaConConsejos | null>(null)
+  const [visita, setVisita] = useState<{ ruta: string; mostrado: string | null; cerrada: boolean }>({ ruta: '', mostrado: null, cerrada: false })
 
   /* Quién es y qué ha visto. */
   useEffect(() => {
@@ -103,6 +125,13 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   const marcar = useCallback((clave: string, estado: 'visto' | 'saltado' | 'pausado' | 'aceptada' | 'rechazada') => {
     setProgreso(p => {
       const n: Progreso = { ...p, vistos: new Set(p.vistos), saltados: new Set(p.saltados) }
+      if (clave.startsWith('c:')) {
+        if (estado === 'visto' || estado === 'saltado') {
+          n.consejos = new Map(p.consejos)
+          n.consejos.set(clave, { estado, fecha: new Date().toISOString() })
+        }
+        return n
+      }
       if (clave === CLAVE_PAUSA) n.pausado = estado === 'pausado'
       else if (clave === CLAVE_OFERTA) n.oferta = estado === 'aceptada' || estado === 'rechazada' ? estado : null
       else if (estado === 'visto') { n.vistos.add(clave); n.saltados.delete(clave) }
@@ -202,6 +231,64 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     avisar('Vale. Lo tienes cuando quieras en 🎓 Tutoriales, abajo del menú.')
   }, [marcar, avisar])
 
+  /* ---- Los consejos ---- */
+
+  const conConsejos = esEntrenador && cargado && consejosActivos(progreso, esNuevo)
+  const ponerConsejos = useCallback((p: PantallaConConsejos) => setPantalla(p), [])
+  const quitarConsejos = useCallback((zona: ZonaConConsejos) => setPantalla(p => (p && p.zona === zona ? null : p)), [])
+
+  /* La visita es la de esta pantalla: al cambiar de ruta empieza otra. */
+  const visitaAqui = visita.ruta === pathname ? visita : { ruta: pathname, mostrado: null, cerrada: false }
+  /* «Ahora» cambia cuando cambia lo que se mira: basta para los días de reposo. */
+  const [ahora, setAhora] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setTimeout(() => setAhora(Date.now()), 0)
+    return () => clearTimeout(t)
+  }, [pathname, pantalla])
+
+  /* Nunca a la vez que un recorrido o que la lista de tutoriales. */
+  const candidato = useMemo(() => (!conConsejos || enCurso || lista ? null
+    : consejoDeLaVisita(pantalla, zonaDeRuta(pathname), { mostrado: visitaAqui.mostrado, cerrada: visitaAqui.cerrada }, progreso.consejos, new Date(ahora))),
+  [conConsejos, enCurso, lista, pantalla, visitaAqui.cerrada, visitaAqui.mostrado, pathname, progreso.consejos, ahora])
+  const claveCandidato = candidato ? claveConsejo(candidato) : null
+
+  /* No sale de golpe: espera a que la pantalla acabe de cargar y de moverse. */
+  useEffect(() => {
+    if (!claveCandidato || visitaAqui.mostrado === claveCandidato) return
+    const ruta = pathname
+    const t = setTimeout(() => setVisita(v => ({
+      ruta, mostrado: claveCandidato, cerrada: v.ruta === ruta ? v.cerrada : false,
+    })), ESPERA_CONSEJO_MS)
+    return () => clearTimeout(t)
+  }, [claveCandidato, visitaAqui.mostrado, pathname])
+  const consejoVisible = candidato && visitaAqui.mostrado === claveCandidato ? candidato : null
+
+  const cerrarVisita = useCallback(() => {
+    const ruta = window.location.pathname
+    setVisita(v => ({ ruta, mostrado: v.ruta === ruta ? v.mostrado : null, cerrada: true }))
+  }, [])
+
+  const consejoAhoraNo = useCallback((c: Consejo) => {
+    marcar(claveConsejo(c), 'saltado')
+    cerrarVisita()
+    avisar('Vale. Si sigue igual, te lo recordamos en unos días.')
+  }, [marcar, cerrarVisita, avisar])
+
+  /* Las acciones se leen al pulsar: las de la pantalla tal como está en ese momento. */
+  const pantallaRef = useRef(pantalla)
+  useEffect(() => { pantallaRef.current = pantalla })
+  const consejoHacer = useCallback((c: Consejo) => {
+    marcar(claveConsejo(c), 'visto')
+    cerrarVisita()
+    const a = c.accion
+    if ('ir' in a) { router.push(a.ir); return }
+    if ('hacer' in a) { pantallaRef.current?.acciones?.current?.[a.hacer]?.(); return }
+    const el = elementoDeConsejo('pulsar' in a ? a.pulsar : a.mirar)
+    if (!el) return
+    if ('pulsar' in a) el.click()
+    else el.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }, [marcar, cerrarVisita, router])
+
   const api = useMemo<Api>(() => ({
     activo: esEntrenador && cargado,
     progreso,
@@ -211,7 +298,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     aceptarOferta,
     rechazarOferta,
     irA,
-  }), [esEntrenador, cargado, progreso, esNuevo, ayuda, aceptarOferta, rechazarOferta, irA])
+    consejosActivos: conConsejos,
+    ponerConsejos,
+    quitarConsejos,
+  }), [esEntrenador, cargado, progreso, esNuevo, ayuda, aceptarOferta, rechazarOferta, irA, conConsejos, ponerConsejos, quitarConsejos])
 
   return (
     <Ctx.Provider value={api}>
@@ -224,6 +314,10 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
           numInfo={enCurso.numInfo} nombre={nombre} onFin={alTerminar} onModal={setModal} />
       )}
       {lista && <ListaTutoriales progreso={progreso} onCerrar={() => setLista(false)} onVer={irA} />}
+      {consejoVisible && (
+        <ConsejoEnPantalla key={claveCandidato} consejo={consejoVisible}
+          onAhoraNo={() => consejoAhoraNo(consejoVisible)} onHacer={() => consejoHacer(consejoVisible)} />
+      )}
       {aviso && (
         <div role="status" className="fixed left-1/2 -translate-x-1/2 bottom-6 max-w-[min(440px,calc(100vw-32px))] bg-gray-800 border border-gray-700 text-white text-[13px] leading-snug px-4 py-2.5 rounded-xl shadow-2xl shadow-black/60"
           style={{ zIndex: 950 }}>

@@ -1,8 +1,11 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef, use } from 'react'
+import { useState, useEffect, useRef, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeVistas } from '@/lib/consejos'
 
 // Mini-maquetas SVG representativas de cada vista (sin assets externos).
 function PreviewBloques() {
@@ -133,6 +136,26 @@ function VistaCard({ v, index, onGo }: { v: typeof VISTAS[number]; index: number
   )
 }
 
+/* Los consejos del tutorial (lib/consejos): quien aún no tiene temporada empieza por Periodización. */
+function useConsejosDeVistas(id: string, nombre: string | null | undefined) {
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const [temporadas, setTemporadas] = useState<{ id: string; n: number } | null>(null)
+  useEffect(() => {
+    if (!conConsejos) return
+    let vivo = true
+    /* Un dibujo sin pasar al calendario también es su temporada: no se le dice que no tiene. */
+    Promise.all([
+      supabase.from('macrociclo').select('id', { count: 'exact', head: true }).eq('id_deportista', id),
+      supabase.from('dibujo_borrador').select('id_deportista', { count: 'exact', head: true }).eq('id_deportista', id),
+    ]).then(([m, b]) => { if (vivo && !m.error && !b.error) setTemporadas({ id, n: (m.count || 0) + (b.count || 0) }) })
+    return () => { vivo = false }
+  }, [conConsejos, id])
+  const consejos = useMemo(() => conConsejos && nombre !== undefined && temporadas?.id === id
+    ? consejosDeVistas({ id: Number(id), nombre: nombre ?? null, macrociclos: temporadas.n }) : null,
+  [conConsejos, nombre, temporadas, id])
+  useConsejos('vistas', consejos)
+}
+
 export default function PlanificacionVistas({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id } = use(params)
@@ -142,6 +165,7 @@ export default function PlanificacionVistas({ params }: { params: Promise<{ id: 
   useEffect(() => {
     supabase.from('deportista').select('nombre').eq('id', id).single().then(({ data }) => setDeportista(data))
   }, [id])
+  useConsejosDeVistas(id, deportista ? deportista.nombre : undefined)
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

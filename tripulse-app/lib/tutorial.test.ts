@@ -6,6 +6,7 @@ import {
   mostrarOferta, siguienteDelCamino, rutaDeZona, esCuentaNueva, rellenar, siguienteParada,
   progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, type Progreso,
 } from './tutorial'
+import { ANCLAS_DE_CONSEJOS } from './consejos'
 
 const prog = (cambios: Partial<Progreso> = {}): Progreso => ({ ...progresoVacio(true), ...cambios })
 
@@ -70,9 +71,10 @@ describe('las anclas existen en las pantallas', () => {
     })
   }
 
+  /* Un data-guia que no está ni en el recorrido ni en los consejos (lib/consejos) es una errata. */
   it('las de más de un sitio solo están donde deben (ninguna sobrante con otro nombre)', () => {
     const usadas = new Set((todo.match(/data-guia="[a-z][a-z.-]*"/g) || []).map(m => m.slice(11, -1)))
-    for (const u of usadas) expect(anclas.has(u)).toBe(true)
+    for (const u of usadas) expect(anclas.has(u) || ANCLAS_DE_CONSEJOS.fijas.includes(u)).toBe(true)
   })
 })
 

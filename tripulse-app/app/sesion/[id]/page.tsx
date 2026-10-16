@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { repsDeEjercicio, repsDePrescripcion, columnasPrescripcion } from '@/lib/repeticiones'
 import { tieneSeriesDistintas, seriesDe, textoRepsSeries } from '@/lib/series-detalle'
-import { useState, useEffect, useRef, use } from 'react'
+import { useState, useEffect, useRef, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conVideosEnTareas } from '@/lib/video-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
@@ -35,6 +35,9 @@ function iniciales(nombre: string | null | undefined): string {
 }
 import SessionLoadChart from '@/components/SessionLoadChart'
 import { calcularDuracionEstimada } from '@/lib/duracion'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeLaSesion } from '@/lib/consejos'
 import { cargarBiblioteca } from '@/lib/biblioteca-propia'
 import InfoSemana from '@/components/InfoSemana'
 import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
@@ -78,6 +81,8 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
   const cargasTareas = useRef(0)
   const pedirCopia = (tareas: any[]) => setACopiar({ token: ++contadorCopia.current, tareas })
   const [tareas, setTareas] = useState<any[]>([])
+  /* Si ya llegaron sus tareas: hasta entonces los consejos no pueden mirarlas. */
+  const [tareasListas, setTareasListas] = useState(false)
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
   // De quién es la sesión y en qué punto del plan cae: la misma sesión significa una
   // cosa en semana de choque y otra en descarga.
@@ -313,7 +318,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     const llamada = ++cargasTareas.current
     conTecnica(tar)
       .then(t => conVideosEnTareas(t, supabase))
-      .then(listas => { if (cargasTareas.current === llamada) setTareas(listas) })
+      .then(listas => { if (cargasTareas.current === llamada) { setTareas(listas); setTareasListas(true) } })
   }
 
   /* Después de editar una tarea solo han cambiado las tareas: releer la ficha
@@ -720,6 +725,26 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     setMostrarNutricion(false)
   }
 
+  /* Los consejos del tutorial (lib/consejos): la tarea sin zona o imposible, los
+     ritmos sin test y la sesión ya hecha. Solo para el entrenador. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => {
+    if (!conConsejos || esDeportista || !sesion || !deportistaId || !testsData || !tareasListas) return null
+    const disc = sesion.disciplina
+    const delTest: Record<string, number | null> = { Carrera: testsData.vam, Natacion: testsData.css, Ciclismo: testsData.ftp }
+    const deResistencia = (t: { formato?: string | null; disciplina?: string | null }) => !esBloque(t) && !esDisciplinaDeFuerza(t.disciplina || disc)
+    return consejosDeLaSesion({
+      idSesion: Number(id), idDeportista: deportistaId, nombre: nombreDeportista, disciplina: disc,
+      hecha: sesion.estado === 'Realizada', fcMax: fcMaxima || null,
+      tieneTestDeLaDisciplina: disc in delTest ? !!delTest[disc] : null,
+      duracionAMano: !!sesion.duracion_minutos,
+      usoReferencia: calcularDuracionEstimada(tareas, testsData).usoReferencia,
+      tareasSinZona: tareas.filter(t => deResistencia(t) && !t.tecnica_id && !t.zona_entrenamiento).map(t => t.id),
+      tareasImposibles: tareas.filter(t => calcularDuracionEstimada([t], testsData).datoImposible).map(t => t.id),
+    })
+  }, [conConsejos, esDeportista, sesion, deportistaId, testsData, tareasListas, id, nombreDeportista, fcMaxima, tareas])
+  useConsejos('sesion', consejos)
+
   if (!sesion) return <Cargando noExiste={noExiste} />
 
   const durEstimada = calcularDuracionEstimada(tareas, testsData || {})
@@ -989,7 +1014,9 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                   ))}
                 </div>
               )}
-              <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
+              <div data-guia="sesion.lo-que-hizo">
+                <DatosReales sesionId={Number(id)} disciplina={sesion.disciplina} />
+              </div>
             </div>
           </div>
         )}

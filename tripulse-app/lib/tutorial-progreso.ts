@@ -4,6 +4,8 @@
 // Tabla `tutorial_progreso` (supabase/tutorial-progreso.sql): una fila por
 // clave. Una zona guarda 'visto' o 'saltado'; '_pausa' guarda que dijo
 // «Ahora no»; '_oferta', lo que contestó a la tarjeta quien ya usaba la app.
+// Los consejos (lib/consejos) van con su clave «c:…»: 'saltado' si dijo «Ahora
+// no», 'visto' si pulsó su botón. La fecha de la fila dice cuándo puede volver.
 //
 // Si la tabla no está todavía, o no se puede leer, el progreso sale como «no
 // disponible»: nada arranca solo (no se podría recordar que ya lo vio y le
@@ -19,9 +21,13 @@ export const CLAVE_OFERTA = '_oferta'
 export type EstadoGuardado = 'visto' | 'saltado' | 'pausado' | 'aceptada' | 'rechazada'
 
 /** De las filas guardadas al progreso con el que trabaja el tutorial. */
-export function progresoDeFilas(filas: { clave: string; estado: string }[] | null | undefined): Progreso {
+export function progresoDeFilas(filas: { clave: string; estado: string; actualizado?: string | null }[] | null | undefined): Progreso {
   const p = progresoVacio(true)
   for (const f of filas || []) {
+    if (f.clave.startsWith('c:')) {
+      if ((f.estado === 'visto' || f.estado === 'saltado') && f.actualizado) p.consejos.set(f.clave, { estado: f.estado, fecha: f.actualizado })
+      continue
+    }
     if (f.clave === CLAVE_PAUSA) { p.pausado = f.estado === 'pausado'; continue }
     if (f.clave === CLAVE_OFERTA) {
       p.oferta = f.estado === 'aceptada' || f.estado === 'rechazada' ? f.estado : null
@@ -35,7 +41,7 @@ export function progresoDeFilas(filas: { clave: string; estado: string }[] | nul
 
 export async function cargarProgreso(sb: any, idUsuario: string): Promise<Progreso> {
   try {
-    const { data, error } = await sb.from('tutorial_progreso').select('clave, estado').eq('id_usuario', idUsuario)
+    const { data, error } = await sb.from('tutorial_progreso').select('clave, estado, actualizado').eq('id_usuario', idUsuario)
     if (error) return progresoVacio(false)
     return progresoDeFilas(data)
   } catch {

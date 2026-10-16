@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useEsMovil } from '@/lib/es-movil'
 import { hoyISO, lunesDe, aISO } from '@/lib/fechas'
@@ -33,6 +33,9 @@ import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } fro
 import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import { copiarSesiones, type DestinoCopia } from '@/lib/copiar-sesion'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDelCalendario } from '@/lib/consejos'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -102,6 +105,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const [mesos, setMesos] = useState<any[]>([])
   const [micros, setMicros] = useState<any[]>([])
   const [sesiones, setSesiones] = useState<any[]>([])
+  /* Si se pudieron leer sus sesiones y semanas bloqueadas: sin eso, un consejo diría «semana vacía» sin saberlo. */
+  const [sesionesOk, setSesionesOk] = useState(false)
   /* Los tests del entrenador, solo id y nombre: para poder decir CUÁL test
      lleva un día de test sin abrir la sesión. */
   const [testsPropios, setTestsPropios] = useState<{ id: number; nombre: string }[]>([])
@@ -268,6 +273,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     setMicros(mi.data || [])
     setTestsPropios((defs.data || []) as { id: number; nombre: string }[])
     setSesiones(montarSesiones(lote, testsDep))
+    setSesionesOk(!lote[0].error && !bloqs.error)
   }
 
   /* Después de crear, pegar o editar una sesión solo cambian las sesiones: no
@@ -760,6 +766,17 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   const hoy = hoyISO()
   const modoActivo = sesionCopiada ? 'pegar-sesion' : semanaCopiada ? 'pegar-semana' : null
 
+  /* Los consejos del tutorial (lib/consejos): la semana que viene vacía y las pasadas sin hacer. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const consejos = useMemo(() => conConsejos && deportista && sesionesOk
+    ? consejosDelCalendario({
+        id: Number(id), hoy,
+        sesiones: sesiones.map(s => ({ fecha_sesion: s.fecha_sesion, estado: s.estado })),
+        bloqueadas: semanasBloqueadas.map(b => String(b.fecha_inicio || '')),
+      })
+    : null, [conConsejos, deportista, sesionesOk, id, hoy, sesiones, semanasBloqueadas])
+  useConsejos('calendario', consejos)
+
   if (!deportista) return <Cargando noExiste={noExiste} />
 
   return (
@@ -1096,7 +1113,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               ['Semanas', vista === 'calendario' && vistaDetalle !== 'mes' && capaCalendario === 'semanas', () => { setVista('calendario'); setVistaDetalle('multi'); setCapaCalendario('semanas') }],
               ['Lista', vista === 'semanas', () => setVista('semanas')],
             ] as [string, boolean, () => void][]).map(([txt, on, fn]) => (
-              <button key={txt} onClick={fn}
+              <button key={txt} onClick={fn} data-guia={txt === 'Lista' ? 'cal.vista-lista' : undefined}
                 className={'flex-1 text-[11.5px] font-semibold py-1.5 rounded-lg transition ' +
                   (on ? 'bg-orange-500 text-white' : 'text-gray-400')}>{txt}</button>
             ))}
@@ -1155,7 +1172,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vista === 'calendario' && capaCalendario === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📋 Semanas
               </button>
-              <button onClick={() => setVista('semanas')}
+              <button onClick={() => setVista('semanas')} data-guia="cal.vista-lista"
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vista === 'semanas' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
                 📝 Lista
               </button>
@@ -1238,7 +1255,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                     const esHoy = f === hoy
                     const esCopiadaSemana = esSemanaCopiada(f)
                     return (
-                      <div key={f} data-guia={esHoy ? 'cal.dia' : undefined}
+                      <div key={f} data-guia={esHoy ? 'cal.dia' : undefined} data-consejo={'cal.semana:' + lunesDe(f)}
                         onClick={() => tocarDia(f)}
                         onDragOver={e => { if (arrastrando) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
                         onDrop={e => {

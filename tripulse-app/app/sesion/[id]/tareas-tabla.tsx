@@ -1663,7 +1663,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                     <th className="text-left py-2 px-2">Descanso</th>
                     <th className="text-left py-2 px-2">Medición</th>
                     <th className="text-left py-2 px-2">Total</th>
-                    <th className="text-left py-2 px-2">Referencia / Intensidad</th>
+                    <th className="text-left py-2 px-2" data-guia="sesion.intensidad">Referencia / Intensidad</th>
                     <th className="text-left py-2 px-2">Notas</th>
                     {!esDeportista && <th className="py-2 px-2 w-16"></th>}
                   </>
@@ -1680,7 +1680,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 const objetivoT = objetivoGuardado(t)
                 return (
-                  <tr key={t.id} data-guia={i === 0 ? 'sesion.fila' : undefined}
+                  <tr key={t.id} data-guia={i === 0 ? 'sesion.fila' : undefined} data-consejo={'sesion.tarea:' + t.id}
                     draggable={!esDeportista}
                     onDragStart={() => setDragIdx(i)}
                     onDragOver={e => { e.preventDefault(); if (sobreIdx !== i) setSobreIdx(i) }}
@@ -1707,7 +1707,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} title="Editar el bloque" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => abrirEditarTarea(t)} data-consejo={'sesion.editar:' + t.id} title="Editar el bloque" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
                               <button onClick={() => duplicarTarea(t)} title="Duplicar el bloque" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
                               <button onClick={() => soltarBloque(t)} title="Soltar: sus líneas vuelven a ser sueltas" className="text-gray-500 hover:text-pink-300 text-xs px-1.5 py-1 rounded transition">⤓</button>
                               <button onClick={() => borrarTarea(t.id)} title="Borrar el bloque" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
@@ -1761,7 +1761,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => abrirEditarTarea(t)} data-consejo={'sesion.editar:' + t.id} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
                               <button onClick={() => duplicarTarea(t)} title="Duplicar: baja una copia abajo para retocarla" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
                               <button onClick={() => borrarTarea(t.id)} title="Borrar" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
                             </div>
@@ -1829,7 +1829,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         {!esDeportista && (
                           <td className="py-2 px-2">
                             <div className="flex gap-1">
-                              <button onClick={() => abrirEditarTarea(t)} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
+                              <button onClick={() => abrirEditarTarea(t)} data-consejo={'sesion.editar:' + t.id} title="Editar" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">✏️</button>
                               <button onClick={() => duplicarTarea(t)} title="Duplicar: baja una copia abajo para retocarla" className="text-gray-500 hover:text-orange-400 text-xs px-1.5 py-1 rounded transition">📋</button>
                               <button onClick={() => borrarTarea(t.id)} title="Borrar" className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-1 rounded transition">🗑</button>
                             </div>

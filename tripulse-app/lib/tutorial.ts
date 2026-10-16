@@ -116,7 +116,7 @@ export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
       { ancla: 'ficha.foto', titulo: 'Sus datos, a un toque', texto: 'Pulsa su foto para ver todos sus datos personales.' },
       { ancla: 'ficha.pastillas', titulo: 'Lo importante, arriba', texto: 'Su bienestar, su frescura (TSB) y, si los tiene, sus antecedentes médicos. Léelos antes de planificar.' },
       { ancla: 'ficha.pestanas', titulo: 'Todo lo suyo, en seis pestañas', texto: 'Estado, Zonas y tests, Entrenamiento, Disponibilidad, Anamnesis y Material, donde llevas sus zapatillas y bicis con los kilómetros.' },
-      { ancla: 'ficha.editar', titulo: 'Sus datos de base', texto: 'FC máxima, FC de reposo y HRV basal. Sin la FC máxima no salen sus zonas por pulso, y con la de reposo se afinan.' },
+      { ancla: 'ficha.editar', titulo: 'Sus datos de base', texto: 'FC máxima, HRV basal y su técnica en cada deporte, que es su valoración técnica. Sin la FC máxima no salen sus zonas por pulso.' },
       { ancla: 'ficha.planificacion', titulo: 'De aquí, a planificar', texto: 'Planificación abre su temporada, y Calendario, sus sesiones día a día.' },
     ],
     salida: [
@@ -212,6 +212,9 @@ export const ZONAS: Record<ZonaTutorial, ZonaDelTutorial> = {
    Lo que se recuerda de cada persona (lo carga lib/tutorial-progreso)
    --------------------------------------------------------------- */
 
+/** Lo que contestó a un consejo (lib/consejos) y cuándo: con la fecha se sabe cuándo puede volver. */
+export interface MarcaConsejo { estado: 'visto' | 'saltado'; fecha: string }
+
 export interface Progreso {
   vistos: Set<string>
   saltados: Set<string>
@@ -221,10 +224,12 @@ export interface Progreso {
   oferta: 'aceptada' | 'rechazada' | null
   /** Si la tabla no está (o no se pudo leer), no se puede recordar nada y nada sale solo. */
   disponible: boolean
+  /** Los consejos contestados, por su clave (lib/consejos: claveConsejo). */
+  consejos: Map<string, MarcaConsejo>
 }
 
 export function progresoVacio(disponible = true): Progreso {
-  return { vistos: new Set(), saltados: new Set(), pausado: false, oferta: null, disponible }
+  return { vistos: new Set(), saltados: new Set(), pausado: false, oferta: null, disponible, consejos: new Map() }
 }
 
 /** La siguiente parada del recorrido, o null en la última. */

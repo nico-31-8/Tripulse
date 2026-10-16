@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import MaterialDeportista from '@/components/MaterialDeportista'
 import { calcularEdad, hoyISO, sumarDias } from '@/lib/fechas'
@@ -23,6 +23,10 @@ import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 import AccesoDirectorFicha from '@/components/AccesoDirectorFicha'
 import QuitarDeportista from '@/components/QuitarDeportista'
 import { usuarioActual } from '@/lib/sesion'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDeLaFicha } from '@/lib/consejos'
+import { fcReposoDe } from '@/lib/frecuencia-cardiaca'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 
@@ -135,6 +139,15 @@ function DisponibilidadDeportista({ depId }: { depId: number }) {
       )}
     </div>
   )
+}
+
+/** Las banderas de la anamnesis que ya marcaban la alerta dentro de ella: se suben a la portada (y a los consejos). */
+function alertaSaludDe(anamnesis: Record<string, unknown> | null | undefined): boolean {
+  return !!anamnesis && [
+    anamnesis.salud_cardiaca, anamnesis.salud_familia_infarto, anamnesis.salud_tension_alta,
+    anamnesis.salud_diabetes, anamnesis.salud_asma, anamnesis.salud_medicacion,
+    anamnesis.salud_alergia, anamnesis.salud_razon_medica,
+  ].some(v => v === true)
 }
 
 export default function PerfilDeportista({ params }: { params: Promise<{ id: string }> }) {
@@ -355,6 +368,28 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
     setDeportista((prev: any) => ({ ...prev, sistema_zonas: v }))
   }
 
+  /* Los consejos del tutorial (lib/consejos). La FC de reposo no está en su ficha:
+     sale de su wellness o su anamnesis, y solo se pide si le salen consejos. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const [fcReposo, setFcReposo] = useState<{ id: string; fc: number } | null>(null)
+  useEffect(() => {
+    if (!conConsejos || loading) return
+    let vivo = true
+    supabase.from('wellness').select('fc_reposo').eq('id_deportista', id).not('fc_reposo', 'is', null)
+      .order('fecha', { ascending: false }).limit(30)
+      .then(({ data, error }) => { if (vivo && !error) setFcReposo({ id, fc: fcReposoDe(data, anamnesis) }) })
+    return () => { vivo = false }
+  }, [conConsejos, loading, id, anamnesis])
+  const consejos = useMemo(() => {
+    if (!conConsejos || loading || !deportista) return null
+    return consejosDeLaFicha({
+      id: Number(id), nombre: deportista.nombre, conCuenta: !!deportista.id_usuario,
+      alertaSalud: alertaSaludDe(anamnesis), tieneAnamnesis: !!anamnesis, fcMax: deportista.fc_maxima ?? null,
+      fcReposo: fcReposo && fcReposo.id === id ? fcReposo.fc : null,
+    })
+  }, [conConsejos, loading, deportista, anamnesis, fcReposo, id])
+  useConsejos('ficha', consejos)
+
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando...</div>
   if (!deportista) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Deportista no encontrado</div>
 
@@ -363,12 +398,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const [hc1] = coloresDe(deportista.nombre)
   const diasTecnica = deportista.tec_fecha_actualizacion
     ? Math.floor((Date.now() - new Date(deportista.tec_fecha_actualizacion).getTime()) / 86400000) : null
-  // Mismas banderas que ya marcaban la alerta dentro de la anamnesis: se suben a la portada.
-  const hayAlertaSalud = !!anamnesis && [
-    anamnesis.salud_cardiaca, anamnesis.salud_familia_infarto, anamnesis.salud_tension_alta,
-    anamnesis.salud_diabetes, anamnesis.salud_asma, anamnesis.salud_medicacion,
-    anamnesis.salud_alergia, anamnesis.salud_razon_medica,
-  ].some(v => v === true)
+  const hayAlertaSalud = alertaSaludDe(anamnesis)
 
   // Estadísticas rápidas de sesiones
   const totalSesiones = ultimasSesiones.length
@@ -409,7 +439,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                     </span>
                   })()}
                   {carga && <span className="text-[11.5px] text-gray-300 px-2.5 py-1 rounded-full bg-white/5">{carga.fiable ? estadoTSB(carga.tsb).label : 'Forma aún sin base'} · TSB {carga.tsb > 0 ? '+' : ''}{carga.tsb}</span>}
-                  {hayAlertaSalud && <span className="text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ef444422', color: '#fca5a5' }}>⚠️ Antecedentes médicos</span>}
+                  {hayAlertaSalud && <span data-guia="ficha.antecedentes" className="text-[11.5px] font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ef444422', color: '#fca5a5' }}>⚠️ Antecedentes médicos</span>}
                   {!anamnesis && <span className="text-[11.5px] px-2.5 py-1 rounded-full bg-white/5 text-gray-400">Anamnesis pendiente</span>}
                 </div>
               </div>
@@ -456,7 +486,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
                         `sm` para no ensuciar el escritorio. */}
                     <p className="text-[10.5px] text-orange-400/80 mt-1 transition sm:opacity-0 sm:group-hover:opacity-100">Ver lo que manda →</p>
                   </button>
-                : <div key={s.k} className={clase}>{cuerpo}</div>
+                : <div key={s.k} data-guia={s.k === 'FC máxima' ? 'ficha.fc-maxima' : undefined} className={clase}>{cuerpo}</div>
             })}
           </div>
 
@@ -507,7 +537,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             ['anamnesis', 'Anamnesis'],
             ['material', 'Material'],
           ] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setPestana(k)} data-guia={k === 'zonas' ? 'ficha.pestana-zonas' : undefined}
+            <button key={k} onClick={() => setPestana(k)} data-guia={k === 'zonas' ? 'ficha.pestana-zonas' : k === 'anamnesis' ? 'ficha.pestana-anamnesis' : undefined}
               className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px flex items-center gap-1.5 ' +
                 (pestana === k ? 'border-orange-500 text-orange-300' : 'border-transparent text-gray-400 hover:text-white')}>
               {l}

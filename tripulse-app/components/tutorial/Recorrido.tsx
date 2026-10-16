@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMINO, siguienteParada, rellenar, type PasoTutorial, type ZonaTutorial, ZONAS } from '@/lib/tutorial'
+import { buscarAncla, colocar, asomar } from './posicion'
 
 /** 'sigue' = pulsó lo que lleva a la siguiente parada; 'salida' = «Lo sigo otro día». */
 export type FinDelRecorrido = 'visto' | 'sigue' | 'saltado' | 'pausa' | 'salida'
@@ -23,21 +24,6 @@ export type FinDelRecorrido = 'visto' | 'sigue' | 'saltado' | 'pausa' | 'salida'
 const ESPERA_PRIMERO_MS = 3000
 const ESPERA_TRAS_ACCION_MS = 2500
 const ESPERA_MS = 1200
-
-/** El elemento de un ancla, si está a la vista de verdad (no escondido ni fuera por un lado). */
-export function buscarAncla(ancla: string): HTMLElement | null {
-  const els = document.querySelectorAll<HTMLElement>('[data-guia="' + ancla.replace(/"/g, '') + '"]')
-  for (const el of Array.from(els)) {
-    if (!el.getClientRects().length) continue
-    if (getComputedStyle(el).visibility === 'hidden') continue
-    const r = el.getBoundingClientRect()
-    /* Un contenedor vacío (lo que pinta un componente cuando no tiene nada) no se enseña. */
-    if (r.width < 2 || r.height < 2) continue
-    if (r.right <= 0 || r.left >= window.innerWidth) continue
-    return el
-  }
-  return null
-}
 
 export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal }: {
   zona: ZonaTutorial
@@ -276,79 +262,4 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
       )}
     </>
   )
-}
-
-/* ---------------------------------------------------------------
-   Posiciones (fuera de React: se llaman en cada fotograma)
-   --------------------------------------------------------------- */
-
-const HOJA_PX = 640
-
-function colocar(el: HTMLElement | null, foco: HTMLDivElement | null, globo: HTMLDivElement | null, flecha: HTMLSpanElement | null) {
-  if (!globo) return
-  let r: DOMRect | null = null
-  if (el && foco) {
-    r = el.getBoundingClientRect()
-    const pad = 6
-    const rad = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 8
-    foco.style.left = (r.left - pad) + 'px'
-    foco.style.top = (r.top - pad) + 'px'
-    foco.style.width = (r.width + pad * 2) + 'px'
-    foco.style.height = (r.height + pad * 2) + 'px'
-    foco.style.borderRadius = Math.min(rad + pad, 28) + 'px'
-  }
-  const W = window.innerWidth, H = window.innerHeight
-  if (W < HOJA_PX) {
-    /* Móvil: hoja abajo, de lado a lado. */
-    globo.style.left = '0px'
-    globo.style.right = '0px'
-    globo.style.top = 'auto'
-    globo.style.bottom = '0px'
-    globo.style.width = 'auto'
-    globo.style.borderRadius = '20px 20px 0 0'
-    globo.style.paddingBottom = 'calc(18px + env(safe-area-inset-bottom, 0px))'
-    if (flecha) flecha.style.display = 'none'
-    return
-  }
-  globo.style.right = 'auto'
-  globo.style.bottom = 'auto'
-  globo.style.borderRadius = '16px'
-  globo.style.paddingBottom = ''
-  globo.style.width = r ? 'min(360px, calc(100vw - 24px))' : 'min(440px, calc(100vw - 24px))'
-  const gw = globo.offsetWidth, gh = globo.offsetHeight, m = 14
-  if (!r) {
-    globo.style.left = Math.max(12, (W - gw) / 2) + 'px'
-    globo.style.top = Math.max(16, (H - gh) / 2) + 'px'
-    if (flecha) flecha.style.display = 'none'
-    return
-  }
-  const cabeAbajo = H - r.bottom - m - 8 >= gh
-  const cabeArriba = r.top - m - 8 >= gh
-  const abajo = cabeAbajo || (!cabeArriba && H - r.bottom > r.top)
-  let top = abajo ? r.bottom + m : r.top - m - gh
-  top = Math.min(Math.max(8, top), H - gh - 8)
-  const left = Math.min(Math.max(12, r.left + r.width / 2 - gw / 2), W - gw - 12)
-  globo.style.left = left + 'px'
-  globo.style.top = top + 'px'
-  if (flecha) {
-    const fx = Math.min(Math.max(20, r.left + r.width / 2 - left), gw - 20)
-    flecha.style.display = 'block'
-    flecha.style.left = (fx - 7) + 'px'
-    flecha.style.top = abajo ? '-8px' : 'auto'
-    flecha.style.bottom = abajo ? 'auto' : '-8px'
-    flecha.style.transform = abajo ? 'rotate(45deg)' : 'rotate(225deg)'
-  }
-}
-
-/** Que el elemento se vea, y en el móvil que quede por encima de la hoja. */
-function asomar(el: HTMLElement, globo: HTMLDivElement | null) {
-  if (getComputedStyle(el).position === 'fixed' || el.closest('[data-guia-fijo]')) return
-  const r = el.getBoundingClientRect(), H = window.innerHeight
-  const hoja = window.innerWidth < HOJA_PX
-  const reserva = hoja ? Math.min(globo?.offsetHeight || 260, H * 0.5) + 24 : 24
-  if (r.top >= 70 && r.bottom <= H - reserva) return
-  const destino = hoja ? H * 0.26 : H * 0.38
-  const centro = r.top + Math.min(r.height, H * 0.5) / 2
-  const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  window.scrollBy({ top: centro - destino, behavior: quieto ? 'auto' : 'smooth' })
 }

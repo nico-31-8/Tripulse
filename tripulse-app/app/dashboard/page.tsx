@@ -17,6 +17,9 @@ import { useAltoDeContenido } from '@/lib/alto-desplegable'
 import OnboardingEntrenador from '@/components/OnboardingEntrenador'
 import HoyEntrenas from '@/components/HoyEntrenas'
 import OfertaTutorial from '@/components/tutorial/OfertaTutorial'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDelPanel } from '@/lib/consejos'
 import { ResumenEntrenador, InformeDelAtleta } from '@/components/ResumenSemanal'
 import AvisoComunicacion from '@/components/AvisoComunicacion'
 import { cargarPendientes, totalDe, textoPendientes, SIN_PENDIENTES, type Pendientes } from '@/lib/pendientes-comunicacion'
@@ -45,6 +48,10 @@ export default function Dashboard() {
   const [wellHoy, setWellHoy] = useState<{ hoy: boolean; score: number | null }>({ hoy: false, score: null })
   const [wellSpark, setWellSpark] = useState<number[]>([])
   const [metricas, setMetricas] = useState<MetricasPanel | null>(null)
+  /* De quién son las métricas y el último wellness que se ven: los consejos solo
+     se calculan cuando todo es del deportista abierto, no del anterior. */
+  const [metricasDe, setMetricasDe] = useState<number | null>(null)
+  const [ultimoWell, setUltimoWell] = useState<{ id: number; fecha: string | null } | null>(null)
   const [proximaComp, setProximaComp] = useState<any>(null)
   const [nuevaTarea, setNuevaTarea] = useState('')
   const [switcherOpen, setSwitcherOpen] = useState(false)
@@ -176,7 +183,7 @@ export default function Dashboard() {
     setActivo(dep)
     setAtletaActivo(dep.id)
     setMetricas(null)
-    cargarMetricasPanel(supabase, dep).then(setMetricas)
+    cargarMetricasPanel(supabase, dep).then(m => { setMetricas(m); setMetricasDe(dep.id) })
     /* Seis consultas que no dependen unas de otras iban en serie. Y el
        mesociclo pasaba antes por el macrociclo solo para acotar: con
        `mesociclo.id_deportista` (Fase A) sobra ese salto. */
@@ -208,6 +215,7 @@ export default function Dashboard() {
 
     setTareas(ts.data || [])
     const listaWell = wells.data || []
+    if (!wells.error) setUltimoWell({ id: dep.id, fecha: listaWell[0]?.fecha ?? null })
     setReadiness(analizarWellness(listaWell).readiness)
     const w0 = listaWell[0]
     // Se guarda el MALESTAR (alto = peor) pero se muestra invertido como bienestar.
@@ -264,6 +272,20 @@ export default function Dashboard() {
   const diasTest = metricas?.tests?.ultima ? Math.floor((Date.now() - new Date(metricas.tests.ultima).getTime()) / 86400000) : null
   const nSemana = (metricas?.semana || []).reduce((a: number, d: any) => a + d.sesiones.length, 0)
   const hoyStr = hoyISO()
+
+  /* Los consejos del tutorial (lib/consejos), solo si le salen y con todo cargado. */
+  const tutorial = useTutorial()
+  const conConsejos = !!tutorial?.consejosActivos
+  const consejosPanel = useMemo(() => {
+    if (!conConsejos || !activo || !metricas || metricasDe !== activo.id || !ultimoWell || ultimoWell.id !== activo.id) return null
+    return consejosDelPanel({
+      id: activo.id, nombre: activo.nombre, hoy: hoyStr, conCuenta: !!activo.id_usuario,
+      fcMax: activo.fc_maxima ?? null, disciplinas: activo.disciplinas,
+      ultimoTest: metricas.tests.ultima, proximas: metricas.agenda.map(a => ({ fecha: a.fecha })),
+      ultimoWellness: ultimoWell.fecha, valoracion: activo.tec_fecha_actualizacion ?? null,
+    })
+  }, [conConsejos, activo, metricas, metricasDe, ultimoWell, hoyStr])
+  useConsejos('panel', consejosPanel)
 
   /* Avisos "Necesita tu atención": primero las SEÑALES (lib/senales), que traen
      el dato que las sostiene y qué hacer; luego lo de siempre. */
@@ -559,7 +581,7 @@ export default function Dashboard() {
               {/* Wellness */}
               {/* Módulo de wellness del entrenador. Al abrirlo lee el atleta activo y
                   entra directo a su detalle, así no se pierde el contexto. */}
-              <button onClick={() => router.push('/wellness-entrenador')} className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#22c55e')}>
+              <button onClick={() => router.push('/wellness-entrenador')} data-guia="panel.wellness" className="tp-card tp-tile p-4 flex flex-col gap-3" style={cssVar('#22c55e')}>
                 {bhead('💚', 'Wellness', '#22c55e')}
                 {readiness ? (
                   <div className="flex items-end justify-between gap-2">
@@ -680,7 +702,7 @@ export default function Dashboard() {
                       <div><p className="text-[10px] text-gray-500">Coste de entrenamiento</p><p className="text-sm font-semibold text-gray-200 mt-0.5">Individualizado por zona</p></div>
                       <svg className="tp-wm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h6M10 3v5.6L5.3 17A2 2 0 0 0 7 20h10a2 2 0 0 0 1.7-3L14 8.6V3"/><path d="M8 14.5h8"/></svg>
                     </button>
-                    <button onClick={() => router.push('/deportistas/' + activo.id)} className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#94a3b8')}>
+                    <button onClick={() => router.push('/deportistas/' + activo.id)} data-guia="panel.ficha" className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#94a3b8')}>
                       {bhead('📋', 'Ficha', '#94a3b8')}
                       <div>
                         <p className="text-[10px] text-gray-500">Valoración técnica</p>
@@ -691,7 +713,7 @@ export default function Dashboard() {
                       </div>
                       <svg className="tp-wm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2.4"/><path d="M9 11h6M9 15h4"/></svg>
                     </button>
-                    <button onClick={() => router.push('/tests')} className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#ef4444')}>
+                    <button onClick={() => router.push('/tests')} data-guia="panel.tests" className="tp-card tp-tile tp-host p-4 flex flex-col gap-2.5 min-h-[118px]" style={cssVar('#ef4444')}>
                       {bhead('🏋️', 'Tests', '#ef4444')}
                       <div>
                         <p className="text-[10px] text-gray-500">Último test</p>

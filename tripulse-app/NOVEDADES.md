@@ -14,6 +14,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 16 de octubre de 2026 · Consejos según los datos de cada deportista
+
+Además del recorrido, la app te avisa en ámbar de lo que se puede mejorar en
+cada deportista, en la pantalla donde se arregla: «Dani no tiene ningún test»
+con un botón para pasarle uno, «La semana que viene está vacía» junto a las
+plantillas, «Esta tarea no tiene zona» encima de esa fila…
+- Sale **uno cada vez** que entras en una pantalla, encima de lo que hay que
+  tocar, sin oscurecer nada ni impedirte seguir trabajando.
+- **Su botón te lleva a arreglarlo.** Con **«Ahora no»** vuelve a la semana si
+  sigue igual, y esa pantalla ya no te enseña ninguno más ese día.
+- Te salen si te salen los recorridos solos: si tu cuenta es nueva o si
+  aceptaste la tarjeta del recorrido. Si dijiste «No, gracias», no te sale ninguno.
+- Los hay en el Panel, Deportistas, la ficha, Tests, Planificación, el lienzo,
+  el calendario y la sesión.
+
+**De paso:** el recorrido decía que la FC de reposo se pone en «Editar datos», y
+no es así: la apunta el deportista en su wellness de la mañana o en su
+anamnesis. Corregido.
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 16 de octubre de 2026 · Un recorrido guiado por la app
 
 La app ya te enseña cómo funciona cada parte. Un recorrido hace brillar los

@@ -1,0 +1,16 @@
+/* Los consejos del tutorial (components/tutorial/Consejo.tsx): el mismo foco y
+   el mismo pop-up que el recorrido (app/tutorial.css), en ámbar y sin oscurecer
+   nada. En su propio fichero por lo mismo que app/tutorial.css: el CSS nuevo
+   añadido a uno que ya existía no siempre llega al despliegue. */
+
+.tp-guia-foco.consejo { box-shadow: none; }
+.tp-guia-foco.consejo::after { border-color: #f59e0b; animation-name: tp-aura-ambar; }
+@keyframes tp-aura-ambar {
+  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,.5), 0 0 18px 2px rgba(245,158,11,.4); }
+  70%  { box-shadow: 0 0 0 12px rgba(245,158,11,0), 0 0 26px 6px rgba(245,158,11,.14); }
+  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0), 0 0 18px 2px rgba(245,158,11,.4); }
+}
+.tp-guia-flecha.ambar { border-left-color: rgba(245,158,11,.5); border-top-color: rgba(245,158,11,.5); }
+@media (prefers-reduced-motion: reduce) {
+  .tp-guia-foco.consejo::after { animation: none; box-shadow: 0 0 0 4px rgba(245,158,11,.22), 0 0 18px 2px rgba(245,158,11,.35); }
+}

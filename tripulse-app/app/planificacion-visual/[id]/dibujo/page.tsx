@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { seriesPorGrupo, totalSeries as sumaSeries } from '@/lib/series-por-grupo'
-import { useState, useEffect, use, useRef } from 'react'
+import { useState, useEffect, use, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { semanasEntre, semanaQueContiene, hoyISO, indiceDia, fechaLargaCompleta, lunesDe } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
@@ -40,6 +40,9 @@ import { uaArrastrada, UMBRAL_ARRASTRE } from '@/lib/arrastre-carga'
 import { vecesDe } from '@/lib/bloques-tarea'
 import { borrarPlan, borrarMesociclo, resumenDelBorrado } from '@/lib/plan-rehacer'
 import { colorDisciplina, cortoDisciplina, emojiDisciplina, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, HIBRIDO, normalizar, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { useTutorial } from '@/components/tutorial/TutorialProvider'
+import { useConsejos } from '@/components/tutorial/useConsejos'
+import { consejosDelLienzo } from '@/lib/consejos'
 
 // Zonas clásicas Z1–Z7 (sistema 1) con su color.
 const ZONAS_CLASICAS = [
@@ -162,6 +165,8 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
    * sabia de la otra.
    */
   const [compsReales, setCompsReales] = useState<any[]>([])
+  /* Si ya se leyeron: hasta entonces no se puede decir que no tenga ninguna. */
+  const [compsListas, setCompsListas] = useState(false)
   const [fCompFecha, setFCompFecha] = useState('')
   const [fCompPrio, setFCompPrio] = useState<Prioridad>('A')
   const testsRef = useRef<TestsAtleta>({})
@@ -391,9 +396,10 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
   }, [sesionesProg])
 
   const recargarComps = async () => {
-    const { data } = await supabase.from('competicion')
+    const { data, error } = await supabase.from('competicion')
       .select('*').eq('id_deportista', Number(id)).order('fecha')
     setCompsReales((data || []).map((c: any) => ({ ...c, fecha: String(c.fecha).slice(0, 10) })))
+    if (!error) setCompsListas(true)
   }
 
   // Carga inicial — detecta si hay ciclos existentes
@@ -1569,6 +1575,24 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
     setExportando(false)
   }
 
+  /* Los consejos del tutorial (lib/consejos): la semana con una tarea imposible,
+     lo dibujado sin pasar, el mesociclo sin chips y la competición que falta. */
+  const conConsejos = !!useTutorial()?.consejosActivos
+  const hoyLienzo = hoyISO()
+  const consejos = useMemo(() => {
+    if (!conConsejos || pantalla !== 'canvas' || !fechaInicio || !compsListas) return null
+    return consejosDelLienzo({
+      id: Number(id),
+      semanas: sems.map((s, k) => ({ i: s.i, lunes: semFecha(fechaInicio, s.i) || null, imposibles: uaPorSemana[k]?.imposibles || 0 })),
+      planGenerado: modoEdicion, cambiosSinPasar: pendiente.hay,
+      mesos: mesos.map(m => ({ id: m.id, nombre: m.nombre, si: m.si, sf: m.sf })),
+      semanasConChips: Array.from(new Set(sesZonas.map(c => c.semana))),
+      semanaActual: semanaQueContiene(fechaInicio, hoyLienzo),
+      competicionesFuturas: compsReales.filter(c => c.fecha >= hoyLienzo).length,
+    })
+  }, [conConsejos, pantalla, fechaInicio, compsListas, id, sems, uaPorSemana, modoEdicion, pendiente.hay, mesos, sesZonas, hoyLienzo, compsReales])
+  useConsejos('lienzo', consejos)
+
   if (pantalla === 'cargando' || !dep) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
       <div className="text-center"><div className="text-4xl mb-3">⏳</div><p className="text-gray-400">Cargando...</p></div>
@@ -2018,7 +2042,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                   {mesos.map(me => {
                     const col = C_MESO[me.tipo] || '#EA580C'
                     return (
-                      <div key={me.id} data-guia={me === mesos[0] ? 'lienzo.meso' : undefined}
+                      <div key={me.id} data-guia={me === mesos[0] ? 'lienzo.meso' : undefined} data-consejo={'lienzo.meso:' + me.id}
                         className="absolute inset-y-1.5 rounded-lg flex items-center px-2 z-10 border overflow-hidden group/meso cursor-pointer"
                         style={{ left: LABEL_W + me.si * semanaW + 1, width: (me.sf - me.si + 1) * semanaW - 2, backgroundColor: col + '25', borderColor: col }}
                         onDoubleClick={e => { clearTimeout(mesoClickTimerRef.current); abrirEditarMeso(me, e) }}
@@ -2162,7 +2186,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                     const mac = macAt(s.i)
                     const barColor = C_TIPO[s.tipo] || (mac ? C_MACRO[mac.tipo] : '#EA580C') || '#EA580C'
                     return (
-                      <div key={s.i}
+                      <div key={s.i} data-consejo={'lienzo.semana:' + s.i}
                         className="flex-shrink-0 border-r border-gray-800/30 flex flex-col items-center justify-end group relative"
                         style={{ width: semanaW, height: '100%' }}
                         onMouseEnter={() => setHoveredWeek(s.i)}
@@ -2472,7 +2496,7 @@ export default function DibujoPage({ params }: { params: Promise<{ id: string }>
                       const sesEsta = ordenarChips(sesZonas.filter(sz => sz.semana === s.i && filtroDisc.includes(normalizar(sz.disciplina))))
                       const C_ZONA = COLOR_ZONA
                       return (
-                        <div key={s.i} data-guia={s.i === 0 ? 'lienzo.semana' : undefined} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
+                        <div key={s.i} data-guia={s.i === 0 ? 'lienzo.semana' : undefined} data-consejo={'lienzo.zonas:' + s.i} className="absolute top-0 bottom-0 border-r border-gray-800/30 flex flex-col justify-end items-center gap-0.5 py-1 cursor-pointer hover:bg-gray-900/50 group/zona"
                           style={{ left: LABEL_W + s.i * semanaW, width: semanaW }}
                           onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setPopupZona({ semana: s.i, x: r.left, y: r.top }); setZonaSelDisc('Natacion'); setZonasSel([]) }}>
                           {sesEsta.map((sz, k) => (sz.sinZona || !sz.zona) ? (
