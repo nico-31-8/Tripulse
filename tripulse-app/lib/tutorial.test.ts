@@ -4,7 +4,7 @@ import path from 'node:path'
 import {
   CAMINO, ZONAS, pasosDeRecorrido, guiaAutomatica, arrancaSola, zonaDeRuta, zonaAlEntrar,
   mostrarOferta, siguienteDelCamino, rutaDeZona, esCuentaNueva, rellenar, siguienteParada,
-  progresoVacio, type Progreso,
+  progresoVacio, queArrancaAlEntrar, pendienteAlSeguir, type Progreso,
 } from './tutorial'
 
 const prog = (cambios: Partial<Progreso> = {}): Progreso => ({ ...progresoVacio(true), ...cambios })
@@ -199,5 +199,47 @@ describe('poner los nombres', () => {
   it('sin deportista dice «tu deportista»', () => {
     expect(rellenar('Abre el panel de {deportista}', {})).toBe('Abre el panel de tu deportista')
     expect(rellenar('Abre el panel de {deportista}', { deportista: 'Dani' })).toBe('Abre el panel de Dani')
+  })
+})
+
+/* El fallo del 16-10-2026: quien dijo «No, gracias» y luego pulsó «Seguir →»
+   veía una parada y en la siguiente no arrancaba nada. */
+describe('seguir el camino a mano', () => {
+  const rechazo = prog({ oferta: 'rechazada' })
+
+  it('al pulsar lo que lleva a la siguiente parada, esa queda pedida', () => {
+    expect(pendienteAlSeguir('panel')).toEqual({ zona: 'deportistas', camino: true })
+    expect(pendienteAlSeguir('tests')).toEqual({ zona: 'vistas', camino: true })
+    expect(pendienteAlSeguir('sesion')).toBeNull()
+  })
+
+  it('quien rechazó la tarjeta y sigue el camino: la siguiente parada arranca', () => {
+    const r = queArrancaAlEntrar('/deportistas', pendienteAlSeguir('panel'), rechazo, false)
+    expect(r).toEqual({ zona: 'deportistas', camino: true, pendiente: null })
+  })
+
+  it('sin pedirlo, a quien rechazó no le sale nada', () => {
+    expect(queArrancaAlEntrar('/deportistas', null, rechazo, false).zona).toBeNull()
+  })
+
+  it('por una pantalla de paso (elegir deportista) se sigue esperando', () => {
+    const r = queArrancaAlEntrar('/planificacion-visual', pendienteAlSeguir('tests'), rechazo, false)
+    expect(r.zona).toBeNull()
+    expect(r.pendiente).toEqual({ zona: 'vistas', camino: true })
+    expect(queArrancaAlEntrar('/planificacion-visual/14', r.pendiente, rechazo, false).zona).toBe('vistas')
+  })
+
+  it('si se va a otra pantalla con recorrido, lo pedido se olvida', () => {
+    const r = queArrancaAlEntrar('/dashboard', pendienteAlSeguir('tests'), rechazo, false)
+    expect(r.pendiente).toBeNull()
+    expect(r.zona).toBeNull()
+  })
+
+  it('la bienvenida pedida desde la lista se cumple en el Panel', () => {
+    expect(queArrancaAlEntrar('/dashboard', { zona: 'bienvenida', camino: true }, rechazo, false).zona).toBe('bienvenida')
+  })
+
+  it('a una cuenta nueva le sigue saliendo solo lo que no ha visto', () => {
+    expect(queArrancaAlEntrar('/deportistas', null, prog(), true).zona).toBe('deportistas')
   })
 })

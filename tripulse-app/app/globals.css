@@ -149,36 +149,3 @@ html, body {
     min-height: 44px;
   }
 }
-
-/* ===== Tutorial guiado (components/tutorial) =====
-   El foco oscurece todo menos el elemento; el aura late a su alrededor. Con
-   «reducir movimiento» no late ni se desliza: se queda fija. */
-.tp-guia-foco {
-  position: fixed; z-index: 910; pointer-events: none; border-radius: 14px;
-  box-shadow: 0 0 0 200vmax rgba(3, 7, 18, .76);
-}
-.tp-guia-foco.anima {
-  transition: left .38s cubic-bezier(.22,1,.36,1), top .38s cubic-bezier(.22,1,.36,1),
-    width .38s cubic-bezier(.22,1,.36,1), height .38s cubic-bezier(.22,1,.36,1), border-radius .38s;
-}
-.tp-guia-foco::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit;
-  border: 2px solid #f97316; animation: tp-aura 1.9s ease-out infinite;
-}
-.tp-guia-foco.accion::after { animation-duration: 1.25s; }
-@keyframes tp-aura {
-  0%   { box-shadow: 0 0 0 0 rgba(249,115,22,.55), 0 0 22px 3px rgba(249,115,22,.45); }
-  70%  { box-shadow: 0 0 0 14px rgba(249,115,22,0), 0 0 30px 8px rgba(249,115,22,.15); }
-  100% { box-shadow: 0 0 0 0 rgba(249,115,22,0), 0 0 22px 3px rgba(249,115,22,.45); }
-}
-.tp-guia-globo { opacity: 0; transform: translateY(6px); transition: opacity .18s ease-out, transform .18s ease-out; border-radius: 16px; }
-.tp-guia-globo.visible { opacity: 1; transform: none; }
-.tp-guia-flecha {
-  position: absolute; width: 14px; height: 14px; background: #111827;
-  border-left: 1px solid rgba(249,115,22,.4); border-top: 1px solid rgba(249,115,22,.4);
-}
-@media (prefers-reduced-motion: reduce) {
-  .tp-guia-foco.anima { transition: none; }
-  .tp-guia-foco::after { animation: none; box-shadow: 0 0 0 4px rgba(249,115,22,.25), 0 0 22px 3px rgba(249,115,22,.4); }
-  .tp-guia-globo { transition: opacity .12s linear; transform: none; }
-}

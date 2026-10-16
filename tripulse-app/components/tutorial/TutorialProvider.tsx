@@ -17,8 +17,9 @@ import { supabase } from '@/lib/supabase'
 import { perfilActual, usuarioActual } from '@/lib/sesion'
 import { getAtletaActivo } from '@/lib/atletaActivo'
 import {
-  ZONAS, pasosDeRecorrido, zonaAlEntrar, zonaDeRuta, mostrarOferta as hayQueOfrecer, esCuentaNueva,
-  rutaDeZona, progresoVacio, type Progreso, type PasoTutorial, type ZonaTutorial,
+  ZONAS, pasosDeRecorrido, zonaDeRuta, mostrarOferta as hayQueOfrecer, esCuentaNueva,
+  rutaDeZona, progresoVacio, queArrancaAlEntrar, pendienteAlSeguir,
+  type Progreso, type PasoTutorial, type ZonaTutorial, type Pendiente,
 } from '@/lib/tutorial'
 import { cargarProgreso, guardarMarca, quitarMarca, CLAVE_OFERTA, CLAVE_PAUSA } from '@/lib/tutorial-progreso'
 import Recorrido, { type FinDelRecorrido } from './Recorrido'
@@ -61,8 +62,8 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
   const [modal, setModal] = useState(false)
   const [lista, setLista] = useState(false)
   const [aviso, setAviso] = useState('')
-  /* Una zona pedida desde la lista que espera a que cargue su pantalla. */
-  const pendiente = useRef<{ zona: ZonaTutorial; camino: boolean } | null>(null)
+  /* Una zona pedida (desde la lista, o siguiendo el camino) que espera a que cargue su pantalla. */
+  const pendiente = useRef<Pendiente | null>(null)
   const rutaDelRecorrido = useRef<string | null>(null)
 
   /* Quién es y qué ha visto. */
@@ -134,19 +135,12 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
       if (rutaDelRecorrido.current && rutaDelRecorrido.current !== pathname) setEnCurso(null)
       return
     }
-    const p = pendiente.current
-    const zonaAqui = zonaDeRuta(pathname)
-    let zona: ZonaTutorial | null = null
-    let camino = true
-    if (p && (zonaAqui === p.zona || (p.zona === 'bienvenida' && zonaAqui === 'panel'))) {
-      zona = p.zona; camino = p.camino
-      pendiente.current = null
-    } else {
-      zona = zonaAlEntrar(pathname, progreso, esNuevo)
-    }
-    if (!zona) return
-    const z = zona, c = camino
-    const t = setTimeout(() => empezar(z, c), 700)
+    const r = queArrancaAlEntrar(pathname, pendiente.current, progreso, esNuevo)
+    if (!r.zona) { pendiente.current = r.pendiente; return }
+    /* Lo pedido se gasta al arrancar, no antes: si la pantalla se repinta en
+       estos 700 ms, sigue pedido. */
+    const z = r.zona, c = r.camino, resto = r.pendiente
+    const t = setTimeout(() => { pendiente.current = resto; empezar(z, c) }, 700)
     return () => clearTimeout(t)
   }, [pathname, cargado, esEntrenador, enCurso, progreso, esNuevo, empezar])
 
@@ -156,8 +150,9 @@ export default function TutorialProvider({ children }: { children: React.ReactNo
     setModal(false)
     if (!actual) return
     const zona = actual.zona
-    if (r === 'visto' || r === 'salida') {
+    if (r === 'visto' || r === 'sigue' || r === 'salida') {
       marcar(zona, 'visto')
+      if (r === 'sigue') pendiente.current = pendienteAlSeguir(zona)
       if (r === 'salida') avisar('Cuando quieras seguir, está en 🎓 Tutoriales, abajo del menú.')
       const despues = ZONAS[zona].despues
       if (r === 'visto' && despues && !progreso.vistos.has(despues)) {

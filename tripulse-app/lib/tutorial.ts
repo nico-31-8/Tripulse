@@ -280,6 +280,39 @@ export function zonaAlEntrar(ruta: string, p: Progreso, esNuevo: boolean): ZonaT
   return arrancaSola(z, p, esNuevo) ? z : null
 }
 
+/** Una zona pedida que espera a que cargue su pantalla: desde la lista, o siguiendo el camino. */
+export interface Pendiente { zona: ZonaTutorial; camino: boolean }
+
+/**
+ * Al pulsar lo que lleva a la siguiente parada, esa parada queda pedida: tiene
+ * que arrancar al llegar aunque no le salgan recorridos solos (quien dijo «No,
+ * gracias» y luego pulsó «Seguir →»). Antes dependía de lo automático y el
+ * camino se cortaba en la segunda parada.
+ */
+export function pendienteAlSeguir(zona: ZonaTutorial): Pendiente | null {
+  const sig = siguienteParada(zona)
+  return sig ? { zona: sig, camino: true } : null
+}
+
+/**
+ * Qué arranca al entrar en una pantalla, y qué queda pedido. Lo pedido manda;
+ * por una pantalla sin recorrido (de paso, como elegir deportista) se sigue
+ * esperando; en otra pantalla con recorrido se olvida.
+ */
+export function queArrancaAlEntrar(
+  ruta: string, pendiente: Pendiente | null, p: Progreso, esNuevo: boolean,
+): { zona: ZonaTutorial | null; camino: boolean; pendiente: Pendiente | null } {
+  const aqui = zonaDeRuta(ruta)
+  let pedido = pendiente
+  if (pedido) {
+    if (aqui === pedido.zona || (pedido.zona === 'bienvenida' && aqui === 'panel')) {
+      return { zona: pedido.zona, camino: pedido.camino, pendiente: null }
+    }
+    if (aqui) pedido = null
+  }
+  return { zona: zonaAlEntrar(ruta, p, esNuevo), camino: true, pendiente: pedido }
+}
+
 /** La tarjeta del Panel solo es para quien ya usaba la app y aún no contestó. */
 export function mostrarOferta(p: Progreso, esNuevo: boolean): boolean {
   return p.disponible && !esNuevo && p.oferta === null

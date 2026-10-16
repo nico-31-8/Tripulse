@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMINO, siguienteParada, rellenar, type PasoTutorial, type ZonaTutorial, ZONAS } from '@/lib/tutorial'
 
-export type FinDelRecorrido = 'visto' | 'saltado' | 'pausa' | 'salida'
+/** 'sigue' = pulsó lo que lleva a la siguiente parada; 'salida' = «Lo sigo otro día». */
+export type FinDelRecorrido = 'visto' | 'sigue' | 'saltado' | 'pausa' | 'salida'
 
 const ESPERA_PRIMERO_MS = 3000
 const ESPERA_TRAS_ACCION_MS = 2500
@@ -174,7 +175,7 @@ export default function Recorrido({ zona, pasos, numInfo, nombre, onFin, onModal
         if (e.type === 'click') {
           vieneDeAccion.current = true
           /* Si cambia de pantalla, se cierra ya: el clic sigue su camino y navega. */
-          if (paso.sale) fin('visto')
+          if (paso.sale) fin('sigue')
           else setTimeout(avanzar, 0)
         }
         return
