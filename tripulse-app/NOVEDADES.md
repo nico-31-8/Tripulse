@@ -14,6 +14,35 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 17 de octubre de 2026 · Análisis libre en vídeo, también de gente de fuera
+
+- **«＋ Análisis libre»**, junto al FMS y el Nine Test en la pestaña Movimiento de
+  Tests. Es el mismo visor (ángulos, líneas, seguimiento, esqueleto y gráficas),
+  pero sin criterios ni nota: le pones un nombre («Sentadilla con barra · 60 kg»),
+  dices desde dónde está grabado y guardas los fotogramas que quieras, cada uno
+  con sus medidas, más tus notas. Puedes cambiar de vídeo sin salir.
+- Cada análisis abierto enseña sus fotogramas y tus notas, y se puede **poner al
+  lado de otro** para compararlos. Se puede cambiar de nombre o borrar.
+- **Su informe** en PDF: tus notas, cada fotograma con sus medidas, lo recorrido
+  en el vídeo y las gráficas que elijas (las que estabas mirando salen marcadas).
+  Desde el visor también sale con las imágenes de los fotogramas que acabas de
+  guardar, aunque no tengas su permiso para guardarlas: el informe se hace en tu
+  dispositivo y la imagen no se sube.
+- **Solo lo ves tú.** El deportista no ve sus análisis libres en Mis tests; si
+  quieres que lo vea, le mandas el informe.
+- **Personas de fuera**: al crear el análisis eliges «Una persona externa», pones
+  su nombre y, si te lo da, su permiso para guardar imágenes. Queda en tus
+  «Análisis sueltos» (en la portada de Tests, con su botón «🎥 Análisis suelto») y
+  en Evaluados, en Deportistas.
+- **Los evaluados ya no gastan cupo de deportistas.** La app lo prometía, pero
+  contaban: con el cupo lleno no se podía dar de alta a nadie solo para un test.
+
+**Números que pueden cambiar:** en el panel de la plataforma, el número de
+deportistas de cada entrenador ya no cuenta a sus evaluados (tampoco el del
+directorio de Comunidad). A los deportistas no les cambia nada.
+
+---
+
 ## 17 de octubre de 2026 · El informe del FMS y del Nine Test
 
 - **«Ver el informe»**, en el resultado de la batería y también con ella a medias

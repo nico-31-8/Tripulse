@@ -20,6 +20,7 @@ import {
   type FilaPrueba, type Valoracion,
 } from '@/lib/movimiento-datos'
 import { fechaLarga, hoyISO } from '@/lib/fechas'
+import AnalisisLibres from './AnalisisLibres'
 import Analizador from './Analizador'
 import InformeMovimiento from './InformeMovimiento'
 import ResultadoMovimiento from './ResultadoMovimiento'
@@ -34,12 +35,14 @@ const REGLAS_GRABAR = [
   ['Si duele, es un 0', 'y no hace falta vídeo.'],
 ] as const
 
-export default function PestanaMovimiento({ idDeportista, deportista, onPermiso }: {
+export default function PestanaMovimiento({ idDeportista, deportista, onPermiso, abrirLibre }: {
   idDeportista: number
   /** De la ficha solo hace falta su nombre (para el informe) y si dio permiso para guardar la imagen. */
   deportista: { nombre?: string | null; permiso_fotogramas_en?: string | null } | null
   /** El permiso cambiado, para que la ficha lo tenga sin volver a cargar. */
   onPermiso: (en: string | null) => void
+  /** Un análisis libre que abrir al llegar (desde «Análisis sueltos» o recién creada una persona externa). */
+  abrirLibre?: { id: number; analizar: boolean } | null
 }) {
   const [bateria, setBateria] = useState<Bateria | null>(null)
   const [valoraciones, setValoraciones] = useState<Valoracion[]>([])
@@ -52,6 +55,8 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
   const [abierta, setAbierta] = useState<{ prueba: Prueba; lado: Lado } | null>(null)
   const [aMano, setAMano] = useState<string | null>(null)
   const [verProtocolo, setVerProtocolo] = useState(false)
+  /** Cada pulsación de «＋ Análisis libre» de arriba: abre su diálogo (components/movimiento/AnalisisLibres). */
+  const [pedirNuevoLibre, setPedirNuevoLibre] = useState(0)
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
 
@@ -89,6 +94,12 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
   const elegirBateria = (b: Bateria) => {
     setBateria(bateria === b ? null : b)
     setActivaId(null); setVerId(null); setInformeId(null); setAMano(null); setError('')
+  }
+
+  /* «＋ Análisis libre»: fuera la batería, y que se abra su diálogo. */
+  const nuevoLibre = () => {
+    setBateria(null); setActivaId(null); setVerId(null); setInformeId(null); setAMano(null); setError('')
+    setPedirNuevoLibre(n => n + 1)
   }
 
   /* Empezar: si la de hoy ya existe, se sigue; si no, se crea una nueva. */
@@ -152,6 +163,10 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
               {BATERIAS[b].nombre}
             </button>
           ))}
+          <button onClick={nuevoLibre}
+            className="px-3 py-2 rounded-lg text-sm font-medium transition border border-dashed border-sky-300/45 bg-sky-300/[0.06] text-sky-300 hover:text-white">
+            ＋ Análisis libre
+          </button>
         </div>
         <div className="flex gap-4 flex-wrap text-[11.5px] text-gray-500 mt-2">
           <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" />con crono: se dirige en vivo</span>
@@ -162,8 +177,12 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
       {error && <div className="bg-red-900/60 border border-red-500/60 text-red-200 px-4 py-3 rounded-lg text-sm" role="alert">{error}</div>}
 
       {!def && (
-        <p className="text-[13px] text-gray-500">Elige el FMS o el Nine Test. Las dos baterías se pasan grabando cada prueba con el móvil y puntuándola sobre el fotograma, o a mano si ya la pasaste en directo.</p>
+        <p className="text-[13px] text-gray-500">Elige el FMS o el Nine Test. Las dos baterías se pasan grabando cada prueba con el móvil y puntuándola sobre el fotograma, o a mano si ya la pasaste en directo. O un análisis libre, para mirar lo que quieras sin criterios ni nota.</p>
       )}
+
+      {/* Los análisis libres: su lista se ve sin batería elegida; lo abierto se conserva. */}
+      <AnalisisLibres idDeportista={idDeportista} nombre={deportista?.nombre ?? null} permiso={permiso}
+        mostrar={!def} pedirNuevo={pedirNuevoLibre} abrir={abrirLibre ?? null} />
 
       {def && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">

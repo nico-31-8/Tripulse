@@ -283,7 +283,21 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
   // salto y para el nivel de referencia. Se piden con el mismo helper que la
   // pantalla de grupo para no tener dos formas de sacar el último pesaje.
   const [contexto, setContexto] = useState<Contexto>({})
-  const [tab, setTab] = useState('carrera')
+  /* «?pestana=movimiento&libre=7»: se llega a un análisis libre (desde «Análisis sueltos»
+     o recién creada una persona externa). Se lee al nacer: la pantalla no se pinta
+     hasta tener la ficha, así que no choca con lo que viene del servidor. */
+  const [tab, setTab] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pestana') === 'movimiento' ? 'movimiento' : 'carrera')
+  const [abrirLibre] = useState<{ id: number; analizar: boolean } | null>(() => {
+    if (typeof window === 'undefined') return null
+    const q = new URLSearchParams(window.location.search)
+    const id = Number(q.get('libre'))
+    return id > 0 ? { id, analizar: q.get('nuevo') === '1' } : null
+  })
+  /* Y la dirección se limpia: recargar no tiene que volver a abrir el visor. */
+  useEffect(() => {
+    if (/[?&](pestana|libre|nuevo)=/.test(window.location.search)) window.history.replaceState(null, '', window.location.pathname)
+  }, [])
   // Qué test de la pestaña está abierto. Puede ser un clásico o uno de la batería.
   const [testSel, setTestSel] = useState<string | null>(null)
   const [mostrarForm, setMostrarForm] = useState(false)
@@ -718,7 +732,7 @@ export default function PaginaTests({ params }: { params: Promise<{ id: string }
         {/* La pestaña de movimiento tiene su propia pantalla: lo de abajo es de
             los tests de crono y de campo, y con ella no pinta nada. */}
         {tab === 'movimiento' ? (
-          <PestanaMovimiento idDeportista={Number(id)} deportista={deportista}
+          <PestanaMovimiento idDeportista={Number(id)} deportista={deportista} abrirLibre={abrirLibre}
             onPermiso={en => setDeportista((d: any) => ({ ...d, permiso_fotogramas_en: en }))} />
         ) : (<>
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">

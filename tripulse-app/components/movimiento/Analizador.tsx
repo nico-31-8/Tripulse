@@ -72,9 +72,10 @@ import {
   ajustesDe, COINCIDE_PROPORCION, conPuestos, correccionesDe, corregirPunto, deshacerCorreccion, propagar, type PistasCuerpo,
 } from '@/lib/corregir-esqueleto'
 import { aSerieGuardada, medidaDelFotograma } from '@/lib/informe-movimiento'
+import { cambiarAnalisisLibre, guardarFotogramaLibre, type AnalisisLibre, type FotogramaLibre } from '@/lib/analisis-libre'
 import { cargarDetector, detectar, SIN_SIMD, type Detector } from '@/lib/detector-cuerpo'
 import { inclinacionDe, type Punto } from '@/lib/geometria-fotograma'
-import { fechaLarga } from '@/lib/fechas'
+import { fechaLarga, hoyISO } from '@/lib/fechas'
 
 const NARANJA = '#f97316'
 const REF = '#8ecbff'
@@ -323,27 +324,57 @@ function GraficaRecorrido({ nombre, tipo, serie, clave, onIr, extra }: {
   )
 }
 
-export interface PropsAnalizador {
-  bateria: DefBateria
-  prueba: Prueba
-  ladoInicial: Lado
+interface PropsComunes {
   idDeportista: number
-  valoracion: Valoracion
   permiso: boolean
-  /** Lo ya guardado de ESTA prueba en esta valoración, una fila por lado. */
-  guardadas: FilaPrueba[]
   /** Los fotogramas guardados, con su enlace temporal. */
   urls: Record<string, string>
-  onGuardado: () => void
   onCerrar: () => void
 }
 
+/** Una prueba de una batería (FMS o Nine Test): criterios y nota. */
+export interface PropsBateria extends PropsComunes {
+  modo?: 'bateria'
+  bateria: DefBateria
+  prueba: Prueba
+  ladoInicial: Lado
+  valoracion: Valoracion
+  /** Lo ya guardado de ESTA prueba en esta valoración, una fila por lado. */
+  guardadas: FilaPrueba[]
+  onGuardado: () => void
+}
+
+/** Un análisis libre (v3, paso 3): sin criterios ni nota; se guardan los fotogramas que se quieran, y las notas. */
+export interface PropsLibre extends PropsComunes {
+  modo: 'libre'
+  analisis: AnalisisLibre
+  nombreDeportista: string | null
+  /** Cuántos fotogramas tiene ya: para numerar el que se guarda. */
+  yaGuardados: number
+  /** Guardado un fotograma: la imagen local va para el informe de ahora, aunque no se haya subido. */
+  onFotograma: (f: FotogramaLibre, imagenLocal: string | null) => void
+  onNotas: (notas: string | null) => void
+  /** «Descargar el informe», con las medidas de la gráfica que se están mirando (salen marcadas). */
+  onInforme: (mirando: (ClaveGrafica | null)[]) => void
+}
+
+export type PropsAnalizador = PropsBateria | PropsLibre
+
+const VISTAS: Vista[] = ['perfil', 'frente', 'espalda', 'atras', 'arriba']
+
 export default function Analizador(props: PropsAnalizador) {
-  const { bateria, prueba, idDeportista, valoracion, permiso, guardadas, urls, onGuardado, onCerrar } = props
-  const [lado, setLado] = useState<Lado>(props.ladoInicial)
+  const { idDeportista, permiso, urls, onCerrar } = props
+  const bat = props.modo === 'libre' ? null : props
+  const libre = props.modo === 'libre' ? props : null
+  const prueba = bat?.prueba ?? null
+  const guardadas = bat?.guardadas ?? []
+  const [lado, setLado] = useState<Lado>(bat?.ladoInicial ?? 'unico')
   const [media, setMedia] = useState<{ url: string; tipo: 'video' | 'imagen'; nombre: string } | null>(null)
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null)
-  const [vista, setVista] = useState<Vista>(prueba.vistas[0])
+  const [vista, setVista] = useState<Vista>(props.modo === 'libre' ? props.analisis.vista : props.prueba.vistas[0])
+  /** En un análisis libre, sus notas (se guardan al salir del cuadro). */
+  const [notas, setNotas] = useState(libre?.analisis.notas ?? '')
+  const [avisoNotas, setAvisoNotas] = useState('')
   const [herr, setHerr] = useState<Herramienta>('angulo')
   const [trazos, setTrazosEstado] = useState<TrazoVivo[]>([])
   const [enCurso, setEnCurso] = useState<Trazo | null>(null)
@@ -492,10 +523,10 @@ export default function Analizador(props: PropsAnalizador) {
   const tramos = hayCuerpo && vista === 'perfil' ? tramosDudosos(cuerpos, ajustesCuerpo, ladoMedido, vista) : []
   const correcciones = correccionesDe(pistasCuerpo)
   const siguienteTramo = tramos.find(t => t.desde > clave) ?? tramos[0] ?? null
-  /** Lo que la app sugiere de la nota (lib/nota-sugerida); null en las pruebas que son a ojo. */
-  const sugerencia = sugerirNota({
+  /** Lo que la app sugiere de la nota (lib/nota-sugerida); null en las pruebas que son a ojo y en un análisis libre. */
+  const sugerencia = prueba ? sugerirNota({
     prueba, vista, trazos: visibles, cuerpos, ajustes: ajustesCuerpo, ladoMedido, inclinacion: incl, alza, clave,
-  })
+  }) : null
   const vistoDe = (criterio: string) => sugerencia?.criterios.find(c => c.clave === criterio) || null
   const buscandoCuerpo = deteccion != null && deteccion.fase !== 'error'
   /** Mientras se busca el cuerpo o se sigue una corrección, el vídeo es suyo: los mandos se quedan quietos. */
@@ -950,28 +981,16 @@ export default function Analizador(props: PropsAnalizador) {
     ctx.fillRect(0, h - banda, w, banda)
     ctx.fillStyle = '#e5e7eb'
     ctx.font = `600 ${Math.round(banda * 0.5)}px system-ui, sans-serif`
-    const pie = [bateria.nombre, prueba.nombre, NOMBRE_LADO[lado], fechaLarga(valoracion.fecha).toLowerCase()].filter(Boolean).join(' · ')
+    const pie = (bat
+      ? [bat.bateria.nombre, bat.prueba.nombre, NOMBRE_LADO[lado], fechaLarga(bat.valoracion.fecha).toLowerCase()]
+      : [libre?.analisis.titulo, libre?.nombreDeportista, fechaLarga(hoyISO()).toLowerCase()]
+    ).filter(Boolean).join(' · ')
     ctx.fillText(pie, Math.round(banda * 0.4), h - Math.round(banda * 0.32))
     return await new Promise(res => c.toBlob(b => res(b), 'image/jpeg', 0.86))
   }
 
-  const guardar = async () => {
-    if (nota == null && !dolor) { setError('Pon la nota, o marca que duele.'); return }
-    setGuardando(true); setError(''); setAviso('')
-    let fotograma: string | undefined = undefined
-    let sinImagen = ''
-    if (media && nat) {
-      if (!permiso) sinImagen = 'sin imagen: falta su permiso'
-      else {
-        const blob = await componer()
-        if (blob) {
-          const ruta = rutaFotograma(idDeportista, valoracion.id, prueba.clave, lado)
-          const r = await subirFotograma(supabase, ruta, blob)
-          if (r.error) sinImagen = 'la imagen no se ha subido (' + r.error + ')'
-          else fotograma = ruta
-        }
-      }
-    }
+  /** Lo que se guarda de este fotograma: de cuál es, lo dibujado, lo seguido y lo del esqueleto (con sus curvas). */
+  const medidasParaGuardar = (): Medida[] => {
     /* Lo del fotograma en el que se está, y de lo seguido, lo que recorrió en el vídeo. */
     const enElVideo: Medida[] = recorridos.map(r => {
       const e = extremosDe(r.serie)!
@@ -1015,21 +1034,72 @@ export default function Analizador(props: PropsAnalizador) {
       ? medidaDelFotograma(clave / FPS, sugerencia?.clave === clave)
       : medidaDelFotograma(null, false)
     /* La nota que sugirió la app, al lado de la que se pone: para ver con el tiempo cuántas veces coinciden. */
-    if (sugerencia && sugerencia.criterios.length) {
+    if (sugerencia && sugerencia.criterios.length && prueba) {
       delEsqueleto.push({ nombre: 'Nota sugerida', valor: textoParaGuardar(sugerencia, prueba, alza) })
     }
+    return [delFotograma, ...medidasDe(visibles), ...enElVideo, ...delEsqueleto]
+  }
+
+  const guardar = async () => {
+    if (!bat || !prueba) return
+    if (nota == null && !dolor) { setError('Pon la nota, o marca que duele.'); return }
+    setGuardando(true); setError(''); setAviso('')
+    let fotograma: string | undefined = undefined
+    let sinImagen = ''
+    if (media && nat) {
+      if (!permiso) sinImagen = 'sin imagen: falta su permiso'
+      else {
+        const blob = await componer()
+        if (blob) {
+          const ruta = rutaFotograma(idDeportista, bat.valoracion.id, prueba.clave, lado)
+          const r = await subirFotograma(supabase, ruta, blob)
+          if (r.error) sinImagen = 'la imagen no se ha subido (' + r.error + ')'
+          else fotograma = ruta
+        }
+      }
+    }
     const r = await guardarPrueba(supabase, {
-      idValoracion: valoracion.id, idDeportista, prueba: prueba.clave, lado, nota, dolor, criterios,
-      ...(media && nat ? { medidas: [delFotograma, ...medidasDe(visibles), ...enElVideo, ...delEsqueleto], dibujo: visibles, vista } : {}),
+      idValoracion: bat.valoracion.id, idDeportista, prueba: prueba.clave, lado, nota, dolor, criterios,
+      ...(media && nat ? { medidas: medidasParaGuardar(), dibujo: visibles, vista } : {}),
       ...(fotograma ? { fotograma } : {}),
     })
     setGuardando(false)
     if (r.error) { setError('No se ha podido guardar: ' + r.error); return }
     setAviso('Guardado' + (fotograma ? ', con el fotograma.' : sinImagen ? ' · ' + sinImagen + '.' : '.'))
-    onGuardado()
+    bat.onGuardado()
   }
 
-  const otroLado: Lado | null = prueba.bilateral ? (lado === 'izq' ? 'der' : 'izq') : null
+  /* En un análisis libre: cada fotograma que se quiera, con sus medidas; la imagen, con permiso. */
+  const guardarLibre = async () => {
+    if (!libre) return
+    if (!media || !nat) { setError('Elige el vídeo o la foto, y ve al fotograma que quieras guardar.'); return }
+    setGuardando(true); setError(''); setAviso('')
+    /* Se compone siempre: sin permiso no se sube, pero vale para el informe de ahora (no sale del dispositivo). */
+    const blob = await componer()
+    const r = await guardarFotogramaLibre(supabase, {
+      analisis: libre.analisis, segundo: media.tipo === 'video' ? clave / FPS : null,
+      medidas: medidasParaGuardar(), dibujo: visibles, imagen: permiso ? blob : null,
+    })
+    setGuardando(false)
+    if (r.error || !r.fotograma) { setError('No se ha podido guardar: ' + (r.error || 'sin respuesta')); return }
+    const n = libre.yaGuardados + 1
+    setAviso('Guardado el fotograma ' + n + (r.fotograma.imagen ? ', con su imagen.'
+      : r.sinImagen ? ' · ' + r.sinImagen + '.' : ' · sin imagen: falta su permiso. Sale en el informe de ahora, pero no se guarda.'))
+    libre.onFotograma(r.fotograma, blob ? URL.createObjectURL(blob) : null)
+  }
+
+  /* Las notas de un análisis libre, al salir del cuadro (si han cambiado). */
+  const guardarNotas = async () => {
+    if (!libre) return
+    const ahora = notas.trim() ? notas : null
+    if ((ahora ?? '') === (libre.analisis.notas ?? '')) return
+    const r = await cambiarAnalisisLibre(supabase, libre.analisis.id, { notas: ahora })
+    if (r.error) { setAvisoNotas('No se han podido guardar: ' + r.error); return }
+    setAvisoNotas('Notas guardadas.')
+    libre.onNotas(ahora)
+  }
+
+  const otroLado: Lado | null = prueba?.bilateral ? (lado === 'izq' ? 'der' : 'izq') : null
   const guardadaOtro = otroLado ? guardadas.find(g => g.lado === otroLado) : null
   const medidas = medidasDe(visibles)
   const notaVisible = dolor ? 0 : nota
@@ -1042,13 +1112,21 @@ export default function Analizador(props: PropsAnalizador) {
     : 'Los puntos van con el cuerpo al avanzar. Si uno se va, arrástralo con «mover». Con pegatinas en las articulaciones va mucho mejor.'
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label={'Analizar ' + prueba.nombre}>
+    <div className="fixed inset-0 z-50 bg-gray-950 text-white flex flex-col" role="dialog" aria-modal="true"
+      aria-label={'Analizar ' + (prueba?.nombre ?? libre?.analisis.titulo ?? '')}>
       {/* ── cabecera ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b border-gray-800 bg-gray-900">
-        <p className="text-[13px] text-gray-400 min-w-0">
-          {bateria.nombre} › <b className="text-white font-semibold">{prueba.nombre}</b>
-        </p>
-        {prueba.bilateral && (
+        {bat ? (
+          <p className="text-[13px] text-gray-400 min-w-0">
+            {bat.bateria.nombre} › <b className="text-white font-semibold">{bat.prueba.nombre}</b>
+          </p>
+        ) : (
+          <p className="text-[13px] text-gray-400 min-w-0">
+            Análisis libre › <b className="text-white font-semibold">{libre?.analisis.titulo}</b>
+            {libre?.nombreDeportista && <span className="ml-2 text-[11.5px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 whitespace-nowrap">{libre.nombreDeportista}</span>}
+          </p>
+        )}
+        {prueba?.bilateral && (
           <div className="flex gap-1">
             {(['izq', 'der'] as Lado[]).map(l => {
               const g = guardadas.find(x => x.lado === l)
@@ -1065,7 +1143,8 @@ export default function Analizador(props: PropsAnalizador) {
         )}
         <span className="flex-1" />
         <span className="hidden md:inline text-[11.5px] text-gray-500">
-          {permiso ? 'El vídeo no sale de este dispositivo · se guarda solo el fotograma' : 'Sin su permiso: se guarda la nota, no la imagen'}
+          {permiso ? 'El vídeo no sale de este dispositivo · se guarda solo el fotograma'
+            : bat ? 'Sin su permiso: se guarda la nota, no la imagen' : 'Sin su permiso: se guardan las medidas, no la imagen'}
         </span>
         <button onClick={onCerrar} className="text-[13px] px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition">Cerrar</button>
       </div>
@@ -1091,7 +1170,7 @@ export default function Analizador(props: PropsAnalizador) {
         {/* ── el fotograma ── */}
         <div className="flex flex-col min-w-0 lg:min-h-0">
           <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
-            {prueba.vistas.map(v => (
+            {(prueba ? prueba.vistas : VISTAS).map(v => (
               <button key={v} onClick={() => setVista(v)}
                 className={'text-[12.5px] px-3 py-1.5 rounded-lg border transition ' + (vista === v
                   ? 'bg-gray-800 border-gray-600 text-white' : 'border-gray-800 text-gray-500 hover:text-gray-300')}>
@@ -1152,7 +1231,9 @@ export default function Analizador(props: PropsAnalizador) {
             {!media ? (
               <div className="w-full max-w-md rounded-2xl border border-dashed border-gray-700 p-6 text-center flex flex-col gap-3">
                 <p className="text-[15px] font-semibold">Elige el vídeo {DE_VISTA[vista]}</p>
-                <p className="text-[12.5px] text-gray-400">{prueba.montaje}</p>
+                <p className="text-[12.5px] text-gray-400">
+                  {prueba ? prueba.montaje : 'Lo que quieras analizar. Guardas los fotogramas que elijas, cada uno con sus medidas, y puedes cambiar de vídeo sin salir.'}
+                </p>
                 <p className="text-[12px] text-gray-500">Móvil quieto y recto (el nivel de la cámara ayuda), a la altura de la cadera y a unos 3 m, con el cuerpo entero dentro. También vale una foto.</p>
                 <label className="self-center bg-orange-500 hover:bg-orange-400 text-white text-[14px] font-semibold px-5 py-3 rounded-xl cursor-pointer transition">
                   Elegir vídeo o foto
@@ -1312,7 +1393,7 @@ export default function Analizador(props: PropsAnalizador) {
                 <p className="text-[13.5px] font-semibold">Cuánto fiarse de cada medida</p>
                 {vista === 'perfil' && (
                   <p className="text-[11px] text-gray-500 mt-0.5">
-                    Esqueleto del lado {LADO_CUERPO[ladoMedido]}: {lado === 'unico' ? 'el más cercano a la cámara' : prueba.queLado || 'el que se puntúa'}.
+                    Esqueleto del lado {LADO_CUERPO[ladoMedido]}: {lado === 'unico' ? 'el más cercano a la cámara' : prueba?.queLado || 'el que se puntúa'}.
                   </p>
                 )}
               </div>
@@ -1417,120 +1498,152 @@ export default function Analizador(props: PropsAnalizador) {
             </div>
           )}
 
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5">
-            <p className="text-[13.5px] font-semibold">{bateria.nombre} · {prueba.nombre}{lado !== 'unico' ? ' · ' + NOMBRE_LADO[lado] : ''}</p>
-            {prueba.queLado && <p className="text-[11px] text-gray-500">Se puntúa {prueba.queLado}.</p>}
-            <ul className="mt-2.5 flex flex-col gap-1.5">
-              {prueba.criterios.map(c => {
-                const v = criterios[c.clave]
-                /* Lo que ve la app de este criterio, si lo puede medir. La marca la sigue poniendo el entrenador. */
-                const visto = vistoDe(c.clave)
-                return (
-                  <li key={c.clave}>
-                    <button onClick={() => ponCriterio(c.clave)} title="Pulsa: se cumple, no se cumple, sin marcar"
-                      className={'w-full text-left flex gap-2.5 items-start rounded-lg px-2 py-1.5 transition hover:bg-gray-800 ' + (c.vista === vista ? '' : 'opacity-60')}>
-                      <span className={'w-5 flex-none font-bold ' + (v === true ? 'text-green-400' : v === false ? 'text-red-400' : 'text-gray-600')}>
-                        {v === true ? '✓' : v === false ? '✗' : '·'}
-                      </span>
-                      <span className="text-[12.5px] leading-snug">
-                        {c.texto}
-                        <span className="block text-[10.5px] text-gray-500">{DE_VISTA[c.vista]}{c.con === 'ojo' ? ' · a ojo' : ''}</span>
-                        {visto && (
-                          <span className={'block text-[10.5px] mt-0.5 ' + (visto.veredicto === 'cumple' ? 'text-green-300'
-                            : visto.veredicto === 'no' ? 'text-red-300' : visto.veredicto === 'limite' ? 'text-amber-300' : 'text-sky-300')}>
-                            La app ve: {visto.veredicto === 'cumple' ? 'se cumple · ' : visto.veredicto === 'no' ? 'no se cumple · '
-                              : visto.veredicto === 'limite' ? 'en el límite · ' : ''}{visto.texto}
-                          </span>
-                        )}
-                      </span>
+          {bat && prueba && (
+            <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5">
+              <p className="text-[13.5px] font-semibold">{bat.bateria.nombre} · {prueba.nombre}{lado !== 'unico' ? ' · ' + NOMBRE_LADO[lado] : ''}</p>
+              {prueba.queLado && <p className="text-[11px] text-gray-500">Se puntúa {prueba.queLado}.</p>}
+              <ul className="mt-2.5 flex flex-col gap-1.5">
+                {prueba.criterios.map(c => {
+                  const v = criterios[c.clave]
+                  /* Lo que ve la app de este criterio, si lo puede medir. La marca la sigue poniendo el entrenador. */
+                  const visto = vistoDe(c.clave)
+                  return (
+                    <li key={c.clave}>
+                      <button onClick={() => ponCriterio(c.clave)} title="Pulsa: se cumple, no se cumple, sin marcar"
+                        className={'w-full text-left flex gap-2.5 items-start rounded-lg px-2 py-1.5 transition hover:bg-gray-800 ' + (c.vista === vista ? '' : 'opacity-60')}>
+                        <span className={'w-5 flex-none font-bold ' + (v === true ? 'text-green-400' : v === false ? 'text-red-400' : 'text-gray-600')}>
+                          {v === true ? '✓' : v === false ? '✗' : '·'}
+                        </span>
+                        <span className="text-[12.5px] leading-snug">
+                          {c.texto}
+                          <span className="block text-[10.5px] text-gray-500">{DE_VISTA[c.vista]}{c.con === 'ojo' ? ' · a ojo' : ''}</span>
+                          {visto && (
+                            <span className={'block text-[10.5px] mt-0.5 ' + (visto.veredicto === 'cumple' ? 'text-green-300'
+                              : visto.veredicto === 'no' ? 'text-red-300' : visto.veredicto === 'limite' ? 'text-amber-300' : 'text-sky-300')}>
+                              La app ve: {visto.veredicto === 'cumple' ? 'se cumple · ' : visto.veredicto === 'no' ? 'no se cumple · '
+                                : visto.veredicto === 'limite' ? 'en el límite · ' : ''}{visto.texto}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {sugerencia && (
+                <div className="mt-3 rounded-lg border border-sky-400/25 bg-sky-400/[0.06] px-3 py-2.5 flex flex-col gap-1.5">
+                  <p className="text-[12.5px] text-sky-100 flex items-center gap-2 flex-wrap">
+                    {sugerencia.nota != null
+                      ? <span>La app apunta a <b className="font-mono text-[15px] text-white">{sugerencia.nota}</b></span>
+                      : <b className="font-semibold">Lo que ve la app</b>}
+                    {sugerencia.limite && <span className="text-[10.5px] px-1.5 py-px rounded-full bg-amber-500/15 text-amber-300 font-semibold">en el límite</span>}
+                  </p>
+                  <p className="text-[12px] text-gray-300 leading-snug">{sugerencia.explicacion}</p>
+                  {sugerencia.falta.length > 0 && (
+                    <div className="text-[11px] text-gray-400 leading-snug">
+                      <p className="text-gray-500">Lo que no ve la app:</p>
+                      <ul className="list-disc pl-4">{sugerencia.falta.map(f => <li key={f}>{f}</li>)}</ul>
+                    </div>
+                  )}
+                  {TEXTO_ALZA[prueba.clave] && (
+                    <label className="flex items-center gap-2 text-[12px] text-gray-300 cursor-pointer select-none">
+                      <input type="checkbox" checked={alza} onChange={e => setAlza(e.target.checked)} className="accent-sky-400" />
+                      {TEXTO_ALZA[prueba.clave]}
+                    </label>
+                  )}
+                  {sugerencia.clave != null && media?.tipo === 'video' && (
+                    <button onClick={() => irA(sugerencia.clave!)}
+                      className="self-start text-[11.5px] text-sky-300 hover:text-white underline decoration-dotted underline-offset-4">
+                      Ver el fotograma que ha mirado ({segundos(sugerencia.clave / FPS)})
                     </button>
-                  </li>
-                )
-              })}
-            </ul>
+                  )}
+                  <p className="text-[10.5px] text-gray-500 leading-snug">Es una propuesta: la nota la pones tú. Se guarda al lado de la tuya, para ver con el tiempo cuántas veces coincidís.</p>
+                </div>
+              )}
 
-            {sugerencia && (
-              <div className="mt-3 rounded-lg border border-sky-400/25 bg-sky-400/[0.06] px-3 py-2.5 flex flex-col gap-1.5">
-                <p className="text-[12.5px] text-sky-100 flex items-center gap-2 flex-wrap">
-                  {sugerencia.nota != null
-                    ? <span>La app apunta a <b className="font-mono text-[15px] text-white">{sugerencia.nota}</b></span>
-                    : <b className="font-semibold">Lo que ve la app</b>}
-                  {sugerencia.limite && <span className="text-[10.5px] px-1.5 py-px rounded-full bg-amber-500/15 text-amber-300 font-semibold">en el límite</span>}
-                </p>
-                <p className="text-[12px] text-gray-300 leading-snug">{sugerencia.explicacion}</p>
-                {sugerencia.falta.length > 0 && (
-                  <div className="text-[11px] text-gray-400 leading-snug">
-                    <p className="text-gray-500">Lo que no ve la app:</p>
-                    <ul className="list-disc pl-4">{sugerencia.falta.map(f => <li key={f}>{f}</li>)}</ul>
-                  </div>
-                )}
-                {TEXTO_ALZA[prueba.clave] && (
-                  <label className="flex items-center gap-2 text-[12px] text-gray-300 cursor-pointer select-none">
-                    <input type="checkbox" checked={alza} onChange={e => setAlza(e.target.checked)} className="accent-sky-400" />
-                    {TEXTO_ALZA[prueba.clave]}
-                  </label>
-                )}
-                {sugerencia.clave != null && media?.tipo === 'video' && (
-                  <button onClick={() => irA(sugerencia.clave!)}
-                    className="self-start text-[11.5px] text-sky-300 hover:text-white underline decoration-dotted underline-offset-4">
-                    Ver el fotograma que ha mirado ({segundos(sugerencia.clave / FPS)})
+              <div className="grid grid-cols-4 gap-1.5 mt-3">
+                {[3, 2, 1, 0].map(n => (
+                  <button key={n} onClick={() => { if (n === 0) { setDolor(true); setNota(0) } else { setDolor(false); setNota(n) } }}
+                    title={sugerencia?.nota === n && notaVisible !== n ? 'La que apunta la app' : undefined}
+                    className={'h-11 rounded-xl border font-mono text-lg font-bold transition ' + (notaVisible === n
+                      ? 'bg-orange-500 border-orange-500 text-white'
+                      : sugerencia?.nota === n
+                        ? 'bg-gray-800 border-dashed border-sky-400/70 text-sky-200 hover:text-white'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>
+                    {n}
                   </button>
-                )}
-                <p className="text-[10.5px] text-gray-500 leading-snug">Es una propuesta: la nota la pones tú. Se guarda al lado de la tuya, para ver con el tiempo cuántas veces coincidís.</p>
+                ))}
               </div>
-            )}
+              <div className="mt-2 flex flex-col gap-0.5 text-[11px] text-gray-500 leading-snug">
+                <span><b className="text-gray-300">3</b> · {prueba.notas[3]}</span>
+                <span><b className="text-gray-300">2</b> · {prueba.notas[2]}</span>
+                <span><b className="text-gray-300">1</b> · {prueba.notas[1]}</span>
+                <span><b className="text-gray-300">0</b> · Duele durante la prueba.</span>
+              </div>
+              {prueba.bilateral && (
+                <p className="text-[11.5px] text-gray-400 mt-2">
+                  En las de dos lados cuenta el peor.
+                  {guardadaOtro && <> El {otroLado === 'izq' ? 'izquierdo' : 'derecho'} ya tiene un <b className="text-gray-200">{guardadaOtro.dolor ? 0 : guardadaOtro.nota}</b>.</>}
+                </p>
+              )}
+            </div>
+          )}
 
-            <div className="grid grid-cols-4 gap-1.5 mt-3">
-              {[3, 2, 1, 0].map(n => (
-                <button key={n} onClick={() => { if (n === 0) { setDolor(true); setNota(0) } else { setDolor(false); setNota(n) } }}
-                  title={sugerencia?.nota === n && notaVisible !== n ? 'La que apunta la app' : undefined}
-                  className={'h-11 rounded-xl border font-mono text-lg font-bold transition ' + (notaVisible === n
-                    ? 'bg-orange-500 border-orange-500 text-white'
-                    : sugerencia?.nota === n
-                      ? 'bg-gray-800 border-dashed border-sky-400/70 text-sky-200 hover:text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white')}>
-                  {n}
-                </button>
-              ))}
+          {libre && (
+            <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5 flex flex-col gap-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-[13.5px] font-semibold">Tus notas</p>
+                <span className="text-[11px] text-gray-500">{libre.yaGuardados === 1 ? '1 fotograma guardado' : libre.yaGuardados + ' fotogramas guardados'}</span>
+              </div>
+              <textarea value={notas} onChange={e => { setNotas(e.target.value); setAvisoNotas('') }} onBlur={guardarNotas}
+                maxLength={4000} rows={4} aria-label="Tus notas del análisis"
+                placeholder="Lo que ves, para ti y para el informe: «a partir de 60 kg baja con el tronco mucho más inclinado»."
+                className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-[12.5px] text-gray-100 placeholder:text-gray-500 resize-y" />
+              {avisoNotas && <p className="text-[11px] text-gray-400" role="status">{avisoNotas}</p>}
+              <p className="text-[11px] text-gray-500 leading-snug">Sin criterios ni nota: guarda los fotogramas que quieras enseñar, cada uno con sus medidas. Solo lo ves tú.</p>
             </div>
-            <div className="mt-2 flex flex-col gap-0.5 text-[11px] text-gray-500 leading-snug">
-              <span><b className="text-gray-300">3</b> · {prueba.notas[3]}</span>
-              <span><b className="text-gray-300">2</b> · {prueba.notas[2]}</span>
-              <span><b className="text-gray-300">1</b> · {prueba.notas[1]}</span>
-              <span><b className="text-gray-300">0</b> · Duele durante la prueba.</span>
-            </div>
-            {prueba.bilateral && (
-              <p className="text-[11.5px] text-gray-400 mt-2">
-                En las de dos lados cuenta el peor.
-                {guardadaOtro && <> El {otroLado === 'izq' ? 'izquierdo' : 'derecho'} ya tiene un <b className="text-gray-200">{guardadaOtro.dolor ? 0 : guardadaOtro.nota}</b>.</>}
-              </p>
-            )}
-          </div>
+          )}
 
           {guardada?.fotograma && urls[guardada.fotograma] && (
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5">
               <p className="text-[12.5px] text-gray-400 mb-2">Guardado de este lado</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={urls[guardada.fotograma]} alt={'Fotograma guardado de ' + prueba.nombre} className="w-full rounded-lg" />
+              <img src={urls[guardada.fotograma]} alt={'Fotograma guardado de ' + (prueba?.nombre ?? '')} className="w-full rounded-lg" />
             </div>
           )}
 
           {!permiso && (
-            <p className="text-[11.5px] text-amber-300/90">Sin su permiso marcado se guarda la nota, pero no la imagen. Se marca en la pestaña Movimiento.</p>
+            <p className="text-[11.5px] text-amber-300/90">
+              {bat ? 'Sin su permiso marcado se guarda la nota, pero no la imagen. Se marca en la pestaña Movimiento.'
+                : 'Sin su permiso marcado se guardan las medidas, pero no la imagen (sí sale en el informe de ahora). Se marca en la pestaña Movimiento.'}
+            </p>
           )}
           {error && <p className="text-[12.5px] text-red-300" role="alert">{error}</p>}
           {aviso && <p className="text-[12.5px] text-green-300" role="status">{aviso}</p>}
 
           <div className="flex flex-col gap-2 mt-auto">
-            <button onClick={guardar} disabled={guardando}
-              className="h-11 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-semibold transition disabled:opacity-50">
-              {guardando ? 'Guardando…' : media && permiso ? 'Guardar la nota y el fotograma' : 'Guardar la nota'}
-            </button>
-            {prueba.bilateral && aviso && otroLado && !guardadaOtro && (
-              <button onClick={() => setLado(otroLado)} className="h-10 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-[13px] transition">
-                Pasar al lado {otroLado === 'izq' ? 'izquierdo' : 'derecho'}
+            {bat ? (<>
+              <button onClick={guardar} disabled={guardando}
+                className="h-11 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-semibold transition disabled:opacity-50">
+                {guardando ? 'Guardando…' : media && permiso ? 'Guardar la nota y el fotograma' : 'Guardar la nota'}
               </button>
-            )}
+              {prueba?.bilateral && aviso && otroLado && !guardadaOtro && (
+                <button onClick={() => setLado(otroLado)} className="h-10 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-[13px] transition">
+                  Pasar al lado {otroLado === 'izq' ? 'izquierdo' : 'derecho'}
+                </button>
+              )}
+            </>) : (<>
+              <button onClick={guardarLibre} disabled={guardando || !media}
+                className="h-11 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-semibold transition disabled:opacity-50">
+                {guardando ? 'Guardando…' : 'Guardar este fotograma'}
+              </button>
+              <button onClick={() => libre?.onInforme([graf.clave, graf.encima])} disabled={!libre?.yaGuardados}
+                title={libre?.yaGuardados ? undefined : 'Guarda algún fotograma primero: el informe se hace con los guardados'}
+                className="h-10 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-[13px] transition disabled:opacity-40">
+                Descargar el informe
+              </button>
+            </>)}
           </div>
         </aside>
       </div>
