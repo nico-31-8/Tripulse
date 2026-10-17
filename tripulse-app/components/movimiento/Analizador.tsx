@@ -39,10 +39,16 @@
 // detector de MediaPipe (lib/detector-cuerpo), fotograma a fotograma, y la app
 // coloca las articulaciones y mide sola los ángulos de perfil, cada uno con
 // cuánto fiarse (lib/cuerpo). El punto que el modelo adivina sale en ámbar y se
-// corrige arrastrándolo con «mover»; la corrección vale para ese fotograma. La
-// app no pone la nota: mide.
+// corrige arrastrándolo con «mover». La app no pone la nota: mide.
+//
+// CORREGIR EL ESQUELETO (v3, 17-10-2026). El punto arrastrado ya no vale solo
+// para ese fotograma: el seguimiento lo lleva hacia delante y hacia atrás hasta
+// que se pierde o la app lo vuelve a ver bien (lib/corregir-esqueleto). Debajo
+// del vídeo, los tramos dudosos en ámbar y lo corregido en naranja; en el panel,
+// cada corrección con su «deshacer». Y la gráfica deja elegir la medida, el lado
+// y otra encima; las que no están comprobadas (tobillo, hombro, codo) lo avisan.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DE_VISTA, type DefBateria, type Lado, type Prueba, type Vista } from '@/lib/baterias-movimiento'
 import {
@@ -56,11 +62,15 @@ import { sugerirNota, TEXTO_ALZA, textoParaGuardar } from '@/lib/nota-sugerida'
 import {
   centroDe, claveDe, empezarPista, enFotograma, extremosDe, moverPunto, pasoDePista, serieDe, visiblesEn, type TrazoVivo,
 } from '@/lib/pista-trazos'
-import { aGris, avanzar, tomarPlantilla, type Gris, type Plantilla } from '@/lib/seguimiento-puntos'
+import { aGris, avanzar, tomarPlantilla, type Gris, type Plantilla, type PuntoSeguido } from '@/lib/seguimiento-puntos'
 import {
   conAjustes, CRUCES, descruzar, DIBUJADOS, dudosos, HUESOS, indice, ladoAMedir, medidasCuerpo, NOMBRE_FIABILIDAD, otroLado, PARTES,
-  serieCuerpo, type Ajustes, type Cuerpo, type Fiabilidad, type LadoCuerpo,
+  serieCuerpo, fiabilidadDe, MEDIDAS_GRAFICA, NOMBRE_CORTO, NOMBRE_MEDIDA, nombrePunto, tramosDudosos,
+  type ClaveGrafica, type Cuerpo, type Fiabilidad, type LadoCuerpo,
 } from '@/lib/cuerpo'
+import {
+  ajustesDe, COINCIDE_PROPORCION, conPuestos, correccionesDe, corregirPunto, deshacerCorreccion, propagar, type PistasCuerpo,
+} from '@/lib/corregir-esqueleto'
 import { cargarDetector, detectar, SIN_SIMD, type Detector } from '@/lib/detector-cuerpo'
 import { inclinacionDe, type Punto } from '@/lib/geometria-fotograma'
 import { fechaLarga } from '@/lib/fechas'
@@ -71,9 +81,12 @@ const ROJO = '#f2545b'
 const BLANCO = '#f3f6f9'
 const AMBAR = '#f0b429'
 /** El color de cada medida del esqueleto según cuánto fiarse. */
-const COLOR_FIABILIDAD: Record<Fiabilidad, string> = { fiable: 'text-green-300', margen: 'text-amber-300', no: 'text-gray-500' }
+const COLOR_FIABILIDAD: Record<Fiabilidad, string> = {
+  fiable: 'text-green-300', margen: 'text-amber-300', sin_comprobar: 'text-amber-300', no: 'text-gray-500',
+}
 const PASTILLA_FIABILIDAD: Record<Fiabilidad, string> = {
-  fiable: 'bg-green-500/15 text-green-300', margen: 'bg-amber-500/15 text-amber-300', no: 'bg-red-500/15 text-red-300',
+  fiable: 'bg-green-500/15 text-green-300', margen: 'bg-amber-500/15 text-amber-300',
+  sin_comprobar: 'bg-amber-500/10 text-amber-300 border border-dashed border-amber-400/60', no: 'bg-red-500/15 text-red-300',
 }
 const LADO_CUERPO: Record<LadoCuerpo, string> = { i: 'izquierdo', d: 'derecho' }
 /** Primera letra en mayúscula: «De perfil», «Desde atrás». */
@@ -214,35 +227,51 @@ function pintarCuerpo(
   })
 }
 
-/** El valor de un trazo seguido a lo largo del vídeo: la línea, el mínimo, el máximo y dónde estás. */
-function GraficaRecorrido({ nombre, tipo, serie, clave, onIr }: {
+type Serie = { clave: number; valor: number }[]
+
+/** De un mínimo y un máximo a la altura en la gráfica (0 arriba, 100 abajo), con un poco de aire. */
+const escalaDe = (e: { min: { valor: number }; max: { valor: number } }) => {
+  const holgura = Math.max(1, (e.max.valor - e.min.valor) * 0.12)
+  const v0 = e.min.valor - holgura, v1 = e.max.valor + holgura
+  return (v: number) => (1 - (v - v0) / (v1 - v0)) * 100
+}
+
+/**
+ * El valor de un trazo seguido a lo largo del vídeo: la línea, el mínimo, el
+ * máximo y dónde estás. Con `extra`, otra medida encima, en azul y con su propia
+ * escala: lo que se compara es cuándo se mueve cada una, no sus grados.
+ */
+function GraficaRecorrido({ nombre, tipo, serie, clave, onIr, extra }: {
   nombre: string
   tipo: TipoTrazo
-  serie: { clave: number; valor: number }[]
+  serie: Serie
   clave: number
   onIr: (clave: number) => void
+  extra?: { nombre: string; serie: Serie }
 }) {
   const ext = extremosDe(serie)
   if (!ext) return null
-  const k0 = serie[0].clave, k1 = serie[serie.length - 1].clave
-  const holgura = Math.max(1, (ext.max.valor - ext.min.valor) * 0.12)
-  const v0 = ext.min.valor - holgura, v1 = ext.max.valor + holgura
+  const extE = extra ? extremosDe(extra.serie) : null
+  const todas = extra && extE ? [...serie, ...extra.serie] : serie
+  const k0 = Math.min(...todas.map(s => s.clave)), k1 = Math.max(...todas.map(s => s.clave))
   const X = (k: number) => ((k - k0) / Math.max(1, k1 - k0)) * 100
-  const Y = (v: number) => (1 - (v - v0) / (v1 - v0)) * 100
+  const Y = escalaDe(ext)
+  const YE = extE ? escalaDe(extE) : null
   const ahora = serie.find(s => s.clave === clave)
+  const ahoraE = extra?.serie.find(s => s.clave === clave)
   const dentro = clave >= k0 && clave <= k1
   const alPulsar = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
     const k = k0 + ((e.clientX - r.left) / r.width) * (k1 - k0)
-    let mejor = serie[0]
-    for (const s of serie) if (Math.abs(s.clave - k) < Math.abs(mejor.clave - k)) mejor = s
+    let mejor = todas[0]
+    for (const s of todas) if (Math.abs(s.clave - k) < Math.abs(mejor.clave - k)) mejor = s
     onIr(mejor.clave)
   }
-  const extremo = (lbl: string, s: { clave: number; valor: number }) => (
+  const extremo = (lbl: string, s: { clave: number; valor: number }, azul = false) => (
     <button onClick={() => onIr(s.clave)} title={'Ir a ese fotograma'}
       className="flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 -mx-1.5 hover:bg-gray-800 transition text-left">
       <span className="text-gray-500">{lbl}</span>
-      <b className="font-mono text-orange-300">{textoValor(tipo, s.valor)}</b>
+      <b className={'font-mono ' + (azul ? 'text-sky-300' : 'text-orange-300')}>{textoValor(tipo, s.valor)}</b>
       <span className="font-mono text-gray-500">{segundos(s.clave / FPS)}</span>
       <span className="text-gray-400 underline decoration-dotted underline-offset-2">ir</span>
     </button>
@@ -253,22 +282,42 @@ function GraficaRecorrido({ nombre, tipo, serie, clave, onIr }: {
         <span className="text-gray-400">{nombre}</span>
         <span className="font-mono text-orange-300">{ahora ? textoValor(tipo, ahora.valor) : '—'}</span>
       </div>
+      {extra && (
+        <div className="flex justify-between gap-3 text-[12.5px] -mt-1">
+          <span className="text-gray-400">{extra.nombre}</span>
+          <span className="font-mono text-sky-300">{ahoraE ? textoValor(tipo, ahoraE.valor) : '—'}</span>
+        </div>
+      )}
       <div onClick={alPulsar} role="presentation" title="Pulsa para ir a ese momento"
-        className="relative h-16 rounded-lg bg-black/40 border border-gray-800 cursor-pointer">
+        className={'relative rounded-lg bg-black/40 border border-gray-800 cursor-pointer ' + (extra ? 'h-20' : 'h-16')}>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden="true">
           <polyline fill="none" stroke={NARANJA} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round"
             points={serie.map(s => X(s.clave).toFixed(2) + ',' + Y(s.valor).toFixed(2)).join(' ')} />
+          {extra && YE && (
+            <polyline fill="none" stroke={REF} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+              points={extra.serie.map(s => X(s.clave).toFixed(2) + ',' + YE(s.valor).toFixed(2)).join(' ')} />
+          )}
           {dentro && <line x1={X(clave)} x2={X(clave)} y1="0" y2="100" stroke="#e5e7eb" strokeOpacity="0.55" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
         </svg>
         {[ext.min, ext.max].map((s, i) => (
           <span key={i} className="absolute w-2 h-2 -ml-1 -mt-1 rounded-full border border-black" aria-hidden="true"
             style={{ left: X(s.clave) + '%', top: Y(s.valor) + '%', background: i ? '#fdba74' : NARANJA }} />
         ))}
+        {extE && YE && [extE.min, extE.max].map((s, i) => (
+          <span key={'e' + i} className="absolute w-2 h-2 -ml-1 -mt-1 rounded-full border border-black" aria-hidden="true"
+            style={{ left: X(s.clave) + '%', top: YE(s.valor) + '%', background: i ? '#bae6fd' : REF }} />
+        ))}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px]">
         {extremo('mín.', ext.min)}
         {extremo('máx.', ext.max)}
       </div>
+      {extE && (
+        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px]">
+          {extremo('mín.', extE.min, true)}
+          {extremo('máx.', extE.max, true)}
+        </div>
+      )}
     </div>
   )
 }
@@ -315,9 +364,17 @@ export default function Analizador(props: PropsAnalizador) {
   const [clave, setClave] = useState(0)
   const [seguir, setSeguir] = useState(true)
   const [avisoSeguir, setAvisoSeguir] = useState('')
-  /** El esqueleto de cada fotograma (en una foto, el 0) y lo corregido a mano en cada uno. */
+  /** El esqueleto de cada fotograma (en una foto, el 0). */
   const [cuerpos, setCuerpos] = useState<Record<number, Cuerpo>>({})
-  const [ajustesCuerpo, setAjustesCuerpo] = useState<Record<number, Ajustes>>({})
+  /** Lo corregido a mano y lo que se siguió de ello, punto a punto (lib/corregir-esqueleto). Encima del detector. */
+  const [pistasCuerpo, setPistasCuerpo] = useState<PistasCuerpo>({})
+  const ajustesCuerpo = useMemo(() => ajustesDe(pistasCuerpo), [pistasCuerpo])
+  /** Mientras el seguimiento lleva un punto corregido: cuál y por dónde va. */
+  const [siguiendoCuerpo, setSiguiendoCuerpo] = useState<{ punto: number; clave: number } | null>(null)
+  /** Qué se ha hecho con la última corrección, cuando no hay que corregir nada más. */
+  const [avisoCuerpo, setAvisoCuerpo] = useState('')
+  /** Lo que se dibuja «A lo largo del vídeo»: la medida, el lado (null = el que se mide) y otra encima. */
+  const [graf, setGraf] = useState<{ clave: ClaveGrafica; lado: LadoCuerpo | null; encima: ClaveGrafica | null }>({ clave: 'rodilla', lado: null, encima: null })
   const [verCuerpo, setVerCuerpo] = useState(true)
   /** En las sentadillas: si se hizo con el alza (FMS) o con la tabla de 4 cm (Nine Test). Cambia la nota que apunta. */
   const [alza, setAlza] = useState(false)
@@ -330,6 +387,15 @@ export default function Analizador(props: PropsAnalizador) {
   >(null)
   /** «Parar»: acaba la búsqueda del cuerpo y se queda lo hallado. */
   const pararRef = useRef(false)
+  /** Lo mismo para el seguimiento de un punto corregido, y si está en marcha (fuera de los renders). */
+  const pararSeguirRef = useRef(false)
+  const siguiendoRef = useRef(false)
+  /** Si el punto del esqueleto se ha movido de verdad: un toque sin arrastrar no es una corrección. */
+  const movidoRef = useRef(false)
+  /* Lo que el seguimiento del punto corregido lee al día, fuera de los renders. */
+  const cuerposRef = useRef(cuerpos)
+  const pistasRef = useRef(pistasCuerpo)
+  useEffect(() => { cuerposRef.current = cuerpos; pistasRef.current = pistasCuerpo })
   /** Cada búsqueda tiene su número; otro vídeo o cerrar lo cambian, y la vieja se retira sin tocar nada. */
   const corridaRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -415,13 +481,24 @@ export default function Analizador(props: PropsAnalizador) {
   const medidasC = cuerpoAhora ? medidasCuerpo(cuerpoAhora, ladoMedido, vista, incl) : []
   const rodillaC = medidasC.find(m => m.clave === 'rodilla')
   const dudososAhora = cuerpoAhora ? dudosos(cuerpoAhora, ladoMedido, vista) : []
-  const serieRodilla = vista === 'perfil' ? serieCuerpo(cuerpos, ajustesCuerpo, ladoMedido, vista, 'rodilla', incl) : []
+  /* «A lo largo del vídeo»: la medida elegida del lado elegido, y otra encima si se ha pedido. */
+  const ladoGraf: LadoCuerpo = graf.lado ?? ladoMedido
+  const serieGraf = hayCuerpo && vista === 'perfil' ? serieCuerpo(cuerpos, ajustesCuerpo, ladoGraf, vista, graf.clave, incl) : []
+  const serieEncima = hayCuerpo && vista === 'perfil' && graf.encima ? serieCuerpo(cuerpos, ajustesCuerpo, ladoGraf, vista, graf.encima, incl) : []
+  /** Las que se dibujan sin estar comprobadas: llevan su aviso. */
+  const conMargen = [graf.clave, graf.encima].filter((c): c is ClaveGrafica => !!c && fiabilidadDe(c) === 'sin_comprobar')
+  /** Debajo del vídeo: los tramos con algún punto dudoso, y lo corregido. */
+  const tramos = hayCuerpo && vista === 'perfil' ? tramosDudosos(cuerpos, ajustesCuerpo, ladoMedido, vista) : []
+  const correcciones = correccionesDe(pistasCuerpo)
+  const siguienteTramo = tramos.find(t => t.desde > clave) ?? tramos[0] ?? null
   /** Lo que la app sugiere de la nota (lib/nota-sugerida); null en las pruebas que son a ojo. */
   const sugerencia = sugerirNota({
     prueba, vista, trazos: visibles, cuerpos, ajustes: ajustesCuerpo, ladoMedido, inclinacion: incl, alza, clave,
   })
   const vistoDe = (criterio: string) => sugerencia?.criterios.find(c => c.clave === criterio) || null
   const buscandoCuerpo = deteccion != null && deteccion.fase !== 'error'
+  /** Mientras se busca el cuerpo o se sigue una corrección, el vídeo es suyo: los mandos se quedan quietos. */
+  const ocupadoVisor = buscandoCuerpo || !!siguiendoCuerpo
   /** Para pintar el esqueleto (si se ve) en el lienzo, la lupa y la imagen que se guarda. */
   const pintaCuerpo = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     if (!cuerpoAhora || !verCuerpo) return
@@ -442,8 +519,8 @@ export default function Analizador(props: PropsAnalizador) {
 
   /* ── El seguimiento ── */
 
-  /** Lo que se ve ahora, reducido y en gris. */
-  const capturar = (): { gris: Gris; esc: number } | null => {
+  /** Lo que se ve ahora, reducido y en gris. `propia`: una memoria de quien llama (el seguimiento de una corrección lleva las suyas). */
+  const capturar = (propia?: Float32Array): { gris: Gris; esc: number } | null => {
     const v = videoRef.current
     if (!v || !v.videoWidth) return null
     const esc = Math.min(1, LADO_SEGUIR / Math.max(v.videoWidth, v.videoHeight))
@@ -454,7 +531,7 @@ export default function Analizador(props: PropsAnalizador) {
     const ctx = c.getContext('2d', { willReadFrequently: true })
     if (!ctx) return null
     const enUso = segRef.current?.gris.v
-    let destino = memoriasRef.current.find(m => m.length === w * h && m !== enUso)
+    let destino = propia && propia.length === w * h ? propia : memoriasRef.current.find(m => m.length === w * h && m !== enUso)
     if (!destino) {
       destino = new Float32Array(w * h)
       memoriasRef.current = [...memoriasRef.current.filter(m => m.length === w * h), destino].slice(-2)
@@ -489,7 +566,8 @@ export default function Analizador(props: PropsAnalizador) {
     const k = claveDe(s, FPS)
     claveRef.current = k
     setClave(k)
-    if (!seguirRef.current) { segRef.current = null; return }
+    /* Mientras el seguimiento lleva un punto del esqueleto, los saltos son suyos. */
+    if (siguiendoRef.current || !seguirRef.current) { segRef.current = null; return }
     const cap = capturar()
     if (!cap) return
     const prev = segRef.current
@@ -586,7 +664,7 @@ export default function Analizador(props: PropsAnalizador) {
     setNat(null); ponTrazos([]); setEnCurso(null); setError(''); setAviso(''); setAvisoSeguir('')
     setTiempo(0); setDuracion(0)
     segRef.current = null; claveRef.current = 0; setClave(0)
-    setCuerpos({}); setAjustesCuerpo({}); setDeteccion(null); setVerCuerpo(true)
+    setCuerpos({}); setPistasCuerpo({}); setDeteccion(null); setVerCuerpo(true); setAvisoCuerpo('')
   }
 
   /* Si se cierra a mitad de buscar el cuerpo, que la búsqueda se retire. */
@@ -594,11 +672,11 @@ export default function Analizador(props: PropsAnalizador) {
 
   const paso = (n: number) => {
     const v = videoRef.current
-    if (v && !buscandoCuerpo) irA(claveDe(v.currentTime, FPS) + n)
+    if (v && !ocupadoVisor) irA(claveDe(v.currentTime, FPS) + n)
   }
   const alternar = () => {
     const v = videoRef.current
-    if (!v || buscandoCuerpo) return
+    if (!v || ocupadoVisor) return
     if (v.paused) { v.playbackRate = vel; v.play().catch(() => {}) } else v.pause()
   }
 
@@ -616,7 +694,7 @@ export default function Analizador(props: PropsAnalizador) {
    * lo buscado hasta ahí se queda.
    */
   const detectarCuerpo = async () => {
-    if (!media || !nat || buscandoCuerpo) return
+    if (!media || !nat || ocupadoVisor) return
     pararRef.current = false
     const corrida = ++corridaRef.current
     setDeteccion({ fase: 'preparando' })
@@ -636,7 +714,7 @@ export default function Analizador(props: PropsAnalizador) {
       return
     }
     if (corrida !== corridaRef.current) return
-    setCuerpos({}); setAjustesCuerpo({}); setVerCuerpo(true)
+    setCuerpos({}); setPistasCuerpo({}); setVerCuerpo(true); setAvisoCuerpo('')
     const lienzo = document.createElement('canvas')
     const f = Math.min(1, 1280 / Math.max(nat.w, nat.h))
     lienzo.width = Math.round(nat.w * f); lienzo.height = Math.round(nat.h * f)
@@ -679,6 +757,83 @@ export default function Analizador(props: PropsAnalizador) {
     setDeteccion(Object.keys(hallados).length ? null : { fase: 'error', mensaje: 'No se ve a nadie en el vídeo.' })
     irA(vuelta)
   }
+  /**
+   * Tras arrastrar un punto del esqueleto: el seguimiento lo lleva fotograma a
+   * fotograma hacia delante y luego hacia atrás (lib/corregir-esqueleto dice
+   * cuándo parar), y lo va poniendo según avanza. Si se pierde, el vídeo se
+   * queda en ese fotograma para corregirlo otra vez; si no, vuelve a donde estaba.
+   */
+  const seguirCorreccion = async (punto: number, k: number, p: Punto) => {
+    const v = videoRef.current
+    if (!v || !nat || siguiendoRef.current || !Number.isFinite(v.duration) || !v.videoWidth) return
+    v.pause()
+    const esc = Math.min(1, LADO_SEGUIR / Math.max(v.videoWidth, v.videoHeight))
+    const n = Math.round(v.videoWidth * esc) * Math.round(v.videoHeight * esc)
+    const base = capturar(new Float32Array(n))
+    const plantilla = base ? tomarPlantilla(base.gris, p.x * esc, p.y * esc) : null
+    const nombre = nombrePunto(punto).toLowerCase()
+    if (!base || !plantilla) {
+      setAvisoCuerpo(`Ahí la imagen no tiene nada que seguir (ropa lisa, una sombra): tu corrección de ${nombre} vale solo para el fotograma ${k}.`)
+      return
+    }
+    siguiendoRef.current = true
+    pararSeguirRef.current = false
+    setSiguiendoCuerpo({ punto, clave: k })
+    const corrida = corridaRef.current
+    const total = Math.max(1, Math.ceil(v.duration * FPS))
+    /* Dos memorias por sentido, que se turnan; la del fotograma corregido no se toca: es de donde salen los dos. */
+    const memorias = [new Float32Array(n), new Float32Array(n)]
+    const correr = (paso: 1 | -1) => {
+      let anterior: Gris = base.gris
+      let estado: PuntoSeguido = { x: p.x * esc, y: p.y * esc, plantilla }
+      let turno = 0
+      return propagar({
+        inicio: k, paso, primero: 0, ultimo: total - 1,
+        ocupado: kk => !!pistasRef.current[punto]?.[kk],
+        seguir: async kk => {
+          await saltarYEsperar(v, centroDe(kk, FPS))
+          if (corrida !== corridaRef.current) return null
+          const cap = capturar(memorias[turno])
+          turno = 1 - turno
+          if (!cap) return null
+          const r = avanzar(anterior, cap.gris, estado)
+          if (!r.bien) return null
+          anterior = cap.gris
+          estado = r.s
+          const donde = { x: r.s.x / esc, y: r.s.y / esc }
+          /* Se pone según avanza: así se ve el punto ir con el cuerpo. */
+          setPistasCuerpo(ps => conPuestos(ps, punto, [{ clave: kk, p: donde, desde: kk - paso }]))
+          setSiguiendoCuerpo({ punto, clave: kk })
+          return donde
+        },
+        detectado: kk => cuerposRef.current[kk]?.[punto],
+        tolerancia: COINCIDE_PROPORCION * Math.max(nat.w, nat.h),
+        parar: () => pararSeguirRef.current || corrida !== corridaRef.current,
+      })
+    }
+    const adelante = await correr(1)
+    const atras = await correr(-1)
+    siguiendoRef.current = false
+    setSiguiendoCuerpo(null)
+    if (corrida !== corridaRef.current) return
+    const puestos = [...adelante.puestos, ...atras.puestos]
+    setPistasCuerpo(ps => conPuestos(ps, punto, puestos))
+    const claves = [k, ...puestos.map(s => s.clave)]
+    const desde = Math.min(...claves), hasta = Math.max(...claves)
+    const dicho = puestos.length
+      ? `Tu corrección de ${nombre} (fotograma ${k}) se ha seguido del ${desde} al ${hasta}`
+      : `Tu corrección de ${nombre} (fotograma ${k}) no se ha podido seguir a los de al lado`
+    const perdido = adelante.fin === 'perdido' ? adelante : atras.fin === 'perdido' ? atras : null
+    if (perdido) {
+      irA(perdido.en)
+      setHerr('mover')
+      setAvisoSeguir(`${dicho}. En el ${perdido.en} el punto se ha vuelto a perder: arrástralo a su sitio y seguirá desde ahí.`)
+    } else {
+      irA(k)
+      setAvisoCuerpo(dicho + (adelante.fin === 'parado' || atras.fin === 'parado' ? '. Lo has parado ahí.' : '. Fuera de ese tramo manda lo que ve la app.'))
+    }
+  }
+
   const cambiarVel = (x: number) => {
     setVel(x)
     if (videoRef.current) videoRef.current.playbackRate = x
@@ -692,7 +847,8 @@ export default function Analizador(props: PropsAnalizador) {
   }
 
   const alPulsar = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!nat) return
+    if (!nat || siguiendoRef.current) return
+    movidoRef.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
     const a = aNatural(e)
     setLupa(a)
@@ -722,9 +878,10 @@ export default function Analizador(props: PropsAnalizador) {
     const a = aNatural(e)
     setLupa(a)
     if (herr === 'mover' && arrastre && 'c' in arrastre) {
-      /* Un punto del esqueleto: la corrección vale para este fotograma. */
-      const k = claveRef.current
-      setAjustesCuerpo(aj => ({ ...aj, [k]: { ...aj[k], [arrastre.c]: a.p } }))
+      /* Un punto del esqueleto: aquí lo pone el entrenador. Al soltar se sigue desde aquí (seguirCorreccion). */
+      const k = claveRef.current, c = arrastre.c
+      movidoRef.current = true
+      setPistasCuerpo(ps => corregirPunto(ps, c, k, a.p))
     } else if (herr === 'mover' && arrastre && 't' in arrastre) {
       /* En uno que se sigue, corregir es poner ese fotograma a mano: lo que se
          siguió desde aquí se borra y se vuelve a seguir desde el punto bueno.
@@ -752,7 +909,11 @@ export default function Analizador(props: PropsAnalizador) {
     }
     /* El aviso de punto perdido se quita al soltar, no al empezar a arrastrar:
        si cambiara a mitad, el vídeo se movería bajo el dedo. */
-    if (arrastre) setAvisoSeguir('')
+    if (arrastre) { setAvisoSeguir(''); setAvisoCuerpo('') }
+    if (arrastre && 'c' in arrastre && movidoRef.current && media?.tipo === 'video') {
+      void seguirCorreccion(arrastre.c, claveRef.current, aNatural(e).p)
+    }
+    movidoRef.current = false
     setProvisional(null); setArrastre(null); setLupa(null)
   }
 
@@ -822,9 +983,21 @@ export default function Analizador(props: PropsAnalizador) {
         valor: m.texto + ' · ' + NOMBRE_FIABILIDAD[m.fiabilidad] + (m.dudosa ? ' · punto dudoso' : ''),
       }))
       : []
-    const extRodilla = verCuerpo && serieRodilla.length >= MINIMO_SERIE ? extremosDe(serieRodilla) : null
-    if (extRodilla) {
-      delEsqueleto.push({ nombre: 'Rodilla en el vídeo (esqueleto)', valor: textoRecorrido('angulo', extRodilla.min.valor, extRodilla.max.valor) })
+    /* Y lo que se ve en la gráfica, en todo el vídeo; si no es del todo fiable, lo dice.
+       Con la rodilla del lado que se mide queda igual que antes: «Rodilla en el vídeo (esqueleto)». */
+    const enElVideoCuerpo = (c: ClaveGrafica, serie: Serie): Medida | null => {
+      const e = serie.length >= MINIMO_SERIE ? extremosDe(serie) : null
+      if (!e) return null
+      const f = fiabilidadDe(c)
+      return {
+        nombre: NOMBRE_MEDIDA[c] + ' en el vídeo (esqueleto' + (ladoGraf !== ladoMedido ? ', lado ' + LADO_CUERPO[ladoGraf] : '') + ')',
+        valor: textoRecorrido('angulo', e.min.valor, e.max.valor) + (f === 'fiable' ? '' : ' · ' + NOMBRE_FIABILIDAD[f]),
+      }
+    }
+    if (verCuerpo) {
+      for (const m of [enElVideoCuerpo(graf.clave, serieGraf), graf.encima ? enElVideoCuerpo(graf.encima, serieEncima) : null]) {
+        if (m) delEsqueleto.push(m)
+      }
     }
     /* La nota que sugirió la app, al lado de la que se pone: para ver con el tiempo cuántas veces coinciden. */
     if (sugerencia && sugerencia.criterios.length) {
@@ -913,7 +1086,14 @@ export default function Analizador(props: PropsAnalizador) {
             {media && (
               <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 {/* El esqueleto: detectarlo, ver cómo va, o enseñarlo y esconderlo. */}
-                {nat && (deteccion && deteccion.fase !== 'error' ? (
+                {nat && siguiendoCuerpo ? (
+                  <span className="flex items-center gap-2 text-[12px] text-orange-200" role="status">
+                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                    Siguiendo {nombrePunto(siguiendoCuerpo.punto).toLowerCase()} · fotograma {siguiendoCuerpo.clave}
+                    <button onClick={() => { pararSeguirRef.current = true }}
+                      className="px-2 py-1 rounded-md border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition">Parar</button>
+                  </span>
+                ) : nat && (deteccion && deteccion.fase !== 'error' ? (
                   <span className="flex items-center gap-2 text-[12px] text-gray-300" role="status">
                     <span aria-hidden="true" className="w-2 h-2 rounded-full bg-white animate-pulse" />
                     {deteccion.fase === 'buscando' ? `Buscando el cuerpo · ${deteccion.hechos} de ${deteccion.total}`
@@ -1018,9 +1198,9 @@ export default function Analizador(props: PropsAnalizador) {
               {media.tipo === 'video' && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => paso(-1)} disabled={buscandoCuerpo} title="Fotograma anterior (←)" className="h-9 min-w-9 px-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition">‹</button>
-                    <button onClick={alternar} disabled={buscandoCuerpo} title="Reproducir (espacio)" className="h-9 px-4 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-semibold disabled:opacity-40 transition">{enMarcha ? 'Pausa' : '▶'}</button>
-                    <button onClick={() => paso(1)} disabled={buscandoCuerpo} title="Fotograma siguiente (→)" className="h-9 min-w-9 px-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition">›</button>
+                    <button onClick={() => paso(-1)} disabled={ocupadoVisor} title="Fotograma anterior (←)" className="h-9 min-w-9 px-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition">‹</button>
+                    <button onClick={alternar} disabled={ocupadoVisor} title="Reproducir (espacio)" className="h-9 px-4 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-semibold disabled:opacity-40 transition">{enMarcha ? 'Pausa' : '▶'}</button>
+                    <button onClick={() => paso(1)} disabled={ocupadoVisor} title="Fotograma siguiente (→)" className="h-9 min-w-9 px-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition">›</button>
                     <div className="flex gap-1 ml-1">
                       {VELOCIDADES.map(x => (
                         <button key={x} onClick={() => cambiarVel(x)}
@@ -1041,13 +1221,47 @@ export default function Analizador(props: PropsAnalizador) {
                       <b className="text-gray-200">{tiempo.toFixed(2).replace('.', ',')} s</b> / {duracion.toFixed(2).replace('.', ',')} s
                     </span>
                   </div>
-                  <input type="range" min={0} max={duracion || 0} step={1 / FPS} value={tiempo} disabled={buscandoCuerpo}
+                  <input type="range" min={0} max={duracion || 0} step={1 / FPS} value={tiempo} disabled={ocupadoVisor}
                     onChange={e => irA(claveDe(Number(e.target.value), FPS))}
                     aria-label="Posición del vídeo" className="w-full accent-orange-500" />
+                  {tramos.length + correcciones.length > 0 && (() => {
+                    const total = Math.max(1, Math.ceil(duracion * FPS))
+                    const pos = (k: number) => Math.min(100, (k / total) * 100) + '%'
+                    const ancho = (a: number, b: number) => Math.max(0.6, ((b - a + 1) / total) * 100) + '%'
+                    return (
+                      <div className="flex items-center gap-2.5">
+                        <div className="relative flex-1 h-3 rounded bg-gray-800/80 overflow-hidden"
+                          title="En ámbar, los tramos con algún punto dudoso; en naranja, lo seguido desde tus correcciones">
+                          {tramos.map(t => (
+                            <button key={'d' + t.desde} onClick={() => irA(t.desde)} disabled={ocupadoVisor}
+                              aria-label={'Ir al tramo dudoso del ' + t.desde + ' al ' + t.hasta}
+                              className="absolute inset-y-0 bg-amber-400/45 hover:bg-amber-400/70 border-x border-amber-400/80 transition"
+                              style={{ left: pos(t.desde), width: ancho(t.desde, t.hasta) }} />
+                          ))}
+                          {correcciones.map(c => (
+                            <span key={'c' + c.punto + ':' + c.fotograma} aria-hidden="true" className="absolute bottom-0 h-1 bg-orange-500"
+                              style={{ left: pos(c.desde), width: ancho(c.desde, c.hasta) }} />
+                          ))}
+                          {correcciones.map(c => (
+                            <span key={'r' + c.punto + ':' + c.fotograma} aria-hidden="true" className="absolute top-0.5 w-2 h-2 -ml-1 rotate-45 bg-orange-400"
+                              style={{ left: pos(c.fotograma) }} />
+                          ))}
+                          <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-white/80" style={{ left: pos(clave) }} />
+                        </div>
+                        {siguienteTramo && (
+                          <button onClick={() => irA(siguienteTramo.desde)} disabled={ocupadoVisor}
+                            className="flex-none text-[11.5px] text-amber-300 hover:text-white underline decoration-dotted underline-offset-4 disabled:opacity-40">
+                            Siguiente tramo dudoso →
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {/* Alto fijo: que cambiar de mensaje no mueva el vídeo. */}
                   <div className="min-h-[2.9em] text-[11.5px] leading-snug">
                     {avisoSeguir
                       ? <p className="text-red-300" role="alert">{avisoSeguir}</p>
+                      : avisoCuerpo ? <p className="text-orange-200/90" role="status">{avisoCuerpo}</p>
                       : ayudaSeguir && <p className={fueraDelTramo && haySeguidos ? 'text-amber-300/90' : 'text-gray-500'}>{ayudaSeguir}</p>}
                   </div>
                 </>
@@ -1097,21 +1311,87 @@ export default function Analizador(props: PropsAnalizador) {
                     <span className={'inline-block mr-1.5 px-1.5 py-px rounded-full text-[10.5px] font-semibold ' + PASTILLA_FIABILIDAD[m.fiabilidad]}>
                       {NOMBRE_FIABILIDAD[m.fiabilidad]}
                     </span>
-                    {m.dudosa ? 'Sale de un punto que el modelo adivina (en ámbar): arrástralo a su sitio con «mover».' : m.porque}
+                    {m.dudosa ? 'Sale de un punto que el modelo adivina: arrástralo a su sitio con «mover».' : m.porque}
                   </span>
                 </div>
               ))}
               <p className="text-[11px] text-gray-500 leading-snug">
-                La app no pone la nota: mide. Si un punto está mal, arrástralo con «mover»; la corrección vale para este fotograma.
+                La app no pone la nota: mide. Si un punto está mal, arrástralo con «mover»: desde ahí se sigue solo, hacia delante y hacia atrás, hasta que se vuelve a perder.
               </p>
             </div>
           )}
 
-          {media?.tipo === 'video' && (recorridos.length > 0 || (verCuerpo && serieRodilla.length >= MINIMO_SERIE)) && (
+          {hayCuerpo && correcciones.length > 0 && (
+            <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5 flex flex-col gap-2">
+              <p className="text-[13.5px] font-semibold">Tus correcciones</p>
+              {correcciones.map(c => (
+                <div key={c.punto + ':' + c.fotograma} className="rounded-lg bg-gray-800/60 border border-gray-800 px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 items-baseline">
+                  <button onClick={() => irA(c.fotograma)} disabled={ocupadoVisor} title="Ir a ese fotograma"
+                    className="text-left text-[12.5px] hover:text-white disabled:opacity-60">{nombrePunto(c.punto)} · fotograma {c.fotograma}</button>
+                  <button onClick={() => { setPistasCuerpo(ps => deshacerCorreccion(ps, c.punto, c.fotograma)); setAvisoSeguir(''); setAvisoCuerpo('') }} disabled={ocupadoVisor}
+                    className="text-[12px] text-sky-300 hover:text-white disabled:opacity-40">deshacer</button>
+                  <span className="col-span-2 text-[11px] text-gray-500">
+                    {c.desde === c.hasta ? 'Solo ese fotograma.' : 'Se ha seguido del ' + c.desde + ' al ' + c.hasta + '.'}
+                  </span>
+                </div>
+              ))}
+              <p className="text-[11px] text-gray-500 leading-snug">«Deshacer» vuelve a lo que vio la app, pero solo en el tramo que salió de esa corrección.</p>
+            </div>
+          )}
+
+          {media?.tipo === 'video' && (recorridos.length > 0 || (verCuerpo && hayCuerpo && vista === 'perfil')) && (
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5 flex flex-col gap-3">
               <p className="text-[13.5px] font-semibold">A lo largo del vídeo</p>
-              {verCuerpo && serieRodilla.length >= MINIMO_SERIE && (
-                <GraficaRecorrido nombre="Rodilla (esqueleto)" tipo="angulo" serie={serieRodilla} clave={clave} onIr={irA} />
+              {verCuerpo && hayCuerpo && vista === 'perfil' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-1" role="group" aria-label="Qué medida del esqueleto se dibuja">
+                    {MEDIDAS_GRAFICA.map(c => {
+                      const sinComprobar = fiabilidadDe(c) === 'sin_comprobar'
+                      const activa = graf.clave === c
+                      return (
+                        <button key={c} onClick={() => setGraf(g => ({ ...g, clave: c, encima: g.encima === c ? null : g.encima }))} aria-pressed={activa}
+                          className={'text-[11.5px] px-2 py-1 rounded-md border transition ' + (sinComprobar ? 'border-dashed ' : '') + (activa
+                            ? 'border-orange-500/60 bg-orange-500/15 text-orange-300' : 'border-gray-700 text-gray-400 hover:text-white')}>
+                          {NOMBRE_CORTO[c]}{sinComprobar && <span className="ml-1 text-[9.5px] text-amber-300">con margen</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-gray-500">
+                    <span>Lado</span>
+                    {(['i', 'd'] as LadoCuerpo[]).map(l => (
+                      <button key={l} onClick={() => setGraf(g => ({ ...g, lado: l }))} aria-pressed={ladoGraf === l}
+                        className={'px-2 py-1 rounded-md border transition ' + (ladoGraf === l ? 'border-gray-500 bg-gray-800 text-white' : 'border-gray-800 text-gray-500 hover:text-gray-300')}>
+                        {l === 'i' ? 'Izquierdo' : 'Derecho'}
+                      </button>
+                    ))}
+                    <label className="ml-auto flex items-center gap-1.5">
+                      Encima
+                      <select value={graf.encima ?? ''} onChange={e => setGraf(g => ({ ...g, encima: (e.target.value || null) as ClaveGrafica | null }))}
+                        className="bg-gray-800 border border-gray-700 rounded-md px-1.5 py-1 text-[11.5px] text-gray-200">
+                        <option value="">ninguna</option>
+                        {MEDIDAS_GRAFICA.filter(c => c !== graf.clave).map(c => (
+                          <option key={c} value={c}>{NOMBRE_CORTO[c]}{fiabilidadDe(c) === 'sin_comprobar' ? ' (con margen)' : ''}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {conMargen.length > 0 && (
+                    <p role="note" className="rounded-lg border border-amber-400/40 bg-amber-400/[0.07] px-3 py-2 text-[11.5px] text-amber-100/90 leading-snug">
+                      <b className="text-amber-300">⚠ {conMargen.map(c => NOMBRE_CORTO[c]).join(' y ')} {conMargen.length > 1 ? 'van' : 'va'} con margen.</b>{' '}
+                      Los estudios en los que se basa la app comprueban la rodilla, el tronco y la tibia vistos de perfil, y dan la cadera y el fémur con más margen. El tobillo, el hombro y el codo no están comprobados: sirven para ver cómo cambian a lo largo del movimiento, no para fiarse del número exacto.
+                    </p>
+                  )}
+                  {serieGraf.length >= MINIMO_SERIE ? (
+                    <GraficaRecorrido nombre={NOMBRE_CORTO[graf.clave] + ' · lado ' + LADO_CUERPO[ladoGraf]} tipo="angulo" serie={serieGraf} clave={clave} onIr={irA}
+                      extra={graf.encima && serieEncima.length >= MINIMO_SERIE ? { nombre: NOMBRE_CORTO[graf.encima], serie: serieEncima } : undefined} />
+                  ) : (
+                    <p className="text-[12px] text-gray-500">De esta medida hay pocos fotogramas fiables en este lado para dibujarla.</p>
+                  )}
+                  {graf.encima && serieGraf.length >= MINIMO_SERIE && serieEncima.length < MINIMO_SERIE && (
+                    <p className="text-[11px] text-gray-500">De {NOMBRE_CORTO[graf.encima].toLowerCase()} hay pocos fotogramas fiables en este lado: no se dibuja encima.</p>
+                  )}
+                </div>
               )}
               {recorridos.map(r => (
                 <GraficaRecorrido key={r.id} nombre={r.nombre} tipo={r.tipo} serie={r.serie} clave={clave} onIr={irA} />

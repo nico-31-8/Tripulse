@@ -78,16 +78,32 @@ export function visiblesEn(trazos: TrazoVivo[], clave: number): Trazo[] {
  */
 export function corregir(pista: Pista, clave: number, puntos: Punto[], perdidos: number[] = []): Pista {
   const out: Pista = { ...pista, [clave]: perdidos.length ? { p: puntos, perdidos } : { p: puntos } }
+  for (const k of derivadosDe(out, clave)) if (k !== clave) delete out[k]
+  return out
+}
+
+/**
+ * El fotograma `clave` y todos los que salieron de él, directa o indirectamente
+ * (siguiendo `desde`), hacia delante y hacia atrás.
+ */
+export function derivadosDe(pista: Pista, clave: number): Set<number> {
   const fuera = new Set<number>([clave])
   let otro = true
   while (otro) {
     otro = false
-    for (const k of Object.keys(out).map(Number)) {
-      const d = out[k].desde
+    for (const k of Object.keys(pista).map(Number)) {
+      const d = pista[k].desde
       if (k !== clave && !fuera.has(k) && d != null && fuera.has(d)) { fuera.add(k); otro = true }
     }
   }
-  for (const k of fuera) if (k !== clave) delete out[k]
+  return fuera
+}
+
+/** Quita lo que puso el entrenador en `clave` y todo lo que el seguimiento sacó de ahí. Lo demás se queda. */
+export function deshacerDesde(pista: Pista, clave: number): Pista {
+  if (!pista[clave]) return pista
+  const out: Pista = { ...pista }
+  for (const k of derivadosDe(pista, clave)) delete out[k]
   return out
 }
 

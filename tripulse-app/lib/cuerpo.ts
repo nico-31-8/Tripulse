@@ -13,6 +13,8 @@
 // cadera: de 4 a 11° (Yoma 2025). Por eso, de perfil, rodilla, tronco y tibia
 // salen «fiables» y lo que depende del punto de la cadera «con margen»; y de
 // frente no se da ningún número: el valgo lo juzga el entrenador a ojo.
+// El tobillo, el hombro y el codo (v3, pedidos el 17-10-2026) no salen en esos
+// estudios: van «con margen · sin comprobar», y el visor lo avisa al dibujarlos.
 //
 // QUÉ LADO SE MIDE. En las pruebas de dos lados, el que se puntúa (la pierna
 // que pasa la valla, la de delante en la zancada). En las de uno, el que está
@@ -95,11 +97,38 @@ export function ladoAMedir(lado: Lado, fotogramas: Cuerpo[]): LadoCuerpo {
   return lado === 'izq' ? 'i' : lado === 'der' ? 'd' : ladoCercano(fotogramas)
 }
 
-export type Fiabilidad = 'fiable' | 'margen' | 'no'
+export type Fiabilidad = 'fiable' | 'margen' | 'sin_comprobar' | 'no'
 
-export const NOMBRE_FIABILIDAD: Record<Fiabilidad, string> = { fiable: 'fiable', margen: 'con margen', no: 'no se da' }
+export const NOMBRE_FIABILIDAD: Record<Fiabilidad, string> = {
+  fiable: 'fiable', margen: 'con margen', sin_comprobar: 'con margen · sin comprobar', no: 'no se da',
+}
 
-export type ClaveMedida = 'rodilla' | 'cadera' | 'tronco' | 'tibia' | 'tronco_tibia' | 'femur' | 'frontal'
+export type ClaveMedida = 'rodilla' | 'cadera' | 'tronco' | 'tibia' | 'tronco_tibia' | 'femur' | 'tobillo' | 'hombro' | 'codo' | 'frontal'
+
+/** Las que tienen número de perfil y se pueden dibujar a lo largo del vídeo. */
+export type ClaveGrafica = Exclude<ClaveMedida, 'frontal'>
+
+export const MEDIDAS_GRAFICA: ClaveGrafica[] = ['rodilla', 'cadera', 'tronco', 'tibia', 'tronco_tibia', 'femur', 'tobillo', 'hombro', 'codo']
+
+/** El nombre de cada medida, como sale en el panel y se guarda. */
+export const NOMBRE_MEDIDA: Record<ClaveGrafica, string> = {
+  rodilla: 'Rodilla', cadera: 'Cadera', tronco: 'Tronco frente a la vertical', tibia: 'Tibia frente a la vertical',
+  tronco_tibia: 'Tronco frente a la tibia', femur: 'Fémur frente a la horizontal', tobillo: 'Tobillo', hombro: 'Hombro', codo: 'Codo',
+}
+
+/** El nombre corto, para elegirla en la gráfica. */
+export const NOMBRE_CORTO: Record<ClaveGrafica, string> = {
+  rodilla: 'Rodilla', cadera: 'Cadera', tronco: 'Tronco', tibia: 'Tibia', tronco_tibia: 'Tronco frente a la tibia',
+  femur: 'Fémur', tobillo: 'Tobillo', hombro: 'Hombro', codo: 'Codo',
+}
+
+/** Cuánto fiarse de cada una, de perfil (arriba, de dónde sale). */
+const FIABILIDAD: Record<ClaveGrafica, Fiabilidad> = {
+  rodilla: 'fiable', cadera: 'margen', tronco: 'fiable', tibia: 'fiable', tronco_tibia: 'fiable', femur: 'margen',
+  tobillo: 'sin_comprobar', hombro: 'sin_comprobar', codo: 'sin_comprobar',
+}
+
+export const fiabilidadDe = (clave: ClaveGrafica): Fiabilidad => FIABILIDAD[clave]
 
 export interface MedidaCuerpo {
   clave: ClaveMedida
@@ -123,6 +152,7 @@ const PORQUE = {
   juntas: 'Sale del tronco y de la tibia, los dos fiables de perfil.',
   femur: 'Depende del punto de la cadera, el que más baila (Yoma 2025).',
   frontal: 'El plano frontal sale pobre con una cámara (Scataglini 2024): lo juzga el entrenador a ojo.',
+  sinComprobar: 'No sale en los estudios en que se basa la app: sirve para ver cómo cambia a lo largo del movimiento, no para fiarse del número exacto.',
 }
 
 /**
@@ -151,12 +181,17 @@ export function medidasCuerpo(c: Cuerpo, lado: LadoCuerpo, vista: Vista, inclina
   const pt = (p: Parte) => c[indice(p, lado)]
   const duda = (...ps: Parte[]) => ps.some(p => (pt(p)?.v ?? 0) < VISIBLE_MINIMO)
   const [hombro, cadera, rodilla, tobillo] = [pt('hombro'), pt('cadera'), pt('rodilla'), pt('tobillo')]
+  const [codo, muneca, puntera] = [pt('codo'), pt('muneca'), pt('puntera')]
 
   const rod = anguloEnVertice(cadera, rodilla, tobillo)
   const cad = anguloEnVertice(hombro, cadera, rodilla)
   const tronco = frenteAVertical(cadera, hombro, inclinacion)
   const tibia = frenteAVertical(tobillo, rodilla, inclinacion)
   const femur = cadera && rodilla ? femurFrenteAHorizontal(cadera, rodilla, inclinacion) : null
+  /* Sin comprobar (v3): el pie frente a la pierna, el brazo frente al tronco y el codo. */
+  const tob = anguloEnVertice(rodilla, tobillo, puntera)
+  const hom = anguloEnVertice(cadera, hombro, codo)
+  const cod = anguloEnVertice(hombro, codo, muneca)
 
   let textoJuntas = '—', juntas: number | null = null
   if (tronco != null && tibia != null) {
@@ -168,13 +203,19 @@ export function medidasCuerpo(c: Cuerpo, lado: LadoCuerpo, vista: Vista, inclina
     : Math.abs(femur) < 2 ? 'horizontal'
     : `${Math.round(Math.abs(femur))}° por ${femur > 0 ? 'debajo' : 'encima'}`
 
+  const m = (clave: ClaveGrafica, valor: number | null, texto: string, porque: string, dudosa: boolean): MedidaCuerpo =>
+    ({ clave, nombre: NOMBRE_MEDIDA[clave], valor, texto, fiabilidad: FIABILIDAD[clave], porque, dudosa })
+  const enGrados = (g: number | null) => (g == null ? '—' : grados(g))
   return [
-    { clave: 'rodilla', nombre: 'Rodilla', valor: rod, texto: rod == null ? '—' : grados(rod), fiabilidad: 'fiable', porque: PORQUE.rodilla, dudosa: duda('cadera', 'rodilla', 'tobillo') },
-    { clave: 'cadera', nombre: 'Cadera', valor: cad, texto: cad == null ? '—' : grados(cad), fiabilidad: 'margen', porque: PORQUE.cadera, dudosa: duda('hombro', 'cadera', 'rodilla') },
-    { clave: 'tronco', nombre: 'Tronco frente a la vertical', valor: tronco, texto: tronco == null ? '—' : grados(tronco), fiabilidad: 'fiable', porque: PORQUE.sagital, dudosa: duda('hombro', 'cadera') },
-    { clave: 'tibia', nombre: 'Tibia frente a la vertical', valor: tibia, texto: tibia == null ? '—' : grados(tibia), fiabilidad: 'fiable', porque: PORQUE.sagital, dudosa: duda('rodilla', 'tobillo') },
-    { clave: 'tronco_tibia', nombre: 'Tronco frente a la tibia', valor: juntas, texto: textoJuntas, fiabilidad: 'fiable', porque: PORQUE.juntas, dudosa: duda('hombro', 'cadera', 'rodilla', 'tobillo') },
-    { clave: 'femur', nombre: 'Fémur frente a la horizontal', valor: femur, texto: textoFemur, fiabilidad: 'margen', porque: PORQUE.femur, dudosa: duda('cadera', 'rodilla') },
+    m('rodilla', rod, enGrados(rod), PORQUE.rodilla, duda('cadera', 'rodilla', 'tobillo')),
+    m('cadera', cad, enGrados(cad), PORQUE.cadera, duda('hombro', 'cadera', 'rodilla')),
+    m('tronco', tronco, enGrados(tronco), PORQUE.sagital, duda('hombro', 'cadera')),
+    m('tibia', tibia, enGrados(tibia), PORQUE.sagital, duda('rodilla', 'tobillo')),
+    m('tronco_tibia', juntas, textoJuntas, PORQUE.juntas, duda('hombro', 'cadera', 'rodilla', 'tobillo')),
+    m('femur', femur, textoFemur, PORQUE.femur, duda('cadera', 'rodilla')),
+    m('tobillo', tob, enGrados(tob), PORQUE.sinComprobar, duda('rodilla', 'tobillo', 'puntera')),
+    m('hombro', hom, enGrados(hom), PORQUE.sinComprobar, duda('cadera', 'hombro', 'codo')),
+    m('codo', cod, enGrados(cod), PORQUE.sinComprobar, duda('hombro', 'codo', 'muneca')),
   ]
 }
 
@@ -182,6 +223,38 @@ export function medidasCuerpo(c: Cuerpo, lado: LadoCuerpo, vista: Vista, inclina
 export function dudosos(c: Cuerpo, lado: LadoCuerpo, vista: Vista): number[] {
   if (vista !== 'perfil') return []
   return TRONCO_Y_PIERNA.map(p => indice(p, lado)).filter(i => (c[i]?.v ?? 0) < VISIBLE_MINIMO)
+}
+
+/**
+ * Los tramos del vídeo con algún punto dudoso (los mismos que salen en ámbar),
+ * para marcarlos debajo del vídeo e ir directo a ellos. Fotogramas seguidos;
+ * uno sin esqueleto corta el tramo.
+ */
+export function tramosDudosos(
+  fotogramas: Record<number, Cuerpo>, ajustes: Record<number, Ajustes>, lado: LadoCuerpo, vista: Vista,
+): { desde: number; hasta: number }[] {
+  const out: { desde: number; hasta: number }[] = []
+  for (const k of Object.keys(fotogramas).map(Number).sort((a, b) => a - b)) {
+    if (!dudosos(conAjustes(fotogramas[k], ajustes[k]), lado, vista).length) continue
+    const ult = out[out.length - 1]
+    if (ult && ult.hasta === k - 1) ult.hasta = k
+    else out.push({ desde: k, hasta: k })
+  }
+  return out
+}
+
+const NOMBRE_PARTE: Record<Parte, [string, 'a' | 'o']> = {
+  oreja: ['Oreja', 'a'], hombro: ['Hombro', 'o'], codo: ['Codo', 'o'], muneca: ['Muñeca', 'a'], cadera: ['Cadera', 'a'],
+  rodilla: ['Rodilla', 'a'], tobillo: ['Tobillo', 'o'], talon: ['Talón', 'o'], puntera: ['Punta del pie', 'o'],
+}
+
+/** «Rodilla derecha», «Hombro izquierdo»: el nombre de un punto de MediaPipe que se dibuja. */
+export function nombrePunto(i: number): string {
+  const e = Object.entries(P).find(([, v]) => v === i)
+  if (!e) return 'Punto ' + i
+  const [parte, l] = e[0].split('_') as [Parte, LadoCuerpo]
+  const [nombre, g] = NOMBRE_PARTE[parte]
+  return nombre + ' ' + (l === 'i' ? 'izquierd' : 'derech') + g
 }
 
 /** Grados que se aparta un fotograma de sus vecinos para tomarlo por un fallo del detector. */

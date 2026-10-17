@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   conAjustes, descruzar, DIBUJADOS, dudosos, femurFrenteAHorizontal, indice, ladoAMedir, ladoCercano, medidasCuerpo, P, serieCuerpo, sinPicos,
-  VISIBLE_MINIMO, type Cuerpo, type LadoCuerpo, type Parte,
+  VISIBLE_MINIMO, MEDIDAS_GRAFICA, NOMBRE_MEDIDA, fiabilidadDe, nombrePunto, tramosDudosos,
+  type Cuerpo, type LadoCuerpo, type Parte,
 } from './cuerpo'
 
 /** Un cuerpo de 33 puntos, todos bien vistos en el origen, con los que se digan colocados. */
@@ -48,7 +49,10 @@ describe('lo que se mide del esqueleto, de perfil', () => {
 
   it('cuánto fiarse: rodilla, tronco y tibia fiables; lo que pasa por la cadera, con margen', () => {
     const f = Object.fromEntries(medidasCuerpo(EN_ESCUADRA, 'd', 'perfil').map(m => [m.clave, m.fiabilidad]))
-    expect(f).toEqual({ rodilla: 'fiable', cadera: 'margen', tronco: 'fiable', tibia: 'fiable', tronco_tibia: 'fiable', femur: 'margen' })
+    expect(f).toEqual({
+      rodilla: 'fiable', cadera: 'margen', tronco: 'fiable', tibia: 'fiable', tronco_tibia: 'fiable', femur: 'margen',
+      tobillo: 'sin_comprobar', hombro: 'sin_comprobar', codo: 'sin_comprobar',
+    })
     expect(valor(EN_ESCUADRA, 'rodilla').porque).toMatch(/Yoma 2025/)
   })
 
@@ -204,5 +208,73 @@ describe('el pico de un movimiento rápido no es un fallo', () => {
     const v = [2, 1.62, 1.29, 1.0, 0.81, 0.64, 0.47, 0.3, 0.47, 0.64, 0.81, 1.0, 1.29]
     const s = sinPicos(v.map((valor, clave) => ({ clave, valor })), 0.25)
     expect(s.map(x => x.valor)).toContain(0.3)
+  })
+})
+
+/* v3 (17-10-2026): tobillo, hombro y codo, con su aviso de margen. */
+describe('las medidas sin comprobar', () => {
+  /* El pie en escuadra con la tibia, el brazo al frente en escuadra con el tronco y el codo doblado a 90°. */
+  const CON_BRAZO = cuerpo({
+    tobillo: [0, 100], rodilla: [0, 0], cadera: [-100, 0], hombro: [-100, -100], puntera: [50, 100],
+    codo: [0, -100], muneca: [0, -200],
+  })
+
+  it('tobillo, hombro y codo, de perfil', () => {
+    expect(valor(CON_BRAZO, 'tobillo').valor).toBeCloseTo(90)
+    expect(valor(CON_BRAZO, 'hombro').valor).toBeCloseTo(90)
+    expect(valor(CON_BRAZO, 'codo').valor).toBeCloseTo(90)
+  })
+
+  it('van «sin comprobar», y dicen por qué', () => {
+    for (const c of ['tobillo', 'hombro', 'codo']) {
+      expect(valor(CON_BRAZO, c).fiabilidad).toBe('sin_comprobar')
+      expect(valor(CON_BRAZO, c).porque).toMatch(/no para fiarse del número exacto/)
+    }
+  })
+
+  it('la punta del pie adivinada hace dudoso el tobillo, no la rodilla', () => {
+    const c = cuerpo({ tobillo: [0, 100], rodilla: [0, 0], cadera: [-100, 0], hombro: [-100, -100], puntera: [50, 100, 0.2] })
+    expect(valor(c, 'tobillo').dudosa).toBe(true)
+    expect(valor(c, 'rodilla').dudosa).toBe(false)
+  })
+
+  it('las que se pueden dibujar son todas las de perfil, cada una con su nombre del panel', () => {
+    expect(MEDIDAS_GRAFICA).not.toContain('frontal')
+    const nombres = Object.fromEntries(medidasCuerpo(CON_BRAZO, 'd', 'perfil').map(m => [m.clave, m.nombre]))
+    for (const c of MEDIDAS_GRAFICA) expect(nombres[c]).toBe(NOMBRE_MEDIDA[c])
+    expect(fiabilidadDe('rodilla')).toBe('fiable')
+    expect(fiabilidadDe('codo')).toBe('sin_comprobar')
+  })
+})
+
+describe('el nombre de cada punto', () => {
+  it('con su lado, concordando', () => {
+    expect(nombrePunto(P.rodilla_d)).toBe('Rodilla derecha')
+    expect(nombrePunto(P.hombro_i)).toBe('Hombro izquierdo')
+    expect(nombrePunto(P.muneca_d)).toBe('Muñeca derecha')
+    expect(nombrePunto(P.puntera_i)).toBe('Punta del pie izquierdo')
+  })
+})
+
+describe('los tramos dudosos', () => {
+  /* Del 0 al 9, sin el 7. La rodilla derecha, adivinada en el 2, 3, 4, 6 y 8. */
+  const fotos: Record<number, Cuerpo> = {}
+  for (let k = 0; k < 10; k++) {
+    if (k === 7) continue
+    const v = [2, 3, 4, 6, 8].includes(k) ? 0.2 : 0.95
+    fotos[k] = cuerpo({ tobillo: [0, 100], rodilla: [0, 0, v], cadera: [-100, 0], hombro: [-100, -100] })
+  }
+
+  it('fotogramas seguidos hacen un tramo; uno sin esqueleto lo corta', () => {
+    expect(tramosDudosos(fotos, {}, 'd', 'perfil')).toEqual([{ desde: 2, hasta: 4 }, { desde: 6, hasta: 6 }, { desde: 8, hasta: 8 }])
+  })
+
+  it('lo corregido a mano ya no es dudoso', () => {
+    expect(tramosDudosos(fotos, { 3: { [P.rodilla_d]: { x: 0, y: 0 } } }, 'd', 'perfil'))
+      .toEqual([{ desde: 2, hasta: 2 }, { desde: 4, hasta: 4 }, { desde: 6, hasta: 6 }, { desde: 8, hasta: 8 }])
+  })
+
+  it('de frente no hay tramos: no se mide nada', () => {
+    expect(tramosDudosos(fotos, {}, 'd', 'frente')).toEqual([])
   })
 })

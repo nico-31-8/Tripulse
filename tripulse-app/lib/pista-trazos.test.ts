@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  centroDe, claveDe, corregir, empezarPista, enFotograma, extremosDe, moverPunto, pasoDePista, serieDe, visiblesEn,
-  type Pista, type TrazoVivo,
+  centroDe, claveDe, corregir, derivadosDe, deshacerDesde, empezarPista, enFotograma, extremosDe, moverPunto, pasoDePista,
+  serieDe, visiblesEn, type Pista, type TrazoVivo,
 } from './pista-trazos'
 import { nombresDe, textoRecorrido, textoValor, valorDe } from './trazos-fotograma'
 import { anguloEnVertice } from './geometria-fotograma'
@@ -160,5 +160,28 @@ describe('nombres y valores de lo que se mide', () => {
     expect(textoRecorrido('angulo', 78.2, 171.6)).toBe('de 78° a 172°')
     expect(textoRecorrido('linea', 4, 31)).toBe('de 4° a 31° de la vertical')
     expect(textoRecorrido('distancia', 1.2, 3.44)).toBe('de 1,2 a 3,4 palmas')
+  })
+})
+
+describe('deshacer desde un fotograma', () => {
+  /* El 10 lo puso el entrenador; del 11 al 13 se siguieron desde él, y el 20 es otra corrección con su 21. */
+  const pista: Pista = {
+    10: { p: [{ x: 0, y: 0 }] },
+    11: { p: [{ x: 1, y: 0 }], desde: 10 }, 12: { p: [{ x: 2, y: 0 }], desde: 11 }, 13: { p: [{ x: 3, y: 0 }], desde: 12 },
+    9: { p: [{ x: -1, y: 0 }], desde: 10 },
+    20: { p: [{ x: 9, y: 9 }] }, 21: { p: [{ x: 9, y: 8 }], desde: 20 },
+  }
+
+  it('lo que salió de un fotograma, en los dos sentidos', () => {
+    expect([...derivadosDe(pista, 10)].sort((a, b) => a - b)).toEqual([9, 10, 11, 12, 13])
+    expect([...derivadosDe(pista, 12)].sort((a, b) => a - b)).toEqual([12, 13])
+  })
+
+  it('quita la corrección y lo seguido de ella; la otra se queda', () => {
+    expect(Object.keys(deshacerDesde(pista, 10)).map(Number)).toEqual([20, 21])
+  })
+
+  it('un fotograma sin sitio propio no quita nada', () => {
+    expect(deshacerDesde(pista, 15)).toBe(pista)
   })
 })

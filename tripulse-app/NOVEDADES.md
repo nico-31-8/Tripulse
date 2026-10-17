@@ -14,6 +14,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 17 de octubre de 2026 · Analizador de vídeo: corregir el esqueleto y elegir la gráfica
+
+- **Corregir el esqueleto ya no es fotograma a fotograma.** Si la app pone mal
+  un punto (la rodilla tapada, un brazo que se cruza), lo arrastras una vez y se
+  sigue solo hacia delante y hacia atrás. Para cuando la app lo vuelve a ver
+  bien, o cuando se vuelve a perder: entonces el vídeo se queda en ese fotograma
+  para que lo corrijas otra vez.
+- Debajo del vídeo, los tramos donde el esqueleto duda salen en ámbar, con un
+  «Siguiente tramo dudoso», y lo que has corregido, en naranja. En el panel, cada
+  corrección con su «deshacer».
+- **La gráfica «A lo largo del vídeo» ya no es solo de la rodilla.** Eliges la
+  medida (rodilla, cadera, tronco, tibia, tronco frente a la tibia o fémur) y el
+  lado, y puedes poner otra encima para ver cuándo se mueve cada una.
+- **Nuevas: tobillo, hombro y codo**, marcadas «con margen · sin comprobar»: los
+  estudios en los que se basa la app no las validan. Sirven para ver cómo cambian
+  a lo largo del movimiento, no para fiarse del número exacto, y la app lo avisa
+  al dibujarlas.
+
+**Números que pueden cambiar:** ninguno. Al guardar, con la rodilla del lado que
+se mide queda igual que antes; si estás viendo otra medida, se guarda esa.
+
+---
+
 ## 17 de octubre de 2026 · COROS: arreglada la lectura de sus datos
 
 El primer reloj COROS conectado nos enseñó cómo contesta COROS, y la app le
