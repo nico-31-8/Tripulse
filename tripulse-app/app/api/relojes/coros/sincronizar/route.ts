@@ -6,10 +6,13 @@
 // datos de verdad en vez de adivinando:
 //
 //   1. Renueva el token si le queda menos de un minuto (duran una hora).
-//   2. Pide a COROS la lista de herramientas, con lo que pide cada una.
-//   3. Llama a las cuatro que interesan (sueño, HRV del sueño, FC en reposo y
-//      entrenos) con un rango de fechas en los parámetros que ELLAS declaran.
-//   4. Guarda lo que conteste —resultado o error— en `reloj_crudo`.
+//   2. Pide a COROS la lista de herramientas, y guarda lo que pide cada una
+//      (también las de escribir entrenos y planes, para cuando se usen).
+//   3. Llama a las que interesan (sueño, HRV del sueño, FC en reposo y
+//      entrenos) con la última semana, en el formato que ELLAS declaran
+//      (lib/coros: argumentosCoros).
+//   4. Guarda lo que conteste —resultado o error— en `reloj_crudo`. Los
+//      errores de COROS llegan como un texto normal: se marcan como error.
 //
 // No se convierte nada en mediciones todavía, ni llega nada al wellness: el
 // catálogo tiene COROS en «pruebas» y el formulario lo trata como si no hubiera
@@ -18,7 +21,8 @@
 import { json, quienLlama, ESPERA_MS } from '@/lib/relojes-servidor'
 import {
   emisorCoros, mcpDe, hayQueRenovar, leerRenovacionCoros, inicializar, peticionMcp, leerRespuestaMcp,
-  contenidoDeResultado, argumentosDeFechas, recortarParaAprender, motivoDeErrorCoros, HERRAMIENTAS_COROS, VERSION_MCP,
+  contenidoDeResultado, argumentosCoros, pareceErrorCoros, recortarParaAprender, motivoDeErrorCoros,
+  HERRAMIENTAS_COROS, DIAS_POR_LLAMADA, VERSION_MCP,
   type EsquemaEntrada,
 } from '@/lib/coros'
 import { hoyISO, sumarDias } from '@/lib/fechas'
@@ -110,29 +114,36 @@ export async function POST(req: Request) {
     }
 
     const interesan = herramientas.filter(h => (HERRAMIENTAS_COROS as readonly string[]).includes(h.name))
+    /* Lo que pide cada una, todas: las de escribir entrenos y planes también,
+       para saber su formato antes de mandarle nada al reloj. */
     aprendido.push({
       herramienta: 'tools/list',
       datos: recortarParaAprender({
         todas: herramientas.map(h => h.name),
-        interesan: interesan.map(h => ({ name: h.name, description: h.description, inputSchema: h.inputSchema, outputSchema: h.outputSchema })),
-      }),
+        esquemas: herramientas.map(h => ({ name: h.name, description: h.description, inputSchema: h.inputSchema, outputSchema: h.outputSchema })),
+      }, 350_000),
     })
 
+    /* Una semana: es lo que admite la HRV del sueño por llamada, y para
+       aprender la forma de las respuestas basta. Las semanas de atrás se
+       pedirán al escribir la traducción. */
     const hasta = hoyISO()
-    const desde = sumarDias(hasta, -27)
+    const desde = sumarDias(hasta, -(DIAS_POR_LLAMADA - 1))
     let id = 20
     for (const h of interesan) {
-      const argumentos = argumentosDeFechas(h.inputSchema, desde, hasta)
+      const argumentos = argumentosCoros(h.inputSchema, desde, hasta)
       const r = await llamar(peticionMcp(id++, 'tools/call', { name: h.name, arguments: argumentos }))
       const res = r.mensaje?.result as { isError?: boolean } | undefined
+      const resultado = contenidoDeResultado(res)
+      const motivo = pareceErrorCoros(resultado)
       aprendido.push({
         herramienta: h.name,
         datos: recortarParaAprender({
           argumentos,
           status: r.status,
-          esError: !!res?.isError || !!r.mensaje?.error,
-          error: r.mensaje?.error ?? null,
-          resultado: contenidoDeResultado(res),
+          esError: !!res?.isError || !!r.mensaje?.error || !!motivo,
+          error: r.mensaje?.error ?? motivo,
+          resultado,
         }),
       })
     }

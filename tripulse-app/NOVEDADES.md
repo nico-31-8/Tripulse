@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 17 de octubre de 2026 · COROS: arreglada la lectura de sus datos
+
+El primer reloj COROS conectado nos enseñó cómo contesta COROS, y la app le
+estaba preguntando mal: las fechas en otro formato, datos que pide
+obligatorios, más días de los que admite por pregunta y un nombre de sueño
+que ha cambiado. Corregido.
+- **Si alguno de tus deportistas tiene COROS conectado,** pídele que pulse
+  **«⟳ Sincronizar ahora»** en su perfil. Con lo que conteste COROS terminamos
+  de preparar que su sueño, su HRV y sus entrenos te lleguen solos.
+- Mientras tanto, para tu deportista no cambia nada: el wellness le pregunta
+  como siempre.
+- Hemos leído las condiciones de COROS: permite que apps como TRIPULSE se
+  conecten así, sin pedir permiso aparte.
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 16 de octubre de 2026 · El recorrido guiado, también para tus deportistas
 
 Tus deportistas tienen ahora su propio recorrido, pensado para el móvil:

@@ -4,6 +4,7 @@ import {
   crearVerificador, retoDe, urlAutorizacionCoros, cookiePkce, borrarCookiePkce, leerCookiePkce, COOKIE_PKCE,
   subDeIdToken, leerTokenCoros, leerRenovacionCoros, hayQueRenovar, inicializar, peticionMcp, leerRespuestaMcp, contenidoDeResultado,
   argumentosDeFechas, recortarParaAprender, motivoDeErrorCoros, HERRAMIENTAS_COROS,
+  argumentosCoros, pareceErrorCoros, LIMITE_REGISTROS, DIAS_POR_LLAMADA, type EsquemaEntrada,
 } from './coros'
 
 describe('región y direcciones', () => {
@@ -20,8 +21,9 @@ describe('región y direcciones', () => {
     expect(redirectCoros('http://localhost:3000')).toBe('http://localhost:3000/api/relojes/coros/callback')
     expect(redirectCoros('no es url')).toBe(REDIRECT_COROS_PRODUCCION)
   })
-  it('las herramientas que se piden son las del README oficial', () => {
-    expect([...HERRAMIENTAS_COROS]).toEqual(['querySleepData', 'querySleepHrv', 'queryRestingHeartRate', 'querySportRecords'])
+  /* El README dice querySleepData; la cuenta real trae querySleepOverview. Van los dos. */
+  it('las herramientas que se piden: las del README y el sueño como lo llama la cuenta real', () => {
+    expect([...HERRAMIENTAS_COROS]).toEqual(['querySleepOverview', 'querySleepData', 'querySleepHrv', 'queryRestingHeartRate', 'querySportRecords'])
   })
 })
 
@@ -210,4 +212,83 @@ describe('recortarParaAprender', () => {
 describe('motivoDeErrorCoros', () => {
   it('el 401 pide volver a conectar', () => expect(motivoDeErrorCoros(401)).toMatch(/vuelve a conectar/))
   it('cualquier otro dice el código', () => expect(motivoDeErrorCoros(418)).toMatch(/418/))
+})
+
+/* Los esquemas de COROS tal como los dio la primera cuenta real (16-10-2026),
+   con las descripciones recortadas a lo que importa. */
+const ENTRENOS: EsquemaEntrada = {
+  properties: {
+    limit: { type: 'integer', description: 'Maximum number of records to return, default 20' },
+    endDate: { type: 'string', description: 'End date in yyyyMMdd format, defaults to today' },
+    startDate: { type: 'string', description: 'Start date in yyyyMMdd format, defaults to 7 days ago' },
+    maxDistanceKm: { type: 'number', description: 'Optional maximum distance in kilometers' },
+    minDistanceKm: { type: 'number', description: 'Optional minimum distance in kilometers' },
+    maxAveragePace: { type: 'string', description: 'Optional maximum average pace such as 5:30' },
+    sportTypeCodes: { type: 'array', description: 'Optional COROS numeric sport type codes.' },
+    locationKeyword: { type: 'string', description: 'Optional location keyword such as Shenzhen or park name' },
+    maxDurationMinutes: { type: 'integer', description: 'Optional maximum duration in minutes' },
+    minDurationMinutes: { type: 'integer', description: 'Optional minimum duration in minutes' },
+  },
+  required: ['startDate', 'endDate', 'sportTypeCodes', 'minDistanceKm', 'maxDistanceKm', 'minDurationMinutes', 'maxDurationMinutes', 'maxAveragePace', 'locationKeyword', 'limit'],
+}
+const HRV_SUENO: EsquemaEntrada = {
+  properties: {
+    days: { type: 'integer', description: 'Number of recent days to query when no explicit date range is given, default 7 and maximum 7' },
+    endDate: { type: 'string', description: 'Optional end date in yyyyMMdd format; defaults to startDate when omitted; dates are sleep wake-up days' },
+    startDate: { type: 'string', description: 'Optional start date in yyyyMMdd format, such as 20260603; dates are sleep wake-up days' },
+  },
+  required: ['startDate', 'endDate', 'days'],
+}
+const FC_REPOSO: EsquemaEntrada = {
+  properties: { days: { type: 'integer', description: 'Number of recent days to query, default 7' } },
+  required: [],
+}
+
+describe('los argumentos de COROS (lo que falló el 16-10-2026)', () => {
+  it('las fechas en texto sin guiones cuando la descripción dice yyyyMMdd', () => {
+    expect(argumentosDeFechas(HRV_SUENO, '2026-10-10', '2026-10-16')).toEqual({ startDate: '20261010', endDate: '20261016' })
+  })
+
+  it('los entrenos llevan TODOS sus obligatorios: las fechas, el límite y los filtros a null', () => {
+    expect(argumentosCoros(ENTRENOS, '2026-10-10', '2026-10-16')).toEqual({
+      startDate: '20261010', endDate: '20261016', limit: LIMITE_REGISTROS,
+      sportTypeCodes: null, minDistanceKm: null, maxDistanceKm: null,
+      minDurationMinutes: null, maxDurationMinutes: null, maxAveragePace: null, locationKeyword: null,
+    })
+  })
+
+  it('la HRV del sueño: los días, sin pasar del máximo que dice su descripción', () => {
+    expect(argumentosCoros(HRV_SUENO, '2026-10-10', '2026-10-16')).toEqual({ startDate: '20261010', endDate: '20261016', days: 7 })
+    expect(argumentosCoros(HRV_SUENO, '2026-09-19', '2026-10-16').days).toBe(7)
+  })
+
+  it('la FC en reposo, que solo pide días', () => {
+    expect(argumentosCoros(FC_REPOSO, '2026-10-10', '2026-10-16')).toEqual({ days: 7 })
+  })
+
+  it('cada sincronización pide una semana: lo que admite la HRV del sueño', () => {
+    expect(DIAS_POR_LLAMADA).toBe(7)
+  })
+
+  it('sin esquema, nada', () => {
+    expect(argumentosCoros(null, '2026-10-10', '2026-10-16')).toEqual({})
+  })
+})
+
+describe('pareceErrorCoros: los errores llegan como un texto normal', () => {
+  it('los dos que contestó a la primera cuenta real', () => {
+    expect(pareceErrorCoros('startDate must be in yyyyMMdd format.')).toBe('startDate must be in yyyyMMdd format.')
+    expect(pareceErrorCoros('Tool call anomalies detected. High risk of session context pollution or request exceeds the LLM capability boundary. Resolution Strategy: 1. Initialize a new session to reset context; 2. Upgrade or switch to a high-capacity model instance.'))
+      .toMatch(/^Tool call anomalies detected/)
+  })
+
+  it('una respuesta con datos no es un error (el ejemplo es inventado)', () => {
+    expect(pareceErrorCoros('Resting Heart Rate — Last 7 days\n========================\n\n2026-10-16: 50 bpm\n2026-10-15: 51 bpm')).toBeNull()
+  })
+
+  it('lo largo es un dato aunque diga «error»; lo que no es texto, tampoco se mira', () => {
+    expect(pareceErrorCoros('Sleep overview with no error. ' + 'x'.repeat(700))).toBeNull()
+    expect(pareceErrorCoros({ resultado: 'error' })).toBeNull()
+    expect(pareceErrorCoros('   ')).toBeNull()
+  })
 })

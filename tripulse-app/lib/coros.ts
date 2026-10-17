@@ -18,11 +18,23 @@
 // - MCP por HTTP: JSON-RPC 2.0 con `initialize` y `tools/call`. La respuesta
 //   puede llegar como JSON o como flujo de eventos (text/event-stream).
 //
-// LO QUE NO SE SABE TODAVÍA: los parámetros exactos de cada herramienta y la
-// forma de sus respuestas. COROS no los publica: su cliente oficial los pide
-// en marcha con `tools/list`. Por eso aquí no hay traducción a mediciones: la
-// primera cuenta conectada los enseña, se guardan en `reloj_crudo`, y la
-// traducción se escribe entonces con datos de verdad.
+// LO QUE ENSEÑÓ LA PRIMERA CUENTA REAL (16-10-2026), leyendo `reloj_crudo`:
+// - Las respuestas son TEXTO para leer (como para un chat), no datos con
+//   forma: ninguna herramienta trae `outputSchema`. La traducción tendrá que
+//   leer ese texto, y lo que no entienda dejarlo vacío.
+// - Las fechas van en texto «AAAAMMDD» (lo dice la descripción: yyyyMMdd).
+// - Sus esquemas marcan como obligatorios TODOS los parámetros, también los
+//   filtros opcionales; si faltan, contesta con un aviso de «uso anómalo».
+// - Los errores llegan como un resultado normal (status 200, sin isError):
+//   hay que reconocerlos por el texto (pareceErrorCoros).
+//
+// QUE UNA APP USE ESTE MCP LO PERMITE COROS: «Build on COROS MCP» (su ayuda,
+// sept. 2026) dice «No application or approval required», y pone de ejemplo
+// las apps de entrenamiento que analizan y prescriben entrenos. Límites: cada
+// atleta autoriza lo suyo, sin webhooks (hay que preguntar), 50 FIT al día,
+// y para escribir solo carrera, trail y ciclismo. Lo que haga falta más allá
+// (webhooks, sincronizar actividades en los dos sentidos) es su Partner API,
+// que pide empresa y una base de usuarios.
 
 import { createHash, randomBytes } from 'node:crypto'
 
@@ -41,8 +53,18 @@ export const ALCANCE_COROS = 'openid offline_access mcp.tools'
 export const NOMBRE_CLIENTE = 'TRIPULSE'
 export const VERSION_MCP = '2025-06-18'
 
-/** Las herramientas que interesan. Los nombres son los del README oficial. */
-export const HERRAMIENTAS_COROS = ['querySleepData', 'querySleepHrv', 'queryRestingHeartRate', 'querySportRecords'] as const
+/**
+ * Las herramientas de las que se leen datos. El sueño se llama
+ * `querySleepData` en el README oficial, pero la cuenta real (16-10-2026) lo
+ * trae como `querySleepOverview`: van los dos y se piden las que existan.
+ */
+export const HERRAMIENTAS_COROS = ['querySleepOverview', 'querySleepData', 'querySleepHrv', 'queryRestingHeartRate', 'querySportRecords'] as const
+
+/** La semana que se pide en cada sincronización: la HRV del sueño no admite más de 7 días por llamada. */
+export const DIAS_POR_LLAMADA = 7
+
+/** Cuántos registros pedir cuando la herramienta deja elegir (por defecto da 20). */
+export const LIMITE_REGISTROS = 50
 
 export const REDIRECT_COROS_PRODUCCION = 'https://tripulse.app/api/relojes/coros/callback'
 
@@ -276,14 +298,17 @@ const ES_FIN = /^(end|until|to)([_-]?(date|day|time))?$|^(date|day)[_-]?(end|to|
 
 const aDia = (iso: string) => iso.slice(0, 10)
 const aNumero = (iso: string) => Number(iso.slice(0, 10).replace(/-/g, ''))
+/* «yyyyMMdd» en la descripción del parámetro: lo quiere en texto y sin guiones. */
+const COMPACTA = /\byyyymmdd\b/i
 
 /**
  * Rellena un rango de fechas en los parámetros que la propia herramienta
  * declara en `tools/list`.
  *
  * NO ADIVINA NOMBRES: solo usa propiedades que el esquema de COROS diga que
- * existen y que se llamen como un inicio o un fin. Si es texto va «AAAA-MM-DD»;
- * si es un número, AAAAMMDD. Si no encuentra ninguna, no manda nada y la
+ * existen y que se llamen como un inicio o un fin. Si es texto va «AAAA-MM-DD»,
+ * o «AAAAMMDD» si su descripción dice yyyyMMdd (COROS: la HRV del sueño falló
+ * así el 16-10-2026); si es un número, AAAAMMDD. Si no encuentra ninguna, no manda nada y la
  * herramienta usa lo que traiga por defecto. Lo peor que puede pasar es que
  * COROS conteste con un error, y ese error se guarda para aprender de él: nunca
  * sale de aquí un dato mal leído.
@@ -291,10 +316,11 @@ const aNumero = (iso: string) => Number(iso.slice(0, 10).replace(/-/g, ''))
 export function argumentosDeFechas(esquema: EsquemaEntrada | null | undefined, desde: string, hasta: string): Record<string, string | number> {
   const props = esquema?.properties || {}
   const salida: Record<string, string | number> = {}
-  const valor = (p: { type?: string | string[]; format?: string }, iso: string, esFin: boolean): string | number => {
+  const valor = (p: { type?: string | string[]; format?: string; description?: string }, iso: string, esFin: boolean): string | number => {
     const t = Array.isArray(p.type) ? p.type : [p.type]
     if (t.includes('integer') || t.includes('number')) return aNumero(iso)
     if (p.format === 'date-time') return aDia(iso) + (esFin ? 'T23:59:59Z' : 'T00:00:00Z')
+    if (p.description && COMPACTA.test(p.description)) return aDia(iso).replace(/-/g, '')
     return aDia(iso)
   }
   for (const [nombre, p] of Object.entries(props)) {
@@ -303,6 +329,46 @@ export function argumentosDeFechas(esquema: EsquemaEntrada | null | undefined, d
     else if (ES_FIN.test(nombre)) salida[nombre] = valor(p, hasta, true)
   }
   return salida
+}
+
+/**
+ * Todos los argumentos de una llamada, a partir de su esquema:
+ * - las fechas, como `argumentosDeFechas`;
+ * - `days`, los días del rango, sin pasar del máximo que diga su descripción;
+ * - `limit`, LIMITE_REGISTROS;
+ * - el resto de los que marca obligatorios, null: son filtros (deporte,
+ *   distancia, ritmo, lugar…) y null es «sin filtro». COROS los marca todos
+ *   como obligatorios aunque los describa como opcionales, y sin ellos los
+ *   entrenos contestaron con un aviso de «uso anómalo» (16-10-2026).
+ */
+export function argumentosCoros(esquema: EsquemaEntrada | null | undefined, desde: string, hasta: string): Record<string, string | number | null> {
+  const salida: Record<string, string | number | null> = { ...argumentosDeFechas(esquema, desde, hasta) }
+  const props = esquema?.properties || {}
+  if (props.days) {
+    const dias = Math.round((Date.parse(aDia(hasta)) - Date.parse(aDia(desde))) / 86400000) + 1
+    const max = Number(/maximum\s+(\d+)/i.exec(props.days.description || '')?.[1])
+    salida.days = max > 0 ? Math.min(dias, max) : dias
+  }
+  if (props.limit) salida.limit = LIMITE_REGISTROS
+  for (const nombre of esquema?.required || []) if (!(nombre in salida)) salida[nombre] = null
+  return salida
+}
+
+/* Lo que COROS contesta cuando algo no le cuadra. Llega como un resultado
+   normal, así que se reconoce por el texto: «startDate must be in yyyyMMdd
+   format.», «Tool call anomalies detected…». */
+const TEXTOS_DE_ERROR = [/must be in .*format/i, /anomal/i, /\binvalid\b/i, /\brequired\b/i, /\bexceeds?\b/i, /\berror\b/i, /not (be )?(found|supported|allowed)/i, /unauthori[sz]ed|forbidden/i]
+
+/**
+ * Si un resultado es en realidad un error, su texto (recortado); si no, null.
+ * Solo se miran los textos cortos: una respuesta con datos puede nombrar la
+ * palabra «error» sin serlo, y los rechazos de COROS son de una o dos frases.
+ */
+export function pareceErrorCoros(resultado: unknown): string | null {
+  if (typeof resultado !== 'string') return null
+  const t = resultado.trim()
+  if (!t || t.length > 600) return null
+  return TEXTOS_DE_ERROR.some(r => r.test(t)) ? t.slice(0, 300) : null
 }
 
 /** Recorta lo que se guarda para aprender: basta con la forma, no hace falta todo. */
