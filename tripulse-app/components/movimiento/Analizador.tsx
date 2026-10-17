@@ -71,6 +71,7 @@ import {
 import {
   ajustesDe, COINCIDE_PROPORCION, conPuestos, correccionesDe, corregirPunto, deshacerCorreccion, propagar, type PistasCuerpo,
 } from '@/lib/corregir-esqueleto'
+import { aSerieGuardada, medidaDelFotograma } from '@/lib/informe-movimiento'
 import { cargarDetector, detectar, SIN_SIMD, type Detector } from '@/lib/detector-cuerpo'
 import { inclinacionDe, type Punto } from '@/lib/geometria-fotograma'
 import { fechaLarga } from '@/lib/fechas'
@@ -976,36 +977,50 @@ export default function Analizador(props: PropsAnalizador) {
       const e = extremosDe(r.serie)!
       return { nombre: r.nombre + ' en el vídeo', valor: textoRecorrido(r.tipo, e.min.valor, e.max.valor) }
     })
-    /* Del esqueleto, cada medida con cuánto fiarse, y la rodilla en todo el vídeo. */
+    /* Del esqueleto, cada medida de este fotograma con cuánto fiarse. */
     const delEsqueleto: Medida[] = cuerpoAhora && verCuerpo
       ? medidasC.filter(m => m.valor != null).map(m => ({
         nombre: m.nombre + ' (esqueleto)',
         valor: m.texto + ' · ' + NOMBRE_FIABILIDAD[m.fiabilidad] + (m.dudosa ? ' · punto dudoso' : ''),
       }))
       : []
-    /* Y lo que se ve en la gráfica, en todo el vídeo; si no es del todo fiable, lo dice.
-       Con la rodilla del lado que se mide queda igual que antes: «Rodilla en el vídeo (esqueleto)». */
-    const enElVideoCuerpo = (c: ClaveGrafica, serie: Serie): Medida | null => {
+    /* Y cada medida en todo el vídeo; si no es del todo fiable, lo dice («Rodilla en
+       el vídeo (esqueleto)», como antes). Las del lado que se mide van TODAS y con su
+       curva: el informe (lib/informe-movimiento) pregunta luego cuáles dibujar, y del
+       vídeo no queda nada más. Del otro lado, solo lo que se esté mirando en la gráfica. */
+    const enElVideoCuerpo = (c: ClaveGrafica, l: LadoCuerpo, serie: Serie): Medida | null => {
       const e = serie.length >= MINIMO_SERIE ? extremosDe(serie) : null
       if (!e) return null
       const f = fiabilidadDe(c)
+      const curva = l === ladoMedido ? aSerieGuardada(c, l, serie, FPS) : null
       return {
-        nombre: NOMBRE_MEDIDA[c] + ' en el vídeo (esqueleto' + (ladoGraf !== ladoMedido ? ', lado ' + LADO_CUERPO[ladoGraf] : '') + ')',
+        nombre: NOMBRE_MEDIDA[c] + ' en el vídeo (esqueleto' + (l !== ladoMedido ? ', lado ' + LADO_CUERPO[l] : '') + ')',
         valor: textoRecorrido('angulo', e.min.valor, e.max.valor) + (f === 'fiable' ? '' : ' · ' + NOMBRE_FIABILIDAD[f]),
+        ...(curva ? { serie: curva } : {}),
       }
     }
-    if (verCuerpo) {
-      for (const m of [enElVideoCuerpo(graf.clave, serieGraf), graf.encima ? enElVideoCuerpo(graf.encima, serieEncima) : null]) {
+    if (verCuerpo && hayCuerpo && vista === 'perfil') {
+      for (const c of MEDIDAS_GRAFICA) {
+        const m = enElVideoCuerpo(c, ladoMedido, serieCuerpo(cuerpos, ajustesCuerpo, ladoMedido, vista, c, incl))
         if (m) delEsqueleto.push(m)
       }
+      if (ladoGraf !== ladoMedido) {
+        for (const m of [enElVideoCuerpo(graf.clave, ladoGraf, serieGraf), graf.encima ? enElVideoCuerpo(graf.encima, ladoGraf, serieEncima) : null]) {
+          if (m) delEsqueleto.push(m)
+        }
+      }
     }
+    /* De qué fotograma salen las medidas y la imagen, y si es el que miró la app: el informe lo dice debajo de ella. */
+    const delFotograma = media?.tipo === 'video'
+      ? medidaDelFotograma(clave / FPS, sugerencia?.clave === clave)
+      : medidaDelFotograma(null, false)
     /* La nota que sugirió la app, al lado de la que se pone: para ver con el tiempo cuántas veces coinciden. */
     if (sugerencia && sugerencia.criterios.length) {
       delEsqueleto.push({ nombre: 'Nota sugerida', valor: textoParaGuardar(sugerencia, prueba, alza) })
     }
     const r = await guardarPrueba(supabase, {
       idValoracion: valoracion.id, idDeportista, prueba: prueba.clave, lado, nota, dolor, criterios,
-      ...(media && nat ? { medidas: [...medidasDe(visibles), ...enElVideo, ...delEsqueleto], dibujo: visibles, vista } : {}),
+      ...(media && nat ? { medidas: [delFotograma, ...medidasDe(visibles), ...enElVideo, ...delEsqueleto], dibujo: visibles, vista } : {}),
       ...(fotograma ? { fotograma } : {}),
     })
     setGuardando(false)

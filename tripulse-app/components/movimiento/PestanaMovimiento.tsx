@@ -21,6 +21,7 @@ import {
 } from '@/lib/movimiento-datos'
 import { fechaLarga, hoyISO } from '@/lib/fechas'
 import Analizador from './Analizador'
+import InformeMovimiento from './InformeMovimiento'
 import ResultadoMovimiento from './ResultadoMovimiento'
 
 const REGLAS_GRABAR = [
@@ -35,8 +36,8 @@ const REGLAS_GRABAR = [
 
 export default function PestanaMovimiento({ idDeportista, deportista, onPermiso }: {
   idDeportista: number
-  /** De la ficha solo hace falta si dio permiso para guardar la imagen. */
-  deportista: { permiso_fotogramas_en?: string | null } | null
+  /** De la ficha solo hace falta su nombre (para el informe) y si dio permiso para guardar la imagen. */
+  deportista: { nombre?: string | null; permiso_fotogramas_en?: string | null } | null
   /** El permiso cambiado, para que la ficha lo tenga sin volver a cargar. */
   onPermiso: (en: string | null) => void
 }) {
@@ -46,6 +47,8 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [activaId, setActivaId] = useState<number | null>(null)
   const [verId, setVerId] = useState<number | null>(null)
+  /** La valoración cuyo informe está abierto (components/movimiento/InformeMovimiento). */
+  const [informeId, setInformeId] = useState<number | null>(null)
   const [abierta, setAbierta] = useState<{ prueba: Prueba; lado: Lado } | null>(null)
   const [aMano, setAMano] = useState<string | null>(null)
   const [verProtocolo, setVerProtocolo] = useState(false)
@@ -72,6 +75,7 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
   const regsDe = useCallback((idVal: number) => pruebas.filter(p => p.id_valoracion === idVal), [pruebas])
   const activa = valoraciones.find(v => v.id === activaId) || null
   const vista = valoraciones.find(v => v.id === verId) || null
+  const informe = valoraciones.find(v => v.id === informeId) || null
   const incompleta = def ? deLaBateria.find(v => !resultadoBateria(def, regsDe(v.id)).completa) || null : null
   const ultima = def ? deLaBateria.find(v => resultadoBateria(def, regsDe(v.id)).completa) || null : null
 
@@ -84,7 +88,7 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
 
   const elegirBateria = (b: Bateria) => {
     setBateria(bateria === b ? null : b)
-    setActivaId(null); setVerId(null); setAMano(null); setError('')
+    setActivaId(null); setVerId(null); setInformeId(null); setAMano(null); setError('')
   }
 
   /* Empezar: si la de hoy ya existe, se sigue; si no, se crea una nueva. */
@@ -285,6 +289,10 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
                   {res.completa && (
                     <button onClick={() => { setVerId(activa.id); setActivaId(null) }} className="text-[12.5px] px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-semibold transition">Ver el resultado</button>
                   )}
+                  {/* A medias también se puede sacar: el informe dice qué falta. */}
+                  {regsActiva.length > 0 && (
+                    <button onClick={() => setInformeId(activa.id)} className="text-[12.5px] px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition">Ver el informe</button>
+                  )}
                 </div>
               </div>
             )}
@@ -293,9 +301,10 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
             {vista && (
               <div className="flex flex-col gap-2">
                 <ResultadoMovimiento def={def} valoracion={vista} registros={regsDe(vista.id)} previa={previaDe(vista)} urls={urls} />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button onClick={() => setVerId(null)} className="text-[12.5px] px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition">Volver</button>
                   <button onClick={() => { setActivaId(vista.id); setVerId(null) }} className="text-[12.5px] px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition">Corregir una prueba</button>
+                  <button onClick={() => setInformeId(vista.id)} className="text-[12.5px] px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-semibold transition">Ver el informe</button>
                 </div>
               </div>
             )}
@@ -344,7 +353,7 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
                   className="mt-0.5 w-4 h-4 accent-orange-500" />
                 <span className="text-[12.5px] leading-snug">
                   <b>Tengo su permiso para guardar fotogramas</b>
-                  <span className="block text-[11.5px] text-gray-500 mt-0.5">El fotograma es una imagen de su cuerpo. Sin el permiso se guardan las notas, pero no la imagen. Él ve sus notas y sus fotogramas en Mis tests.</span>
+                  <span className="block text-[11.5px] text-gray-500 mt-0.5">El fotograma es una imagen de su cuerpo. Sin el permiso se guardan las notas, pero no la imagen. Sus notas y sus fotogramas le salen en Mis tests.</span>
                 </span>
               </label>
             </div>
@@ -379,6 +388,11 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso 
           valoracion={activa} permiso={permiso}
           guardadas={regsActiva.filter(r => r.prueba === abierta.prueba.clave)} urls={urls}
           onGuardado={cargar} onCerrar={() => setAbierta(null)} />
+      )}
+
+      {informe && def && informe.bateria === def.id && (
+        <InformeMovimiento def={def} valoracion={informe} registros={regsDe(informe.id)} previa={previaDe(informe)}
+          nombre={deportista?.nombre ?? null} permiso={permiso} urls={urls} onCerrar={() => setInformeId(null)} />
       )}
     </div>
   )

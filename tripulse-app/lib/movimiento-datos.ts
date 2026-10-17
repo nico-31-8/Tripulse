@@ -11,6 +11,7 @@
 // anotado, y solo si el entrenador ha marcado el permiso del deportista: la base
 // rechaza la imagen sin él, así que aquí se mira antes para no intentarlo.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { hoyISO } from './fechas'
 import type { Bateria, Lado, RegistroPrueba, Vista } from './baterias-movimiento'
 import type { Punto } from './geometria-fotograma'
@@ -29,15 +30,42 @@ export interface Valoracion {
 export type TipoTrazo = 'linea' | 'angulo' | 'plomada' | 'horizontal' | 'palma' | 'distancia' | 'suelo'
 export interface Trazo { tipo: TipoTrazo; puntos: Punto[] }
 
-/** Una medida tal como se enseña y se guarda: «Ángulo 1 · 52°». */
-export interface Medida { nombre: string; valor: string }
+/**
+ * La curva de una medida del esqueleto a lo largo del vídeo, para las gráficas
+ * del informe (v3 del analizador, 17-10-2026): el vídeo no se guarda, así que
+ * días después solo queda esto. Un valor por fotograma desde `desde` (o uno de
+ * cada `paso`, en un vídeo muy largo), en grados a una décima; null donde la
+ * medida no era fiable (punto dudoso o salto del detector). La arma
+ * lib/informe-movimiento: aSerieGuardada.
+ */
+export interface SerieGuardada {
+  /** La medida (lib/cuerpo: ClaveGrafica) y el lado del cuerpo. */
+  clave: string
+  lado: 'i' | 'd'
+  desde: number
+  fps: number
+  v: (number | null)[]
+  paso?: number
+}
+
+/**
+ * Una medida tal como se enseña y se guarda: «Ángulo 1 · 52°». Las del
+ * esqueleto «en el vídeo» llevan además su curva (`serie`); en la base va todo
+ * en el mismo jsonb, y quien solo lee nombre y valor no nota la diferencia.
+ */
+export interface Medida { nombre: string; valor: string; serie?: SerieGuardada }
 
 export interface FilaPrueba extends RegistroPrueba {
   id: number
   id_valoracion: number
   criterios: Record<string, boolean> | null
-  medidas: Medida[] | null
-  dibujo: Trazo[] | null
+  /**
+   * Lo que pesa: las medidas (con las curvas del esqueleto) y lo dibujado. NO
+   * viene en las listas (cargarValoraciones carga todas sus valoraciones, y
+   * ninguna pantalla lo lee); el informe pide las medidas aparte (cargarMedidas).
+   */
+  medidas?: Medida[] | null
+  dibujo?: Trazo[] | null
   vista: Vista | null
   fotograma: string | null
 }
@@ -52,11 +80,22 @@ export async function cargarValoraciones(sb: any, idDep: number): Promise<{ valo
   const [v, p] = await Promise.all([
     sb.from('valoracion_movimiento').select('id, id_deportista, bateria, fecha, modo, notas, actualizada_en')
       .eq('id_deportista', idDep).order('fecha', { ascending: false }).order('id', { ascending: false }),
-    sb.from('valoracion_prueba').select('id, id_valoracion, prueba, lado, nota, dolor, criterios, medidas, dibujo, vista, fotograma')
+    sb.from('valoracion_prueba').select('id, id_valoracion, prueba, lado, nota, dolor, criterios, vista, fotograma')
       .eq('id_deportista', idDep),
   ])
   const error = v.error?.message || p.error?.message
   return { valoraciones: (v.data || []) as Valoracion[], pruebas: (p.data || []) as FilaPrueba[], error }
+}
+
+/** Las medidas de cada prueba de UNA valoración, por el id de su fila: para el informe, que dibuja sus curvas. */
+export async function cargarMedidas(sb: SupabaseClient, idValoracion: number): Promise<{ medidas: Record<number, Medida[]>; error?: string }> {
+  const { data, error } = await sb.from('valoracion_prueba').select('id, medidas').eq('id_valoracion', idValoracion)
+  if (error) return { medidas: {}, error: error.message }
+  const medidas: Record<number, Medida[]> = {}
+  for (const f of (data || []) as { id: number; medidas: Medida[] | null }[]) {
+    if (Array.isArray(f.medidas)) medidas[f.id] = f.medidas
+  }
+  return { medidas }
 }
 
 export async function crearValoracion(sb: any, idDep: number, bateria: Bateria, modo: 'video' | 'mano'): Promise<{ valoracion?: Valoracion; error?: string }> {

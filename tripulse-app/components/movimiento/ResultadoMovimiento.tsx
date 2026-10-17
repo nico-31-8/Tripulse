@@ -114,7 +114,7 @@ export default function ResultadoMovimiento({ def, valoracion, registros, previa
             </div>
           )}
           <p className="text-[11px] text-gray-500 border border-dashed border-gray-700 rounded-lg px-3 py-2">
-            <b className="text-gray-300">Para seguirle a él, no para predecir.</b> El total sirve para comparar a la misma persona con el mismo evaluador.
+            <b className="text-gray-300">Para seguir a la persona, no para predecir.</b> El total sirve para comparar a la misma persona con el mismo evaluador.
             Que estas baterías sirvan para prevenir lesiones está sin demostrar: con el FMS, el corte en 14 deja pasar a tres de cada cuatro futuros lesionados.
           </p>
         </div>

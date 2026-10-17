@@ -14,6 +14,32 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 17 de octubre de 2026 · El informe del FMS y del Nine Test
+
+- **«Ver el informe»**, en el resultado de la batería y también con ella a medias
+  (entonces dice qué pruebas faltan). Es una hoja para descargar en PDF o
+  imprimir: se abre la ventana de imprimir del navegador y ahí eliges «Guardar
+  como PDF».
+- **Solo lo ves tú.** No sale en la ficha del deportista ni en sus tests: lo
+  descargas y, si quieres, se lo mandas.
+- Va primero **lo que hay que trabajar**: lo que duele, los 1 y las pruebas con
+  los lados distintos, cada una con el lado peor y los criterios que no se
+  cumplen; los demás 2, en una línea. Luego **lo que ha cambiado** desde el
+  anterior completo (qué sube y qué baja, con sus notas), el dolor, la tabla
+  prueba a prueba con la columna del anterior y **un fotograma por prueba y
+  lado**, con el momento del vídeo y si es el que miró la app para la nota.
+- **Antes de descargarlo te pregunta qué gráficas incluir**, de entrada ninguna.
+  Salen las medidas del esqueleto de las pruebas analizadas de perfil, cada una
+  con cuánto fiarse; las que van con margen lo dicen también en el papel.
+- Las gráficas solo existen para lo que guardes **a partir de hoy**: al guardar
+  una prueba analizada con el esqueleto se guarda ya la curva de cada medida del
+  lado que se mide. Las pruebas guardadas antes salen en el informe sin gráfica.
+
+**Números que pueden cambiar:** ninguno. El informe saca las notas de la misma
+cuenta que el resultado de la pestaña.
+
+---
+
 ## 17 de octubre de 2026 · Analizador de vídeo: corregir el esqueleto y elegir la gráfica
 
 - **Corregir el esqueleto ya no es fotograma a fotograma.** Si la app pone mal

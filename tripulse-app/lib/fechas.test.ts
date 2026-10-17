@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   soloDia, fechaValida, aISO, sumarDias, diasEntre, sumarSemanas, semanasEntre, semanaQueContiene,
-  indiceDia, lunesDe, proximoLunes, fechaLarga, fechaLargaCompleta, rangoLegible, calcularEdad,
+  indiceDia, lunesDe, proximoLunes, fechaLarga, fechaLargaCompleta, rangoLegible, calcularEdad, fechaConAnio, fechaCorta,
 } from './fechas'
 
 /* 2026-08-17 lunes … 2026-08-23 domingo. */
@@ -109,6 +109,14 @@ describe('para leerlo', () => {
     expect(fechaLarga(X).startsWith('Miércoles 19')).toBe(true)
     expect(fechaLargaCompleta(X).startsWith('Miércoles 19')).toBe(true)
     expect(fechaLarga(X)).not.toBe(fechaLargaCompleta(X))
+  })
+
+  it('el de un documento lleva el año; el corto, solo día y mes', () => {
+    expect(fechaConAnio(X)).toBe('19 de agosto de 2026')
+    expect(fechaConAnio('2027-01-01T08:00:00')).toBe('1 de enero de 2027')
+    expect(fechaCorta(X)).toBe('19 ago')
+    expect(fechaConAnio(null)).toBe('')
+    expect(fechaCorta('lo que sea')).toBe('lo que sea')
   })
 
   it('el rango de una semana', () => {

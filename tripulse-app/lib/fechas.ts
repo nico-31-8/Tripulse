@@ -153,6 +153,20 @@ export function fechaLargaCompleta(iso: string | null | undefined): string {
   return DIAS_SEMANA[indiceDia(s)] + ' ' + d.getUTCDate() + ' de ' + MESES_LARGOS[d.getUTCMonth()]
 }
 
+/** «11 de octubre de 2026»: para un documento, que se lee suelto y lleva el año (el informe del FMS). */
+export function fechaConAnio(iso: string | null | undefined): string {
+  if (!fechaValida(iso)) return String(iso ?? '')
+  const d = dia(soloDia(iso as string))
+  return d.getUTCDate() + ' de ' + MESES_LARGOS[d.getUTCMonth()] + ' de ' + d.getUTCFullYear()
+}
+
+/** «7 sep»: la cabecera de una columna. */
+export function fechaCorta(iso: string | null | undefined): string {
+  if (!fechaValida(iso)) return String(iso ?? '')
+  const d = dia(soloDia(iso as string))
+  return d.getUTCDate() + ' ' + MESES_CORTOS[d.getUTCMonth()]
+}
+
 /** «17–23 ago», o «31 ago – 6 sep» si la semana cambia de mes. */
 export function rangoLegible(lunes: string, dias = 6): string {
   const fin = sumarDias(lunes, dias)
