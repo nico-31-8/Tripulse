@@ -26,6 +26,71 @@ const base = (p: Partial<EntradaSemana> = {}): EntradaSemana => ({
 const pctDe = (f: ReturnType<typeof formaDeSemana>, b: Bloque) =>
   f.bloques.find(x => x.bloque === b)!.pct
 
+describe('las disciplinas del deportista (deportista.disciplinas)', () => {
+  /* El caso real: Carrera y Fuerza en su ficha, y el reparto de un olímpico le
+     daba natación y ciclismo todas las semanas. */
+  const corredora = base({
+    distancia: 'olimpico', horasSemana: 8, diasSemana: 5, fase: 'pg-avanzada',
+    disciplinas: ['Carrera', 'Fuerza'],
+  })
+  const de = (f: ReturnType<typeof formaDeSemana>, b: Bloque) => f.bloques.find(x => x.bloque === b)!
+
+  it('quien solo hace Carrera y Fuerza no recibe ni un minuto de natación ni de ciclismo', () => {
+    const f = formaDeSemana(corredora)
+    ;(['Natacion', 'Ciclismo'] as Bloque[]).forEach(b => {
+      expect(de(f, b).minutos, b).toBe(0)
+      expect(de(f, b).sesiones, b).toBe(0)
+    })
+  })
+
+  it('el reparto sigue sumando 100: lo que era de natación y ciclismo va a carrera', () => {
+    const f = formaDeSemana(corredora)
+    const total = f.bloques.reduce((a, b) => a + b.pct, 0)
+    expect(total).toBeGreaterThan(99)
+    expect(total).toBeLessThan(101)
+    expect(pctDe(f, 'Carrera')).toBeGreaterThan(90)
+  })
+
+  it('con dos de las tres, se reparten lo de la tercera en la proporción de B1-04', () => {
+    const f = formaDeSemana(base({ distancia: 'olimpico', disciplinas: ['Ciclismo', 'Carrera'] }))
+    expect(de(f, 'Natacion').minutos).toBe(0)
+    expect(pctDe(f, 'Ciclismo')).toBeGreaterThan(pctDe(f, 'Carrera'))
+    expect(pctDe(f, 'Ciclismo') + pctDe(f, 'Carrera')).toBeGreaterThan(99)
+  })
+
+  /* Su anamnesis dice «Ciclismo» de punto flojo porque el desplegable solo
+     ofrece los tres deportes del triatlón. Si no pedalea, no tira de nada. */
+  it('un punto flojo que no hace no tira del reparto', () => {
+    const f = formaDeSemana({ ...corredora, disciplinaDebil: 'Ciclismo' })
+    expect(de(f, 'Ciclismo').sesiones).toBe(0)
+    expect(f.avisos.join(' ')).not.toMatch(/volcar del todo/)
+  })
+
+  it('sin Fuerza entre las suyas no hay fuerza, ni el aviso de que no le cabe', () => {
+    const f = formaDeSemana(base({ fase: 'pe-inicial', horasSemana: 4, disciplinas: ['Natacion', 'Ciclismo', 'Carrera'] }))
+    expect(de(f, 'Fuerza').sesiones).toBe(0)
+    expect(f.avisos.join(' ')).not.toMatch(/fuerza/i)
+  })
+
+  /* Lo que se vio al imprimir el bloque arreglado: con tres días, dos carreras
+     de 86′ el mismo martes. El margen para doblar sale de que la natación se
+     dobla gratis, y ella no nada. */
+  it('a quien no nada no se le doblan carreras: una de resistencia por día', () => {
+    ;[2, 3, 4, 5].forEach(dias => {
+      const f = formaDeSemana({ ...corredora, horasSemana: 6.5, diasSemana: dias })
+      expect(de(f, 'Carrera').sesiones, dias + ' días').toBeLessThanOrEqual(Math.max(dias, 2))
+    })
+  })
+
+  it('null, vacío o todas marcadas es el triatlón de siempre', () => {
+    const e = base()
+    expect(formaDeSemana({ ...e, disciplinas: null })).toEqual(formaDeSemana(e))
+    expect(formaDeSemana({ ...e, disciplinas: [] })).toEqual(formaDeSemana(e))
+    expect(formaDeSemana({ ...e, disciplinas: ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza', 'Brick', 'Hibrido'] }))
+      .toEqual(formaDeSemana(e))
+  })
+})
+
 describe('el reparto entre disciplinas respeta B1-04', () => {
   it('cada disciplina cae dentro de su rango, en las cuatro distancias', () => {
     DISTANCIAS.forEach(d => {

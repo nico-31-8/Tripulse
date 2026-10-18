@@ -23,7 +23,7 @@
 // sesión larga en miércoles porque el atleta compite el domingo. Confundirlos
 // convierte al juez en un cascarrabias al que se deja de escuchar.
 import { DIAS, type DiaSemana, type DiaDisponible } from './plan-colocacion'
-import { rangoDisciplina, LIMITES_SESIONES, ETIQUETA_BLOQUE, RESISTENCIA, type Bloque, type EntradaSemana, type FormaSemana } from './plan-semana'
+import { rangoDisciplina, bloquesDelDeportista, LIMITES_SESIONES, ETIQUETA_BLOQUE, RESISTENCIA, BLOQUES, type Bloque, type EntradaSemana, type FormaSemana } from './plan-semana'
 import { resolverClave } from './plantillas'
 import { plantillaFuerzaPorId } from './plantillas-fuerza'
 import { cargaZona } from './zonas'
@@ -113,6 +113,18 @@ export function verificarSemana(sesiones: SesionAVerificar[], ctx: ContextoVerif
     if (s.minutos <= 0) mal('sin-volumen', `La ${i} no tiene minutos.`, 'sentido común', [i])
   })
 
+  // ---- 1b. Solo lo que hace ----
+  // `deportista.disciplinas`. Una natación para alguien que solo corre es tan
+  // inaplicable como una clave que no existe: no la va a hacer.
+  const suyos = bloquesDelDeportista(ctx.entrada.disciplinas)
+  BLOQUES.filter(b => !suyos.includes(b)).forEach(b => {
+    const cuales = sesiones.map((s, i) => s.bloque === b ? i : -1).filter(i => i >= 0)
+    if (cuales.length) {
+      mal('disciplina-que-no-hace', `Hay ${cuales.length} sesión(es) de ${ETIQUETA_BLOQUE[b]} y no es de las disciplinas del deportista (${suyos.map(x => ETIQUETA_BLOQUE[x]).join(', ') || 'ninguna'}).`,
+        'ficha del deportista', cuales)
+    }
+  })
+
   // ---- 2. Duro-fácil ----
   // La regla más importante del microciclo: dos sesiones duras seguidas no dan
   // dos adaptaciones, dan una adaptación y una sesión hecha con fatiga.
@@ -132,7 +144,8 @@ export function verificarSemana(sesiones: SesionAVerificar[], ctx: ContextoVerif
   })
 
   // ---- 3. Mínimo de sesiones por disciplina ----
-  RESISTENCIA.forEach(b => {
+  // Las suyas: echarle en falta la natación a quien no nada es ruido.
+  RESISTENCIA.filter(b => suyos.includes(b)).forEach(b => {
     const n = sesiones.filter(s => s.bloque === b).length
     if (n > 0 && n < LIMITES_SESIONES.min) {
       mal('minimo-sesiones', `${ETIQUETA_BLOQUE[b]} tiene ${n} sesión(es): por debajo de ${LIMITES_SESIONES.min} una disciplina no se sostiene.`, 'B1-04 Principio 5')
@@ -146,8 +159,10 @@ export function verificarSemana(sesiones: SesionAVerificar[], ctx: ContextoVerif
   // ---- 4. El reparto entre disciplinas ----
   const total = sesiones.reduce((a, s) => a + s.minutos, 0)
   if (total > 0) {
-    const rango = rangoDisciplina(ctx.entrada.distancia)
-    ;([...RESISTENCIA, 'Fuerza'] as Bloque[]).forEach(b => {
+    // El de B1-04 rehecho para sus disciplinas: a quien solo corre, la carrera
+    // se lleva lo del triatlón entero (lib/plan-semana, rangoDisciplina).
+    const rango = rangoDisciplina(ctx.entrada.distancia, ctx.entrada.disciplinas)
+    ;([...RESISTENCIA, 'Fuerza'] as Bloque[]).filter(b => suyos.includes(b)).forEach(b => {
       const min = sesiones.filter(s => s.bloque === b).reduce((a, s) => a + s.minutos, 0)
       const pct = min / total * 100
       if (min === 0) return

@@ -27,7 +27,7 @@ import {
   type DistanciaTri, type FaseMacro, type Disciplina, type FranjaReparto,
 } from './distribucion-zonas'
 import { fuerzaDeFase } from './plantillas-fuerza'
-import { etiquetaDisciplina } from './disciplinas'
+import { etiquetaDisciplina, disciplinasDe } from './disciplinas'
 
 export type NivelAtleta = 'principiante' | 'intermedio' | 'avanzado' | 'elite'
 
@@ -39,6 +39,18 @@ export const BLOQUES: Bloque[] = ['Natacion', 'Ciclismo', 'Carrera', 'Fuerza']
 /* El nombre sale del catálogo (lib/disciplinas): estaba copiado aquí. */
 export const ETIQUETA_BLOQUE: Record<Bloque, string> =
   Object.fromEntries(BLOQUES.map(b => [b, etiquetaDisciplina(b)])) as Record<Bloque, string>
+
+/**
+ * Los bloques que programa este deportista, de los cuatro del planificador.
+ *
+ * Sale de `deportista.disciplinas`, con la misma regla que su ficha: null o
+ * vacío son todas. Antes no se miraba, y a una corredora le salían natación y
+ * ciclismo todas las semanas.
+ */
+export function bloquesDelDeportista(disciplinas?: string[] | null): Bloque[] {
+  const suyas = new Set(disciplinasDe({ disciplinas }))
+  return BLOQUES.filter(b => suyas.has(b))
+}
 
 // ------------------------------------------------------------
 // Reparto de volumen entre disciplinas — B1-04 Principio 5
@@ -100,6 +112,11 @@ export interface EntradaSemana {
   nivel: NivelAtleta
   /** Anamnesis `disciplina_debil`. Sesga el reparto DENTRO del rango, nunca fuera. */
   disciplinaDebil?: string | null
+  /**
+   * `deportista.disciplinas`: las que hace. Null o vacío = todas. Lo que no
+   * hace no recibe ni un minuto, y su parte va a las que sí hace.
+   */
+  disciplinas?: string[] | null
 }
 
 export interface RepartoBloque {
@@ -152,14 +169,37 @@ export function bloqueDeTexto(txt: string | null | undefined): Bloque | null {
 export const RESISTENCIA: Bloque[] = ['Natacion', 'Ciclismo', 'Carrera']
 
 /**
- * Los rangos de reparto de B1-04 para una distancia.
+ * Los rangos de reparto de B1-04 para una distancia, y para este deportista.
  *
  * Se exportan para que el VERIFICADOR pueda juzgar una semana que no ha generado
  * él: la de la IA, o una que el entrenador haya editado a mano. La misma tabla
  * que sirve para repartir sirve para comprobar si un reparto cualquiera vale.
+ *
+ * LA TABLA ES DE TRIATLÓN. A quien no hace las tres, lo que B1-04 les da a las
+ * que no hace se le reparte entre las que sí, en la proporción que la propia
+ * tabla da entre ellas: a una corredora, la carrera se queda con lo de la
+ * natación y el ciclismo; a un duatleta, bici y carrera se lo reparten como
+ * 45 a 31. Las que no hace se quedan en 0–0.
  */
-export function rangoDisciplina(distancia: DistanciaTri): Record<Bloque, Franja> {
-  return REPARTO_DISCIPLINA[distancia]
+export function rangoDisciplina(distancia: DistanciaTri, disciplinas?: string[] | null): Record<Bloque, Franja> {
+  const tabla = REPARTO_DISCIPLINA[distancia]
+  const suyos = bloquesDelDeportista(disciplinas)
+  if (suyos.length === BLOQUES.length) return tabla
+
+  const medio = (b: Bloque) => (tabla[b].min + tabla[b].max) / 2
+  const quedan = RESISTENCIA.filter(b => suyos.includes(b))
+  const suyo = quedan.reduce((a, b) => a + medio(b), 0)
+  const ajeno = RESISTENCIA.filter(b => !suyos.includes(b)).reduce((a, b) => a + medio(b), 0)
+  const k = suyo > 0 ? (suyo + ajeno) / suyo : 1
+  const r1 = (x: number) => Math.round(x * 10) / 10
+
+  const r = {} as Record<Bloque, Franja>
+  BLOQUES.forEach(b => {
+    if (!suyos.includes(b)) r[b] = { min: 0, max: 0 }
+    else if (!RESISTENCIA.includes(b)) r[b] = { ...tabla[b] }
+    else r[b] = { min: r1(tabla[b].min * k), max: Math.min(100, r1(tabla[b].max * k)) }
+  })
+  return r
 }
 
 /** El mínimo y el máximo de sesiones por disciplina (B1-04 Principio 5). */
@@ -191,8 +231,11 @@ function repartirPorcentajes(
   debil: Bloque | null,
   hayFuerza: boolean,
   avisos: string[],
+  disciplinas?: string[] | null,
 ): Record<Bloque, number> {
-  const franjas = REPARTO_DISCIPLINA[distancia]
+  const franjas = rangoDisciplina(distancia, disciplinas)
+  // Las de resistencia que hace: las demás se quedan en cero y no se tocan.
+  const suyas = RESISTENCIA.filter(b => franjas[b].max > 0)
   const pct: Record<Bloque, number> = {} as any
 
   // LA FUERZA COGE SU MÁXIMO, no el punto medio, y esto merece explicación.
@@ -203,16 +246,17 @@ function repartirPorcentajes(
   pct.Fuerza = hayFuerza ? franjas.Fuerza.max : 0
 
   RESISTENCIA.forEach(b => { pct[b] = (franjas[b].min + franjas[b].max) / 2 })
-  const sobra = ajustarA(100 - pct.Fuerza, RESISTENCIA, pct, franjas)
+  const sobra = suyas.length ? ajustarA(100 - pct.Fuerza, suyas, pct, franjas) : 0
   if (Math.abs(sobra) > 0.5) {
     avisos.push(`El reparto por disciplina de ${ETIQUETA_DISTANCIA[distancia]} no cuadra el 100 % dentro de sus rangos (sobran ${sobra.toFixed(1)} puntos). Se deja lo más cerca posible.`)
   }
 
-  if (debil && debil !== 'Fuerza') {
+  // Con una sola disciplina de resistencia no hay de dónde quitar para dársela.
+  if (debil && debil !== 'Fuerza' && suyas.includes(debil) && suyas.length > 1) {
     const margen = franjas[debil].max - pct[debil]
     if (margen > 0.01) {
       pct[debil] = franjas[debil].max
-      const otros = RESISTENCIA.filter(b => b !== debil)
+      const otros = suyas.filter(b => b !== debil)
       const resto = ajustarA(100 - pct.Fuerza - pct[debil], otros, pct, franjas)
       if (Math.abs(resto) > 0.5) {
         // Lo que no se pudo quitar se devuelve, para no inflar el total.
@@ -238,17 +282,34 @@ export function topeCalidad(diasSemana: number): number {
 
 export function formaDeSemana(e: EntradaSemana): FormaSemana {
   const avisos: string[] = []
+  const suyos = bloquesDelDeportista(e.disciplinas)
+  const resistencia = RESISTENCIA.filter(b => suyos.includes(b))
+  const ajenas = RESISTENCIA.filter(b => !suyos.includes(b))
+  const nombres = (bs: Bloque[], y: string) => bs.map(b => ETIQUETA_BLOQUE[b].toLowerCase()).join(y)
+
   const dias = Math.max(1, Math.min(7, Math.round(e.diasSemana || 0)))
   if (!e.diasSemana || e.diasSemana < 1) avisos.push('No consta cuántos días puede entrenar: se asume 1 y el plan no vale de mucho hasta que se rellene.')
-  if (dias < 3) avisos.push(`Con ${dias} día(s) a la semana no se sostienen las tres disciplinas. El plan prioriza, no reparte.`)
+  if (dias < 3 && resistencia.length >= 3) avisos.push(`Con ${dias} día(s) a la semana no se sostienen las tres disciplinas. El plan prioriza, no reparte.`)
 
   const minutosTotales = Math.round(Math.max(0, e.horasSemana || 0) * 60)
   if (minutosTotales <= 0) avisos.push('No consta el volumen semanal: sin él no se puede repartir nada.')
 
-  const debil = bloqueDeTexto(e.disciplinaDebil)
+  if (!resistencia.length) {
+    avisos.push('No hace natación, ciclismo ni carrera: este planificador reparte deportes de resistencia, así que solo puede proponerle la fuerza.')
+  } else if (ajenas.length) {
+    avisos.push(`No hace ${nombres(ajenas, ' ni ')}: lo que B1-04 les da en ${ETIQUETA_DISTANCIA[e.distancia]} va a ${nombres(resistencia, ' y ')}.`)
+  }
+
+  // Un punto flojo que no practica no tira de nada: el desplegable de la
+  // anamnesis solo ofrece los tres del triatlón, y una corredora tiene que
+  // elegir uno.
+  const debilTxt = bloqueDeTexto(e.disciplinaDebil)
+  const debil = debilTxt && suyos.includes(debilTxt) ? debilTxt : null
   // La fuerza sigue a la fase, no al reparto: en transición no toca ninguna.
+  // Y a quien no la tiene entre sus disciplinas, nunca.
   const plantillasFuerza = fuerzaDeFase(e.fase)
-  const pct = repartirPorcentajes(e.distancia, debil, plantillasFuerza.length > 0, avisos)
+  const hayFuerza = plantillasFuerza.length > 0 && suyos.includes('Fuerza')
+  const pct = repartirPorcentajes(e.distancia, debil, hayFuerza, avisos, e.disciplinas)
 
   const bloques: RepartoBloque[] = BLOQUES.map(b => {
     const minutos = Math.round(minutosTotales * pct[b] / 100)
@@ -275,9 +336,9 @@ export function formaDeSemana(e: EntradaSemana): FormaSemana {
   })
 
   const fuerza = bloques.find(b => b.bloque === 'Fuerza')!
-  if (plantillasFuerza.length && fuerza.sesiones === 0) {
+  if (hayFuerza && fuerza.sesiones === 0) {
     avisos.push(`Con ${Math.round(minutosTotales / 6) / 10} h a la semana, el ${REPARTO_DISCIPLINA[e.distancia].Fuerza.max} % que B1-04 reserva a la fuerza son ${Math.round(minutosTotales * REPARTO_DISCIPLINA[e.distancia].Fuerza.max / 100)} min: no llega ni para la sesión más corta de B3-01. O se le quita tiempo a otra disciplina o esta fase se queda sin fuerza.`)
-  } else if (plantillasFuerza.length && fuerza.sesiones < sesionesPrescritasFuerza(plantillasFuerza[0].sesionesSemana)) {
+  } else if (hayFuerza && fuerza.sesiones < sesionesPrescritasFuerza(plantillasFuerza[0].sesionesSemana)) {
     avisos.push(`B3-01 pide ${plantillasFuerza[0].sesionesSemana} sesiones de ${plantillasFuerza[0].nombre.toLowerCase()} y en este volumen solo cabe ${fuerza.sesiones}. Es el techo del ${REPARTO_DISCIPLINA[e.distancia].Fuerza.max} % de B1-04.`)
   }
 
@@ -291,10 +352,18 @@ export function formaDeSemana(e: EntradaSemana): FormaSemana {
   //
   // Se recorta por la disciplina que más sesiones tenga, nunca por debajo del
   // mínimo de 2, y los minutos se reparten entre las que quedan.
-  const TOPE = Math.floor(dias * 1.5)
+  //
+  // SIN NATACIÓN NO HAY QUÉ DOBLAR. El margen de media sesión por día sale de
+  // que el nado se combina gratis; a quien no nada le dejaba dos carreras de
+  // hora y media el mismo martes. Para él, una de resistencia por día, y la
+  // fuerza aparte, que comparte día con un rodaje como siempre.
+  const nada = suyos.includes('Natacion')
+  const TOPE = nada ? Math.floor(dias * 1.5) : dias
+  const cuenta = (b: RepartoBloque) => nada || b.bloque !== 'Fuerza'
   let sesionesTotales = bloques.reduce((a, b) => a + b.sesiones, 0)
+  let contadas = bloques.filter(cuenta).reduce((a, b) => a + b.sesiones, 0)
   let recortadas = 0
-  while (sesionesTotales > TOPE) {
+  while (contadas > TOPE) {
     const candidata = bloques
       .filter(b => b.bloque !== 'Fuerza' && b.sesiones > MIN_SESIONES)
       .sort((a, b) => b.sesiones - a.sesiones)[0]
@@ -302,12 +371,13 @@ export function formaDeSemana(e: EntradaSemana): FormaSemana {
     candidata.sesiones--
     candidata.minutosPorSesion = Math.round(candidata.minutos / candidata.sesiones)
     sesionesTotales--
+    contadas--
     recortadas++
   }
   if (recortadas) {
     avisos.push(`${recortadas} sesión(es) menos y más largas: con ${dias} día(s) no caben más sin que casi todos lleven doble. El volumen es el mismo.`)
   }
-  if (sesionesTotales > dias * 1.5) {
+  if (nada && sesionesTotales > dias * 1.5) {
     avisos.push(`Aun así salen ${sesionesTotales} sesiones para ${dias} día(s): más de la mitad llevarán doble. Lo barato es doblar natación, que no carga el tren inferior (B1-04, interferencia baja).`)
   }
 

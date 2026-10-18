@@ -12,12 +12,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  semanasDelMesociclo, entradaDeSemana, semanasHasta, pisaElTapering,
+  semanasDelMesociclo, semanasHasta, pisaElTapering,
   type SemanaDelMeso,
 } from '@/lib/plan-mesociclo'
-import { formaDeSemana, type EntradaSemana, type NivelAtleta } from '@/lib/plan-semana'
-import { colocarSemana, type DiaDisponible } from '@/lib/plan-colocacion'
-import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
+import { type NivelAtleta } from '@/lib/plan-semana'
+import { type DiaDisponible } from '@/lib/plan-colocacion'
+import { nivelDePlantilla } from '@/lib/plan-relleno'
+import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
@@ -43,9 +44,9 @@ interface Props {
 }
 
 interface SemanaGenerada extends SemanaDelMeso {
-  plan: SemanaRellena
+  plan: SemanaDelBloque
   yaHay: number | null
-  volcada?: { creadas: number; error: string | null }
+  volcada?: { creadas: number; error: string | null; yaHabia: number }
 }
 
 export default function CadenaMesociclo({
@@ -53,7 +54,7 @@ export default function CadenaMesociclo({
 }: Props) {
   const [mesos, setMesos] = useState<MesoFila[]>([])
   const [uaPorMeso, setUaPorMeso] = useState<Record<number, (number | null)[]>>({})
-  const [competiciones, setCompeticiones] = useState<{ nombre: string; fecha: string }[]>([])
+  const [competiciones, setCompeticiones] = useState<(CompeticionDelPlan & { nombre: string })[]>([])
   const [selId, setSelId] = useState<number | null>(null)
   const [cargando, setCargando] = useState(true)
   const [generadas, setGeneradas] = useState<SemanaGenerada[] | null>(null)
@@ -77,8 +78,10 @@ export default function CadenaMesociclo({
         supabase.from('mesociclo')
           .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
           .eq('id_deportista', dep.id).order('fecha_inicio'),
+        // Con `*`: la prioridad decide si la víspera se entrena, y es una
+        // columna que puede no estar (nombrarla tumbaría la consulta entera).
         supabase.from('competicion')
-          .select('nombre, fecha').eq('id_deportista', Number(dep.id)).order('fecha'),
+          .select('*').eq('id_deportista', Number(dep.id)).order('fecha'),
         supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').eq('id_deportista', dep.id),
       ])
       const lista: MesoFila[] = (ms.data || []).map((m: any) => ({ ...m, fecha_inicio: String(m.fecha_inicio).slice(0, 10) }))
@@ -96,7 +99,7 @@ export default function CadenaMesociclo({
       if (!vivo) return
       setMesos(lista)
       setUaPorMeso(ua)
-      setCompeticiones((comps.data || []).map((c: any) => ({ nombre: c.nombre, fecha: String(c.fecha).slice(0, 10) })))
+      setCompeticiones((comps.data || []).map((c: any) => ({ nombre: c.nombre, fecha: String(c.fecha).slice(0, 10), prioridad: c.prioridad ?? null })))
       setSelId(lista[0]?.id ?? null)
       setCargando(false)
     }
@@ -136,19 +139,15 @@ export default function CadenaMesociclo({
   const generar = async () => {
     if (!meso) return
     setGenerando(true)
-    const base = { diasSemana: dias, distancia, nivel, disciplinaDebil }
+    // Las disciplinas de su ficha y sus competiciones: sin ellas, el motor
+    // planificaba un triatlón y no sabía qué días corría.
+    const base = { diasSemana: dias, distancia, nivel, disciplinaDebil, disciplinas: dep.disciplinas ?? null }
     /* Las semanas a la vez: lo que ya hay en cada una se pregunta en paralelo
        (era una espera por semana, una detrás de otra). */
     const out: SemanaGenerada[] = await Promise.all(semanas.map(async s => {
-      const e: EntradaSemana = entradaDeSemana(s, base)
-      const forma = formaDeSemana(e)
-      const plan = rellenarSemana({
-        forma,
-        colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : dias),
-        nivel,
-        fase: s.fase,
-      })
-      // Qué hay ya esa semana. Volcar SUMA, y eso hay que saberlo antes.
+      const plan = semanaDelBloque(s, base, { disponibilidad, competiciones })
+      // Qué hay ya esa semana. Una semana con sesiones no se toca al volcar, y
+      // eso hay que saberlo antes.
       const yaHay = s.lunes ? await loQueYaHay(supabase, dep.id, s.lunes).catch(() => null) : null
       return { ...s, plan, yaHay }
     }))
@@ -175,7 +174,7 @@ export default function CadenaMesociclo({
         aplicarBloques,
         bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
       })
-      out[i] = { ...s, volcada: { creadas: r.creadas, error: r.error } }
+      out[i] = { ...s, volcada: { creadas: r.creadas, error: r.yaHabia && !r.creadas ? null : r.error, yaHabia: r.yaHabia } }
       setGeneradas([...out])
     }))
     setVolcando(false)
@@ -195,6 +194,7 @@ export default function CadenaMesociclo({
   const hecho = !!generadas?.length && generadas.every(s => s.volcada)
   const totalCreadas = (generadas || []).reduce((a, s) => a + (s.volcada?.creadas || 0), 0)
   const yaHayTotal = (generadas || []).reduce((a, s) => a + (s.yaHay || 0), 0)
+  const semanasConAlgo = (generadas || []).filter(s => (s.yaHay || 0) > 0).length
   const totalSesiones = (generadas || []).reduce((a, s) => a + s.plan.relleno.length, 0)
 
   return (
@@ -252,7 +252,11 @@ export default function CadenaMesociclo({
                   <td className="py-2 px-2 text-orange-400 font-bold">{s.n}</td>
                   <td className="py-2 px-2 text-gray-300 tabular-nums">{s.lunes || '—'}</td>
                   <td className="py-2 px-2 text-gray-300 tabular-nums">{Math.round(s.cargaRelativa * 100)} %</td>
-                  <td className="py-2 px-2 text-gray-100 font-semibold tabular-nums">{s.horasSemana} h</td>
+                  {/* La semana de una carrera pierde las horas de los días que se libran. */}
+                  <td className="py-2 px-2 text-gray-100 font-semibold tabular-nums"
+                    title={g?.plan.competicion ? textoCompeticion(g.plan.competicion) : undefined}>
+                    {g?.plan.competicion ? g.plan.competicion.horas : s.horasSemana} h
+                  </td>
                   <td className="py-2 px-2">
                     <span className={'text-[11.5px] px-2 py-0.5 rounded-md ' + (s.esDescarga
                       ? 'bg-green-500/15 text-green-300' : 'bg-gray-800 text-gray-400')}>{s.etiqueta}</span>
@@ -262,9 +266,11 @@ export default function CadenaMesociclo({
                     {g?.volcada
                       ? (g.volcada.error
                         ? <span className="text-red-400">{g.volcada.error}</span>
-                        : <span className="text-green-400">✓ {g.volcada.creadas} creadas</span>)
+                        : g.volcada.yaHabia && !g.volcada.creadas
+                          ? <span className="text-amber-300">ya tenía {g.volcada.yaHabia}: no se ha tocado</span>
+                          : <span className="text-green-400">✓ {g.volcada.creadas} creadas</span>)
                       : g?.yaHay
-                        ? <span className="text-amber-300">ya hay {g.yaHay}</span>
+                        ? <span className="text-amber-300">ya hay {g.yaHay}: no se toca</span>
                         : <span className="text-gray-600">—</span>}
                   </td>
                 </tr>
@@ -277,11 +283,14 @@ export default function CadenaMesociclo({
       {generadas && !hecho && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 px-3.5 py-3">
           <p className="text-[13px] text-gray-200">{totalSesiones} sesiones en {generadas.length} semanas.</p>
-          {yaHayTotal > 0 && (
+          {semanasConAlgo > 0 && (
             <p className="text-[12.5px] text-amber-200/90 mt-1">
-              Ojo: esas semanas ya tienen {yaHayTotal} sesiones. Volcar SUMA, no reemplaza — te quedarían las dos.
+              {semanasConAlgo} de esas semanas ya tienen sesiones ({yaHayTotal} en total): esas no se tocan, solo se llenan las vacías.
             </p>
           )}
+          {generadas.map((g, i) => g.plan.competicion && (
+            <p key={i} className="text-[12px] text-gray-400 mt-1">🏁 S{g.n} ({g.lunes}): {textoCompeticion(g.plan.competicion)}</p>
+          ))}
         </div>
       )}
 

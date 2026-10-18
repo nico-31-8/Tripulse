@@ -25,6 +25,17 @@
 //
 // 3. Va sesión a sesión y NO se para en el primer fallo. Que una falle no puede
 //    dejar la semana a medias sin decir cuál. Se devuelve el parte de cada una.
+//
+// Y DOS QUE APRENDIMOS EL 2026-10-18, cuando «Mi plan» volcó un bloque encima
+// de dos semanas que ya había llenado minuto y medio antes:
+//
+// 4. Una semana que ya tiene sesiones NO SE TOCA, salvo que se pida `sumar`.
+//    Contarlas antes (loQueYaHay) solo servía para avisar, y el aviso se
+//    quedaba viejo: se contaba al generar y se volcaba después. Se cuenta aquí,
+//    justo antes de escribir.
+// 5. El día de una competición no se escribe nada. El bloque ya no planifica
+//    ese día (lib/plan-bloque); esto es la red de debajo para lo que llegue
+//    montado de otra manera, como la semana suelta del planificador.
 import type { Relleno } from './plan-relleno'
 import type { DiaSemana } from './plan-colocacion'
 import { DIAS } from './plan-colocacion'
@@ -45,6 +56,8 @@ export interface ResultadoVolcado {
   parte: ParteSesion[]
   creadas: number
   error: string | null
+  /** Las que ya tenía la semana. Si hay alguna y no se pidió sumar, no se escribe nada. */
+  yaHabia: number
 }
 
 /**
@@ -70,7 +83,11 @@ export const domingoDe = (lunes: string) => fechaDeDia(lunes, 'Domingo')
  * Qué hay ya en el calendario esa semana.
  *
  * Volcar dos veces sin mirar deja al atleta con la semana duplicada y sin un
- * solo aviso. Se cuenta antes y decide el entrenador.
+ * solo aviso. Se cuenta antes para avisar, y volcarSemana lo vuelve a contar
+ * justo antes de escribir.
+ *
+ * Si la consulta falla, LANZA en vez de decir «0»: un cero que en realidad es
+ * «no lo sé» es exactamente lo que deja pasar una semana duplicada.
  */
 export async function loQueYaHay(sb: any, idDeportista: number, lunes: string): Promise<number> {
   /* Ya no hace falta saber sus microciclos para esto: se preguntaba por ellos
@@ -85,8 +102,26 @@ export async function loQueYaHay(sb: any, idDeportista: number, lunes: string): 
   /* Las suyas son las de su plan MÁS las libres —mirar solo el microciclo deja
      fuera justo las que el planificador crea cuando no tiene semana montada—, y
      las dos juntas son «las del deportista», que la sesión lo lleva. */
-  const { data } = await consulta().eq('id_deportista', idDeportista)
+  const { data, error } = await consulta().eq('id_deportista', idDeportista)
+  if (error) throw new Error(error.message || 'No se pudo leer el calendario')
   return (data as any[] | null)?.length || 0
+}
+
+/**
+ * Las competiciones del deportista que caen en esa semana.
+ *
+ * `select('*')` y no la lista de columnas: `prioridad` la añadió una migración
+ * que puede no estar en todas las bases, y nombrar una columna que no existe
+ * tumba la consulta entera sin avisar (ver lib/competicion-prioridad).
+ */
+export async function competicionesDeLaSemana(sb: any, idDeportista: number, lunes: string): Promise<{ fecha: string; nombre: string }[]> {
+  const { data } = await sb.from('competicion').select('*')
+    .eq('id_deportista', idDeportista)
+    .gte('fecha', lunes).lte('fecha', domingoDe(lunes))
+  return ((data as any[] | null) || []).map(c => ({
+    fecha: String(c.fecha).slice(0, 10),
+    nombre: String(c.nombre || '').trim() || 'una competición',
+  }))
 }
 
 /** Los microciclos del atleta, para saber si la fecha cae en su plan.
@@ -187,14 +222,38 @@ export interface OpcionesVolcado {
   aplicarBloques: (sb: any, idSesion: number, disciplina: string, bloques: any[]) => Promise<string | null>
   /** Los bloques de cada sesión de resistencia, por clave del catálogo. */
   bloquesDe: (clave: string) => any[]
+  /**
+   * Sumarlas a las que ya tenga esa semana. Sin esto, una semana con alguna
+   * sesión no se toca. Solo lo pide la semana suelta del planificador, y
+   * después de haber enseñado cuántas hay.
+   */
+  sumar?: boolean
 }
 
 export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<ResultadoVolcado> {
-  if (!o.idDeportista) return { parte: [], creadas: 0, error: 'Falta el deportista.' }
-  if (!o.lunes) return { parte: [], creadas: 0, error: 'Falta la semana de destino.' }
-  if (!o.relleno?.length) return { parte: [], creadas: 0, error: 'La semana está vacía.' }
+  if (!o.idDeportista) return { parte: [], creadas: 0, error: 'Falta el deportista.', yaHabia: 0 }
+  if (!o.lunes) return { parte: [], creadas: 0, error: 'Falta la semana de destino.', yaHabia: 0 }
+  if (!o.relleno?.length) return { parte: [], creadas: 0, error: 'La semana está vacía.', yaHabia: 0 }
 
-  const micros = await microsDelDeportista(sb, o.idDeportista)
+  /* Lo que hay que saber antes de escribir, todo a la vez. Lo que ya tiene la
+     semana se pregunta AQUÍ y no se fía de lo que se contó al generar: entre
+     una cosa y otra pudo volcarse otra pasada (es lo que pasó el 18-10). */
+  let micros: any[], yaHabia: number, carreras: { fecha: string; nombre: string }[]
+  try {
+    ;[micros, yaHabia, carreras] = await Promise.all([
+      microsDelDeportista(sb, o.idDeportista),
+      loQueYaHay(sb, o.idDeportista, o.lunes),
+      competicionesDeLaSemana(sb, o.idDeportista, o.lunes),
+    ])
+  } catch (e: any) {
+    // Sin saber lo que hay no se escribe: duplicar una semana entera es peor
+    // que tener que pulsar otra vez.
+    return { parte: [], creadas: 0, yaHabia: 0, error: 'No se pudo comprobar qué hay ya esa semana; no se ha creado nada. ' + (e?.message || '') }
+  }
+
+  if (yaHabia > 0 && !o.sumar) {
+    return { parte: [], creadas: 0, yaHabia, error: `La semana ya tenía ${yaHabia} sesión(es): no se ha tocado.` }
+  }
 
   /* TODAS A LA VEZ. Iban una detrás de otra, y cada una son tres esperas (la
      sesión, sus tareas, lo que cuelga de ellas): una semana de seis sesiones
@@ -205,6 +264,10 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
     const micro = microDelDia(micros, fecha)
     const disciplina = r.hueco.bloque
     const base: ParteSesion = { dia: r.dia, fecha, nombre: r.nombre, disciplina, ok: false, enSuPlan: !!micro }
+
+    // La carrera ES la sesión de ese día.
+    const carrera = carreras.find(c => c.fecha === fecha)
+    if (carrera) return { ...base, error: 'Ese día compite en «' + carrera.nombre + '»: no se le pone nada más.' }
 
     try {
       const { data: ses, error: eS } = await sb.from('sesion').insert({
@@ -241,7 +304,7 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
   }))
 
   const creadas = parte.filter(p => p.ok).length
-  return { parte, creadas, error: creadas ? null : 'No se pudo crear ninguna sesión.' }
+  return { parte, creadas, yaHabia, error: creadas ? null : 'No se pudo crear ninguna sesión.' }
 }
 
 /** Resumen del volcado, para decirlo en una línea. */

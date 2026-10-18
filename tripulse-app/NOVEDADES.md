@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · El planificador: solo lo suyo, nunca el día de su carrera y sin semanas dobles
+
+- **Solo las disciplinas de su ficha.** El planificador —el tuyo y «Mi plan» del
+  deportista— repartía siempre como un triatlón: a quien en su ficha solo tiene
+  Carrera y Fuerza le ponía natación y ciclismo todas las semanas. Ahora solo
+  planifica lo que tiene marcado, y las horas que habrían ido a natación y
+  ciclismo van a lo que sí hace. A quien no nada tampoco le pone dos carreras el
+  mismo día.
+- **El día de una competición no lleva sesión.** Si es Principal o Secundaria,
+  la víspera tampoco; una de entrenamiento se entrena la víspera como siempre. Esa
+  semana pierde las horas de los días que se libran en vez de amontonarlas en los
+  demás, y al generar el bloque se dice: «sáb 21 y dom 22 sin sesión por «Novo
+  Mesoiro» · 8,5 → 5 h». Si vuelcas una semana suelta con algo ese día, esa
+  sesión no se crea y te dice por qué.
+- **Volcar dos veces ya no duplica.** Al volcar un bloque, una semana que ya tiene
+  sesiones no se toca: se llenan solo las vacías, y la tabla dice «ya tenía 6: no
+  se ha tocado». En «Mi plan» desaparece el «Sí, añádelas igualmente». Sumar a
+  una semana que ya tiene sesiones solo se puede desde «Una semana», después de
+  que te diga cuántas tiene.
+- **«Que la monte el asistente»** tampoco ofrece sesiones de lo que el deportista
+  no hace.
+
+**Números que pueden cambiar:** a los deportistas que no hacen las tres
+disciplinas, las semanas que genere el planificador a partir de hoy les salen
+distintas: más sesiones de lo suyo y ninguna de lo demás. La semana de una
+competición sale con menos horas. Lo que ya está en el calendario no cambia.
+
 ## 18 de octubre de 2026 · «⌚ Su COROS» ya reconoce lo que le mandaste
 
 - **La ventana ya no toma tus entrenos por suyos.** Los días en que le habías

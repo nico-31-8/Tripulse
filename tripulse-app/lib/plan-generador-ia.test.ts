@@ -199,3 +199,30 @@ describe('el ciclo completo, sin llamar a nadie', () => {
     expect(txt).toContain('cic-aei')            // lo que devolvio, para que se vea
   })
 })
+
+describe('lo que el deportista no hace no se le ofrece', () => {
+  /* Lo que no se ofrece no se puede elegir: es la misma idea que el catálogo
+     cerrado. Con el catálogo entero delante y el reparto de un triatlón, el
+     modelo le montaría natación a una corredora. */
+  const corredora = entrada({ distancia: 'olimpico', disciplinas: ['Carrera', 'Fuerza'] })
+
+  it('a quien solo corre no se le enseñan sesiones de natación ni de ciclismo', () => {
+    const txt = catalogoParaIA('intermedio', corredora.disciplinas)
+    expect(txt).not.toMatch(/\bnat-/)
+    expect(txt).not.toMatch(/\bcic-/)
+    todasLasClaves('Carrera').forEach(k => expect(txt, `falta ${k}`).toContain(k))
+    PLANTILLAS_FUERZA.forEach(p => expect(txt, `falta ${p.id}`).toContain(p.id))
+  })
+
+  it('sin Fuerza entre las suyas, tampoco la fuerza', () => {
+    const txt = catalogoParaIA('intermedio', ['Natacion', 'Ciclismo', 'Carrera'])
+    PLANTILLAS_FUERZA.forEach(p => expect(txt).not.toContain(p.id))
+  })
+
+  it('y el encargo no le pide el reparto de un triatlón', () => {
+    const txt = encargoParaIA({ entrada: corredora, forma: formaDeSemana(corredora), dias: 5 })
+    expect(txt).not.toMatch(/Natación \d/)
+    expect(txt).not.toMatch(/Ciclismo \d/)
+    expect(txt).toMatch(/No hace natación ni ciclismo/)
+  })
+})

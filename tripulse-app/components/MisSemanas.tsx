@@ -7,16 +7,18 @@
 // ahora?» y se responde. Nada de «volcar al calendario», ni de avisos sobre lo
 // que ya hay: para el atleta esas son palabras de otro oficio.
 //
-// Lo que SÍ se conserva es lo que le afecta: si ya tiene sesiones esas semanas
-// no se le crean encima sin decírselo.
+// Lo que SÍ se conserva es lo que le afecta: si ya tiene sesiones una semana,
+// no se le crean encima. Antes se le avisaba y se le dejaba «añadirlas
+// igualmente», y así se le duplicaron dos semanas el 2026-10-18.
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { hoyISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
-import { semanasDelMesociclo, entradaDeSemana, type SemanaDelMeso } from '@/lib/plan-mesociclo'
-import { formaDeSemana, type EntradaSemana, type NivelAtleta } from '@/lib/plan-semana'
-import { colocarSemana, type DiaDisponible } from '@/lib/plan-colocacion'
-import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
+import { semanasDelMesociclo, type SemanaDelMeso } from '@/lib/plan-mesociclo'
+import { type NivelAtleta } from '@/lib/plan-semana'
+import { type DiaDisponible } from '@/lib/plan-colocacion'
+import { nivelDePlantilla } from '@/lib/plan-relleno'
+import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
@@ -40,20 +42,24 @@ interface Props {
   disponibilidad: DiaDisponible[]
   horasReferencia: number
   disciplinaDebil?: string | null
+  /** `deportista.disciplinas`, de su ficha. Null o vacío = todas. */
+  disciplinas?: string[] | null
   onCambio?: () => void
 }
 
 interface Generada extends SemanaDelMeso {
-  plan: SemanaRellena
+  plan: SemanaDelBloque
   yaHay: number | null
   creadas?: number
   error?: string | null
+  /** Las que ya tenía al guardar: si había alguna, esa semana no se tocó. */
+  yaHabia?: number
 }
 
 const totalCreadasCalc = (g: Generada[] | null) => (g || []).reduce((a, s) => a + (s.creadas || 0), 0)
 
 export default function MisSemanas({
-  idDeportista, distancia, nivel, dias, disponibilidad, horasReferencia, disciplinaDebil, onCambio,
+  idDeportista, distancia, nivel, dias, disponibilidad, horasReferencia, disciplinaDebil, disciplinas, onCambio,
 }: Props) {
   const [mesos, setMesos] = useState<MesoFila[]>([])
   const [uaPorMeso, setUaPorMeso] = useState<Record<number, (number | null)[]>>({})
@@ -61,8 +67,9 @@ export default function MisSemanas({
   const [cargando, setCargando] = useState(true)
   const [generadas, setGeneradas] = useState<Generada[] | null>(null)
   const [trabajando, setTrabajando] = useState(false)
-  const [confirmando, setConfirmando] = useState(false)
   const [competicion, setCompeticion] = useState<string | null>(null)
+  // Todas, con su fecha y su prioridad: los días que compite no llevan sesión.
+  const [competiciones, setCompeticiones] = useState<CompeticionDelPlan[]>([])
   const [adap, setAdap] = useState<Adaptacion | null>(null)
 
   useEffect(() => {
@@ -82,8 +89,10 @@ export default function MisSemanas({
           .select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
           .eq('id_deportista', idDeportista).order('fecha_inicio'),
         supabase.from('microciclo').select('id_mesociclo, fecha_inicio, ua_planificada').eq('id_deportista', idDeportista),
+        // Con `*`: la prioridad decide si la víspera se entrena, y es una
+        // columna que puede no estar (nombrarla tumbaría la consulta entera).
         supabase.from('competicion')
-          .select('fecha').eq('id_deportista', idDeportista).order('fecha'),
+          .select('*').eq('id_deportista', idDeportista).order('fecha'),
         vivas(supabase.from('sesion')
           .select('fecha_sesion, estado, rpe_estimado, rpe_reportado')
           .eq('id_deportista', idDeportista)
@@ -103,6 +112,7 @@ export default function MisSemanas({
       if (!vivo) return
       setMesos(lista); setUaPorMeso(ua)
       setCompeticion(comps.data?.length ? String(comps.data[comps.data.length - 1].fecha).slice(0, 10) : null)
+      setCompeticiones((comps.data || []).map((c: any) => ({ fecha: String(c.fecha).slice(0, 10), nombre: c.nombre, prioridad: c.prioridad ?? null })))
       setAdap(adaptar((hechas.data || []).map((x: any) => ({
         fecha: String(x.fecha_sesion).slice(0, 10),
         estado: x.estado,
@@ -153,24 +163,21 @@ export default function MisSemanas({
 
   const testDeLaSemana = (lunes?: string) => tests.find(t => t.lunes === lunes)
 
+  /* Lo mismo para las dos maneras de generar —a mano y el horizonte rodante—:
+     sus disciplinas y los días que compite. */
+  const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil, disciplinas: disciplinas ?? null }
+
   const generar = async () => {
     if (!meso) return
     setTrabajando(true)
-    const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
     /* Lo que ya hay en cada semana se pregunta a la vez: era una espera por
        semana, una detrás de otra. */
     const out: Generada[] = await Promise.all(semanas.map(async s => {
-      const e: EntradaSemana = entradaDeSemana(s, base)
-      const forma = formaDeSemana(e)
-      const plan = rellenarSemana({
-        forma,
-        colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : diasUsados),
-        nivel, fase: s.fase,
-      })
+      const plan = semanaDelBloque(s, base, { disponibilidad, competiciones })
       const yaHay = s.lunes ? await loQueYaHay(supabase, idDeportista, s.lunes).catch(() => null) : null
       return { ...s, plan, yaHay }
     }))
-    setGeneradas(out); setConfirmando(false); setTrabajando(false)
+    setGeneradas(out); setTrabajando(false)
   }
 
   /**
@@ -211,7 +218,6 @@ export default function MisSemanas({
       if (!candidatas.length) { if (vivo) setRodado(0) ; return }
 
       setRodando(true)
-      const base = { diasSemana: diasUsados, distancia, nivel, disciplinaDebil }
       /* LAS SEMANAS A LA VEZ: cada una mira lo que tiene y se vuelca por su
          lado (iban una detrás de otra, y cada una son varias esperas). Una
          semana sale UNA vez aunque dos mesociclos se solapen: en fila, la
@@ -227,13 +233,8 @@ export default function MisSemanas({
         if (!vivo || !x.lunes) return 0
         const yaHay = await loQueYaHay(supabase, idDeportista, x.lunes).catch(() => 1)
         if (yaHay || !vivo) return 0          // esa semana ya tiene algo: no se toca
-        const e: EntradaSemana = entradaDeSemana(x, base)
-        const forma = formaDeSemana(e)
-        const plan = rellenarSemana({
-          forma,
-          colocada: colocarSemana(forma, disponibilidad.length ? disponibilidad : diasUsados),
-          nivel, fase: x.fase,
-        })
+        const plan = semanaDelBloque(x, base, { disponibilidad, competiciones })
+        if (!plan.relleno.length) return 0    // la carrera se lleva todos sus días
         const r = await volcarSemana(supabase, {
           idDeportista, lunes: x.lunes, relleno: plan.relleno,
           aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelDePlantilla(nivel)) || [],
@@ -255,18 +256,21 @@ export default function MisSemanas({
 
   const guardar = async () => {
     if (!generadas) return
-    setTrabajando(true); setConfirmando(false)
+    setTrabajando(true)
     const nivelP = nivelDePlantilla(nivel)
     const out = [...generadas]
     /* Las semanas a la vez, y cada una se pinta según termina (iban en fila,
-       varias esperas cada una). */
+       varias esperas cada una). Las que ya tienen sesiones vuelven sin tocar
+       (lib/plan-volcado): eso no es un fallo, es lo que se le ha dicho. */
     await Promise.all(out.map(async (s, i) => {
       if (!s.lunes) return
+      // Una semana que la carrera deja sin días no es un fallo: no había nada que poner.
+      if (!s.plan.relleno.length) { out[i] = { ...s, creadas: 0, error: null }; return }
       const r = await volcarSemana(supabase, {
         idDeportista, lunes: s.lunes, relleno: s.plan.relleno,
         aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
       })
-      out[i] = { ...s, creadas: r.creadas, error: r.error }
+      out[i] = { ...s, creadas: r.creadas, error: r.yaHabia && !r.creadas ? null : r.error, yaHabia: r.yaHabia }
       setGeneradas([...out])
       // El porqué de cada sesión que no entró. Sin esto, un fallo de permisos
       // y uno de datos se ven exactamente igual: nada.
@@ -284,9 +288,13 @@ export default function MisSemanas({
 
   // «Hecho» es que se haya creado algo, no que se haya intentado: con
   // `creadas != null` un volcado rechazado entero contaba como terminado.
-  const hecho = !!generadas?.length && generadas.every(s => s.creadas != null) && totalCreadasCalc(generadas) > 0
+  // Que todas las semanas ya tuvieran sesiones tampoco es un fallo: no había
+  // nada que poner, y se dice.
+  const todasVistas = !!generadas?.length && generadas.every(s => s.creadas != null)
+  const todasLlenas = todasVistas && generadas!.every(s => (s.yaHabia || 0) > 0)
+  const hecho = todasVistas && (totalCreadasCalc(generadas) > 0 || todasLlenas)
   const totalCreadas = totalCreadasCalc(generadas)
-  const yaHayTotal = (generadas || []).reduce((a, s) => a + (s.yaHay || 0), 0)
+  const semanasConAlgo = (generadas || []).filter(s => (s.yaHay || 0) > 0).length
   const totalSesiones = (generadas || []).reduce((a, s) => a + s.plan.relleno.length, 0)
 
   return (
@@ -375,6 +383,9 @@ export default function MisSemanas({
                     </p>
                   )
                 })()}
+                {g?.plan.competicion && (
+                  <p className="text-[11.5px] text-gray-400 mt-0.5">🏁 {textoCompeticion(g.plan.competicion)}</p>
+                )}
               </div>
               <span className="text-[12px] tabular-nums flex-shrink-0 text-right max-w-[45%]">
                 {/* Un fallo NO puede salir como «✓ 0». Antes, si el volcado se
@@ -385,11 +396,15 @@ export default function MisSemanas({
                   ? <span className="text-red-400">{g.error}</span>
                   : g?.creadas
                     ? <span className="text-green-400">✓ {g.creadas}</span>
-                    : g?.creadas === 0
-                      ? <span className="text-amber-300">no se creó ninguna</span>
-                      : g
-                        ? <span className="text-gray-500">{g.plan.relleno.length} sesiones</span>
-                        : null}
+                    : g?.yaHabia
+                      ? <span className="text-gray-400">ya tenías {g.yaHabia}: no la toco</span>
+                      : g?.creadas === 0
+                        ? <span className="text-amber-300">no se creó ninguna</span>
+                        : g?.yaHay
+                          ? <span className="text-gray-400">ya tienes {g.yaHay}: no la toco</span>
+                          : g
+                            ? <span className="text-gray-500">{g.plan.relleno.length} sesiones</span>
+                            : null}
               </span>
             </div>
           )
@@ -399,9 +414,11 @@ export default function MisSemanas({
       {generadas && !hecho && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
           <p className="text-[13px] text-gray-200">Te salen {totalSesiones} sesiones en {generadas.length} semanas.</p>
-          {yaHayTotal > 0 && (
+          {semanasConAlgo > 0 && (
             <p className="text-[12.5px] text-amber-200/90 mt-1">
-              Ya tienes {yaHayTotal} sesiones en esas semanas. Estas se añaden a las que hay, no las sustituyen.
+              {semanasConAlgo === generadas.length
+                ? 'Todas esas semanas ya tienen sesiones: no las toco.'
+                : semanasConAlgo + ' de esas semanas ya tienen sesiones: esas no las toco, solo lleno las vacías.'}
             </p>
           )}
         </div>
@@ -420,26 +437,20 @@ export default function MisSemanas({
 
         {/* La previsualización YA es la confirmación: has visto las horas de cada
             semana y cuántas sesiones salen. Pedir un «¿seguro?» encima es
-            fricción sin nada que aporte... salvo que haya algo que perder, y
-            entonces sí: volcar sobre semanas que ya tienen sesiones las duplica. */}
-        {generadas && !hecho && (yaHayTotal > 0 && !confirmando ? (
-          <button onClick={() => setConfirmando(true)} disabled={trabajando}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-            Guardar en mi calendario →
+            fricción sin nada que aporte. Había uno cuando ya tenía sesiones esas
+            semanas —«Sí, añádelas igualmente»—, y es por donde se duplicaron dos
+            semanas el 18-10. Ahora esas semanas no se tocan, así que no hay
+            nada que perder y nada que confirmar. */}
+        {generadas && !hecho && (
+          <button onClick={guardar} disabled={trabajando}
+            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
+            {trabajando ? 'Guardando…' : 'Guardar en mi calendario'}
           </button>
-        ) : (
-          <>
-            <button onClick={guardar} disabled={trabajando}
-              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">
-              {trabajando ? 'Guardando…' : yaHayTotal > 0 ? 'Sí, añádelas igualmente' : 'Guardar en mi calendario'}
-            </button>
-            {confirmando && (
-              <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm px-2 transition">Ahora no</button>
-            )}
-          </>
-        ))}
+        )}
 
-        {hecho && <p className="text-green-400 text-sm">✓ {totalCreadas} sesiones en tu calendario.</p>}
+        {hecho && (totalCreadas > 0
+          ? <p className="text-green-400 text-sm">✓ {totalCreadas} sesiones en tu calendario.</p>
+          : <p className="text-gray-400 text-sm">Esas semanas ya tenían sesiones: no he tocado nada.</p>)}
       </div>
     </div>
   )

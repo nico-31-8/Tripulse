@@ -16,9 +16,9 @@ import {
   semanasDelMesociclo, claseDeMeso, semanasHasta, pisaElTapering,
   type SemanaDelMeso,
 } from '@/lib/plan-mesociclo'
-import { formaDeSemana, type EntradaSemana } from '@/lib/plan-semana'
-import { colocarSemana, type DiaDisponible } from '@/lib/plan-colocacion'
-import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan-relleno'
+import { type DiaDisponible } from '@/lib/plan-colocacion'
+import { nivelDePlantilla } from '@/lib/plan-relleno'
+import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
 import { bloquesPorClave, aplicarBloques } from '@/lib/plantillas'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { sumarDias } from '@/lib/desplazar'
@@ -45,13 +45,15 @@ interface Props {
 
 export default function PlanificarMesociclo({ dep, base, horasReferencia, disponibilidad, onCerrar }: Props) {
   const [mesos, setMesos] = useState<MesoFila[]>([])
-  const [competis, setCompetis] = useState<{ nombre: string; fecha: string }[]>([])
+  const [competis, setCompetis] = useState<(CompeticionDelPlan & { nombre: string })[]>([])
   const [selId, setSelId] = useState<number | null>(null)
   const [vista, setVista] = useState<'bloque' | 'plan'>('bloque')
   const [cargando, setCargando] = useState(true)
 
-  const [generadas, setGeneradas] = useState<SemanaRellena[] | null>(null)
+  const [generadas, setGeneradas] = useState<SemanaDelBloque[] | null>(null)
   const [yaHay, setYaHay] = useState<Record<string, number>>({})
+  // Se sube después de volcar para volver a contar: el recuento de antes ya no vale.
+  const [recuento, setRecuento] = useState(0)
   const [confirmando, setConfirmando] = useState(false)
   const [volcando, setVolcando] = useState<string | null>(null)
   const [parte, setParte] = useState<string[]>([])
@@ -61,15 +63,18 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
       /* A la vez y sin pasar por el macrociclo: `mesociclo.id_deportista` dice
          de quién es (Fase A), como en la cadena del mesociclo. Eran tres
          esperas en fila. */
+      /* Las competiciones con `*`: hace falta su prioridad para saber si la
+         víspera se entrena, y es una columna que puede no estar en todas las
+         bases (nombrarla tumbaría la consulta entera). */
       const [{ data: me }, { data: c }] = await Promise.all([
         supabase.from('mesociclo').select('id, objetivo, tipo, fecha_inicio, duracion_semanas')
           .eq('id_deportista', dep.id).order('fecha_inicio'),
-        supabase.from('competicion').select('nombre, fecha')
+        supabase.from('competicion').select('*')
           .eq('id_deportista', dep.id).order('fecha'),
       ])
       setMesos((me || []) as MesoFila[])
       setSelId((me || [])[0]?.id ?? null)
-      setCompetis((c || []).map((x: any) => ({ nombre: x.nombre, fecha: String(x.fecha).slice(0, 10) })))
+      setCompetis((c || []).map((x: any) => ({ nombre: x.nombre, fecha: String(x.fecha).slice(0, 10), prioridad: x.prioridad ?? null })))
       setCargando(false)
     }
     cargar()
@@ -85,23 +90,18 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
     lunes: String(meso.fecha_inicio).slice(0, 10),
   }) : [], [meso, horasReferencia, base.distancia])
 
-  const entradaDe = (s: SemanaDelMeso): EntradaSemana => ({
-    horasSemana: s.horasSemana, diasSemana: base.diasSemana, distancia: base.distancia,
-    fase: s.fase, nivel: base.nivel, disciplinaDebil: base.disciplinaDebil,
-  })
-
+  /* Con lo que el motor no puede adivinar: qué disciplinas hace (su ficha) y
+     qué días compite. Sin las dos, a una corredora le salían natación y
+     ciclismo, y una tirada larga el día de su carrera. */
   const generar = () => {
-    const dias = disponibilidad.length ? disponibilidad : base.diasSemana
-    setGeneradas(semanas.map(s => {
-      const e = entradaDe(s)
-      const forma = formaDeSemana(e)
-      return rellenarSemana({ forma, colocada: colocarSemana(forma, dias), nivel: base.nivel, fase: s.fase })
-    }))
+    setGeneradas(semanas.map(s => semanaDelBloque(s,
+      { ...base, disciplinas: dep.disciplinas ?? null },
+      { disponibilidad, competiciones: competis })))
     setParte([])
   }
 
-  // Qué hay ya en el calendario en cada una de esas semanas. Volcar encima
-  // duplica sin avisar, y con cuatro semanas de golpe eso se multiplica.
+  // Qué hay ya en el calendario en cada una de esas semanas. Las que tienen
+  // algo no se tocan al volcar (lib/plan-volcado), y hay que decirlo antes.
   useEffect(() => {
     if (!generadas || !semanas.length) return
     let vivo = true
@@ -109,7 +109,7 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
       .then(pares => { if (vivo) setYaHay(Object.fromEntries(pares)) })
       .catch(() => {})
     return () => { vivo = false }
-  }, [generadas, semanas, dep.id])
+  }, [generadas, semanas, dep.id, recuento])
 
   const volcarTodo = async () => {
     if (!generadas) return
@@ -126,15 +126,18 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
         idDeportista: dep.id, lunes, relleno: g.relleno,
         aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
       })
-      lineas[i] = 'Semana ' + (i + 1) + ' (' + lunes + '): ' + r.creadas + ' sesiones' +
-        (r.error ? ' · ' + r.error : '')
+      lineas[i] = 'Semana ' + (i + 1) + ' (' + lunes + '): ' + (r.yaHabia && !r.creadas
+        ? 'ya tenía ' + r.yaHabia + ' sesión(es), no se ha tocado'
+        : r.creadas + ' sesiones' + (r.error ? ' · ' + r.error : ''))
       setParte(lineas.filter(Boolean))
     }))
     setVolcando(null)
+    setRecuento(n => n + 1)
   }
 
   const totalSesiones = generadas?.reduce((a, g) => a + g.relleno.length, 0) ?? 0
   const yaHayTotal = Object.values(yaHay).reduce((a, n) => a + n, 0)
+  const semanasConAlgo = Object.values(yaHay).filter(n => n > 0).length
 
   // La competición más cercana por delante del bloque, para avisar del tapering.
   const finBloque = semanas.length ? semanas[semanas.length - 1].lunes! : null
@@ -229,23 +232,35 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
                   style={{ width: Math.min(100, s.cargaRelativa * 90) + '%', background: s.esDescarga ? '#22c55e' : '#f97316' }} />
               </span>
               <span className="text-[12.5px] text-gray-300 w-[150px]">{s.etiqueta}</span>
-              <span className="text-[13px] font-semibold text-orange-400 w-16 text-right tabular-nums">{s.horasSemana} h</span>
+              {/* En la semana de una carrera, las horas que quedan sin los días que se libran. */}
+              <span className="text-[13px] font-semibold text-orange-400 w-16 text-right tabular-nums"
+                title={g?.competicion ? textoCompeticion(g.competicion) : undefined}>
+                {g?.competicion ? g.competicion.horas : s.horasSemana} h
+              </span>
               <span className="text-[12px] text-gray-500 w-24 text-right tabular-nums">
                 {g ? g.relleno.length + ' sesiones' : '—'}
               </span>
               <span className="text-[11.5px] w-24 text-right">
-                {hay ? <span className="text-amber-400">{hay} ya puestas</span> : <span className="text-gray-700">vacía</span>}
+                {hay ? <span className="text-amber-400" title="Al volcar, esta semana no se toca">{hay} ya puestas</span> : <span className="text-gray-700">vacía</span>}
               </span>
             </div>
           )
         })}
       </div>
 
+      {generadas?.some(g => g.competicion) && (
+        <div className="flex flex-col gap-1">
+          {generadas.map((g, i) => g.competicion && (
+            <p key={i} className="text-[12px] text-gray-400">🏁 S{i + 1} ({semanas[i]?.lunes}): {textoCompeticion(g.competicion)}</p>
+          ))}
+        </div>
+      )}
+
       {generadas && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[12.5px] text-gray-400">
             {totalSesiones} sesiones en {generadas.length} semanas
-            {yaHayTotal > 0 && <span className="text-amber-400"> · el calendario ya tiene {yaHayTotal} en esas fechas</span>}
+            {semanasConAlgo > 0 && <span className="text-amber-400"> · {semanasConAlgo} de esas semanas ya tienen sesiones ({yaHayTotal}) y no se tocan</span>}
           </span>
           {!confirmando ? (
             <button onClick={() => setConfirmando(true)} disabled={!!volcando}
@@ -255,7 +270,9 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-[12.5px] text-amber-300">
-                {yaHayTotal > 0 ? 'Se SUMAN a las que ya hay, no las reemplazan. ¿Seguro?' : '¿Volcar las ' + generadas.length + ' semanas?'}
+                {semanasConAlgo > 0
+                  ? 'Se llenan solo las vacías; las que ya tienen sesiones no se tocan. ¿Volcar?'
+                  : '¿Volcar las ' + generadas.length + ' semanas?'}
               </span>
               <button onClick={volcarTodo} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Sí, volcar</button>
               <button onClick={() => setConfirmando(false)} className="text-gray-400 hover:text-white text-sm">Cancelar</button>

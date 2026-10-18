@@ -209,3 +209,36 @@ describe('el parte que se le devuelve al modelo', () => {
     expect(resumenVeredicto(verificarSemana(roto, ctx))).toMatch(/error/i)
   })
 })
+
+describe('las disciplinas del deportista, también para el juez', () => {
+  /* La semana del asistente pasa por aquí antes de llegar al calendario. Si el
+     juez no sabe qué disciplinas hace el atleta, una natación para alguien que
+     solo corre le parece tan buena como cualquier otra. */
+  const CORREDORA: Partial<EntradaSemana> = { distancia: 'olimpico', disciplinas: ['Carrera', 'Fuerza'] }
+  const errores = (s: SesionAVerificar[], c: ContextoVerificacion) =>
+    verificarSemana(s, c).incumplimientos.filter(x => x.gravedad === 'error').map(x => x.regla)
+
+  it('la semana de las reglas para quien solo corre no lleva natación ni ciclismo, y pasa el examen', () => {
+    ;(['pg-inicial', 'pg-avanzada', 'pe-inicial', 'pe-avanzada', 'tapering'] as const).forEach(fase =>
+      [3, 4, 5, 6, 7].forEach(dias => {
+        const { sesiones, ctx } = semanaDeLasReglas({ ...CORREDORA, fase, diasSemana: dias, horasSemana: 8 })
+        const etiqueta = `${fase}/${dias} días`
+        expect(sesiones.filter(s => s.bloque === 'Natacion' || s.bloque === 'Ciclismo'), etiqueta).toEqual([])
+        const v = verificarSemana(sesiones, ctx)
+        expect(v.incumplimientos.filter(x => x.gravedad === 'error').map(x => x.texto), etiqueta).toEqual([])
+      }))
+  })
+
+  it('una sesión de una disciplina que no hace es un error', () => {
+    const { sesiones, ctx } = semanaDeLasReglas({ distancia: 'olimpico' })
+    expect(sesiones.some(s => s.bloque === 'Natacion'), 'la prueba necesita una natación').toBe(true)
+    const deCorredora = { ...ctx, entrada: { ...ctx.entrada, ...CORREDORA } }
+    expect(errores(sesiones, deCorredora)).toContain('disciplina-que-no-hace')
+  })
+
+  it('y no se le echa en falta la natación a quien no nada', () => {
+    const { sesiones, ctx } = semanaDeLasReglas({ ...CORREDORA, horasSemana: 8, diasSemana: 5 })
+    const avisos = verificarSemana(sesiones, ctx).incumplimientos.filter(x => x.regla === 'disciplina-ausente')
+    expect(avisos.map(x => x.texto)).toEqual([])
+  })
+})

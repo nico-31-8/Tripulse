@@ -149,7 +149,8 @@ export default function MiPlan() {
               dias={dias ?? 5}
               disponibilidad={disponibilidad}
               horasReferencia={horas ?? 8}
-              disciplinaDebil={anamnesis?.disciplina_debil || null} />
+              disciplinaDebil={anamnesis?.disciplina_debil || null}
+              disciplinas={dep.disciplinas} />
 
             {!listo && (
               <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
@@ -259,7 +260,8 @@ export default function MiPlan() {
                 dias={dias ?? 5}
                 disponibilidad={disponibilidad}
                 horasReferencia={horas ?? 8}
-                disciplinaDebil={anamnesis?.disciplina_debil || null} />
+                disciplinaDebil={anamnesis?.disciplina_debil || null}
+                disciplinas={dep.disciplinas} />
             </div>
 
             <div className="flex flex-wrap gap-3 mt-5">

@@ -110,7 +110,9 @@ export default function Planificador() {
        acota aquí: a un director la base le da además los deportistas que otros
        entrenadores le han abierto, y no pueden salir mezclados con los suyos. */
     const user = await usuarioActual()
-    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima, id_entrenador, id_usuario').order('nombre')
+    /* `disciplinas` hace falta para el reparto: sin ella, a una corredora le
+       salían natación y ciclismo (el 2026-10-18). */
+    const { data } = await supabase.from('deportista').select('id, nombre, fc_maxima, id_entrenador, id_usuario, disciplinas').order('nombre')
     const lista = user ? filtrarPorEspacio(data || [], user.id, getEspacio()?.id ?? null) : (data || [])
     setDeportistas(lista)
     const activo = lista.find(d => d.id === getAtletaActivo())
@@ -179,6 +181,7 @@ export default function Planificador() {
   const entrada = (): EntradaSemana => ({
     horasSemana: horas, diasSemana: dias, distancia, fase, nivel,
     disciplinaDebil: anamnesis?.disciplina_debil || null,
+    disciplinas: dep?.disciplinas ?? null,
   })
 
   const forma: FormaSemana | null = dep ? formaDeSemana(entrada()) : null
@@ -250,16 +253,19 @@ export default function Planificador() {
     } finally { setRevisando(false) }
   }
 
-  // Qué hay ya esa semana. Se mira al entrar al paso 2 y cada vez que cambia la
-  // fecha: volcar sobre una semana que ya tiene sesiones la duplica, y eso hay
-  // que saberlo ANTES de pulsar, no después.
+  // Qué hay ya esa semana. Se mira al entrar al paso 2, cada vez que cambia la
+  // fecha y después de cada volcado: volcar sobre una semana que ya tiene
+  // sesiones la duplica, y eso hay que saberlo ANTES de pulsar, no después.
+  // Sin el `recuento`, tras «Volcar otra semana» el aviso desaparecía con la
+  // misma semana marcada, y una segunda vuelta la duplicaba sin decir nada.
+  const [recuento, setRecuento] = useState(0)
   useEffect(() => {
     if (paso !== 2 || !dep) { setYaHay(null); return }
     let vivo = true
     setYaHay(null)
     loQueYaHay(supabase, dep.id, lunes).then(n => { if (vivo) setYaHay(n) }).catch(() => { if (vivo) setYaHay(null) })
     return () => { vivo = false }
-  }, [paso, dep, lunes])
+  }, [paso, dep, lunes, recuento])
 
   async function volcar() {
     if (!semana || !dep) return
@@ -271,8 +277,12 @@ export default function Planificador() {
       relleno: semana.relleno,
       aplicarBloques,
       bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+      // Sumar a lo que ya hay solo si se ha enseñado cuánto hay y se ha
+      // confirmado encima de ese aviso. Si el recuento era viejo, volcarSemana
+      // no escribe y el aviso sale con el número bueno.
+      sumar: (yaHay ?? 0) > 0,
     })
-    setVolcado(r); setVolcando(false)
+    setVolcado(r); setVolcando(false); setRecuento(n => n + 1)
   }
 
   useDeclararModulo('Planificador', dep && forma
@@ -669,7 +679,7 @@ export default function Planificador() {
                       className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
                       Ver su calendario →
                     </button>
-                    <button onClick={() => { setVolcado(null); setYaHay(null) }}
+                    <button onClick={() => setVolcado(null)}
                       className="text-gray-400 hover:text-white text-sm transition">Volcar otra semana</button>
                   </div>
                 </div>

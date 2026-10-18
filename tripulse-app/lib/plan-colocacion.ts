@@ -282,15 +282,23 @@ function coste(est: Estado, idx: number, h: Hueco): { total: number; rotas: Regl
  * y las de calidad), y al final la natación, que es la que cabe en cualquier
  * parte sin coste (B1-04 Principio 3: no carga el tren inferior). Meter primero
  * lo flexible deja lo rígido sin sitio.
+ *
+ * `sinSesion` son días que esa semana no se tocan aunque esté disponible: el de
+ * una competición, y la víspera si es de las que se afinan (lib/plan-bloque).
+ * Se quitan aquí y no antes para que los días por defecto sigan siendo los
+ * mismos: quitar el domingo no puede convertir a quien entrena cinco días en
+ * alguien que «declaró disponibilidad».
  */
 export function colocarSemana(
   forma: FormaSemana,
   disponibles: DiaDisponible[] | number,
+  opciones: { sinSesion?: DiaSemana[] } = {},
 ): SemanaColocada {
   const avisos: string[] = []
-  const lista: DiaDisponible[] = typeof disponibles === 'number'
+  const fuera = new Set(opciones.sinSesion || [])
+  const lista: DiaDisponible[] = (typeof disponibles === 'number'
     ? diasPorDefecto(disponibles).map(d => ({ dia: d, minutos: null }))
-    : [...disponibles]
+    : [...disponibles]).filter(d => !fuera.has(d.dia))
 
   if (!lista.length) {
     return { dias: [], sinColocar: huecosDe(forma), compromisos: [], avisos: ['No hay ningún día disponible: no se puede colocar nada.'] }

@@ -24,7 +24,7 @@
 import { DIAS, type DiaSemana, type DiaDisponible } from './plan-colocacion'
 import { plantillasDe, opcionesDe, resolverClave, volumenPrincipal, type NivelPlantilla } from './plantillas'
 import { PLANTILLAS_FUERZA, plantillaFuerzaPorId, fuerzaDeFase } from './plantillas-fuerza'
-import { ETIQUETA_BLOQUE, RESISTENCIA, rangoDisciplina, LIMITES_SESIONES, type Bloque, type EntradaSemana, type FormaSemana } from './plan-semana'
+import { ETIQUETA_BLOQUE, RESISTENCIA, BLOQUES, rangoDisciplina, bloquesDelDeportista, bloqueDeTexto, LIMITES_SESIONES, type Bloque, type EntradaSemana, type FormaSemana } from './plan-semana'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type Disciplina } from './distribucion-zonas'
 import { nivelDePlantilla } from './plan-relleno'
 import type { Relleno } from './plan-relleno'
@@ -79,9 +79,13 @@ export const ESQUEMA_SEMANA = {
  * Se le dan las claves EXACTAS con su nombre y su volumen orientativo. Es lo que
  * convierte «inventarse una sesión» en algo imposible en vez de algo que hay que
  * detectar después.
+ *
+ * Y solo las de las disciplinas que hace (`deportista.disciplinas`), por lo
+ * mismo: lo que no se le enseña no lo puede elegir.
  */
-export function catalogoParaIA(nivel: NivelPlantilla): string {
-  const bloques = (RESISTENCIA as Disciplina[]).map(d => {
+export function catalogoParaIA(nivel: NivelPlantilla, disciplinas?: string[] | null): string {
+  const suyos = bloquesDelDeportista(disciplinas)
+  const bloques = (RESISTENCIA.filter(b => suyos.includes(b)) as Disciplina[]).map(d => {
     const filas = plantillasDe(d).flatMap(p => opcionesDe(p).map(o => {
       const vol = volumenPrincipal(p, nivel, o.varianteId)
       return `    ${o.clave}  ·  ${o.esBase ? p.nombre : p.nombre + ' · ' + o.nombre}  (${p.zona}, ${vol})`
@@ -89,7 +93,7 @@ export function catalogoParaIA(nivel: NivelPlantilla): string {
     return `  ${ETIQUETA_BLOQUE[d as Bloque]}:\n${filas.join('\n')}`
   })
   const fuerza = PLANTILLAS_FUERZA.map(p => `    ${p.id}  ·  ${p.nombre}  (fases: ${p.fases.join(', ')})`)
-  return [...bloques, `  Fuerza:\n${fuerza.join('\n')}`].join('\n\n')
+  return [...bloques, ...(suyos.includes('Fuerza') ? [`  Fuerza:\n${fuerza.join('\n')}`] : [])].join('\n\n')
 }
 
 export const INSTRUCCIONES_GENERACION = `Eres el planificador de TRIPULSE, una plataforma de entrenamiento de triatlón. Montas UNA semana de entrenamiento para un deportista concreto.
@@ -124,9 +128,11 @@ export function encargoParaIA(o: {
   contexto?: string
 }): string {
   const { entrada: e, forma } = o
-  const rango = rangoDisciplina(e.distancia)
-  const reparto = ([...RESISTENCIA, 'Fuerza'] as Bloque[])
-    .map(b => `${ETIQUETA_BLOQUE[b]} ${rango[b].min}–${rango[b].max} %`).join(' · ')
+  const suyos = bloquesDelDeportista(e.disciplinas)
+  const ajenos = BLOQUES.filter(b => !suyos.includes(b))
+  const rango = rangoDisciplina(e.distancia, e.disciplinas)
+  const reparto = ([...RESISTENCIA, 'Fuerza'] as Bloque[]).filter(b => suyos.includes(b))
+    .map(b => `${ETIQUETA_BLOQUE[b]} ${Math.round(rango[b].min)}–${Math.round(rango[b].max)} %`).join(' · ')
 
   const dias = Array.isArray(o.dias)
     ? o.dias.map(d => d.minutos != null ? `${d.dia} (${d.minutos}′)` : d.dia).join(', ')
@@ -143,12 +149,19 @@ export function encargoParaIA(o: {
     `- Volumen: ${e.horasSemana} h (${forma.minutosTotales} min). Puedes moverte un 20 % como mucho.`,
     `- Días disponibles: ${dias}`,
     `- Reparto por deporte que exige esta prueba: ${reparto}`,
+    ajenos.length
+      ? `- No hace ${ajenos.map(b => ETIQUETA_BLOQUE[b].toLowerCase()).join(' ni ')}: ninguna sesión de eso. Sus disciplinas son ${suyos.map(b => ETIQUETA_BLOQUE[b].toLowerCase()).join(', ')}.`
+      : '',
     `- Sesiones por disciplina: mínimo ${LIMITES_SESIONES.min}, y más de ${LIMITES_SESIONES.max} no aporta.`,
-    fuerza ? `- En esta fase la fuerza que toca es «${fuerza.nombre}» (clave ${fuerza.id}).` : '- En esta fase no toca fuerza.',
-    e.disciplinaDebil ? `- Su punto flojo es ${e.disciplinaDebil}.` : '',
+    !suyos.includes('Fuerza') ? '- No hace fuerza.'
+      : fuerza ? `- En esta fase la fuerza que toca es «${fuerza.nombre}» (clave ${fuerza.id}).` : '- En esta fase no toca fuerza.',
+    // Un punto flojo de una disciplina que no hace no es un dato, es ruido: el
+    // desplegable de la anamnesis solo ofrece las tres del triatlón.
+    e.disciplinaDebil && !ajenos.includes(bloqueDeTexto(e.disciplinaDebil) as Bloque)
+      ? `- Su punto flojo es ${e.disciplinaDebil}.` : '',
     '',
     'EL CATÁLOGO (elige solo de aquí):',
-    catalogoParaIA(nivelDePlantilla(e.nivel)),
+    catalogoParaIA(nivelDePlantilla(e.nivel), e.disciplinas),
   ].filter(Boolean).join('\n')
 }
 

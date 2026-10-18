@@ -231,6 +231,147 @@ describe('cuando algo falla', () => {
   })
 })
 
+/* Un doble que SE ACUERDA de lo que se le escribe y filtra de verdad por
+   deportista, fechas y papelera. Con el de arriba —que contesta siempre «no hay
+   nada»— una segunda pasada ni siquiera se puede plantear. */
+function baseDeDatos(inicial: { sesion?: any[]; competicion?: any[]; falla?: string } = {}) {
+  const tablas: Record<string, any[]> = {
+    sesion: [...(inicial.sesion || [])],
+    competicion: [...(inicial.competicion || [])],
+  }
+  let id = 1000
+  const from = (tabla: string) => {
+    const filtros: ((f: any) => boolean)[] = []
+    const q: any = {}
+    q.select = () => q
+    q.order = () => q
+    q.limit = () => q
+    q.eq = (c: string, v: any) => { filtros.push(f => f[c] === v); return q }
+    q.gte = (c: string, v: any) => { filtros.push(f => String(f[c]) >= String(v)); return q }
+    q.lte = (c: string, v: any) => { filtros.push(f => String(f[c]) <= String(v)); return q }
+    q.or = (expr: string) => { if (expr.includes('eliminada')) filtros.push(f => !f.eliminada); return q }
+    q.then = (res: any, rej: any) => Promise.resolve(inicial.falla === tabla
+      ? { data: null, error: { message: 'sin conexión' } }
+      : { data: (tablas[tabla] || []).filter(f => filtros.every(p => p(f))), error: null }).then(res, rej)
+    q.insert = (filas: any) => {
+      const arr = (Array.isArray(filas) ? filas : [filas]).map(f => ({ ...f, id: id++ }))
+      tablas[tabla] = [...(tablas[tabla] || []), ...arr]
+      const hecho = { data: arr, error: null }
+      return {
+        select: () => ({ single: async () => ({ data: arr[0], error: null }), then: (r: any) => r(hecho) }),
+        then: (r: any) => r(hecho),
+      }
+    }
+    return q
+  }
+  return { from, tablas }
+}
+
+const enLaSemana = (db: ReturnType<typeof baseDeDatos>, lunes: string) =>
+  db.tablas.sesion.filter(s => s.id_deportista === 7 && !s.eliminada &&
+    s.fecha_sesion >= lunes && s.fecha_sesion <= domingoDe(lunes))
+
+describe('una segunda pasada no duplica', () => {
+  /* LO QUE PASÓ EL 2026-10-18. «Mi plan» llenó solo las semanas del 26-10 y
+     del 02-11; minuto y medio después, «Generar mis sesiones» volcó el bloque
+     entero encima y esas dos semanas quedaron con todo dos veces. Contar lo que
+     hay (loQueYaHay) servía para avisar, pero volcar no lo miraba. */
+  it('una semana que ya tiene sesiones no se vuelve a llenar', async () => {
+    const db = baseDeDatos()
+    const relleno = semanaDe().relleno
+    const r1 = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    const r2 = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    expect(r1.creadas).toBe(relleno.length)
+    expect(r2.creadas).toBe(0)
+    expect(enLaSemana(db, '2026-11-02')).toHaveLength(relleno.length)
+  })
+
+  it('y lo dice: cuántas había y que no se tocó', async () => {
+    const db = baseDeDatos()
+    const relleno = semanaDe().relleno
+    await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    const r2 = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    expect(r2.yaHabia).toBe(relleno.length)
+    expect(resumenVolcado(r2)).toMatch(/ya ten[ií]a/i)
+  })
+
+  /* La semana del 19-10 tenía las cuatro que el entrenador puso a mano el 16;
+     la segunda pasada le sumó seis. */
+  it('la semana con lo que puso el entrenador a mano tampoco se toca', async () => {
+    const aMano = ['2026-10-20', '2026-10-22', '2026-10-24', '2026-10-25'].map((fecha_sesion, i) => ({
+      id: 717 + i, id_deportista: 7, fecha_sesion, disciplina: 'Carrera', eliminada: false,
+    }))
+    const db = baseDeDatos({ sesion: aMano })
+    const r = await volcarSemana(db, opts({ lunes: '2026-10-19', relleno: semanaDe().relleno }))
+    expect(r.creadas).toBe(0)
+    expect(enLaSemana(db, '2026-10-19')).toHaveLength(4)
+  })
+
+  it('las de la papelera no cuentan: vaciada la semana, se vuelve a llenar', async () => {
+    const tiradas = [{ id: 1, id_deportista: 7, fecha_sesion: '2026-11-03', eliminada: true }]
+    const db = baseDeDatos({ sesion: tiradas })
+    const relleno = semanaDe().relleno
+    const r = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    expect(r.creadas).toBe(relleno.length)
+  })
+
+  it('las de otro deportista tampoco', async () => {
+    const ajenas = [{ id: 1, id_deportista: 8, fecha_sesion: '2026-11-03', eliminada: false }]
+    const db = baseDeDatos({ sesion: ajenas })
+    const relleno = semanaDe().relleno
+    expect((await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))).creadas).toBe(relleno.length)
+  })
+
+  /* Sumar sigue siendo posible, pero hay que pedirlo: es el planificador de una
+     semana, después de enseñar cuántas hay. */
+  it('solo si se pide sumar, suma', async () => {
+    const db = baseDeDatos()
+    const relleno = semanaDe().relleno
+    await volcarSemana(db, opts({ lunes: '2026-11-02', relleno }))
+    const r2 = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno, sumar: true }))
+    expect(r2.creadas).toBe(relleno.length)
+    expect(enLaSemana(db, '2026-11-02')).toHaveLength(relleno.length * 2)
+  })
+
+  /* Si no se puede saber qué hay, no se escribe: duplicar una semana entera es
+     peor que tener que pulsar otra vez. */
+  it('si no se puede comprobar lo que hay, no se escribe nada', async () => {
+    const db = baseDeDatos({ falla: 'sesion' })
+    const r = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno: semanaDe().relleno }))
+    expect(r.creadas).toBe(0)
+    expect(r.error).toMatch(/comprobar/i)
+    expect(db.tablas.sesion).toEqual([])
+  })
+})
+
+describe('el día de una competición', () => {
+  const NOVO_MESOIRO = { id: 34, id_deportista: 7, fecha: '2026-11-22', nombre: 'Novo Mesoiro', prioridad: 'B', tipo: '' }
+
+  /* La red de debajo. El bloque ya no planifica ese día (lib/plan-bloque), pero
+     la semana suelta del planificador se monta antes de elegir las fechas, y
+     esto es lo único que escribe: aquí no se puede colar. */
+  it('no se escribe ninguna sesión ese día, y el parte dice por qué', async () => {
+    const db = baseDeDatos({ competicion: [NOVO_MESOIRO] })
+    const relleno = semanaDe().relleno
+    expect(relleno.some(x => x.dia === 'Domingo'), 'la prueba necesita algo el domingo').toBe(true)
+    const r = await volcarSemana(db, opts({ lunes: '2026-11-16', relleno }))
+    expect(db.tablas.sesion.filter(s => s.fecha_sesion === '2026-11-22')).toEqual([])
+    const domingo = r.parte.filter(p => p.dia === 'Domingo')
+    expect(domingo.length).toBeGreaterThan(0)
+    domingo.forEach(p => {
+      expect(p.ok).toBe(false)
+      expect(p.error).toMatch(/Novo Mesoiro/)
+    })
+    expect(r.creadas).toBe(relleno.filter(x => x.dia !== 'Domingo').length)
+  })
+
+  it('la competición de otro deportista no quita nada', async () => {
+    const db = baseDeDatos({ competicion: [{ ...NOVO_MESOIRO, id_deportista: 8 }] })
+    const relleno = semanaDe().relleno
+    expect((await volcarSemana(db, opts({ lunes: '2026-11-16', relleno }))).creadas).toBe(relleno.length)
+  })
+})
+
 describe('lo que se escribe en la tabla sesion', () => {
   /* ESTE TEST NACE DE UN FALLO REAL. El volcado escribia `nombre`, una columna
      que NO existe: PostgREST devolvia "Could not find the 'nombre' column of
