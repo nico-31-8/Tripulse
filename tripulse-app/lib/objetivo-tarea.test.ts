@@ -49,6 +49,19 @@ describe('a cuánto tiene que ir el atleta', () => {
     expect(objetivoDeTarea(null, 'Carrera', {}, [], 0)).toBeNull()
   })
 
+  it('ZONAS 2 SIN EL TEST: sus pulsaciones o su RPE, nunca un porcentaje firmado «de tus tests»', () => {
+    /* Es el camino del briefing y de la pantalla de ejecución. Sin copia: */
+    expect(objetivoDeTarea({ zona_entrenamiento: 'AEL' }, 'Ciclismo', { vam: 17, css: 1.25 }, [], 188, 50))
+      .toEqual({ texto: '126–145 ppm', de: 'fc' })
+    /* Con la copia de las zonas de la app, que sin el test no da número y cae
+       a la zona por su sigla — que es donde salía el «56–75% FTP». */
+    const conCopia = {
+      zona_entrenamiento: 'AEL',
+      zona_copia: { sigla: 'AEL', nombre: 'x', color: '#fff', rpe: 3.5, nivel: 2, pctMin: 56, pctMax: 75, refId: 'app:ftp', refEtiqueta: 'Su FTP' },
+    }
+    expect(objetivoDeTarea(conCopia, 'Ciclismo', {}, [], 0)).toEqual({ texto: 'RPE 3–4', de: 'esfuerzo' })
+  })
+
   it('y se dice de dónde sale', () => {
     expect(deDondeSaleTarea('copia')).toContain('prescribió')
     expect(deDondeSaleTarea('fc')).toContain('frecuencia')

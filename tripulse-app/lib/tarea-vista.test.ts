@@ -64,6 +64,19 @@ describe('la tarea de resistencia, para leerla', () => {
     expect(obj?.v).toBeTruthy()
   })
 
+  /* El panel de la semana es del ENTRENADOR, y para él el porcentaje sí dice
+     algo. Pero no es el número del atleta, así que no se destaca como si lo
+     fuera. En Zonas 2 llegaba por el campo del ritmo y salía destacado; en el
+     clásico, no. */
+  it('sin test, el porcentaje de la zona y sin destacar, en los dos sistemas', () => {
+    const z2 = vistaDeTarea(res(), SIN_TESTS, 190).campos.find(c => c.k === 'Objetivo')
+    expect(z2?.v).toBe('106–120% FTP')
+    expect(z2?.destaca).toBeFalsy()
+    const clasica = vistaDeTarea(res({ zona_entrenamiento: 'Z5' }), SIN_TESTS, 190).campos.find(c => c.k === 'Objetivo')
+    expect(clasica?.v).toBe('106–120% FTP')
+    expect(clasica?.destaca).toBeFalsy()
+  })
+
   it('siempre lleva series, por serie, total y descanso', () => {
     const claves = vistaDeTarea(res(), CON_TESTS, 190).campos.map(c => c.k)
     expect(claves).toEqual(expect.arrayContaining(['Series', 'Por serie', 'Total', 'Descanso']))

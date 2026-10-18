@@ -14,6 +14,36 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · Sin el test, el atleta ve su pulso o su RPE, no un porcentaje
+
+- **El objetivo de cada bloque ya no le enseña un porcentaje de un test que no
+  tiene.** Cuando no escribes nada en el «@», la app calcula a cuánto tiene que
+  ir según la zona. A un deportista sin FTP, un rodaje de bici en AEL le salía
+  «56–75% FTP»; sin VAM, «65–75% VAM»; sin CSS, «CSS +10–20s». Es un porcentaje
+  de un número que no tiene, así que no podía hacerlo. Y encima la app lo daba
+  por sacado de sus tests.
+- **Ahora va como ya iba con las zonas Z1–Z7:** con el test, su ritmo o sus
+  vatios; sin el test pero con su FC máxima en la ficha, sus pulsaciones; sin
+  nada, el RPE de la zona. El fallo estaba solo en las zonas AER, AEL, AEM…, que
+  son las que usa casi todo el mundo.
+- Lo ve en su sesión, en la pantalla que tiene delante mientras entrena y al
+  apuntar una sesión suya («Sin el test que toca no se puede decir tu ritmo de
+  AEL. Va por sensación: RPE 3–4»).
+- **Tú sigues viendo el porcentaje** donde te sirve: en el panel de la semana
+  (ya sin resaltar, porque no es su número) y en la hoja del día del grupo, que
+  ahora lo enseña también con las zonas Z1–Z7. En el editor de la sesión, la
+  casilla «@» ya no te propone el porcentaje en gris cuando le falta el test.
+- Lo que escribas en el «@» sigue siendo lo primero que ve.
+
+**Números que pueden cambiar:** a los deportistas **sin el test de ese
+deporte**, el objetivo de los bloques pasa del porcentaje a sus pulsaciones (por
+ejemplo, AEL con FC máxima 188 y de reposo 50: de «56–75% FTP» a «126–145 ppm»)
+o, si no tienen la FC máxima puesta, al RPE («RPE 3–4»). En CLA, PLA, CALA y
+PALA, que no tienen banda de pulso, sale siempre el RPE. En los últimos 120 días
+eran 112 bloques. A quien tiene el test no le cambia nada.
+
+---
+
 ## 18 de octubre de 2026 · Los datos de los relojes COROS ya llegan
 
 - **COROS deja de estar «en pruebas».** El deportista lo conecta desde su perfil

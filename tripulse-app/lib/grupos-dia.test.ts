@@ -95,6 +95,13 @@ describe('hojaDelDia', () => {
     expect(caro.porZona.every(z => !z.ritmo?.includes('/km'))).toBe(true)
   })
 
+  it('con zonas clásicas, igual: el porcentaje de su zona', () => {
+    /* Antes aquí salía el RPE: en el clásico el ritmo sin test ya era null y el
+       porcentaje vivía aparte. Las dos maneras de prescribir, una regla. */
+    const h = hojaDelDia([sesion(12, 3, { tareas: [tarea(1, 'Z2'), tarea(2, 'Z5')] })], MIEMBROS, refs)
+    expect(h[0].quien[0].porZona.map(z => z.ritmo)).toEqual(['60–70% VAM', '90–100% VAM'])
+  })
+
   it('con test SÍ sale un ritmo de verdad', () => {
     const h = hojaDelDia([sesion(10, 1)], MIEMBROS, refs)
     expect(h[0].quien[0].porZona.every(z => z.ritmo?.includes('/km'))).toBe(true)

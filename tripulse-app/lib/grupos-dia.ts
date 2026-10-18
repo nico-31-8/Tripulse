@@ -113,7 +113,10 @@ export function hojaDelDia(
       sinTest: leFaltaElTest(disc, ref),
       porZona: zonas.map(z => {
         const r = ref ? referenciaDeZona(z, disc, ref.tests, ref.fcMax, ref.fcReposo) : null
-        return { zona: z, ritmo: r?.ritmo ?? null, fc: r?.fc ?? null, rpe: r?.rpe ?? '' }
+        /* Sin el test, el porcentaje de su zona. Esta hoja es del entrenador y
+           la fila ya va en gris con «sin test» al lado; al atleta no se le
+           enseña nunca (ver objetivoDeZona). */
+        return { zona: z, ritmo: r?.ritmo ?? r?.relativo ?? null, fc: r?.fc ?? null, rpe: r?.rpe ?? '' }
       }),
     }
   }

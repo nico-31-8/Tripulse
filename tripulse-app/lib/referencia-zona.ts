@@ -31,6 +31,25 @@ export interface Referencia {
   porcentaje: string | null
   /** El número que el atleta va a mirar: vatios, min/km, s/100m. Null sin test. */
   ritmo: string | null
+  /**
+   * La zona sobre la referencia de su deporte, sin traducir: «65–75% VAM»,
+   * «56–75% FTP», «CSS +10–20s». Es cierta aunque falte el test, pero sin él no
+   * se puede ejecutar: es para quien prescribe, nunca el objetivo del atleta.
+   * En el clásico coincide con `porcentaje`; en Zonas 2 ese es la sigla.
+   */
+  relativo: string | null
+}
+
+/**
+ * El test que traduce a un número las zonas de ese deporte: VAM, FTP o CSS.
+ * `null` si no lo tiene, o si el deporte no tiene ninguno (brick, fuerza).
+ */
+function testQueToca(disciplina: string, tests: Tests): number | null {
+  const v = disciplina === 'Carrera' ? tests.vam
+    : disciplina === 'Ciclismo' ? tests.ftp
+    : disciplina === 'Natacion' || disciplina === 'Natación' ? tests.css
+    : null
+  return Number(v) > 0 ? Number(v) : null
 }
 
 /**
@@ -53,12 +72,21 @@ export const ZONAS_UI = [
 function refZona2(z: ZonaResistencia, disciplina: string, tests: Tests, d: DatosFC): Referencia {
   // Sus porcentajes ya vienen en % de la FCmáx.
   const banda = bandaFC(z.fcMin, z.fcMax, 'fcmax', d)
+  /* SIN EL TEST NO HAY RITMO, igual que en el clásico. `prescripcion()` no
+     devuelve null nunca: sin VAM dice «65–75% VAM», sin FTP «56–75% FTP», sin
+     CSS «CSS +10–20s». Puesto aquí tal cual, el ritmo no faltaba jamás, así que
+     objetivoDeZona no bajaba a las pulsaciones y el atleta leía un porcentaje de
+     un número que no tiene, firmado «Lo que sale de tus tests». Ese porcentaje
+     es cierto y al entrenador sí le sirve: va en `relativo`. */
+  const relativo = prescripcion(z, disciplina, {})
   return {
     fc: banda?.texto ?? null,
     metodoFC: banda?.metodo ?? null,
     rpe: 'RPE ' + z.rpeMin + (z.rpeMax !== z.rpeMin ? '–' + z.rpeMax : ''),
     porcentaje: z.sigla + ' · ' + z.factor,
-    ritmo: prescripcion(z, disciplina, tests),
+    ritmo: testQueToca(disciplina, tests) ? prescripcion(z, disciplina, tests) : null,
+    // «—» es lo que da un deporte sin referencia (brick, fuerza): no es una zona.
+    relativo: relativo !== '—' ? relativo : null,
   }
 }
 
@@ -102,7 +130,7 @@ function refClasica(zona: any, disciplina: string, tests: Tests, d: DatosFC): Re
     }
   }
 
-  return { fc, metodoFC: banda?.metodo ?? null, rpe, porcentaje, ritmo }
+  return { fc, metodoFC: banda?.metodo ?? null, rpe, porcentaje, ritmo, relativo: porcentaje }
 }
 
 /**

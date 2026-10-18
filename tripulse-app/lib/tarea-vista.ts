@@ -169,9 +169,10 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
       ? [{ k: 'Entre bloques', v: segAMmss(t.descanso_bloques_segundos) }] : []),
   ]
   // El ritmo solo si el atleta tiene el test que toca. Sin test no se enseña un
-  // número inventado; se enseña el porcentaje, que sí es cierto.
+  // número inventado; se enseña el porcentaje, que sí es cierto — sin destacar,
+  // porque no es su número. En Zonas 2 llegaba por `ritmo` y salía destacado.
   if (ref?.ritmo) campos.push({ k: 'Objetivo', v: ref.ritmo, destaca: true })
-  else if (ref?.porcentaje) campos.push({ k: 'Objetivo', v: ref.porcentaje })
+  else if (ref?.relativo) campos.push({ k: 'Objetivo', v: ref.relativo })
   if (ref?.rpe) campos.push({ k: 'Esfuerzo', v: ref.rpe })
   if (ref?.fc) campos.push({ k: 'Frecuencia', v: ref.fc })
 
