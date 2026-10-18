@@ -14,6 +14,22 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · Los ritmos sin «/km» también avisan en su COROS
+
+- **Antes**, un ritmo escrito sin «/km» en una tarea de carrera («8:30-8:50»)
+  llegaba a su COROS solo como texto, y el reloj no le avisaba si se salía.
+  **Ahora** se entiende como ritmo por kilómetro y el reloj avisa.
+- **Si es el tiempo de cada serie** («1:20» en un 400), se pasa a ritmo
+  (3:20 /km), y lo que escribiste sigue en la descripción.
+- **Cuando puede ser las dos cosas** («7:40-8:10» en un 1500: 7:40 /km, o el
+  1500 en 7:40), decide el ritmo de su zona si tiene tests o, si no, lo que
+  hayas escrito con «/km» en esa misma sesión. Si aun así no está claro, va como
+  texto, como antes. Lo ves en «Así le llegará» antes de mandar.
+- **Lo que ya le mandaste con ritmos sin «/km»** sale en «⌚ Su COROS» como
+  «Ha cambiado»: mándalo otra vez y se reemplaza en su reloj.
+- En TRIPULSE no cambia nada de lo que ve tu deportista; en su reloj, solo lo
+  que vuelvas a mandar.
+
 ## 18 de octubre de 2026 · La ficha inicial del deportista ya no se duplica
 
 - **Antes**, la ficha inicial (la anamnesis) a veces se guardaba dos veces: al

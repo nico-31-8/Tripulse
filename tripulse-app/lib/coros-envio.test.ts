@@ -3,7 +3,7 @@ import {
   leerIntensidad, desdePorcentaje, intensidadDeTarea, pasosDeTarea, entrenosDeSesion, porQueNoVaACoros,
   estadoEnCoros, siguenEnSuCoros, nombreDeEntreno, huellaDe, repeticionDe, textoTiempo, fechaCoros,
   idEnPlanDe, esIdProvisional, ID_PROVISIONAL, textoObjetivo, textoIntensidad,
-  leerCalendarioCoros, esCalendarioCoros, ajenosDelDia, idDeCalendario,
+  leerCalendarioCoros, esCalendarioCoros, ajenosDelDia, idDeCalendario, ritmoSinUnidad,
   type ContextoCoros, type EnvioCoros, type GrupoCoros, type SeccionCoros, type SesionParaCoros,
 } from './coros-envio'
 
@@ -57,6 +57,81 @@ describe('leer lo que se escribe en el «@»', () => {
     for (const t of ['3:09', '25s', '2:01-2;04', 'a tope', 'A tope', '76s/ritmo de 3:01', 'RPE 4–6', '', null]) {
       expect(leerIntensidad(t), String(t)).toBeNull()
     }
+  })
+
+  it('una barra de más no lo estropea', () => {
+    expect(leerIntensidad('8:50 / /km')).toEqual({ tipo: 'ritmo', min: 530, max: 530 })
+  })
+})
+
+/* Lo que había en las primeras sesiones mandadas de verdad (18-10-2026): tres de
+   cuatro tareas llegaron al reloj sin aviso de ritmo por no llevar «/km». */
+describe('el ritmo sin «/km» en carrera', () => {
+  const porKm = (min: number, max = min) => ({ leido: { tipo: 'ritmo', min, max }, comoTiempo: false })
+  const deSerie = (min: number, max = min) => ({ leido: { tipo: 'ritmo', min, max }, comoTiempo: true })
+
+  it('en un tramo largo es el ritmo por km', () => {
+    expect(ritmoSinUnidad('8:30-8:50', 4500)).toEqual(porKm(510, 530))
+    expect(ritmoSinUnidad('8:30 – 8:50', 4500)).toEqual(porKm(510, 530))
+  })
+
+  it('en una serie corta es el tiempo de la serie, y en un tramo largo el de todo el tramo', () => {
+    expect(ritmoSinUnidad('1:20', 400)).toEqual(deSerie(200))
+    expect(ritmoSinUnidad('1:18-1:22', 400)).toEqual(deSerie(195, 205))
+    expect(ritmoSinUnidad('22:30', 4500)).toEqual(deSerie(300))
+  })
+
+  it('en un km las dos lecturas coinciden', () => {
+    expect(ritmoSinUnidad('4:00', 1000)).toEqual(porKm(240))
+  })
+
+  it('si valen las dos, decide la referencia; sin ella, no se adivina', () => {
+    expect(ritmoSinUnidad('7:40-8:10', 1500)).toBeNull()
+    expect(ritmoSinUnidad('7:40-8:10', 1500, 530)).toEqual(porKm(460, 490))
+    expect(ritmoSinUnidad('3:20', 800, 330)).toEqual(deSerie(250))
+    /* A la misma distancia de las dos: no se elige. */
+    expect(ritmoSinUnidad('6:00', 2000, 255)).toBeNull()
+  })
+
+  it('por tiempo (sin metros), solo como ritmo, y solo si es creíble', () => {
+    expect(ritmoSinUnidad('4:30', 0)).toEqual(porKm(270))
+    expect(ritmoSinUnidad('0:45', 0)).toBeNull()
+    expect(ritmoSinUnidad('< 9:00', 3000)).toEqual({ leido: { tipo: 'ritmo', abierto: '<', valor: 540 }, comoTiempo: false })
+  })
+
+  it('lo que no es un m:ss no se toca', () => {
+    for (const t of ['5', '5-6', '2:01-2;04', '8:75', 'a tope', '', null]) expect(ritmoSinUnidad(t, 1000, 300), String(t)).toBeNull()
+  })
+
+  it('en la tarea: va al reloj; si era el tiempo de la serie, lo escrito queda en la descripción', () => {
+    expect(intensidadDeTarea(tarea({ zona_entrenamiento: 'AEL', metros: 4500, arroba: '8:30-8:50' }), 'Carrera', SIN_NADA))
+      .toEqual({ campos: { intensityType: 2, intensityValueStart: 510, intensityValueEnd: 530 } })
+    expect(intensidadDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 400, series: 8, arroba: '1:20' }), 'Carrera', SIN_NADA))
+      .toEqual({ campos: { intensityType: 2, intensityValueStart: 200, intensityValueEnd: 200 }, nota: '1:20' })
+    /* Con sus tests decide el ritmo de su zona: 3:20 /km está en su PAE (3:22–3:43). */
+    expect(intensidadDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 800, arroba: '3:20' }), 'Carrera', CTX).campos)
+      .toEqual({ intensityType: 2, intensityValueStart: 200, intensityValueEnd: 200 })
+  })
+
+  it('en bici no: COROS no admite ritmo', () => {
+    const r = intensidadDeTarea(tarea({ zona_entrenamiento: 'AEL', segundos: 3600, arroba: '8:30-8:50' }), 'Ciclismo', SIN_NADA)
+    expect(r.campos).toBeUndefined()
+    expect(r.nota).toBe('8:30-8:50')
+  })
+
+  it('sin tests, decide lo que el entrenador escribió con «/km» en la misma sesión', () => {
+    const tareas = [
+      tarea({ zona_entrenamiento: 'AEL', metros: 1000, arroba: '8:50 / /km' }),
+      tarea({ zona_entrenamiento: 'PAE', metros: 1500, series: 2, descanso_segundos: 120, arroba: '7:40-8:10' }),
+    ]
+    const [e] = entrenosDeSesion(sesion(), tareas, SIN_NADA)
+    expect(e.curso.sections[0]).toMatchObject({ intensityType: 2, intensityValueStart: 530, intensityValueEnd: 530 })
+    expect((e.curso.sections[1] as GrupoCoros).sets[0]).toMatchObject({ intensityType: 2, intensityValueStart: 460, intensityValueEnd: 490 })
+    expect(e.curso.courseDescription).not.toContain('7:40')
+    /* Sola, sin nada escrito con «/km» al lado, no se adivina. */
+    const [solo] = entrenosDeSesion(sesion(), [tareas[1]], SIN_NADA)
+    expect((solo.curso.sections[0] as GrupoCoros).sets[0].intensityType).toBeUndefined()
+    expect(solo.curso.courseDescription).toContain('7:40-8:10')
   })
 })
 

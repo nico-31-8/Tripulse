@@ -96,6 +96,8 @@ export interface ContextoCoros {
   propios?: TestConMediciones[]
   fcMax: number
   fcReposo?: number
+  /** El ritmo (s/km) que el entrenador escribió con «/km» en la misma sesión. Lo pone cursoDe. */
+  ritmoDeLaSesion?: number | null
 }
 
 // ------------------------------------------------------------
@@ -113,10 +115,12 @@ const ordenado = (a: number, b: number): [number, number] => (a <= b ? [a, b] : 
 
 /**
  * Lo que dice un texto de intensidad, SOLO si la unidad no deja dudas. Todo lo
- * demás es null: «3:09», «25s», «a tope», «76s/ritmo de 3:01».
+ * demás es null: «3:09», «25s», «a tope», «76s/ritmo de 3:01». (Un ritmo sin
+ * unidad en carrera lo lee ritmoSinUnidad, que necesita la tarea.)
  */
 export function leerIntensidad(texto: string | null | undefined): Leido | null {
-  const t = String(texto ?? '').trim().replace(/\s+/g, ' ')
+  /* «8:50 / /km»: una barra de más, que también se escribe. */
+  const t = String(texto ?? '').trim().replace(/\s+/g, ' ').replace(/\/(\s*\/)+/g, '/')
   if (!t) return null
 
   /* Ritmo: «4:30 /km», «4 /km», «2:54-3 /km», «< 5:26 /km». */
@@ -176,6 +180,68 @@ export function desdePorcentaje(l: Extract<Leido, { tipo: 'porcentaje' }>, tests
     if (l.min != null && l.max != null) return { tipo: 'potencia', min: w(l.min), max: w(l.max) }
   }
   return null
+}
+
+/** Un ritmo de carrera creíble, en s/km: de 2:30 a 15:00. */
+export const RITMO_CREIBLE: [number, number] = [150, 900]
+
+export interface RitmoSinUnidad {
+  leido: Leido
+  /** Era el tiempo de cada serie (o del tramo entero), pasado a ritmo por km. */
+  comoTiempo: boolean
+}
+
+/**
+ * Un «8:30-8:50» sin unidad en una tarea de CARRERA. El «@» pide un ritmo
+ * («4:30 /km») y casi siempre lo es; pero en un 400, «1:20» es el tiempo de la
+ * serie (3:20 /km), y en 4,5 km, «22:30» el de todo el tramo. Vale la lectura
+ * que dé un ritmo creíble. Si valen las dos («7:40-8:10» en un 1500 son
+ * 7:40 /km o 5:07 /km), decide la referencia —el ritmo de su zona, o el que el
+ * entrenador escribió con «/km» en la misma sesión— si una queda claramente más
+ * cerca. Si no, null: va a la descripción, como antes.
+ */
+export function ritmoSinUnidad(texto: string | null | undefined, metros: number, referencia?: number | null): RitmoSinUnidad | null {
+  const t = String(texto ?? '').trim().replace(/\s+/g, ' ')
+  const m = /^([<>])?\s*(\d{1,2}):(\d{2})(?:\s*[-–]\s*(\d{1,2}):(\d{2}))?$/.exec(t)
+  if (!m || Number(m[3]) >= 60 || (m[5] !== undefined && Number(m[5]) >= 60)) return null
+  const creible = (x: number) => x >= RITMO_CREIBLE[0] && x <= RITMO_CREIBLE[1]
+  const a = ritmoSeg(m[2], m[3])
+  /* «< 9:00»: solo como ritmo, igual que con «/km». */
+  if (m[1]) return !m[4] && creible(a) ? { leido: { tipo: 'ritmo', abierto: m[1] as '<' | '>', valor: a }, comoTiempo: false } : null
+
+  const [lo, hi] = ordenado(a, m[4] ? ritmoSeg(m[4], m[5]) : a)
+  const porKm: [number, number] | null = creible(lo) && creible(hi) ? [lo, hi] : null
+  const f = metros > 0 ? 1000 / metros : 0
+  const porSerie: [number, number] | null = f && creible(Math.round(lo * f)) && creible(Math.round(hi * f))
+    ? [Math.round(lo * f), Math.round(hi * f)] : null
+  const ritmo = (r: [number, number], comoTiempo: boolean): RitmoSinUnidad => ({ leido: { tipo: 'ritmo', min: r[0], max: r[1] }, comoTiempo })
+
+  if (porKm && !porSerie) return ritmo(porKm, false)
+  if (porSerie && !porKm) return ritmo(porSerie, true)
+  if (!porKm || !porSerie) return null
+  /* Valen las dos. En un km casi coinciden, y da igual. */
+  if (Math.abs(Math.log(f)) < Math.log(1.05)) return ritmo(porKm, false)
+  const ref = Number(referencia)
+  if (!(ref > 0)) return null
+  const lejos = (r: [number, number]) => Math.abs(Math.log((r[0] + r[1]) / 2 / ref))
+  const dKm = lejos(porKm), dSerie = lejos(porSerie)
+  if (Math.abs(dKm - dSerie) < Math.log(1.1)) return null
+  return dKm < dSerie ? ritmo(porKm, false) : ritmo(porSerie, true)
+}
+
+/** El centro de un ritmo leído, en s/km. null si no es un ritmo. */
+const centroDeRitmo = (l: Leido | null): number | null => {
+  if (!l || l.tipo !== 'ritmo') return null
+  return 'abierto' in l ? l.valor : (l.min + l.max) / 2
+}
+
+/** La mediana de los ritmos que el entrenador escribió con «/km» en esas tareas. */
+function ritmoEscritoDeLaSesion(tareas: TareaParaCoros[]): number | null {
+  const centros = tareas.map(t => centroDeRitmo(leerIntensidad(intensidadGuardada(t)))).filter((x): x is number => x != null)
+  if (!centros.length) return null
+  centros.sort((a, b) => a - b)
+  const k = Math.floor(centros.length / 2)
+  return centros.length % 2 ? centros[k] : (centros[k - 1] + centros[k]) / 2
 }
 
 const TIPO_COROS: Record<TipoLeido, TipoIntensidad> = { pulso: 1, ritmo: 2, potencia: 4 }
@@ -249,6 +315,13 @@ function topeDePulso(t: TareaParaCoros, disciplina: string, ctx: ContextoCoros):
   return l.max
 }
 
+/** El ritmo de su zona que calcula la app con sus tests (el centro, en s/km). null sin tests. */
+function ritmoDeZona(t: TareaParaCoros, disciplina: string, ctx: ContextoCoros): number | null {
+  let l = leerIntensidad(objetivoDeTarea(t, disciplina, ctx.tests, ctx.propios || [], ctx.fcMax, ctx.fcReposo || 0)?.texto)
+  if (l?.tipo === 'porcentaje') l = desdePorcentaje(l, ctx.tests)
+  return centroDeRitmo(l)
+}
+
 /** La intensidad de una tarea para COROS, o la nota que va en su lugar. */
 export function intensidadDeTarea(t: TareaParaCoros, disciplina: string, ctx: ContextoCoros): Intensidad {
   const escrito = intensidadGuardada(t)
@@ -258,6 +331,14 @@ export function intensidadDeTarea(t: TareaParaCoros, disciplina: string, ctx: Co
 
   let l = leerIntensidad(texto)
   if (l?.tipo === 'porcentaje') l = desdePorcentaje(l, ctx.tests)
+  /* En carrera, lo escrito sin unidad («8:30-8:50»): ver ritmoSinUnidad. Si era
+     el tiempo de cada serie, lo escrito va también a la descripción, porque el
+     reloj enseña el ritmo. Antes iba solo a la descripción, sin aviso del reloj. */
+  let deSerie = false
+  if (!l && escrito && disciplina === 'Carrera') {
+    const r = ritmoSinUnidad(escrito, positivo(una(t?.p_distancia)?.metros_planeados), ritmoDeZona(t, disciplina, ctx) ?? ctx.ritmoDeLaSesion)
+    if (r) { l = r.leido; deSerie = r.comoTiempo }
+  }
   const deLaApp = (tipo: TipoLeido) => (escrito ? undefined : tipo)
 
   /* Sin nada que se pueda poner en el reloj, o de un tipo que ese deporte no
@@ -296,7 +377,7 @@ export function intensidadDeTarea(t: TareaParaCoros, disciplina: string, ctx: Co
   }
 
   const c = rango(TIPO_COROS[l.tipo], l.min, l.max)
-  return c ? { campos: c, calculada: deLaApp(l.tipo) } : { nota: texto }
+  return c ? { campos: c, calculada: deLaApp(l.tipo), ...(deSerie ? { nota: texto } : {}) } : { nota: texto }
 }
 
 interface Pasos { pasos: PasoCoros[]; notas: string[]; calculadas: Set<TipoLeido>; topes: number[] }
@@ -400,8 +481,11 @@ function cursoDe(disciplina: string, tareas: TareaParaCoros[], ctx: ContextoCoro
   const notas: string[] = []
   const calculadas = new Set<TipoLeido>()
   const topes: number[] = []
+  /* Lo escrito con «/km» en esta sesión: la referencia para leer un ritmo sin unidad sin tests. */
+  const ritmoDeLaSesion = disciplina === 'Carrera' ? ritmoEscritoDeLaSesion(lista) : null
+  const ctxSesion: ContextoCoros = ritmoDeLaSesion ? { ...ctx, ritmoDeLaSesion } : ctx
   lista.forEach((t, i) => {
-    const p = pasosDeTarea(t, disciplina, ctx, papelDe(i, lista.length, t))
+    const p = pasosDeTarea(t, disciplina, ctxSesion, papelDe(i, lista.length, t))
     pasos.push(...p.pasos)
     notas.push(...p.notas)
     p.calculadas.forEach(x => calculadas.add(x))
