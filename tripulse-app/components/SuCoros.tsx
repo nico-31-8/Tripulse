@@ -38,9 +38,18 @@ export interface EstadoSesionCoros {
   disciplina: string | null
   estado: { k: K; motivo?: string; de?: string[]; enviadoEn?: string | null }
   entrenos: { parte: number; curso: CursoCoros }[]
+  /** Lo que ya tiene ese día en su COROS y no mandó su entrenador (solo si se leyó su calendario). */
+  ajenos?: { nombre: string; dePlan: boolean }[]
 }
 export interface SigueEnCoros { id: number; fecha: string; nombre: string; idSesion: number | null }
-interface RespuestaEstado { hoy: string; ultimaSincronizacion: string | null; sesiones: EstadoSesionCoros[]; siguen: SigueEnCoros[] }
+interface RespuestaEstado {
+  hoy: string
+  ultimaSincronizacion: string | null
+  /** Si se pidió su calendario de COROS y no se pudo leer. */
+  avisoCoros?: string | null
+  sesiones: EstadoSesionCoros[]
+  siguen: SigueEnCoros[]
+}
 interface ResultadoEnvio { id: number; ok: boolean; motivo?: string; partes: { parte: number; ok: boolean; error?: string; sinId?: boolean }[] }
 
 const MANDABLES: K[] = ['va', 'cambia', 'movida']
@@ -64,8 +73,9 @@ const nombreDeFila = (s: EstadoSesionCoros) => {
   return 'Brick · ' + s.entrenos.map(e => e.curso.courseName.replace(/^Brick \d+\/\d+ · /, '')).join(' + ')
 }
 
-async function pedirEstado(idDeportista: number, desde: string, hasta: string): Promise<RespuestaEstado | null> {
-  const { ok, cuerpo } = await llamarReloj(RUTA, { accion: 'estado', idDeportista, desde, hasta })
+/** `conCoros`: leer también su calendario de COROS (la ventana, para una semana; el calendario no, que es un trimestre). */
+async function pedirEstado(idDeportista: number, desde: string, hasta: string, conCoros = false): Promise<RespuestaEstado | null> {
+  const { ok, cuerpo } = await llamarReloj(RUTA, { accion: 'estado', idDeportista, desde, hasta, ...(conCoros ? { conCoros: true } : {}) })
   return ok ? (cuerpo as unknown as RespuestaEstado) : null
 }
 
@@ -302,7 +312,7 @@ export function VentanaSuCoros({ idDeportista, nombre, porSesion, onCerrar, onCa
 
   const cargar = useCallback(async () => {
     const desde = lunes < hoy ? hoy : lunes
-    const r = await pedirEstado(idDeportista, desde, sumarDias(lunes, 6))
+    const r = await pedirEstado(idDeportista, desde, sumarDias(lunes, 6), true)
     setLeido({ lunes, r })
   }, [idDeportista, lunes, hoy])
   /* El estado se pone DESPUES de que conteste la ruta (el caso que la regla admite). */
@@ -400,6 +410,7 @@ export function VentanaSuCoros({ idDeportista, nombre, porSesion, onCerrar, onCa
               </p>
 
               {resumen && <div role="status" className="px-4 py-2.5 rounded-xl text-[13px] border border-green-500/30 bg-green-500/10 text-green-200">✓ {resumen}</div>}
+              {datos?.avisoCoros && <p className="text-[12.5px] text-amber-300">{datos.avisoCoros}</p>}
 
               {siguen.length > 0 && (
                 <div className="flex flex-col gap-1.5">
@@ -448,6 +459,13 @@ export function VentanaSuCoros({ idDeportista, nombre, porSesion, onCerrar, onCa
                         {!r && s.estado.motivo && <p className="text-[12.5px] text-gray-400">{s.estado.motivo}</p>}
                         {!r && s.estado.k === 'cambia' && <p className="text-[12.5px] text-amber-300">Ha cambiado desde que la mandaste: en su reloj sigue la de antes.</p>}
                         {!r && s.estado.k === 'ya' && <p className="text-[12.5px] text-gray-400">Sin cambios desde que la mandaste{s.estado.enviadoEn ? ' el ' + diaLargo(s.estado.enviadoEn) : ''}.</p>}
+                        {!r && !!s.ajenos?.length && (
+                          <p className="text-[12.5px] text-amber-300">
+                            Ese día ya tiene en su COROS {s.ajenos.map(a => '«' + a.nombre + '»').join(', ')}
+                            {s.ajenos.some(a => a.dePlan) ? ', de su plan de COROS,' : ','} que no mandaste tú
+                            {MANDABLES.includes(s.estado.k) ? ': si la mandas, le saldrán los dos.' : s.estado.k === 'ya' ? ': le salen los dos.' : '.'}
+                          </p>
+                        )}
                         {!r && s.estado.k === 'movida' && s.estado.de?.[0] && (
                           <div className="flex flex-wrap gap-x-3 gap-y-2 items-center bg-amber-400/10 border border-amber-400/35 rounded-lg px-2.5 py-2 text-[12.5px] text-amber-100">
                             <p className="flex-1 min-w-[220px]">

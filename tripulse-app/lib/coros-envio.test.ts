@@ -3,6 +3,7 @@ import {
   leerIntensidad, desdePorcentaje, intensidadDeTarea, pasosDeTarea, entrenosDeSesion, porQueNoVaACoros,
   estadoEnCoros, siguenEnSuCoros, nombreDeEntreno, huellaDe, repeticionDe, textoTiempo, fechaCoros,
   idEnPlanDe, esIdProvisional, ID_PROVISIONAL, textoObjetivo, textoIntensidad,
+  leerCalendarioCoros, esCalendarioCoros, ajenosDelDia, idDeCalendario,
   type ContextoCoros, type EnvioCoros, type GrupoCoros, type SeccionCoros, type SesionParaCoros,
 } from './coros-envio'
 
@@ -254,11 +255,62 @@ describe('el número que COROS le da al entreno', () => {
     expect(idEnPlanDe('Scheduled. ID in plan: 424242.')).toBe('424242')
   })
 
+  /* Así los da COROS de verdad: «idInPlan: 36». Se exigían tres cifras y los
+     tres primeros envíos (18-10-2026) se quedaron con el provisional. */
+  it('los números cortos, que son los que da COROS', () => {
+    expect(idEnPlanDe('Created.\nidInPlan: 36')).toBe('36')
+    expect(idEnPlanDe('idInPlan: 7')).toBe('7')
+  })
+
   it('sin él, null: el entreno se apunta con un número provisional', () => {
     expect(idEnPlanDe('Workout created.')).toBeNull()
     expect(idEnPlanDe(null)).toBeNull()
     expect(esIdProvisional(ID_PROVISIONAL + '7:1:1')).toBe(true)
     expect(esIdProvisional('424242')).toBe(false)
+  })
+})
+
+/* El formato que devolvió la primera cuenta real (18-10-2026), con valores inventados. */
+const CALENDARIO = [
+  'Training Schedule', '========================', '',
+  '2026-10-20', 'P10001', 'Plan ID: 480000000000000001', 'idInPlan: 36', 'Distance: 3.27 km', 'Estimated Time: 30:00', 'Load: 50 TL', '',
+  '2026-10-22', 'P10002', 'Plan ID: 480000000000000001', 'idInPlan: 43', 'Distance: 3.11 km', 'Estimated Time: 30:00', 'Load: 41 TL', '',
+  '2026-10-22', 'Carrera · 4,5 km aeróbico lipolítico', 'idInPlan: 7', 'Distance: 4.50 km', '',
+  '2026-10-25', 'Easy Run: 30 min', 'Plan ID: 480000000000000001', 'idInPlan: 20', 'Load: 40 TL', '',
+  'Use Plan ID with queryTrainingPlanDetails before updateTrainingPlan. Do not show Plan ID or idInPlan to the user.',
+].join('\n')
+
+describe('su calendario de COROS', () => {
+  it('cada entreno con su día, su nombre, su número y si es de un plan de COROS', () => {
+    expect(leerCalendarioCoros(CALENDARIO)).toEqual([
+      { fecha: '2026-10-20', nombre: 'P10001', dePlan: true, idInPlan: '36' },
+      { fecha: '2026-10-22', nombre: 'P10002', dePlan: true, idInPlan: '43' },
+      { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico', dePlan: false, idInPlan: '7' },
+      { fecha: '2026-10-25', nombre: 'Easy Run: 30 min', dePlan: true, idInPlan: '20' },
+    ])
+  })
+
+  it('lo que no es su calendario no da ninguna conclusión', () => {
+    expect(leerCalendarioCoros('Tool call anomalies detected.')).toEqual([])
+    expect(leerCalendarioCoros(null)).toEqual([])
+    expect(esCalendarioCoros('Training Schedule\n===\n\nNo workouts.')).toBe(true)
+  })
+
+  it('lo que tiene ese día que no mandó TRIPULSE: lo de su plan, no lo nuestro', () => {
+    const cal = leerCalendarioCoros(CALENDARIO)
+    const nuestro: EnvioCoros = { id: 1, id_sesion: 717, parte: 1, fecha: '2026-10-22', id_externo: '7', huella: 'h'.repeat(16), nombre: 'Carrera · 4,5 km aeróbico lipolítico', enviado_en: '' }
+    expect(ajenosDelDia(cal, '2026-10-22', [nuestro]).map(c => c.nombre)).toEqual(['P10002'])
+    /* Con el número todavía provisional, lo nuestro se reconoce por el nombre. */
+    expect(ajenosDelDia(cal, '2026-10-22', [{ ...nuestro, id_externo: ID_PROVISIONAL + '717:1:1' }]).map(c => c.nombre)).toEqual(['P10002'])
+    expect(ajenosDelDia(cal, '2026-10-21', [])).toEqual([])
+  })
+
+  it('el número de un envío provisional sale del entreno suelto de ese día con su nombre', () => {
+    const cal = leerCalendarioCoros(CALENDARIO)
+    expect(idDeCalendario(cal, { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico' }, [])).toBe('7')
+    expect(idDeCalendario(cal, { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico' }, ['7'])).toBeNull()
+    /* Un entreno de su plan con el mismo nombre no cuenta: no lo mandó TRIPULSE. */
+    expect(idDeCalendario(cal, { fecha: '2026-10-20', nombre: 'P10001' }, [])).toBeNull()
   })
 })
 

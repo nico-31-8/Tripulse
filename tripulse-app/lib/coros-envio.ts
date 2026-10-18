@@ -545,8 +545,93 @@ export const MANDABLE: EstadoCoros['k'][] = ['va', 'cambia', 'movida']
  */
 export function idEnPlanDe(texto: string | null | undefined): string | null {
   const t = String(texto ?? '')
-  const m = /id\s*_?\s*in\s*_?\s*plan["'`]?\s*(?:[:=]|is|es)?\s*["'`]?(\d{3,25})/i.exec(t)
+  /* Son números CORTOS («idInPlan: 36»): el calendario de la primera cuenta real
+     (18-10-2026) los da así. Se esperaban de 64 bits y se exigían tres cifras,
+     y los tres primeros envíos se quedaron con el número provisional. */
+  const m = /id\s*_?\s*in\s*_?\s*plan["'`]?\s*(?:[:=]|is|es)?\s*["'`]?(\d{1,25})/i.exec(t)
   return m ? m[1] : null
+}
+
+// ------------------------------------------------------------
+// Su calendario de COROS (queryTrainingSchedule)
+// ------------------------------------------------------------
+// El formato, tal como lo devolvió la primera cuenta real el 18-10-2026:
+//
+//   Training Schedule
+//   ========================
+//
+//   2026-10-20
+//   P10634                      ← el nombre del entreno
+//   Plan ID: 480313964264341803 ← solo si es de un plan de COROS
+//   idInPlan: 36
+//   Distance: 3.27 km
+//   Estimated Time: 30:00
+//   Load: 50 TL
+//
+// Lo que se manda desde TRIPULSE es un entreno suelto: sale sin «Plan ID» y
+// con el nombre que le pusimos.
+
+export interface EntradaCalendarioCoros {
+  fecha: string
+  nombre: string
+  /** De un plan de COROS (no lo mandó TRIPULSE). */
+  dePlan: boolean
+  idInPlan: string
+}
+
+/** Si el texto es el calendario de COROS: si no lo es, no se saca ninguna conclusión de él. */
+export const esCalendarioCoros = (texto: string | null | undefined) => /^\s*Training Schedule\b/i.test(String(texto ?? ''))
+
+/** Los entrenos de su calendario de COROS, con su día, su nombre y su número. */
+export function leerCalendarioCoros(texto: string | null | undefined): EntradaCalendarioCoros[] {
+  if (!esCalendarioCoros(texto)) return []
+  const out: EntradaCalendarioCoros[] = []
+  let fecha: string | null = null
+  let actual: { nombre: string; dePlan: boolean; idInPlan: string | null } | null = null
+  const cerrar = () => {
+    if (fecha && actual?.idInPlan) out.push({ fecha, nombre: actual.nombre, dePlan: actual.dePlan, idInPlan: actual.idInPlan })
+    actual = null
+  }
+  const CONOCIDAS = ['plan id', 'idinplan', 'distance', 'estimated time', 'load']
+  for (const linea of String(texto).split(/\r?\n/)) {
+    const t = linea.trim()
+    if (!t || /^=+$/.test(t) || /^Training Schedule\b/i.test(t)) continue
+    const f = /^(\d{4}-\d{2}-\d{2})$/.exec(t)
+    if (f) { cerrar(); fecha = f[1]; continue }
+    if (!fecha) continue
+    const kv = /^([A-Za-z][A-Za-z ]*?)\s*:\s*(.*)$/.exec(t)
+    const clave = kv ? kv[1].toLowerCase() : ''
+    /* Un dato del entreno: una clave conocida, o una desconocida mientras el
+       entreno aún no tiene su número. Detrás de un entreno completo, una línea
+       con dos puntos es el nombre del siguiente («Easy Run: 30 min»). */
+    const esDato = !!kv && !!actual && (CONOCIDAS.includes(clave) || !actual.idInPlan)
+    if (esDato && actual) {
+      if (clave === 'plan id') actual.dePlan = true
+      else if (clave === 'idinplan') actual.idInPlan = (/\d+/.exec(kv![2]) || [null])[0]
+      continue
+    }
+    cerrar()
+    actual = { nombre: t, dePlan: false, idInPlan: null }
+  }
+  cerrar()
+  return out
+}
+
+/** Lo que tiene ese día en su COROS que no mandó TRIPULSE (ni ninguno de los que se mandaron). */
+export function ajenosDelDia(calendario: EntradaCalendarioCoros[], fecha: string, envios: EnvioCoros[]): EntradaCalendarioCoros[] {
+  const nuestros = envios.filter(e => e.fecha === fecha)
+  return calendario.filter(c => c.fecha === fecha
+    && !nuestros.some(e => e.id_externo === c.idInPlan)
+    && !(!c.dePlan && nuestros.some(e => e.nombre === c.nombre)))
+}
+
+/**
+ * El número de COROS de un envío que se quedó con el provisional: el entreno
+ * suelto de ese día con el mismo nombre que nadie más tiene ya.
+ */
+export function idDeCalendario(calendario: EntradaCalendarioCoros[], envio: Pick<EnvioCoros, 'fecha' | 'nombre'>, yaUsados: string[]): string | null {
+  const c = calendario.find(x => x.fecha === envio.fecha && !x.dePlan && x.nombre === envio.nombre && !yaUsados.includes(x.idInPlan))
+  return c ? c.idInPlan : null
 }
 
 /** El número provisional de un entreno que COROS puso pero sin decir el suyo. */

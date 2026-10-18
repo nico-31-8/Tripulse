@@ -14,6 +14,22 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · «⌚ Su COROS» mira lo que ya tiene en su reloj
+
+- **Al abrir «⌚ Su COROS» se lee su calendario de COROS de esa semana.** Si ese
+  día ya tiene un entreno que no le mandaste tú (por ejemplo, de un plan de
+  COROS que siga por su cuenta), su fila lo dice: «Ese día ya tiene en su COROS
+  «P11755», de su plan de COROS…». Si se lo mandas, le saldrán los dos.
+- **Las marcas «sigue en su COROS» se quitan solas** cuando lo borra en su app.
+  El botón «Ya la ha borrado» sigue ahí por si acaso.
+- **Arreglado:** los primeros entrenos que se mandaron se apuntaron sin el número
+  que les da COROS, y sin él no se podían reemplazar al cambiarlos. Se recupera
+  solo la próxima vez que abras la ventana.
+
+**Números que pueden cambiar:** ninguno.
+
+---
+
 ## 18 de octubre de 2026 · Manda sus sesiones a su reloj COROS
 
 - **«⌚ Su COROS», en el calendario del deportista**, junto a «Mover en el
