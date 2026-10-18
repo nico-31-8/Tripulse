@@ -83,7 +83,7 @@ const CFG: { key: string; label: string; unidad: string; mejor: 'alto' | 'bajo';
  * el de un día suelto— y el día que alguien cambiara uno, las dos pantallas
  * dirían cosas distintas del mismo dato.
  */
-const UMBRAL_MIN: Record<string, number> = {
+export const UMBRAL_MIN: Record<string, number> = {
   hrv: 3, hrv_noche: 3, fc_reposo: 2, fc_noche: 2, horas_sueno: 0.5, horas_sueno_reloj: 0.5,
 }
 const umbralMin = (c: { key: string; unidad: string }): number =>

@@ -14,6 +14,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · Las noches de su reloj, para ti
+
+- **En su ficha, la casilla «Reloj» abre ahora «Su reloj»**, con dos pestañas:
+  **Noches** y **Entrenos**. Si su reloj manda noches (COROS o Polar), abre en
+  Noches. Los entrenos siguen como estaban.
+- **Su semana frente a lo suyo:** sueño, HRV y FC, con la media de sus últimos 7
+  días contra sus tres semanas anteriores. Es la misma regla que el análisis del
+  wellness: solo sale «fuera de lo suyo» si se aleja más que su variación de
+  siempre (y nunca por menos de 30 minutos de sueño, 3 ms de HRV o 2 pulsaciones).
+  Con COROS, la HRV se compara con el rango normal que da COROS. Con menos de tres
+  semanas de noches dice «Aún sin base». Una noche suelta no lo cambia.
+- **Dos gráficas:** las horas de sueño con la línea de lo suyo, y la HRV con la
+  franja de su normal (en ámbar, las noches por debajo).
+- **Noche a noche:** sueño, puntuación, fases, HRV y FC, y lo propio de cada marca
+  (con COROS, despertares, siesta y su valoración de la HRV; con Polar,
+  interrupciones, respiración y recarga nocturna). Al lado, su bienestar del
+  wellness de esa mañana. Pulsa una noche para ver el detalle.
+- Solo lo ves tú. El deportista sigue teniendo sus últimas noches en su perfil.
+
+**Números que pueden cambiar:** ninguno. Es una vista nueva.
+
+---
+
 ## 18 de octubre de 2026 · «⌚ Su COROS» mira lo que ya tiene en su reloj
 
 - **Al abrir «⌚ Su COROS» se lee su calendario de COROS de esa semana.** Si ese

@@ -25,6 +25,7 @@ import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
 import { nombreReloj, datosListos } from '@/lib/relojes-catalogo'
 import { colorDisciplina, emojiDisciplina, etiquetaConEmoji, etiquetaDisciplina } from '@/lib/disciplinas'
+import { NochesDelReloj } from '@/components/NochesDelReloj'
 import {
   actividadesDeMediciones, nombreDeporte, distanciaTexto, ritmoTexto, totales,
   type ActividadReloj,
@@ -61,6 +62,8 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
   const [rango, setRango] = useState(56)
   const [disciplina, setDisciplina] = useState<string>('todas')
   const [abierta, setAbierta] = useState<number | null>(null)
+  /* Noches o entrenos. Sin elegir, abre en Noches si su reloj las manda (decidido el 18-10-2026). */
+  const [pestana, setPestana] = useState<'noches' | 'entrenos' | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -130,7 +133,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
     <main className="min-h-screen bg-gray-950 text-white">
       <header className="sticky top-0 z-30 pl-44 pr-6 h-[54px] flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
         <h1 className="text-[17px] font-bold tracking-tight truncate">
-          Actividades del reloj
+          Su reloj
           {nombre && <span className="text-gray-500 font-normal text-[13px] hidden sm:inline"> · {nombre}</span>}
         </h1>
         <button onClick={() => router.push('/deportistas/' + id)}
@@ -159,6 +162,21 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           )}
         </div>
 
+        {/* Noches y entrenos. Las noches solo salen si su reloj ya las traduce. */}
+        {proveedor && datosListos(proveedor) && (
+          <div className="flex gap-1 border-b border-gray-800 mb-4" role="tablist">
+            {(['noches', 'entrenos'] as const).map(p => (
+              <button key={p} role="tab" aria-selected={(pestana ?? 'noches') === p} onClick={() => setPestana(p)}
+                className={'px-3.5 py-2 text-[13.5px] font-semibold border-b-2 -mb-px transition ' + ((pestana ?? 'noches') === p
+                  ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-white')}>
+                {p === 'noches' ? 'Noches' : 'Entrenos'}
+              </button>
+            ))}
+          </div>
+        )}
+        {proveedor && datosListos(proveedor) && (pestana ?? 'noches') === 'noches' ? (
+          <NochesDelReloj idDeportista={Number(id)} proveedor={proveedor} />
+        ) : (<>
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <div className="flex gap-1.5">
@@ -293,6 +311,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
             </p>
           </>
         )}
+        </>)}
       </div>
     </main>
   )
