@@ -270,15 +270,30 @@ describe('el número que COROS le da al entreno', () => {
   })
 })
 
-/* El formato que devolvió la primera cuenta real (18-10-2026), con valores inventados. */
+/* El formato que devolvió la primera cuenta real (18-10-2026), con valores
+   inventados. Lo mandado desde TRIPULSE lleva la marca de entreno suelto. */
+const SUELTO = 'Standalone workout (scheduled from the workout library)'
 const CALENDARIO = [
   'Training Schedule', '========================', '',
   '2026-10-20', 'P10001', 'Plan ID: 480000000000000001', 'idInPlan: 36', 'Distance: 3.27 km', 'Estimated Time: 30:00', 'Load: 50 TL', '',
   '2026-10-22', 'P10002', 'Plan ID: 480000000000000001', 'idInPlan: 43', 'Distance: 3.11 km', 'Estimated Time: 30:00', 'Load: 41 TL', '',
-  '2026-10-22', 'Carrera · 4,5 km aeróbico lipolítico', 'idInPlan: 7', 'Distance: 4.50 km', '',
+  '2026-10-22', 'Carrera · 4,5 km aeróbico lipolítico', SUELTO, 'idInPlan: 7', 'Distance: 4.50 km', '',
+  '2026-10-24', 'Carrera · 2×1,5 km potencia aeróbica', SUELTO, 'idInPlan: 8', 'Distance: 6.00 km', '',
   '2026-10-25', 'Easy Run: 30 min', 'Plan ID: 480000000000000001', 'idInPlan: 20', 'Load: 40 TL', '',
   'Use Plan ID with queryTrainingPlanDetails before updateTrainingPlan. Do not show Plan ID or idInPlan to the user.',
 ].join('\n')
+
+/* Por si COROS da la marca en lugar del nombre: así no se ha visto, pero no se descarta. */
+const CALENDARIO_SIN_NOMBRE = [
+  'Training Schedule', '========================', '',
+  '2026-10-22', 'P10002', 'Plan ID: 480000000000000001', 'idInPlan: 43', 'Load: 41 TL',
+  SUELTO, 'idInPlan: 7', 'Distance: 4.50 km', '',
+  '2026-10-24', SUELTO, 'idInPlan: 8', '',
+  '2026-10-24', SUELTO, 'idInPlan: 9', '',
+].join('\n')
+
+const envio = (fecha: string, id_externo: string, nombre: string): EnvioCoros =>
+  ({ id: 1, id_sesion: 717, parte: 1, fecha, id_externo, huella: 'h'.repeat(16), nombre, enviado_en: '' })
 
 describe('su calendario de COROS', () => {
   it('cada entreno con su día, su nombre, su número y si es de un plan de COROS', () => {
@@ -286,7 +301,21 @@ describe('su calendario de COROS', () => {
       { fecha: '2026-10-20', nombre: 'P10001', dePlan: true, idInPlan: '36' },
       { fecha: '2026-10-22', nombre: 'P10002', dePlan: true, idInPlan: '43' },
       { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico', dePlan: false, idInPlan: '7' },
+      { fecha: '2026-10-24', nombre: 'Carrera · 2×1,5 km potencia aeróbica', dePlan: false, idInPlan: '8' },
       { fecha: '2026-10-25', nombre: 'Easy Run: 30 min', dePlan: true, idInPlan: '20' },
+    ])
+  })
+
+  /* La ventana del 18-10-2026 daba «Standalone workout (…)» como un entreno
+     ajeno los tres días que se le había mandado algo. */
+  it('la marca de entreno suelto nunca es el nombre de otro entreno', () => {
+    const nombres = leerCalendarioCoros(CALENDARIO).map(c => c.nombre)
+    expect(nombres.some(n => /standalone/i.test(n))).toBe(false)
+    expect(leerCalendarioCoros(CALENDARIO_SIN_NOMBRE)).toEqual([
+      { fecha: '2026-10-22', nombre: 'P10002', dePlan: true, idInPlan: '43' },
+      { fecha: '2026-10-22', nombre: '', dePlan: false, idInPlan: '7' },
+      { fecha: '2026-10-24', nombre: '', dePlan: false, idInPlan: '8' },
+      { fecha: '2026-10-24', nombre: '', dePlan: false, idInPlan: '9' },
     ])
   })
 
@@ -298,19 +327,43 @@ describe('su calendario de COROS', () => {
 
   it('lo que tiene ese día que no mandó TRIPULSE: lo de su plan, no lo nuestro', () => {
     const cal = leerCalendarioCoros(CALENDARIO)
-    const nuestro: EnvioCoros = { id: 1, id_sesion: 717, parte: 1, fecha: '2026-10-22', id_externo: '7', huella: 'h'.repeat(16), nombre: 'Carrera · 4,5 km aeróbico lipolítico', enviado_en: '' }
+    const nuestro = envio('2026-10-22', '7', 'Carrera · 4,5 km aeróbico lipolítico')
     expect(ajenosDelDia(cal, '2026-10-22', [nuestro]).map(c => c.nombre)).toEqual(['P10002'])
     /* Con el número todavía provisional, lo nuestro se reconoce por el nombre. */
-    expect(ajenosDelDia(cal, '2026-10-22', [{ ...nuestro, id_externo: ID_PROVISIONAL + '717:1:1' }]).map(c => c.nombre)).toEqual(['P10002'])
+    const provisional = { ...nuestro, id_externo: ID_PROVISIONAL + '717:1:1' }
+    expect(ajenosDelDia(cal, '2026-10-22', [provisional]).map(c => c.nombre)).toEqual(['P10002'])
+    expect(ajenosDelDia(cal, '2026-10-24', [envio('2026-10-24', ID_PROVISIONAL + '718:1:1', 'Carrera · 2×1,5 km potencia aeróbica')])).toEqual([])
     expect(ajenosDelDia(cal, '2026-10-21', [])).toEqual([])
+    /* Aunque COROS lo devuelva con otras mayúsculas o sin tildes. */
+    expect(ajenosDelDia(cal, '2026-10-22', [{ ...provisional, nombre: 'CARRERA · 4,5 km aerobico lipolitico' }]).map(c => c.nombre)).toEqual(['P10002'])
+  })
+
+  it('un entreno de su plan con el mismo número que uno nuestro sigue siendo suyo', () => {
+    const cal = leerCalendarioCoros(CALENDARIO)
+    expect(ajenosDelDia(cal, '2026-10-22', [envio('2026-10-22', '43', 'Otro')]).map(c => c.nombre))
+      .toEqual(['P10002', 'Carrera · 4,5 km aeróbico lipolítico'])
+  })
+
+  it('sin nombre, los sueltos son nuestros solo si cuadran con los provisionales de ese día', () => {
+    const cal = leerCalendarioCoros(CALENDARIO_SIN_NOMBRE)
+    const prov = (fecha: string, n: number) => envio(fecha, ID_PROVISIONAL + n + ':1:1', 'Carrera · ' + n)
+    expect(ajenosDelDia(cal, '2026-10-22', [prov('2026-10-22', 717)]).map(c => c.idInPlan)).toEqual(['43'])
+    /* Dos sueltos y uno nuestro: no se sabe cuál es, y se dicen los dos. */
+    expect(ajenosDelDia(cal, '2026-10-24', [prov('2026-10-24', 718)]).map(c => c.idInPlan)).toEqual(['8', '9'])
+    expect(ajenosDelDia(cal, '2026-10-24', [prov('2026-10-24', 718), { ...prov('2026-10-24', 719), parte: 2 }])).toEqual([])
+    /* Uno nuestro con su número que ya no está no se queda con uno sin nombre. */
+    expect(ajenosDelDia(cal, '2026-10-22', [envio('2026-10-22', '99', 'Carrera')]).map(c => c.idInPlan)).toEqual(['43', '7'])
   })
 
   it('el número de un envío provisional sale del entreno suelto de ese día con su nombre', () => {
     const cal = leerCalendarioCoros(CALENDARIO)
     expect(idDeCalendario(cal, { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico' }, [])).toBe('7')
     expect(idDeCalendario(cal, { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico' }, ['7'])).toBeNull()
+    expect(idDeCalendario(cal, { fecha: '2026-10-24', nombre: 'carrera · 2×1,5 km potencia aerobica' }, [])).toBe('8')
     /* Un entreno de su plan con el mismo nombre no cuenta: no lo mandó TRIPULSE. */
     expect(idDeCalendario(cal, { fecha: '2026-10-20', nombre: 'P10001' }, [])).toBeNull()
+    /* Sin nombre no se adivina: podría ser uno suyo. */
+    expect(idDeCalendario(leerCalendarioCoros(CALENDARIO_SIN_NOMBRE), { fecha: '2026-10-22', nombre: 'Carrera · 4,5 km aeróbico lipolítico' }, [])).toBeNull()
   })
 })
 

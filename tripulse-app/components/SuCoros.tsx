@@ -461,7 +461,7 @@ export function VentanaSuCoros({ idDeportista, nombre, porSesion, onCerrar, onCa
                         {!r && s.estado.k === 'ya' && <p className="text-[12.5px] text-gray-400">Sin cambios desde que la mandaste{s.estado.enviadoEn ? ' el ' + diaLargo(s.estado.enviadoEn) : ''}.</p>}
                         {!r && !!s.ajenos?.length && (
                           <p className="text-[12.5px] text-amber-300">
-                            Ese día ya tiene en su COROS {s.ajenos.map(a => '«' + a.nombre + '»').join(', ')}
+                            Ese día ya tiene en su COROS {s.ajenos.map(a => a.nombre ? '«' + a.nombre + '»' : 'un entreno de su biblioteca').join(', ')}
                             {s.ajenos.some(a => a.dePlan) ? ', de su plan de COROS,' : ','} que no mandaste tú
                             {MANDABLES.includes(s.estado.k) ? ': si la mandas, le saldrán los dos.' : s.estado.k === 'ya' ? ': le salen los dos.' : '.'}
                           </p>

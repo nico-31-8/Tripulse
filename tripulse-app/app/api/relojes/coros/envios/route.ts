@@ -200,7 +200,7 @@ export async function POST(req: Request) {
     /* Solo días que aún no han llegado: lo de hoy o ya pasado puede salir del
        calendario por estar hecho, no por estar borrado. */
     const borradas = envios.filter(e => enRango(e) && e.fecha > hoy && !esIdProvisional(e.id_externo)
-      && !calendario.some(c => c.fecha === e.fecha && c.idInPlan === e.id_externo))
+      && !calendario.some(c => c.fecha === e.fecha && !c.dePlan && c.idInPlan === e.id_externo))
     for (const e of borradas) await q.sb.from('reloj_envio').delete().eq('id', e.id)
     envios = envios.filter(e => !borradas.includes(e))
   }

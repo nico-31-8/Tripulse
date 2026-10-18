@@ -14,6 +14,15 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · «⌚ Su COROS» ya reconoce lo que le mandaste
+
+- **La ventana ya no toma tus entrenos por suyos.** Los días en que le habías
+  mandado algo decía que en su COROS había además un «Standalone workout…» que
+  no habías mandado tú, y que le salían los dos. Ese «Standalone workout» era tu
+  propio entreno, mal leído. Ahora solo avisa de lo que es suyo de verdad, como
+  los entrenos de su plan de COROS.
+- No cambia nada de lo que ve tu deportista.
+
 ## 18 de octubre de 2026 · Las noches de su reloj, para ti
 
 - **En su ficha, la casilla «Reloj» abre ahora «Su reloj»**, con dos pestañas:

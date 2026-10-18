@@ -569,7 +569,10 @@ export function idEnPlanDe(texto: string | null | undefined): string | null {
 //   Load: 50 TL
 //
 // Lo que se manda desde TRIPULSE es un entreno suelto: sale sin «Plan ID» y
-// con el nombre que le pusimos.
+// con una línea «Standalone workout (scheduled from the workout library)». Se
+// leía como el nombre de otro entreno: la ventana daba los nuestros por ajenos
+// («le salen los dos») y no recuperaba su número. No se ha visto entero, así
+// que se lee de las dos formas: detrás del nombre que le pusimos, o sin nombre.
 
 export interface EntradaCalendarioCoros {
   fecha: string
@@ -599,6 +602,12 @@ export function leerCalendarioCoros(texto: string | null | undefined): EntradaCa
     const f = /^(\d{4}-\d{2}-\d{2})$/.exec(t)
     if (f) { cerrar(); fecha = f[1]; continue }
     if (!fecha) continue
+    /* La marca de entreno suelto: un dato del que está a medias o, si no hay
+       ninguno, un entreno del que COROS no da el nombre. */
+    if (/^standalone workout\b/i.test(t)) {
+      if (!actual || actual.idInPlan) { cerrar(); actual = { nombre: '', dePlan: false, idInPlan: null } }
+      continue
+    }
     const kv = /^([A-Za-z][A-Za-z ]*?)\s*:\s*(.*)$/.exec(t)
     const clave = kv ? kv[1].toLowerCase() : ''
     /* Un dato del entreno: una clave conocida, o una desconocida mientras el
@@ -617,20 +626,46 @@ export function leerCalendarioCoros(texto: string | null | undefined): EntradaCa
   return out
 }
 
-/** Lo que tiene ese día en su COROS que no mandó TRIPULSE (ni ninguno de los que se mandaron). */
+/** El nombre para compararlo: COROS puede devolverlo con otras mayúsculas, tildes o signos. */
+const claveNombre = (s: string) =>
+  String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+const mismoNombre = (a: string, b: string) => !!claveNombre(a) && claveNombre(a) === claveNombre(b)
+
+/**
+ * Lo que tiene ese día en su COROS que no mandó TRIPULSE. Lo nuestro se reconoce
+ * por su número; si no está con él, por el nombre; y los sueltos de los que
+ * COROS no da el nombre, si son tantos como los nuestros con número provisional
+ * sin reconocer.
+ */
 export function ajenosDelDia(calendario: EntradaCalendarioCoros[], fecha: string, envios: EnvioCoros[]): EntradaCalendarioCoros[] {
-  const nuestros = envios.filter(e => e.fecha === fecha)
-  return calendario.filter(c => c.fecha === fecha
-    && !nuestros.some(e => e.id_externo === c.idInPlan)
-    && !(!c.dePlan && nuestros.some(e => e.nombre === c.nombre)))
+  const delDia = calendario.filter(c => c.fecha === fecha)
+  const sueltos = delDia.filter(c => !c.dePlan)
+  const tomados = new Set<EntradaCalendarioCoros>()
+  const pendientes: EnvioCoros[] = []
+  for (const e of envios.filter(x => x.fecha === fecha)) {
+    const c = sueltos.find(x => !tomados.has(x) && x.idInPlan === e.id_externo)
+    if (c) tomados.add(c)
+    else pendientes.push(e)
+  }
+  let sinReconocer = 0
+  for (const e of pendientes) {
+    const c = sueltos.find(x => !tomados.has(x) && mismoNombre(x.nombre, e.nombre))
+    if (c) tomados.add(c)
+    else if (esIdProvisional(e.id_externo)) sinReconocer++
+  }
+  const sinNombre = sueltos.filter(c => !tomados.has(c) && !c.nombre)
+  if (sinReconocer && sinNombre.length === sinReconocer) sinNombre.forEach(c => tomados.add(c))
+  return delDia.filter(c => !tomados.has(c))
 }
 
 /**
  * El número de COROS de un envío que se quedó con el provisional: el entreno
- * suelto de ese día con el mismo nombre que nadie más tiene ya.
+ * suelto de ese día con el mismo nombre que nadie más tiene ya. Sin nombre no
+ * se adivina: con el número de un entreno suyo, al cambiar la sesión se
+ * reemplazaría ese.
  */
 export function idDeCalendario(calendario: EntradaCalendarioCoros[], envio: Pick<EnvioCoros, 'fecha' | 'nombre'>, yaUsados: string[]): string | null {
-  const c = calendario.find(x => x.fecha === envio.fecha && !x.dePlan && x.nombre === envio.nombre && !yaUsados.includes(x.idInPlan))
+  const c = calendario.find(x => x.fecha === envio.fecha && !x.dePlan && mismoNombre(x.nombre, envio.nombre) && !yaUsados.includes(x.idInPlan))
   return c ? c.idInPlan : null
 }
 
