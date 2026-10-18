@@ -36,6 +36,7 @@ import { copiarSesiones, type DestinoCopia } from '@/lib/copiar-sesion'
 import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDelCalendario } from '@/lib/consejos'
+import { BotonSuCoros, VentanaSuCoros, MarcaCoros, useCorosDelCalendario, diaLargo } from '@/components/SuCoros'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS_SEMANA = ['L','M','X','J','V','S','D']
@@ -174,6 +175,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
   // plan/carga y la leyenda) se va detrás de un botón, y arriba se queda solo lo
   // que se usa cada vez — el mes y los días.
   const [hojaAcciones, setHojaAcciones] = useState(false)
+  /* Su COROS: el estado de cada sesión frente a su reloj y la ventana para
+     mandarlas. Solo para su entrenador y si tiene COROS (lo mira el propio hook). */
+  const coros = useCorosDelCalendario(deportista?.id ?? null, sesiones)
+  const [corosAbierta, setCorosAbierta] = useState(false)
+  const enSuCoros = (sesId: number) => ['ya', 'cambia', 'movida'].includes(coros.porSesion[sesId]?.estado.k ?? '')
   /* En el móvil la casilla del día no tiene sitio para la lista de sesiones —
      solo caben unos puntos de color— así que tocar el día abría siempre «crear
      sesión» y NO HABÍA FORMA DE ABRIR LAS QUE YA ESTABAN. Ahora tocar un día
@@ -580,7 +586,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
      quitarla. Si la base dice que no, se recarga y vuelve a su sitio. */
   const borrarSesion = async (sesId: number, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('¿Mover esta sesión a la papelera?')) return
+    /* COROS no deja borrarla desde aquí: si está en su reloj, que se sepa antes. */
+    if (!confirm('¿Mover esta sesión a la papelera?' + (enSuCoros(sesId) ? '\n\nEstá en su COROS: allí seguirá hasta que la borre en su app.' : ''))) return
     setSesiones(prev => prev.filter(s => s.id !== sesId))
     const { error } = await supabase.from('sesion').update({ eliminada: true }).eq('id', sesId)
     if (error) { toast('No se pudo mover a la papelera: ' + error.message, 5000); await cargarSesiones() }
@@ -607,7 +614,11 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     /* Ya está pintada en su día nuevo, con lo mismo que va a la base: solo se
        recarga si la base dice que no, para devolverla adonde estaba. */
     const { error } = await supabase.from('sesion').update(parche).eq('id', sesId)
-    if (error) { toast('No se pudo mover: ' + error.message, 4000); await cargarSesiones() }
+    if (error) { toast('No se pudo mover: ' + error.message, 4000); await cargarSesiones(); return }
+    /* En su reloj se queda en el día de antes: COROS no deja moverla desde fuera. */
+    if (enSuCoros(sesId) && coros.porSesion[sesId]?.estado.k !== 'movida') {
+      toast('Estaba en su COROS el ' + diaLargo(s.fecha_sesion) + ': allí sigue. Mándala otra vez desde ⌚ Su COROS.', 6000)
+    }
   }
 
   const guardarEdicionSesion = async (e: React.FormEvent) => {
@@ -837,6 +848,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
       {/* ===== HOJA DE ACCIONES (solo móvil) =====
           Nada desaparece: lo que se hace una vez por mesociclo deja de ocupar
           pantalla de forma permanente. */}
+      {corosAbierta && deportista && (
+        <VentanaSuCoros idDeportista={deportista.id} nombre={coros.nombre} porSesion={coros.porSesion}
+          onCerrar={() => setCorosAbierta(false)} onCambio={coros.recargar} />
+      )}
       {hojaAcciones && (
         <div className="sm:hidden fixed inset-0 z-[60]" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/60" onClick={() => setHojaAcciones(false)} />
@@ -849,6 +864,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
               ['📋', 'Pegar una plantilla', () => setPanelPlantillas(true)],
               ['🚫', 'Bloquear una semana', () => { setFechaSel(hoy); setModalTipo('bloquear') }],
               ['🔀', 'Mover el plan en el tiempo', () => setDesplazar(hoy)],
+              ...(coros.puede ? [['⌚', 'Mandar a su COROS', () => setCorosAbierta(true)]] : []),
             ] as [string, string, () => void][]).map(([ic, txt, fn]) => (
               <button key={txt} onClick={() => { setHojaAcciones(false); fn() }}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-800 border border-gray-700 mb-1.5 text-[13.5px] text-left min-h-[46px]">
@@ -1159,6 +1175,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                 🔀 <span>Mover en el tiempo</span>
               </button>
             )}
+            {coros.puede && <BotonSuCoros porSesion={coros.porSesion} onClick={() => setCorosAbierta(true)} />}
             <div data-guia="cal.vistas" className="flex gap-1 bg-gray-800 rounded-lg p-1">
               <button onClick={() => setVistaDetalle(v => v === 'multi' ? 'mes' : 'multi')}
                 className={'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (vistaDetalle === 'mes' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}>
@@ -1286,10 +1303,13 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                             así que «Triatlón Media…» no es información, es ruido. El
                             color dice la disciplina de un vistazo y el día queda
                             cuadrado, que es lo que hace falta para poder pulsarlo. */}
-                        {!bloqueo && sesDia.length > 0 && (
+                        {!bloqueo && (sesDia.length > 0 || coros.siguen.some(g => g.fecha === f)) && (
                           <div className="sm:hidden flex flex-wrap gap-[3px] justify-center mt-0.5">
                             {sesDia.slice(0, 6).map(s => (
                               <i key={s.id} className={'w-1.5 h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
+                            ))}
+                            {coros.siguen.filter(g => g.fecha === f).map(g => (
+                              <i key={'coros-' + g.id} className="w-1.5 h-1.5 rounded-full ring-1 ring-gray-400" title="Sigue en su COROS" />
                             ))}
                           </div>
                         )}
@@ -1323,6 +1343,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                     : s.disciplina?.slice(0, 3)}
                                   {' '}{getVolumenSesion(s)}{getDuracionSesion(s) ? ' · ' + getDuracionSesion(s) : ''}
                                 </span>
+                                <MarcaCoros e={coros.porSesion[s.id]} />
                                 {/* `opacity-0 group-hover:...` es un patrón de RATÓN: en una pantalla
                                     táctil no hay hover, así que estos tres botones se quedaban
                                     invisibles PERO seguían respondiendo al dedo. Tocabas la sesión y
@@ -1334,6 +1355,14 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                   <button onClick={e => editarSesion(s, e)} className="text-white hover:text-orange-300 text-xs">✏️</button>
                                   <button onClick={e => borrarSesion(s.id, e)} className="text-white hover:text-red-300 text-xs">🗑</button>
                                 </div>
+                              </div>
+                            ))}
+                            {/* Lo que sigue en su COROS ese día aunque la sesión ya no esté:
+                                la moviste o la borraste después de mandarla. */}
+                            {coros.siguen.filter(g => g.fecha === f).map(g => (
+                              <div key={'coros-' + g.id} className="rounded px-1 py-0.5 text-[10.5px] border border-dashed border-gray-500 text-gray-400 truncate"
+                                title={'«' + g.nombre + '» sigue en su COROS este día: la tiene que borrar en su app. Desde ⌚ Su COROS puedes avisarle.'}>
+                                ⌚ sigue en su COROS
                               </div>
                             ))}
                             <div className="text-center py-0.5 flex justify-between items-center px-1">

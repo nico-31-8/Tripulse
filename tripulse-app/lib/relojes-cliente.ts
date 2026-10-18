@@ -12,12 +12,16 @@ import { supabase } from '@/lib/supabase'
 
 export interface RespuestaReloj { ok: boolean; cuerpo: Record<string, unknown> }
 
-/** POST a una ruta de /api/relojes con el token de quien está en la app. */
-export async function llamarReloj(ruta: string): Promise<RespuestaReloj> {
+/** POST a una ruta de /api/relojes con el token de quien está en la app (y, si hace falta, un cuerpo). */
+export async function llamarReloj(ruta: string, datos?: Record<string, unknown>): Promise<RespuestaReloj> {
   const { data: { session } } = await supabase.auth.getSession()
   const r = await fetch(ruta, {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + (session?.access_token || '') },
+    headers: {
+      Authorization: 'Bearer ' + (session?.access_token || ''),
+      ...(datos ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(datos ? { body: JSON.stringify(datos) } : {}),
   })
   const cuerpo = await r.json().catch(() => ({}))
   return { ok: r.ok, cuerpo }

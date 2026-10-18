@@ -25,6 +25,7 @@ import BriefingSesion from './BriefingSesion'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import DiaDeTest from '@/components/DiaDeTest'
 import CorregirSesion from '@/components/CorregirSesion'
+import { FranjaSuCoros } from '@/components/SuCoros'
 
 // Iniciales para el avatar. Sin nombre cargado, un guion antes que una letra falsa.
 function iniciales(nombre: string | null | undefined): string {
@@ -958,6 +959,14 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
           <CorregirSesion sesion={sesion} estimadaMin={durEstimada.estimable ? durEstimada.minutos : null}
             onCambio={cargarDatos} />
         </div>
+
+        {/* SU COROS: si está en su reloj, si cambió después de mandarla, y
+            mandarla desde aquí. Solo para su entrenador y si tiene COROS. */}
+        {!esDeportista && (
+          <div className="empty:hidden">
+            <FranjaSuCoros idDeportista={deportistaId} idSesion={Number(id)} fecha={sesion.fecha_sesion} version={tareas} />
+          </div>
+        )}
 
         {/* Por qué no hay estimación. Sin esto, un «—» parece un fallo de la app. */}
         {!sesion.duracion_minutos && durEstimada.avisoCiclismo && (

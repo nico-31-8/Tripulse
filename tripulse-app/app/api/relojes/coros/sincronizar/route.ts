@@ -157,6 +157,11 @@ export async function POST(req: Request) {
       const tramos = h.name === 'querySleepHrv' ? tramosDeDias(desde, hasta, DIAS_POR_LLAMADA) : [{ desde, hasta }]
       for (const tr of tramos) await pedir(h, tr.desde, tr.hasta)
     }
+    /* Su calendario de COROS de las dos semanas que vienen, SOLO EN CRUDO: para
+       aprender cómo lo enseña (lo que le manda su entrenador desde «⌚ Su
+       COROS», lo que tenga suyo y lo que ya borró). No se traduce ni avisa. */
+    const calendario = herramientas.find(x => x.name === 'queryTrainingSchedule')
+    if (calendario) await pedir(calendario, hasta, sumarDias(hasta, 13))
   } catch (e) {
     const agotado = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
     if (!crudo.length) return anotar(agotado ? 'COROS ha tardado demasiado en responder. Prueba más tarde.' : 'No se ha podido hablar con COROS.')

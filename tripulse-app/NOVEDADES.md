@@ -14,6 +14,39 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · Manda sus sesiones a su reloj COROS
+
+- **«⌚ Su COROS», en el calendario del deportista**, junto a «Mover en el
+  tiempo» (en el móvil, en el menú de acciones). Sale solo si tiene COROS
+  conectado, y solo a su entrenador. El número de al lado dice cuántas sesiones
+  de esta semana y la que viene están por mandar.
+- **Abre la semana**, y se avanza hasta 90 días. Cada sesión dice qué pasa con
+  ella: **va**, **ya está** en su COROS, **se reemplaza** (la cambiaste después de
+  mandarla) o **no va** y por qué. Marcas las que quieres y le das a «Mandar». Le
+  llegan al reloj cuando lo sincroniza.
+- **«Así le llegará»** enseña el entreno tal cual lo verá: el nombre, la
+  descripción y cada paso con su objetivo.
+- **Qué va:** las sesiones de carrera y de bici. Un brick son dos entrenos el
+  mismo día, la bici y la carrera, sin la transición. Natación y fuerza no:
+  COROS no deja mandarlas desde fuera. Lo que ya ha hecho o ya pasó tampoco.
+- **Con la intensidad que ve en TRIPULSE:** lo que escribes en el «@» o, si no
+  escribes nada, lo que calcula la app con sus tests. Se pone en el reloj cuando
+  tiene unidad clara («4:30 /km», «140-150 ppm», «200 W»); lo que no («a tope»,
+  «3:09»), va escrito en la descripción. Lo suave sin suelo (AER) va por pulso,
+  con solo techo: «FC hasta 126».
+- **COROS no deja mover ni borrar desde fuera.** Si mueves o borras una sesión
+  que ya le mandaste, en su reloj se queda en el día de antes: el calendario lo
+  marca con «⌚ sigue en su COROS», y desde la ventana puedes avisarle por el chat
+  (el mensaje va escrito; lo mandas tú) y quitar la marca cuando la haya borrado.
+- **En la ficha de la sesión**, debajo de la cabecera, una franja dice si está en
+  su COROS, si ha cambiado desde que la mandaste («Reenviar») o si la moviste.
+- Es la primera versión: si algo no le llega como esperas, dínoslo.
+
+**Números que pueden cambiar:** ninguno. Es nuevo y solo escribe en su reloj
+cuando tú lo mandas.
+
+---
+
 ## 18 de octubre de 2026 · Sin el test, el atleta ve su pulso o su RPE, no un porcentaje
 
 - **El objetivo de cada bloque ya no le enseña un porcentaje de un test que no
