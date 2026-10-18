@@ -23,6 +23,7 @@ import {
   OPCIONES_VOLUMEN, OPCIONES_DIAS, OPCIONES_NIVEL, OPCIONES_DISCIPLINA, OPCIONES_ANIOS,
   diasDeAnamnesis,
 } from '@/lib/anamnesis-datos'
+import { leerAnamnesis, guardarAnamnesis } from '@/lib/anamnesis-vigente'
 
 /** Botón de opción a lo ancho: en el móvil se pulsa con el pulgar sin apuntar. */
 function Opcion({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -72,7 +73,7 @@ export default function Alta() {
         // Si ya hay anamnesis (larga o de un alta anterior), se rellena con lo
         // que haya. Volver aquí a cambiar las horas no debe obligar a contestar
         // otra vez lo que ya está contestado.
-        const { data: an } = await supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle()
+        const { data: an } = await leerAnamnesis(supabase, d.id)
         if (an) {
           setIdAnamnesis(an.id)
           setE({
@@ -97,13 +98,16 @@ export default function Alta() {
   const guardar = async () => {
     if (!dep) return
     setGuardando(true); setError('')
-    const payload = payloadAlta(e)
-    const { error: err } = idAnamnesis
-      ? await supabase.from('anamnesis').update(payload).eq('id', idAnamnesis)
+    /* Sobre la que ya tiene: si al cargar no se vio ninguna, se le pregunta otra
+       vez a la base antes de crearla. Aquí se insertaba cada vez que la lectura
+       fallaba, y con dos filas fallaba siempre: cada alta dejaba una más. */
+    const { error: err } = await guardarAnamnesis(supabase, dep.id, payloadAlta(e), {
+      id: idAnamnesis,
       // `estado: 'borrador'` a propósito: seis respuestas no son la anamnesis
       // completa, y el panel del entrenador cuenta por ese campo.
-      : await supabase.from('anamnesis').insert({ ...payload, id_deportista: dep.id, estado: 'borrador' })
-    if (err) { setError('No se ha podido guardar: ' + err.message); setGuardando(false); return }
+      alCrear: { estado: 'borrador' },
+    })
+    if (err) { setError('No se ha podido guardar: ' + err); setGuardando(false); return }
     router.push('/mi-plan')
   }
 

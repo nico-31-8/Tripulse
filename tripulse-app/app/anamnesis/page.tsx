@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { OPCIONES_VOLUMEN, OPCIONES_DIAS, OPCIONES_NIVEL, OPCIONES_DISCIPLINA } from '@/lib/anamnesis-datos'
+import { leerAnamnesis, guardadorDeAnamnesis } from '@/lib/anamnesis-vigente'
 
 const SECCIONES = [
   'Datos personales',
@@ -28,13 +29,18 @@ type Lesion = {
 export default function PaginaAnamnesis() {
   const router = useRouter()
   const [deportistaId, setDeportistaId] = useState<number | null>(null)
-  const [anamnesisId, setAnamnesisId] = useState<number | null>(null)
   const [seccion, setSeccion] = useState(0)
   const [guardando, setGuardando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [ultimoGuardado, setUltimoGuardado] = useState<string | null>(null)
+  const [errorGuardado, setErrorGuardado] = useState('')
   const [yaEnviada, setYaEnviada] = useState(false)
   const guardadoTimer = useRef<NodeJS.Timeout | null>(null)
+  /* Quien guarda, y en qué fila. En un ref y no en el estado: el autoguardado
+     programado se llevaba el id de cuando se programó, y si era null insertaba
+     otra fila aunque la anterior ya existiera. Null hasta saber qué hay en la
+     base: sin él no se guarda nada. */
+  const guardador = useRef<ReturnType<typeof guardadorDeAnamnesis> | null>(null)
 
   // Sección 1
   const [nombreCompleto, setNombreCompleto] = useState('')
@@ -115,12 +121,13 @@ export default function PaginaAnamnesis() {
       if (!dep) { router.push('/dashboard-deportista'); return }
       setDeportistaId(dep.id)
 
-      const { data: an } = await supabase.from('anamnesis').select('*').eq('id_deportista', dep.id).maybeSingle()
-      if (an) {
-        if (an.estado === 'enviada') { setYaEnviada(true); return }
-        setAnamnesisId(an.id)
-        cargarDatos(an)
-      }
+      const { data: an, error } = await leerAnamnesis(supabase, dep.id)
+      /* Si no se ha podido leer, NO se guarda: el formulario está vacío, y
+         guardarlo encima de la que tiene se la borraría entera. */
+      if (error) { setErrorGuardado('No se ha podido cargar tu ficha. Recarga la página: lo que escribas ahora no se guardará.'); return }
+      if (an?.estado === 'enviada') { setYaEnviada(true); return }
+      guardador.current = guardadorDeAnamnesis(supabase, dep.id, an?.id ?? null)
+      if (an) cargarDatos(an)
     }
     init()
   }, [])
@@ -255,21 +262,20 @@ export default function PaginaAnamnesis() {
     pruebaDistancia, objetivoPrincipal, motivacion, mensajeEntrenador])
 
   const autoguardar = useCallback(() => {
-    if (!deportistaId) return
+    if (!guardador.current) return
     if (guardadoTimer.current) clearTimeout(guardadoTimer.current)
     guardadoTimer.current = setTimeout(async () => {
+      const g = guardador.current
+      if (!g) return
       setGuardando(true)
-      const payload = buildPayload()
-      if (anamnesisId) {
-        await supabase.from('anamnesis').update(payload).eq('id', anamnesisId)
-      } else {
-        const { data } = await supabase.from('anamnesis').insert({ ...payload, id_deportista: deportistaId, estado: 'borrador' }).select('id').single()
-        if (data) setAnamnesisId(data.id)
-      }
+      // En cola detrás del anterior y en su misma fila: ver guardadorDeAnamnesis.
+      const { error } = await g.guardar(buildPayload(), { estado: 'borrador' })
       setGuardando(false)
-      setUltimoGuardado(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))
+      // «Guardado a las…» solo si es verdad: antes salía aunque fallara.
+      setErrorGuardado(error ? 'No se ha podido guardar: ' + error : '')
+      if (!error) setUltimoGuardado(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))
     }, 1500)
-  }, [deportistaId, anamnesisId, buildPayload])
+  }, [buildPayload])
 
   useEffect(() => { autoguardar() }, [
     nombreCompleto, fechaNacimiento, sexo, peso, talla, contactoNombre, contactoTelefono,
@@ -285,16 +291,14 @@ export default function PaginaAnamnesis() {
 
   const enviar = async () => {
     if (!declaracion) { alert('Debes aceptar la declaración de responsabilidad en la sección de Salud.'); return }
-    // Cancelar el autoguardado pendiente: si dispara después del envío con anamnesisId
-    // aún null, crearía una 2ª fila y la próxima carga (maybeSingle) fallaría por duplicados.
+    const g = guardador.current
+    if (!g) { alert('No se ha podido cargar tu ficha. Recarga la página y vuelve a enviarla.'); return }
+    // El autoguardado pendiente sobra: lo que se envía ya lo lleva todo.
     if (guardadoTimer.current) clearTimeout(guardadoTimer.current)
     setEnviando(true)
-    const payload = { ...buildPayload(), estado: 'enviada', fecha_envio: new Date().toISOString() }
-    if (anamnesisId) {
-      await supabase.from('anamnesis').update(payload).eq('id', anamnesisId)
-    } else if (deportistaId) {
-      await supabase.from('anamnesis').insert({ ...payload, id_deportista: deportistaId })
-    }
+    // Por la misma cola: si hay un autoguardado en vuelo, espera y va a su fila.
+    const { error } = await g.guardar({ ...buildPayload(), estado: 'enviada', fecha_envio: new Date().toISOString() })
+    if (error) { setEnviando(false); alert('No se ha podido enviar: ' + error); return }
     // Propagar la FC máx declarada a deportista.fc_maxima (de donde leen las tablas de zonas).
     const fcm = Number(fcMaxima)
     if (deportistaId && fcm > 0) await supabase.from('deportista').update({ fc_maxima: fcm }).eq('id', deportistaId)
@@ -351,7 +355,8 @@ export default function PaginaAnamnesis() {
         <h1 className="text-sm font-semibold text-white">Ficha inicial del deportista</h1>
         <div className="text-right">
           {guardando && <p className="text-gray-500 text-xs">Guardando...</p>}
-          {!guardando && ultimoGuardado && <p className="text-gray-500 text-xs">Guardado a las {ultimoGuardado}</p>}
+          {!guardando && errorGuardado && <p className="text-red-400 text-xs">{errorGuardado}</p>}
+          {!guardando && !errorGuardado && ultimoGuardado && <p className="text-gray-500 text-xs">Guardado a las {ultimoGuardado}</p>}
         </div>
       </div>
 

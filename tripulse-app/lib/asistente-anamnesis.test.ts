@@ -16,7 +16,9 @@ function fakeSupabase(anamnesis: any) {
     for (const m of ['select', 'eq', 'gte', 'lte', 'order', 'limit', 'not', 'in', 'is', 'or']) o[m] = () => o
     o.maybeSingle = async () => resultado
     o.single = async () => resultado
-    o.then = (res: any) => res(resultado)
+    // Sin single/maybeSingle, supabase devuelve una LISTA aunque haya una fila.
+    const d = resultado.data
+    o.then = (res: (r: unknown) => unknown) => res({ ...resultado, data: Array.isArray(d) ? d : d == null ? [] : [d] })
     return o
   }
   return {

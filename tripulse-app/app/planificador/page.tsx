@@ -41,6 +41,7 @@ import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDelPlanificador } from '@/lib/consejos'
 import { colorDisciplina } from '@/lib/disciplinas'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 const DISTANCIAS: DistanciaTri[] = ['sprint', 'olimpico', 'medio', 'largo']
 const FASES: FaseMacro[] = ['transicion', 'pg-inicial', 'pg-avanzada', 'pe-inicial', 'pe-avanzada', 'tapering']
@@ -123,7 +124,7 @@ export default function Planificador() {
   async function elegir(d: any, _todos = deportistas) {
     setDep(d); setAtletaActivo(d.id); setPaso(1); setSemana(null); setRevision(null)
     const [{ data: an }, { data: disp }] = await Promise.all([
-      supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
+      leerAnamnesis(supabase, d.id),
       supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
     ])
     setAnamnesis(an)

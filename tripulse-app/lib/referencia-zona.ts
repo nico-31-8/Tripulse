@@ -13,6 +13,7 @@
 import { ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from './zonas'
 import { mmss } from './medicion'
 import { bandaFC, fcReposoDe, type DatosFC, type MetodoFC } from './frecuencia-cardiaca'
+import { leerAnamnesis, leerAnamnesisDeVarios } from './anamnesis-vigente'
 
 export interface Tests {
   vam?: number | null
@@ -234,7 +235,7 @@ export async function cargarReferencias(sb: any, idDeportista: number): Promise<
        Promise.all: no encadenan. */
     sb.from('wellness').select('fc_reposo').eq('id_deportista', idDeportista)
       .not('fc_reposo', 'is', null).order('fecha', { ascending: false }).limit(30),
-    sb.from('anamnesis').select('fc_reposo').eq('id_deportista', idDeportista).maybeSingle(),
+    leerAnamnesis(sb, idDeportista, 'fc_reposo'),
   ])
   return {
     tests: { vam: t1?.[0]?.vam, css: t2?.[0]?.css, ftp: t3?.[0]?.ftp },
@@ -309,7 +310,7 @@ export async function cargarReferenciasDeVarios(
   const salida = new Map<number, ReferenciasDeUno>()
   if (!limpios.length) return salida
 
-  const [deps, t1, t2, t3, well, anam] = await Promise.all([
+  const [deps, t1, t2, t3, well, anamDe] = await Promise.all([
     sb.from('deportista').select('id, fc_maxima, sistema_zonas, nombre').in('id', limpios),
     sb.from('test1_carrera').select('id_deportista, vam').not('vam', 'is', null)
       .in('id_deportista', limpios).order('fecha', { ascending: false }),
@@ -322,7 +323,9 @@ export async function cargarReferenciasDeVarios(
        este fichero existe para evitar. */
     sb.from('wellness').select('id_deportista, fc_reposo').not('fc_reposo', 'is', null)
       .in('id_deportista', limpios).order('fecha', { ascending: false }),
-    sb.from('anamnesis').select('id_deportista, fc_reposo').in('id_deportista', limpios),
+    // La vigente de cada uno. Se guardaba «la última que pasa», y con filas
+    // repetidas esa era la que tocara.
+    leerAnamnesisDeVarios(sb, limpios, 'fc_reposo'),
   ])
 
   // El primero que aparece de cada uno es el más reciente: la consulta viene
@@ -347,8 +350,6 @@ export async function cargarReferenciasDeVarios(
     if (!wellDe.has(k)) wellDe.set(k, [])
     wellDe.get(k)!.push(f)
   }
-  const anamDe = new Map<number, any>()
-  for (const f of anam?.data || []) anamDe.set(Number(f.id_deportista), f)
 
   for (const d of deps?.data || []) {
     const k = Number(d.id)

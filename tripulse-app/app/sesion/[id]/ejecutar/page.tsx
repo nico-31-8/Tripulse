@@ -28,6 +28,7 @@ import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 const segAMmss = mmss
 
@@ -199,7 +200,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
          también la sesión que el atleta se haya añadido él ese día. */
       depIdLocal ? supabase.from('sesion').select('id, estado').eq('id_deportista', depIdLocal)
         .eq('fecha_sesion', ses.fecha_sesion).or('eliminada.is.null,eliminada.eq.false') : Promise.resolve({ data: [] }),
-      depIdLocal ? supabase.from('anamnesis').select('peso').eq('id_deportista', depIdLocal).maybeSingle() : Promise.resolve({ data: null }),
+      depIdLocal ? leerAnamnesis(supabase, depIdLocal, 'peso') : Promise.resolve({ data: null }),
       /* Sus tests y sus dos frecuencias, de una vez. Aquí había TRES consultas
          sueltas que hacían justo esto; cargarReferencias ya las trae, y en esta
          pantalla —el atleta entrenando, con el móvil— tres viajes menos se notan. */

@@ -20,6 +20,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { METODOLOGIA_ENTRENADOR_IA, contextoParaAtleta } from '@/lib/entrenador-ia'
 import { horasDeAnamnesis } from '@/lib/anamnesis-datos'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 import { semanasDelMesociclo } from '@/lib/plan-mesociclo'
 import { sumarDias, diasEntre } from '@/lib/desplazar'
 
@@ -114,7 +115,7 @@ async function armarContexto(sb: any, dep: any, hoy: string) {
     sb.from('sesion').select('fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, rpe_reportado')
       .eq('id_deportista', dep.id).gte('fecha_sesion', desde).lte('fecha_sesion', hasta)
       .or('eliminada.is.null,eliminada.eq.false').order('fecha_sesion'),
-    sb.from('anamnesis').select('volumen_semanal, dias_semana').eq('id_deportista', dep.id).maybeSingle(),
+    leerAnamnesis(sb, dep.id, 'volumen_semanal, dias_semana'),
   ])
 
   // En qué bloque está y qué semana de él: el primero que aún no ha terminado.

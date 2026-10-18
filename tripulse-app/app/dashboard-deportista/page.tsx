@@ -27,6 +27,7 @@ import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDeHoy } from '@/lib/consejos'
 import { hayBloques, repeticionTexto } from '@/lib/bloques-tarea'
 import { colorDisciplina } from '@/lib/disciplinas'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 /* Los días se manejan como CADENAS con lib/fechas, no como `Date`: aquí había
@@ -142,9 +143,8 @@ export default function DashboardDeportista() {
         // enviada?». El alta corta deja la fila en 'borrador' a propósito, así que
         // por ahí parecía que no había nada. Se traen los campos que de verdad
         // hacen falta y se decide por ellos.
-        supabase.from('anamnesis')
-          .select('estado, volumen_semanal, dias_semana, nivel_competitivo, declaracion_responsabilidad')
-          .eq('id_deportista', dep.id).maybeSingle(),
+        leerAnamnesis(supabase, dep.id,
+          'estado, volumen_semanal, dias_semana, nivel_competitivo, declaracion_responsabilidad'),
       ])
 
       setTienePlan(!!macros.data?.length)

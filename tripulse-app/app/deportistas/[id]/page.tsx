@@ -27,6 +27,7 @@ import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDeLaFicha } from '@/lib/consejos'
 import { fcReposoDe } from '@/lib/frecuencia-cardiaca'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 // Identidad de color estable por nombre (igual que en el resto de la app).
 
@@ -228,7 +229,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       rc, rn, { data: eco }, ses42, ses30, ultimas,
     ] = await Promise.all([
       supabase.from('deportista').select('*').eq('id', id).single(),
-      supabase.from('anamnesis').select('*').eq('id_deportista', id).maybeSingle(),
+      leerAnamnesis(supabase, id),
       supabase.from('test1_carrera').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test2_natacion').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),
       supabase.from('test3_ciclismo').select('*').eq('id_deportista', id).order('fecha', { ascending: false }).limit(6),

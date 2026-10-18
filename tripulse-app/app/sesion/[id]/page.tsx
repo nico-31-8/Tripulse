@@ -59,6 +59,7 @@ import { hayBloques, bloquesDe } from '@/lib/bloques-tarea'
 import { esDisciplinaDeFuerza, disciplinaDeTareaFuerza, chipDisciplina } from '@/lib/disciplinas'
 import { mmssASegundos, mmssCorto } from '@/lib/medicion'
 import { esBloque } from '@/lib/bloque-formato'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 import ResumenBloque from '@/components/ResumenBloque'
 
 export default function PaginaSesion({ params }: { params: Promise<{ id: string }> }) {
@@ -383,7 +384,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
          mismas consultas es como empiezan a divergir, y con la tabla de %VAM ya
          pasó — el mismo Z4 daba dos ritmos según por dónde entrases. */
       cargarReferencias(supabase, depId),
-      supabase.from('anamnesis').select('peso').eq('id_deportista', depId).maybeSingle(),
+      leerAnamnesis(supabase, depId, 'peso'),
       /* Su wellness, para poder decir cómo amaneció DESPUÉS de esta sesión.
          Se piden 60 registros y no solo el día siguiente porque hacen falta dos
          cosas distintas: el registro de después, y su historial para saber qué

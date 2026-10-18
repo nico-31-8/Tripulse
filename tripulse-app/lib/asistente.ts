@@ -15,6 +15,7 @@ import { cargarMetricasPanel, fmtMin, escalaTSBTexto, escalaACWRTexto, type Metr
 import { analizarWellness } from './wellness-analisis'
 import { conZonaPico } from './sicat-zonas'
 import { minutosCarga } from './duracion-carga'
+import { leerAnamnesis } from './anamnesis-vigente'
 
 const ZONAS_TXT = ZONAS_RESISTENCIA
   .map(z => `  · ${z.sigla} — ${z.nombre} (${z.factor}; RPE ${z.rpeMin === z.rpeMax ? z.rpeMin : `${z.rpeMin}-${z.rpeMax}`})`)
@@ -117,12 +118,11 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
       .order('fecha_sesion', { ascending: false }).limit(14)).catch(nada),
     Promise.resolve(supabase.from('competicion').select('nombre, fecha, tipo')
       .eq('id_deportista', dep.id).gte('fecha', hoyISO()).order('fecha').limit(1)).catch(nada),
-    Promise.resolve(supabase.from('anamnesis')
-      .select('estado, anios_triatlon, nivel_competitivo, distancias_completadas, ' +
-              'disciplina_fuerte, disciplina_debil, deporte_anterior, volumen_semanal, dias_semana, ' +
-              'tiene_potenciometro, usa_pulsometro, mide_hrv, horas_sueno, nivel_estres, ' +
-              'prueba_objetivo, prueba_fecha, prueba_distancia, objetivo_principal, mensaje_entrenador')
-      .eq('id_deportista', dep.id).maybeSingle()).catch(nada),
+    leerAnamnesis(supabase, dep.id,
+      'estado, anios_triatlon, nivel_competitivo, distancias_completadas, ' +
+      'disciplina_fuerte, disciplina_debil, deporte_anterior, volumen_semanal, dias_semana, ' +
+      'tiene_potenciometro, usa_pulsometro, mide_hrv, horas_sueno, nivel_estres, ' +
+      'prueba_objetivo, prueba_fecha, prueba_distancia, objetivo_principal, mensaje_entrenador').catch(nada),
   ])
 
   const m: MetricasPanel | null = mRes
@@ -193,8 +193,9 @@ export async function construirContextoTexto(supabase: any, dep: any): Promise<s
   // La anamnesis ya recogía todo esto; simplemente no llegaba hasta aquí.
   try {
     /* Si la consulta falló, se calla como antes (no se dice «sin rellenar»
-       de algo que no se ha podido leer). */
-    if (!rAn) throw new Error('sin anamnesis')
+       de algo que no se ha podido leer). Supabase no lanza: el fallo viene en
+       `error`, y sin mirarlo un error se contaba como «no la tiene». */
+    if (!rAn || rAn.error) throw new Error('sin anamnesis')
     const an = rAn.data
 
     // «Enviada» no significa «completa»: la parte de salud y la de entrenamiento

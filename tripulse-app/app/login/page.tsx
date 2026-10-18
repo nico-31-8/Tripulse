@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { setAtletaActivo } from '@/lib/atletaActivo'
 import { setEspacio } from '@/lib/espacio'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 import CampoPassword from '@/components/CampoPassword'
 
 export default function Login() {
@@ -34,7 +35,7 @@ export default function Login() {
         const { data: dep } = await supabase.from('deportista').select('id, id_entrenador').eq('id_usuario', data.user.id).single()
         // Solo se exige anamnesis si tiene entrenador (es a quien le sirve)
         if (dep && dep.id_entrenador) {
-          const { data: an } = await supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle()
+          const { data: an } = await leerAnamnesis(supabase, dep.id, 'estado')
           router.push((!an || an.estado === 'borrador') ? '/anamnesis' : '/dashboard-deportista')
         } else {
           router.push('/dashboard-deportista')

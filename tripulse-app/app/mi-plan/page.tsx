@@ -26,6 +26,7 @@ import ChatEntrenador from '@/components/ChatEntrenador'
 import { estadoDelPlan, puedeRehacer, borrarPlan, type EstadoPlan } from '@/lib/plan-rehacer'
 import type { DiaDisponible } from '@/lib/plan-colocacion'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis, altaCompleta } from '@/lib/anamnesis-datos'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 // Solo las pruebas para las que B1-02 da plantilla de cuenta atrás. Ofrecer las
 // demás sería prometer un plan que no se sabe dibujar.
@@ -63,7 +64,7 @@ export default function MiPlan() {
         const [yaTiene, estado, { data: an }, { data: disp }] = await Promise.all([
           planesExistentes(supabase, d.id),
           estadoDelPlan(supabase, d.id),
-          supabase.from('anamnesis').select('*').eq('id_deportista', d.id).maybeSingle(),
+          leerAnamnesis(supabase, d.id),
           supabase.from('disponibilidad').select('dia_semana, hora_inicio, hora_fin').eq('id_deportista', d.id),
         ])
         setYaTiene(yaTiene)

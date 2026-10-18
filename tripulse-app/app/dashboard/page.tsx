@@ -31,6 +31,7 @@ import { getEspacio, setEspacio, entrenadorEfectivo, type Espacio } from '@/lib/
 import AvisosDirector from '@/components/AvisosDirector'
 import EntradaEspacio, { type FilaRoster } from '@/components/EntradaEspacio'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
+import { leerAnamnesis } from '@/lib/anamnesis-vigente'
 
 // Identidad de color estable por nombre (degradado del avatar, sin consultas extra).
 const cssVar = (color: string) => ({ ['--c']: color } as React.CSSProperties)
@@ -210,7 +211,7 @@ export default function Dashboard() {
       supabase.from('competicion').select('nombre, fecha').eq('id_deportista', dep.id)
         .gte('fecha', hoyStr).order('fecha').limit(1),
       supabase.from('mesociclo').select('fecha_inicio, objetivo').eq('id_deportista', dep.id),
-      supabase.from('anamnesis').select('estado').eq('id_deportista', dep.id).maybeSingle(),
+      leerAnamnesis(supabase, dep.id, 'estado'),
     ])
 
     setTareas(ts.data || [])
