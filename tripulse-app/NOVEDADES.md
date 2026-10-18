@@ -14,6 +14,22 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · La ficha inicial del deportista ya no se duplica
+
+- **Antes**, la ficha inicial (la anamnesis) a veces se guardaba dos veces: al
+  repetir el alta, o al guardarse sola dos veces seguidas mientras el deportista
+  escribía. Con dos fichas, la aplicación no veía **ninguna**: el planificador
+  le ponía 8 h y 5 días por defecto en vez de lo que había contestado, en su
+  perfil salía como «Pendiente» y el asistente decía que no la había rellenado.
+  Y cada vuelta por el alta dejaba otra más.
+- **Ahora** se guarda siempre sobre la misma ficha, y la base de datos ya no
+  admite una segunda.
+- **Quien la tenía repetida** se ha quedado con una sola: la completa que envió,
+  con lo último que contestó en el alta. Los planes que generes desde ahora usan
+  sus horas y sus días; los que ya tenía no cambian solos.
+- Si la ficha no se puede guardar mientras la rellena, ahora lo dice en rojo en
+  vez de poner «Guardado a las…».
+
 ## 18 de octubre de 2026 · El planificador: solo lo suyo, nunca el día de su carrera y sin semanas dobles
 
 - **Solo las disciplinas de su ficha.** El planificador —el tuyo y «Mi plan» del
