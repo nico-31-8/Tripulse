@@ -18,8 +18,14 @@
 export interface NocheReloj {
   dormido_min: number | null
   rmssd_ms: number | null
+  /** La FC media de la noche (Polar). */
   fc_media: number | null
+  /** La FC en reposo de ese día (COROS no da la media de la noche, da esta). */
+  fc_reposo?: number | null
 }
+
+/** La FC del reloj de esa noche, la que haya: la media nocturna (Polar) o la de reposo (COROS). */
+export const fcDelReloj = (n: NocheReloj | null | undefined): number | null => n?.fc_media ?? n?.fc_reposo ?? null
 
 const n = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null)
 
@@ -36,7 +42,10 @@ export function nochesPorFecha(
     if (!f?.fecha) continue
     const d = salida[f.fecha] || (salida[f.fecha] = { dormido_min: null, rmssd_ms: null, fc_media: null })
     if (f.tipo === 'sueno') d.dormido_min = n(f.datos?.dormido_min)
-    if (f.tipo === 'recarga') { d.rmssd_ms = n(f.datos?.rmssd_ms); d.fc_media = n(f.datos?.fc_media) }
+    if (f.tipo === 'recarga') {
+      d.rmssd_ms = n(f.datos?.rmssd_ms); d.fc_media = n(f.datos?.fc_media)
+      if (n(f.datos?.fc_reposo) != null) d.fc_reposo = n(f.datos?.fc_reposo)
+    }
   }
   return salida
 }
@@ -104,7 +113,9 @@ export function quePreguntar(p: {
  *   del deslizador. `sueno_del_reloj` dice cuál de las dos es, porque el motor
  *   las compara en series distintas.
  * - HRV y FC de la noche: lo que haya llegado del reloj, se pregunte lo que se
- *   pregunte. Van a sus columnas propias.
+ *   pregunte. Van a sus columnas propias. La FC es la que dé cada marca (la
+ *   media nocturna de Polar, la de reposo de COROS): un deportista lleva una
+ *   marca cada vez, así que su serie no se mezcla.
  * - HRV y FC de la mañana: solo si el formulario las preguntó.
  */
 export function objetivosAGuardar(p: {
@@ -134,7 +145,7 @@ export function objetivosAGuardar(p: {
     hrv: p.q.manana ? numMano(p.hrvMano) : null,
     fc_reposo: p.q.manana ? (v => (v == null ? null : Math.round(v)))(numMano(p.fcMano)) : null,
     hrv_noche: p.q.modo === 'sin_reloj' ? null : (p.noche?.rmssd_ms ?? null),
-    fc_noche: p.q.modo === 'sin_reloj' ? null : (p.noche?.fc_media != null ? Math.round(p.noche.fc_media) : null),
+    fc_noche: p.q.modo === 'sin_reloj' ? null : (fc => (fc == null ? null : Math.round(fc)))(fcDelReloj(p.noche)),
   }
 }
 

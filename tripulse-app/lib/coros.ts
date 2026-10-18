@@ -37,6 +37,7 @@
 // que pide empresa y una base de usuarios.
 
 import { createHash, randomBytes } from 'node:crypto'
+import type { Medicion } from './polar'
 
 /**
  * La región. Las cuentas de COROS viven en Europa, EE. UU. o China, y el token
@@ -386,4 +387,185 @@ export function motivoDeErrorCoros(status: number): string {
   if (status === 429) return 'COROS está limitando las peticiones. Prueba dentro de un rato.'
   if (status >= 500) return 'COROS no responde ahora mismo. Prueba más tarde.'
   return 'COROS ha devuelto un error (' + status + ').'
+}
+
+// ------------------------------------------------------------
+// Lo que contesta COROS, traducido (2026-10-17)
+// ------------------------------------------------------------
+// COROS contesta con TEXTO para un chat, sin forma declarada. Esto lee el
+// formato que devolvió la primera cuenta real el 17-10-2026 (sueño, HRV del
+// sueño y FC en reposo); lo que no reconoce lo deja fuera en vez de adivinar.
+// Las fechas son las de DESPERTARSE (lo dice COROS en cada respuesta), las
+// mismas con las que se rellena el wellness por la mañana.
+//
+// LOS ENTRENOS TODAVÍA NO: esa cuenta no tenía ninguno en la semana pedida, y
+// sin una respuesta real no se escribe su lectura. Se siguen guardando en
+// crudo (reloj_crudo) para escribirla con el primero que llegue.
+
+/** Lo que se pide la primera vez (cuando todavía no ha llegado ninguna noche): cuatro semanas, como con Polar. */
+export const DIAS_PRIMERA_VEZ = 28
+
+/** Un rango partido en tramos de n días como mucho, el último pegado a `hasta`. */
+export function tramosDeDias(desde: string, hasta: string, n: number = DIAS_POR_LLAMADA): { desde: string; hasta: string }[] {
+  const dia = (iso: string) => Date.parse(iso.slice(0, 10) + 'T00:00:00Z')
+  const aIso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+  const out: { desde: string; hasta: string }[] = []
+  for (let fin = dia(hasta); fin >= dia(desde); fin -= n * 86400000) {
+    out.push({ desde: aIso(Math.max(dia(desde), fin - (n - 1) * 86400000)), hasta: aIso(fin) })
+  }
+  return out.reverse()
+}
+
+/** «9h 13min», «20 min», «7h», «0 min» (con o sin un paréntesis detrás) → minutos; null si no se entiende. */
+export function minutosDeTexto(s: string | null | undefined): number | null {
+  if (typeof s !== 'string') return null
+  const m = /^\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*min)?\s*$/i.exec(s.replace(/\(.*?\)/g, ''))
+  if (!m || (m[1] === undefined && m[2] === undefined)) return null
+  return Number(m[1] || 0) * 60 + Number(m[2] || 0)
+}
+
+const entero = (s: string | undefined): number | null => {
+  const m = /^\s*(\d+)/.exec(s || '')
+  return m ? Number(m[1]) : null
+}
+const porcentaje = (s: string | undefined): number | null => {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*%/.exec(s || '')
+  return m ? Number(m[1].replace(',', '.')) : null
+}
+
+/**
+ * Los bloques de un texto de COROS: cada uno empieza por una línea con su
+ * fecha («2026-10-11» o «2026-10-16:») y sigue con líneas «clave: valor». Una
+ * fecha con texto detrás («2026-10-17: no official sleep HRV value…») abre un
+ * bloque sin valores: así no se cuela en el de antes.
+ */
+function bloquesPorFecha(texto: string): { fecha: string; campos: Record<string, string> }[] {
+  const out: { fecha: string; campos: Record<string, string> }[] = []
+  let actual: { fecha: string; campos: Record<string, string> } | null = null
+  for (const linea of texto.split(/\r?\n/)) {
+    const t = linea.trim()
+    const f = /^(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$/.exec(t)
+    if (f) { actual = { fecha: f[1], campos: {} }; out.push(actual); continue }
+    const kv = /^([^:]+):\s*(.*)$/.exec(t)
+    if (actual && kv) actual.campos[kv[1].trim()] = kv[2].trim()
+  }
+  return out
+}
+
+/**
+ * Las noches de `querySleepOverview`. `dormido_min` es «Main Sleep (asleep)»:
+ * el sueño principal sin lo despierto y sin las siestas, lo más parecido a las
+ * horas que se escribirían a mano (Polar: la suma de sus fases). Las fases
+ * llegan en PORCENTAJE del sueño principal (con lo despierto dentro) y se
+ * guardan así, sin convertirlas a minutos. Un día sin detalle («not available
+ * yet») no da noche.
+ */
+export function medicionesDeSuenoCoros(texto: string | null | undefined): Medicion[] {
+  if (typeof texto !== 'string') return []
+  return bloquesPorFecha(texto).flatMap((b): Medicion[] => {
+    const c = b.campos
+    const dormido = minutosDeTexto(c['Main Sleep (asleep)'])
+    if (!dormido) return []
+    const ventana = /(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/.exec(c['Main Sleep Window'] || '')
+    const puntos = entero(c['Sleep Score'])
+    return [{
+      tipo: 'sueno',
+      fecha: b.fecha,
+      id_externo: b.fecha,
+      datos: {
+        inicio: ventana ? ventana[1] + 'T' + ventana[2].padStart(5, '0') : null,
+        fin: ventana ? ventana[3] + 'T' + ventana[4].padStart(5, '0') : null,
+        dormido_min: dormido,
+        en_cama_min: minutosDeTexto(c['Main Sleep Period (incl. awake)']),
+        interrupciones_min: minutosDeTexto(c['Awake Time']),
+        despertares: entero(c['Awake Count (>5 min)']),
+        profundo_pct: porcentaje(c['Deep Sleep Ratio']),
+        ligero_pct: porcentaje(c['Light Sleep Ratio']),
+        rem_pct: porcentaje(c['REM Ratio']),
+        siesta_min: minutosDeTexto(c['Naps Total (asleep)'] ?? c['Naps Total']),
+        puntuacion: puntos && puntos > 0 ? puntos : null,
+      },
+    }]
+  })
+}
+
+export type EstadoHrvCoros = 'por_debajo' | 'normal' | 'por_encima'
+
+export interface HrvNocheCoros {
+  hrv_ms: number
+  estado: EstadoHrvCoros | null
+  rango_min: number | null
+  rango_max: number | null
+  linea_base_ms: number | null
+}
+
+const estadoHrv = (s: string | undefined): EstadoHrvCoros | null =>
+  !s ? null : /below/i.test(s) ? 'por_debajo' : /above/i.test(s) ? 'por_encima' : /normal/i.test(s) ? 'normal' : null
+
+/**
+ * La HRV de cada noche, de `querySleepHrv`: solo su apartado «HRV Assessment»,
+ * que es la valoración oficial de COROS (media, rango normal y línea base). La
+ * serie de puntos que trae debajo no se usa: COROS pide expresamente no sacar
+ * la media de ahí.
+ */
+export function hrvDeNochesCoros(texto: string | null | undefined): Record<string, HrvNocheCoros> {
+  if (typeof texto !== 'string') return {}
+  const ini = texto.search(/HRV Assessment/i)
+  if (ini < 0) return {}
+  const resto = texto.slice(ini)
+  const fin = resto.search(/Time Series/i)
+  const out: Record<string, HrvNocheCoros> = {}
+  for (const b of bloquesPorFecha(fin > 0 ? resto.slice(0, fin) : resto)) {
+    const media = /^(\d+(?:\.\d+)?)\s*ms(?:\s*[—–-]\s*(.+))?$/i.exec(b.campos['HRV Avg'] || '')
+    if (!media) continue
+    const rango = /^(\d+)\s*-\s*(\d+)\s*ms/i.exec(b.campos['Normal Range'] || '')
+    out[b.fecha] = {
+      hrv_ms: Number(media[1]),
+      estado: estadoHrv(media[2]),
+      rango_min: rango ? Number(rango[1]) : null,
+      rango_max: rango ? Number(rango[2]) : null,
+      linea_base_ms: entero(b.campos['Baseline']),
+    }
+  }
+  return out
+}
+
+/** La FC en reposo de cada día, de `queryRestingHeartRate` («2026-10-16: 62 bpm»; «No data» no da nada). */
+export function reposoPorDiaCoros(texto: string | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (typeof texto !== 'string') return out
+  for (const linea of texto.split(/\r?\n/)) {
+    const m = /^\s*(\d{4}-\d{2}-\d{2})\s*:\s*(\d+)\s*bpm/i.exec(linea)
+    if (m) out[m[1]] = Number(m[2])
+  }
+  return out
+}
+
+/**
+ * Todo lo de COROS junto, en las mediciones de TRIPULSE (las mismas que Polar):
+ * - `sueno`, cada noche;
+ * - `recarga`, la HRV del sueño y la FC en reposo de ese día. La HRV va en
+ *   `rmssd_ms`, el campo que la pantalla enseña como «HRV noche» (COROS no dice
+ *   cómo la calcula; un deportista lleva una marca cada vez, así que su serie
+ *   no se mezcla con la de Polar). La FC va como `fc_reposo`, con su nombre:
+ *   no es la media nocturna que da Polar en `fc_media`.
+ */
+export function medicionesDeCoros(r: { sueno?: string | null; hrv?: (string | null | undefined)[]; reposo?: string | null }): Medicion[] {
+  const hrv: Record<string, HrvNocheCoros> = Object.assign({}, ...(r.hrv || []).map(t => hrvDeNochesCoros(t)))
+  const reposo = reposoPorDiaCoros(r.reposo)
+  const fechas = [...new Set([...Object.keys(hrv), ...Object.keys(reposo)])].sort()
+  const recargas: Medicion[] = fechas.map(f => ({
+    tipo: 'recarga',
+    fecha: f,
+    id_externo: f,
+    datos: {
+      rmssd_ms: hrv[f]?.hrv_ms ?? null,
+      hrv_estado: hrv[f]?.estado ?? null,
+      hrv_rango_min: hrv[f]?.rango_min ?? null,
+      hrv_rango_max: hrv[f]?.rango_max ?? null,
+      hrv_linea_base_ms: hrv[f]?.linea_base_ms ?? null,
+      fc_reposo: reposo[f] ?? null,
+    },
+  }))
+  return [...medicionesDeSuenoCoros(r.sueno), ...recargas]
 }

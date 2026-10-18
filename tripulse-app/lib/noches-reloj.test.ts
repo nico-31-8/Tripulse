@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  nochesPorFecha, horasDeMinutos, textoHoras, quePreguntar, objetivosAGuardar, numeroDePreguntas, delProveedor,
+  nochesPorFecha, horasDeMinutos, textoHoras, quePreguntar, objetivosAGuardar, numeroDePreguntas, delProveedor, fcDelReloj,
   type NocheReloj,
 } from './noches-reloj'
 
@@ -49,6 +49,17 @@ describe('nochesPorFecha', () => {
   })
   it('sin filas, nada', () => {
     expect(nochesPorFecha(null)).toEqual({})
+  })
+  /* COROS no da la FC media de la noche sino la de reposo del día: llega con su nombre. */
+  it('la FC en reposo de COROS se queda con su nombre, y es la FC del reloj de esa noche', () => {
+    const r = nochesPorFecha([
+      { tipo: 'sueno', fecha: '2026-10-16', datos: { dormido_min: 499 } },
+      { tipo: 'recarga', fecha: '2026-10-16', datos: { rmssd_ms: 43, fc_reposo: 62 } },
+    ])
+    expect(r['2026-10-16']).toEqual({ dormido_min: 499, rmssd_ms: 43, fc_media: null, fc_reposo: 62 })
+    expect(fcDelReloj(r['2026-10-16'])).toBe(62)
+    expect(fcDelReloj(NOCHE)).toBe(52)
+    expect(fcDelReloj(null)).toBeNull()
   })
 })
 
@@ -153,6 +164,15 @@ describe('objetivosAGuardar', () => {
     const q = quePreguntar({ conectado: true, noche: soloRecarga, mideManana: false })
     const r = objetivosAGuardar({ q, noche: soloRecarga, horasMano: 6.5, hrvMano: '', fcMano: '' })
     expect(r).toEqual({ horas_sueno: 6.5, sueno_del_reloj: false, hrv: null, fc_reposo: null, hrv_noche: 50, fc_noche: 52 })
+  })
+
+  /* COROS: sin FC media de la noche, la FC del reloj es la de reposo de ese día. */
+  it('con una noche de COROS, la FC del reloj que se guarda es su FC en reposo', () => {
+    const coros: NocheReloj = { dormido_min: 499, rmssd_ms: 43, fc_media: null, fc_reposo: 62 }
+    const q = quePreguntar({ conectado: true, noche: coros, mideManana: false })
+    expect(objetivosAGuardar({ q, noche: coros, horasMano: null, hrvMano: '', fcMano: '' })).toEqual({
+      horas_sueno: 8.32, sueno_del_reloj: true, hrv: null, fc_reposo: null, hrv_noche: 43, fc_noche: 62,
+    })
   })
 
   it('lo tecleado acepta coma decimal y descarta lo que no es un número', () => {

@@ -47,6 +47,8 @@ export default function WellnessEntrenador() {
   const [sesiones, setSesiones] = useState<SesionCruce[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [registros, setRegistros] = useState<any[]>([])
+  /* Su reloj: la FC que guarda es la media de la noche (Polar) o la de reposo del día (COROS). */
+  const [proveedor, setProveedor] = useState('')
   const [loading, setLoading] = useState(true)
   const [rango, setRango] = useState(14)
   const [fechaDesde, setFechaDesde] = useState('')
@@ -124,9 +126,14 @@ export default function WellnessEntrenador() {
       .order('fecha_sesion')
     if (custom && hasta) qSes = qSes.lte('fecha_sesion', hasta)
 
-    const [{ data }, { data: ses }] = await Promise.all([query, qSes])
+    const [{ data }, { data: ses }, { data: con }] = await Promise.all([
+      query, qSes,
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', depId)
+        .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
+    ])
     setRegistros(data || [])
     setSesiones((ses || []) as SesionCruce[])
+    setProveedor(con ? String(con.proveedor) : '')
   }
 
   const verDetalle = async (dep: any) => {
@@ -423,7 +430,7 @@ export default function WellnessEntrenador() {
                             {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.2} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
                             {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.2} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
                             {registros.some(r => r.hrv_noche != null) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="HRV noche ⌚ (ms)" connectNulls />}
-                            {registros.some(r => r.fc_noche != null) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name="FC noche ⌚ (ppm)" connectNulls />}
+                            {registros.some(r => r.fc_noche != null) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name={(proveedor === 'coros' ? 'FC reposo' : 'FC noche') + ' ⌚ (ppm)'} connectNulls />}
                           </LineChart>
                         </ResponsiveContainer>
                       </div>

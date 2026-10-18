@@ -9,8 +9,9 @@ export type Proveedor = 'polar' | 'coros' | 'garmin'
 
 /**
  * - `disponible`: se conecta y sus datos llegan.
- * - `pruebas`: se conecta, pero sus datos todavía no llegan al wellness. COROS
- *   está así hasta que la primera cuenta real enseñe la forma de sus respuestas.
+ * - `pruebas`: se conecta, pero sus datos todavía no llegan al wellness. Es el
+ *   estado de una marca hasta que la primera cuenta real enseña la forma de sus
+ *   respuestas (COROS lo estuvo hasta el 17-10-2026).
  * - `proximamente`: sale en la lista, apagado, para que quien lo tenga sepa que
  *   está en camino.
  */
@@ -65,17 +66,19 @@ export const RELOJES: RelojCatalogo[] = [
   {
     id: 'coros',
     nombre: 'COROS',
-    estado: 'pruebas',
-    trae: 'Sueño, HRV del sueño, FC en reposo y entrenos',
-    nota: 'Recién llegado. La conexión ya funciona, pero estamos terminando de leer sus datos: tu entrenador verá que lo tienes conectado, y tu sueño y tus entrenos empezarán a llegar solos en cuanto esté listo. Mientras, el wellness te lo pregunta como siempre.',
+    /* Disponible desde el 17-10-2026, con la primera cuenta real: el sueño, la
+       HRV del sueño y la FC en reposo ya se traducen (lib/coros). Los entrenos
+       todavía no: no ha llegado ninguno de verdad con el que leerlos. */
+    estado: 'disponible',
+    trae: 'Sueño, HRV del sueño y FC en reposo',
     pasos: [
       ['Ten a mano tu cuenta de COROS.', 'La misma con la que entras en la app de COROS.'],
       ['Pulsa «Conectar COROS».', 'Te lleva a COROS: entras y das permiso. Después vuelves aquí solo.'],
       ['Sincroniza tu reloj con la app de COROS, como siempre.', 'Lo que no esté en tu cuenta de COROS no nos llega.'],
     ],
     queLlega: [
-      ['Con un reloj COROS con el que duermes:', 'tu sueño, tu HRV del sueño y tu FC en reposo, y tus entrenos.'],
-      ['Con una banda emparejada a tu reloj COROS:', 'los entrenos, porque los graba el reloj.'],
+      ['Con un reloj COROS con el que duermes:', 'tu sueño, tu HRV del sueño y tu FC en reposo de cada día. Al conectar llegan los de las últimas cuatro semanas.'],
+      ['Los entrenos, todavía no:', 'llegarán en cuanto terminemos de leerlos. Mientras, apúntalos como siempre.'],
       ['Si tu banda va con un reloj de otra marca,', 'esas sesiones se guardan en esa marca y no llegan aquí.'],
     ],
     siNoLlega: [

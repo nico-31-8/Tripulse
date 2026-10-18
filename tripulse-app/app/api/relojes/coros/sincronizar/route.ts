@@ -1,34 +1,38 @@
-// Sincronizar COROS: por ahora, APRENDER.
+// Sincronizar COROS.
 //
-// COROS no publica los parámetros ni la forma de las respuestas de sus
-// herramientas: su propio cliente los pide en marcha. Así que esta ruta, con
-// una cuenta real, hace lo que haría falta para escribir la traducción con
-// datos de verdad en vez de adivinando:
+// COROS no tiene un API normal, sino un servidor MCP que contesta con TEXTO
+// para un chat. Esta ruta:
 //
 //   1. Renueva el token si le queda menos de un minuto (duran una hora).
-//   2. Pide a COROS la lista de herramientas, y guarda lo que pide cada una
+//   2. Pide a COROS la lista de herramientas y guarda lo que pide cada una
 //      (también las de escribir entrenos y planes, para cuando se usen).
-//   3. Llama a las que interesan (sueño, HRV del sueño, FC en reposo y
-//      entrenos) con la última semana, en el formato que ELLAS declaran
-//      (lib/coros: argumentosCoros).
-//   4. Guarda lo que conteste —resultado o error— en `reloj_crudo`. Los
-//      errores de COROS llegan como un texto normal: se marcan como error.
+//   3. Llama a las que interesan en el formato que ELLAS declaran
+//      (lib/coros: argumentosCoros): el sueño y la FC en reposo de una vez, la
+//      HRV del sueño de siete en siete días (no admite más). La primera vez,
+//      cuando todavía no ha llegado ninguna noche, cuatro semanas; después, una.
+//   4. TRADUCE el sueño, la HRV y la FC en reposo (lib/coros:
+//      medicionesDeCoros, con el formato que devolvió la primera cuenta real
+//      el 17-10-2026) y lo guarda en `reloj_medicion`, igual que Polar.
+//   5. Guarda en `reloj_crudo` lo último que contestó cada herramienta, tal
+//      cual. Los entrenos solo van ahí de momento: todavía no ha llegado
+//      ninguno de verdad con el que escribir su lectura.
 //
-// No se convierte nada en mediciones todavía, ni llega nada al wellness: el
-// catálogo tiene COROS en «pruebas» y el formulario lo trata como si no hubiera
-// reloj. Cuando haya respuestas reales guardadas, se escribe la traducción.
+// Un fallo de una herramienta no tumba lo demás: se guarda lo que llegó y se
+// devuelve un aviso para la pantalla.
 
 import { json, quienLlama, ESPERA_MS } from '@/lib/relojes-servidor'
 import {
   emisorCoros, mcpDe, hayQueRenovar, leerRenovacionCoros, inicializar, peticionMcp, leerRespuestaMcp,
   contenidoDeResultado, argumentosCoros, pareceErrorCoros, recortarParaAprender, motivoDeErrorCoros,
-  HERRAMIENTAS_COROS, DIAS_POR_LLAMADA, VERSION_MCP,
+  medicionesDeCoros, tramosDeDias, HERRAMIENTAS_COROS, DIAS_POR_LLAMADA, DIAS_PRIMERA_VEZ, VERSION_MCP,
   type EsquemaEntrada,
 } from '@/lib/coros'
 import { hoyISO, sumarDias } from '@/lib/fechas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+/* La primera vez son unas nueve llamadas seguidas a COROS (la HRV, de siete en siete días). */
+export const maxDuration = 60
 
 interface FilaToken { id_externo: string | null; access_token: string | null; refresh_token: string | null; extra: { cliente?: string; emisor?: string } | null; caduca_en: string | null }
 interface Herramienta { name: string; description?: string; inputSchema?: EsquemaEntrada; outputSchema?: unknown }
@@ -72,6 +76,14 @@ export async function POST(req: Request) {
     }
   }
 
+  /* Cuánto pedir: cuatro semanas si todavía no ha llegado ninguna noche suya de COROS.
+     «Suya» de verdad: quien además entrena a otros ve también las de ellos. */
+  const { count: nochesYa } = await q.sb.from('reloj_medicion')
+    .select('id, deportista!inner(id_usuario)', { count: 'exact', head: true })
+    .eq('deportista.id_usuario', q.uid).eq('proveedor', 'coros').eq('tipo', 'sueno')
+  const hasta = hoyISO()
+  const desde = sumarDias(hasta, -((nochesYa ? DIAS_POR_LLAMADA : DIAS_PRIMERA_VEZ) - 1))
+
   // ---- 2 y 3. Hablar MCP ----
   let sesion: string | null = null
   let iniciado = false
@@ -93,7 +105,27 @@ export async function POST(req: Request) {
     return { status: r.status, mensaje: leerRespuestaMcp(await r.text(), r.headers.get('content-type')) }
   }
 
-  const aprendido: { herramienta: string; datos: unknown }[] = []
+  const crudo: { herramienta: string; datos: unknown }[] = []
+  /* Lo que contestó bien cada herramienta (la HRV, una vez por tanda), para traducirlo. */
+  const textos: Record<string, string[]> = {}
+  const fallos: string[] = []
+  let id = 20
+  /** Una llamada: guarda lo último que contestó y, si no es un error, su texto. */
+  const pedir = async (h: Herramienta, de: string, a: string) => {
+    const argumentos = argumentosCoros(h.inputSchema, de, a)
+    const r = await llamar(peticionMcp(id++, 'tools/call', { name: h.name, arguments: argumentos }))
+    const res = r.mensaje?.result as { isError?: boolean } | undefined
+    const resultado = contenidoDeResultado(res)
+    const motivo = pareceErrorCoros(resultado)
+    const esError = r.status !== 200 || !!res?.isError || !!r.mensaje?.error || !!motivo
+    const fila = { herramienta: h.name, datos: recortarParaAprender({ argumentos, status: r.status, esError, error: r.mensaje?.error ?? motivo, resultado }) }
+    const i = crudo.findIndex(c => c.herramienta === h.name)
+    if (i >= 0) crudo[i] = fila
+    else crudo.push(fila)
+    if (esError || typeof resultado !== 'string') fallos.push(h.name)
+    else (textos[h.name] ||= []).push(resultado)
+  }
+
   try {
     const ini = await llamar(inicializar(1))
     if (ini.status !== 200 || !ini.mensaje || 'error' in ini.mensaje) return anotar(motivoDeErrorCoros(ini.status || 500))
@@ -112,11 +144,7 @@ export async function POST(req: Request) {
       if (!res.nextCursor) break
       cursor = res.nextCursor
     }
-
-    const interesan = herramientas.filter(h => (HERRAMIENTAS_COROS as readonly string[]).includes(h.name))
-    /* Lo que pide cada una, todas: las de escribir entrenos y planes también,
-       para saber su formato antes de mandarle nada al reloj. */
-    aprendido.push({
+    crudo.push({
       herramienta: 'tools/list',
       datos: recortarParaAprender({
         todas: herramientas.map(h => h.name),
@@ -124,43 +152,43 @@ export async function POST(req: Request) {
       }, 350_000),
     })
 
-    /* Una semana: es lo que admite la HRV del sueño por llamada, y para
-       aprender la forma de las respuestas basta. Las semanas de atrás se
-       pedirán al escribir la traducción. */
-    const hasta = hoyISO()
-    const desde = sumarDias(hasta, -(DIAS_POR_LLAMADA - 1))
-    let id = 20
-    for (const h of interesan) {
-      const argumentos = argumentosCoros(h.inputSchema, desde, hasta)
-      const r = await llamar(peticionMcp(id++, 'tools/call', { name: h.name, arguments: argumentos }))
-      const res = r.mensaje?.result as { isError?: boolean } | undefined
-      const resultado = contenidoDeResultado(res)
-      const motivo = pareceErrorCoros(resultado)
-      aprendido.push({
-        herramienta: h.name,
-        datos: recortarParaAprender({
-          argumentos,
-          status: r.status,
-          esError: !!res?.isError || !!r.mensaje?.error || !!motivo,
-          error: r.mensaje?.error ?? motivo,
-          resultado,
-        }),
-      })
+    for (const h of herramientas.filter(x => (HERRAMIENTAS_COROS as readonly string[]).includes(x.name))) {
+      /* La HRV del sueño no admite más de siete días por llamada. */
+      const tramos = h.name === 'querySleepHrv' ? tramosDeDias(desde, hasta, DIAS_POR_LLAMADA) : [{ desde, hasta }]
+      for (const tr of tramos) await pedir(h, tr.desde, tr.hasta)
     }
   } catch (e) {
     const agotado = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
-    if (!aprendido.length) return anotar(agotado ? 'COROS ha tardado demasiado en responder. Prueba más tarde.' : 'No se ha podido hablar con COROS.')
-    /* Si algo llegó antes de fallar, se guarda: sirve para aprender igual. */
+    if (!crudo.length) return anotar(agotado ? 'COROS ha tardado demasiado en responder. Prueba más tarde.' : 'No se ha podido hablar con COROS.')
+    /* Si algo llegó antes de fallar, se guarda y se traduce igual. */
+    fallos.push('la conexión')
   }
 
-  // ---- 4. Guardar lo aprendido ----
-  const { data: n, error: eCrudo } = await q.sb.rpc('reloj_guardar_crudo', { p_proveedor: 'coros', p_filas: aprendido })
-  if (eCrudo) return json({ error: 'No se ha podido guardar lo recibido de COROS: ' + eCrudo.message }, 500)
-  await q.sb.rpc('reloj_guardar', { p_proveedor: 'coros', p_mediciones: [], p_error: null })
+  // ---- 4. Traducir y guardar ----
+  const mediciones = medicionesDeCoros({
+    sueno: textos.querySleepOverview?.[0] ?? null,
+    hrv: textos.querySleepHrv ?? [],
+    reposo: textos.queryRestingHeartRate?.[0] ?? null,
+  })
+  const { error: eGuardar } = await q.sb.rpc('reloj_guardar', { p_proveedor: 'coros', p_mediciones: mediciones, p_error: null })
+  if (eGuardar) return json({ error: 'No se ha podido guardar lo recibido de COROS: ' + eGuardar.message }, 500)
 
+  // ---- 5. Lo que contestó, tal cual ----
+  await q.sb.rpc('reloj_guardar_crudo', { p_proveedor: 'coros', p_filas: crudo })
+
+  const porTipo = (tipo: string) => mediciones.filter(m => m.tipo === tipo).length
+  /* Lo que ha fallado, dicho como lo entiende el deportista. Los entrenos no
+     cuentan: todavía no se leen, así que su fallo no le quita nada. */
+  const QUE_ES: Record<string, string> = {
+    querySleepOverview: 'el sueño', querySleepData: 'el sueño', querySleepHrv: 'la HRV del sueño',
+    queryRestingHeartRate: 'la FC en reposo', 'la conexión': 'parte de la respuesta',
+  }
+  const falta = [...new Set(fallos.filter(f => QUE_ES[f]).map(f => QUE_ES[f]))]
   return json({
-    pendiente: true,
-    aprendido: n,
-    herramientas: aprendido.filter(a => a.herramienta !== 'tools/list').map(a => a.herramienta),
+    noches: porTipo('sueno'),
+    recargas: porTipo('recarga'),
+    /* Los entrenos de COROS todavía no se leen: la pantalla no los cuenta. */
+    entrenos: null,
+    aviso: falta.length ? 'COROS no ha mandado ' + falta.join(' ni ') + '. Lo demás se ha guardado; prueba otra vez dentro de un rato.' : null,
   })
 }

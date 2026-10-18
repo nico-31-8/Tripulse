@@ -14,6 +14,32 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 18 de octubre de 2026 · Los datos de los relojes COROS ya llegan
+
+- **COROS deja de estar «en pruebas».** El deportista lo conecta desde su perfil
+  y llegan su **sueño**, su **HRV del sueño** y su **FC en reposo** de cada día.
+  La primera vez llegan los de las últimas cuatro semanas; después, lo nuevo
+  cada vez que abre su wellness o pulsa «Sincronizar ahora».
+- **Su wellness funciona como con Polar:** si la noche ha llegado, no pregunta
+  las horas de sueño (salen del reloj y se pueden corregir) y enseña la HRV y la
+  FC del reloj. La HRV y la FC de la mañana dejan de preguntarse; si quieres que
+  las siga midiendo, marca «Mide la HRV por la mañana» en su ficha.
+- **La FC no es la misma que la de Polar.** Polar da la FC media de la noche;
+  COROS no la da, da la FC en reposo de cada día. Por eso, con COROS, en el
+  wellness y en sus gráficas sale como «FC reposo ⌚», y en el perfil como «FC en
+  reposo». Cada deportista se compara con lo suyo, así que no le afecta mientras
+  no cambie de marca.
+- **Los entrenos de COROS todavía no llegan**: falta que llegue uno de verdad con
+  el que leerlos. Mientras, se apuntan como siempre.
+
+**Números que pueden cambiar:** a los deportistas con COROS les empiezan a salir
+sus noches, y su wellness pregunta menos: 7 preguntas los días que llega la
+noche y 8 los que no (vuelven las horas de sueño), en vez de 10. La HRV y la FC
+del reloj se guardan con cada wellness y entran en su análisis en una serie
+aparte de las de la mañana, como con Polar.
+
+---
+
 ## 17 de octubre de 2026 · Análisis libre en vídeo, también de gente de fuera
 
 - **«＋ Análisis libre»**, junto al FMS y el Nine Test en la pestaña Movimiento de

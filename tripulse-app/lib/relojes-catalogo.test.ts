@@ -31,9 +31,16 @@ describe('catálogo de relojes', () => {
 
   it('los datos llegan al wellness solo desde las disponibles', () => {
     expect(datosListos('polar')).toBe(true)
-    expect(datosListos('coros')).toBe(false)
+    /* COROS, desde el 17-10-2026: su sueño, su HRV y su FC en reposo ya se traducen. */
+    expect(datosListos('coros')).toBe(true)
     expect(datosListos('garmin')).toBe(false)
     expect(datosListos(undefined)).toBe(false)
+  })
+
+  it('lo que dice de COROS no promete los entrenos, que todavía no se leen', () => {
+    const c = relojPorId('coros')!
+    expect(c.trae).not.toMatch(/entreno/i)
+    expect(c.queLlega.some(([a, b]) => /entrenos, todavía no/i.test(a + ' ' + b))).toBe(true)
   })
 
   it('se conecta lo disponible y lo que está en pruebas; lo próximo no', () => {

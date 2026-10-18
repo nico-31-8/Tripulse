@@ -120,10 +120,11 @@ export default function RelojPerfil() {
       /* Marca en pruebas: contesta, pero lo que manda todavía no se convierte en nada. */
       if (!silencioso) setAviso({ tipo: 'ok', texto: nombre + ' ha contestado. Tus datos saldrán aquí en cuanto terminemos de prepararlos.' })
     } else if (!silencioso || cuerpo.aviso) {
+      /* Los entrenos solo se cuentan si esa marca los lee (COROS todavía no: llega null). */
       const partes = [
         cuerpo.noches + ' noches',
         cuerpo.recargas + ' recargas',
-        cuerpo.entrenos + (cuerpo.entrenos === 1 ? ' entreno' : ' entrenos'),
+        ...(cuerpo.entrenos == null ? [] : [cuerpo.entrenos + (cuerpo.entrenos === 1 ? ' entreno' : ' entrenos')]),
       ]
       setAviso({ tipo: cuerpo.aviso ? 'error' : 'ok', texto: cuerpo.aviso ? String(cuerpo.aviso) : 'Recibido de ' + nombre + ': ' + partes.join(', ') + '.' })
     }
@@ -380,8 +381,11 @@ export default function RelojPerfil() {
                         <tr className="text-gray-500 text-[11px] text-left">
                           <th className="font-normal py-1.5 pr-3">Noche</th>
                           <th className="font-normal py-1.5 pr-3">Sueño</th>
-                          <th className="font-normal py-1.5 pr-3" title="RMSSD medio de 4 h de sueño, en milisegundos">HRV nocturna</th>
-                          <th className="font-normal py-1.5" title="Media de esas mismas 4 h de sueño">FC nocturna</th>
+                          {/* Polar da la HRV y la FC de 4 h de sueño; COROS, su HRV del sueño y la FC en reposo del día. */}
+                          <th className="font-normal py-1.5 pr-3" title={con?.proveedor === 'coros' ? 'La HRV media del sueño, según COROS' : 'RMSSD medio de 4 h de sueño, en milisegundos'}>HRV nocturna</th>
+                          <th className="font-normal py-1.5" title={con?.proveedor === 'coros' ? 'La FC en reposo de ese día, según COROS' : 'Media de esas mismas 4 h de sueño'}>
+                            {con?.proveedor === 'coros' ? 'FC en reposo' : 'FC nocturna'}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -390,7 +394,7 @@ export default function RelojPerfil() {
                             <td className="py-2 pr-3 text-gray-300 capitalize">{DIA(n.fecha)}</td>
                             <td className="py-2 pr-3">{textoHoras(typeof n.sueno?.dormido_min === 'number' ? n.sueno.dormido_min : null)}</td>
                             <td className="py-2 pr-3">{n.recarga?.rmssd_ms != null ? n.recarga.rmssd_ms + ' ms' : '—'}</td>
-                            <td className="py-2">{n.recarga?.fc_media != null ? n.recarga.fc_media + ' ppm' : '—'}</td>
+                            <td className="py-2">{(n.recarga?.fc_media ?? n.recarga?.fc_reposo) != null ? (n.recarga?.fc_media ?? n.recarga?.fc_reposo) + ' ppm' : '—'}</td>
                           </tr>
                         ))}
                       </tbody>

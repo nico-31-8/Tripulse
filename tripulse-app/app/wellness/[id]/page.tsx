@@ -11,7 +11,7 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import { vivas } from '@/lib/papelera'
 import { type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
-import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, type NocheReloj } from '@/lib/noches-reloj'
+import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, fcDelReloj, type NocheReloj } from '@/lib/noches-reloj'
 import { llamarReloj } from '@/lib/relojes-cliente'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import AvisoConectarReloj from '@/components/AvisoConectarReloj'
@@ -199,6 +199,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
   /* QUÉ PREGUNTA EL FORMULARIO HOY. La regla vive en lib/noches-reloj, con
      pruebas: pregunta lo que falta, no lo que el atleta tenga en casa. */
   const noche = noches[fecha] || null
+  /* La FC del reloj guardada en cada registro: la media de la noche (Polar) o la de reposo del día (COROS). */
+  const fcRelojNombre = proveedor === 'coros' ? 'FC reposo' : 'FC noche'
   const q = quePreguntar({ conectado, noche, mideManana: !!deportista?.hrv_matutina, corrigiendo })
 
   const guardar = async (e: React.FormEvent) => {
@@ -391,13 +393,14 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider">Sueño</p>
                     <p className="font-bold text-lg tabular-nums">{textoHoras(noche.dormido_min)}</p>
                   </div>
-                  <div className="bg-gray-900/70 rounded-lg py-2.5" title="RMSSD medio de 4 h de sueño">
+                  <div className="bg-gray-900/70 rounded-lg py-2.5" title={proveedor === 'coros' ? 'La HRV media del sueño, según COROS' : 'RMSSD medio de 4 h de sueño'}>
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider">HRV noche</p>
                     <p className="font-bold text-lg tabular-nums">{noche.rmssd_ms ?? '—'}{noche.rmssd_ms != null && <span className="text-xs text-gray-500 font-normal"> ms</span>}</p>
                   </div>
-                  <div className="bg-gray-900/70 rounded-lg py-2.5" title="FC media de esas 4 h de sueño">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">FC noche</p>
-                    <p className="font-bold text-lg tabular-nums">{noche.fc_media != null ? Math.round(noche.fc_media) : '—'}{noche.fc_media != null && <span className="text-xs text-gray-500 font-normal"> ppm</span>}</p>
+                  {/* Polar da la FC media de la noche; COROS, la FC en reposo de ese día. Se dice cuál es. */}
+                  <div className="bg-gray-900/70 rounded-lg py-2.5" title={noche.fc_media == null && noche.fc_reposo != null ? 'La FC en reposo de ese día, según tu reloj' : 'FC media de esas 4 h de sueño'}>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">{noche.fc_media == null && noche.fc_reposo != null ? 'FC reposo' : 'FC noche'}</p>
+                    <p className="font-bold text-lg tabular-nums">{fcDelReloj(noche) != null ? Math.round(fcDelReloj(noche)!) : '—'}{fcDelReloj(noche) != null && <span className="text-xs text-gray-500 font-normal"> ppm</span>}</p>
                   </div>
                 </div>
                 <button type="button" onClick={() => { setCorrigiendo(c => !c); setHorasSueno(null) }}
@@ -516,7 +519,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                   {registros.some(r => r.hrv) && <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block"></span> HRV (ms)</span>}
                   {registros.some(r => r.fc_reposo) && <span className="flex items-center gap-1 text-rose-400"><span className="w-3 h-0.5 bg-rose-400 inline-block"></span> FC reposo (ppm)</span>}
                   {registros.some(r => r.hrv_noche) && <span className="flex items-center gap-1 text-sky-300"><span className="w-3 border-t border-dashed border-sky-300 inline-block"></span> ⌚ HRV noche (ms)</span>}
-                  {registros.some(r => r.fc_noche) && <span className="flex items-center gap-1 text-pink-300"><span className="w-3 border-t border-dashed border-pink-300 inline-block"></span> ⌚ FC noche (ppm)</span>}
+                  {registros.some(r => r.fc_noche) && <span className="flex items-center gap-1 text-pink-300"><span className="w-3 border-t border-dashed border-pink-300 inline-block"></span> ⌚ {fcRelojNombre} (ppm)</span>}
                 </div>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={registros.slice().reverse().map(r => ({ fecha: r.fecha.slice(5), hrv: r.hrv || null, fc_reposo: r.fc_reposo || null, hrv_noche: r.hrv_noche ?? null, fc_noche: r.fc_noche ?? null }))}>
@@ -526,8 +529,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                     <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', fontSize: 12 }} />
                     {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.5} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
                     {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.5} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
-                    {registros.some(r => r.hrv_noche) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="HRV noche (ms)" connectNulls />}
-                    {registros.some(r => r.fc_noche) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name="FC noche (ppm)" connectNulls />}
+                    {registros.some(r => r.hrv_noche) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="⌚ HRV noche (ms)" connectNulls />}
+                    {registros.some(r => r.fc_noche) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name={'⌚ ' + fcRelojNombre + ' (ppm)'} connectNulls />}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -600,7 +603,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                       {r.hrv && <p className="text-blue-400 text-sm">HRV: {r.hrv} ms</p>}
                       {r.fc_reposo && <p className="text-rose-400 text-sm">FC reposo: {r.fc_reposo} ppm</p>}
                       {r.hrv_noche != null && <p className="text-sky-300 text-sm">⌚ HRV noche: {r.hrv_noche} ms</p>}
-                      {r.fc_noche != null && <p className="text-pink-300 text-sm">⌚ FC noche: {r.fc_noche} ppm</p>}
+                      {r.fc_noche != null && <p className="text-pink-300 text-sm">⌚ {fcRelojNombre}: {r.fc_noche} ppm</p>}
                     </div>
                   </div>
                   <div className="text-right">
