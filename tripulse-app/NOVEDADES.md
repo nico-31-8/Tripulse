@@ -14,6 +14,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 19 de octubre de 2026 · Cada entreno del reloj, con su sesión
+
+- **Al cerrar una sesión**, si ese día su reloj (Polar o COROS) registró un
+  entreno de esa disciplina, le sale arriba: «Tu COROS registró este entreno ese
+  día». Con «Es esta» se ponen la duración, la distancia y la FC del reloj. El
+  RPE lo sigue poniendo tu deportista, y con los datos del reloj no se guarda
+  sin que lo toque. Si la hizo otro día, puede elegir un entreno de esa semana.
+- **En su panel**, solo cuando hay algo pendiente de las dos últimas semanas:
+  lo que unió su entrenador y le falta el RPE, una sesión que cerró a mano y
+  puede completar con el reloj, y lo que entrenó fuera del plan («Apuntarla»
+  con su RPE, o «No contarla»). Caminar y otros deportes no se piden.
+- **En «Su reloj» → Entrenos** ves cómo está cada entreno: unido, sugerido, sin
+  sesión o que no cuenta. Puedes unir lo que la app sugiere, desunir lo que se
+  unió mal, poner su RPE si te lo dijo o apuntarla tú.
+- **La carga se calcula igual** (RPE × minutos), pero una sesión cerrada o
+  completada con el reloj pasa a tener **la duración del reloj**, y su carga
+  cambia con ella. Unir sin RPE no suma nada: la sesión no se cierra hasta que
+  alguien pone el RPE.
+- Si la cierra por el modo entreno, el reloj todavía no sale ahí: después le
+  aparece «Completar con el reloj» en su panel.
+
 ## 19 de octubre de 2026 · Los entrenos de COROS ya llegan
 
 - **«Su reloj» → Entrenos** enseña ahora también los entrenos de quien tiene

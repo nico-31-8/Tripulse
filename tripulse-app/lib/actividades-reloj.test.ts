@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  actividadDeMedicion, actividadesDeMediciones, horaDe, nombreDeporte,
+  actividadDeMedicion, actividadesDeMediciones, horaDe, inicioUtc, nombreDeporte,
   distanciaTexto, ritmoTexto, totales, type FilaMedicion,
 } from './actividades-reloj'
 
@@ -19,7 +19,7 @@ const fila = (datos: Record<string, unknown> = {}, o: Partial<FilaMedicion> = {}
 describe('traducir lo que manda el reloj', () => {
   it('una fila de Polar entera', () => {
     expect(actividadDeMedicion(fila())).toEqual({
-      id: 1, proveedor: 'polar', fecha: '2026-09-12', hora: '07:12',
+      id: 1, proveedor: 'polar', fecha: '2026-09-12', hora: '07:12', inicio: '2026-09-12T05:12:31.000Z',
       disciplina: 'Carrera', deporte: 'TRAIL_RUNNING', minutos: 62, metros: 12400,
       fcMedia: 148, fcMax: 176, calorias: 720, cargaDelReloj: 187,
     })
@@ -87,6 +87,13 @@ describe('cómo se lee', () => {
     expect(horaDe('2026-09-12T07:12:31.000')).toBe('07:12')
     expect(horaDe('2026-09-12')).toBeNull()
     expect(horaDe(null)).toBeNull()
+  })
+
+  it('el instante en UTC: Polar con su desfase, COROS tal cual; sin desfase no se adivina', () => {
+    expect(inicioUtc('2026-09-12T07:12:31.000', 120)).toBe('2026-09-12T05:12:31.000Z')
+    expect(inicioUtc('2026-10-18T14:24:11.000Z', null)).toBe('2026-10-18T14:24:11.000Z')
+    expect(inicioUtc('2026-09-12T07:12:31.000', null)).toBeNull()
+    expect(inicioUtc(null, 120)).toBeNull()
   })
 
   /* COROS solo da la hora en UTC: leída tal cual, saldría dos horas antes en Madrid. */

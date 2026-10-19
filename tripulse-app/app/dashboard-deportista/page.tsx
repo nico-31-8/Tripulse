@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import AvisoMaterial from '@/components/AvisoMaterial'
+import DeTuReloj from '@/components/DeTuReloj'
 import AvisosDirector from '@/components/AvisosDirector'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import Cargando from '@/components/Cargando'
@@ -307,6 +308,10 @@ export default function DashboardDeportista() {
         {/* El material que toca cambiar. Solo sale si hay algo que decir: un aviso
             que esta siempre enseña a no leerlos. */}
         <AvisoMaterial idDeportista={deportista?.id} className="mb-4" />
+
+        {/* Lo que su reloj trae y falta por apuntar: un RPE, completar una sesión
+            cerrada a mano o un entreno fuera del plan. Solo sale si hay algo. */}
+        <DeTuReloj idDeportista={deportista?.id} className="mb-4" />
 
         {/* Si el director de su entrenador ha cambiado algo de su plan, o su
             entrenador le ha abierto el plan a alguien: se lo decimos aquí, con

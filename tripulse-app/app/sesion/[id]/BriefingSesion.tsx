@@ -11,11 +11,16 @@
 //   ▶ Empezar      → /ejecutar (registro serie a serie, modo mejora en fuerza)
 //   Ya la he hecho → cronómetro aquí + cuestionario. Es la única que escribe
 //                    duracion_real y la que trae la HRV cuando no hay wellness.
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { repsDeEjercicio, repsDePrescripcion } from '@/lib/repeticiones'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { fechaLargaCompleta as fechaLarga } from '@/lib/fechas'
+import { fechaLargaCompleta as fechaLarga, lunesDe, sumarDias } from '@/lib/fechas'
+import type { ActividadReloj } from '@/lib/actividades-reloj'
+import TarjetaRelojCierre from '@/components/TarjetaRelojCierre'
+import { nombreReloj } from '@/lib/relojes-catalogo'
+import { estadoDeActividad, opcionesDeLaSemana, partesUnidas, tareasDeParte } from '@/lib/reloj-sesion'
+import { cargarDatosUnion, ponerDatosDelReloj, guardarDecision, type DatosUnion, type SesionDelReloj } from '@/lib/reloj-union'
 
 import { cargaDeTarea, cuelgaDeTestPropio, leerCopia, esCopiaDeLimites } from '@/lib/prescripcion-zona'
 import { objetivoDeTarea, deDondeSaleTarea, cargarTestsDeTareas } from '@/lib/objetivo-tarea'
@@ -164,6 +169,75 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   // la bici no se parece a la bici, y el SICAT necesita saber de cuál viene el coste.
   const [postBloques, setPostBloques] = useState<Record<number, { rpe: number; fc: string; sensacion: number }>>({})
 
+  /* ---- Su reloj (maqueta del 2026-10-19) ----
+     Si ese día su reloj registró un entreno de esa disciplina, sale arriba del
+     cuestionario: con un toque pone la duración, la distancia y la FC. El RPE,
+     no: es la mitad de la carga y el reloj no lo sabe. Si su entrenador ya lo
+     unió, llega puesto. «No es esta» deja elegir otro de la semana. */
+  type ParteReloj = { actividad: ActividadReloj; parte: number }
+  const [reloj, setReloj] = useState<{ datos: DatosUnion; sesion: SesionDelReloj; marca: string } | null>(null)
+  const [relojUsado, setRelojUsado] = useState<ParteReloj[] | null>(null)
+  const [relojVista, setRelojVista] = useState<'pregunta' | 'otras' | 'cerrado'>('pregunta')
+  const [rpeTocado, setRpeTocado] = useState(false)
+  const [avisoRpe, setAvisoRpe] = useState(false)
+  const [errorReloj, setErrorReloj] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (sesion?.estado === 'Realizada' || !sesion?.id_deportista) return
+    let vivo = true
+    const lunes = lunesDe(String(sesion.fecha_sesion).slice(0, 10))
+    Promise.all([
+      cargarDatosUnion(supabase, sesion.id_deportista, lunes, sumarDias(lunes, 6)),
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', sesion.id_deportista)
+        .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]).then(([d, c]) => {
+      const esta = d.sesiones.find(s => s.id === Number(id))
+      if (!vivo || d.error || !esta) return
+      setReloj({ datos: d, sesion: esta, marca: c.data?.proveedor ? nombreReloj(c.data.proveedor) : 'reloj' })
+    })
+    return () => { vivo = false }
+  }, [id, sesion?.id_deportista, sesion?.fecha_sesion, sesion?.estado])
+
+  /* Lo de su reloj para ESTA sesión: lo ya unido, lo sugerido y lo de otros días de la semana. */
+  const delReloj = useMemo(() => {
+    if (!reloj) return null
+    const { datos, sesion: s } = reloj
+    const como = (x: { actividad: unknown; parte: number }) => x as ParteReloj
+    const unidas = partesUnidas(s.id, datos.uniones, datos.actividades).map(como)
+    const sugeridas: ParteReloj[] = []
+    const otras: ParteReloj[] = []
+    for (const a of datos.actividades) {
+      if (unidas.some(x => x.actividad.id === a.id)) continue
+      const e = estadoDeActividad(a, datos.sesiones, datos.uniones)
+      const aqui = e.k === 'sugerida' && e.sesion.id === s.id ? e.parte
+        : e.k === 'varias' ? e.opciones.find(o => o.sesion.id === s.id)?.parte : undefined
+      if (aqui != null && a.fecha === s.fecha) { sugeridas.push({ actividad: a, parte: aqui }); continue }
+      if (e.k === 'unida' || e.k === 'no_cuenta') continue
+      const o = opcionesDeLaSemana(a, datos.sesiones, datos.uniones).find(x => x.sesion.id === s.id)
+      if (o) otras.push({ actividad: a, parte: o.parte })
+    }
+    return { unidas, sugeridas, otras }
+  }, [reloj])
+
+  /* Poner en el cuestionario lo del reloj: la FC en su casilla si la sesión (o
+     esa parte del brick) tiene UNA tarea; si tiene varias, es de toda la sesión
+     y no se reparte. La duración se escribe al guardar. */
+  const usarReloj = (partes: ParteReloj[]) => {
+    setRelojUsado(partes)
+    if (!reloj) return
+    for (const p of partes) {
+      const fc = p.actividad.fcMedia
+      if (fc == null) continue
+      const solas = tareasDeParte(reloj.sesion, reloj.sesion.tareas, p.parte)
+      if (solas.length !== 1) continue
+      if (esBrick) {
+        setPostBloques(prev => ({ ...prev, [solas[0].id]: { ...(prev[solas[0].id] || { rpe: 5, sensacion: 3 }), fc: String(Math.round(fc)) } }))
+      } else {
+        setFcMedia(String(Math.round(fc)))
+      }
+    }
+  }
+
   useEffect(() => {
     if (registrando && sesion?.usar_cronometro) {
       intervalRef.current = setInterval(() => setSegundos(s => s + 1), 1000)
@@ -195,11 +269,16 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         sensacion: t.sensacion_tecnica || 3,
       }])))
     }
+    /* Si su entrenador ya lo unió con su reloj, llega puesto. */
+    if (delReloj?.unidas.length && !relojUsado) usarReloj(delReloj.unidas)
     setMostrarPost(true)
   }
 
   const guardarPost = async (e: React.FormEvent) => {
     e.preventDefault()
+    /* Con los datos del reloj puestos, el RPE es lo único que falta: que no se
+       guarde el 5 de partida sin que lo haya mirado. */
+    if (relojUsado && !rpeTocado) { setAvisoRpe(true); return }
     setGuardando(true)
     const duracionReal = sesion.usar_cronometro && segundos > 0 ? Math.round(segundos / 60) : null
     /* El RPE va TAMBIÉN en la sesión: la carga real, la forma y el resumen
@@ -235,6 +314,20 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         sensacion_tecnica: sensacionTecnica,
       }).eq('id_sesion', id)
     }
+    /* Lo del reloj: la duración (manda sobre el cronómetro), la hora, los metros
+       o el tiempo de una tarea sola, y la unión con lo que había antes. La FC
+       ya va en las tareas: la de la casilla, que pudo corregir. */
+    if (relojUsado && reloj) {
+      const err = await ponerDatosDelReloj(supabase, {
+        idDeportista: sesion.id_deportista, sesion: reloj.sesion, datos: reloj.datos, nuevas: relojUsado, fc: false,
+      })
+      if (err) {
+        setErrorReloj('Tu sesión está cerrada, pero ' + err.charAt(0).toLowerCase() + err.slice(1) + ' Lo puedes completar desde tu panel.')
+        await onCambio()
+        setGuardando(false)
+        return
+      }
+    }
     await onCambio()
     setMostrarPost(false)
     setGuardando(false)
@@ -247,6 +340,46 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   const hayNutricion = sesion.nutricion_carbo_gh != null || sesion.nutricion_agua_mlh != null
     || sesion.nutricion_sodio_mgh != null || sesion.nutricion_cafeina_mg != null || sesion.nutricion_ayuno
   const realizada = sesion.estado === 'Realizada'
+
+  /* «No es esta»: no era esa sesión. Se apunta (para no volver a sugerirla) y
+     se quita del cuestionario lo que había puesto el reloj. */
+  const noEsEsta = () => {
+    const quitar = relojUsado || delReloj?.sugeridas || []
+    if (reloj) {
+      for (const p of quitar) {
+        guardarDecision(supabase, { idDeportista: sesion.id_deportista, idMedicion: p.actividad.id, decision: 'rechazada', idSesion: reloj.sesion.id })
+      }
+      const ids = quitar.map(p => p.actividad.id)
+      setReloj(r => r && ({
+        ...r,
+        datos: {
+          ...r.datos,
+          uniones: [
+            ...r.datos.uniones.filter(u => !ids.includes(u.id_medicion)),
+            ...ids.map((idm, i) => ({ id: -1 - i, id_medicion: idm, id_sesion: r.sesion.id, parte: 1, decision: 'rechazada' as const })),
+          ],
+        },
+      }))
+    }
+    if (relojUsado) {
+      setFcMedia('')
+      setPostBloques(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, { ...v, fc: '' }])))
+    }
+    setRelojUsado(null)
+    setRelojVista('otras')
+  }
+
+  const deEntrenador = !!relojUsado && !!delReloj?.unidas.length && relojUsado.every(p => delReloj.unidas.some(u => u.actividad.id === p.actividad.id))
+  const tarjetaReloj = reloj && delReloj ? (
+    <TarjetaRelojCierre marca={reloj.marca} usadas={relojUsado} deEntrenador={deEntrenador}
+      sugeridas={delReloj.sugeridas} otras={delReloj.otras} vista={relojVista}
+      onUsar={usarReloj} onNoEsEsta={noEsEsta} onCerrar={() => setRelojVista('cerrado')} />
+  ) : null
+  const avisoDelRpe = relojUsado ? (
+    <p className={'text-xs mt-2 ' + (avisoRpe ? 'text-amber-300 font-semibold' : 'text-gray-400')}>
+      {avisoRpe ? 'Falta tu RPE: mueve la barra, aunque sea para dejarla en 5.' : 'Esto el reloj no lo sabe: sin tu RPE no cuenta para tu carga.'}
+    </p>
+  ) : null
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -525,17 +658,25 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className={'bg-gray-900 rounded-2xl p-6 w-full border border-orange-500 max-h-screen overflow-y-auto ' + (esBrick ? 'max-w-lg' : 'max-w-md')}>
             <h3 className="text-xl font-bold mb-4">¿Cómo fue?</h3>
-            {sesion.usar_cronometro && segundos > 0 && (
+            {tarjetaReloj}
+            {relojUsado ? (
+              <p className="text-sky-300 text-sm mb-4">
+                Duración: {Math.round(relojUsado.reduce((s, p) => s + (p.actividad.minutos || 0), 0))} min · del reloj
+              </p>
+            ) : sesion.usar_cronometro && segundos > 0 && (
               <p className="text-green-400 text-sm mb-4">Duración: {formatTiempo(segundos)} ({Math.round(segundos / 60)} min)</p>
             )}
             <form onSubmit={guardarPost} className="flex flex-col gap-4">
               {esBrick ? (
                 <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
                   <p className="text-purple-300 text-sm font-semibold">🔀 Cómo fue cada parte del brick</p>
+                  {avisoDelRpe}
                   {tareas.map((t, i) => {
                     const b = postBloques[t.id] || { rpe: 5, fc: '', sensacion: 3 }
-                    const set = (campo: 'rpe' | 'fc' | 'sensacion', v: any) =>
+                    const set = (campo: 'rpe' | 'fc' | 'sensacion', v: any) => {
+                      if (campo === 'rpe') { setRpeTocado(true); setAvisoRpe(false) }
                       setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
+                    }
                     return (
                       <div key={t.id} className="bg-gray-800 rounded-lg p-3 flex flex-col gap-2.5">
                         <p className="text-white text-xs font-bold">
@@ -560,8 +701,10 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                 <>
                   <div className="bg-gray-800 rounded-xl p-4">
                     <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">RPE real</label><span className="text-orange-400 font-bold">{rpeReal}/10</span></div>
-                    <input type="range" min={1} max={10} value={rpeReal} onChange={e => setRpeReal(Number(e.target.value))} className="w-full accent-orange-500" />
+                    <input type="range" min={1} max={10} value={rpeReal}
+                      onChange={e => { setRpeReal(Number(e.target.value)); setRpeTocado(true); setAvisoRpe(false) }} className="w-full accent-orange-500" />
                     <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Muy fácil</span><span>Máximo</span></div>
+                    {avisoDelRpe}
                   </div>
                   <div className="bg-gray-800 rounded-xl p-4">
                     <div className="flex justify-between mb-2"><label className="text-white font-medium text-sm">Sensación técnica</label><span className="text-orange-400 font-bold">{sensacionTecnica}/5</span></div>
@@ -577,11 +720,25 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
                 <div className="flex justify-between text-gray-500 text-xs mt-1"><span>Sin dolor</span><span>Mucho</span></div>
               </div>
               {!esBrick && <input type="number" placeholder="FC media (ppm) — opcional" value={fcMedia} onChange={e => setFcMedia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />}
+              {/* Con varias tareas, la FC del reloj es de toda la sesión: no se reparte. */}
+              {!esBrick && relojUsado && tareas.length > 1 && relojUsado[0]?.actividad.fcMedia != null && (
+                <p className="text-[12px] text-gray-400 -mt-2">
+                  FC media del reloj: {Math.round(relojUsado[0].actividad.fcMedia)} ppm, de toda la sesión: no se reparte entre sus tareas.
+                </p>
+              )}
               <input type="number" placeholder="HRV del día (ms) — opcional" value={hrvDia} onChange={e => setHrvDia(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" />
               <textarea placeholder="Notas (opcional)" value={notasPost} onChange={e => setNotasPost(e.target.value)} className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500" rows={3} />
-              <button type="submit" disabled={guardando} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">
-                {guardando ? 'Guardando…' : 'Guardar y finalizar'}
-              </button>
+              {errorReloj ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[12.5px] text-amber-300 m-0">{errorReloj}</p>
+                  <button type="button" onClick={() => router.push('/dashboard-deportista')}
+                    className="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg font-bold transition">Ir a mi panel</button>
+                </div>
+              ) : (
+                <button type="submit" disabled={guardando} className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-bold transition disabled:opacity-50">
+                  {guardando ? 'Guardando…' : 'Guardar y finalizar'}
+                </button>
+              )}
             </form>
           </div>
         </div>

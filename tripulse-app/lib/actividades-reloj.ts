@@ -17,7 +17,7 @@
 // carga de esa disciplina (mismo criterio que `disciplinaDePolar`).
 
 import { TODAS } from './disciplinas'
-import { mmss } from './medicion'
+import { mmss, horasMinutos } from './medicion'
 
 export interface FilaMedicion {
   id?: number
@@ -35,6 +35,8 @@ export interface ActividadReloj {
   fecha: string
   /** «07:12», o null si el reloj no dijo a qué hora. */
   hora: string | null
+  /** El instante en que empezó, en UTC («…Z»), o null si no se sabe. Es lo que va a `sesion.hora_inicio` al unirlo. */
+  inicio: string | null
   /** Una de las nuestras, o null si el deporte no es ninguna de las cuatro. */
   disciplina: string | null
   /** Cómo lo llama el reloj: «RUNNING», «ROAD_BIKING»… Para no perder el matiz. */
@@ -96,6 +98,24 @@ export function horaDe(inicio: unknown, zona?: string): string | null {
   return m ? m[1] + ':' + m[2] : null
 }
 
+/**
+ * El inicio en UTC. COROS ya lo da así («…Z»); Polar lo da en la hora local de
+ * quien entrenó, sin zona, con el desfase aparte en minutos (local = UTC +
+ * desfase). Sin desfase no se adivina: null.
+ */
+export function inicioUtc(inicio: unknown, desfaseMin: unknown): string | null {
+  const s = texto(inicio)
+  if (!s) return null
+  if (/T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+    const d = new Date(s)
+    return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  }
+  const desfase = numero(desfaseMin)
+  const ms = Date.parse(s.slice(0, 19) + 'Z')
+  if (desfase == null || Number.isNaN(ms)) return null
+  return new Date(ms - desfase * 60000).toISOString()
+}
+
 /** Una fila de `reloj_medicion` de tipo entreno, o null si no hay nada que enseñar. */
 export function actividadDeMedicion(fila: FilaMedicion): ActividadReloj | null {
   if (!fila || fila.id == null) return null
@@ -109,6 +129,7 @@ export function actividadDeMedicion(fila: FilaMedicion): ActividadReloj | null {
     proveedor: texto(fila.proveedor) || 'reloj',
     fecha,
     hora: horaDe(d.inicio),
+    inicio: inicioUtc(d.inicio, d.desfase_utc_min),
     disciplina: disciplina && TODAS.includes(disciplina) ? disciplina : null,
     deporte: texto(d.deporte_detalle) || texto(d.deporte),
     minutos: positivo(d.duracion_min),
@@ -179,4 +200,19 @@ export function totales(as: ActividadReloj[]): TotalesReloj {
     metros: as.reduce((t, a) => t + (a.metros || 0), 0),
     sinDisciplina: as.filter(a => !a.disciplina).length,
   }
+}
+
+/**
+ * Un entreno del reloj en una línea: «10:40 · 31 min · 4,6 km · 6:44 /km · FC 142».
+ * Lo usan las pantallas que unen el reloj con las sesiones.
+ */
+export function cifrasDeActividad(a: Pick<ActividadReloj, 'hora' | 'minutos' | 'metros' | 'disciplina' | 'fcMedia'>): string {
+  const min = a.minutos != null && a.minutos > 0 ? Math.round(a.minutos) : null
+  return [
+    a.hora,
+    min == null ? null : min < 60 ? min + ' min' : horasMinutos(min),
+    a.metros != null ? distanciaTexto(a.metros, a.disciplina) : null,
+    ritmoTexto(a),
+    a.fcMedia != null ? 'FC ' + Math.round(a.fcMedia) : null,
+  ].filter(Boolean).join(' · ')
 }

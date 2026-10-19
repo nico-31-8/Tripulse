@@ -11,15 +11,16 @@
 //   · lo que mandó el reloj, ya traducido y plegado, para ver qué contiene de
 //     verdad.
 //
-// Lo que NO hace: casar la actividad con la sesión. Eso es harina de otro
-// costal —decidir que ESTA carrera es ESA sesión y volcar sus minutos— y
-// hacerlo mal ensucia la carga del atleta. Aquí se ponen las dos al lado y
-// decide quien mira.
+// Y desde el 2026-10-19 (maqueta aprobada, «las 7 como propones»), cómo está
+// cada entreno con su sesión: unido, sugerido, para completar o sin sesión
+// (components/EstadoDelEntreno, lib/reloj-sesion). La app solo SUGIERE: une el
+// deportista al cerrar la sesión, o el entrenador aquí. Unir sin RPE no cierra
+// la sesión ni suma carga: hacerlo mal ensuciaría la del atleta.
 
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO, sumarDias, fechaLarga } from '@/lib/fechas'
+import { hoyISO, sumarDias, fechaLarga, lunesDe } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -30,6 +31,9 @@ import {
   actividadesDeMediciones, nombreDeporte, distanciaTexto, ritmoTexto, totales,
   type ActividadReloj,
 } from '@/lib/actividades-reloj'
+import { estadoDeActividad, opcionesDeLaSemana, type EstadoActividad, type UnionReloj } from '@/lib/reloj-sesion'
+import { sesionDelReloj, SELECT_SESION_RELOJ, type SesionDelReloj } from '@/lib/reloj-union'
+import { EstadoDelEntreno } from '@/components/EstadoDelEntreno'
 
 
 const RANGOS = [
@@ -47,6 +51,10 @@ const horas = (min: number) => {
 /* Una sesión no tiene título en la base: se nombra por su disciplina y su zona,
    que es como se nombra en el resto de la app. */
 interface SesionDelDia { id: number; disciplina: string | null; zona: string | null; estado: string | null; minutos: number | null }
+interface FilaSesion {
+  id: number; fecha_sesion: string; disciplina: string | null; estado: string | null
+  duracion_real: number | null; duracion_minutos: number | null; zona_resistencia: string | null; zona_fuerza: string | null
+}
 
 export default function ActividadesDelReloj({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -64,12 +72,17 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
   const [abierta, setAbierta] = useState<number | null>(null)
   /* Noches o entrenos. Sin elegir, abre en Noches si su reloj las manda (decidido el 18-10-2026). */
   const [pestana, setPestana] = useState<'noches' | 'entrenos' | null>(null)
+  /* Cada entreno con su sesión: las sesiones de esas semanas enteras y las decisiones. */
+  const [sesionesUnion, setSesionesUnion] = useState<SesionDelReloj[]>([])
+  const [uniones, setUniones] = useState<UnionReloj[]>([])
+  const [errorUnion, setErrorUnion] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
 
   useEffect(() => {
     let vivo = true
     const cargar = async () => {
       const desde = sumarDias(hoyISO(), -rango)
-      const [dep, con, med, ses] = await Promise.all([
+      const [dep, con, med, ses, uni] = await Promise.all([
         supabase.from('deportista').select('nombre').eq('id', id).maybeSingle(),
         supabase.from('reloj_conexion').select('proveedor, ultima_sincronizacion')
           .eq('id_deportista', id).order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
@@ -78,11 +91,19 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           .gte('fecha', desde).order('fecha', { ascending: false }).limit(400),
         /* Lo planificado del mismo periodo, para poder poner las dos cosas al
            lado. La papelera no cuenta: comparar contra una sesión borrada sería
-           comparar contra algo que el entrenador ya decidió que no existe. */
-        vivas(supabase.from('sesion').select('id, fecha_sesion, disciplina, estado, duracion_minutos, duracion_real, zona_resistencia, zona_fuerza')
-          .eq('id_deportista', id).gte('fecha_sesion', desde)),
+           comparar contra algo que el entrenador ya decidió que no existe. Desde
+           el lunes de esa semana: un entreno se puede unir a otro día de la suya. */
+        vivas(supabase.from('sesion').select(SELECT_SESION_RELOJ + ', duracion_minutos, zona_resistencia, zona_fuerza')
+          .eq('id_deportista', id).gte('fecha_sesion', lunesDe(desde))),
+        supabase.from('reloj_union').select('id, id_medicion, id_sesion, parte, decision, antes, decidido_por, decidido_en')
+          .eq('id_deportista', id),
       ])
       if (!vivo) return
+      /* El select se arma con trozos, así que el cliente no sabe su forma: se dice aquí. */
+      const filasSes = (ses.data || []) as unknown as FilaSesion[]
+      setSesionesUnion(filasSes.map(sesionDelReloj))
+      setUniones((uni.data || []) as UnionReloj[])
+      setErrorUnion(ses.error || uni.error ? 'No se ha podido leer qué entreno va con qué sesión: ' + (ses.error || uni.error)!.message : null)
       setNombre(dep.data?.nombre ?? null)
       setProveedor(con.data?.proveedor ?? null)
       setUltimaSinc(con.data?.ultima_sincronizacion ?? null)
@@ -92,7 +113,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
       setCrudo(Object.fromEntries(filas.map(f => [f.id, f.datos])))
 
       const porDia: Record<string, SesionDelDia[]> = {}
-      for (const s of ses.data || []) {
+      for (const s of filasSes) {
         const f = String(s.fecha_sesion).slice(0, 10)
         ;(porDia[f] ||= []).push({
           id: s.id, disciplina: s.disciplina, zona: s.zona_resistencia || s.zona_fuerza || null,
@@ -103,7 +124,24 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
     }
     cargar()
     return () => { vivo = false }
-  }, [id, rango])
+  }, [id, rango, version])
+
+  /* Cómo está cada entreno con su sesión (lib/reloj-sesion). */
+  const estados = useMemo(() => {
+    const m = new Map<number, EstadoActividad>()
+    for (const a of actividades || []) m.set(a.id, estadoDeActividad(a, sesionesUnion, uniones))
+    return m
+  }, [actividades, sesionesUnion, uniones])
+  const resumenUnion = useMemo(() => {
+    const r = { unidas: 0, porConfirmar: 0, sinSesion: 0, noCuentan: 0 }
+    for (const e of estados.values()) {
+      if (e.k === 'unida' && !e.faltaRpe && e.union.antes) r.unidas++
+      else if (e.k === 'sin_sesion') r.sinSesion++
+      else if (e.k === 'no_cuenta') r.noCuentan++
+      else r.porConfirmar++
+    }
+    return r
+  }, [estados])
 
   const visibles = useMemo(
     () => (actividades || []).filter(a => disciplina === 'todas' || a.disciplina === disciplina),
@@ -234,6 +272,15 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
               ))}
             </div>
 
+            {/* Cómo están con sus sesiones, de un vistazo. */}
+            <div className="flex flex-wrap gap-2 mb-4 text-[11.5px] font-semibold">
+              {resumenUnion.unidas > 0 && <span className="rounded-full px-2.5 py-0.5 bg-green-400/15 text-green-400">{resumenUnion.unidas} {resumenUnion.unidas === 1 ? 'unido' : 'unidos'}</span>}
+              {resumenUnion.porConfirmar > 0 && <span className="rounded-full px-2.5 py-0.5 bg-amber-400/15 text-amber-300">{resumenUnion.porConfirmar} por confirmar</span>}
+              {resumenUnion.sinSesion > 0 && <span className="rounded-full px-2.5 py-0.5 bg-sky-400/15 text-sky-300">{resumenUnion.sinSesion} sin sesión</span>}
+              {resumenUnion.noCuentan > 0 && <span className="rounded-full px-2.5 py-0.5 bg-white/[0.06] text-gray-400">{resumenUnion.noCuentan} no {resumenUnion.noCuentan === 1 ? 'cuenta' : 'cuentan'}</span>}
+            </div>
+            {errorUnion && <p className="text-[12.5px] text-red-300 mb-4">{errorUnion}</p>}
+
             <div className="flex flex-col gap-4">
               {dias.map(([fecha, dellDia]) => (
                 <div key={fecha}>
@@ -273,8 +320,9 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                             </div>
                           </div>
 
-                          {/* Lo que había planificado ese día, al lado y sin mezclar. */}
-                          {!!sesiones[fecha]?.length && (
+                          {/* Lo que había planificado ese día, al lado: solo si el entreno no
+                              va ya con una sesión (entonces la nombra su estado, debajo). */}
+                          {!['unida', 'sugerida', 'completar', 'varias'].includes(estados.get(a.id)?.k || '') && !!sesiones[fecha]?.length && (
                             <div className="mt-3 pt-3 border-t border-white/[0.06]">
                               <p className="text-[9.5px] font-bold tracking-[.06em] uppercase text-gray-500 mb-1.5">Ese día tenía planificado</p>
                               <div className="flex flex-wrap gap-1.5">
@@ -289,6 +337,18 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                                 ))}
                               </div>
                             </div>
+                          )}
+
+                          {estados.get(a.id) && (
+                            <EstadoDelEntreno
+                              actividad={a}
+                              estado={estados.get(a.id)!}
+                              opciones={opcionesDeLaSemana(a, sesionesUnion, uniones)}
+                              idDeportista={Number(id)}
+                              datos={{ uniones, actividades: actividades || [] }}
+                              onCambio={() => setVersion(v => v + 1)}
+                              onVerSesion={sid => router.push('/sesion/' + sid)}
+                            />
                           )}
 
                           <button onClick={() => setAbierta(abierta === a.id ? null : a.id)}
@@ -309,8 +369,8 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
             </div>
 
             <p className="text-[11.5px] text-gray-500 mt-6 leading-relaxed max-w-2xl">
-              Estas actividades no están unidas a las sesiones del plan: se enseñan al lado para que puedas
-              compararlas tú. Lo que cuenta para la carga sigue siendo lo que el deportista marca como hecho.
+              Cada entreno se une a su sesión cuando el deportista la cierra con su reloj, o cuando lo unes tú
+              aquí. Lo que cuenta para la carga sigue siendo la sesión cerrada con su RPE: unir sin RPE no suma.
             </p>
           </>
         )}
