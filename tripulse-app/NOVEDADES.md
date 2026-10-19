@@ -14,6 +14,20 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 19 de octubre de 2026 · Lo del reloj llega solo, dos veces al día
+
+- **Antes**, lo del reloj de tu deportista (sus noches, su HRV, su FC en reposo
+  y sus entrenos) solo llegaba cuando abría la app: su perfil o su wellness. Un
+  día que no entraba, no veías nada nuevo.
+- **Ahora** llega solo cada mañana y cada noche, aunque no abra la app: por la
+  mañana, para tener la noche; por la noche, para los entrenos de la tarde. Si
+  abre su wellness o pulsa «Sincronizar ahora», llega además en el momento,
+  como hasta ahora.
+- **En «Su reloj»**, la última sincronización dice también la hora.
+- Lo que llega es lo mismo de siempre; solo cambia cuándo. Sigue haciendo falta
+  que sincronice el reloj con la app de su marca: lo que no esté en su cuenta de
+  Polar o de COROS no puede llegar.
+
 ## 19 de octubre de 2026 · Su reloj, también al acabar el modo entreno
 
 - **Al terminar el modo entreno**, si ese día su reloj registró un entreno de

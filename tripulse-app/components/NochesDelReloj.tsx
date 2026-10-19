@@ -109,7 +109,7 @@ export function VistaNoches({ noches, bienestarPorFecha, hoy }: { noches: NocheD
       <div className="tp-card p-12 text-center">
         <p className="text-[15px] font-bold mb-1.5">Todavía no ha llegado ninguna noche</p>
         <p className="text-[13px] text-gray-400 max-w-md mx-auto leading-relaxed">
-          Llegan cuando sincroniza el reloj: al abrir su wellness, o con «Sincronizar ahora» en su perfil. Tiene que dormir con él puesto.
+          Llegan solas cada mañana y cada noche, y al momento si abre su wellness o pulsa «Sincronizar ahora» en su perfil. Tiene que dormir con el reloj puesto.
         </p>
       </div>
     )

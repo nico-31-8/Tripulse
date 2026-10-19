@@ -118,7 +118,10 @@ describe('las rutas de API comprueban quién llama', () => {
   const OTRA_PUERTA: Record<string, string> = {
     'app/api/relojes/polar/callback/route.ts': 'La vuelta del proveedor llega SIN sesión: quién es sale del `state` aleatorio de un solo uso que se generó al pulsar Conectar.',
     'app/api/relojes/coros/callback/route.ts': 'Lo mismo que la de Polar: el `state` de un solo uso.',
+    'app/api/relojes/sincronizar-todos/route.ts': 'La lanza Vercel Cron dos veces al día, sin sesión: la puerta es el CRON_SECRET que Vercel manda en la cabecera, y la base pide además la llave del servidor.',
   }
+  /** De ellas, las que vuelven del proveedor con el `state`. */
+  const CON_STATE = ['app/api/relojes/polar/callback/route.ts', 'app/api/relojes/coros/callback/route.ts']
 
   const COMPRUEBA_API = /quienLlama|auth\.getUser|auth\.getSession/
 
@@ -131,12 +134,26 @@ describe('las rutas de API comprueban quién llama', () => {
   })
 
   it('y las que se identifican por el `state` lo comprueban de verdad', () => {
-    for (const rel of Object.keys(OTRA_PUERTA)) {
+    for (const rel of CON_STATE) {
       const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8')
       /* El `state` tiene que VIAJAR a la base, que es quien lo gasta: mirarlo
          aquí y creerse lo que dice sería no comprobar nada. */
       expect(src, rel).toMatch(/searchParams\.get\(\s*['"]state['"]\s*\)/)
       expect(src, rel).toMatch(/reloj_(?:canjear|guardar|token)|rpc\(/)
     }
+  })
+
+  it('y la que lanza Vercel Cron no atiende sin su secreto', () => {
+    const src = fs.readFileSync(path.join(RAIZ, 'app/api/relojes/sincronizar-todos/route.ts'), 'utf8')
+    /* Sin la variable puesta, NADIE pasa: no vale «si no hay secreto, adelante». */
+    expect(src).toMatch(/process\.env\.CRON_SECRET/)
+    expect(src).toMatch(/if \(!secreto \|\|/)
+    expect(src).toMatch(/headers\.get\('authorization'\)/)
+    expect(src).toMatch(/process\.env\.RELOJ_LLAVE_SERVIDOR/)
+  })
+
+  it('la lista de otras puertas no se queda con fantasmas', () => {
+    for (const rel of Object.keys(OTRA_PUERTA)) expect(fs.existsSync(path.join(RAIZ, rel)), rel).toBe(true)
+    for (const rel of CON_STATE) expect(rel in OTRA_PUERTA, rel).toBe(true)
   })
 })

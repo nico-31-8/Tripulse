@@ -20,7 +20,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import { hoyISO, sumarDias, fechaLarga, lunesDe } from '@/lib/fechas'
+import { hoyISO, sumarDias, fechaLarga, lunesDe, aISO } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -189,7 +189,9 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           <div>
             <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">Última sincronización</p>
             <p className="text-[15px] font-bold mt-1 tabular-nums">
-              {ultimaSinc ? fechaLarga(String(ultimaSinc).slice(0, 10)) : '—'}
+              {ultimaSinc
+                ? fechaLarga(aISO(new Date(ultimaSinc))) + ', ' + new Date(ultimaSinc).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+                : '—'}
             </p>
           </div>
           {proveedor && !datosListos(proveedor) && (

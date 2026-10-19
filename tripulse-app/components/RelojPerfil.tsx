@@ -314,6 +314,9 @@ export default function RelojPerfil() {
             Desde el {new Date(con.conectado_en).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
             {' · '}última sincronización {hace(con.ultima_sincronizacion, ahora)}
           </p>
+          <p className="text-gray-500 text-xs mt-1">
+            Lo de tu reloj llega solo cada mañana y cada noche. «Sincronizar ahora» lo trae en el momento.
+          </p>
 
           {con.ultimo_error && (
             <p className="text-sm rounded-lg px-3 py-2 mt-3 bg-amber-950/60 text-amber-200 border border-amber-900">
