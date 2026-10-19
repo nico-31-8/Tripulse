@@ -14,6 +14,19 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 19 de octubre de 2026 · Su reloj, también al acabar el modo entreno
+
+- **Al terminar el modo entreno**, si ese día su reloj registró un entreno de
+  esa disciplina, le sale arriba del cuestionario igual que en «Ya la he
+  hecho». Con «Es esta» pone la duración en su casilla, y la FC si la sesión
+  tiene una sola tarea. Puede corregir las dos antes de guardar, y manda lo que
+  deje. Lo que anotó serie a serie (metros y tiempos) no se toca.
+- **Las tareas con series se quedan con sus metros.** En una sesión de una
+  sola tarea con series (un 2×1500), los metros del reloj (el total, con el
+  calentamiento) no se apuntan: los metros de una tarea son los de cada serie,
+  y apuntar el total los multiplicaría. Ninguna sesión llegó a unirse antes del
+  arreglo, así que ningún número cambia.
+
 ## 19 de octubre de 2026 · Cada entreno del reloj, con su sesión
 
 - **Al cerrar una sesión**, si ese día su reloj (Polar o COROS) registró un

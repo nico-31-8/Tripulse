@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { repsDePrescripcion } from '@/lib/repeticiones'
-import { useState, useEffect, useCallback, use } from 'react'
+import { useState, useEffect, useCallback, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import ElegirMaterial from '@/components/ElegirMaterial'
 import { materialDeSesion, guardarMaterialDeSesion, metrosPorDisciplinaDe } from '@/lib/material'
@@ -29,6 +29,11 @@ import BloqueRegistro from './BloqueRegistro'
 import { esBloque, leerConfig, leerResultado, textoFormato, textoResultado, type Formato, type ResultadoBloque } from '@/lib/bloque-formato'
 import { cargarUltimasVeces, type UltimaVezBloque } from '@/lib/bloque-ultima-vez'
 import { leerAnamnesis } from '@/lib/anamnesis-vigente'
+import TarjetaRelojCierre, { AvisoRpeReloj, type ParteDelReloj } from '@/components/TarjetaRelojCierre'
+import { nombreReloj } from '@/lib/relojes-catalogo'
+import { relojParaSesion } from '@/lib/reloj-sesion'
+import { cargarDatosUnion, ponerDatosDelReloj, rechazarParaSesion, type DatosUnion, type SesionDelReloj } from '@/lib/reloj-union'
+import { lunesDe, sumarDias } from '@/lib/fechas'
 
 const segAMmss = mmss
 
@@ -112,6 +117,18 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
   const [inicioMs, setInicioMs] = useState<number | null>(null)
   const [duracionRealInput, setDuracionRealInput] = useState('')
   const [medida, setMedida] = useState<DuracionMedida | null>(null)
+
+  /* ---- Su reloj (maqueta del 2026-10-19) ----
+     Como en «Ya la he hecho»: si su reloj registró un entreno de esa
+     disciplina, sale arriba del cuestionario. Aquí pone la duración en su
+     casilla (la puede corregir: manda lo que deje) y la FC si la sesión tiene
+     una sola tarea. Lo que anotó serie a serie no se toca. */
+  const [reloj, setReloj] = useState<{ datos: DatosUnion; sesion: SesionDelReloj; marca: string } | null>(null)
+  const [relojUsado, setRelojUsado] = useState<ParteDelReloj[] | null>(null)
+  const [relojVista, setRelojVista] = useState<'pregunta' | 'otras' | 'cerrado'>('pregunta')
+  const [rpeTocado, setRpeTocado] = useState(false)
+  const [avisoRpe, setAvisoRpe] = useState(false)
+  const [errorReloj, setErrorReloj] = useState<string | null>(null)
 
   const cargarDatos = useCallback(async () => {
     /* Sin sesión, al login. La RLS ya impide ver lo que no es tuyo, pero sin
@@ -289,7 +306,64 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
      compilador no se queja: aqui no hace falta silenciarla. */
   useEffect(() => { materialDeSesion(supabase, Number(id)).then(setMaterialElegido) }, [id])
 
+  /* Lo de su reloj de esa semana. Solo si la sesión no está hecha: una ya
+     cerrada se completa desde su panel. El estado se pone cuando contesta. */
+  const idDepSes = sesion?.id_deportista ?? null
+  const fechaSes = sesion?.fecha_sesion ?? null
+  const yaHecha = sesion?.estado === 'Realizada'
+  useEffect(() => {
+    if (!idDepSes || !fechaSes || yaHecha) return
+    let vivo = true
+    const lunes = lunesDe(String(fechaSes).slice(0, 10))
+    Promise.all([
+      cargarDatosUnion(supabase, idDepSes, lunes, sumarDias(lunes, 6)),
+      supabase.from('reloj_conexion').select('proveedor').eq('id_deportista', idDepSes)
+        .order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]).then(([d, c]) => {
+      const esta = d.sesiones.find(s => s.id === Number(id))
+      if (!vivo || d.error || !esta) return
+      setReloj({ datos: d, sesion: esta, marca: c.data?.proveedor ? nombreReloj(c.data.proveedor) : 'reloj' })
+    })
+    return () => { vivo = false }
+  }, [id, idDepSes, fechaSes, yaHecha])
+
+  const delReloj = useMemo(
+    () => (reloj ? relojParaSesion(reloj.sesion.id, reloj.datos.actividades, reloj.datos.sesiones, reloj.datos.uniones) : null),
+    [reloj])
+
+  const usarReloj = (partes: ParteDelReloj[]) => {
+    setRelojUsado(partes)
+    const min = partes.reduce((s, p) => s + (p.actividad.minutos || 0), 0)
+    if (min > 0) setDuracionRealInput(String(Math.round(min)))
+    /* La FC, en su casilla solo con UNA tarea: con varias es de toda la sesión,
+       y la casilla se copia a todas (repartirla sería inventar). En un brick
+       cada parte tiene la suya y aquí hay una casilla para todas: no se pone. */
+    const fc = partes[0]?.actividad.fcMedia
+    if (!esBrick && tareas.length === 1 && fc != null) setFcMedia(String(Math.round(fc)))
+  }
+
+  /* «No es esta»: no se vuelve a sugerir, y vuelve lo que había medido. */
+  const noEsEsta = () => {
+    /* Lo puesto, o lo que se le estaba sugiriendo (con lo que unió su
+       entrenador, si llegó tarde para ponerlo al abrir). */
+    const quitar = relojUsado || [...(delReloj?.unidas || []), ...(delReloj?.sugeridas || [])]
+    if (reloj && idDepSes) {
+      const datos = rechazarParaSesion(supabase, idDepSes, reloj.sesion.id, quitar.map(p => p.actividad.id), reloj.datos)
+      setReloj({ ...reloj, datos })
+    }
+    if (relojUsado) {
+      setDuracionRealInput(medida?.minutos != null ? String(medida.minutos) : '')
+      if (!esBrick && tareas.length === 1) setFcMedia('')
+    }
+    setRelojUsado(null)
+    setRelojVista('otras')
+  }
+  const deEntrenador = !!relojUsado && !!delReloj?.unidas.length && relojUsado.every(p => delReloj.unidas.some(u => u.actividad.id === p.actividad.id))
+
   const guardarYCerrar = async () => {
+    /* Con los datos del reloj puestos, el RPE es lo único que falta: que no se
+       guarde el 5 de partida sin que lo haya mirado. */
+    if (relojUsado && !rpeTocado) { setAvisoRpe(true); return }
     setGuardando(true)
     // Guardar series de fuerza
     // Lookup de ejercicios para recuperar el kg planificado de cada escalón de un drop set.
@@ -498,6 +572,20 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       guardarMaterialDeSesion(supabase, Number(id), materialElegido),
     ])
     if (errMaterial) console.warn('material:', errMaterial)
+
+    /* Lo del reloj: la hora de empezar, los metros o el tiempo de una tarea de
+       una sola vez que NO anotó, y la unión con lo que había antes. La duración
+       y la FC son las de sus casillas, que pudo corregir. */
+    if (relojUsado && reloj && idDepSes) {
+      const anotadas = tareas
+        .filter(t => { const s0 = resultados[t.id]?.['serie_0']; return !!(s0 && (s0.metros || s0.tiempo)) })
+        .map(t => t.id)
+      const err = await ponerDatosDelReloj(supabase, {
+        idDeportista: idDepSes, sesion: reloj.sesion, datos: reloj.datos, nuevas: relojUsado,
+        fc: false, duracion: false, tareasAnotadas: anotadas,
+      })
+      if (err) setErrorReloj('Tu sesión está cerrada, pero ' + err.charAt(0).toLowerCase() + err.slice(1) + ' Lo puedes completar desde tu panel.')
+    }
     setFase('resumen')
     setGuardando(false)
   }
@@ -521,6 +609,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
     const m = medirDuracion(inicioMs, Date.now(), minutosPlan)
     setMedida(m)
     setDuracionRealInput(m.minutos != null ? String(m.minutos) : '')
+    /* Si su entrenador ya lo unió con su reloj, llega puesto. */
+    if (delReloj?.unidas.length && !relojUsado) usarReloj(delReloj.unidas)
     setFase('post')
   }
 
@@ -875,6 +965,7 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
         <h1 className="text-orange-500 font-bold mx-auto">Resumen de sesión</h1>
       </nav>
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+        {errorReloj && <p className="text-amber-300 text-sm mb-4">{errorReloj}</p>}
         {/* Cabecera */}
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
           <div className="flex items-center gap-3 mb-3">
@@ -1071,6 +1162,12 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
         <p className="text-gray-400 text-sm mb-6">¡Bien hecho! Registra cómo te has sentido.</p>
 
+        {reloj && delReloj && (
+          <TarjetaRelojCierre marca={reloj.marca} usadas={relojUsado} deEntrenador={deEntrenador}
+            sugeridas={[...delReloj.unidas, ...delReloj.sugeridas]} otras={delReloj.otras} vista={relojVista}
+            onUsar={usarReloj} onNoEsEsta={noEsEsta} onCerrar={() => setRelojVista('cerrado')} />
+        )}
+
         <div className="flex flex-col gap-5">
           {/* En un brick el esfuerzo se pregunta POR BLOQUE: correr después de la bici no
               se parece a la bici, y un solo número impide al SICAT saber qué deporte le
@@ -1078,10 +1175,13 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
           {esBrick ? (
             <div className="bg-purple-900/20 border border-purple-800/50 rounded-xl p-4 flex flex-col gap-3">
               <p className="text-purple-300 text-sm font-semibold">🔀 ¿Cómo fue cada parte?</p>
+              {relojUsado && <AvisoRpeReloj falta={avisoRpe} className="mt-0" />}
               {tareas.map((t, i) => {
                 const b = postBloques[t.id] || { rpe: 5, sensacion: 3 }
-                const set = (campo: 'rpe' | 'sensacion', v: number) =>
+                const set = (campo: 'rpe' | 'sensacion', v: number) => {
+                  if (campo === 'rpe') { setRpeTocado(true); setAvisoRpe(false) }
                   setPostBloques(p => ({ ...p, [t.id]: { ...b, [campo]: v } }))
+                }
                 return (
                   <div key={t.id} className="bg-gray-900 rounded-lg p-4 flex flex-col gap-3">
                     <p className="text-white text-sm font-bold">
@@ -1107,8 +1207,10 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
                   <label className="font-medium">RPE — Esfuerzo percibido</label>
                   <span className="text-orange-400 font-bold text-xl">{rpe}</span>
                 </div>
-                <input type="range" min="1" max="10" value={rpe} onChange={e => setRpe(Number(e.target.value))} className="w-full accent-orange-500" />
+                <input type="range" min="1" max="10" value={rpe}
+                  onChange={e => { setRpe(Number(e.target.value)); setRpeTocado(true); setAvisoRpe(false) }} className="w-full accent-orange-500" />
                 <div className="flex justify-between text-xs text-gray-500 mt-1"><span>Muy fácil</span><span>Máximo</span></div>
+                {relojUsado && <AvisoRpeReloj falta={avisoRpe} />}
               </div>
 
               <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
@@ -1136,7 +1238,17 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               <label className="font-medium">FC media de la sesión (ppm)</label>
               <span className="text-red-400 font-bold text-xl">{fcMedia || '—'}</span>
             </div>
-            <p className="text-gray-500 text-xs mb-3">Consulta tu reloj Garmin — dato necesario para calcular la carga real</p>
+            <p className="text-gray-500 text-xs mb-3">
+              {relojUsado && !esBrick && tareas.length === 1
+                ? 'Del reloj. Cámbiala si no cuadra.'
+                : relojUsado && esBrick && relojUsado.some(p => p.actividad.fcMedia != null)
+                  ? 'Tu ' + (reloj?.marca || 'reloj') + ' marcó, de media: ' + relojUsado
+                    .filter(p => p.actividad.fcMedia != null)
+                    .map(p => etiquetaDisciplina(p.actividad.disciplina).toLowerCase() + ' ' + Math.round(p.actividad.fcMedia!) + ' ppm').join(' · ') + '.'
+                  : relojUsado && relojUsado[0]?.actividad.fcMedia != null
+                    ? 'Tu ' + (reloj?.marca || 'reloj') + ' marcó ' + Math.round(relojUsado[0].actividad.fcMedia) + ' ppm de media en toda la sesión.'
+                    : 'Consulta tu reloj: sirve para calcular la carga real.'}
+            </p>
             <input
               type="number"
               placeholder="Ej: 148"
@@ -1165,7 +1277,9 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               <label className="font-medium">¿Cuánto duró?</label>
               <span className="text-green-400 font-bold text-xl">{duracionRealInput || '—'} <span className="text-gray-500 text-sm font-normal">min</span></span>
             </div>
-            {medida?.fiable ? (
+            {relojUsado ? (
+              <p className="text-gray-500 text-xs mb-3">Del reloj. Cámbialo si no cuadra.</p>
+            ) : medida?.fiable ? (
               <p className="text-gray-500 text-xs mb-3">Medido desde que pulsaste Empezar. Cámbialo si no cuadra.</p>
             ) : medida && medida.medidos > 0 ? (
               <p className="text-yellow-500/90 text-xs mb-3">
@@ -1209,6 +1323,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
+          {/* El RPE está arriba: el aviso también aquí, que es donde mira al pulsar. */}
+          {avisoRpe && <p className="text-amber-300 text-sm font-semibold -mb-2">Falta tu RPE (arriba): mueve la barra, aunque sea para dejarla en 5.</p>}
           <button onClick={guardarYCerrar} disabled={guardando}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition disabled:opacity-50">
             {guardando ? 'Guardando...' : '✓ Guardar y finalizar'}

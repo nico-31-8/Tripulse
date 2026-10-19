@@ -17,10 +17,10 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fechaLargaCompleta as fechaLarga, lunesDe, sumarDias } from '@/lib/fechas'
 import type { ActividadReloj } from '@/lib/actividades-reloj'
-import TarjetaRelojCierre from '@/components/TarjetaRelojCierre'
+import TarjetaRelojCierre, { AvisoRpeReloj } from '@/components/TarjetaRelojCierre'
 import { nombreReloj } from '@/lib/relojes-catalogo'
-import { estadoDeActividad, opcionesDeLaSemana, partesUnidas, tareasDeParte } from '@/lib/reloj-sesion'
-import { cargarDatosUnion, ponerDatosDelReloj, guardarDecision, type DatosUnion, type SesionDelReloj } from '@/lib/reloj-union'
+import { relojParaSesion, tareasDeParte } from '@/lib/reloj-sesion'
+import { cargarDatosUnion, ponerDatosDelReloj, rechazarParaSesion, type DatosUnion, type SesionDelReloj } from '@/lib/reloj-union'
 
 import { cargaDeTarea, cuelgaDeTestPropio, leerCopia, esCopiaDeLimites } from '@/lib/prescripcion-zona'
 import { objetivoDeTarea, deDondeSaleTarea, cargarTestsDeTareas } from '@/lib/objetivo-tarea'
@@ -199,25 +199,9 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   }, [id, sesion?.id_deportista, sesion?.fecha_sesion, sesion?.estado])
 
   /* Lo de su reloj para ESTA sesión: lo ya unido, lo sugerido y lo de otros días de la semana. */
-  const delReloj = useMemo(() => {
-    if (!reloj) return null
-    const { datos, sesion: s } = reloj
-    const como = (x: { actividad: unknown; parte: number }) => x as ParteReloj
-    const unidas = partesUnidas(s.id, datos.uniones, datos.actividades).map(como)
-    const sugeridas: ParteReloj[] = []
-    const otras: ParteReloj[] = []
-    for (const a of datos.actividades) {
-      if (unidas.some(x => x.actividad.id === a.id)) continue
-      const e = estadoDeActividad(a, datos.sesiones, datos.uniones)
-      const aqui = e.k === 'sugerida' && e.sesion.id === s.id ? e.parte
-        : e.k === 'varias' ? e.opciones.find(o => o.sesion.id === s.id)?.parte : undefined
-      if (aqui != null && a.fecha === s.fecha) { sugeridas.push({ actividad: a, parte: aqui }); continue }
-      if (e.k === 'unida' || e.k === 'no_cuenta') continue
-      const o = opcionesDeLaSemana(a, datos.sesiones, datos.uniones).find(x => x.sesion.id === s.id)
-      if (o) otras.push({ actividad: a, parte: o.parte })
-    }
-    return { unidas, sugeridas, otras }
-  }, [reloj])
+  const delReloj = useMemo(
+    () => (reloj ? relojParaSesion(reloj.sesion.id, reloj.datos.actividades, reloj.datos.sesiones, reloj.datos.uniones) : null),
+    [reloj])
 
   /* Poner en el cuestionario lo del reloj: la FC en su casilla si la sesión (o
      esa parte del brick) tiene UNA tarea; si tiene varias, es de toda la sesión
@@ -344,22 +328,12 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   /* «No es esta»: no era esa sesión. Se apunta (para no volver a sugerirla) y
      se quita del cuestionario lo que había puesto el reloj. */
   const noEsEsta = () => {
-    const quitar = relojUsado || delReloj?.sugeridas || []
+    /* Lo puesto, o lo que se le estaba sugiriendo (con lo que unió su
+       entrenador, si llegó tarde para ponerlo al abrir). */
+    const quitar = relojUsado || [...(delReloj?.unidas || []), ...(delReloj?.sugeridas || [])]
     if (reloj) {
-      for (const p of quitar) {
-        guardarDecision(supabase, { idDeportista: sesion.id_deportista, idMedicion: p.actividad.id, decision: 'rechazada', idSesion: reloj.sesion.id })
-      }
-      const ids = quitar.map(p => p.actividad.id)
-      setReloj(r => r && ({
-        ...r,
-        datos: {
-          ...r.datos,
-          uniones: [
-            ...r.datos.uniones.filter(u => !ids.includes(u.id_medicion)),
-            ...ids.map((idm, i) => ({ id: -1 - i, id_medicion: idm, id_sesion: r.sesion.id, parte: 1, decision: 'rechazada' as const })),
-          ],
-        },
-      }))
+      const datos = rechazarParaSesion(supabase, sesion.id_deportista, reloj.sesion.id, quitar.map(p => p.actividad.id), reloj.datos)
+      setReloj({ ...reloj, datos })
     }
     if (relojUsado) {
       setFcMedia('')
@@ -372,14 +346,10 @@ export default function BriefingSesion({ id, sesion, tareas, tests, fcMax = 0, f
   const deEntrenador = !!relojUsado && !!delReloj?.unidas.length && relojUsado.every(p => delReloj.unidas.some(u => u.actividad.id === p.actividad.id))
   const tarjetaReloj = reloj && delReloj ? (
     <TarjetaRelojCierre marca={reloj.marca} usadas={relojUsado} deEntrenador={deEntrenador}
-      sugeridas={delReloj.sugeridas} otras={delReloj.otras} vista={relojVista}
+      sugeridas={[...delReloj.unidas, ...delReloj.sugeridas]} otras={delReloj.otras} vista={relojVista}
       onUsar={usarReloj} onNoEsEsta={noEsEsta} onCerrar={() => setRelojVista('cerrado')} />
   ) : null
-  const avisoDelRpe = relojUsado ? (
-    <p className={'text-xs mt-2 ' + (avisoRpe ? 'text-amber-300 font-semibold' : 'text-gray-400')}>
-      {avisoRpe ? 'Falta tu RPE: mueve la barra, aunque sea para dejarla en 5.' : 'Esto el reloj no lo sabe: sin tu RPE no cuenta para tu carga.'}
-    </p>
-  ) : null
+  const avisoDelRpe = relojUsado ? <AvisoRpeReloj falta={avisoRpe} /> : null
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">

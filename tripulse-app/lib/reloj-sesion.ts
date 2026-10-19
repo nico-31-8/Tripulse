@@ -23,6 +23,7 @@
 // inventar. El RPE, la sensación y el dolor, nunca: los pone el deportista.
 
 import { lunesDe } from './fechas'
+import { vecesDe } from './bloques-tarea'
 
 export type Decision = 'unida' | 'rechazada' | 'no_cuenta'
 
@@ -50,6 +51,8 @@ export interface TareaParaUnir {
   orden?: number | null
   disciplina?: string | null
   fc_media?: number | null
+  series?: number | null
+  bloques?: number | null
   p_distancia?: { id?: number; metros_reales?: number | string | null } | { id?: number; metros_reales?: number | string | null }[] | null
   p_duracion?: { id?: number; tiempo_real?: number | string | null } | { id?: number; tiempo_real?: number | string | null }[] | null
 }
@@ -175,6 +178,36 @@ export function opcionesDeLaSemana(a: ActividadParaUnir, sesiones: SesionParaUni
     .sort((x, y) => dias(x.sesion.fecha) - dias(y.sesion.fecha) || x.sesion.fecha.localeCompare(y.sesion.fecha))
 }
 
+/**
+ * Lo de su reloj para UNA sesión que se va a cerrar (el «¿Cómo fue?» de la
+ * ficha y el final del modo entreno): lo que ya unió su entrenador, lo que
+ * encaja ese día y lo de otros días de su semana (por si la hizo otro día).
+ * null si la sesión no está entre las cargadas.
+ */
+export function relojParaSesion<A extends ActividadParaUnir>(
+  idSesion: number, actividades: A[], sesiones: SesionParaUnir[], uniones: UnionReloj[],
+): { unidas: { actividad: A; parte: number }[]; sugeridas: { actividad: A; parte: number }[]; otras: { actividad: A; parte: number }[] } | null {
+  const s = sesiones.find(x => x.id === idSesion)
+  if (!s) return null
+  const unidas = uniones
+    .filter(u => u.decision === 'unida' && u.id_sesion === s.id)
+    .map(u => ({ actividad: actividades.find(a => a.id === u.id_medicion), parte: u.parte }))
+    .filter((x): x is { actividad: A; parte: number } => !!x.actividad)
+  const sugeridas: { actividad: A; parte: number }[] = []
+  const otras: { actividad: A; parte: number }[] = []
+  for (const a of actividades) {
+    if (unidas.some(x => x.actividad.id === a.id)) continue
+    const e = estadoDeActividad(a, sesiones, uniones)
+    const aqui = e.k === 'sugerida' && e.sesion.id === s.id ? e.parte
+      : e.k === 'varias' ? e.opciones.find(o => o.sesion.id === s.id)?.parte : undefined
+    if (aqui != null && a.fecha === s.fecha) { sugeridas.push({ actividad: a, parte: aqui }); continue }
+    if (e.k === 'unida' || e.k === 'no_cuenta') continue
+    const o = opcionesDeLaSemana(a, sesiones, uniones).find(x => x.sesion.id === s.id)
+    if (o) otras.push({ actividad: a, parte: o.parte })
+  }
+  return { unidas, sugeridas, otras }
+}
+
 export type Pendiente<A extends ActividadParaUnir = ActividadParaUnir> =
   | { k: 'falta_rpe'; actividad: A; sesion: SesionParaUnir; parte: number }
   | { k: 'completar'; actividad: A; sesion: SesionParaUnir; parte: number }
@@ -224,12 +257,21 @@ export interface Escrituras {
   duraciones: { id: number; campos: Record<string, unknown> }[]
 }
 
+/**
+ * Los metros y el tiempo de una tarea van POR SERIE (`p_distancia.metros_reales`
+ * de un 6×800 es 800: el volumen los multiplica por sus veces, lib/atribucion).
+ * Así que lo del reloj, que es el TOTAL, solo cabe ahí si la tarea es una sola
+ * vez. En un 2×1500 escribir los 8,1 km del reloj contaría 16,2.
+ */
+const unaSolaVez = (t: TareaParaUnir) => vecesDe(t) === 1
+
 /** Lo que tenía la sesión antes del reloj: lo que se restaura al desunir. */
 export function antesDe(sesion: SesionParaUnir, partes: ParteConReloj[]): AntesUnion {
   const tareas = partes.flatMap(p => {
     const t = tareasDeParte(sesion, sesion.tareas, p.parte)
     if (t.length !== 1) return []
-    const d = una(t[0].p_distancia), du = una(t[0].p_duracion)
+    const d = unaSolaVez(t[0]) ? una(t[0].p_distancia) : null
+    const du = unaSolaVez(t[0]) ? una(t[0].p_duracion) : null
     return [{
       id: t[0].id,
       fc_media: num(t[0].fc_media),
@@ -249,16 +291,21 @@ export function escriturasConReloj(
   sesion: SesionParaUnir,
   partes: ParteConReloj[],
   cierre?: { rpe: number; origen: 'atleta' | 'entrenador' },
-  /** Sin la FC: al cerrar desde el cuestionario, la FC es la de la casilla (que puede haber cambiado). */
-  opciones: { fc?: boolean } = {},
+  /**
+   * Lo que NO se toca porque ya lo escribió el deportista al cerrar: la FC de
+   * su casilla, la duración de su casilla (el modo entreno la deja corregir) y
+   * los metros o el tiempo de las tareas que anotó serie a serie.
+   */
+  opciones: { fc?: boolean; duracion?: boolean; tareasAnotadas?: number[] } = {},
 ): Escrituras {
   const conFc = opciones.fc !== false
+  const anotadas = opciones.tareasAnotadas || []
   const minutos = partes.map(p => positivo(p.actividad.minutos))
   const inicios = partes.map(p => p.actividad.inicio).filter((x): x is string => !!x).sort()
   const conMinutos = minutos.filter((m): m is number => m != null)
   const out: Escrituras = {
     sesion: {
-      ...(conMinutos.length ? { duracion_real: Math.round(conMinutos.reduce((a, b) => a + b, 0)) } : {}),
+      ...(conMinutos.length && opciones.duracion !== false ? { duracion_real: Math.round(conMinutos.reduce((a, b) => a + b, 0)) } : {}),
       ...(inicios.length ? { hora_inicio: inicios[0] } : {}),
       ...(cierre ? { estado: 'Realizada', rpe_reportado: cierre.rpe, rpe_origen: cierre.origen } : {}),
     },
@@ -270,6 +317,7 @@ export function escriturasConReloj(
     if (t.length !== 1) continue
     const fc = positivo(p.actividad.fcMedia)
     if (conFc && fc != null) out.tareas.push({ id: t[0].id, campos: { fc_media: Math.round(fc) } })
+    if (!unaSolaVez(t[0]) || anotadas.includes(t[0].id)) continue
     const d = una(t[0].p_distancia), du = una(t[0].p_duracion)
     const metros = positivo(p.actividad.metros), min = positivo(p.actividad.minutos)
     if (d?.id != null && metros != null) out.distancias.push({ id: d.id, campos: { metros_reales: Math.round(metros) } })

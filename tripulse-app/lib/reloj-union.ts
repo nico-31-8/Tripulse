@@ -120,6 +120,23 @@ export async function guardarDecision(sb: Sb, d: {
   return error ? 'No se ha podido guardar: ' + error.message : null
 }
 
+/**
+ * «No es esta» desde el cuestionario de cierre: esos entrenos no son esa
+ * sesión. Se apunta en la base sin esperar (es una sugerencia que deja de
+ * hacerse, no un dato de la sesión) y devuelve los datos ya con ello, para que
+ * la pantalla deje de sugerirlos al momento.
+ */
+export function rechazarParaSesion(sb: Sb, idDeportista: number, idSesion: number, idsMedicion: number[], datos: DatosUnion): DatosUnion {
+  for (const idMedicion of idsMedicion) guardarDecision(sb, { idDeportista, idMedicion, decision: 'rechazada', idSesion })
+  return {
+    ...datos,
+    uniones: [
+      ...datos.uniones.filter(u => !idsMedicion.includes(u.id_medicion)),
+      ...idsMedicion.map((idm, i): UnionReloj => ({ id: -1 - i, id_medicion: idm, id_sesion: idSesion, parte: 1, decision: 'rechazada' })),
+    ],
+  }
+}
+
 /** Quitar la decisión (deshacer un «no contarla» o un «no es esa»). */
 export async function quitarDecision(sb: Sb, union: Pick<UnionReloj, 'id'>): Promise<string | null> {
   const { error } = await sb.from('reloj_union').delete().eq('id', union.id)
@@ -169,6 +186,10 @@ export async function ponerDatosDelReloj(sb: Sb, d: {
   cierre?: { rpe: number; origen: 'atleta' | 'entrenador' }
   /** false al cerrar desde el cuestionario: la FC ya la guardó él (la del reloj, o la que corrigió). */
   fc?: boolean
+  /** false en el modo entreno: la duración es la de su casilla, que pudo corregir. */
+  duracion?: boolean
+  /** Las tareas que anotó serie a serie: sus metros y su tiempo son los suyos. */
+  tareasAnotadas?: number[]
 }): Promise<string | null> {
   const nuevas = d.nuevas || []
   const yaUnidas = partesUnidas(d.sesion.id, d.datos.uniones, d.datos.actividades)
@@ -184,7 +205,9 @@ export async function ponerDatosDelReloj(sb: Sb, d: {
     })
     if (err) return err
   }
-  const err = await aplicarEscrituras(sb, d.sesion.id, escriturasConReloj(d.sesion, partes, d.cierre, { fc: d.fc !== false }))
+  const err = await aplicarEscrituras(sb, d.sesion.id, escriturasConReloj(d.sesion, partes, d.cierre, {
+    fc: d.fc !== false, duracion: d.duracion !== false, tareasAnotadas: d.tareasAnotadas,
+  }))
   if (err) return err
   if (d.cierre) await rellenarRpeTareas(sb, d.sesion.id, d.cierre.rpe)
   return null

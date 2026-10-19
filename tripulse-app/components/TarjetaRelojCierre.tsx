@@ -30,6 +30,15 @@ interface Props {
 
 const diaCorto = (f: string) => DIAS_SEMANA[indiceDia(f)].toLowerCase() + ' ' + Number(f.slice(8, 10))
 
+/** Debajo del RPE cuando lo demás viene del reloj: es lo único que el reloj no sabe. */
+export function AvisoRpeReloj({ falta, className = 'mt-2' }: { falta: boolean; className?: string }) {
+  return (
+    <p className={'text-xs ' + className + ' ' + (falta ? 'text-amber-300 font-semibold' : 'text-gray-400')}>
+      {falta ? 'Falta tu RPE: mueve la barra, aunque sea para dejarla en 5.' : 'Esto el reloj no lo sabe: sin tu RPE no cuenta para tu carga.'}
+    </p>
+  )
+}
+
 function Linea({ p, conDia = false }: { p: ParteDelReloj; conDia?: boolean }) {
   return (
     <span className="block text-[12.5px] text-gray-300 tabular-nums">

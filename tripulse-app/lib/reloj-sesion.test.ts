@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  partesDeSesion, tareasDeParte, estadoDeActividad, opcionesDeLaSemana, pendientesDelDeportista,
+  partesDeSesion, tareasDeParte, estadoDeActividad, opcionesDeLaSemana, pendientesDelDeportista, relojParaSesion,
   escriturasConReloj, escriturasAlDesunir, antesDe, partesUnidas,
   type ActividadParaUnir, type SesionParaUnir, type UnionReloj, type TareaParaUnir,
 } from './reloj-sesion'
@@ -112,6 +112,27 @@ describe('si entrenó otro día', () => {
   })
 })
 
+describe('lo de su reloj para la sesión que cierra', () => {
+  it('lo que unió su entrenador, lo de ese día y lo de otros días de su semana', () => {
+    const acts = [
+      act({ id: 80, fecha: '2026-10-22' }),                         /* encaja con la del jueves */
+      act({ id: 81, fecha: '2026-10-21' }),                         /* el miércoles: otro día de su semana */
+      act({ id: 82, fecha: '2026-10-21', disciplina: 'Ciclismo' }), /* otra disciplina: no */
+      act({ id: 83, fecha: '2026-10-28' }),                         /* otra semana: no */
+    ]
+    const r = relojParaSesion(22, acts, SESIONES, [])!
+    expect(r.unidas).toEqual([])
+    expect(r.sugeridas.map(x => x.actividad.id)).toEqual([80])
+    expect(r.otras.map(x => x.actividad.id)).toEqual([81])
+    const u = union({ id_medicion: 81, id_sesion: 22 })
+    const conUnion = relojParaSesion(22, acts, SESIONES, [u])!
+    expect(conUnion.unidas.map(x => x.actividad.id)).toEqual([81])
+    /* Su parte ya está ocupada: lo del jueves ya no encaja en ella. */
+    expect(conUnion.sugeridas).toEqual([])
+    expect(relojParaSesion(999, acts, SESIONES, [])).toBeNull()
+  })
+})
+
 describe('lo que su panel le pide', () => {
   it('lo unido sin su RPE, lo cerrado a mano y lo que no estaba en el plan; lo sugerido y lo de otros deportes, no', () => {
     const acts = [
@@ -141,6 +162,32 @@ describe('lo que se escribe', () => {
   it('al completar una cerrada a mano: lo del reloj, sin tocar su estado ni su RPE', () => {
     const e = escriturasConReloj(conUna, [{ actividad: act({ id: 31, fecha: '2026-10-22' }), parte: 1 }])
     expect(e.sesion).toEqual({ duracion_real: 31, hora_inicio: '2026-10-22T08:40:00.000Z' })
+  })
+
+  /* Los metros van POR SERIE: el volumen los multiplica. 8,1 km en un 2×1500
+     contarían 16,2 km. */
+  it('una sola tarea con series: la FC sí, pero los metros y el tiempo no (van por serie)', () => {
+    const series: TareaParaUnir = { id: 200, orden: 1, disciplina: 'Carrera', series: 2, p_distancia: [{ id: 2000, metros_reales: null }], p_duracion: [{ id: 3000, tiempo_real: null }] }
+    const s = { ...SAB, tareas: [series] }
+    const e = escriturasConReloj(s, [{ actividad: act({ id: 33, fecha: '2026-10-24', minutos: 52, metros: 8100, fcMedia: 151 }), parte: 1 }], { rpe: 7, origen: 'atleta' })
+    expect(e.tareas).toEqual([{ id: 200, campos: { fc_media: 151 } }])
+    expect(e.distancias).toEqual([])
+    expect(e.duraciones).toEqual([])
+    expect(e.sesion).toMatchObject({ duracion_real: 52 })
+    expect(antesDe(s, [{ actividad: act({ id: 33, fecha: '2026-10-24' }), parte: 1 }]).tareas).toEqual([{ id: 200, fc_media: null }])
+    const bloques = { ...series, series: 1, bloques: 3 }
+    expect(escriturasConReloj({ ...SAB, tareas: [bloques] }, [{ actividad: act({ id: 34, fecha: '2026-10-24' }), parte: 1 }]).distancias).toEqual([])
+  })
+
+  /* En el modo entreno manda lo que escribió: su casilla de duración y lo que
+     anotó serie a serie. */
+  it('en el modo entreno, ni su duración ni lo que anotó: solo la hora y lo que falte', () => {
+    const e = escriturasConReloj(conUna, [{ actividad: act({ id: 35, fecha: '2026-10-22' }), parte: 1 }], undefined, { fc: false, duracion: false, tareasAnotadas: [100] })
+    expect(e.sesion).toEqual({ hora_inicio: '2026-10-22T08:40:00.000Z' })
+    expect(e.tareas).toEqual([])
+    expect(e.distancias).toEqual([])
+    const sinAnotar = escriturasConReloj(conUna, [{ actividad: act({ id: 36, fecha: '2026-10-22' }), parte: 1 }], undefined, { fc: false, duracion: false })
+    expect(sinAnotar.distancias).toEqual([{ id: 1000, campos: { metros_reales: 4600 } }])
   })
 
   it('con varias tareas, la FC y los metros del reloj no se reparten', () => {
