@@ -8,8 +8,8 @@
 //
 // Esta pantalla las enseña tal como vinieron, con dos cosas al lado:
 //   · lo que había PLANIFICADO ese día, para poder comparar a ojo;
-//   · lo que mandó el reloj en crudo, plegado, porque de marcas que todavía no
-//     traducimos (COROS) es la única forma de ver qué contiene de verdad.
+//   · lo que mandó el reloj, ya traducido y plegado, para ver qué contiene de
+//     verdad.
 //
 // Lo que NO hace: casar la actividad con la sesión. Eso es harina de otro
 // costal —decidir que ESTA carrera es ESA sesión y volcar sus minutos— y
@@ -207,10 +207,13 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           <div className="tp-card p-12 text-center">
             <p className="text-[15px] font-bold mb-1.5">Todavía no ha llegado ningún entreno</p>
             <p className="text-[13px] text-gray-400 max-w-md mx-auto leading-relaxed">
+              {/* Sin «él»: sirve para cualquier deportista. Lo de «después de
+                  conectarla» es de Polar; COROS da también las semanas de antes. */}
               {!proveedor
-                ? 'Este deportista no tiene ningún reloj conectado. Lo conecta él desde su perfil; tú no puedes hacerlo por él.'
+                ? 'No tiene ningún reloj conectado. Se conecta desde su perfil de deportista; tú no puedes hacerlo en su lugar.'
                 : 'Su ' + nombreReloj(proveedor) + ' está conectado, pero no ha llegado ninguna actividad en este periodo.'
-                  + ' Los entrenos llegan cuando él sincroniza, y solo los que subió a la app de su marca después de conectarla.'}
+                  + ' Los entrenos llegan cuando sincroniza su reloj'
+                  + (proveedor === 'polar' ? ', y solo los que haya subido a la app de Polar después de conectarla.' : '.')}
             </p>
           </div>
         ) : (

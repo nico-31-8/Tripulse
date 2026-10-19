@@ -38,6 +38,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { Medicion } from './polar'
+import { HIBRIDO } from './disciplinas'
 
 /**
  * La región. Las cuentas de COROS viven en Europa, EE. UU. o China, y el token
@@ -398,9 +399,8 @@ export function motivoDeErrorCoros(status: number): string {
 // Las fechas son las de DESPERTARSE (lo dice COROS en cada respuesta), las
 // mismas con las que se rellena el wellness por la mañana.
 //
-// LOS ENTRENOS TODAVÍA NO: esa cuenta no tenía ninguno en la semana pedida, y
-// sin una respuesta real no se escribe su lectura. Se siguen guardando en
-// crudo (reloj_crudo) para escribirla con el primero que llegue.
+// Los entrenos (querySportRecords) se leen desde el 19-10-2026, con el primero
+// que llegó de verdad: ver entrenosDeCoros, más abajo.
 
 /** Lo que se pide la primera vez (cuando todavía no ha llegado ninguna noche): cuatro semanas, como con Polar. */
 export const DIAS_PRIMERA_VEZ = 28
@@ -550,7 +550,9 @@ export function reposoPorDiaCoros(texto: string | null | undefined): Record<stri
  *   no se mezcla con la de Polar). La FC va como `fc_reposo`, con su nombre:
  *   no es la media nocturna que da Polar en `fc_media`.
  */
-export function medicionesDeCoros(r: { sueno?: string | null; hrv?: (string | null | undefined)[]; reposo?: string | null }): Medicion[] {
+export function medicionesDeCoros(r: {
+  sueno?: string | null; hrv?: (string | null | undefined)[]; reposo?: string | null; entrenos?: string | null
+}): Medicion[] {
   const hrv: Record<string, HrvNocheCoros> = Object.assign({}, ...(r.hrv || []).map(t => hrvDeNochesCoros(t)))
   const reposo = reposoPorDiaCoros(r.reposo)
   const fechas = [...new Set([...Object.keys(hrv), ...Object.keys(reposo)])].sort()
@@ -567,5 +569,145 @@ export function medicionesDeCoros(r: { sueno?: string | null; hrv?: (string | nu
       fc_reposo: reposo[f] ?? null,
     },
   }))
-  return [...medicionesDeSuenoCoros(r.sueno), ...recargas]
+  return [...medicionesDeSuenoCoros(r.sueno), ...recargas, ...entrenosDeCoros(r.entrenos)]
+}
+
+// ------------------------------------------------------------
+// Los entrenos (querySportRecords)
+// ------------------------------------------------------------
+// El formato, tal como lo devolvió la primera cuenta real el 19-10-2026:
+//
+//   Sport Records — 2026-10-13 to 2026-10-19 (1 records)
+//   ========================
+//
+//   1. Walk — 2026-10-18
+//      Location: …
+//      Start Coordinates: …
+//      Time Window: startTimestamp=1792333451 | endTimestamp=1792338887
+//      Duration: 1:29:57 | Distance: 7.42 km
+//      Average Pace: 12:08 /km | Avg HR: 109 bpm | Calories: 674 kcal
+//      LabelId: 481125923538633106 | SportType: 900
+//
+// La fecha es la de su zona horaria (la de COROS). La hora solo llega como
+// marca de tiempo UTC: se guarda así («…Z») y la pantalla la pasa a la hora de
+// quien mira (horaDe, en lib/actividades-reloj). El sitio y las coordenadas NO
+// se guardan en ningún sitio, tampoco en crudo: para entrenar no hacen falta, y
+// dicen dónde vive o entrena.
+
+/**
+ * Los deportes de COROS por su código, con el nombre con que se leen aquí. La
+ * pantalla los pone detrás de la disciplina («Carrera · En cinta»), así que los
+ * de una disciplina nuestra no la repiten; los demás van completos («Otro
+ * deporte · Caminata»).
+ */
+export const DEPORTES_COROS: Record<number, string> = {
+  100: 'Al aire libre', 101: 'En cinta', 102: 'Trail', 103: 'En pista', 104: 'Senderismo', 105: 'Montañismo',
+  200: 'Carretera', 201: 'Rodillo', 202: 'Bici eléctrica', 203: 'Gravel', 204: 'Montaña', 205: 'Bici de montaña eléctrica', 299: 'Bici',
+  300: 'Piscina', 301: 'Aguas abiertas',
+  400: 'Cardio en gimnasio', 401: 'Cardio con GPS', 402: 'Gimnasio',
+  500: 'Esquí', 501: 'Snowboard', 502: 'Esquí de fondo', 503: 'Esquí de travesía',
+  700: 'Remo', 701: 'Remo en máquina',
+  900: 'Caminata', 901: 'Comba', 902: 'Escaleras', 903: 'Elíptica', 904: 'Yoga', 905: 'Pilates', 906: 'Boxeo',
+  1200: 'Fitness híbrido', 9901: 'Personalizada', 10000: 'Triatlón', 10001: 'Multideporte',
+}
+
+/**
+ * La disciplina de TRIPULSE de un deporte de COROS, o null. Como con Polar,
+ * sin adivinar: un triatlón, una caminata o un esquí no son ninguna de las
+ * nuestras. Las bicis eléctricas tampoco: con motor, no es la carga de la bici.
+ */
+export function disciplinaDeCoros(codigo: number | null | undefined): string | null {
+  if (codigo == null) return null
+  if ([100, 101, 102, 103].includes(codigo)) return 'Carrera'
+  if ([200, 201, 203, 204, 299].includes(codigo)) return 'Ciclismo'
+  if (codigo === 300 || codigo === 301) return 'Natacion'
+  if (codigo === 402 || codigo === 9901) return 'Fuerza'
+  if (codigo === 1200) return HIBRIDO
+  return null
+}
+
+/** El texto de los entrenos sin el sitio ni las coordenadas: así no se guardan, ni en crudo. */
+export const sinUbicacionCoros = (texto: string): string =>
+  texto.replace(/^(\s*(?:[A-Za-z]+\s+)?(?:Coordinates|Location)\s*:).*$/gim, '$1 (quitado)')
+
+/** «1:29:57» o «29:57» (o «1h 30min») → minutos, redondeados como los de Polar; null si no se entiende. */
+export function minutosDeDuracionCoros(s: string | null | undefined): number | null {
+  const m = /^\s*(\d+):(\d{2})(?::(\d{2}))?\s*$/.exec(s || '')
+  if (m) {
+    const seg = m[3] !== undefined ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : Number(m[1]) * 60 + Number(m[2])
+    return seg > 0 ? Math.round(seg / 60) : null
+  }
+  const t = minutosDeTexto(s)
+  return t && t > 0 ? t : null
+}
+
+/** «7.42 km», «1500 m», «3.1 mi» → metros; null si no se entiende o es cero. */
+export function metrosDeTexto(s: string | null | undefined): number | null {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*(km|m|mi)\b/i.exec(s || '')
+  if (!m) return null
+  const n = Number(m[1].replace(',', '.')) * ({ km: 1000, m: 1, mi: 1609.344 } as Record<string, number>)[m[2].toLowerCase()]
+  return n > 0 ? Math.round(n) : null
+}
+
+interface BloqueEntreno { nombre: string; fecha: string; campos: Record<string, string>; inicio: number | null; fin: number | null }
+
+const isoDeMarca = (s: number | null): string | null => (s && s > 0 ? new Date(s * 1000).toISOString() : null)
+
+function entrenoDeBloque(b: BloqueEntreno): Medicion | null {
+  const c = b.campos
+  const codigo = entero(c['sporttype'])
+  /* El LabelId es el número de COROS de la actividad: no se pasa a número, que tiene más cifras de las que caben. */
+  const id = (c['labelid'] || '').trim() || (b.inicio ? 'inicio:' + b.inicio : '')
+  if (!id) return null
+  const positivo = (n: number | null) => (n && n > 0 ? n : null)
+  return {
+    tipo: 'entreno',
+    fecha: b.fecha,
+    id_externo: id,
+    datos: {
+      inicio: isoDeMarca(b.inicio),
+      fin: isoDeMarca(b.fin),
+      duracion_min: minutosDeDuracionCoros(c['duration']),
+      disciplina: disciplinaDeCoros(codigo),
+      deporte: (codigo != null && DEPORTES_COROS[codigo]) || b.nombre || null,
+      deporte_codigo: codigo,
+      distancia_m: metrosDeTexto(c['distance']),
+      fc_media: positivo(entero(c['avg hr'])),
+      fc_max: positivo(entero(c['max hr'])),
+      calorias: positivo(entero(c['calories'])),
+      carga: positivo(entero(c['training load'] ?? c['load'])),
+    },
+  }
+}
+
+/**
+ * Los entrenos de `querySportRecords`, como los de Polar (`tipo: 'entreno'`).
+ * Cada uno empieza por «1. Walk — 2026-10-18» y sigue con líneas de
+ * «clave: valor» separadas por «|». Lo que no se reconoce se queda fuera.
+ */
+export function entrenosDeCoros(texto: string | null | undefined): Medicion[] {
+  if (typeof texto !== 'string' || !/^\s*Sport Records\b/i.test(texto)) return []
+  const out: Medicion[] = []
+  let actual: BloqueEntreno | null = null
+  const cerrar = () => {
+    const m = actual ? entrenoDeBloque(actual) : null
+    if (m) out.push(m)
+    actual = null
+  }
+  for (const linea of texto.split(/\r?\n/)) {
+    const t = linea.trim()
+    const cab = /^\d+\.\s+(.+?)\s+[—–-]\s+(\d{4}-\d{2}-\d{2})$/.exec(t)
+    if (cab) { cerrar(); actual = { nombre: cab[1].trim(), fecha: cab[2], campos: {}, inicio: null, fin: null }; continue }
+    if (!actual) continue
+    const ini = /startTimestamp=(\d+)/.exec(t)
+    if (ini) actual.inicio = Number(ini[1])
+    const fin = /endTimestamp=(\d+)/.exec(t)
+    if (fin) actual.fin = Number(fin[1])
+    for (const parte of t.split('|')) {
+      const kv = /^([^:=]+):\s*(.*)$/.exec(parte.trim())
+      if (kv) actual.campos[kv[1].trim().toLowerCase()] = kv[2].trim()
+    }
+  }
+  cerrar()
+  return out
 }

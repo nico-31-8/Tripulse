@@ -89,6 +89,14 @@ describe('cómo se lee', () => {
     expect(horaDe(null)).toBeNull()
   })
 
+  /* COROS solo da la hora en UTC: leída tal cual, saldría dos horas antes en Madrid. */
+  it('con zona (COROS), la hora de quien mira', () => {
+    expect(horaDe('2026-10-18T14:24:11.000Z', 'Europe/Madrid')).toBe('16:24')
+    expect(horaDe('2026-12-18T14:24:11.000Z', 'Europe/Madrid')).toBe('15:24')
+    expect(horaDe('2026-10-18T14:24:11+02:00', 'Europe/Madrid')).toBe('14:24')
+    expect(horaDe('2026-10-18T25:99:00Z', 'Europe/Madrid')).toBeNull()
+  })
+
   it('el reloj grita y aquí no', () => {
     expect(nombreDeporte('ROAD_BIKING')).toBe('Road biking')
     expect(nombreDeporte(null)).toBeNull()

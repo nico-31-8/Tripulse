@@ -120,7 +120,7 @@ export default function RelojPerfil() {
       /* Marca en pruebas: contesta, pero lo que manda todavía no se convierte en nada. */
       if (!silencioso) setAviso({ tipo: 'ok', texto: nombre + ' ha contestado. Tus datos saldrán aquí en cuanto terminemos de prepararlos.' })
     } else if (!silencioso || cuerpo.aviso) {
-      /* Los entrenos solo se cuentan si esa marca los lee (COROS todavía no: llega null). */
+      /* Los entrenos solo se cuentan si esa marca los lee (si no, llega null). */
       const partes = [
         cuerpo.noches + ' noches',
         cuerpo.recargas + ' recargas',

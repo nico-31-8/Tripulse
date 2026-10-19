@@ -2,9 +2,9 @@
 // TRIPULSE — Los entrenos que manda el reloj, listos para mirar
 // ============================================================
 // `reloj_medicion` guarda una fila por actividad con un `datos` en JSON, y ese
-// JSON lo escribe el traductor de cada marca (`lib/polar.ts` hoy; COROS cuando
-// conecte el primero). Esta capa lo convierte en algo que una pantalla pueda
-// pintar sin saber de qué marca viene.
+// JSON lo escribe el traductor de cada marca (`lib/polar.ts` y `lib/coros.ts`).
+// Esta capa lo convierte en algo que una pantalla pueda pintar sin saber de qué
+// marca viene.
 //
 // POR QUÉ ES TAN DESCONFIADA: lo de aquí no lo hemos escrito nosotros, lo ha
 // escrito el reloj. Un campo que hoy es un número puede llegar mañana como
@@ -78,10 +78,20 @@ const positivo = (v: unknown): number | null => {
    entreno híbrido (un HYROX es lo que más se parece a lo que miden los relojes
    nuevos) la actividad se quedaría SIN disciplina, en silencio. */
 
-/** La hora de un `inicio` tipo «2026-09-12T07:12:31.000». Sin zona: es la local del atleta. */
-export function horaDe(inicio: unknown): string | null {
+/**
+ * La hora de un `inicio`. Sin zona («2026-09-12T07:12:31.000», Polar) ya es la
+ * local del atleta y se lee tal cual. Con zona («…Z»: COROS solo da la hora en
+ * UTC) se pasa a la hora de quien mira; leída tal cual, un entreno de las 16:24
+ * en Madrid saldría a las 14:24. `zona` es para los tests.
+ */
+export function horaDe(inicio: unknown, zona?: string): string | null {
   const s = texto(inicio)
   if (!s) return null
+  if (/T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+    const d = new Date(s)
+    if (Number.isNaN(d.getTime())) return null
+    return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(zona ? { timeZone: zona } : {}) }).format(d)
+  }
   const m = s.match(/T(\d{2}):(\d{2})/)
   return m ? m[1] + ':' + m[2] : null
 }

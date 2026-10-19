@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   hrvDeNochesCoros, medicionesDeCoros, medicionesDeSuenoCoros, minutosDeTexto, reposoPorDiaCoros, tramosDeDias,
+  entrenosDeCoros, disciplinaDeCoros, sinUbicacionCoros, minutosDeDuracionCoros, metrosDeTexto,
 } from './coros'
+import { actividadesDeMediciones } from './actividades-reloj'
 
 /* Los textos tienen la FORMA exacta que devolvió COROS el 17-10-2026 (la
    primera cuenta real); los números están cambiados. */
@@ -157,5 +159,104 @@ describe('las semanas de atrás, de siete en siete', () => {
       { desde: '2026-10-08', hasta: '2026-10-10' }, { desde: '2026-10-11', hasta: '2026-10-17' },
     ])
     expect(tramosDeDias('2026-10-17', '2026-10-17')).toEqual([{ desde: '2026-10-17', hasta: '2026-10-17' }])
+  })
+})
+
+/* La FORMA exacta de querySportRecords el 19-10-2026 (la primera cuenta real);
+   los valores, el sitio y las coordenadas son inventados. */
+const ENTRENOS = `Sport Records — 2026-10-13 to 2026-10-19 (3 records)
+========================
+
+1. Walk — 2026-10-18
+   Location: Parque inventado
+   Start Coordinates: 0.000000, 0.000000
+   Time Window: startTimestamp=1792333451 | endTimestamp=1792338887
+   Duration: 1:29:57 | Distance: 7.42 km
+   Average Pace: 12:08 /km | Avg HR: 109 bpm | Calories: 674 kcal
+   LabelId: 481125923538633106 | SportType: 900
+
+2. Outdoor Run — 2026-10-16
+   Location: Pista inventada
+   Start Coordinates: 0.000000, 0.000000
+   Time Window: startTimestamp=1792140000 | endTimestamp=1792142700
+   Duration: 45:00 | Distance: 8.00 km
+   Average Pace: 5:37 /km | Avg HR: 150 bpm | Calories: 520 kcal
+   LabelId: 481100000000000001 | SportType: 100
+
+3. Strength — 2026-10-14
+   Time Window: startTimestamp=1791960000 | endTimestamp=1791963600
+   Duration: 1:00:00 | Sets: 12
+   Avg HR: 115 bpm | Calories: 300 kcal
+   LabelId: 481100000000000002 | SportType: 402`
+
+describe('los entrenos de COROS', () => {
+  it('cada entreno, con su día, su número de COROS y lo que se enseña de Polar', () => {
+    const e = entrenosDeCoros(ENTRENOS)
+    expect(e.map(x => [x.fecha, x.id_externo, x.datos.disciplina, x.datos.deporte])).toEqual([
+      ['2026-10-18', '481125923538633106', null, 'Caminata'],
+      ['2026-10-16', '481100000000000001', 'Carrera', 'Al aire libre'],
+      ['2026-10-14', '481100000000000002', 'Fuerza', 'Gimnasio'],
+    ])
+    expect(e[0]).toEqual({
+      tipo: 'entreno', fecha: '2026-10-18', id_externo: '481125923538633106',
+      datos: {
+        inicio: '2026-10-18T14:24:11.000Z', fin: '2026-10-18T15:54:47.000Z', duracion_min: 90,
+        disciplina: null, deporte: 'Caminata', deporte_codigo: 900,
+        distancia_m: 7420, fc_media: 109, fc_max: null, calorias: 674, carga: null,
+      },
+    })
+    expect(e[2].datos).toMatchObject({ duracion_min: 60, distancia_m: null, fc_media: 115 })
+  })
+
+  it('el sitio y las coordenadas no se guardan', () => {
+    const datos = JSON.stringify(entrenosDeCoros(ENTRENOS))
+    expect(datos).not.toMatch(/inventad|0\.000000|Location|Coordinates/i)
+    const limpio = sinUbicacionCoros(ENTRENOS)
+    expect(limpio).not.toMatch(/inventad|0\.000000/)
+    expect(limpio).toContain('Location: (quitado)')
+    expect(limpio).toContain('Start Coordinates: (quitado)')
+    /* Y se sigue leyendo igual. */
+    expect(entrenosDeCoros(limpio)).toEqual(entrenosDeCoros(ENTRENOS))
+  })
+
+  it('en la pestaña de entrenos, como los de Polar y a la hora de Madrid', () => {
+    const filas = entrenosDeCoros(ENTRENOS).map((m, i) => ({ id: i + 1, proveedor: 'coros', fecha: m.fecha, id_externo: m.id_externo, datos: m.datos }))
+    const a = actividadesDeMediciones(filas)
+    expect(a.map(x => [x.fecha, x.disciplina, x.minutos, x.metros, x.fcMedia])).toEqual([
+      ['2026-10-18', null, 90, 7420, 109],
+      ['2026-10-16', 'Carrera', 45, 8000, 150],
+      ['2026-10-14', 'Fuerza', 60, null, 115],
+    ])
+  })
+
+  it('las disciplinas, sin adivinar', () => {
+    expect([100, 101, 102, 103].map(disciplinaDeCoros)).toEqual(['Carrera', 'Carrera', 'Carrera', 'Carrera'])
+    expect([200, 201, 203, 204, 299].every(c => disciplinaDeCoros(c) === 'Ciclismo')).toBe(true)
+    expect([300, 301].map(disciplinaDeCoros)).toEqual(['Natacion', 'Natacion'])
+    expect(disciplinaDeCoros(402)).toBe('Fuerza')
+    expect(disciplinaDeCoros(1200)).toBe('Hibrido')
+    /* Con motor, ni senderismo, ni caminata, ni triatlón: ninguna de las nuestras. */
+    for (const c of [202, 205, 104, 900, 10000, 65535, null]) expect(disciplinaDeCoros(c), String(c)).toBeNull()
+  })
+
+  it('duraciones y distancias como las escribe COROS', () => {
+    expect(minutosDeDuracionCoros('1:29:57')).toBe(90)
+    expect(minutosDeDuracionCoros('45:00')).toBe(45)
+    expect(minutosDeDuracionCoros('1h 5min')).toBe(65)
+    expect(minutosDeDuracionCoros('0:00')).toBeNull()
+    expect(metrosDeTexto('7.42 km')).toBe(7420)
+    expect(metrosDeTexto('1500 m')).toBe(1500)
+    expect(metrosDeTexto('0.00 km')).toBeNull()
+    expect(metrosDeTexto('—')).toBeNull()
+  })
+
+  it('lo que no es su lista de entrenos no da ninguno', () => {
+    expect(entrenosDeCoros('Sport Records — 2026-10-13 to 2026-10-19 (0 records)\n========================\n\nNo records found.')).toEqual([])
+    expect(entrenosDeCoros('Tool call anomalies detected.')).toEqual([])
+    expect(entrenosDeCoros(null)).toEqual([])
+  })
+
+  it('van con lo demás de COROS', () => {
+    expect(medicionesDeCoros({ entrenos: ENTRENOS }).filter(m => m.tipo === 'entreno')).toHaveLength(3)
   })
 })

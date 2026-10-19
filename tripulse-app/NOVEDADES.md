@@ -14,6 +14,21 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 19 de octubre de 2026 · Los entrenos de COROS ya llegan
+
+- **«Su reloj» → Entrenos** enseña ahora también los entrenos de quien tiene
+  COROS: el deporte, la hora, la duración, la distancia, el ritmo, el pulso
+  medio y las calorías, con lo que tenía planificado ese día al lado. La
+  primera vez llegan los de las últimas cuatro semanas.
+- Como con Polar, **no se unen a las sesiones del plan** ni cuentan para la
+  carga: lo que cuenta sigue siendo lo que el deportista marca como hecho.
+- Las caminatas, el senderismo o la bici eléctrica salen como «Otro deporte»:
+  no son ninguna de nuestras disciplinas.
+- **El sitio y las coordenadas** de donde empezó cada entreno no se guardan:
+  para entrenar no hacen falta.
+- Llegan cuando tu deportista sincroniza su reloj. No cambia ningún número de
+  lo que ya veías.
+
 ## 18 de octubre de 2026 · Los ritmos sin «/km» también avisan en su COROS
 
 - **Antes**, un ritmo escrito sin «/km» en una tarea de carrera («8:30-8:50»)

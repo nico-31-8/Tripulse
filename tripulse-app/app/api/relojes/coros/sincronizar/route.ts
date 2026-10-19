@@ -10,12 +10,12 @@
 //      (lib/coros: argumentosCoros): el sueño y la FC en reposo de una vez, la
 //      HRV del sueño de siete en siete días (no admite más). La primera vez,
 //      cuando todavía no ha llegado ninguna noche, cuatro semanas; después, una.
-//   4. TRADUCE el sueño, la HRV y la FC en reposo (lib/coros:
-//      medicionesDeCoros, con el formato que devolvió la primera cuenta real
-//      el 17-10-2026) y lo guarda en `reloj_medicion`, igual que Polar.
+//   4. TRADUCE el sueño, la HRV, la FC en reposo y los entrenos (lib/coros:
+//      medicionesDeCoros, con el formato que devolvió la primera cuenta real)
+//      y lo guarda en `reloj_medicion`, igual que Polar. Los entrenos, cuatro
+//      semanas la primera vez que se leen.
 //   5. Guarda en `reloj_crudo` lo último que contestó cada herramienta, tal
-//      cual. Los entrenos solo van ahí de momento: todavía no ha llegado
-//      ninguno de verdad con el que escribir su lectura.
+//      cual, salvo el sitio y las coordenadas de los entrenos.
 //
 // Un fallo de una herramienta no tumba lo demás: se guarda lo que llegó y se
 // devuelve un aviso para la pantalla.
@@ -24,7 +24,7 @@ import { json, quienLlama, ESPERA_MS } from '@/lib/relojes-servidor'
 import {
   emisorCoros, mcpDe, hayQueRenovar, leerRenovacionCoros, inicializar, peticionMcp, leerRespuestaMcp,
   contenidoDeResultado, argumentosCoros, pareceErrorCoros, recortarParaAprender, motivoDeErrorCoros,
-  medicionesDeCoros, tramosDeDias, HERRAMIENTAS_COROS, DIAS_POR_LLAMADA, DIAS_PRIMERA_VEZ, VERSION_MCP,
+  medicionesDeCoros, tramosDeDias, sinUbicacionCoros, HERRAMIENTAS_COROS, DIAS_POR_LLAMADA, DIAS_PRIMERA_VEZ, VERSION_MCP,
   type EsquemaEntrada,
 } from '@/lib/coros'
 import { hoyISO, sumarDias } from '@/lib/fechas'
@@ -76,13 +76,17 @@ export async function POST(req: Request) {
     }
   }
 
-  /* Cuánto pedir: cuatro semanas si todavía no ha llegado ninguna noche suya de COROS.
-     «Suya» de verdad: quien además entrena a otros ve también las de ellos. */
-  const { count: nochesYa } = await q.sb.from('reloj_medicion')
+  /* Cuánto pedir: cuatro semanas si todavía no ha llegado ninguna noche suya de
+     COROS, y lo mismo con los entrenos (se leen desde el 19-10-2026: quien ya
+     tenía noches recibe así su último mes de entrenos). «Suya» de verdad: quien
+     además entrena a otros ve también las de ellos. */
+  const yaHay = (tipo: string) => q.sb.from('reloj_medicion')
     .select('id, deportista!inner(id_usuario)', { count: 'exact', head: true })
-    .eq('deportista.id_usuario', q.uid).eq('proveedor', 'coros').eq('tipo', 'sueno')
+    .eq('deportista.id_usuario', q.uid).eq('proveedor', 'coros').eq('tipo', tipo)
+  const [{ count: nochesYa }, { count: entrenosYa }] = await Promise.all([yaHay('sueno'), yaHay('entreno')])
   const hasta = hoyISO()
   const desde = sumarDias(hasta, -((nochesYa ? DIAS_POR_LLAMADA : DIAS_PRIMERA_VEZ) - 1))
+  const desdeEntrenos = entrenosYa ? desde : sumarDias(hasta, -(DIAS_PRIMERA_VEZ - 1))
 
   // ---- 2 y 3. Hablar MCP ----
   let sesion: string | null = null
@@ -115,7 +119,9 @@ export async function POST(req: Request) {
     const argumentos = argumentosCoros(h.inputSchema, de, a)
     const r = await llamar(peticionMcp(id++, 'tools/call', { name: h.name, arguments: argumentos }))
     const res = r.mensaje?.result as { isError?: boolean } | undefined
-    const resultado = contenidoDeResultado(res)
+    const contenido = contenidoDeResultado(res)
+    /* Los entrenos traen el sitio y las coordenadas de salida: fuera, antes de guardar nada. */
+    const resultado = h.name === 'querySportRecords' && typeof contenido === 'string' ? sinUbicacionCoros(contenido) : contenido
     const motivo = pareceErrorCoros(resultado)
     const esError = r.status !== 200 || !!res?.isError || !!r.mensaje?.error || !!motivo
     const fila = { herramienta: h.name, datos: recortarParaAprender({ argumentos, status: r.status, esError, error: r.mensaje?.error ?? motivo, resultado }) }
@@ -154,7 +160,8 @@ export async function POST(req: Request) {
 
     for (const h of herramientas.filter(x => (HERRAMIENTAS_COROS as readonly string[]).includes(x.name))) {
       /* La HRV del sueño no admite más de siete días por llamada. */
-      const tramos = h.name === 'querySleepHrv' ? tramosDeDias(desde, hasta, DIAS_POR_LLAMADA) : [{ desde, hasta }]
+      const tramos = h.name === 'querySleepHrv' ? tramosDeDias(desde, hasta, DIAS_POR_LLAMADA)
+        : h.name === 'querySportRecords' ? [{ desde: desdeEntrenos, hasta }] : [{ desde, hasta }]
       for (const tr of tramos) await pedir(h, tr.desde, tr.hasta)
     }
     /* Su calendario de COROS de las dos semanas que vienen, SOLO EN CRUDO: para
@@ -174,6 +181,7 @@ export async function POST(req: Request) {
     sueno: textos.querySleepOverview?.[0] ?? null,
     hrv: textos.querySleepHrv ?? [],
     reposo: textos.queryRestingHeartRate?.[0] ?? null,
+    entrenos: textos.querySportRecords?.[0] ?? null,
   })
   const { error: eGuardar } = await q.sb.rpc('reloj_guardar', { p_proveedor: 'coros', p_mediciones: mediciones, p_error: null })
   if (eGuardar) return json({ error: 'No se ha podido guardar lo recibido de COROS: ' + eGuardar.message }, 500)
@@ -182,18 +190,16 @@ export async function POST(req: Request) {
   await q.sb.rpc('reloj_guardar_crudo', { p_proveedor: 'coros', p_filas: crudo })
 
   const porTipo = (tipo: string) => mediciones.filter(m => m.tipo === tipo).length
-  /* Lo que ha fallado, dicho como lo entiende el deportista. Los entrenos no
-     cuentan: todavía no se leen, así que su fallo no le quita nada. */
+  /* Lo que ha fallado, dicho como lo entiende el deportista. */
   const QUE_ES: Record<string, string> = {
     querySleepOverview: 'el sueño', querySleepData: 'el sueño', querySleepHrv: 'la HRV del sueño',
-    queryRestingHeartRate: 'la FC en reposo', 'la conexión': 'parte de la respuesta',
+    queryRestingHeartRate: 'la FC en reposo', querySportRecords: 'los entrenos', 'la conexión': 'parte de la respuesta',
   }
   const falta = [...new Set(fallos.filter(f => QUE_ES[f]).map(f => QUE_ES[f]))]
   return json({
     noches: porTipo('sueno'),
     recargas: porTipo('recarga'),
-    /* Los entrenos de COROS todavía no se leen: la pantalla no los cuenta. */
-    entrenos: null,
+    entrenos: porTipo('entreno'),
     aviso: falta.length ? 'COROS no ha mandado ' + falta.join(' ni ') + '. Lo demás se ha guardado; prueba otra vez dentro de un rato.' : null,
   })
 }
