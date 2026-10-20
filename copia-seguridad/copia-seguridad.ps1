@@ -248,8 +248,12 @@ try {
     # pg_dump escribe sus errores por stderr. En PowerShell 5.1, con
     # ErrorActionPreference en Stop, redirigir el stderr de un programa lo
     # convierte en un error que corta el script; se baja a Continue solo aquí.
+    # CON LOS PERMISOS (sin --no-privileges). Hasta el 20-10-2026 se exportaba
+    # sin ellos, y la app los usa como capa de seguridad: 103 de sus 124
+    # funciones están cerradas a quien no ha iniciado sesión. Restaurada sin
+    # permisos, la base las dejaría abiertas a cualquiera con la clave pública.
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $salida = & $pg --dbname=$urlSinClave --schema=public --format=custom --no-owner --no-privileges --file=$fPub 2>&1 | ForEach-Object { "$_" }
+    $salida = & $pg --dbname=$urlSinClave --schema=public --format=custom --no-owner --file=$fPub 2>&1 | ForEach-Object { "$_" }
     $codigoPg = $LASTEXITCODE
     $ErrorActionPreference = $prev
     if ($codigoPg -ne 0) {
@@ -299,11 +303,14 @@ CÓMO SE RESTAURA
 1. El código: copia la carpeta «codigo» donde quieras. Dentro de tripulse-app:
      npm install
    y pon dentro de tripulse-app los ficheros de «claves».
-2. La base de datos, en un proyecto de Supabase NUEVO y vacío, con pg_restore
-   17 y la cadena de conexión de ESE proyecto:
-     pg_restore --dbname="<cadena>" --no-owner --no-privileges public.dump
-     pg_restore --dbname="<cadena>" --data-only auth-cuentas.dump
-   Las cuentas van DESPUÉS de las tablas.
+2. La base de datos, en un proyecto de Supabase NUEVO y vacío: doble clic en
+   copia-seguridad\restaurar-copia.bat, que lo hace y lo comprueba. A mano,
+   con pg_restore 17 y la cadena (Session pooler) de ESE proyecto, y PRIMERO
+   las cuentas, porque siete tablas apuntan a ellas:
+     pg_restore --dbname="<cadena>" --data-only --no-owner auth-cuentas.dump
+     pg_restore --dbname="<cadena>" --no-owner public.dump
+   Lo que NO viene aquí: los tokens de los relojes (hay que volver a
+   conectarlos) y las variables de entorno de Vercel.
 3. En Vercel, apunta las variables de entorno al proyecto nuevo.
 
 La memoria de Claude va en «memoria-claude»: se devuelve a
