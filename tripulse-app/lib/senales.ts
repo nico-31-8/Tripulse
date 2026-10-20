@@ -1,8 +1,8 @@
 // ============================================================
 // TRIPULSE — Las señales de un atleta, en un solo sitio
 // ============================================================
-// Qué mirar de lo que llega cada día (wellness, sesiones hechas, y mañana el
-// reloj) y, sobre todo, QUÉ HACER con ello. Hasta ahora cada pantalla enseñaba
+// Qué mirar de lo que llega cada día (wellness, sesiones hechas y las noches
+// del reloj) y, sobre todo, QUÉ HACER con ello. Hasta ahora cada pantalla enseñaba
 // su trozo —la disposición en wellness, la carga en /carga, los índices en los
 // suyos— y ninguna decía «pasa esto, yo haría esto».
 //
@@ -25,12 +25,14 @@ import { analizarWellness, type RegistroWellness } from './wellness-analisis'
 import { bienestar } from './wellness-score'
 import { sesionLarga } from './progresion'
 import { desvioRpe } from './sesion-realizada'
+import { resumenDeNoches, type NocheDelReloj } from './noches-del-reloj'
+import { textoHoras } from './noches-reloj'
 
 export type NivelSenal = 'roja' | 'ambar' | 'info'
 
 export type IdSenal =
   | 'bienestar' | 'bienestar_tendencia' | 'cuesta_mas' | 'sueno'
-  | 'sesion_larga' | 'cumplimiento' | 'sin_wellness'
+  | 'sesion_larga' | 'cumplimiento' | 'sin_wellness' | 'noches_reloj'
 
 export interface Senal {
   id: IdSenal
@@ -62,6 +64,11 @@ export interface EntradaSenales {
   wellness: RegistroWellness[]
   /** Sesiones de las últimas semanas, planificadas y realizadas. */
   sesiones: SesionSenal[]
+  /**
+   * Las noches de su reloj de ahora (lib/noches-del-reloj), las de sus últimas
+   * cuatro semanas. Llegan solas, rellene o no el wellness.
+   */
+  noches?: NocheDelReloj[]
   hoy: string
 }
 
@@ -124,12 +131,15 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
 
   // ---- 1. Disposición: lo que ya sabe hacer el motor de wellness ----
   const an = analizarWellness(wellness)
+  /** Las medidas que nombra el porqué de esta señal: lo del reloj que ya está dicho. */
+  let dichoPorBienestar: string[] = []
   if (!an.readiness || !an.baselineFiable) {
     sinBase.push(wellness.length
       ? 'Su bienestar: ' + wellness.length + ' registros; con ' + MIN_REGISTROS_BASE + ' ya se puede comparar con su normal'
       : 'Su bienestar: todavía no ha rellenado ninguno')
   } else if (an.readiness.nivel === 'alerta' || an.readiness.nivel === 'fatiga') {
     const fuera = an.metricas.filter(m => m.fuera && m.reciente != null && m.base != null)
+    dichoPorBienestar = fuera.slice(0, 3).map(m => m.key)
     senales.push({
       id: 'bienestar',
       nivel: an.readiness.nivel === 'alerta' ? 'roja' : 'ambar',
@@ -188,7 +198,11 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
   }
 
   // ---- 4. Sueño (L4.4: con horas limitadas, la variable con más impacto) ----
-  const conSueno = wellness.filter(r => typeof r.horas_sueno === 'number' && r.horas_sueno > 0)
+  //     Solo las horas TECLEADAS. Las que pone el reloj son sueño real, sin lo
+  //     despierto, y salen más bajas que el tiempo en la cama que se suele
+  //     escribir: mezcladas, el día que conecta un reloj «duerme menos de lo que
+  //     suele» sin haber cambiado nada. El sueño del reloj lo mira la señal 8.
+  const conSueno = wellness.filter(r => !r.sueno_del_reloj && typeof r.horas_sueno === 'number' && r.horas_sueno > 0)
   if (conSueno.length >= MIN_REGISTROS_BASE) {
     const h = conSueno.map(r => r.horas_sueno as number)
     const rec = media(h.slice(0, 7)), bas = media(h.slice(7))
@@ -257,8 +271,68 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
     })
   }
 
+  /* ---- 8. Sus noches, según su reloj ----
+     Llegan solas, rellene o no el wellness. La regla es la de la pestaña «Sus
+     noches» (lib/noches-del-reloj), para que el aviso y la pestaña digan lo
+     mismo: la media de su última semana contra sus tres semanas anteriores, y
+     con COROS, el rango normal que da COROS. Una noche suelta no dice nada.
+     Lo que otra señal ya dice no se repite: la de bienestar, si su porqué
+     nombra esa medida del reloj; la de sueño, el sueño. Va detrás de las de
+     bienestar, que es de lo que habla. */
+  const reloj = senalDeNoches(e.noches, hoy, dichoPorBienestar, senales.some(s => s.id === 'sueno'))
+  if (reloj.senal) {
+    const tras = senales.reduce((k, s, i) => (s.id === 'bienestar' || s.id === 'bienestar_tendencia' ? i + 1 : k), 0)
+    senales.splice(tras, 0, reloj.senal)
+  }
+  if (reloj.sinBase) sinBase.push(reloj.sinBase)
+
   senales.sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel])
   return { senales, sinBase }
+}
+
+/** Cómo se llama cada medida del reloj en el wellness, donde la guarda el formulario. */
+const CLAVES_RELOJ = { hrv: ['hrv_noche'], fc: ['fc_noche', 'fc_reposo_reloj'], sueno: ['horas_sueno_reloj'] }
+
+function senalDeNoches(
+  noches: NocheDelReloj[] | undefined, hoy: string, dichoPorBienestar: string[], hayDeSueno: boolean,
+): { senal?: Senal; sinBase?: string } {
+  if (!noches?.length) return {}
+  const { hrv, fc, sueno } = resumenDeNoches(noches, hoy)
+  const yaDicho = (k: keyof typeof CLAVES_RELOJ) => CLAVES_RELOJ[k].some(c => dichoPorBienestar.includes(c))
+  const reposo = noches.find(n => n.fcTipo)?.fcTipo === 'reposo'
+
+  const partes: string[] = []
+  if (hrv.estado === 'peor' && hrv.reciente != null && !yaDicho('hrv')) {
+    partes.push('HRV del sueño ' + Math.round(hrv.reciente) + ' ms ' + (hrv.rango
+      ? '(su rango normal según COROS, ' + hrv.rango[0] + '–' + hrv.rango[1] + ')'
+      : '(lo suyo, ' + Math.round(hrv.base as number) + ')'))
+  }
+  if (fc.estado === 'peor' && fc.reciente != null && fc.base != null && !yaDicho('fc')) {
+    partes.push((reposo ? 'FC en reposo ' : 'FC media nocturna ') + Math.round(fc.reciente) + ' ppm (lo suyo, ' + Math.round(fc.base) + ')')
+  }
+  if (sueno.estado === 'peor' && sueno.reciente != null && sueno.base != null && !yaDicho('sueno') && !hayDeSueno) {
+    partes.push('Sueño ' + textoHoras(Math.round(sueno.reciente)) + ' (lo suyo, ' + textoHoras(Math.round(sueno.base)) + ')')
+  }
+
+  /* Lo que aún no se puede mirar se dice, como el resto de «sin base». */
+  const sinBaseDe = ([['la HRV', hrv], ['la FC', fc], ['el sueño', sueno]] as const)
+    .filter(([, c]) => c.estado === 'sinBase').map(([nombre]) => nombre)
+  const sinBase = !sinBaseDe.length ? undefined
+    : sinBaseDe.length === 3 ? 'Sus noches del reloj: hacen falta tres semanas de noches para saber lo suyo'
+    : 'Del reloj, ' + sinBaseDe.join(' y ') + ': hacen falta tres semanas de noches para saber lo suyo'
+
+  if (!partes.length) return { sinBase }
+  return {
+    sinBase,
+    senal: {
+      id: 'noches_reloj',
+      nivel: 'ambar',
+      titulo: 'Su reloj marca noches fuera de su normal',
+      tituloAtleta: 'tu reloj marca noches fuera de lo normal en ti',
+      porque: 'Media de su última semana: ' + partes.join(' · ') + '.',
+      accion: 'Pregúntale cómo se encuentra antes de la próxima sesión de calidad. Si no está bien, suavízala y no la recuperes después: lo que ayuda es no hacerla en mal estado.',
+    },
+  }
 }
 
 const ORDEN_NIVEL: Record<NivelSenal, number> = { roja: 0, ambar: 1, info: 2 }

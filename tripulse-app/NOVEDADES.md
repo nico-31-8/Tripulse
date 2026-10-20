@@ -14,6 +14,23 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · «Necesita tu atención» ya mira las noches del reloj
+
+- **Antes**, los avisos del panel solo veían la HRV, la FC y el sueño del reloj
+  si tu deportista guardaba el wellness ese día. Quien lleva reloj y no lo
+  rellena no avisaba nunca, aunque sus noches llegaran solas.
+- **Ahora** sale un aviso nuevo, «Su reloj marca noches fuera de su normal», con
+  sus números: por ejemplo, «Media de su última semana: HRV del sueño 44 ms (lo
+  suyo, 50)». Usa la misma regla que la pestaña «Sus noches»: la media de su
+  última semana frente a sus tres semanas anteriores, y con COROS, el rango
+  normal que da COROS. Una noche mala sola no avisa.
+- Si otro aviso ya lo dice (el de bienestar o el de sueño), no se repite.
+- **Arreglado:** el aviso «Está durmiendo menos de lo que suele» mezclaba las
+  horas que cuenta el reloj (sueño real) con las tecleadas (el tiempo en la
+  cama), así que al conectar un reloj podía saltar sin que nada hubiera
+  cambiado. Ahora mira solo las tecleadas; el sueño del reloj lo mira el aviso
+  nuevo.
+
 ## 20 de octubre de 2026 · El SICAT ya usa la HRV del reloj
 
 - **Antes**, el corrector de HRV del SICAT solo tenía en cuenta la HRV que tu

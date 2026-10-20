@@ -17,6 +17,7 @@ import type { ResultadoDuracion, TestsDeportista } from './duracion'
 import { vivas } from './papelera'
 import { hoyISO, sumarDias } from './fechas'
 import type { RegistroWellness } from './wellness-analisis'
+import { nochesDeMediciones, DIAS_RECIENTES, DIAS_BASE, type NocheDelReloj } from './noches-del-reloj'
 
 /**
  * Días de historia que se piden.
@@ -63,6 +64,8 @@ export function senalesDeDatos(
 export interface DatosAtleta {
   wellness: RegistroWellness[]
   sesiones: SesionSenal[]
+  /** Las noches de su reloj de ahora, de sus últimas cuatro semanas. */
+  noches?: NocheDelReloj[]
 }
 
 /**
@@ -93,7 +96,7 @@ export async function cargarDatosDeVarios(
      DENTRO de las sesiones y las referencias van a la vez. Es lo que pinta las
      señales y el informe de la entrada del panel, con TODO el equipo. */
   const selSes = 'id, id_deportista, fecha_sesion, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real'
-  const [wellQ, sesQ, refs] = await Promise.all([
+  const [wellQ, sesQ, refs, noches] = await Promise.all([
     supabase.from('wellness').select('*').in('id_deportista', limpios)
       .gte('fecha', desde).order('fecha', { ascending: false }),
     /* Todas, no solo las realizadas: las que se quedaron sin hacer son parte de
@@ -102,6 +105,8 @@ export async function cargarDatosDeVarios(
       .select(selSes + ', ' + TAREAS_PARA_DURACION)
       .in('id_deportista', limpios).gte('fecha_sesion', desde).lte('fecha_sesion', hoy)),
     cargarReferenciasDeVarios(supabase, limpios).catch(() => new Map<number, { tests?: TestsDeportista }>()),
+    /* Sin sus noches, las señales de siempre: el reloj suma, no bloquea. */
+    cargarNochesDeVarios(supabase, limpios, hoy).catch(() => new Map<number, NocheDelReloj[]>()),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,7 +132,70 @@ export async function cargarDatosDeVarios(
         rpe_reportado: s.rpe_reportado,
         minutos: minutosCarga(s, estimaciones[s.id]),
       })),
+      noches: noches.get(id) || [],
     })
+  }
+  return salida
+}
+
+// ------------------------------------------------------------
+// Las noches del reloj
+// ------------------------------------------------------------
+
+/** Lo que hace falta para compararlas: su última semana y sus tres semanas anteriores. */
+const DIAS_NOCHES = DIAS_RECIENTES + DIAS_BASE
+
+/**
+ * Todas las filas de una consulta, de mil en mil. Supabase no da más de 1000 de
+ * una vez, y sin avisar: con un equipo grande las noches pasan de ahí (dos filas
+ * por noche y por reloj). Si una página falla, se queda con lo que ya tiene.
+ */
+export async function todasLasFilas<T>(
+  pedir: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: unknown }>, tam = 1000,
+): Promise<T[]> {
+  const filas: T[] = []
+  for (let desde = 0; desde < tam * 100; desde += tam) {
+    const { data, error } = await pedir(desde, desde + tam - 1)
+    if (error || !data) break
+    filas.push(...data)
+    if (data.length < tam) break
+  }
+  return filas
+}
+
+export interface FilaNoche { id_deportista: number; tipo: string; fecha: string; proveedor: string | null; datos: unknown }
+
+/**
+ * Las noches de su reloj de ahora: el de la noche más reciente. Si cambió de
+ * marca, las del reloj de antes no se mezclan con las del nuevo, que se
+ * comparan solo consigo mismas (como en la pestaña «Sus noches»).
+ */
+export function nochesDelRelojActual(filas: FilaNoche[]): NocheDelReloj[] {
+  let proveedor: string | null = null
+  let ultima = ''
+  for (const f of filas) {
+    const fecha = String(f.fecha).slice(0, 10)
+    if (f.proveedor && fecha > ultima) { ultima = fecha; proveedor = f.proveedor }
+  }
+  return proveedor ? nochesDeMediciones(filas, proveedor) : []
+}
+
+/** Las noches de las últimas cuatro semanas de cada uno, con una sola consulta (por páginas). */
+export async function cargarNochesDeVarios(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any, ids: number[], hoy: string = hoyISO(),
+): Promise<Map<number, NocheDelReloj[]>> {
+  const salida = new Map<number, NocheDelReloj[]>()
+  if (!ids.length) return salida
+  const filas = await todasLasFilas<FilaNoche>((desde, hasta) => supabase.from('reloj_medicion')
+    .select('id_deportista, tipo, fecha, proveedor, datos')
+    .in('id_deportista', ids).in('tipo', ['sueno', 'recarga'])
+    .gte('fecha', sumarDias(hoy, -DIAS_NOCHES)).lte('fecha', hoy)
+    .order('fecha', { ascending: false }).order('id', { ascending: true })
+    .range(desde, hasta))
+  for (const id of ids) {
+    const suyas = filas.filter(f => f.id_deportista === id)
+    if (suyas.length) salida.set(id, nochesDelRelojActual(suyas))
   }
   return salida
 }
