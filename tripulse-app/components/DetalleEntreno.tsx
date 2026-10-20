@@ -22,6 +22,11 @@ import {
   cumplimiento, distanciaTexto, fcPorTramos, minutosTexto, ritmoDeTrozo, tiempoEnZonas, tiempoTexto,
   type TramoDetalle, type VueltaDetalle, type ZonaFc,
 } from '@/lib/detalle-entreno'
+import { mmss } from '@/lib/medicion'
+import { nivelDesacoplamiento, type ResultadoRodaje } from '@/lib/ritmo-igual-fc'
+
+/** Lo de ese día para el ritmo a igual FC, si el rodaje cuenta (lib/ritmo-igual-fc). */
+export type EficienciaDelRodaje = ResultadoRodaje & { fcRef: number }
 
 /** Lo que hace falta saber de sus zonas para enseñar el tiempo en cada una. */
 export interface ZonasDelDeportista {
@@ -41,7 +46,7 @@ export interface FilaDetalle {
 }
 type Fila = FilaDetalle
 
-export function DetalleEntreno({ idMedicion, disciplina, proveedor, tiene, zonas, zonaPrescrita, onIrAFicha }: {
+export function DetalleEntreno({ idMedicion, disciplina, proveedor, tiene, zonas, zonaPrescrita, eficiencia = null, onIrAFicha }: {
   idMedicion: number
   disciplina: string | null
   proveedor: string
@@ -51,6 +56,8 @@ export function DetalleEntreno({ idMedicion, disciplina, proveedor, tiene, zonas
   zonas: ZonasDelDeportista | null
   /** La zona de la sesión a la que está unido, si lo está. */
   zonaPrescrita: string | null
+  /** Si es un rodaje que cuenta para el ritmo a igual FC. */
+  eficiencia?: EficienciaDelRodaje | null
   onIrAFicha: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -89,7 +96,7 @@ export function DetalleEntreno({ idMedicion, disciplina, proveedor, tiene, zonas
         <div className="mt-3 flex flex-col gap-5">
           {cargando && <p className="text-[12.5px] text-gray-500">Cargando el detalle…</p>}
           {error && <p className="text-[12.5px] text-red-300">{error}</p>}
-          {fila && <DetalleEntrenoVista fila={fila} disciplina={disciplina} proveedor={proveedor} zonas={zonas} zonaPrescrita={zonaPrescrita} onIrAFicha={onIrAFicha} />}
+          {fila && <DetalleEntrenoVista fila={fila} disciplina={disciplina} proveedor={proveedor} zonas={zonas} zonaPrescrita={zonaPrescrita} eficiencia={eficiencia} onIrAFicha={onIrAFicha} />}
         </div>
       )}
     </div>
@@ -97,12 +104,13 @@ export function DetalleEntreno({ idMedicion, disciplina, proveedor, tiene, zonas
 }
 
 /** Lo de dentro, con el detalle ya leído. Aparte para poder pintarlo sin la base. */
-export function DetalleEntrenoVista({ fila, disciplina, proveedor, zonas, zonaPrescrita, onIrAFicha }: {
+export function DetalleEntrenoVista({ fila, disciplina, proveedor, zonas, zonaPrescrita, eficiencia = null, onIrAFicha }: {
   fila: FilaDetalle
   disciplina: string | null
   proveedor: string
   zonas: ZonasDelDeportista | null
   zonaPrescrita: string | null
+  eficiencia?: EficienciaDelRodaje | null
   onIrAFicha: () => void
 }) {
   const [pestana, setPestana] = useState<'reloj' | 'tramos' | null>(null)
@@ -112,8 +120,36 @@ export function DetalleEntrenoVista({ fila, disciplina, proveedor, zonas, zonaPr
     <>
       <Vueltas fila={fila} disciplina={disciplina} pestana={pestana} onPestana={setPestana} />
       <Zonas fila={fila} zonas={zonas} zonaPrescrita={zonaPrescrita} onIrAFicha={onIrAFicha} />
+      {eficiencia && <EsteRodaje e={eficiencia} />}
       <p className="text-[11.5px] text-gray-500">⌚ Del fichero de su {nombreReloj(proveedor)}. El recorrido no se guarda.</p>
     </>
+  )
+}
+
+/** Sus dos datos de ese día para el ritmo a igual FC (la pestaña Eficiencia tiene el resto). */
+function EsteRodaje({ e }: { e: EficienciaDelRodaje }) {
+  if (e.ritmoRef == null || e.ritmo == null || e.fc == null) return null
+  const d = e.desacoplamiento
+  const n = d ? nivelDesacoplamiento(d.pct) : null
+  const caja = 'flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-white/[0.035] border border-white/[0.06]'
+  const chip: Record<'bien' | 'medio' | 'mal', string> = { bien: 'bg-green-400/15 text-green-400', medio: 'bg-amber-400/15 text-amber-300', mal: 'bg-red-400/15 text-red-300' }
+  return (
+    <section className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
+      <div className={caja}>
+        <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">Este rodaje a {e.fcRef} ppm</p>
+        <p className="text-[15px] font-bold tabular-nums">{mmss(e.ritmoRef)} /km</p>
+        <p className="text-[11.5px] text-gray-500">corrió a {mmss(e.ritmo)} con {e.fc} ppm de media</p>
+      </div>
+      {d && n && (
+        <div className={caja}>
+          <p className="text-[9.5px] font-bold tracking-[.07em] uppercase text-gray-500">Desacoplamiento</p>
+          <p className="text-[15px] font-bold tabular-nums flex items-center gap-2">
+            {Math.round(d.pct)} %<span className={'text-[11px] font-semibold rounded-full px-2 py-0.5 ' + chip[n.nivel]}>{n.texto}</span>
+          </p>
+          <p className="text-[11.5px] text-gray-500">FC {d.fc1} la primera mitad, {d.fc2} la segunda</p>
+        </div>
+      )}
+    </section>
   )
 }
 

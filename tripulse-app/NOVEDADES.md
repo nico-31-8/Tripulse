@@ -14,6 +14,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · Ritmo a igual FC: su forma aeróbica, sin test
+
+- **En «Su reloj» → Eficiencia** (pestaña nueva) ves a qué ritmo corre con su
+  FC habitual de rodaje, ahora y hace unas semanas: «A 150 ppm, 6:11 /km ahora;
+  hace unas seis semanas, 6:27: 16 s más rápido por km (4 %)». Si con la misma
+  FC va más rápido, su forma aeróbica ha mejorado, sin hacerle ningún test.
+- Con su gráfica de 12 semanas y la lista de los rodajes que cuentan, y de por
+  qué no cuentan los demás: en cinta, con series, con cuestas, de menos de 20
+  minutos o con una FC muy distinta de la habitual.
+- **El desacoplamiento** de sus rodajes de 45 minutos o más: cuánto se le sube
+  la FC en la segunda mitad a ritmo constante. Menos del 5 %, bien; hasta el
+  10 %, normal en base o con calor; más, le falta base para esa duración o iba
+  cansado.
+- Solo en carrera. Hacen falta 4 rodajes que cuenten para ver una tendencia, y
+  solo dice que ha mejorado o empeorado si el cambio pasa del 3 %, que es lo
+  que varía de un día a otro sin que cambie nada.
+- En el detalle de cada rodaje que cuenta salen también sus dos datos de ese
+  día.
+- No necesita test ni FC máx: la FC de comparación es la suya habitual de
+  rodaje.
+
 ## 20 de octubre de 2026 · El detalle de cada entreno del reloj
 
 - **En «Su reloj» → Entrenos**, cada entreno se abre con «Detalle: vueltas y

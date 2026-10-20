@@ -37,6 +37,8 @@ import { EstadoDelEntreno } from '@/components/EstadoDelEntreno'
 import { DetalleEntreno, type ZonasDelDeportista } from '@/components/DetalleEntreno'
 import { zonasFcDe, DIAS_DETALLE } from '@/lib/detalle-entreno'
 import { cargarReferencias } from '@/lib/referencia-zona'
+import { EficienciaReloj } from '@/components/EficienciaReloj'
+import { analizarEficiencia, cargarRodajes, type AnalisisEficiencia } from '@/lib/ritmo-igual-fc'
 
 
 const RANGOS = [
@@ -74,7 +76,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
   const [disciplina, setDisciplina] = useState<string>('todas')
   const [abierta, setAbierta] = useState<number | null>(null)
   /* Noches o entrenos. Sin elegir, abre en Noches si su reloj las manda (decidido el 18-10-2026). */
-  const [pestana, setPestana] = useState<'noches' | 'entrenos' | null>(null)
+  const [pestana, setPestana] = useState<'noches' | 'entrenos' | 'eficiencia' | null>(null)
   /* Cada entreno con su sesión: las sesiones de esas semanas enteras y las decisiones. */
   const [sesionesUnion, setSesionesUnion] = useState<SesionDelReloj[]>([])
   const [uniones, setUniones] = useState<UnionReloj[]>([])
@@ -85,12 +87,15 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
   const [conDetalle, setConDetalle] = useState<Set<number>>(new Set())
   const [zonasDep, setZonasDep] = useState<ZonasDelDeportista | null>(null)
   const [zonaDeSesion, setZonaDeSesion] = useState<Map<number, string | null>>(new Map())
+  /* El ritmo a igual FC (lib/ritmo-igual-fc): su pestaña y lo de cada rodaje en su detalle. */
+  const [eficiencia, setEficiencia] = useState<AnalisisEficiencia | null>(null)
+  const [errorEficiencia, setErrorEficiencia] = useState<string | null>(null)
 
   useEffect(() => {
     let vivo = true
     const cargar = async () => {
       const desde = sumarDias(hoyISO(), -rango)
-      const [dep, con, med, ses, uni, det, refs] = await Promise.all([
+      const [dep, con, med, ses, uni, det, refs, rod] = await Promise.all([
         supabase.from('deportista').select('nombre').eq('id', id).maybeSingle(),
         supabase.from('reloj_conexion').select('proveedor, ultima_sincronizacion')
           .eq('id_deportista', id).order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
@@ -108,6 +113,8 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
         /* Solo cuáles lo tienen: el detalle en sí se pide al abrirlo. */
         supabase.from('reloj_detalle').select('id_medicion').eq('id_deportista', id),
         cargarReferencias(supabase, Number(id)),
+        /* Sus rodajes de 12 semanas, para el ritmo a igual FC (no dependen del rango de arriba). */
+        cargarRodajes(supabase, Number(id), hoyISO()),
       ])
       if (!vivo) return
       /* El select se arma con trozos, así que el cliente no sabe su forma: se dice aquí. */
@@ -131,6 +138,8 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
         nota: (refs.sistema === 2 ? 'Zonas 2' : 'Clásico') + ' · FC máx ' + refs.fcMax
           + (z.metodo === 'karvonen' ? ' y reposo ' + refs.fcReposo + ', con su reserva' : ', sin su reposo'),
       } : null)
+      setErrorEficiencia(rod.error)
+      setEficiencia(rod.error ? null : analizarEficiencia(rod.rodajes, { hoy: hoyISO(), fcReposo: refs.fcReposo }))
 
       const porDia: Record<string, SesionDelDia[]> = {}
       for (const s of filasSes) {
@@ -222,20 +231,22 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           )}
         </div>
 
-        {/* Noches y entrenos. Las noches solo salen si su reloj ya las traduce. */}
+        {/* Noches, entrenos y eficiencia (el ritmo a igual FC). Las noches solo salen si su reloj ya las traduce. */}
         {proveedor && datosListos(proveedor) && (
           <div className="flex gap-1 border-b border-gray-800 mb-4" role="tablist">
-            {(['noches', 'entrenos'] as const).map(p => (
+            {(['noches', 'entrenos', 'eficiencia'] as const).map(p => (
               <button key={p} role="tab" aria-selected={(pestana ?? 'noches') === p} onClick={() => setPestana(p)}
                 className={'px-3.5 py-2 text-[13.5px] font-semibold border-b-2 -mb-px transition ' + ((pestana ?? 'noches') === p
                   ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-white')}>
-                {p === 'noches' ? 'Noches' : 'Entrenos'}
+                {p === 'noches' ? 'Noches' : p === 'entrenos' ? 'Entrenos' : 'Eficiencia'}
               </button>
             ))}
           </div>
         )}
         {proveedor && datosListos(proveedor) && (pestana ?? 'noches') === 'noches' ? (
           <NochesDelReloj idDeportista={Number(id)} proveedor={proveedor} />
+        ) : proveedor && datosListos(proveedor) && pestana === 'eficiencia' ? (
+          <EficienciaReloj analisis={eficiencia} error={errorEficiencia} />
         ) : (<>
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -379,6 +390,8 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                             const tiene = conDetalle.has(a.id) ? 'si'
                               : a.disciplina && a.fecha >= sumarDias(hoyISO(), -(DIAS_DETALLE - 1)) && (a.proveedor === 'coros' || a.proveedor === 'polar') ? 'pendiente'
                               : 'no'
+                            /* Si es un rodaje que cuenta para el ritmo a igual FC, sus dos datos de ese día. */
+                            const ef = eficiencia?.rodajes.find(r => r.id === a.id && r.cuenta)
                             return (
                               <DetalleEntreno
                                 idMedicion={a.id}
@@ -387,6 +400,7 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                                 tiene={tiene}
                                 zonas={zonasDep}
                                 zonaPrescrita={e?.k === 'unida' && e.union.id_sesion != null ? zonaDeSesion.get(e.union.id_sesion) ?? null : null}
+                                eficiencia={ef && eficiencia?.fcRef != null ? { ...ef, fcRef: eficiencia.fcRef } : null}
                                 onIrAFicha={() => router.push('/deportistas/' + id)}
                               />
                             )
