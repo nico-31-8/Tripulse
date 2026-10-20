@@ -24,6 +24,10 @@ import {
   type EsquemaEntrada,
 } from './coros'
 import { hoyISO, sumarDias } from './fechas'
+import { leerFit } from './fit'
+import { detalleDeFit, VERSION_DETALLE, DETALLES_POR_VEZ, DIAS_DETALLE, type DetalleEntreno } from './detalle-entreno'
+
+export { DETALLES_POR_VEZ, DIAS_DETALLE }
 
 export type MarcaSincronizable = 'polar' | 'coros'
 
@@ -39,6 +43,10 @@ export interface TokenRenovado { accessToken: string; refreshToken: string | nul
 
 export interface FilaCruda { herramienta: string; datos: unknown }
 
+/** Un entreno que cuenta y todavía no tiene detalle (supabase/reloj-detalle.sql). */
+export interface EntrenoSinDetalle { id_externo: string; fecha: string; deporte_codigo: string | null; disciplina: string | null }
+export type DetalleParaGuardar = DetalleEntreno & { id_externo: string }
+
 /** Cómo se habla con la base: con la sesión del deportista o con la llave del servidor. */
 export interface AccesoReloj {
   /** Su token, o null si no tiene esa marca conectada (o la base no contesta). */
@@ -50,6 +58,10 @@ export interface AccesoReloj {
   guardarCrudo(marca: MarcaSincronizable, filas: FilaCruda[]): Promise<void>
   /** Si ya llegó alguna vez algo de ese tipo: decide si se piden cuatro semanas o una. */
   yaHay(marca: MarcaSincronizable, tipo: 'sueno' | 'entreno'): Promise<boolean>
+  /** Sus entrenos que cuentan y aún no tienen detalle, desde `desde`, el más reciente primero. */
+  entrenosSinDetalle(marca: MarcaSincronizable, desde: string): Promise<EntrenoSinDetalle[]>
+  /** Guarda el detalle de esos entrenos. Cuántos se guardaron. */
+  guardarDetalles(marca: MarcaSincronizable, detalles: DetalleParaGuardar[]): Promise<number>
 }
 
 export interface Recibido {
@@ -57,6 +69,8 @@ export interface Recibido {
   noches: number
   recargas: number
   entrenos: number
+  /** Cuántos entrenos han recibido su detalle en esta vuelta. */
+  detalles?: number
   /** Lo que no llegó, dicho para el deportista; null si llegó todo. */
   aviso: string | null
 }
@@ -99,6 +113,14 @@ export function accesoDelDeportista(sb: SupabaseClient, uid: string): AccesoRelo
         .eq('deportista.id_usuario', uid).eq('proveedor', marca).eq('tipo', tipo)
       return !!count
     },
+    async entrenosSinDetalle(marca, desde) {
+      const { data, error } = await sb.rpc('reloj_entrenos_sin_detalle', { p_proveedor: marca, p_desde: desde })
+      return error || !Array.isArray(data) ? [] : data as EntrenoSinDetalle[]
+    },
+    async guardarDetalles(marca, detalles) {
+      const { data, error } = await sb.rpc('reloj_guardar_detalle', { p_proveedor: marca, p_detalles: detalles })
+      return error || typeof data !== 'number' ? 0 : data
+    },
   }
 }
 
@@ -135,8 +157,89 @@ export function accesoDelServidor(sb: SupabaseClient, llave: string, p: Pendient
     async yaHay(_marca, tipo) {
       return tipo === 'sueno' ? p.hay_noches : p.hay_entrenos
     },
+    async entrenosSinDetalle(marca, desde) {
+      const { data, error } = await sb.rpc('reloj_servidor_entrenos_sin_detalle', { ...quien, p_proveedor: marca, p_desde: desde })
+      return error || !Array.isArray(data) ? [] : data as EntrenoSinDetalle[]
+    },
+    async guardarDetalles(marca, detalles) {
+      const { data, error } = await sb.rpc('reloj_servidor_guardar_detalle', { ...quien, p_proveedor: marca, p_detalles: detalles })
+      return error || typeof data !== 'number' ? 0 : data
+    },
   }
 }
+
+// ---------------------------------------------------------------------------
+// El detalle de cada entreno: su fichero FIT (lib/fit, lib/detalle-entreno)
+// ---------------------------------------------------------------------------
+// Maqueta aprobada el 2026-10-19. Solo de los entrenos que cuentan (la base no
+// da las caminatas), de las cuatro últimas semanas (DIAS_DETALLE) y como mucho
+// DETALLES_POR_VEZ en cada sincronización: COROS limita las descargas de
+// ficheros al día. Los demás llegan en la siguiente. Del fichero se guarda lo
+// que se saca de él, nunca el fichero: trae el recorrido.
+
+/** Lo que contesta la marca al pedir el fichero de un entreno. */
+export type FicheroPedido =
+  | { tipo: 'fichero'; bytes: Uint8Array }
+  /** No lo tiene, o no lo da: se apunta y no se vuelve a pedir. */
+  | { tipo: 'sin'; motivo: string }
+  /** El límite del día, o la marca no contesta: se para aquí y se sigue en la próxima. */
+  | { tipo: 'parar' }
+
+const sinDetalle = (motivo: string): DetalleEntreno => ({
+  vueltas: [], tramos: [], tramo_m: null, fc_segundos: {}, segundos_con_fc: 0, motivo, version: VERSION_DETALLE,
+})
+
+/** Pide el fichero de los que faltan, lo lee y guarda lo que sale. Cuántos se guardaron; nunca falla. */
+export async function traerDetalles(
+  acceso: AccesoReloj, marca: MarcaSincronizable, pedirFichero: (e: EntrenoSinDetalle) => Promise<FicheroPedido>,
+): Promise<number> {
+  let faltan: EntrenoSinDetalle[]
+  try {
+    faltan = await acceso.entrenosSinDetalle(marca, sumarDias(hoyISO(), -(DIAS_DETALLE - 1)))
+  } catch {
+    return 0
+  }
+  const listos: DetalleParaGuardar[] = []
+  for (const e of faltan.filter(x => x.id_externo && x.disciplina).slice(0, DETALLES_POR_VEZ)) {
+    let r: FicheroPedido
+    try {
+      r = await pedirFichero(e)
+    } catch {
+      break
+    }
+    if (r.tipo === 'parar') break
+    if (r.tipo === 'sin') {
+      listos.push({ ...sinDetalle(r.motivo), id_externo: e.id_externo })
+      continue
+    }
+    const fit = leerFit(r.bytes)
+    listos.push({ ...(fit ? detalleDeFit(fit, e.disciplina) : sinDetalle('No se ha podido leer el fichero del reloj.')), id_externo: e.id_externo })
+  }
+  if (!listos.length) return 0
+  try {
+    return await acceso.guardarDetalles(marca, listos)
+  } catch {
+    return 0
+  }
+}
+
+/** El fichero que viene dentro de una respuesta MCP (un `resource` con `blob` en base64), o null. */
+export function ficheroDeResultado(result: unknown): Uint8Array | null {
+  const partes = (result as { content?: unknown[] } | null)?.content
+  if (!Array.isArray(partes)) return null
+  for (const p of partes) {
+    const blob = (p as { resource?: { blob?: unknown } } | null)?.resource?.blob
+    if (typeof blob === 'string' && blob.length > 16) {
+      const bytes = new Uint8Array(Buffer.from(blob, 'base64'))
+      if (bytes.length > 12) return bytes
+    }
+  }
+  return null
+}
+
+/** Si un error de la marca es «por hoy ya está» (el límite, demasiadas peticiones) y no «este no existe». */
+export const pareceLimite = (texto: string, status: number): boolean =>
+  status === 429 || status >= 500 || /limit|quota|too many|rate|exceed|daily|tomorrow|try again/i.test(texto)
 
 // ---------------------------------------------------------------------------
 // Polar
@@ -194,6 +297,16 @@ export async function sincronizarPolar(acceso: AccesoReloj): Promise<ResultadoSi
   const { guardadas, error: eGuardar } = await acceso.guardar('polar', mediciones, null)
   if (eGuardar) return { ok: false, status: 500, error: 'No se ha podido guardar lo recibido: ' + eGuardar }
 
+  /* El detalle de los entrenos que aún no lo tienen: su fichero FIT. */
+  const detalles = await traerDetalles(acceso, 'polar', async e => {
+    const r = await fetch(POLAR.api + '/exercises/' + encodeURIComponent(e.id_externo) + '/fit', {
+      headers: { Authorization: 'Bearer ' + t.access_token, Accept: '*/*' }, cache: 'no-store', signal: AbortSignal.timeout(ESPERA_MS),
+    })
+    if (r.status === 429 || r.status >= 500) return { tipo: 'parar' }
+    if (!r.ok || r.status === 204) return { tipo: 'sin', motivo: 'Polar no da el fichero de este entreno.' }
+    return { tipo: 'fichero', bytes: new Uint8Array(await r.arrayBuffer()) }
+  })
+
   return {
     ok: true,
     cuerpo: {
@@ -201,6 +314,7 @@ export async function sincronizarPolar(acceso: AccesoReloj): Promise<ResultadoSi
       noches: contar(mediciones, 'sueno'),
       recargas: contar(mediciones, 'recarga'),
       entrenos: contar(mediciones, 'entreno'),
+      detalles,
       aviso: fallos.length ? motivoDeError(fallos[0].status) : null,
     },
   }
@@ -224,8 +338,10 @@ export async function sincronizarPolar(acceso: AccesoReloj): Promise<ResultadoSi
 //      medicionesDeCoros, con el formato que devolvió la primera cuenta real)
 //      y se guarda en `reloj_medicion`, igual que Polar. Los entrenos, cuatro
 //      semanas la primera vez que se leen.
-//   5. Se guarda en `reloj_crudo` lo último que contestó cada herramienta, tal
-//      cual, salvo el sitio y las coordenadas de los entrenos.
+//   5. Se trae el DETALLE de los entrenos que aún no lo tienen: su fichero FIT
+//      (downloadActivityFitFiles), que se lee y se tira (traerDetalles).
+//   6. Se guarda en `reloj_crudo` lo último que contestó cada herramienta, tal
+//      cual, salvo el sitio y las coordenadas de los entrenos. Del FIT, nada.
 //
 // Un fallo de una herramienta no tumba lo demás: se guarda lo que llegó y se
 // devuelve un aviso para la pantalla.
@@ -331,6 +447,8 @@ export async function sincronizarCoros(acceso: AccesoReloj): Promise<ResultadoSi
     else (textos[h.name] ||= []).push(resultado)
   }
 
+  /* Fuera del try: el paso 5 (el detalle) también las mira. */
+  const herramientas: Herramienta[] = []
   try {
     const ini = await llamar(inicializar(1))
     if (ini.status !== 200 || !ini.mensaje || 'error' in ini.mensaje) return anotar(motivoDeErrorCoros(ini.status || 500))
@@ -339,7 +457,6 @@ export async function sincronizarCoros(acceso: AccesoReloj): Promise<ResultadoSi
     await llamar({ jsonrpc: '2.0', method: 'notifications/initialized' }).catch(() => null)
 
     // La lista, con paginación por si acaso (con tope: no se va a quedar dando vueltas).
-    const herramientas: Herramienta[] = []
     let cursor: string | undefined
     for (let i = 0; i < 5; i++) {
       const lista = await llamar(peticionMcp(2 + i, 'tools/list', cursor ? { cursor } : {}))
@@ -385,7 +502,21 @@ export async function sincronizarCoros(acceso: AccesoReloj): Promise<ResultadoSi
   const { error: eGuardar } = await acceso.guardar('coros', mediciones, null)
   if (eGuardar) return { ok: false, status: 500, error: 'No se ha podido guardar lo recibido de COROS: ' + eGuardar }
 
-  // ---- 5. Lo que contestó, tal cual ----
+  // ---- 5. El detalle de los entrenos que aún no lo tienen: su FIT ----
+  const conFit = herramientas.find(x => x.name === 'downloadActivityFitFiles')
+  const detalles = conFit && iniciado ? await traerDetalles(acceso, 'coros', async e => {
+    const sportType = Number(e.deporte_codigo)
+    if (!Number.isInteger(sportType)) return { tipo: 'sin', motivo: 'No se sabe qué deporte es para COROS.' }
+    const r = await llamar(peticionMcp(id++, 'tools/call', { name: conFit.name, arguments: { labelId: e.id_externo, sportType } }))
+    const res = r.mensaje?.result
+    const bytes = ficheroDeResultado(res)
+    if (bytes) return { tipo: 'fichero', bytes }
+    const c = contenidoDeResultado(res)
+    const texto = (typeof c === 'string' ? c : JSON.stringify(c ?? '')) + ' ' + JSON.stringify(r.mensaje?.error ?? '')
+    return pareceLimite(texto, r.status) ? { tipo: 'parar' } : { tipo: 'sin', motivo: 'COROS no da el fichero de este entreno.' }
+  }) : 0
+
+  // ---- 6. Lo que contestó, tal cual (del FIT, nada) ----
   await acceso.guardarCrudo('coros', crudo)
 
   const falta = [...new Set(fallos.filter(f => QUE_ES_COROS[f]).map(f => QUE_ES_COROS[f]))]
@@ -395,6 +526,7 @@ export async function sincronizarCoros(acceso: AccesoReloj): Promise<ResultadoSi
       noches: contar(mediciones, 'sueno'),
       recargas: contar(mediciones, 'recarga'),
       entrenos: contar(mediciones, 'entreno'),
+      detalles,
       aviso: falta.length ? 'COROS no ha mandado ' + falta.join(' ni ') + '. Lo demás se ha guardado; prueba otra vez dentro de un rato.' : null,
     },
   }

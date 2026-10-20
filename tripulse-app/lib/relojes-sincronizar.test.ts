@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   accesoDelDeportista, accesoDelServidor, sincronizarCoros, sincronizarPolar, sincronizarTodos, HORAS_SIN_TRAER,
-  type AccesoReloj, type FilaCruda, type Pendiente, type TokenReloj, type TokenRenovado,
+  DETALLES_POR_VEZ, DIAS_DETALLE, ficheroDeResultado, pareceLimite,
+  type AccesoReloj, type DetalleParaGuardar, type EntrenoSinDetalle, type FilaCruda, type Pendiente, type TokenReloj, type TokenRenovado,
 } from './relojes-sincronizar'
 import { motivoDeError, type Medicion } from './polar'
 import { VERSION_MCP } from './coros'
 import { hoyISO, sumarDias } from './fechas'
+import { carreraDePrueba } from './fit-de-prueba'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -14,12 +16,17 @@ const enUnaHora = () => new Date(Date.now() + 3600_000).toISOString()
 const yaCaducado = () => new Date(Date.now() - 1000).toISOString()
 
 /** Un acceso de mentira: apunta lo que se le pide. */
-function accesoFalso(op: { token?: TokenReloj | null; tokenLuego?: TokenReloj | null; renovarOk?: boolean; yaNoches?: boolean; yaEntrenos?: boolean } = {}) {
+function accesoFalso(op: {
+  token?: TokenReloj | null; tokenLuego?: TokenReloj | null; renovarOk?: boolean; yaNoches?: boolean; yaEntrenos?: boolean
+  sinDetalle?: EntrenoSinDetalle[]
+} = {}) {
   const hecho = {
     tokens: 0,
     guardar: [] as { mediciones: Medicion[]; error: string | null }[],
     crudo: [] as FilaCruda[][],
     renovar: [] as TokenRenovado[],
+    pedidosSinDetalle: [] as string[],
+    detalles: [] as DetalleParaGuardar[][],
   }
   const acceso: AccesoReloj = {
     async token() {
@@ -30,9 +37,20 @@ function accesoFalso(op: { token?: TokenReloj | null; tokenLuego?: TokenReloj | 
     async guardar(_m, mediciones, error) { hecho.guardar.push({ mediciones, error }); return { guardadas: mediciones.length, error: null } },
     async guardarCrudo(_m, filas) { hecho.crudo.push(filas) },
     async yaHay(_m, tipo) { return tipo === 'sueno' ? !!op.yaNoches : !!op.yaEntrenos },
+    async entrenosSinDetalle(_m, desde) { hecho.pedidosSinDetalle.push(desde); return op.sinDetalle ?? [] },
+    async guardarDetalles(_m, detalles) { hecho.detalles.push(detalles); return detalles.length },
   }
   return { acceso, hecho }
 }
+
+/** Entrenos sin detalle: carreras que cuentan y, en medio, una caminata (sin disciplina). */
+const faltan = (n: number): EntrenoSinDetalle[] => [
+  { id_externo: 'caminata', fecha: hoyISO(), deporte_codigo: '900', disciplina: null },
+  ...Array.from({ length: n }, (_, i) => ({ id_externo: 'carrera-' + (i + 1), fecha: hoyISO(), deporte_codigo: '100', disciplina: 'Carrera' })),
+]
+
+/** El FIT de una carrera inventada de 2,5 km, en base64 como lo da el MCP. */
+const FIT_B64 = Buffer.from(carreraDePrueba({ km: 2.5, velocidad: 4, fc: s => 130 + Math.floor(s / 125) * 5, vuelta: 1000 })).toString('base64')
 
 const respuestaJson = (cuerpo: unknown, status = 200) =>
   new Response(JSON.stringify(cuerpo), { status, headers: { 'content-type': 'application/json' } })
@@ -47,8 +65,12 @@ const HERRAMIENTAS = ['querySleepOverview', 'querySleepHrv', 'queryRestingHeartR
 
 interface PeticionCoros { url: string; auth: string | null; metodo?: string; herramienta?: string; args?: Record<string, unknown>; cuerpo?: string }
 
-function corosFalso(op: { refresco?: { status: number; cuerpo?: unknown }; respuestas?: Record<string, string> } = {}) {
+/** Lo que da COROS al pedir el FIT de un entreno: el fichero, o un error con su texto. */
+type FitCoros = { blob?: string; error?: string }
+
+function corosFalso(op: { refresco?: { status: number; cuerpo?: unknown }; respuestas?: Record<string, string>; fit?: (labelId: string) => FitCoros } = {}) {
   const peticiones: PeticionCoros[] = []
+  const herramientas = op.fit ? [...HERRAMIENTAS, { name: 'downloadActivityFitFiles', inputSchema: { type: 'object', properties: {} } }] : HERRAMIENTAS
   vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     const auth = new Headers(init?.headers).get('authorization')
@@ -60,7 +82,16 @@ function corosFalso(op: { refresco?: { status: number; cuerpo?: unknown }; respu
     peticiones.push({ url: u, auth, metodo: m.method, herramienta: m.params?.name, args: m.params?.arguments })
     if (m.method === 'initialize') return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: VERSION_MCP, capabilities: {}, serverInfo: { name: 'coros' } } })
     if (m.method === 'notifications/initialized') return new Response(null, { status: 202 })
-    if (m.method === 'tools/list') return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { tools: HERRAMIENTAS } })
+    if (m.method === 'tools/list') return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { tools: herramientas } })
+    if (m.method === 'tools/call' && m.params?.name === 'downloadActivityFitFiles' && op.fit) {
+      const f = op.fit(String(m.params.arguments?.labelId))
+      if (f.error) return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { isError: true, content: [{ type: 'text', text: f.error }] } })
+      /* Como el de verdad: un texto con el sitio de la actividad y el fichero. */
+      return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { content: [
+        { type: 'text', text: 'FIT file for activity — Location: Calle Inventada 12' },
+        { type: 'resource', resource: { uri: 'coros://fit/' + m.params.arguments?.labelId, mimeType: 'application/octet-stream', blob: f.blob } },
+      ] } })
+    }
     if (m.method === 'tools/call') {
       const texto = op.respuestas?.[m.params?.name || ''] ?? 'Sin datos en ese rango.'
       return respuestaJson({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: texto }] } })
@@ -175,6 +206,83 @@ describe('sincronizarCoros', () => {
   })
 })
 
+describe('el detalle de cada entreno, con COROS', () => {
+  it('pide el FIT de los que cuentan, como mucho tres, y guarda lo que sale de él', async () => {
+    const { llamadas } = corosFalso({ fit: () => ({ blob: FIT_B64 }) })
+    const { acceso, hecho } = accesoFalso({ token: tokenCoros(), sinDetalle: faltan(5) })
+    const r = await sincronizarCoros(acceso)
+    expect(r.ok && r.cuerpo.detalles).toBe(DETALLES_POR_VEZ)
+    expect(hecho.pedidosSinDetalle).toEqual([sumarDias(hoyISO(), -(DIAS_DETALLE - 1))])
+    expect(llamadas('downloadActivityFitFiles').map(p => p.args)).toEqual([
+      { labelId: 'carrera-1', sportType: 100 }, { labelId: 'carrera-2', sportType: 100 }, { labelId: 'carrera-3', sportType: 100 },
+    ])
+    expect(hecho.detalles).toHaveLength(1)
+    const guardados = hecho.detalles[0]
+    expect(guardados.map(d => d.id_externo)).toEqual(['carrera-1', 'carrera-2', 'carrera-3'])
+    expect(guardados[0].vueltas.map(v => v.metros)).toEqual([1000, 1000, 500])
+    expect(guardados[0].tramo_m).toBe(1000)
+    expect(guardados[0].segundos_con_fc).toBe(626)
+    expect(guardados[0].motivo).toBeNull()
+  })
+
+  it('del fichero no se guarda nada en crudo, ni el sitio que viene en su texto', async () => {
+    corosFalso({ fit: () => ({ blob: FIT_B64 }) })
+    const { acceso, hecho } = accesoFalso({ token: tokenCoros(), sinDetalle: faltan(1) })
+    await sincronizarCoros(acceso)
+    const crudo = JSON.stringify(hecho.crudo)
+    expect(hecho.crudo[0].some(f => f.herramienta === 'downloadActivityFitFiles')).toBe(false)
+    expect(crudo).not.toContain(FIT_B64.slice(0, 40))
+    expect(JSON.stringify(hecho.detalles)).not.toMatch(/Calle Inventada|lat|lon|coord/i)
+  })
+
+  it('si COROS dice que por hoy ya está, para y no apunta nada: sigue en la próxima', async () => {
+    corosFalso({ fit: id => (id === 'carrera-2' ? { error: 'Daily FIT file download limit reached. Try again tomorrow.' } : { blob: FIT_B64 }) })
+    const { acceso, hecho } = accesoFalso({ token: tokenCoros(), sinDetalle: faltan(3) })
+    const r = await sincronizarCoros(acceso)
+    expect(hecho.detalles[0].map(d => d.id_externo)).toEqual(['carrera-1'])
+    expect(r.ok && r.cuerpo.detalles).toBe(1)
+    /* Que no llegue el detalle no es un error de la conexión. */
+    expect(hecho.guardar.every(g => g.error === null)).toBe(true)
+  })
+
+  it('si no lo tiene, o el fichero no se puede leer, lo apunta con su motivo para no volver a pedirlo', async () => {
+    corosFalso({ fit: id => (id === 'carrera-1' ? { error: 'Activity not found.' } : { blob: Buffer.from('esto no es un FIT, es un texto cualquiera').toString('base64') }) })
+    const { acceso, hecho } = accesoFalso({ token: tokenCoros(), sinDetalle: faltan(2) })
+    await sincronizarCoros(acceso)
+    expect(hecho.detalles[0].map(d => [d.id_externo, d.motivo])).toEqual([
+      ['carrera-1', 'COROS no da el fichero de este entreno.'],
+      ['carrera-2', 'No se ha podido leer el fichero del reloj.'],
+    ])
+    expect(hecho.detalles[0].every(d => d.vueltas.length === 0 && d.segundos_con_fc === 0)).toBe(true)
+  })
+
+  it('si su COROS no ofrece el fichero, ni siquiera pregunta qué falta', async () => {
+    const { llamadas } = corosFalso()
+    const { acceso, hecho } = accesoFalso({ token: tokenCoros(), sinDetalle: faltan(2) })
+    const r = await sincronizarCoros(acceso)
+    expect(r.ok && r.cuerpo.detalles).toBe(0)
+    expect(hecho.pedidosSinDetalle).toHaveLength(0)
+    expect(llamadas('downloadActivityFitFiles')).toHaveLength(0)
+  })
+})
+
+describe('las piezas del detalle', () => {
+  it('saca el fichero de la respuesta MCP; sin él, null', () => {
+    const b = ficheroDeResultado({ content: [{ type: 'text', text: 'hola' }, { type: 'resource', resource: { blob: FIT_B64 } }] })
+    expect(b?.length).toBe(Buffer.from(FIT_B64, 'base64').length)
+    expect(ficheroDeResultado({ content: [{ type: 'text', text: 'hola' }] })).toBeNull()
+    expect(ficheroDeResultado(null)).toBeNull()
+  })
+
+  it('distingue «por hoy ya está» de «este no existe»', () => {
+    expect(pareceLimite('Daily FIT file download limit reached', 200)).toBe(true)
+    expect(pareceLimite('Too many requests', 200)).toBe(true)
+    expect(pareceLimite('', 429)).toBe(true)
+    expect(pareceLimite('', 503)).toBe(true)
+    expect(pareceLimite('Activity not found.', 200)).toBe(false)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Polar
 // ---------------------------------------------------------------------------
@@ -219,7 +327,7 @@ describe('sincronizarPolar', () => {
   it('«no hay nada» (204) no es un error; uno que falla solo, se avisa sin apuntarlo', async () => {
     polarFalso({ sleep: 204, recharge: 204, exercises: 204 })
     const a = accesoFalso({ token: tokenPolar() })
-    expect(await sincronizarPolar(a.acceso)).toEqual({ ok: true, cuerpo: { guardadas: 0, noches: 0, recargas: 0, entrenos: 0, aviso: null } })
+    expect(await sincronizarPolar(a.acceso)).toEqual({ ok: true, cuerpo: { guardadas: 0, noches: 0, recargas: 0, entrenos: 0, detalles: 0, aviso: null } })
     expect(a.hecho.guardar).toEqual([{ mediciones: [], error: null }])
 
     polarFalso({ sleep: 500, recharge: 204, exercises: 204 })
@@ -227,6 +335,51 @@ describe('sincronizarPolar', () => {
     const r = await sincronizarPolar(b.acceso)
     expect(r.ok && r.cuerpo.aviso).toBe(motivoDeError(500))
     expect(b.hecho.guardar.every(g => g.error === null)).toBe(true)
+  })
+})
+
+/** Un Polar que da el FIT de cada entreno (o un código de error), y nada más. */
+function polarConFit(fits: Record<string, number | Uint8Array>) {
+  const pedidas: { url: string; accept: string | null; auth: string | null }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const u = String(url)
+    const h = new Headers(init?.headers)
+    pedidas.push({ url: u, accept: h.get('accept'), auth: h.get('authorization') })
+    const m = /\/exercises\/([^/]+)\/fit$/.exec(u)
+    if (m) {
+      const f = fits[decodeURIComponent(m[1])]
+      return f instanceof Uint8Array
+        ? new Response(f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength) as ArrayBuffer, { status: 200 })
+        : new Response(null, { status: f ?? 404 })
+    }
+    return new Response(null, { status: 204 })
+  }))
+  return pedidas
+}
+
+describe('el detalle de cada entreno, con Polar', () => {
+  const fit = carreraDePrueba({ km: 2.5, velocidad: 4, fc: () => 140, vuelta: 1000 })
+
+  it('pide el FIT de cada uno con su token; el que no tiene se apunta para no volver a pedirlo', async () => {
+    const pedidas = polarConFit({ 'carrera-1': fit, 'carrera-2': 404 })
+    const { acceso, hecho } = accesoFalso({ token: tokenPolar(), sinDetalle: faltan(2) })
+    const r = await sincronizarPolar(acceso)
+    expect(r.ok && r.cuerpo.detalles).toBe(2)
+    const aFit = pedidas.filter(p => p.url.endsWith('/fit'))
+    expect(aFit.map(p => p.url.split('/v3')[1])).toEqual(['/exercises/carrera-1/fit', '/exercises/carrera-2/fit'])
+    expect(aFit.every(p => p.accept === '*/*' && p.auth === 'Bearer pol-1')).toBe(true)
+    expect(hecho.detalles[0].map(d => [d.id_externo, d.vueltas.length, d.motivo])).toEqual([
+      ['carrera-1', 3, null],
+      ['carrera-2', 0, 'Polar no da el fichero de este entreno.'],
+    ])
+  })
+
+  it('si Polar pide que espere (429), para sin apuntar nada', async () => {
+    polarConFit({ 'carrera-1': 429, 'carrera-2': fit })
+    const { acceso, hecho } = accesoFalso({ token: tokenPolar(), sinDetalle: faltan(2) })
+    const r = await sincronizarPolar(acceso)
+    expect(r.ok && r.cuerpo.detalles).toBe(0)
+    expect(hecho.detalles).toHaveLength(0)
   })
 })
 
@@ -273,6 +426,24 @@ describe('accesoDelDeportista', () => {
     const { sb } = sbQueApunta({ reloj_token_propio: { data: null, error: { message: 'x' } } })
     expect(await accesoDelDeportista(sb, 'uid-1').token('polar')).toBeNull()
   })
+
+  it('el detalle, con las suyas: qué falta y guardarlo', async () => {
+    const lista = faltan(1)
+    const { sb, rpcs } = sbQueApunta({ reloj_entrenos_sin_detalle: { data: lista, error: null }, reloj_guardar_detalle: { data: 1, error: null } })
+    const a = accesoDelDeportista(sb, 'uid-1')
+    expect(await a.entrenosSinDetalle('coros', '2026-09-22')).toEqual(lista)
+    expect(await a.guardarDetalles('coros', [])).toBe(1)
+    expect(rpcs).toEqual([
+      { fn: 'reloj_entrenos_sin_detalle', args: { p_proveedor: 'coros', p_desde: '2026-09-22' } },
+      { fn: 'reloj_guardar_detalle', args: { p_proveedor: 'coros', p_detalles: [] } },
+    ])
+  })
+
+  it('si la base falla, ni falta nada ni se ha guardado nada', async () => {
+    const { sb } = sbQueApunta({ reloj_entrenos_sin_detalle: { data: null, error: { message: 'x' } }, reloj_guardar_detalle: { data: null, error: { message: 'x' } } })
+    const a = accesoDelDeportista(sb, 'uid-1')
+    expect([await a.entrenosSinDetalle('coros', '2026-09-22'), await a.guardarDetalles('coros', [])]).toEqual([[], 0])
+  })
 })
 
 describe('accesoDelServidor', () => {
@@ -289,6 +460,18 @@ describe('accesoDelServidor', () => {
     expect(rpcs[2].args.p_error).toBe('un fallo')
     /* «Ya hay» sale de la lista de pendientes: sin sesión no se puede leer reloj_medicion. */
     expect([await a.yaHay('coros', 'sueno'), await a.yaHay('coros', 'entreno')]).toEqual([true, false])
+    expect(sb.from).not.toHaveBeenCalled()
+  })
+
+  it('el detalle, con las del servidor: también con la llave y el deportista', async () => {
+    const { sb, rpcs } = sbQueApunta({ reloj_servidor_entrenos_sin_detalle: { data: faltan(1), error: null }, reloj_servidor_guardar_detalle: { data: 1, error: null } })
+    const a = accesoDelServidor(sb, 'la-llave', { id_deportista: 20, proveedor: 'coros', hay_noches: true, hay_entrenos: true })
+    expect(await a.entrenosSinDetalle('coros', '2026-09-22')).toHaveLength(2)
+    expect(await a.guardarDetalles('coros', [])).toBe(1)
+    expect(rpcs).toEqual([
+      { fn: 'reloj_servidor_entrenos_sin_detalle', args: { p_llave: 'la-llave', p_deportista: 20, p_proveedor: 'coros', p_desde: '2026-09-22' } },
+      { fn: 'reloj_servidor_guardar_detalle', args: { p_llave: 'la-llave', p_deportista: 20, p_proveedor: 'coros', p_detalles: [] } },
+    ])
     expect(sb.from).not.toHaveBeenCalled()
   })
 })

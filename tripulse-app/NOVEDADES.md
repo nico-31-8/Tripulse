@@ -14,6 +14,27 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · El detalle de cada entreno del reloj
+
+- **En «Su reloj» → Entrenos**, cada entreno se abre con «Detalle: vueltas y
+  zonas». Dentro:
+  - **sus vueltas**: las que grabó el reloj (un paso del entreno, una vuelta
+    marcada a mano) o una por kilómetro (cada 5 km en bici), con tiempo, ritmo,
+    FC media y máxima, y pasos por minuto (en bici, la potencia);
+  - **el tiempo en cada una de sus zonas de FC**, con las de su ficha (Zonas 2
+    o el clásico), su FC máx y su reposo. Si el entreno está unido a una
+    sesión, se marca la zona prescrita: «Prescrito: AEL. 57 % del tiempo en
+    AEL · 32 % por encima · 11 % por debajo».
+- **Sin FC máx en su ficha** no hay zonas que calcular: sale su FC por tramos de
+  10 pulsaciones y un aviso de lo que falta.
+- Sale del fichero que guarda el reloj (COROS y Polar) y llega solo con cada
+  sincronización: de los entrenos que cuentan (las caminatas no), de las
+  últimas cuatro semanas y tres cada vez, porque COROS limita las descargas al
+  día. Los de antes van llegando en las siguientes. **El recorrido no se
+  guarda.**
+- Las zonas se calculan al abrirlo: si cambian su FC máx o su sistema de zonas,
+  todos sus entrenos se ven con las nuevas.
+
 ## 19 de octubre de 2026 · Lo del reloj llega solo, dos veces al día
 
 - **Antes**, lo del reloj de tu deportista (sus noches, su HRV, su FC en reposo

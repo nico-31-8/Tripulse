@@ -42,6 +42,19 @@ export function mmss(seg: number): string {
 }
 
 /**
+ * Segundos → «54:00» y, desde la hora, «1:02:15». Lo que dura una vuelta o un
+ * entreno entero (el detalle del reloj, lib/detalle-entreno). Por debajo de
+ * una hora es exactamente mmss; redondea antes de partir, como ella, así que
+ * tampoco sale nunca un «:60».
+ */
+export function hmmss(seg: number): string {
+  const total = Math.max(0, Math.round(seg || 0))
+  if (total < 3600) return mmss(total)
+  const resto = total % 3600
+  return Math.floor(total / 3600) + ':' + String(Math.floor(resto / 60)).padStart(2, '0') + ':' + String(resto % 60).padStart(2, '0')
+}
+
+/**
  * Minutos → «45′», «2h», «2h05». El volumen de una sesión o de una semana.
  *
  * Estaba escrito SEIS veces y con tres comportamientos: cuatro copias de este

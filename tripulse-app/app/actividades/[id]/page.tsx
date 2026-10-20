@@ -34,6 +34,9 @@ import {
 import { estadoDeActividad, opcionesDeLaSemana, type EstadoActividad, type UnionReloj } from '@/lib/reloj-sesion'
 import { sesionDelReloj, SELECT_SESION_RELOJ, type SesionDelReloj } from '@/lib/reloj-union'
 import { EstadoDelEntreno } from '@/components/EstadoDelEntreno'
+import { DetalleEntreno, type ZonasDelDeportista } from '@/components/DetalleEntreno'
+import { zonasFcDe, DIAS_DETALLE } from '@/lib/detalle-entreno'
+import { cargarReferencias } from '@/lib/referencia-zona'
 
 
 const RANGOS = [
@@ -77,12 +80,17 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
   const [uniones, setUniones] = useState<UnionReloj[]>([])
   const [errorUnion, setErrorUnion] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  /* El detalle de cada entreno (components/DetalleEntreno): cuáles lo tienen ya,
+     sus zonas de FC y la zona de cada sesión, para marcar la prescrita. */
+  const [conDetalle, setConDetalle] = useState<Set<number>>(new Set())
+  const [zonasDep, setZonasDep] = useState<ZonasDelDeportista | null>(null)
+  const [zonaDeSesion, setZonaDeSesion] = useState<Map<number, string | null>>(new Map())
 
   useEffect(() => {
     let vivo = true
     const cargar = async () => {
       const desde = sumarDias(hoyISO(), -rango)
-      const [dep, con, med, ses, uni] = await Promise.all([
+      const [dep, con, med, ses, uni, det, refs] = await Promise.all([
         supabase.from('deportista').select('nombre').eq('id', id).maybeSingle(),
         supabase.from('reloj_conexion').select('proveedor, ultima_sincronizacion')
           .eq('id_deportista', id).order('conectado_en', { ascending: false }).limit(1).maybeSingle(),
@@ -97,6 +105,9 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
           .eq('id_deportista', id).gte('fecha_sesion', lunesDe(desde))),
         supabase.from('reloj_union').select('id, id_medicion, id_sesion, parte, decision, antes, decidido_por, decidido_en')
           .eq('id_deportista', id),
+        /* Solo cuáles lo tienen: el detalle en sí se pide al abrirlo. */
+        supabase.from('reloj_detalle').select('id_medicion').eq('id_deportista', id),
+        cargarReferencias(supabase, Number(id)),
       ])
       if (!vivo) return
       /* El select se arma con trozos, así que el cliente no sabe su forma: se dice aquí. */
@@ -111,6 +122,15 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
       const filas = med.data || []
       setActividades(actividadesDeMediciones(filas))
       setCrudo(Object.fromEntries(filas.map(f => [f.id, f.datos])))
+
+      setConDetalle(new Set((det.data || []).map(d => d.id_medicion as number)))
+      setZonaDeSesion(new Map(filasSes.map(s => [s.id, s.zona_resistencia])))
+      const z = zonasFcDe(refs.sistema, { fcMax: refs.fcMax, fcReposo: refs.fcReposo })
+      setZonasDep(z ? {
+        zonas: z.zonas,
+        nota: (refs.sistema === 2 ? 'Zonas 2' : 'Clásico') + ' · FC máx ' + refs.fcMax
+          + (z.metodo === 'karvonen' ? ' y reposo ' + refs.fcReposo + ', con su reserva' : ', sin su reposo'),
+      } : null)
 
       const porDia: Record<string, SesionDelDia[]> = {}
       for (const s of filasSes) {
@@ -352,6 +372,25 @@ export default function ActividadesDelReloj({ params }: { params: Promise<{ id: 
                               onVerSesion={sid => router.push('/sesion/' + sid)}
                             />
                           )}
+
+                          {(() => {
+                            /* Con detalle; o de los que cuentan y recientes, que llegará; si no, nada. */
+                            const e = estados.get(a.id)
+                            const tiene = conDetalle.has(a.id) ? 'si'
+                              : a.disciplina && a.fecha >= sumarDias(hoyISO(), -(DIAS_DETALLE - 1)) && (a.proveedor === 'coros' || a.proveedor === 'polar') ? 'pendiente'
+                              : 'no'
+                            return (
+                              <DetalleEntreno
+                                idMedicion={a.id}
+                                disciplina={a.disciplina}
+                                proveedor={a.proveedor}
+                                tiene={tiene}
+                                zonas={zonasDep}
+                                zonaPrescrita={e?.k === 'unida' && e.union.id_sesion != null ? zonaDeSesion.get(e.union.id_sesion) ?? null : null}
+                                onIrAFicha={() => router.push('/deportistas/' + id)}
+                              />
+                            )
+                          })()}
 
                           <button onClick={() => setAbierta(abierta === a.id ? null : a.id)}
                             className="mt-3 text-[11.5px] text-gray-500 hover:text-gray-300 transition">
