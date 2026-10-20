@@ -3,13 +3,15 @@
 // Descubre, con datos reales del atleta, cuánto le cuesta cada tipo de entreno
 // (zona pico de la sesión) en cada disciplina de resistencia. El coste de cada
 // sesión es un compuesto de: DOMS 48h + caída de HRV al día siguiente + RPE
-// reportado (mismas señales que el SICAT, pero agrupadas por zona).
+// reportado (mismas señales que el SICAT, pero agrupadas por zona). La HRV es la
+// de la mañana y, si falta, la de la noche del reloj frente a su base (lib/sicat-hrv).
 // 1.0× = el coste medio del propio atleta.
 // ============================================================
 import { supabase } from './supabase'
 import { sumarDias } from './fechas'
 import { tareaPico } from './prescripcion-zona'
 import { DISCIPLINAS_SICAT, type DisciplinaSicat } from './sicat'
+import { ratiosDelRelojEntre } from './sicat-hrv'
 
 export type Confianza = 'alta' | 'media' | 'baja'
 
@@ -31,7 +33,9 @@ export interface SicatZonasResultado {
 const W = { doms: 0.40, hrv: 0.35, rpe: 0.25 }
 
 // Coste 0–100 de una sesión con las señales disponibles (pesos redistribuidos si falta alguna).
-export function costeSesion(d0: number | null, d24: number | null, d48: number | null, hrvNext: number | null, hrvBasal: number, rpe: number | null): number | null {
+// `ratioRelojNext`: la HRV de la noche siguiente en tanto por uno de la base de su reloj
+// (lib/sicat-hrv). Solo cuenta si no hay HRV de la mañana con su basal: es el respaldo.
+export function costeSesion(d0: number | null, d24: number | null, d48: number | null, hrvNext: number | null, hrvBasal: number, rpe: number | null, ratioRelojNext: number | null = null): number | null {
   const señales: { v: number; w: number }[] = []
 
   // DOMS (1–7) ponderado en el tiempo → normalizado 0–1
@@ -44,11 +48,11 @@ export function costeSesion(d0: number | null, d24: number | null, d48: number |
     const val = doms.reduce((s, p) => s + p.v * p.w, 0) / ws
     señales.push({ v: Math.min(1, Math.max(0, (val - 1) / 6)), w: W.doms })
   }
-  // Caída de HRV vs basal (0–15% → 0–1)
-  if (hrvNext != null && hrvBasal > 0) {
-    const drop = Math.max(0, (hrvBasal - hrvNext) / hrvBasal)
-    señales.push({ v: Math.min(1, drop / 0.15), w: W.hrv })
-  }
+  // Caída de HRV vs basal (0–15% → 0–1); si no la hay, la del reloj frente a su base.
+  const drop = hrvNext != null && hrvBasal > 0 ? Math.max(0, (hrvBasal - hrvNext) / hrvBasal)
+    : ratioRelojNext != null && ratioRelojNext > 0 ? Math.max(0, 1 - ratioRelojNext)
+    : null
+  if (drop != null) señales.push({ v: Math.min(1, drop / 0.15), w: W.hrv })
   // RPE reportado (1–10 → 0–1)
   if (rpe != null) señales.push({ v: Math.min(1, rpe / 10), w: W.rpe })
 
@@ -85,11 +89,12 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
   const desde = fechas[0]
   const hasta = sumarDias(fechas[fechas.length - 1], 2)
 
-  const [tareasQ, wellQ] = await Promise.all([
+  const [tareasQ, wellQ, ratiosReloj] = await Promise.all([
     supabase.from('tarea')
       .select('id_sesion, zona_entrenamiento, zona_copia, disciplina, rpe_reportado, orden').in('id_sesion', sesIds).order('orden'),
     supabase.from('wellness').select('fecha, dolor_muscular, hrv')
       .eq('id_deportista', dep.id).gte('fecha', desde).lte('fecha', hasta),
+    ratiosDelRelojEntre(supabase, dep.id, desde, hasta),
   ])
   const tareas = tareasQ.data
   const well = wellQ.data
@@ -121,6 +126,7 @@ export async function calcularSicatZonas(dep: any): Promise<SicatZonasResultado>
       wByF[addDays(f, 1)]?.hrv ?? null,
       hrvBasal,
       rpe,
+      ratiosReloj[addDays(f, 1)] ?? null,
     )
 
     // Un brick reparte su coste entre sus bloques: cada uno con su deporte, su zona y

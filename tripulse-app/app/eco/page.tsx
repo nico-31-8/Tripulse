@@ -12,6 +12,7 @@ import {
   type Granularidad, type PuntoTramo,
 } from '@/lib/sicat-equilibrio'
 import { calcularSicatZonas, type SicatZonasResultado, type CeldaZona } from '@/lib/sicat-zonas'
+import { fuenteHrvTexto } from '@/lib/sicat-hrv'
 import { cargaZona } from '@/lib/zonas'
 import { getAtletaActivo, setAtletaActivo } from '@/lib/atletaActivo'
 import { useDeclararModulo } from '@/lib/contexto-modulo'
@@ -231,13 +232,15 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
           <section>
             <h3 className="text-orange-400 font-bold text-base mb-3">Corrector HRV</h3>
             <p className="text-gray-300 text-sm mb-3">
-              La HRV es el indicador más objetivo de recuperación. Se toma del registro diario de wellness del atleta
-              (el mismo día de la sesión). Si entrena con HRV baja respecto a su basal,
-              el sistema aumenta el peso de esa sesión automáticamente porque el cuerpo estaba en peores condiciones.
+              La HRV es el indicador más objetivo de recuperación. Se usa la del día de la sesión: la que se mide al
+              despertar (wellness), frente a su HRV basal. Si ese día no se midió y hay un reloj conectado, la de esa
+              noche, frente a la base de ese mismo reloj; nunca frente a la basal de la mañana, porque no son la misma
+              medida. Si entrena con la HRV baja respecto a su base, el sistema aumenta el peso de esa sesión
+              automáticamente porque el cuerpo estaba en peores condiciones.
             </p>
             <div className="bg-gray-800 rounded-xl p-4 font-mono text-xs text-green-400 space-y-1">
-              <p>HRV_ratio = HRV_del_día (wellness) / HRV_basal_atleta</p>
-              <p>factor_corrector = 1 + (1 − HRV_ratio) × 0,3</p>
+              <p>HRV_ratio = HRV_del_día / su_base  (mañana: HRV basal · reloj: base del reloj)</p>
+              <p>factor_corrector = 1 + (1 − media de los HRV_ratio) × 0,3  (entre ×0,85 y ×1,30)</p>
               <p>score_corregido = (F1+F2+F3+F4) × factor_corrector</p>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-center">
@@ -326,8 +329,8 @@ function ModalExplicacion({ onClose }: { onClose: () => void }) {
               {[
                 { quien: 'Atleta (post-sesión)', datos: ['RPE reportado (1–10)', 'Sensación técnica (1–5)', 'Dolor muscular (1–5)'] },
                 { quien: 'Entrenador', datos: ['RPE estimado (1–10, al planificar)'] },
-                { quien: 'Wellness diario del atleta', datos: ['HRV del día', 'Dolor muscular a 24h/48h'] },
-                { quien: 'Perfil del deportista', datos: ['FC máxima', 'HRV basal (media 7–14 días)', 'Valoración técnica por disciplina (1–5, la da el entrenador)'] },
+                { quien: 'Wellness diario y reloj', datos: ['HRV al despertar, o la de la noche si lleva reloj', 'Dolor muscular a 24h/48h'] },
+                { quien: 'Perfil del deportista', datos: ['FC máxima', 'HRV basal de la mañana (media 7–14 días)', 'Valoración técnica por disciplina (1–5, la da el entrenador)'] },
               ].map(bloque => (
                 <div key={bloque.quien} className="bg-gray-800 rounded-xl p-3">
                   <p className="text-gray-400 font-semibold mb-2">{bloque.quien}</p>
@@ -692,6 +695,7 @@ export default function EcoPage() {
                         <p className="text-gray-600 text-[10.5px] mt-6">
                           Total {s.total}/16 · corrector HRV ×{s.corrector?.toFixed(2)}
                         </p>
+                        <p className="text-gray-600 text-[10.5px] mt-0.5">{fuenteHrvTexto(s.hrvManana ?? 0, s.hrvReloj ?? 0)}</p>
                       </>
                     ) : (
                       <div className="rounded-xl border border-dashed border-white/[0.09] p-5 text-center">

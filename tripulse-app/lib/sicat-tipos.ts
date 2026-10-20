@@ -18,6 +18,9 @@ export interface FactorSicatDisc {
   total: number | null
   corrector: number
   porcentaje: number | null
+  /** Sesiones cuyo corrector salió de la HRV de la mañana y de la del reloj (lib/sicat-hrv). */
+  hrvManana?: number
+  hrvReloj?: number
 }
 
 export type SicatResultado = Record<DisciplinaSicat, FactorSicatDisc>

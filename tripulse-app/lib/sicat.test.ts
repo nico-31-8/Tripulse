@@ -4,8 +4,8 @@ import { describe, it, expect, vi } from 'vitest'
 // Estos tests solo tocan las funciones puras, así que basta con un doble vacío.
 vi.mock('./supabase', () => ({ supabase: {} }))
 
-import { calcularF1, calcularF2, calcularF3, calcularF4, calcularCorrectorHRV, factorSicat } from './sicat'
-import type { SicatResultado, FactorSicatDisc } from './sicat'
+import { calcularF1, calcularF2, calcularF3, calcularF4, calcularCorrectorHRV, correctorHrvConFuentes, factorSicat } from './sicat'
+import type { SicatResultado, FactorSicatDisc, FilaHrv } from './sicat'
 
 // Los cuatro factores del SICAT viven en una escala 1-4 donde MÁS ES MÁS COSTOSO.
 // Esa dirección es lo primero que hay que blindar: si algún día se invierte, la app
@@ -217,5 +217,76 @@ describe('corrector HRV — acotado', () => {
       expect(c).toBeGreaterThanOrEqual(0.85)
       expect(c).toBeLessThanOrEqual(1.3)
     }
+  })
+})
+
+// ------------------------------------------------------------
+// La HRV del reloj, solo como respaldo (decidido el 20-10-2026)
+// ------------------------------------------------------------
+// Manda la de la mañana frente a su basal. Si no la hay, o no hay basal, la de la
+// noche del reloj, que llega ya en tanto por uno de la base de su reloj
+// (lib/sicat-hrv). Lo que se promedia son esos tantos por uno.
+describe('corrector HRV — la del reloj como respaldo', () => {
+  // La cuenta de antes de que entrara el reloj (con un `|| 0` solo para los tipos).
+  function correctorDeAntes(filas: FilaHrv[], hrvBasal: number): number {
+    const validas = filas.filter(f => (f.hrv_dia || f.hrv_del_dia) && hrvBasal > 0)
+    if (!validas.length) return 1
+    const hrvMedia = validas.reduce((acc, f) => acc + (f.hrv_dia || f.hrv_del_dia || 0), 0) / validas.length
+    const ratio = hrvMedia / hrvBasal
+    return Math.min(1.3, Math.max(0.85, 1 + (1 - ratio) * 0.3))
+  }
+
+  it('sin reloj, EXACTAMENTE la cuenta de antes', () => {
+    const casos: [FilaHrv[], number][] = [
+      [[{ hrv_dia: 48 }], 60],
+      [[{ hrv_dia: 66 }, { hrv_del_dia: 51 }, { hrv_dia: null }], 62],
+      [[{ hrv_dia: 33.3 }, { hrv_dia: 47.7 }, { hrv_del_dia: 61.1 }], 52.9],
+      [[{ hrv_dia: 40 }], 0],
+      [[], 60],
+    ]
+    /* Y un barrido de valores, para no fiarse de cinco casos. */
+    for (let i = 1; i <= 300; i++) {
+      const filas = Array.from({ length: 1 + (i % 7) }, (_, j) =>
+        (i + j) % 3 ? { hrv_dia: 20 + ((i * 37 + j * 11) % 90) + ((i * j) % 10) / 10 } : { hrv_del_dia: 25 + ((i * 13 + j) % 70) })
+      casos.push([filas, 30 + (i % 50) + (i % 7) / 10])
+    }
+    for (const [filas, basal] of casos) expect(calcularCorrectorHRV(filas, basal)).toBe(correctorDeAntes(filas, basal))
+  })
+
+  it('sin HRV de la mañana, cuenta la del reloj', () => {
+    /* 44 ms con una base de reloj de 50 → 0,88 → 1 + 0,12 × 0,3 */
+    expect(calcularCorrectorHRV([{ ratio_hrv_reloj: 0.88 }], 60)).toBeCloseTo(1.036, 10)
+  })
+
+  it('la de la mañana manda: si la hay, la del reloj de ese día no cuenta', () => {
+    expect(calcularCorrectorHRV([{ hrv_dia: 60, ratio_hrv_reloj: 0.5 }], 60)).toBe(1)
+    expect(calcularCorrectorHRV([{ hrv_del_dia: 60, ratio_hrv_reloj: 0.5 }], 60)).toBe(1)
+  })
+
+  it('sin HRV basal, la de la mañana no se puede comparar: entonces cuenta la del reloj', () => {
+    expect(calcularCorrectorHRV([{ hrv_dia: 40, ratio_hrv_reloj: 0.88 }], 0)).toBeCloseTo(1.036, 10)
+  })
+
+  it('se promedian los tantos por uno, no los milisegundos (el ejemplo de la decisión)', () => {
+    /* Un día del reloj al 88 % de su base y otro de la mañana al 94 % (47 de 50) → 91 % → ×1,03 */
+    const c = correctorHrvConFuentes([{ ratio_hrv_reloj: 0.88 }, { hrv_dia: 47 }], 50)
+    expect(c.corrector).toBeCloseTo(1 + (1 - 0.91) * 0.3, 10)
+    expect(c).toMatchObject({ manana: 1, reloj: 1 })
+  })
+
+  it('cuenta de dónde salió cada sesión', () => {
+    expect(correctorHrvConFuentes([{ hrv_dia: 50 }, { ratio_hrv_reloj: 0.9 }, { ratio_hrv_reloj: 1.1 }, {}], 50))
+      .toMatchObject({ manana: 1, reloj: 2 })
+    expect(correctorHrvConFuentes([], 50)).toEqual({ corrector: 1, manana: 0, reloj: 0 })
+  })
+
+  it('un tanto por uno del reloj vacío o imposible no cuenta', () => {
+    expect(correctorHrvConFuentes([{ ratio_hrv_reloj: null }, { ratio_hrv_reloj: 0 }, { ratio_hrv_reloj: -1 }], 50))
+      .toEqual({ corrector: 1, manana: 0, reloj: 0 })
+  })
+
+  it('los topes valen igual para el reloj', () => {
+    expect(calcularCorrectorHRV([{ ratio_hrv_reloj: 3 }], 0)).toBe(0.85)
+    expect(calcularCorrectorHRV([{ ratio_hrv_reloj: 0.01 }], 0)).toBeLessThanOrEqual(1.3)
   })
 })

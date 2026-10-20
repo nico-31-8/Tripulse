@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · El SICAT ya usa la HRV del reloj
+
+- **Antes**, el corrector de HRV del SICAT solo tenía en cuenta la HRV que tu
+  deportista se mide al despertar, comparada con la HRV basal de su ficha. Si
+  llevaba reloj pero no se medía por la mañana, su corrector se quedaba en
+  ×1,00, aunque el reloj mandara su HRV todas las noches.
+- **Ahora**, los días que no se midió por la mañana cuenta la HRV de esa noche,
+  comparada con la base de su propio reloj: con COROS, la que calcula COROS;
+  con Polar, la media de sus cuatro semanas anteriores (hacen falta al menos 14
+  noches). Nunca se compara con la HRV basal de la mañana, porque no son la
+  misma medida. Si se midió por la mañana, sigue mandando esa.
+- Lo mismo en el coste por zona, que mira la HRV de la noche siguiente a la
+  sesión.
+- En la tarjeta de cada deporte del SICAT ves de dónde sale: «HRV de 8
+  sesiones: 6 del reloj, 2 de la mañana».
+- **Los números de quien se mide por la mañana no cambian.** Con reloj, el
+  corrector empieza a moverse en cuanto haya sesiones hechas con sus noches.
+
 ## 20 de octubre de 2026 · Detalles del reloj
 
 - **La FC del reloj, con su nombre.** Polar da la FC media de la noche y COROS

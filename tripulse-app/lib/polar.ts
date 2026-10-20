@@ -209,6 +209,7 @@ export function medicionDeSueno(n: unknown): Medicion | null {
  * minuto al despertar, a menudo con otra app y otra escala. Por eso se guarda
  * con su nombre —`rmssd_ms`— y no se vuelca en `wellness.hrv` todavía: mezclar
  * las dos haría saltar la línea base sin que el atleta haya cambiado nada.
+ * El SICAT sí la usa, pero frente a la base del propio reloj (lib/sicat-hrv).
  *
  * Y `fc_media` es la media de esas mismas cuatro horas, no la FC en reposo al
  * despertar. Misma advertencia.

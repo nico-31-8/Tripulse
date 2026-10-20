@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 // Los tipos y la lista de disciplinas viven en sicat-tipos (sin Supabase, para poder
 // importarlos desde modulos que se testean). Se reexportan para no romper nada.
 import { DISCIPLINAS_SICAT, type DisciplinaSicat, type FactorSicatDisc, type SicatResultado, type Periodo } from './sicat-tipos'
+import { ratiosDelRelojEntre } from './sicat-hrv'
 export { DISCIPLINAS_SICAT }
 export type { DisciplinaSicat, FactorSicatDisc, SicatResultado, Periodo }
 
@@ -79,17 +80,32 @@ export function calcularF4(filas: any[], fcUmbral: number): number | null {
 
 // Corrector HRV — usa la HRV diaria real del atleta (tabla wellness, misma fecha de la
 // sesión), con la entrada manual de tarea.hrv_del_dia como respaldo si no hay wellness.
-export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
-  const validas = filas.filter(f => (f.hrv_dia || f.hrv_del_dia) && hrvBasal > 0)
-  if (!validas.length) return 1
-  const hrvMedia = validas.reduce((acc, f) => acc + (f.hrv_dia || f.hrv_del_dia), 0) / validas.length
-  const ratio = hrvMedia / hrvBasal
+// Y si no hay ninguna de las dos (o no hay basal con la que compararlas), la de la noche
+// del reloj: `ratio_hrv_reloj`, ya en tanto por uno de la base de su reloj (lib/sicat-hrv).
+// Cada sesión cuenta lo mismo venga de donde venga, y sin reloj la cuenta es la de siempre.
+export interface FilaHrv { hrv_dia?: number | null; hrv_del_dia?: number | null; ratio_hrv_reloj?: number | null }
+
+export function correctorHrvConFuentes(filas: FilaHrv[], hrvBasal: number): { corrector: number; manana: number; reloj: number } {
+  const deManana = (f: FilaHrv) => hrvBasal > 0 && !!(f.hrv_dia || f.hrv_del_dia)
+  const manana = filas.filter(deManana)
+  const reloj = filas.filter(f => !deManana(f) && (f.ratio_hrv_reloj ?? 0) > 0)
+  if (!manana.length && !reloj.length) return { corrector: 1, manana: 0, reloj: 0 }
+  const ratioManana = manana.length
+    ? manana.reduce((acc, f) => acc + (f.hrv_dia || f.hrv_del_dia || 0), 0) / manana.length / hrvBasal
+    : 0
+  const ratio = reloj.length
+    ? (ratioManana * manana.length + reloj.reduce((acc, f) => acc + (f.ratio_hrv_reloj ?? 0), 0)) / (manana.length + reloj.length)
+    : ratioManana
   // Acotado, como F1-F4. Sin tope, una HRV muy por encima de la basal —una basal
   // mal medida, un valor suelto raro del reloj— podía hundir el corrector por
   // debajo de 0,5 y abaratar una disciplina entera de forma artificial.
   // El rango cubre la variación diaria real: por debajo de la basal encarece hasta
   // un 30%, por encima abarata hasta un 15%. Fuera de ahí es ruido, no fisiología.
-  return Math.min(1.3, Math.max(0.85, 1 + (1 - ratio) * 0.3))
+  return { corrector: Math.min(1.3, Math.max(0.85, 1 + (1 - ratio) * 0.3)), manana: manana.length, reloj: reloj.length }
+}
+
+export function calcularCorrectorHRV(filas: any[], hrvBasal: number): number {
+  return correctorHrvConFuentes(filas, hrvBasal).corrector
 }
 
 // Calcula el perfil SICAT (F1-F4 + % relativo) de un deportista para las 3 disciplinas
@@ -145,12 +161,16 @@ export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatR
   hastaD.setDate(hastaD.getDate() + 2)
   const hasta = hastaD.toISOString().split('T')[0]
 
-  const { data: wellnessRows } = await supabase
-    .from('wellness')
-    .select('fecha, dolor_muscular, hrv')
-    .eq('id_deportista', dep.id)
-    .gte('fecha', desde)
-    .lte('fecha', hasta)
+  // Y las noches de su reloj, para la HRV de los días que no se midió por la mañana.
+  const [{ data: wellnessRows }, ratiosReloj] = await Promise.all([
+    supabase
+      .from('wellness')
+      .select('fecha, dolor_muscular, hrv')
+      .eq('id_deportista', dep.id)
+      .gte('fecha', desde)
+      .lte('fecha', hasta),
+    ratiosDelRelojEntre(supabase, dep.id, desde, hasta),
+  ])
   const wellnessPorFecha: Record<string, { dolor_muscular?: number; hrv?: number }> = {}
   ;(wellnessRows || []).forEach((w: any) => { wellnessPorFecha[w.fecha] = w })
 
@@ -194,6 +214,7 @@ export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatR
       dolor_24h: wellnessPorFecha[k(f24)]?.dolor_muscular ?? null,
       dolor_48h: wellnessPorFecha[k(f48)]?.dolor_muscular ?? null,
       hrv_dia: wellnessPorFecha[k(f)]?.hrv ?? null,
+      ratio_hrv_reloj: ratiosReloj[k(f)] ?? null,
     }
   })
 
@@ -211,12 +232,12 @@ export async function calcularSICAT(dep: any, periodo?: Periodo): Promise<SicatR
     const f2 = calcularF2(filasDisc)
     const f3 = calcularF3(filasDisc)
     const f4 = calcularF4(filasDisc, fcUmbral)
-    const corrector = calcularCorrectorHRV(filasDisc, hrvBasal)
+    const { corrector, manana, reloj } = correctorHrvConFuentes(filasDisc, hrvBasal)
 
     const validos = [f1, f2, f3, f4].filter((f): f is number => f !== null)
     const total = validos.length === 4 ? Math.round((f1! + f2! + f3! + f4!) * corrector * 10) / 10 : null
 
-    resultados[disc] = { sesiones: filasDisc.length, f1, f2, f3, f4, total, corrector, porcentaje: null }
+    resultados[disc] = { sesiones: filasDisc.length, f1, f2, f3, f4, total, corrector, porcentaje: null, hrvManana: manana, hrvReloj: reloj }
   }
 
   const totales = DISCIPLINAS_SICAT.map(d => resultados[d].total).filter((t): t is number => t !== null)

@@ -101,3 +101,26 @@ describe('factorSicatZona — cuándo fiarse de una celda', () => {
     expect(factorSicatZona('Carrera', 'PAE', null)).toBeNull()
   })
 })
+
+// La HRV del reloj de la noche siguiente, solo como respaldo (20-10-2026): llega
+// en tanto por uno de la base de su reloj (lib/sicat-hrv) y pesa como la caída
+// de la mañana frente a su basal.
+describe('costeSesion — la HRV del reloj como respaldo', () => {
+  it('sin HRV de la mañana, la caída del reloj frente a su base pesa igual', () => {
+    expect(costeSesion(null, null, null, null, 60, null, 0.85)).toBe(100)  // -15%
+    expect(costeSesion(null, null, null, null, 0, null, 0.97)).toBe(costeSesion(null, null, null, 58.2, 60, null))  // -3%
+  })
+  it('por encima de su base no genera coste', () => {
+    expect(costeSesion(null, null, null, null, 60, null, 1.2)).toBe(0)
+  })
+  it('la de la mañana manda si la hay', () => {
+    expect(costeSesion(null, null, null, 60, 60, null, 0.5)).toBe(0)
+  })
+  it('sin basal, la de la mañana no se puede comparar y cuenta la del reloj', () => {
+    expect(costeSesion(null, null, null, 40, 0, null, 0.85)).toBe(100)
+  })
+  it('sin ninguna de las dos, como antes: la HRV no pesa', () => {
+    expect(costeSesion(null, null, null, null, 60, 6, null)).toBe(costeSesion(null, null, null, null, 60, 6))
+    expect(costeSesion(null, null, null, null, 60, 6, 0)).toBe(costeSesion(null, null, null, null, 60, 6))
+  })
+})
