@@ -27,6 +27,30 @@ export interface NocheReloj {
 /** La FC del reloj de esa noche, la que haya: la media nocturna (Polar) o la de reposo (COROS). */
 export const fcDelReloj = (n: NocheReloj | null | undefined): number | null => n?.fc_media ?? n?.fc_reposo ?? null
 
+/**
+ * Qué FC es la de `fcDelReloj`: la media de la noche (Polar) o la de reposo
+ * del día (COROS). No es la misma medida, y se guarda con ella en el wellness
+ * (`fc_noche_tipo`) para que el análisis no las mezcle en una línea base.
+ */
+export type TipoFcReloj = 'nocturna' | 'reposo'
+export const tipoFcDelReloj = (n: NocheReloj | null | undefined): TipoFcReloj | null =>
+  n?.fc_media != null ? 'nocturna' : n?.fc_reposo != null ? 'reposo' : null
+
+export const NOMBRE_FC_RELOJ: Record<TipoFcReloj, string> = { nocturna: 'FC noche', reposo: 'FC reposo' }
+
+/** El nombre de la FC del reloj de un wellness: por su marca, o por la de su reloj si es de antes de guardarla. */
+export function nombreFcDeRegistro(r: { fc_noche_tipo?: string | null }, proveedor?: string | null): string {
+  if (r.fc_noche_tipo === 'nocturna' || r.fc_noche_tipo === 'reposo') return NOMBRE_FC_RELOJ[r.fc_noche_tipo]
+  return proveedor === 'coros' ? NOMBRE_FC_RELOJ.reposo : NOMBRE_FC_RELOJ.nocturna
+}
+
+/** El de una serie entera (la leyenda de una gráfica): si hay de los dos tipos, «FC del reloj». */
+export function nombreFcDeRegistros(registros: { fc_noche?: number | null; fc_noche_tipo?: string | null }[], proveedor?: string | null): string {
+  const nombres = new Set(registros.filter(r => r.fc_noche != null).map(r => nombreFcDeRegistro(r, proveedor)))
+  if (nombres.size > 1) return 'FC del reloj'
+  return [...nombres][0] ?? nombreFcDeRegistro({}, proveedor)
+}
+
 const n = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null)
 
 /**
@@ -114,8 +138,8 @@ export function quePreguntar(p: {
  *   las compara en series distintas.
  * - HRV y FC de la noche: lo que haya llegado del reloj, se pregunte lo que se
  *   pregunte. Van a sus columnas propias. La FC es la que dé cada marca (la
- *   media nocturna de Polar, la de reposo de COROS): un deportista lleva una
- *   marca cada vez, así que su serie no se mezcla.
+ *   media nocturna de Polar, la de reposo de COROS), y va con su tipo
+ *   (`fc_noche_tipo`): si cambia de marca, el análisis no mezcla las dos.
  * - HRV y FC de la mañana: solo si el formulario las preguntó.
  */
 export function objetivosAGuardar(p: {
@@ -131,6 +155,7 @@ export function objetivosAGuardar(p: {
   fc_reposo: number | null
   hrv_noche: number | null
   fc_noche: number | null
+  fc_noche_tipo: TipoFcReloj | null
 } {
   const delReloj = p.q.franjaReloj && !p.q.horas
   const numMano = (s: string): number | null => {
@@ -139,13 +164,15 @@ export function objetivosAGuardar(p: {
     const v = Number(t)
     return Number.isFinite(v) && v > 0 ? v : null
   }
+  const fcNoche = p.q.modo === 'sin_reloj' ? null : (fc => (fc == null ? null : Math.round(fc)))(fcDelReloj(p.noche))
   return {
     horas_sueno: delReloj ? horasDeMinutos(p.noche?.dormido_min) : p.horasMano,
     sueno_del_reloj: delReloj,
     hrv: p.q.manana ? numMano(p.hrvMano) : null,
     fc_reposo: p.q.manana ? (v => (v == null ? null : Math.round(v)))(numMano(p.fcMano)) : null,
     hrv_noche: p.q.modo === 'sin_reloj' ? null : (p.noche?.rmssd_ms ?? null),
-    fc_noche: p.q.modo === 'sin_reloj' ? null : (fc => (fc == null ? null : Math.round(fc)))(fcDelReloj(p.noche)),
+    fc_noche: fcNoche,
+    fc_noche_tipo: fcNoche == null ? null : tipoFcDelReloj(p.noche),
   }
 }
 

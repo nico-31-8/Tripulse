@@ -31,6 +31,12 @@ export interface RelojCatalogo {
   siNoLlega: [string, string][]
   /** Dónde se guardan sus sesiones, para decir «lo que no esté en … no nos llega». */
   cuenta: string
+  /**
+   * Qué decir en su perfil cuando todavía no ha llegado ningún entreno. Cada
+   * marca hace una cosa: Polar solo da los que se suban DESPUÉS de conectar;
+   * COROS da los de las últimas cuatro semanas al conectar.
+   */
+  sinEntrenos?: string
   /** Aviso para `pruebas` y `proximamente`. */
   nota?: string
   /** Solo Polar: su conexión caduca al año y hay que avisar antes. */
@@ -62,15 +68,16 @@ export const RELOJES: RelojCatalogo[] = [
       ['Pulsa «Sincronizar ahora»', 'aquí abajo.'],
     ],
     cuenta: 'Polar Flow',
+    sinEntrenos: 'Polar solo comparte los entrenos que subas a Polar Flow a partir de ahora, no los de antes de conectar.',
   },
   {
     id: 'coros',
     nombre: 'COROS',
     /* Disponible desde el 17-10-2026, con la primera cuenta real: el sueño, la
-       HRV del sueño y la FC en reposo ya se traducen (lib/coros). Los entrenos
-       todavía no: no ha llegado ninguno de verdad con el que leerlos. */
+       HRV del sueño y la FC en reposo se traducen (lib/coros), y desde el
+       19-10-2026 también los entrenos, con su detalle desde el 20 (el FIT). */
     estado: 'disponible',
-    trae: 'Sueño, HRV del sueño y FC en reposo',
+    trae: 'Sueño, HRV del sueño, FC en reposo y entrenos',
     pasos: [
       ['Ten a mano tu cuenta de COROS.', 'La misma con la que entras en la app de COROS.'],
       ['Pulsa «Conectar COROS».', 'Te lleva a COROS: entras y das permiso. Después vuelves aquí solo.'],
@@ -78,7 +85,7 @@ export const RELOJES: RelojCatalogo[] = [
     ],
     queLlega: [
       ['Con un reloj COROS con el que duermes:', 'tu sueño, tu HRV del sueño y tu FC en reposo de cada día. Al conectar llegan los de las últimas cuatro semanas.'],
-      ['Los entrenos, todavía no:', 'llegarán en cuanto terminemos de leerlos. Mientras, apúntalos como siempre.'],
+      ['Tus entrenos:', 'al conectar llegan los de las últimas cuatro semanas, y después cada uno que sincronices, con sus vueltas y su FC.'],
       ['Si tu banda va con un reloj de otra marca,', 'esas sesiones se guardan en esa marca y no llegan aquí.'],
     ],
     siNoLlega: [
@@ -86,6 +93,7 @@ export const RELOJES: RelojCatalogo[] = [
       ['Pulsa «Sincronizar ahora»', 'aquí abajo.'],
     ],
     cuenta: 'tu cuenta de COROS',
+    sinEntrenos: 'Al conectar llegan los de las últimas cuatro semanas. Si no sale ninguno, sincroniza el reloj con la app de COROS y pulsa «Sincronizar ahora».',
   },
   {
     id: 'garmin',

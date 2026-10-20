@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   nochesPorFecha, horasDeMinutos, textoHoras, quePreguntar, objetivosAGuardar, numeroDePreguntas, delProveedor, fcDelReloj,
+  tipoFcDelReloj, nombreFcDeRegistro, nombreFcDeRegistros,
   type NocheReloj,
 } from './noches-reloj'
 
@@ -125,7 +126,7 @@ describe('objetivosAGuardar', () => {
   it('sin reloj: lo tecleado, y nada en las columnas de la noche', () => {
     const q = quePreguntar({ conectado: false, noche: null, mideManana: false })
     expect(objetivosAGuardar({ q, noche: null, horasMano: 7.5, hrvMano: '62', fcMano: '49' })).toEqual({
-      horas_sueno: 7.5, sueno_del_reloj: false, hrv: 62, fc_reposo: 49, hrv_noche: null, fc_noche: null,
+      horas_sueno: 7.5, sueno_del_reloj: false, hrv: 62, fc_reposo: 49, hrv_noche: null, fc_noche: null, fc_noche_tipo: null,
     })
   })
 
@@ -133,7 +134,7 @@ describe('objetivosAGuardar', () => {
   it('con la noche recibida: horas del reloj marcadas como tales, y la HRV en su columna', () => {
     const q = quePreguntar({ conectado: true, noche: NOCHE, mideManana: false })
     expect(objetivosAGuardar({ q, noche: NOCHE, horasMano: null, hrvMano: '', fcMano: '' })).toEqual({
-      horas_sueno: 7.2, sueno_del_reloj: true, hrv: null, fc_reposo: null, hrv_noche: 48, fc_noche: 52,
+      horas_sueno: 7.2, sueno_del_reloj: true, hrv: null, fc_reposo: null, hrv_noche: 48, fc_noche: 52, fc_noche_tipo: 'nocturna',
     })
   })
 
@@ -163,7 +164,7 @@ describe('objetivosAGuardar', () => {
     const soloRecarga = { dormido_min: null, rmssd_ms: 50, fc_media: 51.6 }
     const q = quePreguntar({ conectado: true, noche: soloRecarga, mideManana: false })
     const r = objetivosAGuardar({ q, noche: soloRecarga, horasMano: 6.5, hrvMano: '', fcMano: '' })
-    expect(r).toEqual({ horas_sueno: 6.5, sueno_del_reloj: false, hrv: null, fc_reposo: null, hrv_noche: 50, fc_noche: 52 })
+    expect(r).toEqual({ horas_sueno: 6.5, sueno_del_reloj: false, hrv: null, fc_reposo: null, hrv_noche: 50, fc_noche: 52, fc_noche_tipo: 'nocturna' })
   })
 
   /* COROS: sin FC media de la noche, la FC del reloj es la de reposo de ese día. */
@@ -171,7 +172,7 @@ describe('objetivosAGuardar', () => {
     const coros: NocheReloj = { dormido_min: 499, rmssd_ms: 43, fc_media: null, fc_reposo: 62 }
     const q = quePreguntar({ conectado: true, noche: coros, mideManana: false })
     expect(objetivosAGuardar({ q, noche: coros, horasMano: null, hrvMano: '', fcMano: '' })).toEqual({
-      horas_sueno: 8.32, sueno_del_reloj: true, hrv: null, fc_reposo: null, hrv_noche: 43, fc_noche: 62,
+      horas_sueno: 8.32, sueno_del_reloj: true, hrv: null, fc_reposo: null, hrv_noche: 43, fc_noche: 62, fc_noche_tipo: 'reposo',
     })
   })
 
@@ -185,5 +186,33 @@ describe('objetivosAGuardar', () => {
     const q = quePreguntar({ conectado: false, noche: null, mideManana: false })
     expect(objetivosAGuardar({ q, noche: null, horasMano: 7, hrvMano: '0', fcMano: '0' }))
       .toMatchObject({ hrv: null, fc_reposo: null })
+  })
+})
+
+describe('el tipo de la FC del reloj', () => {
+  it('la media de la noche es de Polar; la de reposo, de COROS; sin ninguna, nada', () => {
+    expect(tipoFcDelReloj({ dormido_min: 400, rmssd_ms: 48, fc_media: 52 })).toBe('nocturna')
+    expect(tipoFcDelReloj({ dormido_min: 400, rmssd_ms: 43, fc_media: null, fc_reposo: 62 })).toBe('reposo')
+    expect(tipoFcDelReloj({ dormido_min: 400, rmssd_ms: 43, fc_media: null })).toBeNull()
+    expect(tipoFcDelReloj(null)).toBeNull()
+  })
+
+  it('sin FC del reloj no se guarda tipo, aunque haya noche', () => {
+    const sinFc: NocheReloj = { dormido_min: 450, rmssd_ms: 40, fc_media: null }
+    const q = quePreguntar({ conectado: true, noche: sinFc, mideManana: false })
+    expect(objetivosAGuardar({ q, noche: sinFc, horasMano: null, hrvMano: '', fcMano: '' })).toMatchObject({ fc_noche: null, fc_noche_tipo: null })
+  })
+
+  it('cada wellness se nombra por su marca; sin marca (de antes), por su reloj de ahora', () => {
+    expect(nombreFcDeRegistro({ fc_noche_tipo: 'reposo' }, 'polar')).toBe('FC reposo')
+    expect(nombreFcDeRegistro({ fc_noche_tipo: 'nocturna' }, 'coros')).toBe('FC noche')
+    expect(nombreFcDeRegistro({}, 'coros')).toBe('FC reposo')
+    expect(nombreFcDeRegistro({ fc_noche_tipo: null }, 'polar')).toBe('FC noche')
+  })
+
+  it('una serie con los dos tipos (cambió de marca) se llama «FC del reloj»', () => {
+    expect(nombreFcDeRegistros([{ fc_noche: 62, fc_noche_tipo: 'reposo' }, { fc_noche: null }], 'coros')).toBe('FC reposo')
+    expect(nombreFcDeRegistros([{ fc_noche: 62, fc_noche_tipo: 'reposo' }, { fc_noche: 52, fc_noche_tipo: 'nocturna' }], 'coros')).toBe('FC del reloj')
+    expect(nombreFcDeRegistros([], 'polar')).toBe('FC noche')
   })
 })

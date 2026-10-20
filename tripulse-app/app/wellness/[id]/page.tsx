@@ -11,7 +11,7 @@ import { bienestar, colorBienestar, estadoBienestar } from '@/lib/wellness-score
 import { vivas } from '@/lib/papelera'
 import { type SesionCruce } from '@/lib/wellness-sesiones'
 import CruceWellness from '@/components/CruceWellness'
-import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, fcDelReloj, type NocheReloj } from '@/lib/noches-reloj'
+import { quePreguntar, objetivosAGuardar, nochesPorFecha, textoHoras, delProveedor, fcDelReloj, nombreFcDeRegistro, nombreFcDeRegistros, type NocheReloj } from '@/lib/noches-reloj'
 import { llamarReloj } from '@/lib/relojes-cliente'
 import { datosListos, nombreReloj } from '@/lib/relojes-catalogo'
 import AvisoConectarReloj from '@/components/AvisoConectarReloj'
@@ -200,7 +200,8 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
      pruebas: pregunta lo que falta, no lo que el atleta tenga en casa. */
   const noche = noches[fecha] || null
   /* La FC del reloj guardada en cada registro: la media de la noche (Polar) o la de reposo del día (COROS). */
-  const fcRelojNombre = proveedor === 'coros' ? 'FC reposo' : 'FC noche'
+  /* Por la marca de cada wellness (fc_noche_tipo); sin marca, por su reloj de ahora. */
+  const fcRelojNombre = nombreFcDeRegistros(registros, proveedor)
   const q = quePreguntar({ conectado, noche, mideManana: !!deportista?.hrv_matutina, corrigiendo })
 
   const guardar = async (e: React.FormEvent) => {
@@ -231,6 +232,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
       fc_reposo: obj.fc_reposo,
       hrv_noche: obj.hrv_noche,
       fc_noche: obj.fc_noche,
+      fc_noche_tipo: obj.fc_noche_tipo,
       malestar_general: malestarGeneral,
       score_wellness: score
     })
@@ -603,7 +605,7 @@ export default function WellnessPage({ params }: { params: Promise<{ id: string 
                       {r.hrv && <p className="text-blue-400 text-sm">HRV: {r.hrv} ms</p>}
                       {r.fc_reposo && <p className="text-rose-400 text-sm">FC reposo: {r.fc_reposo} ppm</p>}
                       {r.hrv_noche != null && <p className="text-sky-300 text-sm">⌚ HRV noche: {r.hrv_noche} ms</p>}
-                      {r.fc_noche != null && <p className="text-pink-300 text-sm">⌚ {fcRelojNombre}: {r.fc_noche} ppm</p>}
+                      {r.fc_noche != null && <p className="text-pink-300 text-sm">⌚ {nombreFcDeRegistro(r, proveedor)}: {r.fc_noche} ppm</p>}
                     </div>
                   </div>
                   <div className="text-right">

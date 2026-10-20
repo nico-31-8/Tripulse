@@ -410,7 +410,7 @@ export default function RelojPerfil() {
                 <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Últimos entrenos</p>
                 {entrenos.length === 0 ? (
                   <p className="text-gray-600 text-sm">
-                    Ninguno todavía. {nombreCon} solo comparte los entrenos que subas a {rc?.cuenta || 'tu cuenta'} a partir de ahora, no los de antes de conectar.
+                    Ninguno todavía. {rc?.sinEntrenos || 'Sincroniza el reloj con la app de ' + nombreCon + ' y pulsa «Sincronizar ahora».'}
                   </p>
                 ) : (
                   <ul className="flex flex-col gap-1.5">

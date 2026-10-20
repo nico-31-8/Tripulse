@@ -14,6 +14,19 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · Detalles del reloj
+
+- **La FC del reloj, con su nombre.** Polar da la FC media de la noche y COROS
+  su FC en reposo del día: no son la misma medida. El análisis del wellness lo
+  llamaba todo «FC nocturna». Ahora cada una sale como es («FC en reposo según
+  el reloj», con COROS). Y si tu deportista cambia de marca, las dos ya no se
+  mezclan en su línea base: antes le podía salir «fuera de su normal» sin que
+  nada hubiera cambiado.
+- **Su perfil ya no le dice a quien tiene COROS** que solo llegan los entrenos
+  que suba a partir de ahora: eso pasa con Polar. Con COROS, al conectar llegan
+  los de las últimas cuatro semanas.
+- **«¿Qué llega?» de COROS** ya cuenta sus entrenos: antes decía «todavía no».
+
 ## 20 de octubre de 2026 · Ritmo a igual FC: su forma aeróbica, sin test
 
 - **En «Su reloj» → Eficiencia** (pestaña nueva) ves a qué ritmo corre con su

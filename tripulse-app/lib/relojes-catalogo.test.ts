@@ -37,10 +37,18 @@ describe('catálogo de relojes', () => {
     expect(datosListos(undefined)).toBe(false)
   })
 
-  it('lo que dice de COROS no promete los entrenos, que todavía no se leen', () => {
+  it('COROS ya promete sus entrenos: se leen desde el 19-10-2026, los de cuatro semanas al conectar', () => {
     const c = relojPorId('coros')!
-    expect(c.trae).not.toMatch(/entreno/i)
-    expect(c.queLlega.some(([a, b]) => /entrenos, todavía no/i.test(a + ' ' + b))).toBe(true)
+    expect(c.trae).toMatch(/entrenos/i)
+    expect(c.queLlega.some(([a, b]) => /todavía no/i.test(a + ' ' + b))).toBe(false)
+    expect(c.queLlega.some(([a, b]) => /entrenos/i.test(a) && /cuatro semanas/i.test(b))).toBe(true)
+  })
+
+  it('sin entrenos todavía, cada marca dice lo suyo: lo de Polar no se le dice a quien tiene COROS', () => {
+    for (const r of RELOJES.filter(x => x.estado === 'disponible')) expect(r.sinEntrenos, r.id).toBeTruthy()
+    expect(relojPorId('polar')!.sinEntrenos).toMatch(/a partir de ahora/)
+    expect(relojPorId('coros')!.sinEntrenos).not.toMatch(/a partir de ahora/)
+    expect(relojPorId('coros')!.sinEntrenos).toMatch(/cuatro semanas/)
   })
 
   it('se conecta lo disponible y lo que está en pruebas; lo próximo no', () => {

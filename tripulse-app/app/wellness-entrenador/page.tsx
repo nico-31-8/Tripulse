@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { sumarDias, hoyISO, horaActual } from '@/lib/fechas'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
+import { nombreFcDeRegistros } from '@/lib/noches-reloj'
 import Avatar from '@/components/Avatar'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts'
 import { analizarWellness } from '@/lib/wellness-analisis'
@@ -430,7 +431,7 @@ export default function WellnessEntrenador() {
                             {registros.some(r => r.hrv) && <Line type="monotone" dataKey="hrv" stroke="#60a5fa" strokeWidth={2.2} dot={{ fill: '#60a5fa', r: 3 }} name="HRV (ms)" connectNulls />}
                             {registros.some(r => r.fc_reposo) && <Line type="monotone" dataKey="fc_reposo" stroke="#fb7185" strokeWidth={2.2} dot={{ fill: '#fb7185', r: 3 }} name="FC reposo (ppm)" connectNulls />}
                             {registros.some(r => r.hrv_noche != null) && <Line type="monotone" dataKey="hrv_noche" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#7dd3fc', r: 2.5 }} name="HRV noche ⌚ (ms)" connectNulls />}
-                            {registros.some(r => r.fc_noche != null) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name={(proveedor === 'coros' ? 'FC reposo' : 'FC noche') + ' ⌚ (ppm)'} connectNulls />}
+                            {registros.some(r => r.fc_noche != null) && <Line type="monotone" dataKey="fc_noche" stroke="#f9a8d4" strokeWidth={2} strokeDasharray="5 4" dot={{ fill: '#f9a8d4', r: 2.5 }} name={nombreFcDeRegistros(registros, proveedor) + ' ⌚ (ppm)'} connectNulls />}
                           </LineChart>
                         </ResponsiveContainer>
                       </div>

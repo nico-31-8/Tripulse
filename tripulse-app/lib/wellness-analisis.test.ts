@@ -166,9 +166,43 @@ describe('lo que llega del reloj', () => {
   })
 
   it('separar no toca el registro de quien llama', () => {
-    const original = { fecha: f(1), horas_sueno: 7.2, sueno_del_reloj: true }
+    const original = { fecha: f(1), horas_sueno: 7.2, sueno_del_reloj: true, fc_noche: 58, fc_noche_tipo: 'reposo' }
     separarFuentes(original)
     expect(original.horas_sueno).toBe(7.2)
+    expect(original.fc_noche).toBe(58)
+  })
+
+  it('la FC del reloj que es de reposo (COROS) va a su serie; la nocturna y la de antes, a la de siempre', () => {
+    const reposo = separarFuentes({ fecha: f(1), fc_noche: 58, fc_noche_tipo: 'reposo' })
+    expect(reposo.fc_noche).toBeNull()
+    expect(reposo.fc_reposo_reloj).toBe(58)
+    expect(separarFuentes({ fecha: f(1), fc_noche: 49, fc_noche_tipo: 'nocturna' }).fc_noche).toBe(49)
+    const deAntes = separarFuentes({ fecha: f(1), fc_noche: 49 })
+    expect([deAntes.fc_noche, deAntes.fc_reposo_reloj]).toEqual([49, undefined])
+  })
+
+  it('con COROS, su FC en reposo avisa con su nombre, no como «FC nocturna»', () => {
+    const base = Array.from({ length: 14 }, (_, i) =>
+      dia(f(i + 1), { fc_noche: 55 + (i % 2), fc_noche_tipo: 'reposo', sueno_del_reloj: true, horas_sueno: 7.5 }))
+    const sube = Array.from({ length: 7 }, (_, i) =>
+      dia(f(i + 15), { fc_noche: 63, fc_noche_tipo: 'reposo', sueno_del_reloj: true, horas_sueno: 7.5 }))
+    const r = analizarWellness([...base, ...sube])
+    expect(r.metricas.find(x => x.key === 'fc_reposo_reloj')!.fuera).toBe(true)
+    expect(r.metricas.find(x => x.key === 'fc_noche')).toBeUndefined()
+    expect(r.conclusiones.some(c => c.texto.startsWith('FC en reposo') && /según el reloj/.test(c.texto))).toBe(true)
+    expect(r.conclusiones.some(c => c.texto.startsWith('FC nocturna'))).toBe(false)
+  })
+
+  it('si cambia de Polar a COROS, las dos FC no se mezclan: la de reposo no sale «fuera» de la nocturna', () => {
+    const conPolar = Array.from({ length: 14 }, (_, i) =>
+      dia(f(i + 1), { fc_noche: 47 + (i % 2), fc_noche_tipo: 'nocturna', sueno_del_reloj: true, horas_sueno: 7.5 }))
+    const conCoros = Array.from({ length: 7 }, (_, i) =>
+      dia(f(i + 15), { fc_noche: 56, fc_noche_tipo: 'reposo', sueno_del_reloj: true, horas_sueno: 7.5 }))
+    const r = analizarWellness([...conPolar, ...conCoros])
+    expect(r.metricas.filter(x => x.fuera && (x.key === 'fc_noche' || x.key === 'fc_reposo_reloj'))).toEqual([])
+    /* Mezcladas, 56 frente a una base de 47 habría saltado. */
+    const mezcladas = analizarWellness([...conPolar, ...conCoros.map(d => ({ ...d, fc_noche_tipo: 'nocturna' }))])
+    expect(mezcladas.metricas.find(x => x.key === 'fc_noche')!.fuera).toBe(true)
   })
 
   it('las noches cortas cuentan también las del reloj', () => {

@@ -17,8 +17,10 @@ export interface RegistroWellness {
   fc_reposo?: number | null
   /** HRV nocturna del reloj: RMSSD de 4 h de sueño. NO es la de `hrv`. */
   hrv_noche?: number | null
-  /** FC media de esas 4 h de sueño. NO es la de `fc_reposo`. */
+  /** La FC del reloj: la media de esas 4 h de sueño (Polar) o la de reposo del día (COROS). NO es la de `fc_reposo`. */
   fc_noche?: number | null
+  /** Cuál de las dos es `fc_noche`. Sin marca (lo guardado antes de tenerla), nocturna. */
+  fc_noche_tipo?: string | null
   /** Las horas de sueño las puso el reloj y el atleta no las corrigió. */
   sueno_del_reloj?: boolean | null
   score_wellness?: number
@@ -67,12 +69,18 @@ const CFG: { key: string; label: string; unidad: string; mejor: 'alto' | 'bajo';
      sueño real, sin las interrupciones, y quien las escribe suele contar el
      tiempo en la cama. Van aparte por la misma razón.
 
-     Un atleta con reloj pesa lo mismo que uno sin él: hrv_noche y fc_noche
-     sustituyen a hrv y fc_reposo, que deja de rellenar. Solo si además mide por
-     la mañana (lo marca el entrenador) tiene las cuatro. */
+     La FC del reloj tampoco es una sola: Polar da la media de cuatro horas de
+     sueño y COROS la de reposo del día, que sale unas pulsaciones más alta.
+     Cada una va a su serie (`fc_noche` y `fc_reposo_reloj`, por su
+     `fc_noche_tipo`): si cambia de marca, no se mezclan.
+
+     Un atleta con reloj pesa lo mismo que uno sin él: hrv_noche y la FC del
+     reloj sustituyen a hrv y fc_reposo, que deja de rellenar. Solo si además
+     mide por la mañana (lo marca el entrenador) tiene las cuatro. */
   { key: 'horas_sueno_reloj', label: 'Sueño (reloj)', unidad: 'h', mejor: 'alto', absLow: 7, peso: 1.5 },
   { key: 'hrv_noche', label: 'HRV nocturna', unidad: 'ms', mejor: 'alto', peso: 2 },
   { key: 'fc_noche', label: 'FC nocturna', unidad: 'ppm', mejor: 'bajo', peso: 2 },
+  { key: 'fc_reposo_reloj', label: 'FC en reposo (reloj)', unidad: 'ppm', mejor: 'bajo', peso: 2 },
 ]
 
 /**
@@ -84,20 +92,32 @@ const CFG: { key: string; label: string; unidad: string; mejor: 'alto' | 'bajo';
  * dirían cosas distintas del mismo dato.
  */
 export const UMBRAL_MIN: Record<string, number> = {
-  hrv: 3, hrv_noche: 3, fc_reposo: 2, fc_noche: 2, horas_sueno: 0.5, horas_sueno_reloj: 0.5,
+  hrv: 3, hrv_noche: 3, fc_reposo: 2, fc_noche: 2, fc_reposo_reloj: 2, horas_sueno: 0.5, horas_sueno_reloj: 0.5,
 }
 const umbralMin = (c: { key: string; unidad: string }): number =>
   UMBRAL_MIN[c.key] ?? (c.unidad === '/7' ? 0.6 : 1)
 
+type Separado = { horas_sueno_reloj?: number | null; fc_reposo_reloj?: number | null }
+
 /**
- * Las horas de sueño a su serie: las del reloj, sin tocar, pasan a
- * `horas_sueno_reloj`; las escritas a mano se quedan en `horas_sueno`.
+ * Cada cosa a su serie:
+ * - las horas de sueño del reloj, sin tocar, pasan a `horas_sueno_reloj`; las
+ *   escritas a mano se quedan en `horas_sueno`;
+ * - la FC del reloj que es de reposo (COROS) pasa a `fc_reposo_reloj`; la media
+ *   de la noche (Polar), y la de antes de guardar el tipo, se queda en `fc_noche`.
  * Devuelve copias: el registro de quien llama no se toca.
  */
-export function separarFuentes<T extends object>(r: T): T & { horas_sueno_reloj?: number | null } {
-  const x = r as { sueno_del_reloj?: unknown; horas_sueno?: number | null }
-  if (!r || !x.sueno_del_reloj) return r as T & { horas_sueno_reloj?: number | null }
-  return { ...r, horas_sueno_reloj: x.horas_sueno ?? null, horas_sueno: null } as T & { horas_sueno_reloj?: number | null }
+export function separarFuentes<T extends object>(r: T): T & Separado {
+  if (!r) return r as T & Separado
+  const x = r as { sueno_del_reloj?: unknown; horas_sueno?: number | null; fc_noche?: number | null; fc_noche_tipo?: unknown }
+  const horas = !!x.sueno_del_reloj
+  const reposo = x.fc_noche_tipo === 'reposo' && x.fc_noche != null
+  if (!horas && !reposo) return r as T & Separado
+  return {
+    ...r,
+    ...(horas ? { horas_sueno_reloj: x.horas_sueno ?? null, horas_sueno: null } : {}),
+    ...(reposo ? { fc_reposo_reloj: x.fc_noche, fc_noche: null } : {}),
+  } as T & Separado
 }
 
 // El tipo va suelto porque ya leía con `as any` por dentro: pedir el registro
@@ -170,7 +190,7 @@ export function analizarWellness(registros: RegistroWellness[]): AnalisisWellnes
     conclusiones.push({ tipo: 'positivo', texto: 'Ánimo y motivación altos y estables: buena disposición mental.' })
 
   // Sin datos objetivos → recordatorio
-  const hayObjetivos = recientes.some(r => r.hrv != null || r.fc_reposo != null || r.hrv_noche != null || r.fc_noche != null)
+  const hayObjetivos = recientes.some(r => r.hrv != null || r.fc_reposo != null || r.hrv_noche != null || r.fc_noche != null || r.fc_reposo_reloj != null)
   if (!hayObjetivos) conclusiones.push({ tipo: 'info', texto: 'Sin HRV ni FC: el análisis se basa en lo subjetivo. Añadirlas —a mano o conectando un reloj— sube mucho la fiabilidad.' })
 
   if (!baselineFiable) conclusiones.push({ tipo: 'info', texto: `Con ${n} registros el análisis usa umbrales generales; a partir de ~2 semanas se ajusta a TU línea base.` })
@@ -204,6 +224,7 @@ function fraseMetrica(c: { key: string; label: string; unidad: string; mejor: 'a
     case 'horas_sueno_reloj': return `Sueño real medio ${v} h/noche según el reloj${b ? ` (tu base ${b} h)` : ''}: por debajo de lo recomendable.`
     case 'hrv_noche': return `HRV nocturna media ${v} ms${b ? `, ${Math.round((1 - rec / (baseM || rec)) * 100)}% por debajo de tu base (${b})` : ''}: posible fatiga/estrés fisiológico.`
     case 'fc_noche': return `FC nocturna ${v} ppm${b ? `, +${r1(rec - (baseM || rec))} sobre tu base (${b})` : ''}: vigila recuperación/carga.`
+    case 'fc_reposo_reloj': return `FC en reposo ${v} ppm según el reloj${b ? `, +${r1(rec - (baseM || rec))} sobre tu base (${b})` : ''}: vigila recuperación/carga.`
     case 'fatiga': return `Fatiga elevada (${v}/7)${b ? ` frente a tu base ${b}` : ''}: recuperación por completar.`
     case 'dolor_muscular': return `Dolor muscular alto (${v}/7)${b ? ` sobre tu base ${b}` : ''}: recuperación incompleta.`
     case 'estres': return `Estrés elevado (${v}/7): puede frenar la recuperación y la adaptación.`
