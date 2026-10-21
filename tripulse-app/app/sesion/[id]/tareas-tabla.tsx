@@ -25,7 +25,9 @@ import { filtrarDrills, sinTildes } from '@/lib/tecnica'
 import {
   esDePliometria, leerNivel, leerParte, requisitoDe,
   piezasDeTarea, piezasDeFilaCarrera, piezasDeFilaFuerza, porLaEscalera,
+  type NivelPlio, type PartePlio,
 } from '@/lib/pliometria'
+import { escalonesActuales, porEncimaDeSuEscalon, type FilaEscalon } from '@/lib/pliometria-escalon'
 import LetraNivel, { PeldanoElegido } from '@/components/pliometria/LetraNivel'
 import ContadorContactos from '@/components/pliometria/ContadorContactos'
 import {
@@ -230,6 +232,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // medición y técnica). Ya no hace falta: editar reabre la tarea en la fila de
   // abajo, que es el mismo formulario con el que se creó y tiene todos los campos.
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
+  /* Su escalón de pliometría en cada parte del cuerpo; null = sin poner. */
+  const [escalonPlio, setEscalonPlio] = useState<Record<PartePlio, NivelPlio | null>>({ inferior: null, superior: null, tronco: null })
   // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
   const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
   /* Con qué nace cada fila nueva. Se lee UNA vez al montar: cambiarlo después
@@ -269,7 +273,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
    * props, y eso es otra tanda.
    */
   const cargarDatos = async () => {
-    const [refs, ejBib, tf, tar] = await Promise.all([
+    const [refs, ejBib, tf, tar, esc] = await Promise.all([
       cargarReferencias(supabase, deportistaId),
       cargarBiblioteca('grupo'),
       // 1RM por ejercicio, para poder enseñar el kilo cuando se prescribe en %.
@@ -281,6 +285,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
          abre o se guarda la sesión. */
       ordenarTareasQuery(
         supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', sesionId)),
+      /* Su escalón de pliometría, si se lo han puesto (lib/pliometria-escalon):
+         los saltos por encima salen marcados, sin impedir elegirlos. */
+      supabase.from('pliometria_escalon').select('id, parte, escalon, recomendado, puesto_en')
+        .eq('id_deportista', deportistaId).order('puesto_en', { ascending: false }).limit(60),
     ])
 
     setFcMax(refs.fcMax)
@@ -288,6 +296,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     setSistema(refs.sistema)
     setTests({ ...refs.tests, fuerza: [] })
     setEjerciciosBiblioteca(ejBib as never[])
+    const actuales = escalonesActuales((esc.data || []) as FilaEscalon[])
+    setEscalonPlio({ inferior: actuales.inferior.escalon, superior: actuales.superior.escalon, tronco: actuales.tronco.escalon })
 
     // Se queda solo con el 1RM más reciente de cada ejercicio: la lista viene
     // ordenada por fecha descendente, así que el primero que aparece es el bueno.
@@ -2418,6 +2428,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                   {drills.map((e: any) => (
                                     <option key={e.id} value={e.id}>
                                       {plio && leerNivel(e.nivel_pliometria) ? leerNivel(e.nivel_pliometria) + ' · ' : ''}{e.nombre}
+                                      {plio && porEncimaDeSuEscalon(leerNivel(e.nivel_pliometria), escalonPlio.inferior) ? ' — por encima de su escalón' : ''}
                                     </option>
                                   ))}
                                 </select>
@@ -2431,6 +2442,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                               )}
                               {nivel && <LetraNivel nivel={nivel} />}
                             </div>
+                            {nivel && porEncimaDeSuEscalon(nivel, escalonPlio.inferior) && (
+                              <span className="text-[11px] text-amber-300">Está en el {escalonPlio.inferior}: este salto es del {nivel}. Puedes mandarlo igual.</span>
+                            )}
                             {nivel && requisitoDe('inferior', nivel) && (
                               <span className="text-[11px] text-amber-300/90">{requisitoDe('inferior', nivel)}</span>
                             )}
@@ -2612,7 +2626,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             ejercicioSelId: String(ej.id),
                           })} />
                       </div>
-                      {(() => { const p = plioDe(f.ejercicioSelId); return p && <PeldanoElegido nivel={p.nivel} parte={p.parte} /> })()}
+                      {(() => { const p = plioDe(f.ejercicioSelId); return p && <PeldanoElegido nivel={p.nivel} parte={p.parte} escalonDeportista={escalonPlio[p.parte]} /> })()}
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
                           <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>

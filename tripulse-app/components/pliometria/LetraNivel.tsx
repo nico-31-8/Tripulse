@@ -1,4 +1,5 @@
 import { peldano, requisitoDe, type NivelPlio, type PartePlio } from '@/lib/pliometria'
+import { porEncimaDeSuEscalon } from '@/lib/pliometria-escalon'
 
 /* La escalera, de menos a más impacto: los colores de la maqueta aprobada. */
 const FONDO: Record<NivelPlio, string> = {
@@ -36,8 +37,14 @@ export default function LetraNivel({ nivel, parte = 'inferior', pequena = false 
 /**
  * Debajo del ejercicio elegido: su nivel con el escalón y, desde el c, lo que
  * pide antes. Sin nivel (uno propio sin clasificar), solo que es pliometría.
+ * Si el deportista tiene escalón puesto en esa parte y el ejercicio está por
+ * encima, se dice; no impide nada (lo decide el entrenador).
  */
-export function PeldanoElegido({ nivel, parte = 'inferior' }: { nivel: NivelPlio | null; parte?: PartePlio }) {
+export function PeldanoElegido({ nivel, parte = 'inferior', escalonDeportista = null }: {
+  nivel: NivelPlio | null
+  parte?: PartePlio
+  escalonDeportista?: NivelPlio | null
+}) {
   if (!nivel) return <span className="text-[11px] text-orange-300">Pliometría</span>
   const req = requisitoDe(parte, nivel)
   return (
@@ -46,6 +53,9 @@ export function PeldanoElegido({ nivel, parte = 'inferior' }: { nivel: NivelPlio
         <LetraNivel nivel={nivel} parte={parte} pequena />
         Pliometría · {peldano(parte, nivel).nombre.toLowerCase()}
       </span>
+      {porEncimaDeSuEscalon(nivel, escalonDeportista) && (
+        <span className="text-[11px] text-amber-300">Está en el {escalonDeportista}: este es del {nivel}. Puedes mandarlo igual.</span>
+      )}
       {req && <span className="text-[11px] text-amber-300/90">{req}</span>}
     </div>
   )

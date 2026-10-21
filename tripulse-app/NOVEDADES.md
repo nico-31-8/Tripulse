@@ -14,6 +14,37 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 21 de octubre de 2026 · El escalón de pliometría de cada deportista
+
+- **Una pestaña nueva, «Saltos», en la ficha de cada deportista.** Arriba está
+  «Su escalón»: en qué escalón de la escalera de pliometría está, en el tren
+  inferior, en el superior y en el tronco. **Lo pones tú** y lo cambias cuando
+  quieras. Cada cambio queda apuntado con la fecha y quién lo hizo.
+- **La app recomienda, pero no decide.** Si rellenas la evaluación, te dice en
+  qué escalón lo pondría y qué le falta para el siguiente, con un botón para
+  aplicarlo. Por ejemplo, con un drop jump de 270 ms desde 30 cm recomienda el
+  b y te dice que baje a 20 cm y vuelva a medirlo. Si lo pones en otro escalón,
+  la app no lo corrige. La evaluación es opcional: sin ella no recomienda nada
+  y vale el escalón que pongas.
+- **Lo que mira para recomendar** sale casi todo solo de la app: su último drop
+  jump y su CMJ, su 1RM de sentadilla, su peso y las semanas que lleva con
+  fuerza. Lo que solo puedes ver tú (cómo aterriza, cuánto aguanta a una
+  pierna, si le duele un tendón) lo marcas con «Sí» o «No» en cada escalón. Lo
+  que no has mirado no cuenta como suspendido.
+- **Los criterios de cada escalón** vienen de la NSCA y de las fichas de
+  Motricidad. Algunos ejemplos:
+  - equilibrio a una pierna 30 s: de pie para el a, en cuarto de sentadilla
+    para el b, en media sentadilla para el d;
+  - aterrizar en silencio con la rodilla sobre el pie;
+  - caer limpio desde 30 cm;
+  - contacto por debajo de 250 ms en el drop jump para el c.
+
+  Quien aún está creciendo, o es máster con la rodilla operada, no pasa del b.
+- **Al prescribir**, si el deportista tiene escalón puesto, los saltos que
+  están por encima salen marcados: «Está en el b: este salto es del d. Puedes
+  mandarlo igual». No te impide nada. Sin escalón puesto, todo funciona como
+  antes.
+
 ## 21 de octubre de 2026 · Pliometría: los saltos, con su escalera y sus contactos
 
 - **Un tipo nuevo en la biblioteca: Pliometría.** 45 ejercicios comunes en una

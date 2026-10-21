@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import MaterialDeportista from '@/components/MaterialDeportista'
+import SaltosDeportista from '@/components/pliometria/SaltosDeportista'
 import { calcularEdad, hoyISO, sumarDias } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -156,7 +157,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   useRequireEntrenador()
   const [deportista, setDeportista] = useState<any>(null)
-  const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'|'material'>('estado')
+  const [pestana, setPestana] = useState<'estado'|'zonas'|'entreno'|'disponibilidad'|'anamnesis'|'material'|'saltos'>('estado')
   const [avatarOpen, setAvatarOpen] = useState(false)
   const { ref: refDatos, alto: altoDatos } = useAltoDeContenido()
   const [anamnesis, setAnamnesis] = useState<any>(null)
@@ -537,6 +538,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             ['disponibilidad', 'Disponibilidad'],
             ['anamnesis', 'Anamnesis'],
             ['material', 'Material'],
+            ['saltos', 'Saltos'],
           ] as const).map(([k, l]) => (
             <button key={k} onClick={() => setPestana(k)} data-guia={k === 'zonas' ? 'ficha.pestana-zonas' : k === 'anamnesis' ? 'ficha.pestana-anamnesis' : undefined}
               className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px flex items-center gap-1.5 ' +
@@ -554,6 +556,10 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             misma lista: escribirla dos veces acabaría con las dos diciendo cosas
             distintas del mismo par de zapatillas. */}
         {pestana === 'material' && <MaterialDeportista idDeportista={Number(id)} />}
+
+        {/* SUS SALTOS. El escalón de pliometría lo pone el entrenador; la app
+            solo recomienda, con una evaluación opcional (lib/pliometria-escalon). */}
+        {pestana === 'saltos' && <SaltosDeportista idDeportista={Number(id)} />}
 
         {pestana === 'zonas' && (
           <div className="flex flex-col gap-5">
