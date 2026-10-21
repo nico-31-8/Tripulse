@@ -179,6 +179,28 @@ export function factorSicatZona(disciplina: string, zona: string, res: SicatZona
   return c.multiplicador
 }
 
+/**
+ * La zona con la que se pondera un bloque: la misma con la que `calcularSicatZonas`
+ * midió su coste.
+ *
+ * EN UNA SESIÓN NORMAL, LA PICO DE LA SESIÓN, PARA TODOS SUS BLOQUES. El factor
+ * «Carrera · PLA» sale de lo que costaron (agujetas, HRV, RPE) las sesiones de
+ * carrera cuyo tramo más duro fue PLA, CON SU CALENTAMIENTO DENTRO. Ponderar el
+ * calentamiento con el factor de AEL —que sale de sesiones suaves enteras—
+ * descontaría el calentamiento dos veces: la sesión dura saldría barata. (Así lo
+ * hacía el desglose por disciplina, y daba otra cifra que /carga y /volumen para
+ * la misma sesión: 342 contra 504 en el ejemplo del test.)
+ *
+ * EN UN BRICK, LA DE CADA BLOQUE: así mide el SICAT un brick, bloque a bloque.
+ */
+export function zonaDeCoste(
+  sesion: { disciplina?: string | null; zonaPico?: string | null } | null | undefined,
+  bloque: { zona: string | null },
+): string | null {
+  if (!sesion) return null
+  return sesion.disciplina === 'Brick' ? bloque.zona : sesion.zonaPico ?? null
+}
+
 // Adjunta a cada sesión su `zonaPico` (zona de mayor nivel entre sus tareas), para poder
 // ponderar la carga por zona. Las sesiones deben traer `id`. Sin tareas con zona → null.
 export async function attachZonaPico(sesiones: any[]): Promise<any[]> {

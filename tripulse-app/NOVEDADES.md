@@ -14,6 +14,20 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 21 de octubre de 2026 · La carga por disciplina pondera las zonas igual que la global
+
+- **Antes**, con «Ponderar por zona» encendido en el SICAT, la pestaña «Por
+  disciplina» de Carga ponderaba cada tarea con su propia zona, mientras que la
+  carga global y Volumen ponderaban la sesión entera con su zona más dura. La
+  misma sesión pesaba distinto según dónde la miraras: 45′ en AEL más 15′ en PLA
+  a RPE 6 (360 UA) salían, por ejemplo, 504 en la global y 342 por disciplina.
+- **Ahora** las tres usan la zona más dura de la sesión, que es como el SICAT
+  mide lo que cuesta cada zona: con el calentamiento dentro. En un brick, cada
+  bloque sigue con la suya, que es como lo mide el SICAT.
+- Solo cambia la pestaña «Por disciplina», y solo si tienes encendida la
+  ponderación por zona: las sesiones con zonas mezcladas pesan ahí más que antes,
+  lo mismo que en la global. Con el interruptor apagado no cambia nada.
+
 ## 20 de octubre de 2026 · Zonas propias: los porcentajes de cada deportista
 
 - **Antes**, una clasificación de zonas propias tenía los mismos porcentajes

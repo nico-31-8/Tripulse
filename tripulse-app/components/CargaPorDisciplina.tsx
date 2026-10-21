@@ -5,7 +5,7 @@ import { hoyISO, sumarDias } from '@/lib/fechas'
 import { vivas } from '@/lib/papelera'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { factorSicat, type SicatResultado } from '@/lib/sicat'
-import { calcularSicatZonas, factorSicatZona, type SicatZonasResultado } from '@/lib/sicat-zonas'
+import { calcularSicatZonas, factorSicatZona, attachZonaPico, zonaDeCoste, type SicatZonasResultado } from '@/lib/sicat-zonas'
 import { cargarBloques, type Bloque } from '@/lib/atribucion'
 import { serieForma, estadoTSB as estadoTSBBase, HISTORIA_MINIMA_FORMA, type NivelTSB } from '@/lib/panel-metricas'
 import { DEPORTES, colorDisciplina, emojiDisciplina, etiquetaDisciplina } from '@/lib/disciplinas'
@@ -70,6 +70,10 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
   const [discActiva, setDiscActiva] = useState('Carrera')
   const [zonasRes, setZonasRes] = useState<SicatZonasResultado | null>(null)
   const [pondZona, setPondZona] = useState(false)
+  /* De qué sesión es cada bloque: su deporte y su zona pico, para ponderarlo
+     con la zona con la que se midió su coste (lib/sicat-zonas, zonaDeCoste). */
+  const [sesiones, setSesiones] = useState<{ id: number; disciplina: string | null }[]>([])
+  const [deSesion, setDeSesion] = useState<Record<number, { disciplina: string | null; zonaPico: string | null }>>({})
 
   useEffect(() => {
     if (!depId) return
@@ -91,6 +95,20 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
     return () => { vivo = false }
   }, [pondZona, depId])
 
+  /* La zona pico de cada sesión, también solo con la ponderación encendida (con
+     ella apagada no se mira, así que no hace falta vaciarla). */
+  useEffect(() => {
+    if (!pondZona || !sesiones.length) return
+    let vivo = true
+    attachZonaPico(sesiones).then(conPico => {
+      if (!vivo) return
+      const mapa: Record<number, { disciplina: string | null; zonaPico: string | null }> = {}
+      for (const s of conPico) mapa[s.id] = { disciplina: s.disciplina ?? null, zonaPico: s.zonaPico ?? null }
+      setDeSesion(mapa)
+    })
+    return () => { vivo = false }
+  }, [pondZona, sesiones])
+
   const cargar = async () => {
     setLoading(true)
 
@@ -108,6 +126,7 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
       .eq('estado', 'Realizada')
       .gte('fecha_sesion', desdeStr)).order('fecha_sesion')
 
+    setSesiones(((ses || []) as { id: number; disciplina: string | null }[]).map(s => ({ id: s.id, disciplina: s.disciplina })))
     setBloques(await cargarBloques(supabase, ses || [], {
       /* El RPE que DIO el atleta, como en el resto de la app (cargaReal). Aquí
          se usaba el planificado «como antes»: la forma de lo HECHO se calculaba
@@ -127,12 +146,15 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
       // Este módulo era el único que se quedaba a nivel de disciplina mientras
       // /carga y /volumen ya ponderaban por zona: el mismo entrenador veía dos
       // cifras distintas de la misma carga según por dónde entrara.
-      // Aquí además se pondera MEJOR: cada bloque trae su propia zona, así que no
-      // hace falta reducir la sesión a una zona pico como hacen los otros dos.
+      // Y cada bloque NO va con la zona de su tarea, sino con la que se midió su
+      // coste: la pico de su sesión (en un brick, la suya). Con la de su tarea,
+      // el calentamiento de una sesión dura salía al factor de una suave y la
+      // misma sesión pesaba aquí menos que en /carga (ver zonaDeCoste).
       const factor = (b: Bloque) => {
         if (!sicat) return 1
-        if (pondZona && b.zona) {
-          const f = factorSicatZona(disc.key, b.zona, zonasRes)
+        const zona = pondZona ? zonaDeCoste(deSesion[b.id_sesion], b) : null
+        if (zona) {
+          const f = factorSicatZona(disc.key, zona, zonasRes)
           if (f != null) return f
         }
         return factorSicat(disc.key, sicat)
@@ -143,7 +165,7 @@ export default function CargaPorDisciplina({ depId, diasRango = 56, sicat = null
       resultado[disc.key] = entera.slice(-diasRango)
     }
     return { series: resultado, base }
-  }, [bloques, sicat, diasRango, pondZona, zonasRes])
+  }, [bloques, sicat, diasRango, pondZona, zonasRes, deSesion])
   const datosPorDisc = calculo.series
   const conBase = calculo.base
 

@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('./supabase', () => ({ supabase: {} }))
 
-import { costeSesion, factorSicatZona } from './sicat-zonas'
+import { costeSesion, factorSicatZona, conZonaPico, zonaDeCoste } from './sicat-zonas'
+import { expandirEnBloques } from './atribucion'
 import type { SicatZonasResultado, CeldaZona } from './sicat-zonas'
 
 // costeSesion(d0, d24, d48, hrvDiaSiguiente, hrvBasal, rpe) → 0-100.
@@ -122,5 +123,46 @@ describe('costeSesion — la HRV del reloj como respaldo', () => {
   it('sin ninguna de las dos, como antes: la HRV no pesa', () => {
     expect(costeSesion(null, null, null, null, 60, 6, null)).toBe(costeSesion(null, null, null, null, 60, 6))
     expect(costeSesion(null, null, null, null, 60, 6, 0)).toBe(costeSesion(null, null, null, null, 60, 6))
+  })
+})
+
+/*
+  LA MISMA SESIÓN PESA LO MISMO EN LAS TRES PANTALLAS (con «ponderar por zona»,
+  21-10-2026). /carga y /volumen multiplican la sesión entera por el factor de
+  su zona pico; el desglose por disciplina la reparte en bloques, y ponderaba
+  cada uno con la zona de SU tarea. Como el factor sale de sesiones enteras
+  agrupadas por su zona pico (calcularSicatZonas), lo coherente es lo primero.
+*/
+describe('la misma sesión pesa lo mismo en /carga, /volumen y el desglose', () => {
+  /* 60′ de carrera a RPE 6 = 360 UA: 45′ en AEL y 15′ en PLA. */
+  const sesion = { id: 7, fecha_sesion: '2026-10-01', disciplina: 'Carrera', duracion_minutos: 60, rpe_reportado: 6 }
+  const tareas = [
+    { id: 1, id_sesion: 7, orden: 1, series: 1, disciplina: 'Carrera', zona_entrenamiento: 'AEL', zona_copia: null, p_duracion: [{ tiempo_planeado: 2700 }] },
+    { id: 2, id_sesion: 7, orden: 2, series: 1, disciplina: 'Carrera', zona_entrenamiento: 'PLA', zona_copia: null, p_duracion: [{ tiempo_planeado: 900 }] },
+  ]
+  const celda = (zona: string, multiplicador: number): CeldaZona =>
+    ({ disciplina: 'Carrera', zona, n: 5, costeMedio: 50 * multiplicador, multiplicador, confianza: 'alta' })
+  const zonas: SicatZonasResultado = { celdas: [celda('PLA', 1.4), celda('AEL', 0.8)], costeMedioGlobal: 50, nSesiones: 10 }
+  const factor = (disciplina: string, zona: string | null) => (zona ? factorSicatZona(disciplina, zona, zonas) : null) ?? 1
+  const [conPico] = conZonaPico([sesion], tareas)
+
+  it('/carga y /volumen: la sesión entera, con el factor de su zona pico', () => {
+    expect(conPico.zonaPico).toBe('PLA')
+    expect(6 * 60 * factor('Carrera', conPico.zonaPico)).toBeCloseTo(504, 6)
+  })
+
+  it('el desglose, bloque a bloque con la zona con la que se midió su coste: lo mismo', () => {
+    const bloques = expandirEnBloques([sesion], tareas, { estimar: false })
+    expect(bloques.map(b => [b.zona, b.minutos, b.ua])).toEqual([['AEL', 45, 270], ['PLA', 15, 90]])
+    expect(bloques.reduce((a, b) => a + b.ua * factor(b.disciplina, zonaDeCoste(conPico, b)), 0)).toBeCloseTo(504, 6)
+    /* Con la zona de cada tarea, como lo hacía, salían 342: otra cifra para la misma sesión. */
+    expect(bloques.reduce((a, b) => a + b.ua * factor(b.disciplina, b.zona), 0)).toBeCloseTo(342, 6)
+  })
+
+  it('en un brick, cada bloque con la suya: así lo mide el SICAT', () => {
+    expect(zonaDeCoste({ disciplina: 'Brick', zonaPico: 'PLA' }, { zona: 'AEL' })).toBe('AEL')
+    expect(zonaDeCoste({ disciplina: 'Carrera', zonaPico: 'PLA' }, { zona: 'AEL' })).toBe('PLA')
+    /* Sin saber de qué sesión es, ninguna: se cae al factor del deporte. */
+    expect(zonaDeCoste(undefined, { zona: 'AEL' })).toBeNull()
   })
 })
