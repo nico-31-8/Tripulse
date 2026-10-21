@@ -29,6 +29,7 @@ import {
 import { referenciaDeZona, cargarReferencias, ritmoObjetivoTexto, ZONAS_UI as ZONAS } from '@/lib/referencia-zona'
 import { usuarioActual } from '@/lib/sesion'
 import { leerClasificaciones, type Clasificacion, type Limite } from '@/lib/zonas-entrenador'
+import { leerAjustes, clasificacionesAjustadas } from '@/lib/zonas-ajuste'
 import { testDeFila, normDeporte, type FilaTest, type TestConMediciones } from '@/lib/referencia-propia'
 import {
   fuentesDe, buscarFuente, esClasificacion, zonasDe, buscarZona, rangoInicial, acotar,
@@ -293,7 +294,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
        un director prescribe con los tests y las zonas del entrenador del
        atleta, y el entrenador con los de su director. */
     const duenos = await duenosCompartidos(user.id)
-    const [{ data: defs }, { data: cs }, { data: zs }, { data: medsAtleta }] = await Promise.all([
+    const [{ data: defs }, { data: cs }, { data: zs }, { data: medsAtleta }, { data: ajs }] = await Promise.all([
       supabase.from('test_definicion').select('*').in('id_entrenador', duenos).eq('archivado', false),
       supabase.from('zona_clasificacion').select('*').in('id_entrenador', duenos).eq('archivada', false).order('orden'),
       supabase.from('zona_entrenador').select('*').in('id_entrenador', duenos).eq('archivada', false).order('orden'),
@@ -301,6 +302,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
          tests: antes esperaban a saber qué tests había. Abajo se quedan las de
          los tests que se ven. */
       supabase.from('test_medicion').select('id_definicion, fecha, datos').eq('id_deportista', deportistaId),
+      /* SUS PORCENTAJES (lib/zonas-ajuste): las clasificaciones se le ofrecen
+         ya con lo suyo, así que lo que se elige, se afina y se congela en la
+         tarea sale con sus porcentajes sin que nada más se entere. */
+      supabase.from('zona_ajuste').select('id_zona, desde, hasta').eq('id_deportista', deportistaId),
     ])
     /* LAS TUYAS PRIMERO y después las de tu dirección, cada grupo en su orden.
        Las sueltas (zonas sin clasificación que guardó la app publicada) no se
@@ -308,10 +313,10 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
     const suya = (x: { id_entrenador?: string }) => x.id_entrenador === user.id
     const filasC = (cs || []) as { id_entrenador?: string }[]
     const filasZ = (zs || []) as { id_entrenador?: string }[]
-    setClasificaciones([
+    setClasificaciones(clasificacionesAjustadas([
       ...leerClasificaciones(filasC.filter(suya), filasZ.filter(suya)),
       ...leerClasificaciones(filasC.filter(x => !suya(x)), filasZ.filter(x => !suya(x))),
-    ].filter(c => !c.suelta))
+    ].filter(c => !c.suelta), leerAjustes(ajs)))
 
     const ids = new Set((defs || []).map((d: { id: number }) => d.id))
     const meds = ((medsAtleta || []) as { id_definicion: number; fecha: string; datos: Record<string, unknown> | null }[])

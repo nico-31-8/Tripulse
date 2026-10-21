@@ -20,7 +20,7 @@
 // con la base), lib/hitos (qué hitos hay y cuánto valen) y
 // lib/clasificaciones-zonas (la escalera y los avisos), con sus tests.
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
@@ -31,12 +31,21 @@ import {
   type Clasificacion, type Limite, type ZonaEntrenador,
 } from '@/lib/zonas-entrenador'
 import { hitosDisponibles, buscarHito, mismaUnidad, leerIdApp, leerIdPropia, type HitoDisponible, type TestsApp } from '@/lib/hitos'
-import { evaluar, explicarLimites, type Evaluacion } from '@/lib/clasificaciones-zonas'
+import { evaluar, explicarLimites, ejeParaAjustar, type Evaluacion } from '@/lib/clasificaciones-zonas'
 import { testDeFila, unidadCanonica, type TestConMediciones } from '@/lib/referencia-propia'
 import { sociosDeDireccion, duenosCompartidos, deQuien } from '@/lib/compartido-direccion'
-import EscaleraZonas from '@/components/zonas/EscaleraZonas'
+import { textoPunto } from '@/lib/prescripcion-zona'
+import {
+  leerAjustes, borradorDe, ajustesDeBorrador, mismoBorrador, fronterasDe, pctDe, fronteraMovida,
+  esfuerzoDeFrontera, zonaALaPlantilla, ajustesParaGuardar, clasificacionAjustada,
+  arrastrarFrontera, pasoFrontera, escribirLimite, pegarZonas, separarZonas, historial, puedeDeshacer, HISTORIAL_VACIO,
+  type AjusteZona, type Borrador, type Frontera, type Lado,
+} from '@/lib/zonas-ajuste'
+import EscaleraZonas, { type AsaEscalera, type EdicionEscalera } from '@/components/zonas/EscaleraZonas'
 
 const HITO = '#8ecbff'
+/* Si la lista de clasificaciones está plegada, en este navegador. */
+const LLAVE_LISTA = 'tripulse.zonas-propias.lista'
 const nEs = (n: number) => (Math.round(n * 100) / 100).toString().replace('.', ',')
 
 interface FilaDefinicion { id: number; nombre: string; deporte: string }
@@ -60,6 +69,36 @@ const NOMBRE_DE_LA_APP: Record<string, string> = {
   vam: 'Zonas sobre la VAM', ftp: 'Zonas sobre el FTP', css: 'Zonas sobre el CSS',
 }
 
+/**
+ * Un % que se escribe a mano. Mientras se escribe enseña lo tecleado y no el
+ * valor: de lo contrario, camino de «102», el «1» y el «10» moverían la
+ * frontera (o la devolverían a su sitio) con cada tecla. Lo que no es un % con
+ * sentido no mueve nada; al salir, enseña el que se quedó.
+ */
+function CampoPct({ valor, onCambio, etiqueta, cambiado, desactivado }: {
+  valor: number
+  onCambio: (n: number) => void
+  etiqueta: string
+  cambiado: boolean
+  desactivado?: boolean
+}) {
+  const [texto, setTexto] = useState<string | null>(null)
+  return (
+    /* `data-pct`: aquí Ctrl+Z deshace el cambio entero, no la última cifra. */
+    <input type="text" inputMode="decimal" aria-label={etiqueta} disabled={desactivado} data-pct="1"
+      value={texto ?? nEs(valor)}
+      onFocus={() => setTexto(nEs(valor))}
+      onChange={e => {
+        setTexto(e.target.value)
+        const n = Number(e.target.value.replace(',', '.'))
+        if (Number.isFinite(n) && n >= 40 && n <= 400) onCambio(n)
+      }}
+      onBlur={() => setTexto(null)}
+      className={'w-[62px] rounded-lg px-2 py-1 text-right font-mono text-[13px] tabular-nums outline-none border focus:border-orange-500 disabled:opacity-50 '
+        + (cambiado ? 'border-orange-500/55 bg-orange-500/[0.08] text-white' : 'border-transparent bg-gray-800 text-white')} />
+  )
+}
+
 export default function ZonasPropiasPage() {
   const router = useRouter()
   useRequireEntrenador()
@@ -75,6 +114,17 @@ export default function ZonasPropiasPage() {
   const [cambios, setCambios] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
+  /* LA LISTA DE LA IZQUIERDA SE PUEDE PLEGAR, para dejarle sitio a la escalera
+     y a sus porcentajes al lado (lo pidió el usuario el 20-10-2026). Se acuerda
+     en este navegador; si no se puede leer, abierta. */
+  const [listaAbierta, setListaAbierta] = useState<boolean>(() => {
+    try { return localStorage.getItem(LLAVE_LISTA) !== 'cerrada' } catch { return true }
+  })
+  const alternarLista = () => {
+    const abierta = !listaAbierta
+    setListaAbierta(abierta)
+    try { localStorage.setItem(LLAVE_LISTA, abierta ? 'abierta' : 'cerrada') } catch { /* sin recordarlo */ }
+  }
 
   const [deportistas, setDeportistas] = useState<{ id: number; nombre: string }[]>([])
   const [depActivo, setDepActivo] = useState<number | null>(null)
@@ -89,15 +139,62 @@ export default function ZonasPropiasPage() {
   /* Qué deportistas tienen hecho cada test (id del test → ids de deportista). */
   const [medidoPor, setMedidoPor] = useState<Record<number, number[]>>({})
 
+  /* SUS PORCENTAJES (lib/zonas-ajuste): lo guardado del deportista elegido y lo
+     que se está moviendo. `null` en el borrador = igual que lo guardado, y así
+     no hay que tenerlos sincronizados a mano. */
+  const [ajustes, setAjustes] = useState<Map<number, AjusteZona>>(new Map())
+  /* Con su historia, para «Deshacer» y Ctrl+Z (lib/zonas-ajuste, `historial`). */
+  const [hist, cambiarHist] = useReducer(historial, HISTORIAL_VACIO)
+  const borrador = hist.borrador
+  const [guardandoAj, setGuardandoAj] = useState(false)
+  /* A quién se quería pasar con cambios sin guardar: antes se pregunta. */
+  const [pendienteDep, setPendienteDep] = useState<number | null>(null)
+  /* MIENTRAS SE ARRASTRA, las fronteras son las de cuando se cogió el asa: si
+     dos se juntaran a mitad del gesto, el asa cambiaría bajo el dedo, y así la
+     que se arrastra puede pasar por encima de otra sin quedarse pegada. Al
+     soltar, si quedaron en el mismo punto, ya son una (lib/zonas-ajuste). */
+  const [congeladas, setCongeladas] = useState<{ clasif: number; fronteras: Frontera[] } | null>(null)
+  /* Quién tiene porcentajes propios en cada zona (id de zona → ids de deportista). */
+  const [conAjustes, setConAjustes] = useState<Record<number, number[]>>({})
+
   useEffect(() => { arrancar() }, [])
+
+  /* Lo de este deportista sin guardar: se mira en cada pintada (es barato). */
+  const todasLasClasifs = [...clasifs, ...ajenas.flatMap(g => g.clasifs)]
+  const guardado = borradorDe(todasLasClasifs, ajustes)
+  const efectivo: Borrador = borrador ?? guardado
+  const sinGuardarAj = borrador !== null && !mismoBorrador(borrador, guardado)
+  const actual: Clasificacion | null = sel
+    ? (sel.de === 'mia' ? clasifs[sel.i] : ajenas[sel.g]?.clasifs[sel.i]) ?? null
+    : null
+  const sePuedeDeshacer = puedeDeshacer(hist, actual?.id)
 
   /* Salir con cambios sin guardar los perdería sin decir nada. */
   useEffect(() => {
-    if (!cambios) return
+    if (!cambios && !sinGuardarAj) return
     const aviso = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', aviso)
     return () => window.removeEventListener('beforeunload', aviso)
-  }, [cambios])
+  }, [cambios, sinGuardarAj])
+
+  /* Ctrl+Z (⌘Z en el Mac) deshace lo último de sus porcentajes. Escribiendo en
+     otra casilla (la plantilla, un nombre) se deja el deshacer de siempre. */
+  const idActual = actual?.id ?? null
+  useEffect(() => {
+    if (!sePuedeDeshacer || cambios || idActual == null) return
+    const alTeclear = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return
+      const el = e.target instanceof HTMLElement ? e.target : null
+      const escribe = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+      if (escribe && !el.dataset.pct) return
+      e.preventDefault()
+      /* En la casilla de un %: al salir enseña el que vuelve. */
+      if (escribe) el.blur()
+      cambiarHist({ tipo: 'deshacer', clasif: idActual })
+    }
+    window.addEventListener('keydown', alTeclear)
+    return () => window.removeEventListener('keydown', alTeclear)
+  }, [sePuedeDeshacer, cambios, idActual])
 
   const arrancar = async () => {
     const user = await usuarioActual()
@@ -111,6 +208,7 @@ export default function ZonasPropiasPage() {
       supabase.from('zona_entrenador').select('*').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
       supabase.from('deportista').select('id, nombre').eq('id_entrenador', user.id).eq('solo_test', false).order('nombre'),
       sociosDeDireccion(),
+      cargarQuienTieneAjustes(),
     ])
     const mias = leerClasificaciones(cs, zs)
     setDeportistas(deps || [])
@@ -137,7 +235,9 @@ export default function ZonasPropiasPage() {
        quedaba con la foto de al abrir la pantalla. */
     const dep = depActivo ?? (deps || [])[0]?.id ?? null
     const [t] = await Promise.all([
-      dep != null ? elegirDeportista(dep) : recargarTests(null),
+      /* Si ya había uno elegido, lo que estuviera moviendo se conserva: aquí se
+         llega también al guardar la plantilla. */
+      dep != null ? elegirDeportista(dep, dep === depActivo) : recargarTests(null),
       cargarAjenas(),
     ])
 
@@ -155,13 +255,66 @@ export default function ZonasPropiasPage() {
     return buscarHito(hitosDisponibles(c.deporte, t), c.hitos[0])?.largo || 'Zonas sin clasificar'
   }
 
-  /** Los números del atleta: los de la app y los de los tests propios. */
-  const elegirDeportista = async (id: number): Promise<TestConMediciones[]> => {
+  /** Los números del atleta: los de la app, los de los tests propios y sus porcentajes. */
+  const elegirDeportista = async (id: number, conservarBorrador = false): Promise<TestConMediciones[]> => {
     setDepActivo(id)
-    /* Sus referencias y sus tests a la vez: no dependen unos de otros. */
-    const [r, t] = await Promise.all([cargarReferencias(supabase, id), recargarTests(id)])
+    setPendienteDep(null)
+    if (!conservarBorrador) cambiarHist({ tipo: 'empezar' })
+    setCongeladas(null)
+    /* Sus referencias, sus tests y sus ajustes a la vez: no dependen unos de otros. */
+    const [r, t, a] = await Promise.all([
+      cargarReferencias(supabase, id),
+      recargarTests(id),
+      supabase.from('zona_ajuste').select('id_zona, desde, hasta').eq('id_deportista', id),
+    ])
     setRefs({ vam: Number(r.tests?.vam) || 0, ftp: Number(r.tests?.ftp) || 0, css: Number(r.tests?.css) || 0 })
+    setAjustes(leerAjustes(a.data))
     return t
+  }
+
+  /** Cambiar de deportista, pero sin perder en silencio lo que se estaba moviendo. */
+  const cambiarDeportista = (id: number) => {
+    if (id === depActivo) return
+    if (sinGuardarAj) { setPendienteDep(id); return }
+    elegirDeportista(id)
+  }
+
+  /** Quién tiene porcentajes propios en cada zona. La RLS ya deja solo los de tus deportistas. */
+  const cargarQuienTieneAjustes = async () => {
+    const { data } = await supabase.from('zona_ajuste').select('id_zona, id_deportista')
+    const porZona: Record<number, number[]> = {}
+    for (const f of (data || []) as { id_zona: number; id_deportista: number }[]) {
+      const l = (porZona[f.id_zona] ||= [])
+      if (!l.includes(f.id_deportista)) l.push(f.id_deportista)
+    }
+    setConAjustes(porZona)
+  }
+
+  /** Guarda lo movido para el deportista elegido. Devuelve si salió bien. */
+  const guardarAjustes = async (): Promise<boolean> => {
+    if (depActivo == null) return false
+    const { filas, borrar } = ajustesParaGuardar(todasLasClasifs, efectivo, depActivo, ajustes.keys(), new Date().toISOString())
+    setGuardandoAj(true)
+    try {
+      /* Las dos cosas a la vez: tocan zonas distintas. */
+      const [up, del] = await Promise.all([
+        filas.length ? supabase.from('zona_ajuste').upsert(filas, { onConflict: 'id_zona,id_deportista' }) : Promise.resolve({ error: null }),
+        borrar.length ? supabase.from('zona_ajuste').delete().eq('id_deportista', depActivo).in('id_zona', borrar) : Promise.resolve({ error: null }),
+      ])
+      const error = up.error || del.error
+      if (error) { decir('mal', 'No se pudo guardar: ' + error.message); return false }
+    } finally {
+      setGuardandoAj(false)
+    }
+    const { data } = await supabase.from('zona_ajuste').select('id_zona, desde, hasta').eq('id_deportista', depActivo)
+    setAjustes(leerAjustes(data))
+    cambiarHist({ tipo: 'guardado' })
+    cargarQuienTieneAjustes()
+    const quien = deportistas.find(d => d.id === depActivo)?.nombre.split(' ')[0] || 'este deportista'
+    decir('ok', filas.length
+      ? 'Guardado para ' + quien + '. Lo que le mandes desde ahora sale con sus porcentajes; lo ya mandado no cambia.'
+      : quien + ' vuelve a la plantilla general.')
+    return true
   }
 
   /** Los tests del entrenador (y de su dirección) con las mediciones de ese atleta. */
@@ -384,17 +537,89 @@ export default function ZonasPropiasPage() {
   const campo = 'bg-gray-800 text-white text-[13px] rounded-lg px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-orange-500 border border-transparent disabled:opacity-60'
   const campoMal = campo.replace('border-transparent', 'border-red-500/60 bg-red-500/5')
   const btn = 'bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-40'
+  const btn2 = 'border border-white/15 hover:border-white/30 text-gray-200 text-[13px] px-3.5 py-2 rounded-lg transition disabled:opacity-40'
   const etiqueta = 'text-[10.5px] uppercase tracking-[0.08em] text-gray-500'
 
   if (cargando) return <main className="min-h-screen bg-gray-950 text-gray-500 grid place-items-center">Cargando…</main>
 
-  const actual: Clasificacion | null = sel
-    ? (sel.de === 'mia' ? clasifs[sel.i] : ajenas[sel.g]?.clasifs[sel.i]) ?? null
-    : null
   const soloLectura = sel?.de === 'ajena'
   const iActual = sel?.de === 'mia' ? sel.i : -1
   const atleta = deportistas.find(d => d.id === depActivo)
-  const ev: Evaluacion | null = actual && tests ? evaluar(actual, disponibles(actual.deporte), refs, tests) : null
+  const nombreAtleta = atleta?.nombre.trim().split(' ')[0] || 'este deportista'
+  /* La plantilla con SUS porcentajes: la escalera, «le sale» y los avisos son de
+     esa persona. El eje sale de la plantilla, que no se mueve mientras se
+     arrastra: así no baila nada bajo el dedo. */
+  const evPlantilla: Evaluacion | null = actual && tests ? evaluar(actual, disponibles(actual.deporte), refs, tests) : null
+  const actualSuya = actual ? clasificacionAjustada(actual, ajustesDeBorrador(efectivo, [actual])) : null
+  const ev: Evaluacion | null = actualSuya && tests ? evaluar(actualSuya, disponibles(actualSuya.deporte), refs, tests) : null
+
+  /* SE AJUSTA A UNA PERSONA LA PLANTILLA GUARDADA. Con la plantilla a medias,
+     una frontera podría apuntar a una zona que aún no existe en la base; y una
+     zona nueva no tiene id al que colgarle nada. */
+  const conNumeros = !!ev && ev.hitos.some(h => h.hito && h.valor !== null)
+  const puedeAjustar = !!actual && !!actual.id && !actual.suelta && !cambios && depActivo != null && conNumeros
+  const zonaAjustadaAqui = (idZona?: number) => !!idZona && !!efectivo[idZona]
+  const nAjustadas = actual ? actual.zonas.filter(z => zonaAjustadaAqui(z.id)).length : 0
+
+  /* Las fronteras que se arrastran, las de esta persona: dos zonas que ha juntado son una sola. */
+  const fronteras: Frontera[] = puedeAjustar && actual && ev
+    ? (congeladas && congeladas.clasif === actual.id ? congeladas.fronteras : fronterasDe(actual, efectivo, ev))
+    : []
+  const visibles = actual && ev
+    ? fronteras.map(f => ({ f, esf: esfuerzoDeFrontera(actual, efectivo, f, ev) })).filter((x): x is { f: Frontera; esf: number } => x.esf !== null)
+    : []
+  const asas: AsaEscalera[] = actual && ev ? visibles.map(({ f, esf }) => {
+    const p = pctDe(actual, efectivo, f.claves[0]) ?? 0
+    const corto = buscarHito(disponibles(actual.deporte), f.ref)?.corto || 'hito'
+    const punto = textoPunto(ev.inverso ? 1 / esf : esf, ev.unidad)
+    const movida = fronteraMovida(efectivo, f)
+    const dePlantilla = pctDe(actual, {}, f.claves[0])
+    return {
+      clave: f.claves.map(k => k.idZona + k.lado).join('-'),
+      esfuerzo: esf,
+      fantasma: movida ? esfuerzoDeFrontera(actual, {}, f, ev) : null,
+      carriles: f.claves.map(k => actual.zonas.findIndex(z => z.id === k.idZona)).filter(i => i >= 0).sort((a, b) => a - b),
+      nombre: f.nombre,
+      valor: p,
+      globo: f.nombre + ' · ' + nEs(p) + ' % de su ' + corto + (punto ? ' · ' + punto : '')
+        + (movida && dePlantilla !== null ? ' (plantilla ' + nEs(dePlantilla) + ' %)' : ''),
+      aria: nEs(p) + ' % de su ' + corto + (punto ? ', ' + punto : ''),
+      movida,
+    }
+  }) : []
+  /** Un cambio en sus porcentajes, apuntado para poder deshacerlo. Los del mismo `grupo` son un solo paso; sin grupo, cada uno es el suyo. */
+  const cambiar = (hacer: (b: Borrador) => Borrador, grupo: string | null = null) => {
+    if (actual?.id) cambiarHist({ tipo: 'cambiar', hacer, base: guardado, grupo, clasif: actual.id })
+  }
+
+  const edicion: EdicionEscalera | null = puedeAjustar && actual && ev ? {
+    asas,
+    onArrastrar: (i, esf, gesto, iman) => {
+      const f = visibles[i]?.f
+      if (!f || !actual.id) return
+      if (!congeladas) setCongeladas({ clasif: actual.id, fronteras })
+      /* Cerca del borde de la zona de al lado, se pega: así se juntan. */
+      cambiar(b => arrastrarFrontera(actual, f, esf, b, ev, iman), 'arrastre-' + gesto)
+    },
+    onSoltar: () => setCongeladas(null),
+    onPaso: (i, dir, grande) => {
+      const f = visibles[i]?.f
+      if (f) cambiar(b => pasoFrontera(actual, f, dir, grande, b, ev))
+    },
+  } : null
+
+  /** Escribir un % a mano: mueve su frontera, igual que arrastrarla. Lo de una casilla es un paso, aunque se teclee cifra a cifra. */
+  const escribirPct = (idZona: number, lado: Lado, n: number) => {
+    if (!actual || !ev) return
+    const f = fronteras.find(x => x.claves.some(k => k.idZona === idZona && k.lado === lado))
+    if (!f) return
+    cambiar(b => escribirLimite(actual, f, { idZona, lado }, n, b, ev), 'casilla-' + idZona + lado)
+  }
+  /** Esta clasificación entera a la plantilla (las demás no se tocan). */
+  const todoALaPlantilla = () => {
+    if (!actual) return
+    cambiar(b => Object.fromEntries(Object.entries(b).filter(([id]) => !actual.zonas.some(z => z.id === Number(id)))))
+  }
 
   /** El primer hito que existe: de él salen la unidad y el sentido de toda la clasificación. */
   const hitoGuia = (c: Clasificacion) => c.hitos.map(h => buscarHito(disponibles(c.deporte), h)).find(Boolean) ?? null
@@ -454,7 +679,7 @@ export default function ZonasPropiasPage() {
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5">
         <div data-guia="zp.inicio">
           <h2 className="text-2xl font-bold mb-1">Zonas propias</h2>
           <p className="text-gray-400 text-sm max-w-3xl">
@@ -473,8 +698,14 @@ export default function ZonasPropiasPage() {
 
         <div className="rounded-2xl border border-white/10 overflow-hidden bg-[#0a0a0a]">
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-white/[0.08] bg-[#0c0f14]">
-            {/* En el móvil la lista de la izquierda no cabe: un desplegable. */}
-            <select className={campo + ' md:hidden max-w-[60vw]'}
+            <button type="button" onClick={alternarLista} aria-expanded={listaAbierta} aria-controls="zp-lista"
+              title={listaAbierta ? 'Plegar la lista para dejar más sitio' : 'Ver la lista de clasificaciones'}
+              className="hidden md:inline-flex items-center gap-1.5 text-[12.5px] text-gray-400 hover:text-white border border-white/10 hover:border-white/25 rounded-lg px-2.5 py-1.5 transition">
+              <span aria-hidden="true">{listaAbierta ? '«' : '»'}</span>{listaAbierta ? 'Ocultar lista' : 'Ver lista'}
+            </button>
+            {/* En el móvil la lista de la izquierda no cabe: un desplegable. Y en el
+                ordenador, con la lista plegada. */}
+            <select className={campo + (listaAbierta ? ' md:hidden' : '') + ' max-w-[60vw]'}
               value={sel ? (sel.de === 'mia' ? 'm' + sel.i : 'a' + sel.g + ':' + sel.i) : ''}
               onChange={e => {
                 const v = e.target.value
@@ -494,9 +725,10 @@ export default function ZonasPropiasPage() {
             </button>
           </div>
 
-          <div className="grid md:grid-cols-[260px_1fr] min-h-[560px]">
+          <div className={'grid min-h-[560px] ' + (listaAbierta ? 'md:grid-cols-[260px_1fr]' : '')}>
             {/* ---- la lista ---- */}
-            <aside className="hidden md:flex flex-col gap-4 border-r border-white/[0.08] bg-[#0c0f14] px-3 py-4" aria-label="Tus clasificaciones">
+            <aside id="zp-lista" aria-label="Tus clasificaciones"
+              className={(listaAbierta ? 'hidden md:flex' : 'hidden') + ' flex-col gap-4 border-r border-white/[0.08] bg-[#0c0f14] px-3 py-4'}>
               {deportesConClasif.map(d => {
                 const suyas = clasifs.map((c, i) => ({ c, i })).filter(x => x.c.deporte === d)
                 if (!suyas.length) return null
@@ -664,7 +896,7 @@ export default function ZonasPropiasPage() {
                                   {ez?.estado === 'reves'
                                     ? <b className="text-[#ff9ca1] font-semibold">⚠ al revés: {ez.texto}</b>
                                     : ez?.texto
-                                      ? <b className="font-mono font-semibold tabular-nums">{ez.texto}</b>
+                                      ? <b className="font-mono font-semibold tabular-nums">{ez.texto}{zonaAjustadaAqui(z.id) && <span className="font-sans font-normal text-[11px] text-[#fdba74]"> · con sus %</span>}</b>
                                       : <span className="text-amber-300/70">{atleta
                                           ? 'le falta su ' + ([ez?.desde, ez?.hasta].filter(x => x && x.numero === null).map(x => x!.corto).join(' y su ') || 'dato')
                                           : 'elige un deportista'}</span>}
@@ -687,40 +919,185 @@ export default function ZonasPropiasPage() {
                       )}
                     </div>
 
-                    {/* La escalera, con un deportista concreto. */}
+                    {/* La escalera, con un deportista concreto: y ahí se le
+                        ajustan SUS porcentajes (lib/zonas-ajuste). */}
                     {deportistas.length === 0 ? (
                       <p className="text-gray-500 text-[12.5px]">Cuando tengas deportistas, aquí verás cómo le quedan a cada uno: sus números, y si alguna zona le queda al revés.</p>
                     ) : ev && (
-                      <EscaleraZonas ev={ev} titulo={'Cómo le quedan a ' + (atleta?.nombre || 'este deportista')}
-                        /* SI ESTE NO LA TIENE HECHA, QUIÉN SÍ. La escalera sale
-                           con los números de uno: sin ellos se queda en blanco, y
-                           sin esto no había forma de saber con quién mirarla. */
-                        pista={(() => {
-                          const conPrueba = deportistas.filter(d => d.id !== depActivo && c.hitos.some(h => {
-                            const p = leerIdPropia(h)
-                            return !!p && (medidoPor[p.idDefinicion] || []).includes(d.id)
-                          }))
-                          return conPrueba.length > 0 && (
-                            <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-gray-400">
-                              {conPrueba.length === 1 ? 'La tiene hecha' : 'La tienen hecha'}:
-                              {conPrueba.map(d => (
-                                <button key={d.id} onClick={() => elegirDeportista(d.id)}
-                                  className="text-[12px] px-2.5 py-1 rounded-full bg-[#8ecbff]/10 text-[#8ecbff] border border-[#8ecbff]/30 hover:bg-[#8ecbff]/20 transition">
-                                  Ver con {d.nombre.trim()}
-                                </button>
-                              ))}
+                      <div className="@container flex flex-col gap-3">
+                        {pendienteDep != null && (
+                          <div role="alert" className="rounded-xl border border-amber-400/40 bg-amber-400/[0.07] px-3.5 py-2.5 flex flex-wrap items-center gap-2 text-[13px] text-[#e8dcc0]">
+                            <span>Tienes cambios sin guardar para <b>{nombreAtleta}</b>.</span>
+                            <button className={btn} disabled={guardandoAj}
+                              onClick={async () => { const id = pendienteDep; if (await guardarAjustes()) elegirDeportista(id) }}>
+                              Guardar y pasar a {deportistas.find(d => d.id === pendienteDep)?.nombre.trim().split(' ')[0]}
+                            </button>
+                            <button className={btn2} onClick={() => elegirDeportista(pendienteDep)}>Descartarlos</button>
+                            <button className={btn2} onClick={() => setPendienteDep(null)}>Seguir con {nombreAtleta}</button>
+                          </div>
+                        )}
+
+                        {/* LA ESCALERA Y, AL LADO, SUS PORCENTAJES: para ver los números mientras se
+                            arrastra (lo pidió el usuario el 20-10-2026). Se mira el ancho del bloque
+                            y no el de la ventana: con la lista de la izquierda plegada cabe mucho antes.
+                            Si no cabe, sus porcentajes van debajo. */}
+                        <div className={'grid gap-4 items-start ' + (puedeAjustar ? '@min-[1000px]:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)]' : '')}>
+                          <EscaleraZonas ev={ev} titulo={'Cómo le quedan a ' + (atleta?.nombre || 'este deportista')}
+                            eje={puedeAjustar && evPlantilla ? ejeParaAjustar(evPlantilla) : null}
+                            edicion={edicion}
+                            debajo={puedeAjustar && (
+                              <p className="text-gray-500 text-[11.5px] leading-relaxed">
+                                Arrastra las fronteras (las asas blancas) para ajustar <b className="text-gray-300">sus</b> porcentajes. Cada frontera la
+                                comparten dos zonas: al moverla, una acaba justo donde empieza la otra. La raya discontinua marca dónde la deja la
+                                plantilla. Suelta un borde cerca del de la zona de al lado y se pegan: donde acaba una empieza la otra, y desde entonces
+                                se mueven juntas; para separarlas, «Separar» en sus porcentajes. Si dos asas quedan una encima de otra, tira hacia
+                                donde quieras llevarla: se coge la que puede ir hacia ese lado. Con el teclado: Tab hasta un asa y las flechas (con
+                                Mayúsculas, de 2,5 en 2,5). Ctrl+Z deshace.
+                              </p>
+                            )}
+                            /* SI ESTE NO LA TIENE HECHA, QUIÉN SÍ. La escalera sale
+                               con los números de uno: sin ellos se queda en blanco, y
+                               sin esto no había forma de saber con quién mirarla. */
+                            pista={(() => {
+                              const conPrueba = deportistas.filter(d => d.id !== depActivo && c.hitos.some(h => {
+                                const p = leerIdPropia(h)
+                                return !!p && (medidoPor[p.idDefinicion] || []).includes(d.id)
+                              }))
+                              return conPrueba.length > 0 && (
+                                <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-gray-400">
+                                  {conPrueba.length === 1 ? 'La tiene hecha' : 'La tienen hecha'}:
+                                  {conPrueba.map(d => (
+                                    <button key={d.id} onClick={() => cambiarDeportista(d.id)}
+                                      className="text-[12px] px-2.5 py-1 rounded-full bg-[#8ecbff]/10 text-[#8ecbff] border border-[#8ecbff]/30 hover:bg-[#8ecbff]/20 transition">
+                                      Ver con {d.nombre.trim()}
+                                    </button>
+                                  ))}
+                                </span>
+                              )
+                            })()}
+                            derecha={
+                              <label className="flex items-center gap-1.5 text-[12px] text-gray-500">
+                                Ver con
+                                <select className={campo + ' text-[12.5px] py-1'} value={depActivo ?? ''}
+                                  onChange={e => cambiarDeportista(Number(e.target.value))}>
+                                  {deportistas.map(d => {
+                                    const propios = c.zonas.some(z => !!z.id && (conAjustes[z.id] || []).includes(d.id))
+                                    return <option key={d.id} value={d.id}>{d.nombre}{propios ? ' · con % propios' : ''}</option>
+                                  })}
+                                </select>
+                              </label>
+                            } />
+
+                          {/* Al lado: en qué porcentajes y ritmos le quedan, y se pueden escribir. */}
+                          {puedeAjustar && (
+                            <div className="@container rounded-2xl border border-gray-800 bg-gray-900/70 px-4 pt-3.5 pb-2 flex flex-col min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <b className="text-[14px]">Sus porcentajes</b>
+                                {nAjustadas > 0 && (
+                                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full text-[#fdba74] bg-orange-500/15">
+                                    {nAjustadas} {nAjustadas === 1 ? 'zona ajustada' : 'zonas ajustadas'}
+                                  </span>
+                                )}
+                              </div>
+                              {/* Al lado, una columna; debajo, a lo ancho, dos o tres. */}
+                              <div className="grid gap-x-8 @min-[720px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+                              {c.zonas.map((z, j) => {
+                                const ez = ev.zonas[j]
+                                const aj = zonaAjustadaAqui(z.id)
+                                /* PEGADA O NO A LA ANTERIOR: dónde empieza respecto a donde acaba la de
+                                   antes. Arrastrando se pegan; separarlas pide su botón (lib/zonas-ajuste). */
+                                const ant = j > 0 ? c.zonas[j - 1] : null
+                                const idAnt = ant?.hasta && z.desde ? ant.id : undefined
+                                const idEsta = z.id
+                                const pegada = !!idAnt && !!idEsta && fronteras.some(f => f.claves.length === 2
+                                  && f.claves[0].idZona === idAnt && f.claves[1].idZona === idEsta)
+                                const union = !idAnt || !idEsta || !ant ? null : pegada ? (
+                                  <span className="inline-flex items-center gap-1.5 text-[11.5px]">
+                                    <span className="text-[#8ecbff]" title={'Empieza justo donde acaba ' + ant.sigla + ', y se mueven juntas'}>🔗 pegada a {ant.sigla}</span>
+                                    <button type="button" onClick={() => cambiar(b => separarZonas(c, b, ev, idAnt, idEsta))}
+                                      title={'Para mover por separado el final de ' + ant.sigla + ' y el principio de ' + z.sigla}
+                                      className="text-gray-400 hover:text-white underline-offset-2 hover:underline">Separar</button>
+                                  </span>
+                                ) : (
+                                  <button type="button" onClick={() => cambiar(b => pegarZonas(c, b, ev, idAnt, idEsta))}
+                                    title={'Que empiece justo donde acaba ' + ant.sigla + ', y se muevan juntas'}
+                                    className="text-[11.5px] px-2 py-0.5 rounded-full border border-white/15 text-gray-300 hover:text-white hover:border-white/30 transition">
+                                    🔗 Pegar a {ant.sigla}
+                                  </button>
+                                )
+                                const limite = (lado: Lado) => {
+                                  const lp = z[lado]
+                                  if (!lp) return <span className="text-gray-600 text-[12px] italic">{lado === 'desde' ? 'sin límite por abajo' : 'sin límite por arriba'}</span>
+                                  const p = z.id ? pctDe(c, efectivo, { idZona: z.id, lado }) ?? lp.pct : lp.pct
+                                  return (
+                                    <label className="inline-flex items-center gap-1.5 text-[12px] text-gray-400">
+                                      <CampoPct valor={p} cambiado={!!z.id && efectivo[z.id]?.[lado] !== undefined} desactivado={!z.id}
+                                        etiqueta={(lado === 'desde' ? 'Desde' : 'Hasta') + ', % de su ' + corto(c, lp.ref) + ' para ' + nombreAtleta + ' (' + z.sigla + ')'}
+                                        onCambio={n => z.id && escribirPct(z.id, lado, n)} />
+                                      <span>% de su <b className="font-semibold" style={{ color: HITO }}>{corto(c, lp.ref)}</b></span>
+                                    </label>
+                                  )
+                                }
+                                return (
+                                  <div key={z.id ?? 'n' + j} className="grid grid-cols-[12px_minmax(0,1fr)_auto] gap-x-2.5 gap-y-1.5 items-center py-2.5 border-t border-white/[0.06]">
+                                    <i className="w-3 h-3 rounded-[4px]" style={{ background: z.color }} />
+                                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                      <b className="font-mono text-[13px]">{z.sigla || '—'}</b>
+                                      <span className="text-gray-400 text-[12.5px] truncate">{z.nombre}</span>
+                                      {aj && <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full text-[#fdba74] bg-orange-500/15">ajustada</span>}
+                                    </div>
+                                    {aj && z.id
+                                      ? <button onClick={() => cambiar(b => zonaALaPlantilla(c, b, z.id!, ev))}
+                                          title="Vuelven a la plantilla sus fronteras, también en las zonas vecinas que las comparten"
+                                          className="text-gray-500 hover:text-orange-300 text-[12px] px-1 transition">↺ General</button>
+                                      : <span />}
+                                    {union && <div className="col-start-2 col-span-2">{union}</div>}
+                                    <div className="col-start-2 col-span-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      {limite('desde')}
+                                      <span className="text-gray-600" aria-hidden="true">→</span>
+                                      {limite('hasta')}
+                                    </div>
+                                    <div className="col-start-2 col-span-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                                      <span className="font-mono text-[12.5px] font-semibold tabular-nums">
+                                        {ez?.estado === 'reves' ? <span className="text-[#ff9ca1]">⚠ al revés</span> : ez?.texto || '—'}
+                                      </span>
+                                      {aj && <span className="text-gray-500 text-[11.5px]">plantilla: {explicarLimites(
+                                        c.zonas[j].desde ? { ...c.zonas[j].desde!, corto: corto(c, c.zonas[j].desde!.ref) } : null,
+                                        c.zonas[j].hasta ? { ...c.zonas[j].hasta!, corto: corto(c, c.zonas[j].hasta!.ref) } : null)}</span>}
+                                      {!z.id && <span className="text-gray-500 text-[11.5px]">guarda la plantilla para poder ajustarla</span>}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {puedeAjustar ? (
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <button onClick={guardarAjustes} disabled={!sinGuardarAj || guardandoAj} className={btn}>
+                              {guardandoAj ? 'Guardando…' : 'Guardar para ' + nombreAtleta}
+                            </button>
+                            <button onClick={() => { if (actual?.id) cambiarHist({ tipo: 'deshacer', clasif: actual.id }) }}
+                              disabled={!sePuedeDeshacer || guardandoAj} title="Deshacer el último cambio (Ctrl+Z)" className={btn2}>
+                              <span aria-hidden="true">↶ </span>Deshacer
+                            </button>
+                            <button onClick={() => cambiar(() => guardado)} disabled={!sinGuardarAj || guardandoAj} className={btn2}>Descartar cambios</button>
+                            <button onClick={todoALaPlantilla} disabled={!nAjustadas || guardandoAj} className={btn2}>Volver todo a la general</button>
+                            <span className={'text-[12.5px] ' + (sinGuardarAj ? 'text-[#ffd77a]' : 'text-gray-500')}>
+                              {sinGuardarAj ? 'Cambios sin guardar'
+                                : Object.keys(guardado).length ? nombreAtleta + ' tiene porcentajes propios' : nombreAtleta + ' usa la plantilla general'}
                             </span>
-                          )
-                        })()}
-                        derecha={
-                          <label className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                            Ver con
-                            <select className={campo + ' text-[12.5px] py-1'} value={depActivo ?? ''}
-                              onChange={e => elegirDeportista(Number(e.target.value))}>
-                              {deportistas.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-                            </select>
-                          </label>
-                        } />
+                            <p className="basis-full text-[12px] text-gray-500">
+                              <b className="text-gray-400">Las sesiones que ya le mandaste no cambian.</b> Lo que le mandes desde que guardes sale con sus
+                              porcentajes: en la ficha de la sesión, en su modo entreno y en sus ritmos.
+                            </p>
+                          </div>
+                        ) : cambios && depActivo != null && conNumeros && (
+                          <p className="text-gray-500 text-[12px]">Guarda la plantilla para poder ajustarle los porcentajes a {nombreAtleta}.</p>
+                        )}
+                      </div>
                     )}
                   </>
                 )

@@ -14,6 +14,44 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 20 de octubre de 2026 · Zonas propias: los porcentajes de cada deportista
+
+- **Antes**, una clasificación de zonas propias tenía los mismos porcentajes
+  para todos. Si a un deportista su TEMPO le iba mejor desde el 112 % de su VT1
+  y no desde el 115 %, había que hacerle otra clasificación solo para él.
+- **Ahora** la clasificación es la plantilla general, y abajo, en «Cómo le
+  quedan a…», eliges un deportista y corriges **sus** porcentajes: arrastrando
+  las fronteras de su escalera o escribiendo el número en «Sus porcentajes», al
+  lado. Se guarda con «Guardar para Ana». Para dejarles más sitio, la lista de
+  clasificaciones de la izquierda se pliega con «Ocultar lista».
+- Por ejemplo, con el VT1 de Ana a 12 km/h, llevar la frontera BASE | TEMPO del
+  115 % al 112 % hace que su BASE acabe y su TEMPO empiece a 4:28 /km en vez de
+  a 4:21 /km. Cada frontera la comparten dos zonas, así que se mueven juntas, y
+  ninguna puede quedar del revés. La raya discontinua marca dónde la deja la
+  plantilla.
+- **Juntar dos zonas:** suelta un borde cerca del de la zona de al lado y se
+  pegan: donde acaba una empieza la otra, y desde entonces se mueven juntas.
+  Sirve también entre hitos distintos: si N4 acaba en un % de su VT2 y N5
+  empieza en un % de su VO2, N5 se queda con el % de su VO2 que cae justo ahí.
+  Si sigues arrastrando y la sueltas lejos, cada una va por su lado. Y en «Sus
+  porcentajes» cada zona dice si está pegada a la anterior: «Separar» las suelta
+  (la siguiente empieza medio punto después, y ya son dos asas) y «Pegar a N3»
+  la lleva justo donde acaba la anterior.
+- **«Deshacer»** (o Ctrl+Z) vuelve atrás paso a paso, tantas veces como haga
+  falta: un arrastre entero es un paso, y lo que escribes en una casilla, otro.
+  Si dos asas quedan una encima de otra, tira hacia donde quieras llevarla: se
+  coge la que puede ir hacia ese lado.
+- **Lo que ya le mandaste no cambia.** Lo que le prescribas desde que guardes
+  sale con sus porcentajes: en la ficha de la sesión, en su modo entreno y en
+  sus ritmos.
+- **En los grupos**, al volcar, cada miembro recibe la zona con sus
+  porcentajes. Si en la tarea afinaste el % a mano (un 98–100 % dentro de un
+  95–105 %), ese número les llega igual a todos.
+- Si cambias la plantilla, quien tiene porcentajes propios conserva los suyos.
+  Solo se pierde un límite si la zona pasa a colgar de otro hito: ese vuelve al
+  de la plantilla. «↺ General» devuelve una zona a la plantilla, y en «Ver con»
+  se marca quién tiene porcentajes propios.
+
 ## 20 de octubre de 2026 · «Necesita tu atención» ya mira las noches del reloj
 
 - **Antes**, los avisos del panel solo veían la HRV, la FC y el sueño del reloj

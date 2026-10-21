@@ -147,6 +147,11 @@ export interface OpcionesCopia {
    * lib/grupos-volcado).
    */
   sinRitmo?: boolean
+  /**
+   * Retoca cada tarea según a quién va. Para copiar a OTRA persona: sus zonas
+   * propias deben salir con SUS porcentajes (lib/zonas-ajuste, `reanclarCopia`).
+   */
+  ajustarTarea?: (tarea: Fila, idDeportista: number | undefined) => Fila
 }
 
 export interface ResultadoCopia {
@@ -188,11 +193,12 @@ export async function escribirCopias(
   const deDonde: { t: Fila; idDep?: number }[] = []
   validos.forEach((v, k) => {
     for (const t of origen.tareas.get(Number(v.d.origen)) || []) {
-      filasTar.push({
+      const fila = {
         ...limpiar(t, SIN_COPIAR_TAREA),
         id_sesion: idsSes[k],
         ...(v.d.idDeportista != null ? { id_deportista: v.d.idDeportista } : {}),
-      })
+      }
+      filasTar.push(o.ajustarTarea ? o.ajustarTarea(fila, v.d.idDeportista) : fila)
       deDonde.push({ t, idDep: v.d.idDeportista })
     }
   })

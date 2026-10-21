@@ -4,8 +4,8 @@
 // sesiones normales que no son de nadie. Volcar = copiarlas al calendario de cada
 // miembro, dentro de la semana que esa persona ya tenga.
 //
-// La copia en sí es la de siempre (lib/copiar-sesion), con TRES COSAS QUE HAY QUE
-// CUIDAR AL COPIAR A OTRA PERSONA, Y LAS TRES SON SILENCIOSAS:
+// La copia en sí es la de siempre (lib/copiar-sesion), con CUATRO COSAS QUE HAY QUE
+// CUIDAR AL COPIAR A OTRA PERSONA, Y LAS CUATRO SON SILENCIOSAS:
 //
 //   1. id_deportista. Cada fila de la cadena (sesion, tarea, p_distancia...) lleva
 //      el suyo, y al copiar con {...resto} se arrastra el de la FICHA DEL GRUPO. La
@@ -21,7 +21,64 @@
 //   3. Lo que pasó, no lo que se planeó: estado, rpe_reportado, duracion_real. Una
 //      copia es un encargo nuevo, no el historial de otro. Eso ya lo quita
 //      lib/copiar-sesion para todo el mundo.
-import { leerOrigen, escribirCopias, type DestinoCopia } from './copiar-sesion'
+//
+//   4. Las zonas propias (desde el 20-10-2026). Cada tarea congela su zona con
+//      los porcentajes de la persona a la que se mandó, y en el grupo esa persona
+//      es su ficha. Copiada tal cual, los ocho recibirían los porcentajes del
+//      grupo y no los SUYOS (lib/zonas-ajuste). Se re-ancla cada zona mandada
+//      entera; la afinada a mano se respeta, porque ese número lo escribió el
+//      entrenador.
+import { leerOrigen, escribirCopias, type DestinoCopia, type OrigenCopia } from './copiar-sesion'
+import { leerCopia, esCopiaDeLimites, leerIdClasif } from './prescripcion-zona'
+import { leerZonas } from './zonas-entrenador'
+import { leerAjustesDeVarios, reanclarCopia } from './zonas-ajuste'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+type Fila = Record<string, unknown>
+
+/**
+ * Lo que retoca cada tarea al copiarla a un miembro: sus zonas propias con SUS
+ * porcentajes. `null` si ninguna tarea lleva una zona de una clasificación (lo
+ * normal), y entonces no se pregunta nada a la base.
+ */
+export async function reanclajeDeZonas(
+  sb: SupabaseClient, origen: OrigenCopia, miembros: number[],
+): Promise<((t: Fila, idDeportista: number | undefined) => Fila) | null> {
+  const clasifs = new Set<number>()
+  for (const tareas of origen.tareas.values()) {
+    for (const t of tareas) {
+      const c = leerCopia(t.zona_copia)
+      const id = c && esCopiaDeLimites(c) ? leerIdClasif(c.fuente) : null
+      if (id) clasifs.add(id)
+    }
+  }
+  if (!clasifs.size) return null
+
+  const { data: zs } = await sb.from('zona_entrenador').select('*')
+    .in('id_clasificacion', [...clasifs]).eq('archivada', false)
+  const zonas = leerZonas(zs)
+  const ids = zonas.map(z => z.id).filter((x): x is number => !!x)
+  if (!ids.length) return null
+
+  /* La ficha del grupo es la dueña de las sesiones que se copian. */
+  const ficha = Number([...origen.sesiones.values()][0]?.id_deportista) || null
+  const deps = [...new Set([...(ficha ? [ficha] : []), ...miembros])]
+  const { data: ajs } = await sb.from('zona_ajuste').select('id_zona, id_deportista, desde, hasta')
+    .in('id_deportista', deps).in('id_zona', ids)
+  const porDep = leerAjustesDeVarios(ajs)
+
+  return (t, idDeportista) => {
+    const c = leerCopia(t.zona_copia)
+    if (!c || !esCopiaDeLimites(c)) return t
+    const idClasif = leerIdClasif(c.fuente)
+    const z = zonas.find(x => x.idClasificacion === idClasif && x.sigla.toUpperCase() === c.sigla.toUpperCase())
+    if (!z?.id) return t
+    const nueva = reanclarCopia(c, z,
+      ficha ? porDep.get(ficha)?.get(z.id) : undefined,
+      idDeportista != null ? porDep.get(idDeportista)?.get(z.id) : undefined)
+    return nueva === c ? t : { ...t, zona_copia: nueva }
+  }
+}
 
 export interface SesionDelGrupo {
   id: number
@@ -168,6 +225,11 @@ export async function volcar(
   ])
   if (eE || !emi) return { idEmision: null, resultados: [], error: eE?.message || 'No se pudo abrir la emisión.' }
 
+  /* Una vez para todos: las zonas propias de esas tareas y los porcentajes de
+     cada miembro. Si algo de esto falla, se copia como antes (los del grupo):
+     mejor eso que dejar a nadie sin su semana. */
+  const ajustarTarea = await reanclajeDeZonas(sb, origen, miembros.map(m => m.id_deportista)).catch(() => null)
+
   const resultados = await Promise.all(miembros.map(async (m): Promise<ResultadoVolcado> => {
     const parte: ResultadoVolcado = { ...m, creadas: 0, fallos: 0, enSuPlan: 0 }
     try {
@@ -192,7 +254,7 @@ export async function volcar(
         }
       })
 
-      const r = await escribirCopias(sb, origen, destinos, { sinRitmo: true })
+      const r = await escribirCopias(sb, origen, destinos, { sinRitmo: true, ...(ajustarTarea ? { ajustarTarea } : {}) })
       r.ids.forEach((nueva, k) => {
         if (nueva == null) { parte.fallos++; return }
         parte.creadas++

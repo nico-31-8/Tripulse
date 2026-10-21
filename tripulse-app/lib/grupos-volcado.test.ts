@@ -119,7 +119,7 @@ describe('apartarVolcadoPrevio', () => {
 /* Cliente de mentira para volcar: lee el grupo (con las hijas anidadas en cada
    tarea, como las devuelve PostgREST) y apunta cada inserción. Las inserciones
    son de golpe: `v` es la lista de filas. */
-function sbFalso(opciones: { fallaSesionN?: number } = {}) {
+function sbFalso(opciones: { fallaSesionN?: number; datos?: Record<string, unknown[]> } = {}) {
   const ops: any[] = []
   let n = 100, nSes = 0
   const datos: Record<string, any[]> = {
@@ -129,6 +129,7 @@ function sbFalso(opciones: { fallaSesionN?: number } = {}) {
       p_distancia: [{ id: 21, id_tarea: 11, metros_planeados: 1000, ritmo_objetivo: '4:12', id_deportista: 99 }],
       p_duracion: [], p_repeticiones: [], ejercicios: [],
     }],
+    ...opciones.datos,
   }
   const api = (tabla: string) => ({
     insert(v: any) {
@@ -308,5 +309,73 @@ describe('las semanas de los miembros se piden UNA vez', () => {
     expect(ses[0].v[0].id_microciclo).toBe(30)
     expect(ses[1].v[0].id_microciclo).toBeNull()
     expect(ses[1].v[0].id_deportista).toBe(2)
+  })
+})
+
+/*
+  Las zonas propias (20-10-2026). Cada tarea congela su zona con los porcentajes
+  de quien la recibe, y en el grupo esa es la ficha: copiada tal cual, todos
+  recibirían los del grupo. Aquí, una tarea de UMB mandada entera (del 95 al 105 %
+  del VT2); Ana tiene los suyos (93–100) y Luis no.
+*/
+describe('las zonas propias llegan con los porcentajes de cada uno', () => {
+  const VT2 = 'propia:9:1'
+  const lim = (pct: number) => ({ ref: VT2, pct, corto: 'VT2' })
+  const COPIA = {
+    sigla: 'UMB', nombre: 'Umbral', color: '#f97316', rpe: 7, nivel: 4,
+    pctMin: 95, pctMax: 105, refId: VT2, refEtiqueta: 'VT2',
+    fuente: 'clasif:5', clasificacion: 'Laboratorio', desde: lim(95), hasta: lim(105),
+  }
+  const datos = (copia: typeof COPIA) => ({
+    tarea: [{
+      id: 11, id_sesion: 1, orden: 1, zona_entrenamiento: 'UMB', zona_copia: copia, id_deportista: 99,
+      p_distancia: [], p_duracion: [], p_repeticiones: [], ejercicios: [],
+    }],
+    zona_entrenador: [{
+      id: 14, id_clasificacion: 5, deporte: 'Carrera', sigla: 'UMB', nombre: 'Umbral',
+      desde: { ref: VT2, pct: 95 }, hasta: { ref: VT2, pct: 105 }, archivada: false,
+    }],
+    zona_ajuste: [{ id_zona: 14, id_deportista: 1, desde: { ref: VT2, pct: 93 }, hasta: { ref: VT2, pct: 100 } }],
+  })
+  /* La copia que recibió cada uno, por su id_deportista: van en paralelo. */
+  const copiaDeCada = (sb: ReturnType<typeof sbFalso>) => new Map(inserciones(sb, 'tarea').map((t: { v: Record<string, unknown>[] }) => [t.v[0].id_deportista, t.v[0].zona_copia]))
+
+  it('Ana la recibe con los suyos y Luis con los de la plantilla', async () => {
+    const sb = sbFalso({ datos: datos(COPIA) })
+    const r = await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    expect(r.error).toBeNull()
+    const cada = copiaDeCada(sb)
+    expect(cada.get(1)).toEqual({ ...COPIA, pctMin: 93, pctMax: 100, desde: lim(93), hasta: lim(100) })
+    expect(cada.get(2)).toEqual(COPIA)
+  })
+
+  it('lo afinado a mano llega igual a todos', async () => {
+    const afinada = { ...COPIA, pctMin: 98, pctMax: 100, desde: lim(98), hasta: lim(100) }
+    const sb = sbFalso({ datos: datos(afinada) })
+    await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    const cada = copiaDeCada(sb)
+    expect(cada.get(1)).toEqual(afinada)
+    expect(cada.get(2)).toEqual(afinada)
+  })
+
+  /* Mejor los del grupo que dejar a alguien sin su semana. */
+  it('si no se pueden leer sus zonas, se copia como antes', async () => {
+    const sb = sbFalso({ datos: datos(COPIA) })
+    const de = sb.from
+    sb.from = (t: string) => { if (t === 'zona_ajuste') throw new Error('caída'); return de(t) }
+    const r = await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    expect(r.error).toBeNull()
+    expect(copiaDeCada(sb).get(1)).toEqual(COPIA)
+  })
+
+  /* Lo normal es que ninguna tarea lleve una zona propia: ni una consulta de más. */
+  it('sin zonas propias en las tareas, no pregunta nada más', async () => {
+    const sb = sbFalso()
+    const tablas: string[] = []
+    const de = sb.from
+    sb.from = (t: string) => { tablas.push(t); return de(t) }
+    await volcar(sb, { ...BASE, miembros: MIEMBROS })
+    expect(tablas).not.toContain('zona_entrenador')
+    expect(tablas).not.toContain('zona_ajuste')
   })
 })

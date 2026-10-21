@@ -285,7 +285,13 @@ export interface Escalera {
   marcas: Marca[]
   ticks: Tick[]
   leyenda: string
+  /** El eje, en esfuerzo: de dónde a dónde va. Para traducir una posición a un número y al revés. */
+  eje: { min: number; max: number }
 }
+
+/** Dónde cae un esfuerzo en el eje, en % del ancho. */
+export const posicionEnEje = (eje: { min: number; max: number }, x: number): number =>
+  ((x - eje.min) / (eje.max - eje.min)) * 100
 
 /** Un paso «redondo» cercano a `bruto`: 1, 2, 2,5 o 5 por una potencia de 10. */
 function pasoRedondo(bruto: number): number {
@@ -314,8 +320,11 @@ const LEYENDA: Record<string, string> = {
 /**
  * Cada zona en su carril, todas sobre el mismo eje, con los hitos marcados.
  * `null` si no hay ni un número que pintar.
+ *
+ * `fijo` deja el eje quieto: mientras se arrastra una frontera, un eje que se
+ * recalculara con cada movimiento haría que todo bailase bajo el dedo.
  */
-export function escalera(ev: Evaluacion): Escalera | null {
+export function escalera(ev: Evaluacion, fijo?: { min: number; max: number } | null): Escalera | null {
   const xs: number[] = []
   for (const z of ev.zonas) {
     if (z.estado === 'sin-dato') continue
@@ -327,14 +336,19 @@ export function escalera(ev: Evaluacion): Escalera | null {
   if (!finitos.length) return null
 
   let min = Math.min(...finitos), max = Math.max(...finitos)
-  const span = max - min > 0 ? max - min : max * 0.2
-  const abiertaAbajo = ev.zonas.some(z => z.estado !== 'sin-dato' && z.lo === null)
-  const abiertaArriba = ev.zonas.some(z => z.estado !== 'sin-dato' && z.hi === null)
-  /* Lo que no tiene suelo o techo necesita sitio para que se vea que sigue. */
-  min -= span * (abiertaAbajo ? 0.18 : 0.05)
-  max += span * (abiertaArriba ? 0.18 : 0.05)
-  if (min <= 0) min = Math.min(...finitos) * 0.5
-  const pos = (x: number) => ((x - min) / (max - min)) * 100
+  if (fijo && Number.isFinite(fijo.min) && Number.isFinite(fijo.max) && fijo.max > fijo.min && fijo.min > 0) {
+    min = fijo.min
+    max = fijo.max
+  } else {
+    const span = max - min > 0 ? max - min : max * 0.2
+    const abiertaAbajo = ev.zonas.some(z => z.estado !== 'sin-dato' && z.lo === null)
+    const abiertaArriba = ev.zonas.some(z => z.estado !== 'sin-dato' && z.hi === null)
+    /* Lo que no tiene suelo o techo necesita sitio para que se vea que sigue. */
+    min -= span * (abiertaAbajo ? 0.18 : 0.05)
+    max += span * (abiertaArriba ? 0.18 : 0.05)
+    if (min <= 0) min = Math.min(...finitos) * 0.5
+  }
+  const pos = (x: number) => posicionEnEje({ min, max }, x)
 
   const pisadas = new Set(ev.avisos.filter(a => a.tipo === 'pisan').flatMap(a => a.siglas))
   const carriles: Carril[] = ev.zonas.map(z => {
@@ -368,5 +382,19 @@ export function escalera(ev: Evaluacion): Escalera | null {
   return {
     carriles, marcas, ticks,
     leyenda: LEYENDA[unidadCanonica(ev.unidad)] ?? (ev.unidad ? 'En ' + ev.unidad + '.' : ''),
+    eje: { min, max },
   }
+}
+
+/**
+ * Un eje con sitio para ajustar: el de la plantilla con un margen más a cada
+ * lado, para poder llevar una frontera algo más allá de donde la deja la
+ * plantilla sin salirse de la gráfica.
+ */
+export function ejeParaAjustar(ev: Evaluacion): { min: number; max: number } | null {
+  const e = escalera(ev)
+  if (!e) return null
+  const span = e.eje.max - e.eje.min
+  const min = Math.max(e.eje.min - span * 0.12, e.eje.min * 0.5)
+  return { min, max: e.eje.max + span * 0.12 }
 }
