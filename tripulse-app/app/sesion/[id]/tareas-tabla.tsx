@@ -21,7 +21,13 @@ import {
 } from '@/lib/series-detalle'
 import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, textoControl, type ControlTipo } from '@/lib/control-esfuerzo'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
-import { filtrarDrills } from '@/lib/tecnica'
+import { filtrarDrills, sinTildes } from '@/lib/tecnica'
+import {
+  esDePliometria, leerNivel, leerParte, requisitoDe,
+  piezasDeTarea, piezasDeFilaCarrera, piezasDeFilaFuerza, porLaEscalera,
+} from '@/lib/pliometria'
+import LetraNivel, { PeldanoElegido } from '@/components/pliometria/LetraNivel'
+import ContadorContactos from '@/components/pliometria/ContadorContactos'
 import {
   segAMmss, filaResistenciaDesde, filaFuerzaDesde, avisaOtraDisciplina,
   type FilaResistencia, type FilaFuerza,
@@ -90,30 +96,31 @@ export type { ControlTipo }
  * «12/10/8 reps», «40/45/50 kg», «RIR 3/2/1». null si son todas iguales, y
  * entonces se enseña lo de siempre.
  */
-function columnasSerieASerie(t: any): { reps: string; kg: string; control: string } | null {
+function columnasSerieASerie(t: any, unidadReps = ' reps'): { reps: string; kg: string; control: string } | null {
   const ej = t?.ejercicios?.[0]
   if (!ej || !tieneSeriesDistintas(ej)) return null
   const seg = t.p_duracion?.[0]?.tiempo_planeado
   const series = seriesDe(ej, { segFila: seg })
   const reps = textoRepsSeries(series, !!seg)
   return {
-    reps: reps ? (seg ? reps : reps + ' reps') : '—',
+    reps: reps ? (seg ? reps : reps + unidadReps) : '—',
     kg: textoKgSeries(series) || '—',
     control: textoControlSeries(series, ej.control_tipo) || '—',
   }
 }
 
-function mostrarValorGuardado(t: any): string {
+/* `unidadReps`: en pliometría, las repeticiones son contactos. */
+function mostrarValorGuardado(t: any, unidadReps = ' reps'): string {
   if (t.p_duracion?.[0]?.tiempo_planeado) return segAMmss(t.p_duracion[0].tiempo_planeado) + ' min'
   if (t.p_distancia?.[0]?.metros_planeados) {
     const m = t.p_distancia[0].metros_planeados
     return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m'
   }
-  if (repsDePrescripcion(t.p_repeticiones?.[0])) return repsDePrescripcion(t.p_repeticiones[0]) + ' reps'
+  if (repsDePrescripcion(t.p_repeticiones?.[0])) return repsDePrescripcion(t.p_repeticiones[0]) + unidadReps
   return '—'
 }
 
-function mostrarTotal(t: any): string {
+function mostrarTotal(t: any, unidadReps = ' reps'): string {
   /* Series × bloques: la cuenta es de lib/bloques-tarea. */
   const series = vecesDe(t)
   if (t.p_duracion?.[0]?.tiempo_planeado) {
@@ -124,7 +131,7 @@ function mostrarTotal(t: any): string {
     const total = t.p_distancia[0].metros_planeados * series
     return total >= 1000 ? (total / 1000).toFixed(1) + ' km' : total + ' m'
   }
-  if (repsTotalDePrescripcion(t.p_repeticiones?.[0], series)) return repsTotalDePrescripcion(t.p_repeticiones[0], series) + ' reps'
+  if (repsTotalDePrescripcion(t.p_repeticiones?.[0], series)) return repsTotalDePrescripcion(t.p_repeticiones[0], series) + unidadReps
   return '—'
 }
 
@@ -134,6 +141,28 @@ function mostrarTotal(t: any): string {
 // de todo eso. Ver supabase/tecnica-en-resistencia.sql.
 export const VALOR_TECNICA = '__tecnica'
 export const ZONA_DE_TECNICA = 'AER'
+/* La pliometría, lo mismo y por el mismo camino (21-10-2026): AER para la carga
+   y el ejercicio en `tecnica_id`. Lo que cambia es la lista: saltos del tren
+   inferior en vez de drills (lib/pliometria). */
+export const VALOR_PLIO = '__pliometria'
+
+/** Lo que dice el desplegable de zona de una fila: técnica, pliometría o su zona. */
+const valorZonaR = (f: FilaResistencia) => (f.esTecnica ? (f.esPlio ? VALOR_PLIO : VALOR_TECNICA) : f.zona)
+
+/* La pliometría se prescribe en fuerza y en carrera (decidido con el usuario):
+   en una fila de natación o de ciclismo no se ofrece, salvo que ya lo sea. */
+const plioEnFila = (f: FilaResistencia) => !!f.esPlio || !['natacion', 'ciclismo'].includes(sinTildes(f.disciplina))
+
+/**
+ * Lo que cambia en la fila al elegir técnica o pliometría. Al pasar de una a
+ * otra, el ejercicio se vacía; y la pliometría arranca en repeticiones, que en
+ * ella son contactos.
+ */
+const modoSinIntensidad = (f: FilaResistencia, plio: boolean): Partial<FilaResistencia> => ({
+  esTecnica: true, esPlio: plio, zona: ZONA_DE_TECNICA,
+  ...(f.esTecnica && !!f.esPlio !== plio ? { tecnicaId: '' } : {}),
+  ...(plio && !f.tipoMedicion ? { tipoMedicion: 'reps' } : {}),
+})
 
 /* FilaResistencia y FilaFuerza vivían aquí. Se han movido a lib/copiar-tarea
    junto con la conversión que las rellena desde una tarea guardada: tener la
@@ -576,7 +605,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   const cambiarZonaDe = (i: number, f: FilaResistencia, sigla: string) => {
     const z = buscarZona(zonasDe(fuenteDeFila(f)), sigla)
     const ini = rangoInicial(z)
-    parcheR(i, { esTecnica: false, tecnicaId: '', zona: sigla, pctMin: ini?.[0] ?? null, pctMax: ini?.[1] ?? null })
+    parcheR(i, { esTecnica: false, esPlio: false, tecnicaId: '', zona: sigla, pctMin: ini?.[0] ?? null, pctMax: ini?.[1] ?? null })
   }
 
   /* Se acota AL SOLTAR y no en cada tecla: acotando mientras escribes, el «7»
@@ -1438,10 +1467,18 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
 
   const defFijados = cuantosFijados(esFuerza ? defectos.fuerza : defectos.resistencia)
 
-  const nombreDeBiblioteca = (id: any) =>
-    ejerciciosBiblioteca.find((e: any) => e.id === Number(id))?.nombre || '—'
+  const ejDeBiblioteca = (id: unknown) => ejerciciosBiblioteca.find(e => e.id === Number(id))
+  const nombreDeBiblioteca = (id: unknown) => ejDeBiblioteca(id)?.nombre || '—'
+  /** El ejercicio elegido, si es de pliometría: su nivel y su parte del cuerpo. */
+  const plioDe = (id: unknown) => {
+    const ej = id ? ejDeBiblioteca(id) : null
+    return esDePliometria(ej) ? { nivel: leerNivel(ej.nivel_pliometria), parte: leerParte(ej.parte_pliometria) ?? 'inferior' } : null
+  }
 
   const drillsDe = (disciplina: string) => filtrarDrills(ejerciciosBiblioteca, disciplina)
+  /* Los saltos del tren inferior, por nivel y nombre: lo que se elige en una
+     tarea de pliometría de carrera (lib/pliometria). */
+  const saltosDe = () => porLaEscalera(ejerciciosBiblioteca, 'inferior').vistos
 
   // Kilo sugerido cuando se prescribe en % del 1RM. Devuelve null si falta algo:
   // sin test de ese ejercicio no se enseña nada, que es lo acordado.
@@ -1611,8 +1648,19 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
      te dijera que te ibas de la pagina con trabajo a medias. */
   const sinGuardar = filasR.length + filasF.length + bloquesB.length
 
+  /* LOS CONTACTOS DE LA SESIÓN (lib/pliometria): lo guardado más lo que se está
+     escribiendo, así que el aviso cambia al teclear. La que se está editando
+     cuenta por su fila, no dos veces. */
+  const piezasPlio = [
+    ...tareasGuardadas.filter(t => !editandose.has(t.id)).flatMap(t => piezasDeTarea(t, ejerciciosBiblioteca)),
+    ...(esFuerza
+      ? filasF.flatMap(f => piezasDeFilaFuerza(f, ejerciciosBiblioteca))
+      : filasR.flatMap(f => piezasDeFilaCarrera(f, ejerciciosBiblioteca))),
+  ]
+
   return (
     <div>
+      {piezasPlio.length > 0 && <ContadorContactos piezas={piezasPlio} deportistaId={deportistaId} />}
       {/* ═══ LO QUE YA ESTÁ EN LA SESIÓN ═══
 
           La tabla de guardadas, la franja de «por defecto», el botón de guardar
@@ -1684,6 +1732,12 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                 if (editandose.has(t.id)) return null
                 const ref = getRef(t.zona_entrenamiento, t.disciplina)
                 const objetivoT = objetivoGuardado(t)
+                /* Una de carrera con un salto en `tecnica_id` es pliometría. */
+                const ejT = t.tecnica_id ? ejDeBiblioteca(t.tecnica_id) : null
+                const plioT = esDePliometria(ejT)
+                const nivelT = plioT ? leerNivel(ejT?.nivel_pliometria) : null
+                /* En fuerza, las repeticiones del primer ejercicio, si es un salto, son contactos. */
+                const unidadF = plioDe(t.ejercicios?.[0]?.ejercicio_id) ? ' contactos' : ' reps'
                 return (
                   <tr key={t.id} data-guia={i === 0 ? 'sesion.fila' : undefined} data-consejo={'sesion.tarea:' + t.id}
                     draggable={!esDeportista}
@@ -1730,6 +1784,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                   {ej.tipo_serie && ej.tipo_serie !== 'Normal' && <span className={'text-xs px-1.5 rounded ' + (ej.tipo_serie === 'Cardio' ? 'bg-sky-900 text-sky-300' : 'bg-orange-900 text-orange-300')}>{ej.tipo_serie}</span>}
                                   {/* Una línea de cardio se lee como una de fuerza: aquí QUÉ
                                       y a qué zona, y el cuánto y el @ en sus columnas. */}
+                                  {(() => { const p = plioDe(ej.ejercicio_id); return p?.nivel && <LetraNivel nivel={p.nivel} parte={p.parte} pequena /> })()}
                                   <span className="text-sm">{ej.tipo_serie === 'Cardio' && ej.cardio_modo
                                     ? (modalidadDe(ej.cardio_modo)?.nombre || ej.nombre) + (ej.cardio_zona ? ' · ' + ej.cardio_zona : '')
                                     : ej.nombre}</span>
@@ -1742,8 +1797,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-gray-300">{t.ejercicios?.[0]?.series || t.series || '—'}</td>
                         <td className="py-2 px-2 text-blue-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (cuantoPorSerie({ modo: t.ejercicios[0].cardio_modo, medida: t.ejercicios[0].cardio_medida, valor: t.ejercicios[0].cardio_valor }) || '—')
-                          : columnasSerieASerie(t)?.reps
-                            ?? (repsDeEjercicio(t.ejercicios?.[0]) ? repsDeEjercicio(t.ejercicios[0]) + ' reps' : mostrarValorGuardado(t))}</td>
+                          : columnasSerieASerie(t, unidadF)?.reps
+                            ?? (repsDeEjercicio(t.ejercicios?.[0]) ? repsDeEjercicio(t.ejercicios[0]) + unidadF : mostrarValorGuardado(t, unidadF))}</td>
                         <td className="py-2 px-2 text-yellow-400">{t.ejercicios?.[0]?.tipo_serie === 'Cardio'
                           ? (t.ejercicios[0].cardio_objetivo ? '@ ' + t.ejercicios[0].cardio_objetivo : '—')
                           : columnasSerieASerie(t)?.kg
@@ -1781,8 +1836,11 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <td className="py-2 px-2 text-white">
                           {t.tecnica_id ? (
                             <div className="flex flex-col">
-                              <span className="text-orange-300">Técnica</span>
-                              <span className="text-gray-400 text-xs">{nombreDeBiblioteca(t.tecnica_id)}</span>
+                              <span className="text-orange-300">{plioT ? 'Pliometría' : 'Técnica'}</span>
+                              <span className="text-gray-400 text-xs inline-flex items-center gap-1.5">
+                                {nivelT && <LetraNivel nivel={nivelT} pequena />}
+                                {nombreDeBiblioteca(t.tecnica_id)}
+                              </span>
                             </div>
                           ) : (t.zona_entrenamiento || '—')}
                         </td>
@@ -1797,8 +1855,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           {t.descanso_segundos ? segAMmss(t.descanso_segundos) : '—'}
                           {hayBloques(t) && t.descanso_bloques_segundos ? <span className="text-gray-500" title="Entre bloques"> · {segAMmss(t.descanso_bloques_segundos)}</span> : null}
                         </td>
-                        <td className="py-2 px-2 text-blue-400 font-medium">{mostrarValorGuardado(t)}</td>
-                        <td className="py-2 px-2 text-orange-400 font-medium">{mostrarTotal(t)}</td>
+                        <td className="py-2 px-2 text-blue-400 font-medium">{mostrarValorGuardado(t, plioT ? ' contactos' : ' reps')}</td>
+                        <td className="py-2 px-2 text-orange-400 font-medium">{mostrarTotal(t, plioT ? ' contactos' : ' reps')}</td>
                         {/* LA COLUMNA SE LLAMA «Referencia / Intensidad» Y SOLO
                             ENSEÑABA LA REFERENCIA. Lo que el entrenador prescribe
                             en el «@» no salía en ninguna parte de esta tabla: para
@@ -2138,15 +2196,16 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                               </select>
                             </div>
                             <div className="flex gap-1.5 items-center">
-                              <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
-                                onChange={e => e.target.value === VALOR_TECNICA
-                                  ? parcheR(i, { esTecnica: true, zona: ZONA_DE_TECNICA })
+                              <select value={valorZonaR(f)}
+                                onChange={e => e.target.value === VALOR_TECNICA || e.target.value === VALOR_PLIO
+                                  ? parcheR(i, modoSinIntensidad(f, e.target.value === VALOR_PLIO))
                                   : cambiarZonaDe(i, f, e.target.value)}
                                 disabled={!f.ref}
                                 className={campoBase + ' flex-1 min-w-0 disabled:opacity-40'}>
                                 <option value="">Zona</option>
                                 <optgroup label="Sin intensidad">
                                   <option value={VALOR_TECNICA}>Técnica</option>
+                                  {plioEnFila(f) && <option value={VALOR_PLIO}>Pliometría</option>}
                                 </optgroup>
                                 {refOfr?.tipo === 'app'
                                   ? FACTORES_RESISTENCIA.map(factor => {
@@ -2226,14 +2285,15 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           {/* «Técnica» vive aquí porque es donde va la mano, pero no es
                               una zona: al elegirla la fila guarda AER. Lo que se ve se
                               calcula del estado, no se guarda por duplicado. */}
-                          <select value={f.esTecnica ? VALOR_TECNICA : f.zona}
-                            onChange={e => parcheR(i, e.target.value === VALOR_TECNICA
-                              ? { esTecnica: true, zona: ZONA_DE_TECNICA }
-                              : { esTecnica: false, tecnicaId: '', zona: e.target.value })}
+                          <select value={valorZonaR(f)}
+                            onChange={e => parcheR(i, e.target.value === VALOR_TECNICA || e.target.value === VALOR_PLIO
+                              ? modoSinIntensidad(f, e.target.value === VALOR_PLIO)
+                              : { esTecnica: false, esPlio: false, tecnicaId: '', zona: e.target.value })}
                             className={campoBase + ' flex-1 min-w-[150px]'}>
                             <option value="">Zona</option>
                             <optgroup label="Sin intensidad">
                               <option value={VALOR_TECNICA}>Técnica</option>
+                              {plioEnFila(f) && <option value={VALOR_PLIO}>Pliometría</option>}
                             </optgroup>
                             {ZONAS.map(z => <option key={z.num} value={'Z' + z.num}>Z{z.num}</option>)}
                           </select>
@@ -2291,7 +2351,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             <option value="min">min</option>
                             <option value="mmss">mm:ss</option>
                           </optgroup>
-                          <option value="reps">reps</option>
+                          <option value="reps">{f.esPlio ? 'contactos' : 'reps'}</option>
                         </select>
                         {f.enBloques && (
                           <>
@@ -2342,22 +2402,37 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           cuando toca, así que no le quita ancho a nada el resto del
                           tiempo. Mismo sitio que el «encadenar» de fuerza. */}
                       {f.esTecnica && (() => {
-                        const drills = drillsDe(f.disciplina)
+                        const plio = !!f.esPlio
+                        const drills = plio ? saltosDe() : drillsDe(f.disciplina)
+                        /* En pliometría, el nivel del elegido; y desde el c, lo que pide antes. */
+                        const elegido = plio ? ejerciciosBiblioteca.find(e => String(e.id) === String(f.tecnicaId)) : null
+                        const nivel = elegido ? leerNivel(elegido.nivel_pliometria) : null
                         return (
-                          <div className="flex items-center gap-1.5 mt-1.5 pl-1">
-                            <span className="text-orange-400 text-xs flex-none">↳ Técnica</span>
-                            {drills.length > 0 ? (
-                              <select value={f.tecnicaId} onChange={e => updateR(i, 'tecnicaId', e.target.value)}
-                                className={campoBase + ' flex-1 min-w-[180px]'}>
-                                <option value="">Elige el ejercicio…</option>
-                                {drills.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                              </select>
-                            ) : (
-                              // Mejor decir por qué está vacío que enseñar una lista sin nada
-                              // y dejar que parezca que la app está rota.
-                              <span className="text-gray-500 text-xs">
-                                No hay ejercicios de técnica{f.disciplina ? ' de ' + f.disciplina : ''} en la biblioteca todavía.
-                              </span>
+                          <div className="flex flex-col gap-1 mt-1.5 pl-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-orange-400 text-xs flex-none">↳ {plio ? 'Pliometría' : 'Técnica'}</span>
+                              {drills.length > 0 ? (
+                                <select value={f.tecnicaId} onChange={e => updateR(i, 'tecnicaId', e.target.value)}
+                                  className={campoBase + ' flex-1 min-w-[180px]'}>
+                                  <option value="">Elige el ejercicio…</option>
+                                  {drills.map((e: any) => (
+                                    <option key={e.id} value={e.id}>
+                                      {plio && leerNivel(e.nivel_pliometria) ? leerNivel(e.nivel_pliometria) + ' · ' : ''}{e.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                // Mejor decir por qué está vacío que enseñar una lista sin nada
+                                // y dejar que parezca que la app está rota.
+                                <span className="text-gray-500 text-xs">
+                                  {plio ? 'No hay ejercicios de pliometría en la biblioteca todavía.'
+                                    : 'No hay ejercicios de técnica' + (f.disciplina ? ' de ' + f.disciplina : '') + ' en la biblioteca todavía.'}
+                                </span>
+                              )}
+                              {nivel && <LetraNivel nivel={nivel} />}
+                            </div>
+                            {nivel && requisitoDe('inferior', nivel) && (
+                              <span className="text-[11px] text-amber-300/90">{requisitoDe('inferior', nivel)}</span>
                             )}
                           </div>
                         )
@@ -2391,7 +2466,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             avisar. Mismo criterio que fuerza, que tampoco guarda sin
                             ejercicio. */}
                         <button onClick={() => guardarFilaR(i)} disabled={loading || (f.esTecnica && !f.tecnicaId)}
-                          title={f.esTecnica && !f.tecnicaId ? 'Elige el ejercicio de técnica' : f.idTarea ? 'Guardar los cambios' : 'Guardar'}
+                          title={f.esTecnica && !f.tecnicaId ? (f.esPlio ? 'Elige el ejercicio de pliometría' : 'Elige el ejercicio de técnica') : f.idTarea ? 'Guardar los cambios' : 'Guardar'}
                           className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition disabled:opacity-40">✓</button>
                         <button onClick={() => setFilasR(prev => prev.filter((_, idx) => idx !== i))}
                           title={f.idTarea ? 'Dejarla como estaba' : 'Quitar la fila'}
@@ -2537,6 +2612,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                             ejercicioSelId: String(ej.id),
                           })} />
                       </div>
+                      {(() => { const p = plioDe(f.ejercicioSelId); return p && <PeldanoElegido nivel={p.nivel} parte={p.parte} /> })()}
                       {(f.tipoSerie === 'Superserie' || f.tipoSerie === 'Complex') && (
                         <div className="border-t border-orange-800 pt-1 mt-1">
                           <p className="text-orange-400 text-xs mb-1">+ Encadenar:</p>
@@ -2640,7 +2716,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         onClick={() => updateF(i, 'medida', f.medida === 'tiempo' ? 'reps' : 'tiempo')}
                         title={f.medida === 'tiempo' ? 'Ahora va por tiempo — pulsa para pasar a repeticiones' : 'Ahora va por repeticiones — pulsa para pasar a tiempo'}
                         className={botonBloque(f.medida === 'tiempo')}>
-                        {f.medida === 'tiempo' ? 'seg' : 'reps'}
+                        {/* En pliometría las repeticiones son contactos. */}
+                        {f.medida === 'tiempo' ? 'seg' : plioDe(f.ejercicioSelId) ? 'contactos' : 'reps'}
                       </button>
                       <span className="text-gray-500 flex-none select-none">@</span>
                       {/* Con %1RM el kilo sale solo del test del atleta y se enseña de
@@ -2663,7 +2740,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         title={controlDe(f.controlTipo).ayuda} />
                       )}
                       <button type="button"
-                        onClick={() => updateF(i, 'controlTipo', siguienteControl(f.controlTipo))}
+                        onClick={() => updateF(i, 'controlTipo', siguienteControl(f.controlTipo, !!plioDe(f.ejercicioSelId)))}
                         title={controlDe(f.controlTipo).ayuda + ' — pulsa para cambiar de escala'}
                         className={botonBloque(f.controlTipo !== 'rir')}>
                         {controlDe(f.controlTipo).corto}
@@ -2708,8 +2785,9 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                       <span className="text-orange-400 text-xs font-medium">↳ Encadenado</span>
                     </td>
                     <td className="py-1.5 px-1.5">
-                      <p className="text-orange-300 text-sm px-2 py-1.5 truncate">
-                        {ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2))?.nombre || '—'}
+                      <p className="text-orange-300 text-sm px-2 py-1.5 truncate flex items-center gap-1.5">
+                        {(() => { const p = plioDe(f.ejercicioSelId2); return p?.nivel && <LetraNivel nivel={p.nivel} parte={p.parte} pequena /> })()}
+                        <span className="truncate">{ejerciciosBiblioteca.find((e: any) => e.id === Number(f.ejercicioSelId2))?.nombre || '—'}</span>
                       </p>
                     </td>
                     <td className="py-1.5 px-1.5">
@@ -2726,7 +2804,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           <span className={campoResumen + ' w-[74px]'} title={resReps2 + ' — se cambia en «Serie a serie»'}>{resReps2}</span>
                         ) : (
                         <input type="text" inputMode="numeric" value={ss2.comun('reps', f.repsFuerza2)} onChange={e => cambiarCampoFila(i, 'reps', e.target.value, true)}
-                          className={inputBloque + ' w-[74px]'} placeholder="10" title="Repeticiones" />
+                          className={inputBloque + ' w-[74px]'} placeholder="10" title={plioDe(f.ejercicioSelId2) ? 'Contactos por serie' : 'Repeticiones'} />
                         )}
                         <span className="text-gray-500 flex-none select-none">@</span>
                         {resKg2 != null ? (
@@ -2751,7 +2829,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                           title={controlDe(f.controlTipo2).ayuda} />
                         )}
                         <button type="button"
-                          onClick={() => updateF(i, 'controlTipo2', siguienteControl(f.controlTipo2))}
+                          onClick={() => updateF(i, 'controlTipo2', siguienteControl(f.controlTipo2, !!plioDe(f.ejercicioSelId2)))}
                           title={controlDe(f.controlTipo2).ayuda + ' — pulsa para cambiar de escala'}
                           className={botonBloque(f.controlTipo2 !== 'rir')}>
                           {controlDe(f.controlTipo2).corto}

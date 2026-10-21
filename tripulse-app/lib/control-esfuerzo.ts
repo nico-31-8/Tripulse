@@ -18,7 +18,7 @@
 // la de ejecución solo conocía dos de los cuatro tipos, y la de la tabla del
 // entrenador ni siquiera leía la columna donde se guarda el valor.
 
-export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'vel_ms' | 'pct1rm'
+export type ControlTipo = 'rir' | 'rpe' | 'vel' | 'vel_ms' | 'pct1rm' | 'altura'
 
 export interface Control {
   id: ControlTipo
@@ -61,11 +61,27 @@ export const CONTROLES: Control[] = [
     ayuda: 'Porcentaje de su 1RM en ese ejercicio' },
 ]
 
-export const controlDe = (t: ControlTipo | string | null | undefined): Control =>
-  CONTROLES.find(c => c.id === t) || CONTROLES[0]
+/**
+ * LA ALTURA, APARTE (21-10-2026). En pliometría lo que se prescribe del cajón o
+ * de la caída es su altura, y va donde el entrenador busca el control. Pero no
+ * mide el esfuerzo de la serie —es carga, como el % 1RM— y solo tiene sentido
+ * en un salto, así que no entra en la ronda de los demás: solo se ofrece en
+ * los ejercicios de pliometría (`siguienteControl(t, true)`).
+ */
+export const CONTROL_ALTURA: Control = {
+  id: 'altura', corto: 'cm', ph: '30', seAnota: false, numeroDelante: true,
+  ayuda: 'Altura del cajón o de la caída, en centímetros',
+}
 
-export const siguienteControl = (t: ControlTipo): ControlTipo =>
-  CONTROLES[(CONTROLES.findIndex(c => c.id === t) + 1) % CONTROLES.length].id
+export const controlDe = (t: ControlTipo | string | null | undefined): Control =>
+  t === 'altura' ? CONTROL_ALTURA : CONTROLES.find(c => c.id === t) || CONTROLES[0]
+
+/** El siguiente de la ronda. Con `conAltura` (un ejercicio de pliometría), la altura entra al final. */
+export const siguienteControl = (t: ControlTipo, conAltura = false): ControlTipo => {
+  const ronda = conAltura ? [...CONTROLES, CONTROL_ALTURA] : CONTROLES
+  const i = ronda.findIndex(c => c.id === t)
+  return ronda[(i + 1) % ronda.length].id
+}
 
 /**
  * Cómo se escribe un control prescrito: «RIR 2», «RPE 8», «75 % 1RM».

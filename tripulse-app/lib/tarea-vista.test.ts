@@ -222,3 +222,36 @@ describe('textoEncadenado', () => {
     })).toBe('Plancha · 3×10 · 0 kg')
   })
 })
+
+/* Pliometría (21-10-2026): sus repeticiones son contactos, y en carrera se
+   enseña con su nivel en vez de «Técnica · cuenta como AER». */
+describe('una tarea de pliometría', () => {
+  const pogo = { tipo: ['Pliometría'], nivel_pliometria: 'a', parte_pliometria: 'inferior' }
+
+  it('en carrera: «Pliometría» con su nivel, y en contactos', () => {
+    const t = res({
+      zona_entrenamiento: 'AER', disciplina: 'Carrera', series: 3, tecnica_id: 7, tecnica: pogo,
+      p_duracion: [], p_repeticiones: [{ repeticiones_planteadas: 20 }],
+    })
+    expect(valorPorSerie(t)).toBe('20 contactos')
+    expect(totalDeTarea(t)).toBe('60 contactos')
+    const v = vistaDeTarea(t, SIN_TESTS, 0)
+    expect(v.titulo).toBe('Pliometría')
+    expect(v.nombreZona).toBe('Pliometría · a, bajo, a dos pies, en el sitio')
+  })
+
+  it('una de técnica sigue como siempre', () => {
+    const t = res({ zona_entrenamiento: 'AER', tecnica_id: 8, tecnica: { tipo: ['Técnica'] } })
+    expect(vistaDeTarea(t, SIN_TESTS, 0).titulo).toBe('Técnica')
+  })
+
+  it('en fuerza: por su grupo, con los contactos y la altura', () => {
+    const t = res({
+      zona_entrenamiento: 'F1', disciplina: 'Fuerza', p_duracion: [],
+      ejercicios: [{ nombre: 'Drop jump', grupo_muscular: 'Pliometría', series: 4, repeticiones: 6, control_tipo: 'altura', control_valor: '30' }],
+    })
+    const campos = Object.fromEntries(vistaDeTarea(t, SIN_TESTS, 0).campos.map(c => [c.k, c.v]))
+    expect(campos.Contactos).toBe('6 contactos')
+    expect(campos.Control).toBe('30 cm')
+  })
+})

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CONTROLES, controlDe, siguienteControl, textoControl, controlDeEjercicio,
+  CONTROLES, CONTROL_ALTURA, controlDe, siguienteControl, textoControl, controlDeEjercicio,
 } from './control-esfuerzo'
 
 describe('el catálogo', () => {
@@ -114,5 +114,23 @@ describe('la velocidad medida (m/s)', () => {
     expect(vistas.has('vel_ms')).toBe(true)
     // Y vuelve al principio: la rotación no se queda atascada.
     expect(t).toBe('rir')
+  })
+})
+
+/* La altura del cajón o de la caída (pliometría, 21-10-2026): un control más,
+   pero solo para los saltos. */
+describe('la altura', () => {
+  it('se escribe con el número delante y no se anota al terminar', () => {
+    expect(controlDe('altura')).toBe(CONTROL_ALTURA)
+    expect(textoControl('altura', '30')).toBe('30 cm')
+    expect(CONTROL_ALTURA.seAnota).toBe(false)
+  })
+
+  it('solo entra en la ronda de un ejercicio de pliometría', () => {
+    expect(siguienteControl('pct1rm')).toBe('rir')
+    expect(siguienteControl('pct1rm', true)).toBe('altura')
+    expect(siguienteControl('altura', true)).toBe('rir')
+    /* Y no se cuela en la lista de los de esfuerzo. */
+    expect(CONTROLES.map(c => c.id)).not.toContain('altura')
   })
 })

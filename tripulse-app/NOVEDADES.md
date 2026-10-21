@@ -14,6 +14,45 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 21 de octubre de 2026 · Pliometría: los saltos, con su escalera y sus contactos
+
+- **Un tipo nuevo en la biblioteca: Pliometría.** 45 ejercicios comunes en una
+  escalera de cinco niveles, de lo que menos impacta a lo que más: **a** bajo, a
+  dos pies, en el sitio (pogo, saltos laterales…); **b** contramovimiento (CMJ,
+  broad jump…); **c** reactivo de caída (drop jump, vallas bajas…); **d**
+  unilateral y horizontal (bounding, skater…); **e** específico de alta
+  velocidad. Hay escalera para el tren inferior (los saltos), para el superior
+  (los lanzamientos con balón medicinal) y para el tronco (los rotacionales). En
+  la Biblioteca de fuerza, filtra por «Pliometría» y pulsa un escalón para ver
+  sus ejercicios. Al crear o editar uno tuyo, eliges su parte del cuerpo y su
+  nivel.
+- **Seis saltos que ya estaban** (Salto de cuerda, Jump squat, Box jump, Depth
+  jump, Bounding y Single-leg hop horizontal) se han marcado también como
+  pliometría, sin duplicarlos. Desde hoy, al prescribirlos salen en el grupo
+  «Pliometría»; lo que ya les tenías prescrito sigue contando en su grupo de
+  antes.
+- **En una sesión de fuerza** se eligen como cualquier ejercicio. Sus
+  repeticiones son **contactos**, y en los de cajón o de caída puedes poner la
+  **altura** en el botón del control (el que cambia entre RIR, RPE, % 1RM…):
+  «30 cm». Desde el nivel c, al elegirlo te recuerda lo que pide antes; en un
+  drop jump, por ejemplo, base de fuerza (≈1,5 × su peso en sentadilla,
+  recomendación de la NSCA) y dominar los niveles a y b.
+- **En una sesión de carrera** sale en el desplegable de zona, junto a
+  «Técnica»: eliges «Pliometría» y, debajo, el salto. Cuenta en la carga igual
+  que la técnica. En las filas de natación y de ciclismo no se ofrece.
+- **El contador de contactos.** Si la sesión lleva pliometría, encima de las
+  tareas se suman los contactos de pie y te avisa: en verde entre 60 y 100, que
+  es lo recomendado en resistencia; en ámbar por encima; y en rojo si pasa del
+  tope de la NSCA para su nivel (100 un principiante, 120 un intermedio, 140 un
+  avanzado; el nivel sale de su anamnesis). Por ejemplo, 3 × 20 pogo jumps y
+  4 × 6 drop jumps son 84 contactos: verde. Cada escalón tiene además su rango
+  (40–80 los de caída), y si uno se pasa se marca aunque el total esté bien. Los
+  lanzamientos del tren superior y del tronco se cuentan aparte y no avisan.
+- **Tu deportista**, en su modo entreno, ve el escalón, cómo se hace, el vídeo y
+  cuándo cortar la serie: si el contacto se alarga o pierde altura o distancia,
+  porque aquí cuenta la calidad, no el cansancio. Los contactos se dan por hechos
+  al marcar la serie.
+
 ## 21 de octubre de 2026 · La carga por disciplina pondera las zonas igual que la global
 
 - **Antes**, con «Ponderar por zona» encendido en el SICAT, la pestaña «Por

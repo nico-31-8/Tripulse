@@ -15,6 +15,8 @@ import FuerzaRegistro from './FuerzaRegistro'
 import type { SesionEjec, TareaEjec, EjercicioEjec, SerieEnCurso, CampoSerie, HistorialFuerza } from './tipos'
 import { cargaZona } from '@/lib/zonas'
 import { conTecnica } from '@/lib/tecnica'
+import { esDePliometria } from '@/lib/pliometria'
+import TareaPlio from '@/components/pliometria/TareaPlio'
 import { calcularDuracionEstimada, medirDuracion, type DuracionMedida } from '@/lib/duracion'
 import { rpeDeSesion } from '@/lib/rpe-sesion'
 
@@ -639,7 +641,8 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
       return m >= 1000 ? (m/1000).toFixed(1) + ' km' : m + ' m'
     }
     const repsPr = repsDePrescripcion(tarea.p_repeticiones?.[0])
-    if (repsPr) return repsPr + ' reps'
+    /* En pliometría, las repeticiones son contactos. */
+    if (repsPr) return repsPr + (esDePliometria(tarea.tecnica) ? ' contactos' : ' reps')
     return '—'
   }
 
@@ -752,10 +755,12 @@ export default function EjecutarSesion({ params }: { params: Promise<{ id: strin
               {/* Se guardó AER para que la carga saliera bien, pero lo que le mandaron
                   fue técnica: eso es lo que tiene que leer. */}
               {tarea?.tecnica
-                ? <span className="text-sm bg-black/40 px-3 py-1 rounded-full">Técnica</span>
+                ? <span className="text-sm bg-black/40 px-3 py-1 rounded-full">{esDePliometria(tarea.tecnica) ? 'Pliometría' : 'Técnica'}</span>
                 : tarea?.zona_entrenamiento && <span className="text-sm bg-black/40 px-3 py-1 rounded-full">{tarea.zona_entrenamiento}</span>}
             </div>
-            {tarea?.tecnica && (
+            {/* Un salto: su escalón, cómo se hace y cuándo parar la serie. */}
+            {tarea?.tecnica && esDePliometria(tarea.tecnica) && <TareaPlio ejercicio={tarea.tecnica} />}
+            {tarea?.tecnica && !esDePliometria(tarea.tecnica) && (
               <div className="mb-3 bg-black/30 rounded-lg px-4 py-3">
                 <p className="font-bold text-white">{tarea.tecnica.nombre}</p>
                 {tarea.tecnica.descripcion && <p className="text-xs text-gray-400 mt-0.5">{tarea.tecnica.descripcion}</p>}

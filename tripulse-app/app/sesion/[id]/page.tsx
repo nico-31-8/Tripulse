@@ -45,6 +45,7 @@ import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
+import { porLaEscalera, leerNivel } from '@/lib/pliometria'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
@@ -1345,14 +1346,31 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                     siendo AER, que es el volumen suave que un drill realmente es. */}
                 {(() => {
                   const drills = filtrarDrills(drillsTecnica, disciplina || sesion.disciplina)
-                  if (!drills.length) return null
+                  /* Los saltos van por el mismo camino (lib/pliometria). Si no
+                     salieran aquí, una tarea de pliometría hecha en la tabla se
+                     leería «No es trabajo técnico» al editarla en esta vista. */
+                  const saltos = porLaEscalera(drillsTecnica, 'inferior').vistos
+                  if (!drills.length && !saltos.length) return null
                   return (
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">Ejercicio de técnica (opcional)</label>
+                      <label className="text-gray-400 text-xs mb-1 block">Técnica o pliometría (opcional)</label>
                       <select value={tecnicaId} onChange={e => setTecnicaId(e.target.value)}
                         className="bg-gray-800 text-white px-4 py-3 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 w-full">
-                        <option value="">No es trabajo técnico</option>
-                        {drills.map((d: any) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                        <option value="">Ni técnica ni pliometría</option>
+                        {drills.length > 0 && (
+                          <optgroup label="Técnica">
+                            {drills.map((d: any) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                          </optgroup>
+                        )}
+                        {saltos.length > 0 && (
+                          <optgroup label="Pliometría">
+                            {saltos.map(d => (
+                              <option key={String(d.id)} value={String(d.id)}>
+                                {leerNivel(d.nivel_pliometria) ? leerNivel(d.nivel_pliometria) + ' · ' : ''}{String(d.nombre)}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
                   )

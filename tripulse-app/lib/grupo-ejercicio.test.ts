@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { COMPLEJOS, FUNCIONAL, esComplejo, grupoAlCrear, grupoAlEditar } from './grupo-ejercicio'
+import { COMPLEJOS, FUNCIONAL, PLIOMETRIA, esComplejo, grupoAlCrear, grupoAlEditar } from './grupo-ejercicio'
 
 describe('el grupo de un ejercicio nuevo', () => {
   it('un complejo va a Complejos aunque tenga regiones', () => {
@@ -105,5 +105,18 @@ describe('las regiones de /fuerza no abren grupos nuevos', () => {
   it('sin región sigue cayendo en Otros, que es decir «hay que clasificarlo»', () => {
     expect(grupoAlCrear(['Fuerza'], [])).toBe('Otros')
     expect(grupoAlCrear(['Movilidad'], [])).toBe('Movilidad y flexibilidad')
+  })
+})
+
+/* Pliometría (21-10-2026): como Complejos y Funcional, su tipo es su grupo. */
+describe('la pliometría tiene su propio grupo', () => {
+  it('al crearla va a Pliometría aunque tenga regiones', () => {
+    expect(grupoAlCrear([PLIOMETRIA], ['Tobillo y pie'])).toBe(PLIOMETRIA)
+  })
+
+  it('al entrar o salir de pliometría, cambia de grupo', () => {
+    expect(grupoAlEditar('Tobillo y pie', ['Fuerza', PLIOMETRIA], ['Tobillo y pie'])).toBe(PLIOMETRIA)
+    expect(grupoAlEditar(PLIOMETRIA, ['Fuerza'], ['Tobillo y pie'])).toBe('Tobillo y pie')
+    expect(grupoAlEditar(PLIOMETRIA, [PLIOMETRIA], ['Core'])).toBeNull()
   })
 })

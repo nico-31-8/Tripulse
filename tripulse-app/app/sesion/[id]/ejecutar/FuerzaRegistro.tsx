@@ -9,6 +9,7 @@ import { mmss } from '@/lib/duracion-carga'
 import { cuantoPorSerie } from '@/lib/cardio-fuerza'
 import { textoEncadenado } from '@/lib/tarea-vista'
 import { seriesDe, textoRepsSeries, textoKgSeries } from '@/lib/series-detalle'
+import { esGrupoPlio, PARA_LA_SERIE } from '@/lib/pliometria'
 import type { TareaEjec, EjercicioEjec, SerieEnCurso, CampoSerie, HistorialFuerza } from './tipos'
 
 const segAMmss = mmss
@@ -130,13 +131,17 @@ export default function FuerzaRegistro({ tarea, ejercicios, updateSerieFuerza, g
               )}
               <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                 <span>{numSeries} series</span>
-                {!esCardio && !esDropSet && repsObj && <span>{repsObj}{porTiempo ? '' : ' reps'} obj.</span>}
+                {!esCardio && !esDropSet && repsObj && <span>{repsObj}{porTiempo ? '' : esGrupoPlio(ej.grupo_muscular) ? ' contactos' : ' reps'} obj.</span>}
                 {!esCardio && !esDropSet && kgObj && <span>{kgObj} obj.</span>}
                 {/* El drop set, como siempre: sus kilos van por escalones. */}
                 {esDropSet && repsDeEjercicio(ej) && <span>{repsDeEjercicio(ej)} reps obj.</span>}
                 {esDropSet && ej.intensidad && <span>{ej.intensidad} kg obj.</span>}
                 {ej.descanso_segundos && <span>⏸ {segAMmss(ej.descanso_segundos)}</span>}
               </div>
+              {/* Un salto: la serie se corta cuando cae la calidad (lib/pliometria). */}
+              {esGrupoPlio(ej.grupo_muscular) && (
+                <p className="mt-2 mb-0 text-xs text-amber-200 bg-amber-400/10 rounded-lg px-2.5 py-1.5">{PARA_LA_SERIE}</p>
+              )}
               {/* Modo mejora: la última vez que hiciste este ejercicio, para superarlo. */}
               {prev && resumenPrev && !esCardio && (
                 <div className="flex items-center gap-2 mt-2 text-xs bg-gray-800/80 border border-gray-700 rounded-lg px-2.5 py-1.5 flex-wrap">

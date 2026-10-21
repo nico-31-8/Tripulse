@@ -22,6 +22,7 @@ import { intensidadGuardada } from './intensidad-prescrita'
 import { mmssCorto } from './duracion-carga'
 import type { ControlTipo } from './control-esfuerzo'
 import { seriesParaEditar, type SerieEditor } from './series-detalle'
+import { esDePliometria } from './pliometria'
 
 export interface FilaResistencia {
   orden: number
@@ -53,6 +54,12 @@ export interface FilaResistencia {
   comentario: string
   esTecnica: boolean
   tecnicaId: string
+  /**
+   * La pliometría va por el mismo camino que la técnica (AER para la carga y el
+   * ejercicio en `tecnica_id`); esto solo decide qué lista se enseña: saltos en
+   * vez de drills. Opcional: sin él es técnica, como siempre.
+   */
+  esPlio?: boolean
   /**
    * El botón 🔁 de la fila: la tarea en bloques, 3 × (2 × 400).
    *
@@ -186,6 +193,9 @@ export function filaResistenciaDesde(t: any, o: OpcionesFila): FilaResistencia {
     // propia — si hubiera dos, se contradirían.
     esTecnica: !!t.tecnica_id,
     tecnicaId: t.tecnica_id ? String(t.tecnica_id) : '',
+    /* Y si ese ejercicio es un salto, vuelve como pliometría (lib/pliometria). */
+    esPlio: !!t.tecnica_id && esDePliometria(
+      t.tecnica ?? (o.ejerciciosBiblioteca || []).find((e: { id: unknown }) => String(e.id) === String(t.tecnica_id))),
     /* Vuelve encendido si estaba en bloques, para poder editarlo; y al
        duplicar, la copia sale en bloques igual que la original. */
     enBloques: Number(t.bloques) > 1,

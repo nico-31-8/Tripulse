@@ -25,7 +25,7 @@
 // rotador». Por eso cada familia lleva las dos formas, y detrás un patrón
 // para lo que venga.
 
-import { COMPLEJOS, FUNCIONAL } from './grupo-ejercicio'
+import { COMPLEJOS, FUNCIONAL, PLIOMETRIA } from './grupo-ejercicio'
 import { SIN_CLASIFICAR } from './series-por-grupo'
 
 export interface Familia {
@@ -69,6 +69,11 @@ export const FAMILIAS: Familia[] = [
     id: 'especifico', etiqueta: 'Específico del deporte', corta: 'Específico',
     grupos: ['Natación — específico', 'Ciclismo — específico', 'Carrera — específico'],
     patron: /espec[íi]fico/i,
+  },
+  {
+    id: 'pliometria', etiqueta: 'Pliometría', corta: 'Pliometría',
+    grupos: [PLIOMETRIA],
+    patron: /pliometr/i,
   },
   {
     id: 'funcional', etiqueta: 'Funcional y complejos', corta: 'Funcional',

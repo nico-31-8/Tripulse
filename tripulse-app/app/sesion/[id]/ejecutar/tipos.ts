@@ -29,7 +29,11 @@ export interface TareaEjec extends TareaDuracion {
   /** Si es un bloque: lo que apuntó el atleta (lib/bloque-formato). */
   resultado?: unknown
   /** El drill, si lo que se mandó es técnica (lo añade `conTecnica`). */
-  tecnica?: { nombre: string; descripcion?: string | null; ejecucion?: string | null; url_video?: string | null } | null
+  tecnica?: {
+    nombre: string; descripcion?: string | null; ejecucion?: string | null; url_video?: string | null
+    /* Para saber si es un salto, y de qué escalón (lib/pliometria). */
+    tipo?: string[] | null; nivel_pliometria?: string | null; parte_pliometria?: string | null
+  } | null
   p_distancia?: { metros_planeados?: number | null; metros_reales?: number | null; ritmo_objetivo?: string | null }[] | null
   p_duracion?: { tiempo_planeado?: number | null; tiempo_real?: number | null; ritmo_objetivo?: string | null }[] | null
 }

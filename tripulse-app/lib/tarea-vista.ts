@@ -15,6 +15,23 @@ import { controlDeEjercicio } from './control-esfuerzo'
 import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, repsDeEncadenado } from './repeticiones'
 import { seriesDe, tieneSeriesDistintas, textoRepsSeries, textoKgSeries, textoControlSeries } from './series-detalle'
 import { esBloque, leerConfig, ordenarLineas, textoFormato, textoLinea, QUE_SE_APUNTA, type Formato, type LineaBloque } from './bloque-formato'
+import { esDePliometria, esGrupoPlio, leerNivel, leerParte, peldano } from './pliometria'
+
+/**
+ * Si la tarea es de pliometría: en carrera, por el ejercicio que lleva pegado
+ * (`conTecnica`); en fuerza, por el grupo, que al prescribir se copia del tipo.
+ * Entonces sus repeticiones son CONTACTOS (lib/pliometria).
+ */
+type ConSalto = {
+  tecnica?: { tipo?: unknown } | null
+  ejercicios?: { grupo_muscular?: unknown }[] | null
+} | null | undefined
+
+export const tareaDePliometria = (t: ConSalto): boolean =>
+  esDePliometria(t?.tecnica) || esGrupoPlio(t?.ejercicios?.[0]?.grupo_muscular)
+
+/** «8 reps», o «8 contactos» en una de pliometría. */
+const unidadReps = (t: ConSalto) => (tareaDePliometria(t) ? ' contactos' : ' reps')
 
 /** Lo que se hace en CADA serie: «400 m», «5:00 min», «8 reps». */
 export function valorPorSerie(t: any): string {
@@ -23,7 +40,7 @@ export function valorPorSerie(t: any): string {
   const m = t?.p_distancia?.[0]?.metros_planeados
   if (m) return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m'
   const reps = repsDePrescripcion(t?.p_repeticiones?.[0])
-  if (reps) return reps + ' reps'
+  if (reps) return reps + unidadReps(t)
   return '—'
 }
 
@@ -41,7 +58,7 @@ export function totalDeTarea(t: any): string {
     return total >= 1000 ? (total / 1000).toFixed(1) + ' km' : total + ' m'
   }
   const totalReps = repsTotalDePrescripcion(t?.p_repeticiones?.[0], series)
-  if (totalReps) return totalReps + ' reps'
+  if (totalReps) return totalReps + unidadReps(t)
   return '—'
 }
 
@@ -128,6 +145,9 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
     /* Serie a serie: «12/10/8 reps», «40/45/50 kg», «RIR 3/2/1». */
     const sas = tieneSeriesDistintas(ej) ? seriesDe(ej, { segFila: t?.p_duracion?.[0]?.tiempo_planeado }) : null
     const repsSas = sas ? textoRepsSeries(sas, porTiempo) : ''
+    /* En pliometría las repeticiones son contactos (lib/pliometria). */
+    const plio = tareaDePliometria(t)
+    const unidad = plio ? ' contactos' : ' reps'
     return {
       titulo: ej.nombre || comentario || 'Ejercicio',
       zona, nombreZona, disciplina: disciplina || 'Fuerza', esFuerza: true,
@@ -136,9 +156,9 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
         { k: 'Tipo de serie', v: ej.tipo_serie || 'Normal' },
         { k: 'Series', v: String(ej.series ?? t.series ?? '—') },
         {
-          k: porTiempo ? 'Tiempo' : 'Repeticiones',
-          v: sas ? (repsSas ? (porTiempo ? repsSas : repsSas + ' reps') : '—')
-            : porTiempo ? valorPorSerie(t) : (repsDeEjercicio(ej) ? repsDeEjercicio(ej) + ' reps' : '—'),
+          k: porTiempo ? 'Tiempo' : plio ? 'Contactos' : 'Repeticiones',
+          v: sas ? (repsSas ? (porTiempo ? repsSas : repsSas + unidad) : '—')
+            : porTiempo ? valorPorSerie(t) : (repsDeEjercicio(ej) ? repsDeEjercicio(ej) + unidad : '—'),
         },
         { k: 'Carga', v: sas ? (textoKgSeries(sas) || '—') : ej.intensidad != null ? ej.intensidad + ' kg' : '—', destaca: true },
         // «Control», no «RIR»: el RIR es una de las cuatro escalas, y con la
@@ -156,6 +176,12 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
      la previa engaña — parece un rodaje flojo cuando es trabajo técnico, que es
      otra cosa a la hora de decidir qué le pones al día siguiente. */
   const esTecnica = !!t?.tecnica_id
+  /* La pliometría va por el mismo camino, con su nivel: «Pliometría · a, bajo, a dos pies…». */
+  const plio = esTecnica && esDePliometria(t?.tecnica)
+  const nivelPlio = plio ? leerNivel(t.tecnica.nivel_pliometria) : null
+  const textoPlio = 'Pliometría' + (nivelPlio
+    ? ' · ' + nivelPlio + ', ' + peldano(leerParte(t.tecnica.parte_pliometria) || 'inferior', nivelPlio).nombre.toLowerCase()
+    : '')
   const ref = referenciaDeZona(zona, disciplina, tests, fcMax, fcReposo)
   const campos: CampoTarea[] = [
     { k: 'Series', v: t?.series != null ? String(t.series) : '1' },
@@ -177,9 +203,9 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
   if (ref?.fc) campos.push({ k: 'Frecuencia', v: ref.fc })
 
   return {
-    titulo: comentario ? comentario.split('\n')[0].slice(0, 60) : (esTecnica ? 'Técnica' : nombreZona || 'Bloque'),
+    titulo: comentario ? comentario.split('\n')[0].slice(0, 60) : (plio ? 'Pliometría' : esTecnica ? 'Técnica' : nombreZona || 'Bloque'),
     zona,
-    nombreZona: esTecnica ? 'Técnica · cuenta como ' + (nombreZona || zona) : nombreZona,
+    nombreZona: plio ? textoPlio : esTecnica ? 'Técnica · cuenta como ' + (nombreZona || zona) : nombreZona,
     disciplina, esFuerza: false,
     campos,
     // Si el comentario ya es el título, no se repite debajo.

@@ -138,3 +138,10 @@ describe('las regiones de /fuerza tienen familia', () => {
     expect(familiaDe(region)).not.toBe(OTROS)
   })
 })
+
+describe('la pliometría', () => {
+  it('tiene su familia en el desplegable', () => {
+    expect(familiaDe('Pliometría')).toBe('pliometria')
+    expect(familiaDe('Pliometria')).toBe('pliometria')
+  })
+})

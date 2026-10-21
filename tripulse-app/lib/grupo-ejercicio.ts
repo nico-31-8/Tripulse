@@ -22,9 +22,13 @@
 
 export const COMPLEJOS = 'Complejos'
 export const FUNCIONAL = 'Funcional'
+/* PLIOMETRÍA, lo mismo (21-10-2026): pogos, drop jumps, lanzamientos de balón
+   medicinal… El entrenador busca «la pliometría», no el músculo, y así salen
+   juntos en el desplegable. Es el mismo texto que el tipo de lib/pliometria. */
+export const PLIOMETRIA = 'Pliometría'
 
 /** Las etiquetas de `tipo` que además son el grupo con el que sale al prescribir. */
-export const GRUPOS_DE_ETIQUETA = [COMPLEJOS, FUNCIONAL]
+export const GRUPOS_DE_ETIQUETA = [COMPLEJOS, FUNCIONAL, PLIOMETRIA]
 
 /** El grupo que manda la etiqueta, o null si no lleva ninguna de esas. */
 export const grupoDeEtiqueta = (tipo: string[] | null | undefined): string | null =>

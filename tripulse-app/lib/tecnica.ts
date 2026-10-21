@@ -17,13 +17,20 @@ export function filtrarDrills(biblioteca: any[], disciplina: string): any[] {
     (!disciplina || (e.disciplina || []).some((d: any) => sinTildes(d) === sinTildes(disciplina))))
 }
 
-// Catálogo para pintar un desplegable. Trae solo las cuatro columnas que hacen falta:
+// Catálogo para pintar un desplegable. Trae solo las columnas que hacen falta:
 // `ejecucion` es un texto largo y multiplicado por toda la biblioteca no pinta nada
-// en una lista de nombres.
+// en una lista de nombres. Con los drills van los saltos de pliometría, que se
+// prescriben por el mismo camino (`tecnica_id`, ver lib/pliometria); el tipo se
+// mira aquí a mano porque lib/pliometria ya importa de este fichero.
+const PLIOMETRIA = sinTildes('Pliometría')
+const esDeSalto = (ej: { tipo?: unknown }) =>
+  (Array.isArray(ej?.tipo) ? ej.tipo : []).some(t => sinTildes(t) === PLIOMETRIA)
+
 export async function catalogoTecnica(sb?: any): Promise<any[]> {
   const cliente = sb || (await import('./supabase')).supabase
-  const { data } = await cliente.from('ejercicios_biblioteca').select('id, nombre, tipo, disciplina')
-  return (data || []).filter(esDeTecnica)
+  const { data } = await cliente.from('ejercicios_biblioteca')
+    .select('id, nombre, tipo, disciplina, nivel_pliometria, parte_pliometria')
+  return (data || []).filter((e: { tipo?: unknown }) => esDeTecnica(e) || esDeSalto(e))
 }
 
 // El ejercicio de técnica que se ha prescrito vive en `ejercicios_biblioteca`, y la
@@ -48,7 +55,7 @@ export async function conTecnica(tareas: any[] | null, sb?: any): Promise<any[]>
 
   const cliente = sb || (await import('./supabase')).supabase
   const { data } = await cliente.from('ejercicios_biblioteca')
-    .select('id, nombre, descripcion, ejecucion, url_video').in('id', ids)
+    .select('id, nombre, descripcion, ejecucion, url_video, tipo, nivel_pliometria, parte_pliometria').in('id', ids)
 
   // Las claves se comparan como texto: el id puede llegar como número o como cadena
   // según de dónde venga, y un 12 !== '12' silencioso dejaría la técnica sin nombre

@@ -3,13 +3,16 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
-import { COMPLEJOS, FUNCIONAL, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
+import { COMPLEJOS, FUNCIONAL, PLIOMETRIA, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
+import { esDePliometria, leerNivel, leerParte, peldano, requisitoDe, porLaEscalera, PARTES_PLIO, type NivelPlio, type PartePlio } from '@/lib/pliometria'
+import LetraNivel from '@/components/pliometria/LetraNivel'
+import EscaleraPlio, { CamposPlio } from '@/components/pliometria/EscaleraPlio'
 import { usuarioActual } from '@/lib/sesion'
 import { comoCopia, esComun, esMio, hayQueCopiar, miBiblioteca } from '@/lib/biblioteca-propia'
 
 /* Complejos: arrancada, cargada, del suelo a overhead… Es una etiqueta más,
    pero además decide el grupo con el que sale al prescribir (lib/grupo-ejercicio). */
-const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab', COMPLEJOS, FUNCIONAL]
+const TIPOS = ['Fuerza', 'Movilidad', 'Técnica', 'Rehab', COMPLEJOS, FUNCIONAL, PLIOMETRIA]
 const DISCIPLINAS = ['Natación', 'Ciclismo', 'Carrera']
 const REGIONES = [
   'Cuádriceps', 'Isquiotibiales', 'Glúteos', 'Cadera y aductores', 'Rodilla',
@@ -40,6 +43,7 @@ const CLASE_TIPO: Record<string, string> = {
   'Rehab': 'bg-red-900 text-red-300',
   [COMPLEJOS]: 'bg-amber-900 text-amber-300',
   [FUNCIONAL]: 'bg-cyan-900 text-cyan-300',
+  [PLIOMETRIA]: 'bg-lime-900 text-lime-300',
 }
 
 /* AQUÍ HABÍA UNA CLAVE DE ADMINISTRADOR ESCRITA A MANO, y se quitó el
@@ -92,6 +96,9 @@ export default function FuerzaPage() {
   const [aDisc, setADisc] = useState<string[]>([])
   const [aMomento, setAMomento] = useState<string[]>([])
   const [aLesion, setALesion] = useState<string[]>([])
+  /* Solo cuentan si lleva el tipo Pliometría (lib/pliometria). */
+  const [aParte, setAParte] = useState<PartePlio>('inferior')
+  const [aNivel, setANivel] = useState<NivelPlio | null>(null)
   // edición
   const [ejercicioEditando, setEjercicioEditando] = useState<any>(null)
   const [editNombre, setEditNombre] = useState('')
@@ -103,6 +110,11 @@ export default function FuerzaPage() {
   const [eDisc, setEDisc] = useState<string[]>([])
   const [eMomento, setEMomento] = useState<string[]>([])
   const [eLesion, setELesion] = useState<string[]>([])
+  const [eParte, setEParte] = useState<PartePlio>('inferior')
+  const [eNivel, setENivel] = useState<NivelPlio | null>(null)
+  /* La escalera de la lista: se ve al filtrar solo por Pliometría. */
+  const [plioParte, setPlioParte] = useState<PartePlio>('inferior')
+  const [plioNivel, setPlioNivel] = useState<NivelPlio | null>(null)
   const [guardandoEdit, setGuardandoEdit] = useState(false)
   // tests CRUD
   const TEST_VACIO = { nombre: '', descripcion: '', protocolo: '', valor_referencia: '', interpretacion: '', url_video: '', categoria: [] as string[], region: [] as string[], disciplina: [] as string[], lesion: [] as string[] }
@@ -144,6 +156,11 @@ export default function FuerzaPage() {
   const limpiarFiltros = () => { setFiltros(FILTROS_VACIOS); setBusqueda('') }
   const nFiltrosActivos = Object.values(filtros).reduce((n, a) => n + a.length, 0)
 
+  /* El nivel y la parte solo valen con el tipo Pliometría: si se le quita, se vacían. */
+  const camposPlio = (tipo: string[], parte: PartePlio, nivel: NivelPlio | null) => tipo.includes(PLIOMETRIA)
+    ? { parte_pliometria: parte, nivel_pliometria: nivel }
+    : { parte_pliometria: null, nivel_pliometria: null }
+
   const guardarEjercicio = async (e: React.FormEvent) => {
     e.preventDefault()
     setGuardando(true)
@@ -155,10 +172,12 @@ export default function FuerzaPage() {
       nombre, grupo_muscular: grupo, url_video: urlVideo || null,
       descripcion: descripcion || null, ejecucion: ejecucion || null,
       tipo: aTipo, region: aRegion, disciplina: aDisc, momento: aMomento, lesion: aLesion,
+      ...camposPlio(aTipo, aParte, aNivel),
       id_entrenador: uid,
     })
     setNombre(''); setUrlVideo(''); setDescripcion(''); setEjecucion('')
     setATipo(['Fuerza']); setARegion([]); setADisc([]); setAMomento([]); setALesion([])
+    setAParte('inferior'); setANivel(null)
     setExito(true)
     setTimeout(() => setExito(false), 2000)
     setGuardando(false)
@@ -172,6 +191,7 @@ export default function FuerzaPage() {
     setEditDescripcion(ej.descripcion || ''); setEditEjecucion(ej.ejecucion || '')
     setETipo(ej.tipo || []); setERegion(ej.region || []); setEDisc(ej.disciplina || [])
     setEMomento(ej.momento || []); setELesion(ej.lesion || [])
+    setEParte(leerParte(ej.parte_pliometria) ?? 'inferior'); setENivel(leerNivel(ej.nivel_pliometria))
   }
 
   const guardarEdicion = async (e: React.FormEvent) => {
@@ -183,6 +203,7 @@ export default function FuerzaPage() {
       nombre: editNombre, url_video: editVideo || null,
       descripcion: editDescripcion || null, ejecucion: editEjecucion || null,
       tipo: eTipo, region: eRegion, disciplina: eDisc, momento: eMomento, lesion: eLesion,
+      ...camposPlio(eTipo, eParte, eNivel),
       ...(grupo ? { grupo_muscular: grupo } : {}),
     }
 
@@ -285,6 +306,12 @@ export default function FuerzaPage() {
   const mios = miBiblioteca(ejercicios, uid, verEscondidos ? [] : ocultos)
   const ejerciciosFiltrados = mios.filter(matchesFiltros)
 
+  /* SOLO PLIOMETRÍA: la lista sale por la escalera, filtrada por la parte del
+     cuerpo y el escalón elegidos. Con otros tipos a la vez, la de siempre. */
+  const soloPlio = filtros.tipo.length === 1 && filtros.tipo[0] === PLIOMETRIA
+  const escalera = porLaEscalera(soloPlio ? ejerciciosFiltrados : [], plioParte, plioNivel)
+  const ejerciciosVistos = soloPlio ? escalera.vistos : ejerciciosFiltrados
+
   const testsFiltrados = tests.filter(t => {
     if (busqueda) {
       const q = busqueda.toLowerCase()
@@ -310,7 +337,14 @@ export default function FuerzaPage() {
   )
 
   const badgesEjercicio = (ej: any, todas = false) => (
-    <div className="flex gap-1.5 flex-wrap">
+    <div className="flex gap-1.5 flex-wrap items-center">
+      {/* Su escalón: la letra y la parte del cuerpo. */}
+      {esDePliometria(ej) && leerNivel(ej.nivel_pliometria) && (
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-300">
+          <LetraNivel nivel={leerNivel(ej.nivel_pliometria)!} parte={leerParte(ej.parte_pliometria) ?? 'inferior'} pequena />
+          {PARTES_PLIO.find(p => p.id === leerParte(ej.parte_pliometria))?.nombre}
+        </span>
+      )}
       {arr(ej.tipo).map((t: string) => <Badge key={t} cls={CLASE_TIPO[t] || 'bg-gray-800 text-gray-300'}>{t}</Badge>)}
       {arr(ej.disciplina).map((d: string) => <Badge key={d} cls="bg-sky-900 text-sky-300">{d}</Badge>)}
       {arr(ej.lesion).map((l: string) => <Badge key={l} cls="bg-orange-900/70 text-orange-300">{lblLesion(l)}</Badge>)}
@@ -399,9 +433,14 @@ export default function FuerzaPage() {
               </div>
             )}
 
+            {soloPlio && (
+              <EscaleraPlio parte={plioParte} nivel={plioNivel} cuantos={escalera.cuantos}
+                onParte={setPlioParte} onNivel={setPlioNivel} />
+            )}
+
             <div className="flex items-center justify-between mb-3">
               <p className="text-gray-500 text-xs">
-                {ejerciciosFiltrados.length} resultados
+                {ejerciciosVistos.length} resultados
                 {ocultos.length > 0 && (
                   <button onClick={() => setVerEscondidos(v => !v)}
                     className="ml-2 text-gray-500 hover:text-gray-300 underline underline-offset-2 transition">
@@ -416,14 +455,14 @@ export default function FuerzaPage() {
               )}
             </div>
 
-            {ejerciciosFiltrados.length === 0 ? (
+            {ejerciciosVistos.length === 0 ? (
               <div className="text-center py-16 text-gray-500">
                 <div className="text-5xl mb-4">🏋️</div>
                 <p>Ningún ejercicio coincide con los filtros.</p>
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
-                {ejerciciosFiltrados.map(ej => (
+                {ejerciciosVistos.map(ej => (
                   <div key={ej.id} onClick={() => setEjercicioDetalle(ej)} data-guia="bib.ejercicio"
                     className="bg-gray-900 rounded-xl border border-gray-800 p-4 hover:border-gray-700 transition cursor-pointer flex flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
@@ -559,6 +598,24 @@ export default function FuerzaPage() {
                   <p className="text-gray-200 text-sm leading-relaxed">{ejercicioDetalle.descripcion}</p>
                 </div>
               )}
+              {(() => {
+                /* Su escalón de la escalera: qué exige y qué pide antes. */
+                const n = esDePliometria(ejercicioDetalle) ? leerNivel(ejercicioDetalle.nivel_pliometria) : null
+                if (!n) return null
+                const parte = leerParte(ejercicioDetalle.parte_pliometria) ?? 'inferior'
+                const pel = peldano(parte, n)
+                const req = requisitoDe(parte, n)
+                return (
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Su escalón</p>
+                    <p className="flex items-center gap-2 text-sm text-gray-200"><LetraNivel nivel={n} parte={parte} />{pel.nombre}</p>
+                    <p className="text-gray-400 text-xs mt-1.5">
+                      {pel.exige}{pel.rango ? ' · ' + pel.rango[0] + '–' + pel.rango[1] + ' contactos por sesión' : ''}
+                    </p>
+                    {req && <p className="text-amber-300/90 text-xs mt-1">{req}</p>}
+                  </div>
+                )
+              })()}
               {ejercicioDetalle.ejecucion ? (
                 <div>
                   <p className="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Cómo se hace</p>
@@ -681,6 +738,7 @@ export default function FuerzaPage() {
                   <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Tipo</label>
                   <div className="flex gap-2 flex-wrap">{TIPOS.map(t => <Chip key={t} activo={aTipo.includes(t)} onClick={() => setATipo(a => toggle(a, t))}>{t}</Chip>)}</div>
                 </div>
+                {aTipo.includes(PLIOMETRIA) && <CamposPlio parte={aParte} nivel={aNivel} onParte={setAParte} onNivel={setANivel} />}
                 <div>
                   <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Región</label>
                   <div className="flex gap-2 flex-wrap">{REGIONES.map(r => <Chip key={r} activo={aRegion.includes(r)} onClick={() => setARegion(a => toggle(a, r))}>{r}</Chip>)}</div>
@@ -744,6 +802,7 @@ export default function FuerzaPage() {
                 <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Tipo</label>
                 <div className="flex gap-2 flex-wrap">{TIPOS.map(t => <Chip key={t} activo={eTipo.includes(t)} onClick={() => setETipo(a => toggle(a, t))}>{t}</Chip>)}</div>
               </div>
+              {eTipo.includes(PLIOMETRIA) && <CamposPlio parte={eParte} nivel={eNivel} onParte={setEParte} onNivel={setENivel} />}
               <div>
                 <label className="text-gray-400 text-xs uppercase tracking-wide mb-1.5 block">Región</label>
                 <div className="flex gap-2 flex-wrap">{REGIONES.map(r => <Chip key={r} activo={eRegion.includes(r)} onClick={() => setERegion(a => toggle(a, r))}>{r}</Chip>)}</div>
