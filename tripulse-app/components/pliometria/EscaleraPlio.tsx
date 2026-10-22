@@ -1,5 +1,5 @@
 import {
-  NIVELES_PLIO, PARTES_PLIO, peldano, requisitoDe, type NivelPlio, type PartePlio,
+  NIVELES_PLIO, PARTES_PLIO, peldano, requisitoDe, nombreNivel, etiquetaNivel, type NivelPlio, type PartePlio,
 } from '@/lib/pliometria'
 import LetraNivel from './LetraNivel'
 
@@ -29,7 +29,8 @@ export default function EscaleraPlio({ parte, nivel, cuantos, onParte, onNivel }
         </div>
         <p className="m-0 text-xs text-gray-500 max-w-[70ch]">
           Se avanza por <b className="text-gray-300">dominio técnico, no por calendario</b>: primero volumen, luego
-          complejidad (de dos pies a uno, de vertical a horizontal) y por último la altura de caída.
+          complejidad (de dos pies a uno, de vertical a horizontal) y por último la altura de caída. Cada nivel incluye
+          los de abajo: quien está en el 3 también hace los del 1 y el 2.
         </p>
       </div>
 
@@ -45,7 +46,7 @@ export default function EscaleraPlio({ parte, nivel, cuantos, onParte, onNivel }
                 + (activo ? 'border-orange-500 bg-orange-500/10' : 'border-gray-800 bg-gray-900 hover:border-gray-700')}>
               <span className="flex items-center gap-2">
                 <LetraNivel nivel={n} parte={parte} />
-                <b className="text-[13px] leading-tight">{p.nombre}</b>
+                <b className="text-[13px] leading-tight">{nombreNivel(n)} <span className="font-normal text-gray-300">· {p.anade}</span></b>
               </span>
               {p.rango && (
                 <span className="text-[11.5px] text-gray-400">
@@ -73,7 +74,7 @@ export function CamposPlio({ parte, nivel, onParte, onNivel }: {
 }) {
   const req = nivel ? requisitoDe(parte, nivel) : null
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)] gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
       <label className="flex flex-col gap-1 text-gray-400 text-xs uppercase tracking-wide">
         Parte del cuerpo
         <select value={parte} onChange={e => onParte(e.target.value as PartePlio)}
@@ -86,13 +87,13 @@ export function CamposPlio({ parte, nivel, onParte, onNivel }: {
         <select value={nivel ?? ''} onChange={e => onNivel((e.target.value || null) as NivelPlio | null)}
           className="bg-gray-800 text-white px-3 py-2.5 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm normal-case tracking-normal">
           <option value="">Sin nivel</option>
-          {NIVELES_PLIO.map(n => <option key={n} value={n}>{n} · {peldano(parte, n).nombre}</option>)}
+          {NIVELES_PLIO.map(n => <option key={n} value={n}>{etiquetaNivel(parte, n)}</option>)}
         </select>
       </label>
-      <p className="col-span-2 m-0 text-[11.5px] text-gray-400 leading-snug">
+      <p className="sm:col-span-2 m-0 text-[11.5px] text-gray-400 leading-snug">
         {nivel
           ? <>{peldano(parte, nivel).exige}.{req ? ' ' + req : ''}</>
-          : 'Con su nivel sale en su escalón de la escalera y, al prescribirlo, avisa de lo que pide.'}
+          : 'Con su nivel sale en su sitio de la escalera y, al prescribirlo, avisa de lo que pide.'}
       </p>
     </div>
   )

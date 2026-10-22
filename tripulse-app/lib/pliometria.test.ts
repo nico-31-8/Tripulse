@@ -185,7 +185,7 @@ describe('lo que pide cada escalón', () => {
   it('desde el c, en una frase y sin estropear las siglas', () => {
     expect(requisitoDe('inferior', 'a')).toBeNull()
     expect(requisitoDe('inferior', 'b')).toBeNull()
-    expect(requisitoDe('inferior', 'c')).toBe('Antes: base de fuerza (≈1,5 × su peso en sentadilla, recomendación NSCA) y dominar a y b.')
+    expect(requisitoDe('inferior', 'c')).toBe('Antes: base de fuerza (≈1,5 × su peso en sentadilla, recomendación NSCA) y dominar los niveles 1 y 2.')
     expect(requisitoDe('superior', 'e')).toBe('Antes: gesto estable en todo lo anterior.')
   })
 })

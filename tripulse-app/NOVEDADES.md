@@ -14,6 +14,28 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 22 de octubre de 2026 · Saltos: los niveles van del 1 al 5, y lo que pide cada uno
+
+- **Los niveles de pliometría ahora son números, del 1 al 5**, y cada uno dice
+  lo que añade: «Nivel 1 · saltos bajos a dos pies, en el sitio», «Nivel 2 ·
+  añade el contramovimiento», «Nivel 3 · añade los de caída (reactivos)»…
+  Antes eran letras con el nombre de un tipo de salto («b · Contramovimiento»),
+  y parecía que quien estaba en ese nivel solo hacía eso. **Cada nivel incluye
+  los de abajo**: quien está en el 3 también hace CMJ (del 2) y pogos (del 1).
+  Cambia en la biblioteca, al prescribir, en la ficha del deportista y en su
+  modo entreno. Lo que ya tenías guardado no cambia: un salto que era del c es
+  ahora del nivel 3.
+- **«Qué pide cada nivel»**, en la pestaña Saltos, enseña ahora también el tren
+  inferior, que es el que la app recomienda, en la primera columna. Por ejemplo,
+  para el nivel 3: drop jump desde 20–30 cm con el contacto por debajo de
+  250 ms, y la sentadilla de 1,5 × su peso solo como orientación. Antes solo
+  salían el tren superior y el tronco.
+- **Si en la app no constan 4 semanas de fuerza, ya no dice «no saltar
+  todavía».** A un deportista sin nada evaluado le salía eso porque la fuerza
+  que hace fuera de la app no se ve. Ahora queda como algo por mirar: «En la
+  app constan 1 de las 4 últimas semanas con fuerza. Si la hace fuera,
+  márcalo». Si marcas «Hace la fuerza fuera de la app», cuenta como hecha.
+
 ## 21 de octubre de 2026 · El escalón de pliometría de cada deportista
 
 - **Una pestaña nueva, «Saltos», en la ficha de cada deportista.** Arriba está

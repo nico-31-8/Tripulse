@@ -5,21 +5,26 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { fechaCorta } from '@/lib/fechas'
-import { NIVELES_PLIO, PARTES_PLIO, peldano, type NivelPlio, type PartePlio } from '@/lib/pliometria'
+import { NIVELES_PLIO, PARTES_PLIO, peldano, nombreNivel, etiquetaNivel, type NivelPlio, type PartePlio } from '@/lib/pliometria'
 import {
   CRITERIOS, recomendar, recomendadoParaGuardar, escalonesActuales, contactosParaEmpezar, rsiDe, limiteDe,
+  hayEvaluacion, criteriosEnUnaFrase,
   type Comprobaciones, type CriterioEvaluado, type Criterio, type Recomendacion, type EstadoCriterio,
 } from '@/lib/pliometria-escalon'
 import { cargarSaltos, ponerEscalon, guardarComprobaciones, type SaltosDeportista as Carga } from '@/lib/pliometria-escalon-datos'
 import LetraNivel from './LetraNivel'
 
 /*
- * LA PESTAÑA «SALTOS» DE LA FICHA. El escalón lo pone el entrenador, en cada
+ * LA PESTAÑA «SALTOS» DE LA FICHA. El nivel lo pone el entrenador, en cada
  * parte del cuerpo, y lo cambia cuando quiera; la app solo recomienda, con la
  * evaluación que él quiera rellenar (lib/pliometria-escalon). Todo es opcional:
- * sin escalón puesto, el resto de la app funciona como siempre.
+ * sin nivel puesto, el resto de la app funciona como siempre. Se enseña el
+ * número (Nivel 1-5) y lo que añade; por dentro se guarda a-e.
  */
 
+/* Tras dos puntos, en minúscula; las siglas (RSI, CMJ) se quedan. */
+const mayuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const trasDosPuntos = (s: string) => (/^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s)
 const coma = (n: number, dec = 1) => n.toFixed(dec).replace('.', ',').replace(/,0+$/, '')
 const MARCA: Record<EstadoCriterio, string> = { si: '✓', no: '✕', sin: '·', na: '–' }
 const TIPO = { obligatorio: 'Obligatorio', orientativo: 'Orientativo', dato: 'Dato', 'solo si': 'Solo si aplica' } as const
@@ -57,7 +62,7 @@ export default function SaltosDeportista({ idDeportista }: { idDeportista: numbe
     const { fila, error } = await ponerEscalon(supabase, idDeportista, parte, valor || null,
       parte === 'inferior' ? recomendadoParaGuardar(recomendar(carga.comprobaciones, carga.datos)) : null)
     setGuardando(null)
-    if (error || !fila) { alert(error || 'No se ha podido guardar el escalón.'); return }
+    if (error || !fila) { alert(error || 'No se ha podido guardar el nivel.'); return }
     setCarga(x => (x ? { ...x, historial: [fila, ...x.historial] } : x))
   }
 
@@ -115,9 +120,9 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
 
       {/* ═══ SU ESCALÓN: lo decide el entrenador ═══ */}
       <section className="tp-card p-5 flex flex-col gap-1">
-        <h3 className="font-semibold text-[15px]">Su escalón de pliometría</h3>
+        <h3 className="font-semibold text-[15px]">Su nivel de pliometría</h3>
         <p className="text-gray-500 text-xs mb-2">
-          Lo pones tú y lo cambias cuando quieras. La app solo recomienda. Sin escalón puesto, todo funciona como siempre;
+          Lo pones tú y lo cambias cuando quieras. La app solo recomienda. Cada nivel incluye los de abajo. Sin nivel puesto, todo funciona como siempre;
           con él, al prescribir se marcan los saltos que están por encima.
         </p>
         {PARTES_PLIO.map(p => {
@@ -125,32 +130,34 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
           const rec = p.id === 'inferior' && r.tipo === 'escalon' ? r.escalon : null
           const fila = actual.fila
           return (
-            <div key={p.id} className="grid grid-cols-1 md:grid-cols-[120px_minmax(0,260px)_minmax(0,1fr)] gap-x-4 gap-y-2 items-center py-3 border-t border-gray-800 first:border-t-0">
+            <div key={p.id} className="grid grid-cols-1 md:grid-cols-[120px_minmax(0,350px)_minmax(0,1fr)] gap-x-4 gap-y-2 items-center py-3 border-t border-gray-800 first:border-t-0">
               <span className="font-semibold text-[13.5px]">{p.nombre}</span>
               <select value={actual.escalon ?? ''} disabled={guardando === p.id}
                 onChange={e => cambiarEscalon(p.id, e.target.value)}
-                aria-label={'Escalón de ' + p.nombre.toLowerCase()}
+                aria-label={'Nivel de ' + p.nombre.toLowerCase()}
                 className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-50">
                 <option value="">Sin poner</option>
-                {NIVELES_PLIO.map(k => <option key={k} value={k}>{k} · {peldano(p.id, k).nombre}</option>)}
+                {NIVELES_PLIO.map(k => <option key={k} value={k}>{etiquetaNivel(p.id, k)}</option>)}
               </select>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-gray-400 min-w-0">
                 {p.id !== 'inferior' ? (
                   <span>Sin recomendación: en esta parte los criterios los compruebas tú.</span>
                 ) : r.tipo === 'sin-datos' ? (
-                  <span>Sin evaluación, la app no recomienda nada.</span>
+                  <span>{hayEvaluacion(c)
+                    ? 'A la app le falta mirar algo para recomendar: lo ves en «Lo que recomienda la app».'
+                    : 'Sin evaluación, la app no recomienda nada.'}</span>
                 ) : r.tipo === 'no-salta' ? (
                   <span>La app recomienda <b className="text-gray-200">no saltar todavía</b>.</span>
                 ) : r.tipo === 'aterrizajes' ? (
-                  <span>La app recomienda <b className="text-gray-200">empezar por los aterrizajes</b>, antes del a.</span>
+                  <span>La app recomienda <b className="text-gray-200">empezar por los aterrizajes</b>, antes del nivel 1.</span>
                 ) : rec && (
                   <>
-                    <span className="inline-flex items-center gap-1.5">La app recomienda <LetraNivel nivel={rec} /> <b className="text-gray-200">{peldano('inferior', rec).nombre}</b></span>
+                    <span className="inline-flex items-center gap-1.5 flex-wrap">La app recomienda <LetraNivel nivel={rec} /> <b className="text-gray-200">{nombreNivel(rec)}</b> · {peldano('inferior', rec).anade}</span>
                     {actual.escalon === rec
                       ? <span className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-200">Coincide</span>
                       : <button type="button" onClick={() => cambiarEscalon('inferior', rec)} disabled={guardando === 'inferior'}
                           className="text-xs font-semibold px-3 py-1 rounded-lg border border-orange-500/50 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition disabled:opacity-50">
-                          Ponerlo en el {rec}
+                          Ponerlo en el {nombreNivel(rec).toLowerCase()}
                         </button>}
                     {actual.escalon && actual.escalon !== rec && (
                       <span className="basis-full text-xs">
@@ -164,7 +171,7 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
                 {fila && (
                   <span className="basis-full text-[11.5px] text-gray-500">
                     Último cambio: {fechaCorta(fila.puesto_en)}, {fila.puesto_por && fila.puesto_por === yo ? 'por ti' : 'por otra persona que lo lleva'}
-                    {fila.recomendado ? '; la app recomendaba ' + (NIVELES_PLIO.includes(fila.recomendado as NivelPlio) ? 'el ' + fila.recomendado : fila.recomendado === 'aterrizajes' ? 'los aterrizajes' : 'no saltar') : ''}.
+                    {fila.recomendado ? '; la app recomendaba ' + (NIVELES_PLIO.includes(fila.recomendado as NivelPlio) ? 'el ' + nombreNivel(fila.recomendado as NivelPlio).toLowerCase() : fila.recomendado === 'aterrizajes' ? 'los aterrizajes' : 'no saltar') : ''}.
                   </span>
                 )}
               </div>
@@ -172,8 +179,8 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
           )
         })}
         <details className="mt-1 text-xs text-gray-400">
-          <summary className="cursor-pointer text-gray-500 hover:text-gray-300">Qué pide cada escalón del tren superior y del tronco</summary>
-          <TablaSuperiorTronco />
+          <summary className="cursor-pointer text-gray-500 hover:text-gray-300">Qué pide cada nivel</summary>
+          <TablaEscalones />
         </details>
       </section>
 
@@ -213,7 +220,7 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
           </div>
           <p className="text-[11.5px] text-gray-500">
             {carga.evaluadaEn ? 'Evaluación guardada el ' + fechaCorta(carga.evaluadaEn) + '. ' : ''}
-            Lo que solo puedes ver tú, como cómo aterriza, se marca en cada escalón de la escalera: Sí, No, o nada si no lo has mirado.
+            Lo que solo puedes ver tú, como cómo aterriza, se marca en cada nivel de la escalera: Sí, No, o nada si no lo has mirado.
           </p>
         </section>
 
@@ -232,7 +239,7 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
             ))}
             <Escalon k="pre" c={c} d={d} puesto={false} recomendado={false} fueraDeLimite={false} marcar={marcar} />
             <p className="text-[11.5px] text-gray-400 bg-black/20 rounded-lg px-3 py-2">
-              Para <b className="text-gray-200">subir</b> de escalón: cumplir lo que pide el siguiente y dominar el suyo, es decir,
+              Para <b className="text-gray-200">subir</b> de nivel: cumplir lo que pide el siguiente y dominar el suyo, es decir,
               <b className="text-gray-200"> cinco repeticiones seguidas sin errores en vídeo de perfil y sin dolor al día siguiente</b>.
               La app lo propone; el cambio lo haces tú.
             </p>
@@ -273,7 +280,7 @@ function Asimetria({ valor, onCambio }: { valor: number | undefined; onCambio: (
 function Resultado({ r, c, d }: { r: Recomendacion; c: Comprobaciones; d: Carga['datos'] }) {
   const linea = (x: CriterioEvaluado, extra?: string) => (
     <li key={x.criterio.id}>
-      {x.criterio.texto}{x.criterio.dice ? ': ' + x.criterio.dice(c, d) : x.criterio.ayuda ? '. ' + x.criterio.ayuda : '.'}
+      {x.criterio.texto}{x.criterio.dice ? ': ' + trasDosPuntos(x.criterio.dice(c, d)) : x.criterio.ayuda ? '. ' + x.criterio.ayuda : '.'}
       {extra && <span className="text-gray-500"> ({extra})</span>}
     </li>
   )
@@ -289,31 +296,33 @@ function Resultado({ r, c, d }: { r: Recomendacion; c: Comprobaciones; d: Carga[
     <section className={marco + 'border-dashed border-gray-600 bg-gray-900/60'} aria-live="polite">
       <p className="text-xs uppercase tracking-wider text-gray-400">Lo que recomienda la app</p>
       <p className="text-xl font-bold">Sin recomendación</p>
-      <p className="text-[13px] text-gray-300">No hay evaluación, así que vale el escalón que le pongas. Para que la app recomiende, empieza por mirar:</p>
+      <p className="text-[13px] text-gray-300">{hayEvaluacion(c)
+        ? 'Le falta mirar algo para poder recomendar; mientras, vale el nivel que le pongas. Falta:'
+        : 'No hay evaluación, así que vale el nivel que le pongas. Para que la app recomiende, empieza por mirar:'}</p>
       <ul className="list-disc pl-5 text-[12.5px] text-gray-300">{r.sinMirar.map(x => linea(x))}</ul>
     </section>
   )
   if (r.tipo === 'aterrizajes') return (
     <section className={marco + 'border-amber-400/50 bg-amber-400/10'} aria-live="polite">
       <p className="text-xs uppercase tracking-wider text-gray-400">Lo que recomienda la app</p>
-      <p className="text-xl font-bold">Antes del a: aterrizajes</p>
+      <p className="text-xl font-bold">Antes del nivel 1: aterrizajes</p>
       <p className="text-[13px] text-gray-200">Caídas controladas a dos pies desde 20–30 cm, sin rebote, en silencio y aguantando dos segundos. Con rebote cuando le salgan cinco limpias seguidas.</p>
-      <p className="text-xs font-semibold text-gray-200">Para el a le falta</p>
+      <p className="text-xs font-semibold text-gray-200">Para el nivel 1 le falta</p>
       <ul className="list-disc pl-5 text-[12.5px] text-gray-300">{r.no.map(x => linea(x))}{r.sinMirar.map(x => linea(x, 'sin mirar'))}</ul>
     </section>
   )
   return (
     <section className={marco + 'border-emerald-400/45 bg-emerald-400/10'} aria-live="polite">
       <p className="text-xs uppercase tracking-wider text-gray-400">Lo que recomienda la app</p>
-      <p className="text-xl font-bold flex items-center gap-2.5"><LetraNivel nivel={r.escalon} /> Escalón {r.escalon} · {peldano('inferior', r.escalon).nombre.toLowerCase()}</p>
+      <p className="text-xl font-bold flex items-center gap-2.5"><LetraNivel nivel={r.escalon} /> {nombreNivel(r.escalon)} · {peldano('inferior', r.escalon).anade}</p>
       <p className="text-[13px] text-gray-200">
-        Si lo pones aquí, arranca en el suelo de su rango: <b>{contactosParaEmpezar(r.escalon)} contactos por sesión</b> de este escalón
+        Si lo pones aquí, arranca en el suelo de su rango: <b>{contactosParaEmpezar(r.escalon)} contactos por sesión</b> de este nivel
         {r.escalon === 'c' && d.caja ? ', con el cajón de ' + d.caja + ' cm' : ''}.
       </p>
       {r.limite && (<><p className="text-xs font-semibold text-gray-200">No pasa de aquí</p><p className="text-[12.5px] text-gray-300">{r.limite}</p></>)}
       {r.siguiente && (r.no.length + r.sinMirar.length + r.orientativoSiguiente.length > 0) && (
         <>
-          <p className="text-xs font-semibold text-gray-200">{r.no.length ? 'Para el ' + r.siguiente + ' le falta' : 'Para saber si llega al ' + r.siguiente + ', falta mirar'}</p>
+          <p className="text-xs font-semibold text-gray-200">{r.no.length ? 'Para el ' + nombreNivel(r.siguiente).toLowerCase() + ' le falta' : 'Para saber si llega al ' + nombreNivel(r.siguiente).toLowerCase() + ', falta mirar'}</p>
           <ul className="list-disc pl-5 text-[12.5px] text-gray-300">
             {r.no.map(x => linea(x))}
             {r.sinMirar.map(x => linea(x, 'sin mirar'))}
@@ -321,7 +330,7 @@ function Resultado({ r, c, d }: { r: Recomendacion; c: Comprobaciones; d: Carga[
           </ul>
         </>
       )}
-      {!r.siguiente && !r.limite && <p className="text-xs text-gray-300">Es el último escalón.</p>}
+      {!r.siguiente && !r.limite && <p className="text-xs text-gray-300">Es el último nivel.</p>}
       {r.ojo.length > 0 && (
         <>
           <p className="text-xs font-semibold text-gray-200">Ojo</p>
@@ -352,7 +361,7 @@ function Escalon({ k, c, d, puesto, recomendado, fueraDeLimite, marcar }: {
         {k === 'pre'
           ? <span className="inline-grid place-items-center w-[22px] h-[22px] rounded-[7px] bg-gray-800 border border-gray-700 text-gray-300 text-xs">·</span>
           : <LetraNivel nivel={k} />}
-        <b className="text-[13.5px]">{p ? p.nombre : 'Antes de cualquier salto'}</b>
+        <b className="text-[13.5px]">{p && k !== 'pre' ? <>{nombreNivel(k)} <span className="font-normal text-gray-300">· {p.anade}</span></> : 'Antes de cualquier salto'}</b>
         {puesto && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300">Lo has puesto aquí</span>}
         {recomendado && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-200">Recomienda la app</span>}
         {fueraDeLimite && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-400/10 text-red-200">Fuera de su límite</span>}
@@ -402,8 +411,13 @@ function FilaCriterio({ cr, estado, c, d, marcar }: {
   )
 }
 
-/* La tabla de la maqueta: aquí la app no recomienda, los criterios los comprueba el entrenador. */
-function TablaSuperiorTronco() {
+/*
+ * Lo que pide cada nivel en las tres partes. El tren inferior sale de los
+ * mismos criterios que la escalera (criteriosEnUnaFrase), así que no puede
+ * decir otra cosa que lo que se marca abajo. El superior y el tronco son los
+ * de la maqueta: ahí la app no recomienda y los comprueba el entrenador.
+ */
+function TablaEscalones() {
   const filas: [NivelPlio, string, string][] = [
     ['a', 'Sin dolor de hombro ni de codo.', 'Aguanta el puente lateral y los extensores sin perder la alineación.'],
     ['b', 'Lanza el pase sentado a máxima velocidad sin que se le rompa el gesto.', 'Domina el pase rotacional sentado.'],
@@ -413,25 +427,40 @@ function TablaSuperiorTronco() {
   ]
   return (
     <div className="overflow-x-auto mt-2">
-      <table className="w-full min-w-[560px] text-[12px]">
+      <table className="w-full min-w-[760px] text-[12px]">
         <thead>
           <tr className="text-gray-500 text-[10.5px] uppercase tracking-wider">
-            <th className="text-left font-semibold py-1.5 pr-2">Escalón</th>
-            <th className="text-left font-semibold py-1.5 pr-2">Tren superior: para empezar aquí</th>
+            <th className="text-left font-semibold py-1.5 pr-2">Nivel</th>
+            <th className="text-left font-semibold py-1.5 pr-3">Tren inferior: para empezar aquí</th>
+            <th className="text-left font-semibold py-1.5 pr-3">Tren superior: para empezar aquí</th>
             <th className="text-left font-semibold py-1.5">Tronco: para empezar aquí</th>
           </tr>
         </thead>
         <tbody>
+          <tr className="border-t border-gray-800 align-top">
+            <td className="py-1.5 pr-2 text-gray-500">Antes</td>
+            <td className="py-1.5 pr-3"><b className="text-gray-200">Antes de cualquier salto.</b> {criteriosEnUnaFrase('pre')}</td>
+            <td className="py-1.5 pr-3 text-gray-500">—</td>
+            <td className="py-1.5 text-gray-500">—</td>
+          </tr>
           {filas.map(([k, sup, tro]) => (
             <tr key={k} className="border-t border-gray-800 align-top">
               <td className="py-1.5 pr-2"><span className="inline-flex items-center gap-1.5"><LetraNivel nivel={k} pequena /></span></td>
-              <td className="py-1.5 pr-2"><b className="text-gray-200">{peldano('superior', k).nombre}.</b> {sup}</td>
-              <td className="py-1.5"><b className="text-gray-200">{peldano('tronco', k).nombre}.</b> {tro}</td>
+              <td className="py-1.5 pr-3">
+                <b className="text-gray-200">{mayuscula(peldano('inferior', k).anade)}.</b> {criteriosEnUnaFrase(k)}
+                <span className="block text-gray-500">{peldano('inferior', k).rango?.[0]}–{peldano('inferior', k).rango?.[1]} contactos por sesión.</span>
+              </td>
+              <td className="py-1.5 pr-3"><b className="text-gray-200">{mayuscula(peldano('superior', k).anade)}.</b> {sup}</td>
+              <td className="py-1.5"><b className="text-gray-200">{mayuscula(peldano('tronco', k).anade)}.</b> {tro}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-gray-500">Para seguir el progreso sirve el lanzamiento sentado de pecho, pero 20 o 30 cm de mejora son ruido.</p>
+      <p className="mt-2 text-gray-500">
+        El tren inferior es el único que la app recomienda: cada criterio se marca abajo, en «La escalera del tren inferior».
+        Quien aún crece, o es máster con la rodilla operada, no pasa del nivel 2. Para seguir el progreso del tren superior sirve
+        el lanzamiento sentado de pecho, pero 20 o 30 cm de mejora son ruido.
+      </p>
     </div>
   )
 }

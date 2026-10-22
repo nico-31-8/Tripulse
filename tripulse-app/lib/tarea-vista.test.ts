@@ -237,7 +237,7 @@ describe('una tarea de pliometría', () => {
     expect(totalDeTarea(t)).toBe('60 contactos')
     const v = vistaDeTarea(t, SIN_TESTS, 0)
     expect(v.titulo).toBe('Pliometría')
-    expect(v.nombreZona).toBe('Pliometría · a, bajo, a dos pies, en el sitio')
+    expect(v.nombreZona).toBe('Pliometría · nivel 1')
   })
 
   it('una de técnica sigue como siempre', () => {

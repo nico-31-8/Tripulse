@@ -49,6 +49,13 @@ export const PARTES_PLIO: { id: PartePlio; nombre: string }[] = [
 
 export interface Peldano {
   nombre: string
+  /**
+   * Lo que SUMA este nivel a los de abajo: «añade los de caída». Los niveles
+   * son acumulativos (quien está en el 3 también hace CMJ, que es del 2), así
+   * que un nivel no se nombra por un tipo de salto sino por lo que añade
+   * (decidido con el usuario el 22-10-2026). El primero dice con qué se empieza.
+   */
+  anade: string
   /** Qué ciclo de estiramiento-acortamiento usa y cuánto impacta. */
   exige: string
   /** Contactos por sesión de ESE nivel. Solo en el tren inferior. */
@@ -57,40 +64,55 @@ export interface Peldano {
   antes: string
 }
 
+/*
+ * POR DENTRO SIGUEN SIENDO a-e: es lo que guardan la biblioteca
+ * (ejercicios_biblioteca.nivel_pliometria) y el historial de cada deportista
+ * (pliometria_escalon). Lo que se ENSEÑA es el número, del 1 al 5:
+ * `nombreNivel` y `etiquetaNivel`.
+ */
 const ESCALERA: Record<PartePlio, Record<NivelPlio, Peldano>> = {
   inferior: {
-    a: { nombre: 'Bajo, a dos pies, en el sitio', exige: 'Ciclo rápido · impacto bajo', rango: [60, 100],
+    a: { nombre: 'Bajo, a dos pies, en el sitio', anade: 'saltos bajos a dos pies, en el sitio', exige: 'Ciclo rápido · impacto bajo', rango: [60, 100],
       antes: 'Aterrizar en silencio y aguantar 30 s a una pierna' },
-    b: { nombre: 'Contramovimiento', exige: 'Ciclo lento · impacto bajo-medio', rango: [80, 120],
-      antes: 'Dominar el nivel a' },
-    c: { nombre: 'Reactivo de caída', exige: 'Ciclo rápido · impacto alto', rango: [40, 80],
-      antes: 'Base de fuerza (≈1,5 × su peso en sentadilla, recomendación NSCA) y dominar a y b' },
-    d: { nombre: 'Unilateral y horizontal', exige: 'Ciclo rápido · impacto alto', rango: [40, 100],
-      antes: 'Estabilidad a una pierna y dominar b y c' },
-    e: { nombre: 'Específico de alta velocidad', exige: 'Ciclo rápido · impacto muy alto', rango: [20, 50],
+    b: { nombre: 'Contramovimiento', anade: 'añade el contramovimiento', exige: 'Ciclo lento · impacto bajo-medio', rango: [80, 120],
+      antes: 'Dominar el nivel 1' },
+    c: { nombre: 'Reactivo de caída', anade: 'añade los de caída (reactivos)', exige: 'Ciclo rápido · impacto alto', rango: [40, 80],
+      antes: 'Base de fuerza (≈1,5 × su peso en sentadilla, recomendación NSCA) y dominar los niveles 1 y 2' },
+    d: { nombre: 'Unilateral y horizontal', anade: 'añade los de una pierna y horizontales', exige: 'Ciclo rápido · impacto alto', rango: [40, 100],
+      antes: 'Estabilidad a una pierna y dominar los niveles 2 y 3' },
+    e: { nombre: 'Específico de alta velocidad', anade: 'añade los de alta velocidad', exige: 'Ciclo rápido · impacto muy alto', rango: [20, 50],
       antes: 'Todo lo anterior y los tendones sanos' },
   },
   superior: {
-    a: { nombre: 'Sentado, contra la pared', exige: 'Empuje rápido aislado', antes: 'Nada: es por donde se empieza' },
-    b: { nombre: 'De pie, a dos manos', exige: 'Empuje con todo el cuerpo', antes: 'Dominar el pase sentado' },
-    c: { nombre: 'Reactivo', exige: 'Recibir y devolver sin pausa', antes: 'Flexiones completas con buena técnica' },
-    d: { nombre: 'A una mano', exige: 'Empuje unilateral con rotación', antes: 'Dominar los de dos manos' },
-    e: { nombre: 'Cuerpo entero', exige: 'De las piernas a los brazos, a máxima velocidad', antes: 'Gesto estable en todo lo anterior' },
+    a: { nombre: 'Sentado, contra la pared', anade: 'lanzamientos sentado, contra la pared', exige: 'Empuje rápido aislado', antes: 'Nada: es por donde se empieza' },
+    b: { nombre: 'De pie, a dos manos', anade: 'añade los de pie, a dos manos', exige: 'Empuje con todo el cuerpo', antes: 'Dominar el pase sentado' },
+    c: { nombre: 'Reactivo', anade: 'añade los reactivos (recibir y devolver)', exige: 'Recibir y devolver sin pausa', antes: 'Flexiones completas con buena técnica' },
+    d: { nombre: 'A una mano', anade: 'añade los de una mano', exige: 'Empuje unilateral con rotación', antes: 'Dominar los de dos manos' },
+    e: { nombre: 'Cuerpo entero', anade: 'añade los de cuerpo entero', exige: 'De las piernas a los brazos, a máxima velocidad', antes: 'Gesto estable en todo lo anterior' },
   },
   tronco: {
-    a: { nombre: 'Sentado', exige: 'Rotación con balón ligero', antes: 'Nada: es por donde se empieza' },
-    b: { nombre: 'Con abdominal', exige: 'Flexión rápida del tronco', antes: 'Dominar el pase sentado' },
-    c: { nombre: 'Rotacional de pie', exige: 'De la cadera al tronco', antes: 'Rotación estable sentado' },
-    d: { nombre: 'Rotacional al suelo', exige: 'Rotación con impacto', antes: 'Dominar la rotación de pie' },
-    e: { nombre: 'Rotacional con paso', exige: 'Rotación máxima con impulso', antes: 'Gesto estable en todo lo anterior' },
+    a: { nombre: 'Sentado', anade: 'lanzamientos sentado', exige: 'Rotación con balón ligero', antes: 'Nada: es por donde se empieza' },
+    b: { nombre: 'Con abdominal', anade: 'añade los de abdominal', exige: 'Flexión rápida del tronco', antes: 'Dominar el pase sentado' },
+    c: { nombre: 'Rotacional de pie', anade: 'añade los rotacionales de pie', exige: 'De la cadera al tronco', antes: 'Rotación estable sentado' },
+    d: { nombre: 'Rotacional al suelo', anade: 'añade los rotacionales al suelo', exige: 'Rotación con impacto', antes: 'Dominar la rotación de pie' },
+    e: { nombre: 'Rotacional con paso', anade: 'añade los rotacionales con paso', exige: 'Rotación máxima con impulso', antes: 'Gesto estable en todo lo anterior' },
   },
 }
 
 export const peldano = (parte: PartePlio, nivel: NivelPlio): Peldano => ESCALERA[parte][nivel]
 
+/** El número que se enseña: a → 1, e → 5. */
+export const numeroNivel = (k: NivelPlio): number => NIVELES_PLIO.indexOf(k) + 1
+
+/** «Nivel 3». */
+export const nombreNivel = (k: NivelPlio): string => 'Nivel ' + numeroNivel(k)
+
+/** «Nivel 3 · añade los de caída (reactivos)», para desplegables y cabeceras. */
+export const etiquetaNivel = (parte: PartePlio, k: NivelPlio): string => nombreNivel(k) + ' · ' + peldano(parte, k).anade
+
 /**
- * «Antes: dominar a y b.», lo que pide el escalón, para enseñarlo al elegir el
- * ejercicio. Solo desde el c: los dos primeros no piden nada que avisar.
+ * «Antes: dominar los niveles 1 y 2.», lo que pide el nivel, para enseñarlo al
+ * elegir el ejercicio. Solo desde el 3: los dos primeros no piden nada que avisar.
  */
 export function requisitoDe(parte: PartePlio, nivel: NivelPlio): string | null {
   if (NIVELES_PLIO.indexOf(nivel) < NIVELES_PLIO.indexOf('c')) return null

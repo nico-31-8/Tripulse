@@ -15,7 +15,7 @@ import { controlDeEjercicio } from './control-esfuerzo'
 import { repsDeEjercicio, repsDePrescripcion, repsTotalDePrescripcion, repsDeEncadenado } from './repeticiones'
 import { seriesDe, tieneSeriesDistintas, textoRepsSeries, textoKgSeries, textoControlSeries } from './series-detalle'
 import { esBloque, leerConfig, ordenarLineas, textoFormato, textoLinea, QUE_SE_APUNTA, type Formato, type LineaBloque } from './bloque-formato'
-import { esDePliometria, esGrupoPlio, leerNivel, leerParte, peldano } from './pliometria'
+import { esDePliometria, esGrupoPlio, leerNivel, nombreNivel } from './pliometria'
 
 /**
  * Si la tarea es de pliometría: en carrera, por el ejercicio que lleva pegado
@@ -176,11 +176,11 @@ export function vistaDeTarea(t: any, tests: Tests, fcMax: number, fcReposo: numb
      la previa engaña — parece un rodaje flojo cuando es trabajo técnico, que es
      otra cosa a la hora de decidir qué le pones al día siguiente. */
   const esTecnica = !!t?.tecnica_id
-  /* La pliometría va por el mismo camino, con su nivel: «Pliometría · a, bajo, a dos pies…». */
+  /* La pliometría va por el mismo camino, con su nivel: «Pliometría · nivel 1». */
   const plio = esTecnica && esDePliometria(t?.tecnica)
   const nivelPlio = plio ? leerNivel(t.tecnica.nivel_pliometria) : null
   const textoPlio = 'Pliometría' + (nivelPlio
-    ? ' · ' + nivelPlio + ', ' + peldano(leerParte(t.tecnica.parte_pliometria) || 'inferior', nivelPlio).nombre.toLowerCase()
+    ? ' · ' + nombreNivel(nivelPlio).toLowerCase()
     : '')
   const ref = referenciaDeZona(zona, disciplina, tests, fcMax, fcReposo)
   const campos: CampoTarea[] = [

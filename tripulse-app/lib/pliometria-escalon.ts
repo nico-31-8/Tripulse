@@ -109,9 +109,15 @@ export const CRITERIOS: Record<'pre' | NivelPlio, Criterio[]> = {
   pre: [
     { id: 'dolor', texto: 'Sin dolor de tendón ni lesión de pierna', ayuda: 'Si le duele, primero la readaptación.', de: 'tu', tipo: 'obligatorio',
       evaluar: c => (c.dolor === true ? 'no' : 'si') },
+    /* QUE NO CONSTE NO ES QUE NO LA HAGA: puede hacer la fuerza fuera de la
+       app. Con menos de 4 semanas en sus sesiones queda SIN MIRAR, no
+       suspendido; lo resuelve el entrenador marcando que la hace fuera. Antes
+       decía «no saltar todavía» a quien no tenía nada evaluado. */
     { id: 'fuerza', texto: 'Un bloque de fuerza en marcha', ayuda: 'Fuerza las 4 últimas semanas.', de: 'app', deTexto: 'Sus sesiones', tipo: 'obligatorio',
-      evaluar: (c, d) => (d.semanasFuerza >= 4 || c.fuerzaFuera === true ? 'si' : 'no'),
-      dice: (c, d) => (c.fuerzaFuera === true ? 'Hace la fuerza fuera de la app.' : 'Lleva ' + d.semanasFuerza + ' de las 4 últimas semanas con fuerza.') },
+      evaluar: (c, d) => (d.semanasFuerza >= 4 || c.fuerzaFuera === true ? 'si' : 'sin'),
+      dice: (c, d) => (c.fuerzaFuera === true ? 'Hace la fuerza fuera de la app.'
+        : d.semanasFuerza >= 4 ? 'Lleva las 4 últimas semanas con fuerza.'
+        : 'En la app constan ' + d.semanasFuerza + ' de las 4 últimas semanas con fuerza. Si la hace fuera, márcalo en «Lo que sabes tú».') },
   ],
   a: [
     { id: 'eqPie', texto: 'Equilibrio a una pierna, de pie, 30 s', ayuda: 'Sin apoyar el otro pie ni agarrarse.', de: 'tu', tipo: 'obligatorio', comprobacion: 'eqPie', evaluar: tres('eqPie') },
@@ -197,6 +203,12 @@ export function recomendar(c: Comprobaciones, d: DatosApp): Recomendacion {
   const pre = evaluarEscalon('pre', c, d)
   const noPre = pre.filter(x => pesa(x.criterio) && x.estado === 'no')
   if (noPre.length) return { tipo: 'no-salta', no: noPre }
+  /* Lo de antes de saltar sin mirar: no se puede recomendar ningún escalón.
+     Se dice junto con lo del a que también falte mirar. */
+  const sinPre = pre.filter(x => pesa(x.criterio) && x.estado === 'sin')
+  if (sinPre.length) {
+    return { tipo: 'sin-datos', sinMirar: [...sinPre, ...evaluarEscalon('a', c, d).filter(x => pesa(x.criterio) && x.estado === 'sin')] }
+  }
 
   const limite = limiteDe(c)
   let escalon: NivelPlio | null = null
@@ -281,4 +293,27 @@ export function escalonesActuales(filas: FilaEscalon[]): Record<PartePlio, { esc
 export function porEncimaDeSuEscalon(nivelEjercicio: NivelPlio | null, escalon: NivelPlio | null): boolean {
   if (!nivelEjercicio || !escalon) return false
   return NIVELES_PLIO.indexOf(nivelEjercicio) > NIVELES_PLIO.indexOf(escalon)
+}
+
+// ------------------------------------------------------------
+// Para enseñarlo
+// ------------------------------------------------------------
+
+/** Si el entrenador ha marcado algo de lo que solo puede comprobar él. */
+export const hayEvaluacion = (c: Comprobaciones): boolean =>
+  COMPROBACIONES_DE_TRES.some(k => typeof c[k] === 'boolean')
+
+/* En minúscula para seguir la frase, salvo las siglas («RSI», «CMJ»). */
+const seguido = (s: string) => (/^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s)
+
+/**
+ * Lo que pide un escalón del tren inferior, en una frase, para la tabla de la
+ * ficha. Sale de los mismos criterios que la escalera: no hay dos listas.
+ */
+export function criteriosEnUnaFrase(k: 'pre' | NivelPlio): string {
+  const partes = CRITERIOS[k].map((c, i) => {
+    const t = i === 0 ? c.texto : seguido(c.texto)
+    return t + (c.tipo === 'orientativo' ? ' (orientativo)' : c.tipo === 'dato' ? ' (como punto de partida)' : c.tipo === 'solo si' ? ' (solo tras una lesión de un lado)' : '')
+  })
+  return partes.join('; ') + '.'
 }

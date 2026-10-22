@@ -23,7 +23,7 @@ import { CONTROLES, controlDe, siguienteControl, controlDeEjercicio, textoContro
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { filtrarDrills, sinTildes } from '@/lib/tecnica'
 import {
-  esDePliometria, leerNivel, leerParte, requisitoDe,
+  esDePliometria, leerNivel, leerParte, requisitoDe, nombreNivel,
   piezasDeTarea, piezasDeFilaCarrera, piezasDeFilaFuerza, porLaEscalera,
   type NivelPlio, type PartePlio,
 } from '@/lib/pliometria'
@@ -232,7 +232,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
   // medición y técnica). Ya no hace falta: editar reabre la tarea en la fila de
   // abajo, que es el mismo formulario con el que se creó y tiene todos los campos.
   const [ejerciciosBiblioteca, setEjerciciosBiblioteca] = useState<any[]>([])
-  /* Su escalón de pliometría en cada parte del cuerpo; null = sin poner. */
+  /* Su nivel de pliometría en cada parte del cuerpo; null = sin poner. */
   const [escalonPlio, setEscalonPlio] = useState<Record<PartePlio, NivelPlio | null>>({ inferior: null, superior: null, tronco: null })
   // 1RM más reciente por ejercicio (clave en minúsculas), para el fantasma del %1RM.
   const [rmPorEjercicio, setRmPorEjercicio] = useState<Record<string, { rm: number; fecha: string }>>({})
@@ -285,7 +285,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
          abre o se guarda la sesión. */
       ordenarTareasQuery(
         supabase.from('tarea').select('*, p_distancia(*), p_duracion(*), p_repeticiones(*), ejercicios(*)').eq('id_sesion', sesionId)),
-      /* Su escalón de pliometría, si se lo han puesto (lib/pliometria-escalon):
+      /* Su nivel de pliometría, si se lo han puesto (lib/pliometria-escalon):
          los saltos por encima salen marcados, sin impedir elegirlos. */
       supabase.from('pliometria_escalon').select('id, parte, escalon, recomendado, puesto_en')
         .eq('id_deportista', deportistaId).order('puesto_en', { ascending: false }).limit(60),
@@ -2427,8 +2427,8 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                                   <option value="">Elige el ejercicio…</option>
                                   {drills.map((e: any) => (
                                     <option key={e.id} value={e.id}>
-                                      {plio && leerNivel(e.nivel_pliometria) ? leerNivel(e.nivel_pliometria) + ' · ' : ''}{e.nombre}
-                                      {plio && porEncimaDeSuEscalon(leerNivel(e.nivel_pliometria), escalonPlio.inferior) ? ' — por encima de su escalón' : ''}
+                                      {plio && leerNivel(e.nivel_pliometria) ? nombreNivel(leerNivel(e.nivel_pliometria)!) + ' · ' : ''}{e.nombre}
+                                      {plio && porEncimaDeSuEscalon(leerNivel(e.nivel_pliometria), escalonPlio.inferior) ? ' — por encima de su nivel' : ''}
                                     </option>
                                   ))}
                                 </select>
@@ -2443,7 +2443,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                               {nivel && <LetraNivel nivel={nivel} />}
                             </div>
                             {nivel && porEncimaDeSuEscalon(nivel, escalonPlio.inferior) && (
-                              <span className="text-[11px] text-amber-300">Está en el {escalonPlio.inferior}: este salto es del {nivel}. Puedes mandarlo igual.</span>
+                              <span className="text-[11px] text-amber-300">Está en el {escalonPlio.inferior ? nombreNivel(escalonPlio.inferior).toLowerCase() : ''}: este salto es del {nombreNivel(nivel).toLowerCase()}. Puedes mandarlo igual.</span>
                             )}
                             {nivel && requisitoDe('inferior', nivel) && (
                               <span className="text-[11px] text-amber-300/90">{requisitoDe('inferior', nivel)}</span>

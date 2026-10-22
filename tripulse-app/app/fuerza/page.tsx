@@ -4,7 +4,7 @@ import { useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { COMPLEJOS, FUNCIONAL, PLIOMETRIA, grupoAlCrear, grupoAlEditar } from '@/lib/grupo-ejercicio'
-import { esDePliometria, leerNivel, leerParte, peldano, requisitoDe, porLaEscalera, PARTES_PLIO, type NivelPlio, type PartePlio } from '@/lib/pliometria'
+import { esDePliometria, leerNivel, leerParte, peldano, requisitoDe, porLaEscalera, etiquetaNivel, PARTES_PLIO, type NivelPlio, type PartePlio } from '@/lib/pliometria'
 import LetraNivel from '@/components/pliometria/LetraNivel'
 import EscaleraPlio, { CamposPlio } from '@/components/pliometria/EscaleraPlio'
 import { usuarioActual } from '@/lib/sesion'
@@ -338,7 +338,7 @@ export default function FuerzaPage() {
 
   const badgesEjercicio = (ej: any, todas = false) => (
     <div className="flex gap-1.5 flex-wrap items-center">
-      {/* Su escalón: la letra y la parte del cuerpo. */}
+      {/* Su nivel: el número y la parte del cuerpo. */}
       {esDePliometria(ej) && leerNivel(ej.nivel_pliometria) && (
         <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-300">
           <LetraNivel nivel={leerNivel(ej.nivel_pliometria)!} parte={leerParte(ej.parte_pliometria) ?? 'inferior'} pequena />
@@ -599,7 +599,7 @@ export default function FuerzaPage() {
                 </div>
               )}
               {(() => {
-                /* Su escalón de la escalera: qué exige y qué pide antes. */
+                /* Su nivel de la escalera: qué añade, qué exige y qué pide antes. */
                 const n = esDePliometria(ejercicioDetalle) ? leerNivel(ejercicioDetalle.nivel_pliometria) : null
                 if (!n) return null
                 const parte = leerParte(ejercicioDetalle.parte_pliometria) ?? 'inferior'
@@ -607,8 +607,8 @@ export default function FuerzaPage() {
                 const req = requisitoDe(parte, n)
                 return (
                   <div>
-                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Su escalón</p>
-                    <p className="flex items-center gap-2 text-sm text-gray-200"><LetraNivel nivel={n} parte={parte} />{pel.nombre}</p>
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Su nivel</p>
+                    <p className="flex items-center gap-2 text-sm text-gray-200"><LetraNivel nivel={n} parte={parte} />{etiquetaNivel(parte, n)}</p>
                     <p className="text-gray-400 text-xs mt-1.5">
                       {pel.exige}{pel.rango ? ' · ' + pel.rango[0] + '–' + pel.rango[1] + ' contactos por sesión' : ''}
                     </p>

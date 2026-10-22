@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   recomendar, recomendadoParaGuardar, escalonesActuales, porEncimaDeSuEscalon, rsiDe, limiteDe, contactosParaEmpezar,
+  hayEvaluacion, criteriosEnUnaFrase,
   CRITERIOS, DATOS_VACIOS, type Comprobaciones, type DatosApp,
 } from './pliometria-escalon'
 
@@ -58,6 +59,12 @@ describe('dónde lo coloca', () => {
     expect(r.limite).toMatch(/creciendo/)
   })
 
+  it('sin nada evaluado y sin fuerza en la app: no dice «no saltar», dice qué mirar', () => {
+    const r = recomendar({}, datos({ semanasFuerza: 0 }))
+    expect(r.tipo).toBe('sin-datos')
+    if (r.tipo === 'sin-datos') expect(ids(r.sinMirar)).toEqual(['fuerza', 'eqPie', 'silencio'])
+  })
+
   it('Iván, sin evaluar: no recomienda nada y dice qué mirar primero', () => {
     const r = recomendar({}, datos({ peso: 78 }))
     expect(r.tipo).toBe('sin-datos')
@@ -84,8 +91,10 @@ describe('sin mirar no es suspender', () => {
     expect(r.tipo === 'escalon' && r.escalon).toBe('b')
   })
 
-  it('la fuerza hecha fuera de la app vale como la de dentro', () => {
-    expect(recomendar({ eqPie: true, silencio: true }, datos({ semanasFuerza: 1 })).tipo).toBe('no-salta')
+  it('que no conste la fuerza en la app es sin mirar, no suspender; y la de fuera vale como la de dentro', () => {
+    const r = recomendar({ eqPie: true, silencio: true }, datos({ semanasFuerza: 1 }))
+    expect(r.tipo).toBe('sin-datos')
+    if (r.tipo === 'sin-datos') expect(ids(r.sinMirar)).toEqual(['fuerza'])
     expect(recomendar({ eqPie: true, silencio: true, fuerzaFuera: true }, datos({ semanasFuerza: 1 })).tipo).toBe('escalon')
   })
 
@@ -160,6 +169,14 @@ describe('lo que se guarda y el historial', () => {
   it('arranca en el suelo del rango de su escalón', () => {
     expect(contactosParaEmpezar('b')).toBe(80)
     expect(contactosParaEmpezar('c')).toBe(40)
+  })
+
+  it('si hay algo evaluado, y cada escalón en una frase', () => {
+    expect(hayEvaluacion({})).toBe(false)
+    expect(hayEvaluacion({ dolor: true, creciendo: true })).toBe(false)
+    expect(hayEvaluacion({ silencio: false })).toBe(true)
+    expect(criteriosEnUnaFrase('c')).toBe('Drop jump desde 20–30 cm con el contacto por debajo de 250 ms; sentadilla de 1,5 × su peso (orientativo).')
+    expect(criteriosEnUnaFrase('e')).toBe('Sin dolor de tendón en las últimas 4 semanas; RSI de 1,5 o más (orientativo); su prueba lo pide.')
   })
 
   it('los límites salen de lo que marca el entrenador', () => {

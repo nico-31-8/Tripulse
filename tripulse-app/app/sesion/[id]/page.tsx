@@ -45,7 +45,7 @@ import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
-import { porLaEscalera, leerNivel } from '@/lib/pliometria'
+import { porLaEscalera, leerNivel, nombreNivel } from '@/lib/pliometria'
 import { nombreDelGrupo } from '@/lib/grupos-emision'
 import { sugerirNutricion } from '@/lib/nutricion'
 import { recomendarRecuperacion } from '@/lib/recuperacion'
@@ -1366,7 +1366,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                           <optgroup label="Pliometría">
                             {saltos.map(d => (
                               <option key={String(d.id)} value={String(d.id)}>
-                                {leerNivel(d.nivel_pliometria) ? leerNivel(d.nivel_pliometria) + ' · ' : ''}{String(d.nombre)}
+                                {leerNivel(d.nivel_pliometria) ? nombreNivel(leerNivel(d.nivel_pliometria)!) + ' · ' : ''}{String(d.nombre)}
                               </option>
                             ))}
                           </optgroup>

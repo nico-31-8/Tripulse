@@ -1,8 +1,8 @@
-import { leerNivel, leerParte, peldano, PARA_LA_SERIE } from '@/lib/pliometria'
+import { leerNivel, leerParte, nombreNivel, PARA_LA_SERIE } from '@/lib/pliometria'
 import LetraNivel from './LetraNivel'
 
 /**
- * Lo que ve el deportista en una tarea de pliometría: el escalón, el
+ * Lo que ve el deportista en una tarea de pliometría: el nivel, el
  * ejercicio, cómo se hace (los mismos puntos de la biblioteca), el vídeo y
  * cuándo parar la serie.
  */
@@ -22,7 +22,7 @@ export default function TareaPlio({ ejercicio }: {
     <div className="mb-3 bg-black/30 rounded-lg px-4 py-3 flex flex-col gap-2">
       <p className="m-0 flex items-center gap-2 text-[11px] uppercase tracking-wider text-orange-300">
         {nivel && <LetraNivel nivel={nivel} parte={parte} />}
-        Pliometría{nivel ? ' · ' + peldano(parte, nivel).nombre.toLowerCase() : ''}
+        Pliometría{nivel ? ' · ' + nombreNivel(nivel).toLowerCase() : ''}
       </p>
       <p className="m-0 font-bold text-white text-lg leading-tight">{ejercicio.nombre}</p>
       {ejercicio.descripcion && <p className="m-0 text-xs text-gray-400">{ejercicio.descripcion}</p>}
