@@ -18,6 +18,8 @@ import { vivas } from './papelera'
 import { hoyISO, sumarDias } from './fechas'
 import type { RegistroWellness } from './wellness-analisis'
 import { nochesDeMediciones, DIAS_RECIENTES, DIAS_BASE, type NocheDelReloj } from './noches-del-reloj'
+import { cargarAvanceDeVarios } from './pliometria-avance-datos'
+import type { EntradaAvance } from './pliometria-avance'
 
 /**
  * Días de historia que se piden.
@@ -66,6 +68,8 @@ export interface DatosAtleta {
   sesiones: SesionSenal[]
   /** Las noches de su reloj de ahora, de sus últimas cuatro semanas. */
   noches?: NocheDelReloj[]
+  /** Lo de sus saltos, solo si tiene su nivel de pliometría puesto. */
+  saltos?: EntradaAvance | null
 }
 
 /**
@@ -96,7 +100,7 @@ export async function cargarDatosDeVarios(
      DENTRO de las sesiones y las referencias van a la vez. Es lo que pinta las
      señales y el informe de la entrada del panel, con TODO el equipo. */
   const selSes = 'id, id_deportista, fecha_sesion, estado, rpe_estimado, rpe_reportado, duracion_minutos, duracion_real'
-  const [wellQ, sesQ, refs, noches] = await Promise.all([
+  const [wellQ, sesQ, refs, noches, saltos] = await Promise.all([
     supabase.from('wellness').select('*').in('id_deportista', limpios)
       .gte('fecha', desde).order('fecha', { ascending: false }),
     /* Todas, no solo las realizadas: las que se quedaron sin hacer son parte de
@@ -107,6 +111,9 @@ export async function cargarDatosDeVarios(
     cargarReferenciasDeVarios(supabase, limpios).catch(() => new Map<number, { tests?: TestsDeportista }>()),
     /* Sin sus noches, las señales de siempre: el reloj suma, no bloquea. */
     cargarNochesDeVarios(supabase, limpios, hoy).catch(() => new Map<number, NocheDelReloj[]>()),
+    /* Sus saltos: una consulta para saber quién tiene su nivel puesto, y de esos
+       (normalmente pocos) lo demás. Sin ellos, las señales de siempre. */
+    cargarAvanceDeVarios(supabase, limpios, { hoy, soloConNivel: true }).catch(() => new Map<number, EntradaAvance>()),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,6 +140,7 @@ export async function cargarDatosDeVarios(
         minutos: minutosCarga(s, estimaciones[s.id]),
       })),
       noches: noches.get(id) || [],
+      saltos: saltos.get(id) ?? null,
     })
   }
   return salida

@@ -25,6 +25,7 @@ import { cargarReferencias } from '@/lib/referencia-zona'
 import { chipDisciplina, colorDisciplina, DEPORTES } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
 import { AvisoEnLinea, useAviso } from '@/components/AvisoEnLinea'
+import SaltosVolumen from '@/components/pliometria/SaltosVolumen'
 import { horasMinutos } from '@/lib/medicion'
 import { cargarProgresos, porGrupoMuscular, queCambio, type ProgresoEjercicio } from '@/lib/historial-ejercicio'
 import { fechaLarga } from '@/lib/fechas'
@@ -156,7 +157,7 @@ export default function VolumenPage() {
   const [loadingDatos, setLoadingDatos] = useState(false)
   // Volumen y Carga eran dos pestañas: son la misma pregunta medida distinto,
   // así que ahora conviven en "Resistencia" con un conmutador de métrica.
-  const [pestana, setPestana] = useState<'resistencia'|'fuerza'|'progresos'>('resistencia')
+  const [pestana, setPestana] = useState<'resistencia'|'fuerza'|'saltos'|'progresos'>('resistencia')
   /* Los progresos se piden SOLO al entrar en su pestaña: son cuatro consultas
      y esta pantalla ya hace unas cuantas al cargar. */
   const [progresos, setProgresos] = useState<ProgresoEjercicio[] | null>(null)
@@ -192,6 +193,10 @@ export default function VolumenPage() {
       const { data: deps } = await supabase.from('deportista').select('*').eq('id_entrenador', entrenadorEfectivo(user.id)).eq('solo_test', false)
       setDeportistas(deps || [])
       setLoading(false)
+      /* Desde su ficha de saltos se llega con «?pestana=saltos». Se lee de
+         window y no con useSearchParams, para no envolver la página en un
+         Suspense (como /tests/dirigir). */
+      if (new URLSearchParams(window.location.search).get('pestana') === 'saltos') setPestana('saltos')
       const act = getAtletaActivo()
       const d0 = (deps || []).find(d => d.id === act)
       if (d0) verVolumen(d0, 28)
@@ -729,7 +734,7 @@ export default function VolumenPage() {
 
             {/* Pestañas: Volumen y Carga se fusionaron en Resistencia */}
             <div className="flex gap-1 border-b border-gray-800">
-              {([['resistencia', 'Resistencia'], ['fuerza', 'Fuerza muscular'], ['progresos', 'Progresos']] as const).map(([k, l]) => (
+              {([['resistencia', 'Resistencia'], ['fuerza', 'Fuerza muscular'], ['saltos', 'Saltos'], ['progresos', 'Progresos']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setPestana(k)}
                   className={'px-4 py-2.5 text-[13.5px] font-semibold transition border-b-2 -mb-px ' +
                     (pestana === k ? 'border-orange-500 text-orange-300' : 'border-transparent text-gray-400 hover:text-white')}>
@@ -764,18 +769,24 @@ export default function VolumenPage() {
                   {r.label}
                 </button>
               ))}
-              <button onClick={() => setUsarSicat(v => !v)} title="Pondera la carga por el coste real de cada disciplina para este atleta"
-                className={'ml-auto inline-flex items-center gap-2.5 text-[11.5px] font-semibold px-3 py-1.5 rounded-lg border transition ' +
-                  (usarSicat ? 'bg-cyan-500/12 border-cyan-500/40 text-cyan-300' : 'bg-white/[0.04] border-white/[0.075] text-gray-400 hover:text-white')}>
-                <span className={'w-[26px] h-[15px] rounded-full relative transition ' + (usarSicat ? 'bg-cyan-500' : 'bg-gray-600')}>
-                  <span className={'absolute top-[2px] w-[11px] h-[11px] rounded-full bg-white transition-all ' + (usarSicat ? 'left-[13px]' : 'left-[2px]')} />
-                </span>
-                SICAT
-              </button>
+              {/* En los saltos no hay carga que ponderar: el SICAT no cambia nada ahí. */}
+              {pestana !== 'saltos' && (
+                <button onClick={() => setUsarSicat(v => !v)} title="Pondera la carga por el coste real de cada disciplina para este atleta"
+                  className={'ml-auto inline-flex items-center gap-2.5 text-[11.5px] font-semibold px-3 py-1.5 rounded-lg border transition ' +
+                    (usarSicat ? 'bg-cyan-500/12 border-cyan-500/40 text-cyan-300' : 'bg-white/[0.04] border-white/[0.075] text-gray-400 hover:text-white')}>
+                  <span className={'w-[26px] h-[15px] rounded-full relative transition ' + (usarSicat ? 'bg-cyan-500' : 'bg-gray-600')}>
+                    <span className={'absolute top-[2px] w-[11px] h-[11px] rounded-full bg-white transition-all ' + (usarSicat ? 'left-[13px]' : 'left-[2px]')} />
+                  </span>
+                  SICAT
+                </button>
+              )}
             </div>
-            {usarSicat && (
+            {usarSicat && pestana !== 'saltos' && (
               <p className="text-gray-500 text-[11px] -mt-2">Carga ponderada por el coste real de cada disciplina para este atleta.</p>
             )}
+
+            {/* PESTAÑA SALTOS: sus contactos semana a semana; lo que decide está en su ficha. */}
+            {pestana === 'saltos' && <SaltosVolumen deportista={seleccionado} rango={rango} />}
 
             {/* PESTAÑA VOLUMEN */}
             {pestana === 'resistencia' && metrica === 'tiempo' && (

@@ -193,6 +193,18 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
 
   useEffect(() => { cargarDatos() }, [id])
 
+  /* Desde Volumen y carga se llega a una pestaña concreta: «?pestana=saltos».
+     Se lee de window y no con useSearchParams, para no envolver la página en un
+     Suspense (como /tests/dirigir). */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('pestana')
+    const validas = ['estado', 'zonas', 'entreno', 'disponibilidad', 'anamnesis', 'material', 'saltos'] as const
+    const elegida = validas.find(k => k === p)
+    if (elegida) setPestana(elegida)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   // El import de useDeclararModulo estaba puesto y la llamada no: al abrir el
   // asistente desde la ficha no sabía de quién estabas hablando.
   useDeclararModulo('Ficha del deportista', deportista

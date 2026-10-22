@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
@@ -13,6 +13,7 @@ import {
 } from '@/lib/pliometria-escalon'
 import { cargarSaltos, ponerEscalon, guardarComprobaciones, type SaltosDeportista as Carga } from '@/lib/pliometria-escalon-datos'
 import LetraNivel from './LetraNivel'
+import AvanceSaltos from './AvanceSaltos'
 
 /*
  * LA PESTAÑA «SALTOS» DE LA FICHA. El nivel lo pone el entrenador, en cada
@@ -79,21 +80,32 @@ export default function SaltosDeportista({ idDeportista }: { idDeportista: numbe
     })
   }
 
+  /* El avance va debajo de su nivel: recibe el nivel y lo marcado vivos, para
+     que la propuesta cambie al cambiarlos sin recargar nada. */
+  const inferior = escalonesActuales(carga.historial).inferior
+  const avance = (
+    <AvanceSaltos idDeportista={idDeportista} nivel={inferior.escalon} puestoEn={inferior.fila?.puesto_en ?? null}
+      comprobaciones={carga.comprobaciones} onComprobaciones={cambiarComprobaciones}
+      onNivel={k => cambiarEscalon('inferior', k)} guardandoNivel={guardando === 'inferior'} />
+  )
+
   return <SaltosVista carga={carga} yo={yo} guardando={guardando} idDeportista={idDeportista}
-    onEscalon={cambiarEscalon} onComprobaciones={cambiarComprobaciones} />
+    onEscalon={cambiarEscalon} onComprobaciones={cambiarComprobaciones} avance={avance} />
 }
 
 /**
  * Lo que se ve, sin cargar ni guardar nada: recibe los datos y avisa de los
  * cambios. Separado para poder mirarlo con datos de ejemplo.
  */
-export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onComprobaciones }: {
+export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onComprobaciones, avance = null }: {
   carga: Carga
   yo: string | null
   guardando: PartePlio | null
   idDeportista: number
   onEscalon: (parte: PartePlio, valor: string) => void
   onComprobaciones: (cambio: (prev: Comprobaciones) => Comprobaciones) => void
+  /** El avance (AvanceSaltos), que lee la base por su cuenta: va debajo de su nivel. */
+  avance?: ReactNode
 }) {
   const c = carga.comprobaciones
   const d = carga.datos
@@ -183,6 +195,8 @@ export function SaltosVista({ carga, yo, guardando, idDeportista, onEscalon, onC
           <TablaEscalones />
         </details>
       </section>
+
+      {avance}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-5 items-start">
         {/* ═══ LA EVALUACIÓN: opcional ═══ */}

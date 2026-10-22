@@ -48,6 +48,11 @@ export interface Comprobaciones {
   fuerzaFuera?: boolean
   /** Diferencia entre piernas en el salto horizontal a una pierna, en %. */
   asimetria?: number
+  /* Lo del avance (lib/pliometria-avance). */
+  /** Si su deporte necesita los saltos, cuando lo decide el entrenador. Sin marcar, lo dice su deporte. */
+  necesita?: boolean
+  /** El nivel que el entrenador ha confirmado que domina. Al cambiarlo de nivel deja de valer solo. */
+  domina?: NivelPlio
 }
 
 /** Las comprobaciones de tres estados, en el orden de la escalera. */

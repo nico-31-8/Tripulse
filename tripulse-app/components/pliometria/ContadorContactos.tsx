@@ -10,6 +10,8 @@ import {
   RANGO_RESISTENCIA, NIVELES_PLIO, type PiezaPlio, type ClaseAviso,
 } from '@/lib/pliometria'
 import LetraNivel from './LetraNivel'
+import { decidirAvance, type Importancia, type Veredicto } from '@/lib/pliometria-avance'
+import { cargarAvance } from '@/lib/pliometria-avance-datos'
 
 const VEREDICTO: Record<ClaseAviso, string> = {
   suave: 'bg-white/5 text-gray-300',
@@ -33,6 +35,9 @@ export default function ContadorContactos({ piezas, deportistaId }: { piezas: Pi
      cambia de color al cargar despista más que esperar un momento. */
   const [nivel, setNivel] = useState<NivelAtleta | null>(null)
   const [deSuAnamnesis, setDeSuAnamnesis] = useState(false)
+  /* Lo que propone la app para la semana que viene y para qué le sirven según
+     su deporte: lo mismo que en su ficha, para verlo al prescribir. */
+  const [avance, setAvance] = useState<Veredicto | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -41,8 +46,13 @@ export default function ContadorContactos({ piezas, deportistaId }: { piezas: Pi
       setNivel(nivelDeAnamnesis(data?.nivel_competitivo))
       setDeSuAnamnesis(!!data?.nivel_competitivo)
     })
+    cargarAvance(supabase, deportistaId)
+      .then(b => { if (vivo && b) setAvance(decidirAvance(b)) })
+      .catch(() => { /* sin avance, el contador de siempre */ })
     return () => { vivo = false }
   }, [deportistaId])
+
+  const lineas = avance && <LineasAvance v={avance} />
 
   const r = resumenContactos(piezas)
   const [lo, hi] = RANGO_RESISTENCIA
@@ -62,6 +72,7 @@ export default function ContadorContactos({ piezas, deportistaId }: { piezas: Pi
       <div className="mb-4 rounded-xl border border-gray-800 bg-gray-900/60 px-3.5 py-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
         <span className="text-orange-300 font-semibold">Pliometría</span>
         {extras}
+        {lineas}
       </div>
     )
   }
@@ -123,6 +134,38 @@ export default function ContadorContactos({ piezas, deportistaId }: { piezas: Pi
           </span>
         )}
       </div>
+      {lineas}
     </section>
+  )
+}
+
+const PUNTO: Record<Veredicto['clase'], string> = {
+  bien: 'bg-emerald-400', ambar: 'bg-amber-400', rojo: 'bg-red-400', neutro: 'bg-gray-500', 'sin-nivel': 'bg-gray-500',
+}
+
+/** Lo que dice su deporte, en una línea. */
+function lineaDeporte(imp: Importancia): string {
+  if (imp.decidido) return 'Lo has marcado tú: ' + (imp.necesita ? 'los necesita.' : 'no los necesita.')
+  if (imp.tipo === 'corre') return 'Su deporte los pide. Cuentan como impacto, igual que correr.'
+  if (imp.tipo === 'pedalea') return 'Para su deporte (ciclismo) no hacen falta: si los hace, con una vez por semana basta.'
+  if (imp.tipo === 'nada') return 'Para nadar, los de piernas solo sirven para salidas y virajes; los lanzamientos, sí.'
+  return 'No sé su deporte: márcalo en su ficha, en «Entrenamiento».'
+}
+
+/** La propuesta de la semana que viene (con su nivel puesto) y su deporte, bajo el contador. */
+function LineasAvance({ v }: { v: Veredicto }) {
+  return (
+    <div className="col-span-full basis-full flex flex-col gap-1 border-t border-gray-800 pt-2 mt-0.5 text-[12px]">
+      {v.clase !== 'sin-nivel' && v.clase !== 'neutro' && (
+        <p className="m-0 flex items-baseline gap-2 text-gray-300">
+          <span className={'w-1.5 h-1.5 rounded-full flex-none translate-y-[-1px] ' + PUNTO[v.clase]} aria-hidden="true" />
+          <span>La app propone para la semana que viene: <b className="text-gray-100">{v.corto}</b>. El porqué, en su ficha (Saltos).</span>
+        </p>
+      )}
+      <p className="m-0 flex items-baseline gap-2 text-gray-400">
+        <span className={'w-1.5 h-1.5 rounded-full flex-none translate-y-[-1px] ' + (v.imp.necesita ? 'bg-emerald-400' : 'bg-gray-500')} aria-hidden="true" />
+        <span>{lineaDeporte(v.imp)}</span>
+      </p>
+    </div>
   )
 }

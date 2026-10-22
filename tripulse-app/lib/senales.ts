@@ -27,12 +27,14 @@ import { sesionLarga } from './progresion'
 import { desvioRpe } from './sesion-realizada'
 import { resumenDeNoches, type NocheDelReloj } from './noches-del-reloj'
 import { textoHoras } from './noches-reloj'
+import { senalesSaltos, type EntradaAvance } from './pliometria-avance'
 
 export type NivelSenal = 'roja' | 'ambar' | 'info'
 
 export type IdSenal =
   | 'bienestar' | 'bienestar_tendencia' | 'cuesta_mas' | 'sueno'
   | 'sesion_larga' | 'cumplimiento' | 'sin_wellness' | 'noches_reloj'
+  | 'saltos_bajar' | 'saltos_medir'
 
 export interface Senal {
   id: IdSenal
@@ -69,6 +71,11 @@ export interface EntradaSenales {
    * cuatro semanas. Llegan solas, rellene o no el wellness.
    */
   noches?: NocheDelReloj[]
+  /**
+   * Lo de sus saltos (lib/pliometria-avance), solo si tiene su nivel de
+   * pliometría puesto. Sin él, ninguna señal de saltos.
+   */
+  saltos?: EntradaAvance | null
   hoy: string
 }
 
@@ -285,6 +292,12 @@ export function senalesDeAtleta(e: EntradaSenales): ResultadoSenales {
     senales.splice(tras, 0, reloj.senal)
   }
   if (reloj.sinBase) sinBase.push(reloj.sinBase)
+
+  /* ---- 9. Sus saltos ----
+     Solo lo que pide hacer algo: bajar (ámbar) y toca medir (azul: medir es
+     cosa del entrenador, y las azules no llegan a su informe semanal). Que
+     pueda subir no es un aviso: eso se ve en su ficha y al prescribir. */
+  senales.push(...senalesSaltos(e.saltos))
 
   senales.sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel])
   return { senales, sinBase }

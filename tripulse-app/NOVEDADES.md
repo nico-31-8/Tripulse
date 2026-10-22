@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 22 de octubre de 2026 · Saltos: qué sube cada semana, para qué le sirven según su deporte y cuándo toca medir
+
+- **En la pestaña Saltos de su ficha, debajo de su nivel, sale ahora su avance.**
+  Con su nivel puesto, la app propone cada semana una sola cosa y dice por qué:
+  bajar, mantener, subir el volumen, pasar al siguiente nivel o subir la altura
+  de caída. Por ejemplo, «Subir el volumen: de 84 a 96 contactos por sesión», o
+  «Bajar a 120 por sesión: fallan el dolor y el CMJ». Mira los días entre
+  sesiones de saltos, el dolor del wellness, su CMJ y su RSI, cuánto subió la
+  última semana, su carrera y el tope de la NSCA. Lo aplicas tú: para subir de
+  nivel hay un botón, y que domina el suyo lo confirmas tú.
+- **Para qué le sirven, según su deporte.** Arriba del todo: importantes si corre
+  (carrera, triatlón, duatlón, híbrido); no le hacen falta si solo pedalea; si
+  solo nada, los de piernas no, pero los lanzamientos sí. Si no acierta, por
+  ejemplo un ciclista que esprinta, marca «Sí, los necesita» o «No los necesita».
+- **Toca medir.** Un test de salto de hace más de 4 semanas ya no cuenta. Si su
+  último CMJ (o su drop jump, desde el nivel 3) es más viejo, la app avisa y te
+  lleva a medirlo el día de su próxima sesión de saltos. No hace falta cada
+  semana: cada 2–4 basta.
+- **Volumen y carga tiene una pestaña Saltos nueva:** sus contactos semana a
+  semana por nivel, con la propuesta de la semana que viene; sus saltos junto a
+  su carrera, con las semanas en que suben las dos en ámbar, y sus lanzamientos.
+  El botón «Ir a su ficha de saltos» te lleva adonde se decide.
+- **Sin abrir su ficha:** en tu panel salen «Saltos: bajar esta semana» y
+  «Saltos: toca medir el CMJ», solo de quien tiene su nivel puesto. Y al
+  prescribir, el contador de contactos de la sesión dice lo que propone la app
+  para la semana que viene.
+
 ## 22 de octubre de 2026 · Saltos: los niveles van del 1 al 5, y lo que pide cada uno
 
 - **Los niveles de pliometría ahora son números, del 1 al 5**, y cada uno dice

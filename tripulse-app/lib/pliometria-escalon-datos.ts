@@ -19,7 +19,7 @@ import { esDisciplinaDeFuerza } from './disciplinas'
 import { hoyISO, sumarDias } from './fechas'
 import { sinTildes } from './tecnica'
 import { DATOS_VACIOS, type Comprobaciones, type DatosApp, type FilaEscalon } from './pliometria-escalon'
-import type { PartePlio } from './pliometria'
+import { NIVELES_PLIO, type NivelPlio, type PartePlio } from './pliometria'
 
 type Json = Record<string, unknown>
 
@@ -95,6 +95,7 @@ export function leerComprobaciones(v: unknown): Comprobaciones {
   const out: Comprobaciones = {}
   for (const [k, val] of Object.entries(o)) {
     if (k === 'asimetria') { if (typeof val === 'number' && Number.isFinite(val) && val >= 0) out.asimetria = val }
+    else if (k === 'domina') { if (NIVELES_PLIO.includes(val as NivelPlio)) out.domina = val as NivelPlio }
     else if (typeof val === 'boolean') (out as Record<string, boolean>)[k] = val
   }
   return out

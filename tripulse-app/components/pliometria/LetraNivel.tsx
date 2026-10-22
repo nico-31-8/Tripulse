@@ -1,7 +1,9 @@
 import { peldano, requisitoDe, numeroNivel, nombreNivel, etiquetaNivel, type NivelPlio, type PartePlio } from '@/lib/pliometria'
 import { porEncimaDeSuEscalon } from '@/lib/pliometria-escalon'
 
-/* La escalera, de menos a más impacto: los colores de la maqueta aprobada. */
+/* La escalera, de menos a más impacto: los colores de la maqueta aprobada.
+   Las clases van escritas enteras (Tailwind las busca en el código) y el
+   mismo color en hex para las gráficas, que pintan con `fill`. */
 const FONDO: Record<NivelPlio, string> = {
   a: 'bg-[#4ade80]',
   b: 'bg-[#a3e635]',
@@ -9,6 +11,7 @@ const FONDO: Record<NivelPlio, string> = {
   d: 'bg-[#f472b6]',
   e: 'bg-[#ef4444]',
 }
+export const COLOR_NIVEL: Record<NivelPlio, string> = { a: '#4ade80', b: '#a3e635', c: '#fb923c', d: '#f472b6', e: '#ef4444' }
 
 /**
  * El nivel de pliometría: su número (1-5) en un cuadro de su color. Por dentro
