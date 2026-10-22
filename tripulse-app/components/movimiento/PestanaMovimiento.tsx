@@ -24,6 +24,7 @@ import AnalisisLibres from './AnalisisLibres'
 import Analizador from './Analizador'
 import InformeMovimiento from './InformeMovimiento'
 import ResultadoMovimiento from './ResultadoMovimiento'
+import { AntesDeEmpezar, FichaPrueba, MaterialCorto } from './FichaPrueba'
 
 const REGLAS_GRABAR = [
   ['Con la cámara del móvil', 'y el vídeo se elige como archivo. La app no abre la cámara.'],
@@ -55,6 +56,10 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
   const [abierta, setAbierta] = useState<{ prueba: Prueba; lado: Lado } | null>(null)
   const [aMano, setAMano] = useState<string | null>(null)
   const [verProtocolo, setVerProtocolo] = useState(false)
+  /* Cómo se hace cada prueba (components/movimiento/FichaPrueba): la ficha
+     abierta en la lista, y el material en el lateral con la batería en marcha. */
+  const [fichaAbierta, setFichaAbierta] = useState<string | null>(null)
+  const [verMaterial, setVerMaterial] = useState(false)
   /** Cada pulsación de «＋ Análisis libre» de arriba: abre su diálogo (components/movimiento/AnalisisLibres). */
   const [pedirNuevoLibre, setPedirNuevoLibre] = useState(0)
   const [error, setError] = useState('')
@@ -187,6 +192,9 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
       {def && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
           <div className="flex flex-col gap-4 min-w-0">
+            {/* ── antes de empezar: el material de toda la batería y cómo se pasa ── */}
+            {!activa && !vista && <AntesDeEmpezar def={def} />}
+
             {/* ── empezar ── */}
             {!activa && !vista && (
               <div className="tp-card p-4">
@@ -209,6 +217,29 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
                     Seguir la del {fechaLarga(incompleta.fecha).toLowerCase()} ({textoTotal(resultadoBateria(def, regsDe(incompleta.id)))})
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* ── cómo se hace cada prueba, para leerlo antes de empezar ── */}
+            {!activa && !vista && (
+              <div className="tp-card p-4 flex flex-col gap-2">
+                <div>
+                  <p className="text-[13.5px] font-semibold">Cómo se hace cada prueba</p>
+                  <p className="text-[11.5px] text-gray-500 mt-0.5">Material, preparación, lo que se le dice y cómo se graba. Sale también al pasarla.</p>
+                </div>
+                {def.pruebas.map((p, i) => (
+                  <details key={p.clave} className="group rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                    <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden px-3 py-2.5 flex items-center gap-2.5 text-[13px]">
+                      <span className="font-mono text-[11.5px] text-gray-500 w-4">{i + 1}</span>
+                      <span className="min-w-0 flex-1">{p.nombre}</span>
+                      <span className="hidden sm:flex gap-1">
+                        {p.vistas.map(v => <span key={v} className="text-[10.5px] px-2 py-0.5 rounded-full bg-sky-300/10 text-sky-300 whitespace-nowrap">{NOMBRE_VISTA[v]}</span>)}
+                      </span>
+                      <span className="text-[11.5px] text-orange-300 whitespace-nowrap">Cómo se hace <span className="group-open:hidden">▾</span><span className="hidden group-open:inline">▴</span></span>
+                    </summary>
+                    <div className="px-3 pb-3"><FichaPrueba prueba={p} dolor={def.dolores.find(d => d.clave === p.dolor) ?? null} /></div>
+                  </details>
+                ))}
               </div>
             )}
 
@@ -249,6 +280,14 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
                             {n.nota ?? '—'}
                           </span>
                         </button>
+
+                        {/* Cómo se hace: su ficha, aquí mismo, sin abrir el visor. */}
+                        <button type="button" onClick={() => setFichaAbierta(fichaAbierta === p.clave ? null : p.clave)}
+                          aria-expanded={fichaAbierta === p.clave}
+                          className="self-start ml-8 -mt-0.5 text-[11.5px] text-sky-300/90 hover:text-sky-200">
+                          Cómo se hace {fichaAbierta === p.clave ? '▴' : '▾'}
+                        </button>
+                        {fichaAbierta === p.clave && <div className="ml-6"><FichaPrueba prueba={p} dolor={dolorDe ?? null} /></div>}
 
                         {/* A mano: la nota de cada lado, aquí mismo. */}
                         {activa.modo === 'mano' && aMano === p.clave && (
@@ -376,6 +415,17 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
                 </span>
               </label>
             </div>
+
+            {/* Con la batería en marcha, el material sigue a mano (antes de empezar va arriba, entero). */}
+            {activa && (
+              <div className="tp-card p-4">
+                <button onClick={() => setVerMaterial(v => !v)} aria-expanded={verMaterial}
+                  className="text-[13px] font-semibold w-full text-left flex justify-between items-center">
+                  Lo que necesitas <span className="text-gray-500 text-[12px]">{verMaterial ? '▴' : '▾'}</span>
+                </button>
+                {verMaterial && <div className="mt-2.5"><MaterialCorto def={def} /></div>}
+              </div>
+            )}
 
             <div className="tp-card p-4">
               <button onClick={() => setVerProtocolo(v => !v)} className="text-[13px] font-semibold w-full text-left flex justify-between items-center">

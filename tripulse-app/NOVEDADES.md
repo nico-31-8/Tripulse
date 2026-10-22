@@ -14,6 +14,29 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 22 de octubre de 2026 · Tests de movimiento: el material y cómo se pasa cada prueba
+
+- **Antes de empezar un FMS o un Nine Test, la lista de lo que necesitas.** Al
+  elegir la batería, arriba sale todo el material, con su medida, para qué
+  prueba es y, si la hay, una alternativa casera: la tabla «2×6», la pica (vale
+  el palo de una escoba), la valla (vale una goma entre dos sillas), la cinta
+  métrica… Puedes ir marcando lo que ya tienes; no se guarda. Debajo, cómo se
+  pasa: en el FMS no se le corrige; en el Nine Test se le enseña la posición y
+  se le corrige con palabras tras el primer intento.
+- **Cada prueba tiene su ficha, en «Cómo se hace»:** el material, la preparación
+  (cómo medir su tibia o su palma, dónde va la pica), lo que se le dice paso a
+  paso, los intentos y desde dónde se graba. Sale antes de empezar, en la lista
+  de la batería y en el visor, al lado del vídeo.
+- **Del Nine Test, las posiciones salen de las fotos del artículo**, porque su
+  texto solo da los criterios, y la ficha lo dice. Tres cosas son propuesta
+  nuestra y van marcadas: la misma profundidad en la sentadilla a una pierna,
+  el largo de la tibia entre los pies en la zancada y las manos bajo los hombros
+  en la flexión.
+- **La elevación diagonal del Nine Test se graba ahora también de perfil**, como
+  en el artículo: de perfil se ve si brazo y pierna llegan a la horizontal, y
+  desde atrás, si gira o abre. El criterio de la horizontal se mira en el vídeo
+  de perfil.
+
 ## 22 de octubre de 2026 · Saltos: qué sube cada semana, para qué le sirven según su deporte y cuándo toca medir
 
 - **En la pestaña Saltos de su ficha, debajo de su nivel, sale ahora su avance.**

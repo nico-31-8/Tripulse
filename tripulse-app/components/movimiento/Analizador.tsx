@@ -76,6 +76,7 @@ import { cambiarAnalisisLibre, guardarFotogramaLibre, type AnalisisLibre, type F
 import { cargarDetector, detectar, SIN_SIMD, type Detector } from '@/lib/detector-cuerpo'
 import { inclinacionDe, type Punto } from '@/lib/geometria-fotograma'
 import { fechaLarga, hoyISO } from '@/lib/fechas'
+import { FichaCorta } from './FichaPrueba'
 
 const NARANJA = '#f97316'
 const REF = '#8ecbff'
@@ -1231,9 +1232,12 @@ export default function Analizador(props: PropsAnalizador) {
             {!media ? (
               <div className="w-full max-w-md rounded-2xl border border-dashed border-gray-700 p-6 text-center flex flex-col gap-3">
                 <p className="text-[15px] font-semibold">Elige el vídeo {DE_VISTA[vista]}</p>
-                <p className="text-[12.5px] text-gray-400">
-                  {prueba ? prueba.montaje : 'Lo que quieras analizar. Guardas los fotogramas que elijas, cada uno con sus medidas, y puedes cambiar de vídeo sin salir.'}
-                </p>
+                {/* En una prueba de batería, su ficha: lo que se le dice, el material y cómo se graba. */}
+                {prueba ? (
+                  <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3 text-left"><FichaCorta prueba={prueba} /></div>
+                ) : (
+                  <p className="text-[12.5px] text-gray-400">Lo que quieras analizar. Guardas los fotogramas que elijas, cada uno con sus medidas, y puedes cambiar de vídeo sin salir.</p>
+                )}
                 <p className="text-[12px] text-gray-500">Móvil quieto y recto (el nivel de la cámara ayuda), a la altura de la cadera y a unos 3 m, con el cuerpo entero dentro. También vale una foto.</p>
                 <label className="self-center bg-orange-500 hover:bg-orange-400 text-white text-[14px] font-semibold px-5 py-3 rounded-xl cursor-pointer transition">
                   Elegir vídeo o foto
@@ -1368,6 +1372,15 @@ export default function Analizador(props: PropsAnalizador) {
 
         {/* ── el panel: medidas, criterios, nota ── */}
         <aside className="border-t lg:border-t-0 lg:border-l border-gray-800 bg-gray-900/60 p-4 flex flex-col gap-4 lg:overflow-y-auto">
+          {/* Con el vídeo puesto, la ficha sigue a mano, plegada para no tapar las medidas. */}
+          {bat && prueba && media && (
+            <details className="group rounded-xl border border-gray-800 bg-gray-900 p-3.5">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[13.5px] font-semibold flex justify-between items-center">
+                Cómo se hace esta prueba <span className="text-gray-500 text-[12px]"><span className="group-open:hidden">▾</span><span className="hidden group-open:inline">▴</span></span>
+              </summary>
+              <div className="mt-2.5"><FichaCorta prueba={prueba} /></div>
+            </details>
+          )}
           {media && (
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-3.5">
               <p className="text-[13.5px] font-semibold mb-2">Medidas en este fotograma</p>

@@ -14,7 +14,12 @@
 // Van resumidos en castellano; el texto oficial está en esas fuentes.
 //
 // LO QUE NO SALE DE LA FUENTE: la VISTA desde la que se graba la elevación
-// diagonal y la rotación sentado del Nine Test es propuesta nuestra.
+// diagonal y la rotación sentado del Nine Test es propuesta nuestra. En las
+// fotos del artículo, la diagonal sale de perfil (también la tiene, desde el
+// 22-10-2026) y la rotación de frente (desde arriba es donde se mide el giro).
+//
+// CÓMO SE PASA CADA PRUEBA (material, preparación, lo que se le dice y cómo se
+// graba) está en lib/fichas-movimiento.
 //
 // LAS REGLAS, en las dos baterías: cada prueba de 0 a 3; si duele, 0; en las de
 // dos lados cuenta el PEOR. En el FMS, además, cada prueba de dolor anula
@@ -272,12 +277,14 @@ const NINE_PRUEBAS: Prueba[] = [
     },
   },
   {
-    clave: 'nine.diagonal', nombre: 'Elevación diagonal', bilateral: true, vistas: ['atras'],
+    /* De perfil, como la foto del artículo, para la horizontal; y desde atrás
+       (propuesta nuestra) para la rotación, la apertura y la escápula. */
+    clave: 'nine.diagonal', nombre: 'Elevación diagonal', bilateral: true, vistas: ['atras', 'perfil'],
     montaje: 'A cuatro patas sobre una línea; sube la mano y la pierna contrarias.',
     criterios: [
       { clave: 'linea', texto: 'Mano y pie contrarios sobre la línea', vista: 'atras', con: 'ojo' },
       { clave: 'rotacion', texto: 'Sin rotar la columna', vista: 'atras', con: 'ojo' },
-      { clave: 'extension', texto: 'Brazo y pierna extendidos en horizontal', vista: 'atras', con: 'horizontal' },
+      { clave: 'extension', texto: 'Brazo y pierna extendidos en horizontal', vista: 'perfil', con: 'horizontal' },
       { clave: 'abduccion', texto: 'Sin abrir el brazo ni la pierna', vista: 'atras', con: 'ojo' },
       { clave: 'escapula', texto: 'Sin escápula alada', vista: 'atras', con: 'ojo' },
     ],
