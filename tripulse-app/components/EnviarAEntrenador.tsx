@@ -6,6 +6,10 @@
 // propios y Zonas propias. Al otro se le busca por su correo EXACTO —la base no
 // deja recorrer la lista de entrenadores— y debajo salen aquellos a los que ya
 // les has mandado algo. Lo que se manda es una copia (lib/envios).
+//
+// Puede llevar VARIAS cosas («varios»: lo arma «Mandar algo» en Envíos), y un
+// test puede llevarse las zonas que salen de él: a quien lo recibe le llega
+// todo en un solo envío, y lo acepta todo junto.
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -15,8 +19,19 @@ import { cargaZona } from '@/lib/zonas'
 import { textoBloque, type BloqueP } from '@/lib/plantillas'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import {
-  buscarEntrenador, enviar, correoValido, destinatariosPrevios, queViaja, zonasDesconocidas, plantillaParaEnviar,
+  buscarEntrenador, enviar, enviarVarios, correoValido, destinatariosPrevios, queViaja, zonasDesconocidas, plantillaParaEnviar,
+  resumenVarios, zonasDeTest, testsDeHitos, motivoNoSeManda,
 } from '@/lib/envios'
+
+export interface ChipZona { sigla: string; nombre: string; color: string }
+export interface PlantillaQueEnviar { nombre: string; disciplina: string; objetivo?: string | null; bloques: BloqueP[] }
+export interface TestQueEnviar { id: number; nombre: string; detalle?: string }
+export interface ZonasQueEnviar {
+  id: number; nombre: string; detalle?: string
+  zonas: ChipZona[]
+  /** Los tests propios de los que salen: viajan con ellas. */
+  tests: string[]
+}
 
 export type QueEnviar =
   | {
@@ -28,13 +43,12 @@ export type QueEnviar =
     /** Desde una sesión el nombre se elige aquí; una plantilla ya tiene el suyo. */
     nombreEditable?: boolean
   }
-  | { tipo: 'test'; id: number; nombre: string; detalle?: string }
-  | {
-    tipo: 'zonas'; id: number; nombre: string; detalle?: string
-    zonas: { sigla: string; nombre: string; color: string }[]
-    /** Los tests propios de los que salen: viajan con ellas. */
-    tests: string[]
-  }
+  | ({ tipo: 'test' } & TestQueEnviar)
+  | ({ tipo: 'zonas' } & ZonasQueEnviar)
+  | { tipo: 'varios'; plantillas: PlantillaQueEnviar[]; tests: TestQueEnviar[]; zonas: ZonasQueEnviar[] }
+
+/** Unas zonas que salen del test que se manda, para llevárselas con él. */
+interface Anclada { id: number; nombre: string; zonas: ChipZona[]; otros: string[]; motivo: string | null }
 
 type Busqueda =
   | { correo: string; estado: 'buscando' | 'no' | 'tu' }
@@ -59,6 +73,10 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   const [enviadoA, setEnviadoA] = useState<string | null>(null)
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ultimo = useRef('')
+  /* Al mandar un test: las zonas que salen de él, y las que se llevan. */
+  const [ancladas, setAncladas] = useState<Anclada[]>([])
+  const [marcadas, setMarcadas] = useState<number[]>([])
+  const idTest = que.tipo === 'test' ? que.id : null
 
   /* Tu correo (para decirte «ese es el tuyo») y a quién has mandado algo. Si
      la tabla aún no existe, la lista sale vacía y ya está. */
@@ -75,6 +93,39 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
     })()
     return () => { vivo = false; if (temporizador.current) clearTimeout(temporizador.current) }
   }, [])
+
+  /* Las zonas que salen del test: las clasificaciones TUYAS que lo usan de hito.
+     Si alguna sale también de otro test tuyo, ese va con ellas (lo añade la
+     base); si sale de uno que no es tuyo, no se puede mandar y se dice. */
+  useEffect(() => {
+    if (idTest == null) return
+    let vivo = true
+    ;(async () => {
+      const user = await usuarioActual()
+      if (!vivo || !user) return
+      const [{ data: cs }, { data: ts }] = await Promise.all([
+        supabase.from('zona_clasificacion').select('id, nombre, hitos').eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
+        supabase.from('test_definicion').select('id, nombre').eq('id_entrenador', user.id).eq('archivado', false),
+      ])
+      const suyas = zonasDeTest(idTest, (cs || []) as { id: number; nombre: string; hitos: string[] | null }[])
+      if (!vivo || !suyas.length) return
+      const { data: zs } = await supabase.from('zona_entrenador').select('id_clasificacion, sigla, nombre, color, orden')
+        .in('id_clasificacion', suyas.map(c => c.id)).eq('archivada', false).order('orden')
+      if (!vivo) return
+      const zonas = (zs || []) as ({ id_clasificacion: number } & ChipZona)[]
+      const misTests = (ts || []) as { id: number; nombre: string }[]
+      setAncladas(suyas.map(c => {
+        const chips = zonas.filter(z => z.id_clasificacion === c.id).map(z => ({ sigla: z.sigla, nombre: z.nombre, color: z.color }))
+        const { nombres, ajenos } = testsDeHitos(c.hitos, misTests)
+        const este = misTests.find(x => x.id === idTest)?.nombre
+        return {
+          id: c.id, nombre: c.nombre, zonas: chips, otros: nombres.filter(n => n !== este),
+          motivo: motivoNoSeManda({ tipo: 'zonas', zonas: chips.length, testsAjenos: ajenos }),
+        }
+      }))
+    })()
+    return () => { vivo = false }
+  }, [idTest])
 
   // Escape cierra, como en el resto de ventanas.
   useEffect(() => {
@@ -113,14 +164,25 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   const faltaNombre = que.tipo === 'plantilla' && !nombre.trim()
   const puede = !!destino && !enviando && !enviadoA && !faltaNombre
 
+  /* Un test con zonas marcadas va como «varios»: todo en un solo envío. */
+  const conZonas = que.tipo === 'test' && marcadas.length > 0
+
   const mandar = async () => {
     if (!puede || !destino) return
     setEnviando(true)
-    const r = await enviar(supabase, destino.id,
-      que.tipo === 'plantilla'
-        ? { tipo: 'plantilla', plantilla: plantillaParaEnviar({ nombre, disciplina: que.disciplina, objetivo: que.objetivo, bloques: que.bloques }) }
-        : { tipo: que.tipo, id: que.id },
-      mensaje)
+    const r = que.tipo === 'varios'
+      ? await enviarVarios(supabase, destino.id, {
+        plantillas: que.plantillas.map(p => plantillaParaEnviar(p)),
+        tests: que.tests.map(x => x.id),
+        clasificaciones: que.zonas.map(z => z.id),
+      }, mensaje)
+      : conZonas && que.tipo === 'test'
+        ? await enviarVarios(supabase, destino.id, { plantillas: [], tests: [que.id], clasificaciones: marcadas }, mensaje)
+        : await enviar(supabase, destino.id,
+          que.tipo === 'plantilla'
+            ? { tipo: 'plantilla', plantilla: plantillaParaEnviar({ nombre, disciplina: que.disciplina, objetivo: que.objetivo, bloques: que.bloques }) }
+            : { tipo: que.tipo, id: que.id },
+          mensaje)
     setEnviando(false)
     // Un fallo al enviar va en ventana, como un fallo al guardar (política de avisos).
     if (r.error) { alert('No se ha podido enviar.\n\n' + r.error); return }
@@ -128,8 +190,19 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
     if (r.id) onEnviado?.(r.id)
   }
 
-  const { viaja, noViaja } = queViaja(que.tipo)
-  const desconocidas = que.tipo === 'plantilla' ? zonasDesconocidas(que.bloques) : []
+  const { viaja, noViaja } = queViaja(que.tipo === 'varios' || conZonas ? 'varios' : que.tipo)
+  const desconocidas = que.tipo === 'plantilla' ? zonasDesconocidas(que.bloques)
+    : que.tipo === 'varios' ? zonasDesconocidas(que.plantillas.flatMap(p => p.bloques)) : []
+  const chips = (zs: ChipZona[]) => (
+    <div className="flex flex-wrap gap-1.5">
+      {zs.map((z, i) => (
+        <span key={i} className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+          style={{ color: z.color, borderColor: z.color + '66', background: z.color + '1a' }}>
+          {z.sigla}{z.nombre ? ' · ' + z.nombre : ''}
+        </span>
+      ))}
+    </div>
+  )
   const etiqueta = 'text-[11px] font-semibold uppercase tracking-[0.07em] text-gray-500'
 
   /* Solo se abre con un clic, en el navegador; pero si alguien la pinta en el
@@ -186,19 +259,69 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
                   <p className="font-semibold text-[15px]">Test «{que.nombre}»</p>
                   {que.detalle && <p className="text-gray-400 text-xs">{que.detalle}</p>}
                   <p className="text-gray-500 text-xs">Le llega a sus Tests propios.</p>
+                  {ancladas.length > 0 && (
+                    <div className="flex flex-col gap-2 pt-2 mt-1 border-t border-gray-800">
+                      <p className="text-gray-400 text-xs">Zonas que salen de este test (si las marcas, le llega todo junto):</p>
+                      {ancladas.map(a => (
+                        <label key={a.id} className={'flex items-start gap-2.5 text-[13px] ' + (a.motivo ? 'opacity-60' : 'cursor-pointer')}>
+                          <input type="checkbox" disabled={!!a.motivo || !!enviadoA} checked={marcadas.includes(a.id)}
+                            onChange={e => setMarcadas(m => e.target.checked ? [...m, a.id] : m.filter(x => x !== a.id))}
+                            className="mt-0.5 w-4 h-4 accent-orange-500 flex-shrink-0" />
+                          <span className="flex flex-col gap-1 min-w-0">
+                            <span>Mandar también «{a.nombre}»
+                              <span className="text-gray-500"> · {a.zonas.length} {a.zonas.length === 1 ? 'zona' : 'zonas'}
+                                {a.otros.length ? ' · va también ' + a.otros.map(o => '«' + o + '»').join(' y ') : ''}</span>
+                            </span>
+                            {chips(a.zonas)}
+                            {a.motivo && <span className="text-amber-300/90 text-xs">{a.motivo}</span>}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : que.tipo === 'varios' ? (
+                <>
+                  <p className="font-semibold text-[15px]">{resumenVarios({ tests: que.tests, clasificaciones: que.zonas, plantillas: que.plantillas })}</p>
+                  <p className="text-gray-400 text-xs">Le llega todo en un solo envío, y lo acepta todo junto.</p>
+                  <ul className="flex flex-col gap-2.5 pt-1">
+                    {que.tests.map(x => (
+                      <li key={'t' + x.id} className="flex flex-col gap-0.5">
+                        <span className="text-[13.5px]">🧪 Test «{x.nombre}»</span>
+                        {x.detalle && <span className="text-gray-500 text-xs">{x.detalle}</span>}
+                      </li>
+                    ))}
+                    {que.zonas.map(z => (
+                      <li key={'z' + z.id} className="flex flex-col gap-1">
+                        <span className="text-[13.5px]">Zonas «{z.nombre}»{z.detalle ? <span className="text-gray-500 text-xs"> · {z.detalle}</span> : null}</span>
+                        {chips(z.zonas)}
+                        {z.tests.length > 0 && <span className="text-sky-200/80 text-xs">Van con {z.tests.length === 1 ? 'su test' : 'sus tests'} {z.tests.map(n => '«' + n + '»').join(' y ')}.</span>}
+                      </li>
+                    ))}
+                    {que.plantillas.map((p, i) => (
+                      <li key={'p' + i} className="flex flex-col gap-1">
+                        <span className="text-[13.5px]">Plantilla «{p.nombre}» <span className="text-gray-500 text-xs">· {etiquetaDisciplina(p.disciplina)} · {p.bloques.length} {p.bloques.length === 1 ? 'bloque' : 'bloques'}</span></span>
+                        <span className="flex flex-wrap gap-1">
+                          {p.bloques.map((b, j) => (
+                            <span key={j} className="text-[10px] font-bold px-1.5 py-0.5 rounded leading-none"
+                              style={{ background: cargaZona(b.zona).color, color: '#0a0b0f' }}>{b.zona} {textoBloque(b)}</span>
+                          ))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {desconocidas.length > 0 && (
+                    <p className="text-amber-200/90 text-xs leading-relaxed bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                      Alguna plantilla usa {desconocidas.length === 1 ? 'una zona tuya' : 'zonas tuyas'} ({desconocidas.join(', ')}): le llega con la sigla,
+                      pero sin la zona, así que la app no sabrá su intensidad.
+                    </p>
+                  )}
                 </>
               ) : (
                 <>
                   <p className="font-semibold text-[15px]">Zonas «{que.nombre}»</p>
                   {que.detalle && <p className="text-gray-400 text-xs">{que.detalle}</p>}
-                  <div className="flex flex-wrap gap-1.5">
-                    {que.zonas.map((z, i) => (
-                      <span key={i} className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
-                        style={{ color: z.color, borderColor: z.color + '66', background: z.color + '1a' }}>
-                        {z.sigla}{z.nombre ? ' · ' + z.nombre : ''}
-                      </span>
-                    ))}
-                  </div>
+                  {chips(que.zonas)}
                   {que.tests.length > 0 && (
                     <p className="text-sky-200/90 text-xs leading-relaxed bg-sky-400/10 border border-sky-400/30 rounded-lg px-3 py-2">
                       <b className="text-white font-semibold">Van con {que.tests.length === 1 ? 'el test' : 'los tests'} {que.tests.map(t => '«' + t + '»').join(' y ')}, del que salen.</b>{' '}

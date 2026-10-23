@@ -10,7 +10,7 @@ import { cargaZona } from '@/lib/zonas'
 import { textoBloque } from '@/lib/plantillas'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import {
-  nombresDeHitos, resultadosDe, textoZona, textoRpe, zonasDesconocidas, primerNombre,
+  nombresDeHitos, resultadosDe, textoZona, textoRpe, zonasDesconocidas, primerNombre, resumenVarios,
   type Envio, type ContenidoEnvio, type TestEnviado,
 } from '@/lib/envios'
 
@@ -65,8 +65,35 @@ function PreviewTests({ tests }: { tests: TestEnviado[] }) {
   )
 }
 
-export function PreviewContenido({ e, papel }: { e: Envio; papel: 'recibe' | 'manda' }) {
+export function PreviewContenido({ e, papel, sinTests = false }: {
+  e: Envio
+  papel: 'recibe' | 'manda'
+  /** Dentro de unos «varios», los tests se enseñan una vez, al final. */
+  sinTests?: boolean
+}) {
   const c: ContenidoEnvio = e.contenido || {}
+  /* Unos «varios»: cada parte con su vista de siempre, y los tests al final. */
+  if (e.tipo === 'varios') {
+    return (
+      <div className="flex flex-col gap-5">
+        <p className="text-sm text-gray-300">{resumenVarios(c)}. Se acepta todo junto.</p>
+        {(c.clasificaciones || []).map((z, i) => (
+          <PreviewContenido key={'z' + i} papel={papel} sinTests
+            e={{ ...e, tipo: 'zonas', contenido: { clasificacion: z.clasificacion, zonas: z.zonas, tests: c.tests } }} />
+        ))}
+        {(c.plantillas || []).map((p, i) => (
+          <PreviewContenido key={'p' + i} papel={papel} e={{ ...e, tipo: 'plantilla', contenido: p }} />
+        ))}
+        {(c.tests || []).length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className={etiqueta}>{(c.tests || []).length === 1 ? 'El test' : 'Los tests'}</p>
+            <PreviewTests tests={c.tests || []} />
+            <p className="text-xs text-gray-500">Sin las mediciones de nadie: solo cómo se pasa y qué calcula.</p>
+          </div>
+        )}
+      </div>
+    )
+  }
   if (e.tipo === 'plantilla') {
     const bloques = c.bloques || []
     const desconocidas = zonasDesconocidas(bloques)
@@ -147,7 +174,7 @@ export function PreviewContenido({ e, papel }: { e: Envio; papel: 'recibe' | 'ma
           </tbody>
         </table>
       </div>
-      {(c.tests || []).length > 0 && (
+      {!sinTests && (c.tests || []).length > 0 && (
         <>
           <p className={etiqueta + ' mt-1'}>{(c.tests || []).length === 1 ? 'El test del que salen' : 'Los tests de los que salen'}</p>
           <PreviewTests tests={c.tests || []} />

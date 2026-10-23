@@ -140,6 +140,11 @@ export default function PaginaEnvios() {
     if (aceptar && conflictos) {
       if (conflictos.plantilla) n.plantilla = nombreDe('plantilla', conflictos.plantilla)
       if (conflictos.clasificacion) n.clasificacion = nombreDe('clasificacion', conflictos.clasificacion)
+      /* En unos «varios», cada parte por su posición. */
+      const ps = Object.entries(conflictos.plantillas)
+      if (ps.length) n.plantillas = Object.fromEntries(ps.map(([i, propuesto]) => [i, nombreDe('p:' + i, propuesto)]))
+      const cs = Object.entries(conflictos.clasificaciones)
+      if (cs.length) n.clasificaciones = Object.fromEntries(cs.map(([i, propuesto]) => [i, nombreDe('c:' + i, propuesto)]))
       const t = Object.entries(conflictos.tests)
       if (t.length) n.tests = Object.fromEntries(t.map(([id, propuesto]) => [id, nombreDe('t:' + id, propuesto)]))
     }
@@ -278,7 +283,8 @@ export default function PaginaEnvios() {
                     {/* ── Contestar (lo recibido y pendiente) ── */}
                     {papel === 'recibe' && actual.estado === 'pendiente' && (
                       <div className="flex flex-col gap-3 pt-1">
-                        {conflictos && (conflictos.plantilla || conflictos.clasificacion || Object.keys(conflictos.tests).length > 0) && (
+                        {conflictos && (conflictos.plantilla || conflictos.clasificacion || Object.keys(conflictos.tests).length > 0
+                          || Object.keys(conflictos.plantillas).length > 0 || Object.keys(conflictos.clasificaciones).length > 0) && (
                           <div className="rounded-xl border border-amber-400/35 bg-amber-400/10 px-3.5 py-3 flex flex-col gap-2.5">
                             <p className="text-sm text-amber-100 font-semibold">Ya tienes algo con el mismo nombre. Elige cómo se llamará lo nuevo:</p>
                             {conflictos.plantilla && (
@@ -297,6 +303,22 @@ export default function PaginaEnvios() {
                                   className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white min-w-[14rem] flex-1 max-w-full" />
                               </label>
                             )}
+                            {Object.entries(conflictos.plantillas).map(([i, propuesto]) => (
+                              <label key={'p' + i} className="flex flex-wrap items-center gap-2 text-[13px] text-amber-100/90">
+                                La plantilla «{actual.contenido.plantillas?.[Number(i)]?.nombre}» se llamará
+                                <input value={nombreDe('p:' + i, propuesto)} maxLength={80}
+                                  onChange={ev => setNombres(p => ({ ...p, ['p:' + i]: ev.target.value }))}
+                                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white min-w-[14rem] flex-1 max-w-full" />
+                              </label>
+                            ))}
+                            {Object.entries(conflictos.clasificaciones).map(([i, propuesto]) => (
+                              <label key={'c' + i} className="flex flex-wrap items-center gap-2 text-[13px] text-amber-100/90">
+                                Las zonas «{actual.contenido.clasificaciones?.[Number(i)]?.clasificacion?.nombre}» se llamarán
+                                <input value={nombreDe('c:' + i, propuesto)} maxLength={80}
+                                  onChange={ev => setNombres(p => ({ ...p, ['c:' + i]: ev.target.value }))}
+                                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white min-w-[14rem] flex-1 max-w-full" />
+                              </label>
+                            ))}
                             {Object.entries(conflictos.tests).map(([id, propuesto]) => (
                               <label key={id} className="flex flex-wrap items-center gap-2 text-[13px] text-amber-100/90">
                                 El test «{(actual.contenido.tests || []).find(t => String(t.id) === id)?.nombre}» se llamará
@@ -332,11 +354,17 @@ export default function PaginaEnvios() {
                         <p role="status" className={'text-sm ' + (actual.estado === 'aceptado' ? 'text-emerald-300' : 'text-gray-400')}>
                           {hecho[actual.id] ?? (actual.estado === 'aceptado' ? 'Lo aceptaste. ' + dondeQueda(actual) : textoEstado(actual, 'recibe') + '.')}
                         </p>
-                        {actual.estado === 'aceptado' && actual.tipo !== 'plantilla' && (
-                          <button type="button" onClick={() => router.push(actual.tipo === 'test' ? '/tests-propios' : '/zonas-propias')}
-                            className="self-start text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">
-                            {actual.tipo === 'test' ? 'Ir a Tests propios →' : 'Ir a Zonas propias →'}
-                          </button>
+                        {actual.estado === 'aceptado' && (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {(actual.tipo === 'test' || (actual.tipo === 'varios' && (actual.contenido.tests?.length ?? 0) > 0)) && (
+                              <button type="button" onClick={() => router.push('/tests-propios')}
+                                className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a Tests propios →</button>
+                            )}
+                            {(actual.tipo === 'zonas' || (actual.tipo === 'varios' && (actual.contenido.clasificaciones?.length ?? 0) > 0)) && (
+                              <button type="button" onClick={() => router.push('/zonas-propias')}
+                                className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a Zonas propias →</button>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}

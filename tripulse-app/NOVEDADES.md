@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Manda varias cosas a la vez, por ejemplo un test con sus zonas
+
+- **Nuevo:** en un mismo envío puedes mandar a otro entrenador varias cosas:
+  tests, zonas y plantillas. A él le llega un solo aviso y lo acepta todo
+  junto.
+- **Un test con sus zonas:** al mandar un test desde Tests propios, la ventana
+  te enseña las zonas que salen de él. Marca las que quieras y van juntas.
+- **En Envíos, «📨 Mandar algo» deja elegir varias**, también de pestañas
+  distintas. Si eliges un test, te dice qué zonas salen de él para añadirlas
+  con un toque; unas zonas ya llevan su test sin que lo elijas.
+- **Quien lo recibe** ve en Envíos cada parte antes de aceptar, y si algún
+  nombre choca con algo suyo, elige cómo se llamará esa parte. Un test que ya
+  le habías mandado antes, sin cambios, no se le duplica: las zonas nuevas se
+  enganchan al que ya tiene.
+- Como mucho, 30 cosas en un mismo envío.
+
+---
+
 ## 23 de octubre de 2026 · Mándale a otro entrenador una sesión, un test o tus zonas
 
 - **Nuevo:** puedes mandar a otro entrenador de TRIPULSE una sesión (le llega

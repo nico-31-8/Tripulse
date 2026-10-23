@@ -11,6 +11,7 @@ import {
   textoZona, textoRpe, etiquetaTipo, dondeQueda, queViaja, errorDeEnvio, faltaLaTabla,
   buscarEntrenador, enviar, contestar, cancelar, marcarRespuestasVistas,
   testsDeHitos, motivoNoSeManda, casaConBusqueda,
+  listaY, resumenVarios, zonasDeTest, enviarVarios,
   type Envio, type ZonaEnviada, type LoQueTengo,
 } from './envios'
 
@@ -289,6 +290,94 @@ describe('las llamadas a la base', () => {
     expect(faltaLaTabla({ code: 'PGRST205', message: "Could not find the table 'public.envio_entrenador' in the schema cache" })).toBe(true)
     expect(faltaLaTabla({ code: '42501', message: 'permission denied' })).toBe(false)
     expect(faltaLaTabla(null)).toBe(false)
+  })
+})
+
+describe('varias cosas en un mismo envío', () => {
+  const envioV = (contenido: Envio['contenido']): Envio => ({
+    id: 9, de: 'ana', para: 'luis', tipo: 'varios', titulo: 'T', contenido, mensaje: null,
+    de_nombre: 'Ana Rivas', para_nombre: 'Luis Pérez', para_correo: 'luis@x.es', estado: 'pendiente',
+    resultado: null, creado_en: '2026-10-23T10:00:00Z', contestado_en: null, respuesta_vista_en: null,
+  })
+  const test = (id: number, nombre: string) => ({ id, nombre, deporte: 'Carrera', campos: [], resultados: [], modelo: null })
+  const zonas = (nombre: string) => ({ clasificacion: { nombre, deporte: 'Carrera', hitos: [] }, zonas: [] })
+  const pl = (nombre: string, disciplina = 'Carrera') => ({ nombre, disciplina, bloques: [{ zona: 'PAE', metros: 1000 }] })
+
+  it('«a», «a y b», «a, b y c»', () => {
+    expect(listaY([])).toBe('')
+    expect(listaY(['a'])).toBe('a')
+    expect(listaY(['a', 'b'])).toBe('a y b')
+    expect(listaY(['a', 'b', 'c'])).toBe('a, b y c')
+  })
+
+  it('el resumen cuenta cada cosa, en singular o en plural', () => {
+    expect(resumenVarios({ tests: [test(1, 'T')], clasificaciones: [zonas('Z')], plantillas: [pl('A'), pl('B')] }))
+      .toBe('1 test, 1 clasificación de zonas y 2 plantillas')
+    expect(resumenVarios({ tests: [test(1, 'T'), test(2, 'U')] })).toBe('2 tests')
+    expect(resumenVarios(null)).toBe('nada')
+  })
+
+  it('las zonas que salen de un test: las que lo usan de hito', () => {
+    const cs = [{ id: 1, hitos: ['propia:8:0'] }, { id: 2, hitos: ['app:vam'] }, { id: 3, hitos: ['propia:80:0', 'propia:8:1'] }, { id: 4, hitos: null }]
+    expect(zonasDeTest(8, cs).map(c => c.id)).toEqual([1, 3])
+  })
+
+  it('se llama «Varios» y dice dónde queda cada cosa', () => {
+    const e = envioV({ tests: [test(1, 'T')], clasificaciones: [zonas('Z')], plantillas: [] })
+    expect(etiquetaTipo(e)).toBe('Varios')
+    expect(dondeQueda(e)).toBe('Está en tus Tests propios y tus Zonas propias.')
+    expect(dondeQueda(envioV({ plantillas: [pl('A')], tests: [], clasificaciones: [] }))).toBe('Está en tus plantillas.')
+  })
+
+  /* Como hace la base al aceptar: lo que se va creando también cuenta. */
+  it('los nombres chocan con lo tuyo y también entre ellos, en el orden en que vienen', () => {
+    const e = envioV({
+      tests: [test(1, 'Rampa'), test(2, 'rampa')],
+      plantillas: [pl('Series'), pl('Series'), pl('Series', 'Natacion')],
+      clasificaciones: [zonas('Zonas 30-15'), zonas('Otras')],
+    })
+    const c = conflictosDe(e, { tests: [], clasificaciones: ['zonas 30-15'], plantillas: { Carrera: ['Series'] }, copiasPrevias: {} })
+    expect(c.tests).toEqual({ 2: 'rampa (Ana)' })
+    expect(c.plantillas).toEqual({ 0: 'Series (Ana)', 1: 'Series (Ana 2)' })
+    expect(c.clasificaciones).toEqual({ 0: 'Zonas 30-15 (Ana)' })
+    /* Los de un envío suelto no se tocan. */
+    expect(c.plantilla).toBeNull()
+    expect(c.clasificacion).toBeNull()
+  })
+
+  it('enviarVarios llama a su función con sus nombres', async () => {
+    const llamadas: { fn: string; args: unknown }[] = []
+    const sb = { rpc: (fn: string, args: unknown) => { llamadas.push({ fn, args }); return Promise.resolve({ data: 77, error: null }) } }
+    const p = plantillaParaEnviar(pl('Series'))
+    expect(await enviarVarios(sb, 'luis', { plantillas: [p], tests: [8], clasificaciones: [2] }, ' hola ')).toEqual({ id: 77, error: null })
+    expect(llamadas).toEqual([{ fn: 'enviar_varios_a_entrenador', args: { _para: 'luis', _plantillas: [p], _tests: [8], _clasificaciones: [2], _mensaje: 'hola' } }])
+  })
+})
+
+describe('el SQL de «varios»', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-varios.sql'), 'utf8')
+
+  it('no lleva «--»', () => {
+    expect(sql).not.toContain('--')
+  })
+
+  it('la función nueva, cerrada a anon y abierta a quien ha entrado; las reescritas, igual', () => {
+    for (const firma of ['enviar_varios_a_entrenador(uuid, jsonb, bigint[], bigint[], text)', 'enviar_a_entrenador(uuid, text, bigint, jsonb, text)', 'contestar_envio(bigint, boolean, jsonb)']) {
+      expect(sql).toContain('revoke execute on function public.' + firma + ' from anon;')
+      expect(sql).toContain('grant execute on function public.' + firma + ' to authenticated;')
+    }
+  })
+
+  it('los ayudantes nuevos no los puede llamar nadie desde fuera', () => {
+    for (const firma of ['envio_destino(uuid, uuid, text)', 'envio_fotos_tests(bigint[])', 'envio_foto_clasificacion(uuid, bigint)',
+      'envio_copiar_tests(uuid, public.envio_entrenador, jsonb)', 'envio_copiar_plantilla(uuid, jsonb, text, text)',
+      'envio_copiar_clasificacion(uuid, jsonb, jsonb, jsonb, text, text)']) {
+      expect(sql).toContain('revoke all on function public.' + firma + ' from public, anon, authenticated;')
+    }
+  })
+
+  it('«varios» entra en los tipos que admite la tabla', () => {
+    expect(sql).toContain("check (tipo in ('plantilla', 'test', 'zonas', 'varios'))")
   })
 })
 

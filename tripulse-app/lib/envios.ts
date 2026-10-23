@@ -22,7 +22,8 @@ import { cargaZona } from './zonas'
 import { zonaPico } from './plantillas-propias'
 import { normalizar } from './buscar-ejercicio'
 
-export type TipoEnvio = 'plantilla' | 'test' | 'zonas'
+/** «varios»: plantillas, tests y zonas en un mismo envío (supabase/envios-varios.sql). */
+export type TipoEnvio = 'plantilla' | 'test' | 'zonas' | 'varios'
 export type EstadoEnvio = 'pendiente' | 'aceptado' | 'rechazado' | 'cancelado'
 
 /** Un test tal como viaja: la fila de `test_definicion` sin su dueño. */
@@ -54,6 +55,21 @@ export interface ZonaEnviada {
   hasta: LimiteEnviado | null
 }
 
+/** Una plantilla tal como viaja. */
+export interface PlantillaEnviada {
+  nombre: string
+  disciplina: string
+  zona?: string
+  objetivo?: string | null
+  bloques: BloqueP[]
+}
+
+/** Unas zonas tal como viajan en unos «varios»: su clasificación y sus zonas. */
+export interface ZonasEnviadas {
+  clasificacion: { nombre: string; deporte: string; hitos: string[] }
+  zonas: ZonaEnviada[]
+}
+
 /** Lo que se guardó al enviarlo. Según el tipo, unas claves u otras. */
 export interface ContenidoEnvio {
   /* plantilla */
@@ -66,11 +82,17 @@ export interface ContenidoEnvio {
   tests?: TestEnviado[]
   clasificacion?: { nombre: string; deporte: string; hitos: string[] }
   zonas?: ZonaEnviada[]
+  /* varios (los tests van en `tests`, como siempre) */
+  plantillas?: PlantillaEnviada[]
+  clasificaciones?: ZonasEnviadas[]
 }
 
 export interface ResultadoEnvio {
   plantilla?: number
   clasificacion?: number
+  /** En unos «varios», en el orden en que venían. */
+  plantillas?: number[]
+  clasificaciones?: number[]
   /** Del id del test original al de la copia de quien aceptó. */
   tests?: Record<string, number>
 }
@@ -97,6 +119,9 @@ export interface Envio {
 export const COLUMNAS_ENVIO =
   'id, de, para, tipo, titulo, contenido, mensaje, de_nombre, para_nombre, para_correo, estado, resultado, creado_en, contestado_en, respuesta_vista_en'
 
+/** Cuántas cosas caben en unos «varios», como mucho (lo mismo que dice la base). */
+export const MAX_VARIOS = 30
+
 /** Las disciplinas que tienen plantillas (las mismas que el editor de sesión). */
 export const DISCIPLINAS_PLANTILLA = ['Natacion', 'Ciclismo', 'Carrera']
 
@@ -108,6 +133,7 @@ export const DISCIPLINAS_PLANTILLA = ['Natacion', 'Ciclismo', 'Carrera']
 export function etiquetaTipo(e: Pick<Envio, 'tipo' | 'contenido'>): string {
   if (e.tipo === 'plantilla') return 'Plantilla'
   if (e.tipo === 'test') return 'Test'
+  if (e.tipo === 'varios') return 'Varios'
   return (e.contenido?.tests?.length ?? 0) > 0 ? 'Zonas y test' : 'Zonas'
 }
 
@@ -120,6 +146,10 @@ export function queViaja(tipo: TipoEnvio): { viaja: string[]; noViaja: string[] 
   if (tipo === 'test') return {
     viaja: ['Los campos, las fórmulas y los resultados', 'Qué resultado sirve para las zonas'],
     noViaja: ['Las mediciones de tus deportistas'],
+  }
+  if (tipo === 'varios') return {
+    viaja: ['Cada cosa entera: los bloques, los campos y las fórmulas, las zonas', 'Los tests de los que salen las zonas, enganchados a ellas'],
+    noViaja: ['Las mediciones de tus deportistas', 'Lo que hizo tu deportista: tiempos, RPE, comentarios', 'Lo que ajustaste a cada deportista'],
   }
   return {
     viaja: ['Las zonas, con sus porcentajes, su RPE y sus colores', 'Los tests de los que salen, enganchados a ellas'],
@@ -135,9 +165,42 @@ export function dondeQueda(e: Pick<Envio, 'tipo' | 'contenido'>): string {
     return 'Está en tus plantillas: en cualquier sesión de ' + nombre + ', panel «Plantillas», pestaña «Propias».'
   }
   if (e.tipo === 'test') return 'Está en tus Tests propios.'
+  if (e.tipo === 'varios') {
+    const c = e.contenido || {}
+    const donde = [
+      (c.plantillas?.length ?? 0) > 0 ? 'tus plantillas' : '',
+      (c.tests?.length ?? 0) > 0 ? 'tus Tests propios' : '',
+      (c.clasificaciones?.length ?? 0) > 0 ? 'tus Zonas propias' : '',
+    ].filter(Boolean)
+    return 'Está en ' + listaY(donde) + '.'
+  }
   return (e.contenido?.tests?.length ?? 0) > 0
     ? 'Está en tus Zonas propias, y su test en tus Tests propios.'
     : 'Está en tus Zonas propias.'
+}
+
+/** «a», «a y b», «a, b y c». */
+export function listaY(xs: string[]): string {
+  return xs.length <= 1 ? (xs[0] ?? '') : xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1]
+}
+
+/** Lo que lleva unos «varios», contado: «1 test, 1 clasificación de zonas y 2 plantillas». */
+export function resumenVarios(c: { tests?: unknown[] | null; clasificaciones?: unknown[] | null; plantillas?: unknown[] | null } | null | undefined): string {
+  const n = (k: number, uno: string, varios: string) => k ? k + ' ' + (k === 1 ? uno : varios) : ''
+  return listaY([
+    n(c?.tests?.length ?? 0, 'test', 'tests'),
+    n(c?.clasificaciones?.length ?? 0, 'clasificación de zonas', 'clasificaciones de zonas'),
+    n(c?.plantillas?.length ?? 0, 'plantilla', 'plantillas'),
+  ].filter(Boolean)) || 'nada'
+}
+
+/**
+ * Las zonas que salen de un test: las clasificaciones que lo usan de hito.
+ * Para ofrecer «mandar también sus zonas» al mandar un test.
+ */
+export function zonasDeTest<T extends { hitos: string[] | null | undefined }>(idTest: number, clasificaciones: T[]): T[] {
+  const prefijo = 'propia:' + idTest + ':'
+  return clasificaciones.filter(c => (c.hitos || []).some(h => String(h ?? '').startsWith(prefijo)))
 }
 
 /** El primer nombre: lo que va entre paréntesis en una copia con nombre repetido. */
@@ -257,6 +320,9 @@ export interface LoQueTengo {
 export interface Conflictos {
   plantilla: string | null
   clasificacion: string | null
+  /** En unos «varios», por su posición: el nombre propuesto si choca. */
+  plantillas: Record<string, string>
+  clasificaciones: Record<string, string>
   /** Por id del test original: el nombre propuesto si choca. */
   tests: Record<string, string>
   /** Tests que ya tiene de un envío anterior: se usará ese si no ha cambiado. */
@@ -267,16 +333,38 @@ export interface Conflictos {
  * Qué nombres chocarían al aceptar y qué nombre se propone para cada uno. Un
  * test que ya llegó en otro envío del mismo entrenador no choca: si no ha
  * cambiado, la base usa esa copia (y si ha cambiado, le pone el «(Ana)»).
+ *
+ * En unos «varios» se cuenta lo que se va creando, como hace la base al
+ * aceptar: dos plantillas con el mismo nombre en el mismo envío también
+ * chocan entre ellas, y la segunda sale con su «(Ana)».
  */
 export function conflictosDe(e: Pick<Envio, 'tipo' | 'contenido' | 'de_nombre'>, mio: LoQueTengo): Conflictos {
-  const out: Conflictos = { plantilla: null, clasificacion: null, tests: {}, yaLosTiene: [] }
+  const out: Conflictos = { plantilla: null, clasificacion: null, plantillas: {}, clasificaciones: {}, tests: {}, yaLosTiene: [] }
   const c = e.contenido || {}
   const misTests = mio.tests.map(t => t.nombre)
+  const igual = (a: string, b: string | null | undefined) => a === String(b ?? '').trim().slice(0, 80)
   for (const t of c.tests || []) {
     const previa = mio.copiasPrevias[String(t.id)]
     if (previa && mio.tests.some(x => x.id === previa)) { out.yaLosTiene.push(String(t.id)); continue }
     const libre = nombreLibre(t.nombre, misTests, e.de_nombre)
-    if (libre !== String(t.nombre ?? '').trim().slice(0, 80)) out.tests[String(t.id)] = libre
+    if (!igual(libre, t.nombre)) out.tests[String(t.id)] = libre
+    misTests.push(libre)
+  }
+  if (e.tipo === 'varios') {
+    const usadas: Record<string, string[]> = Object.fromEntries(Object.entries(mio.plantillas).map(([d, ns]) => [d, [...ns]]))
+    ;(c.plantillas || []).forEach((p, i) => {
+      const lista = (usadas[p.disciplina] ||= [])
+      const libre = nombreLibre(p.nombre, lista, e.de_nombre)
+      if (!igual(libre, p.nombre)) out.plantillas[String(i)] = libre
+      lista.push(libre)
+    })
+    const clas = [...mio.clasificaciones]
+    ;(c.clasificaciones || []).forEach((z, i) => {
+      const libre = nombreLibre(z.clasificacion?.nombre, clas, e.de_nombre)
+      if (!igual(libre, z.clasificacion?.nombre)) out.clasificaciones[String(i)] = libre
+      clas.push(libre)
+    })
+    return out
   }
   if (e.tipo === 'plantilla' && c.nombre) {
     const usadas = mio.plantillas[c.disciplina || ''] || []
@@ -462,6 +550,9 @@ export async function enviar(sb: any, para: string, que: QueSeEnvia, mensaje?: s
 export interface NombresAlAceptar {
   plantilla?: string
   clasificacion?: string
+  /** En unos «varios», por su posición. */
+  plantillas?: Record<string, string>
+  clasificaciones?: Record<string, string>
   tests?: Record<string, string>
 }
 
@@ -470,6 +561,23 @@ export async function contestar(sb: any, id: number, aceptar: boolean, nombres?:
   const { data, error } = await sb.rpc('contestar_envio', { _id: id, _aceptar: aceptar, _nombres: nombres ?? {} })
   if (error) return { resultado: null, error: errorDeEnvio(error) }
   return { resultado: (data || {}) as ResultadoEnvio & { estado?: string; reusados?: number[] }, error: null }
+}
+
+/** Manda varias cosas en un solo envío: a quien lo recibe le llega todo junto. */
+export async function enviarVarios(
+  sb: any, para: string,
+  que: { plantillas: ReturnType<typeof plantillaParaEnviar>[]; tests: number[]; clasificaciones: number[] },
+  mensaje?: string | null,
+): Promise<{ id: number | null; error: string | null }> {
+  const { data, error } = await sb.rpc('enviar_varios_a_entrenador', {
+    _para: para,
+    _plantillas: que.plantillas,
+    _tests: que.tests,
+    _clasificaciones: que.clasificaciones,
+    _mensaje: mensaje?.trim() || null,
+  })
+  if (error) return { id: null, error: errorDeEnvio(error) }
+  return { id: Number(data), error: null }
 }
 
 /** Lo cancela quien lo mandó, mientras nadie ha contestado. */
