@@ -28,6 +28,7 @@ const modulosEntrenador = [
   { icon: '💪', titulo: 'Biblioteca Fuerza', href: '/fuerza' },
   { icon: '📊', titulo: 'Volumen', href: '/volumen' },
   { icon: '💬', titulo: 'Comunicación', href: '/comunicacion' },
+  { icon: '📨', titulo: 'Envíos', href: '/envios' },
   { icon: '🤖', titulo: 'Asistente IA', href: '/asistente' },
   { icon: '🤝', titulo: 'Comunidad', href: '/comunidad' },
   { icon: '🗑️', titulo: 'Papelera', href: '/papelera' },
@@ -167,7 +168,7 @@ export default function Sidebar() {
     : esPlataforma
       ? [...modulosCoach, { icon: '🛠', titulo: 'Plataforma', href: '/admin' }]
       : modulosCoach
-  const bloqueado = (href: string) => enEspacio && href === '/comunicacion'
+  const bloqueado = (href: string) => enEspacio && (href === '/comunicacion' || href === '/envios')
   const salirDelEspacio = () => {
     setAtletaActivo(null)
     setEspacio(null)
@@ -219,7 +220,9 @@ export default function Sidebar() {
             </div>
           )}
           {modulos.map(m => bloqueado(m.href) ? (
-            <div key={m.titulo} title="Privado entre el entrenador y sus deportistas"
+            <div key={m.titulo} title={m.href === '/envios'
+              ? 'Son tus envíos, no los de este entrenador: sal de su espacio para verlos'
+              : 'Privado entre el entrenador y sus deportistas'}
               className="w-full flex items-center gap-3 px-3 py-3 text-left opacity-50 cursor-not-allowed">
               <span className="text-xl flex-shrink-0">{m.icon}</span>
               <span className="text-gray-400 text-sm whitespace-nowrap">{m.titulo} 🔒</span>

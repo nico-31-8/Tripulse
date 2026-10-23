@@ -40,6 +40,7 @@ import { puedeFijar, propuestaPropia, origenDe } from '@/lib/ancla-propia'
 import { fijarZonas } from '@/lib/zonas-desde-test'
 import { entrenadorEfectivo } from '@/lib/espacio'
 import { sociosDeDireccion, duenosCompartidos, deQuien } from '@/lib/compartido-direccion'
+import EnviarAEntrenador from '@/components/EnviarAEntrenador'
 
 const SIGNO: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', '(': '(', ')': ')' }
 const OPS = ['+', '-', '*', '/', '^', '(', ')']
@@ -145,6 +146,8 @@ export default function TestsPropiosPage() {
   const [tests, setTests] = useState<FilaTest[]>([])
   const [deportistas, setDeportistas] = useState<{ id: number; nombre: string }[]>([])
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
+  /* El test que se está mandando a otro entrenador (lib/envios). */
+  const [enviando, setEnviando] = useState<FilaTest | null>(null)
 
   /* Una sola pantalla con tres caras, en vez de tres rutas. Así el test que
      acabas de crear ya está en memoria cuando pasas a rellenarlo, sin volver a
@@ -596,6 +599,8 @@ export default function TestsPropiosPage() {
                         <button onClick={() => abrirAtleta(t)} className={btnSec}>Pasar a un atleta</button>
                         {/* Uno compartido se pasa igual, pero solo su dueño lo edita o lo archiva. */}
                         {!t.de && <>
+                          <button onClick={() => setEnviando(t)} title="Enviar a otro entrenador" aria-label={'Enviar «' + t.nombre + '» a otro entrenador'}
+                            className="text-gray-500 hover:text-sky-300 px-2 py-1 rounded transition">📨</button>
                           <button onClick={() => editar(t)} title={t.lab ? 'Editar en el Laboratorio' : 'Editar'}
                             className="text-gray-500 hover:text-orange-400 px-2 py-1 rounded transition">✏️</button>
                           <button onClick={() => archivar(t)} title="Archivar"
@@ -983,6 +988,12 @@ export default function TestsPropiosPage() {
           </div>
         )}
       </div>
+      {enviando && (
+        <EnviarAEntrenador onCerrar={() => setEnviando(null)} que={{
+          tipo: 'test', id: enviando.id, nombre: enviando.nombre,
+          detalle: etiquetaDisciplina(enviando.deporte) + (enviando.lab ? ' · del Laboratorio' : '') + ' · produce ' + (enviando.produce.join(', ') || 'nada'),
+        }} />
+      )}
     </main>
   )
 }

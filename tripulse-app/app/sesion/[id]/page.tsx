@@ -15,6 +15,7 @@ import PanelSemana from '@/components/PanelSemana'
 import SelectorEjercicio from '@/components/SelectorEjercicio'
 import ComoAmanecio from '@/components/ComoAmanecio'
 import { bloquesDesdeTareas, zonaPico, guardarPropia } from '@/lib/plantillas-propias'
+import EnviarAEntrenador, { type QueEnviar } from '@/components/EnviarAEntrenador'
 import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden } from '@/lib/tareas-orden'
 import { borrarTareaEntera, vaciarMedicion } from '@/lib/borrar-tarea'
 import { insertarMedicion } from '@/lib/insertar-medicion'
@@ -122,6 +123,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     && ['Natacion', 'Ciclismo', 'Carrera'].includes(sesion?.disciplina)
   const [guardandoPlantilla, setGuardandoPlantilla] = useState(false)
   const [refrescarPropias, setRefrescarPropias] = useState(0)
+  const [envioPlantilla, setEnvioPlantilla] = useState<QueEnviar | null>(null)
 
   // Guarda las tareas de ESTA sesión como una plantilla reutilizable del entrenador.
   // Solo se lleva el molde (zona, series, volumen, descanso): ni RPE, ni fechas, ni
@@ -151,6 +153,25 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
     if (err) { alert('No se ha podido guardar la plantilla.\n\n' + err); return }
     setRefrescarPropias(n => n + 1)
     alert('Plantilla «' + nombre.trim() + '» guardada. La tienes en el panel, en «Propias».')
+  }
+
+  // La manda a otro entrenador: le llega como plantilla (lib/envios). Se leen
+  // las tareas de la base por lo mismo que al guardarla, y las notas de la
+  // sesión NO viajan: pueden hablar del deportista. El nombre se elige en la
+  // ventana.
+  const enviarComoPlantilla = async () => {
+    const { data: frescas } = await supabase.from('tarea')
+      .select('orden, zona_entrenamiento, series, descanso_segundos, bloques, descanso_bloques_segundos, p_duracion(tiempo_planeado), p_distancia(metros_planeados), formato, formato_config')
+      .eq('id_sesion', id).order('orden')
+    const bloques = bloquesDesdeTareas(frescas || [])
+    if (!bloques.length) {
+      alert('Esta sesión no tiene tareas con zona y volumen: no hay nada que mandar como plantilla.')
+      return
+    }
+    setEnvioPlantilla({
+      tipo: 'plantilla', nombreEditable: true, disciplina: sesion.disciplina, bloques,
+      nombre: 'Sesión de ' + cargaZona(zonaPico(bloques)).nombre.toLowerCase(),
+    })
   }
   const [vistaTabla, setVistaTabla] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
@@ -1140,6 +1161,13 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                 {guardandoPlantilla ? 'Guardando…' : '💾 Guardar como plantilla'}
               </button>
             )}
+            {/* Mandarla a otro entrenador: le llega como plantilla (lib/envios). */}
+            {mostrarPlantillas && tareas.length > 0 && (
+              <button onClick={enviarComoPlantilla}
+                className="px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition">
+                📨 Enviar como plantilla
+              </button>
+            )}
             {/* La Tabla es LA vista; el Formulario deja de competir con ella y queda
                 como una salida opcional para quien la prefiera. */}
             <button onClick={() => setVistaTabla(!vistaTabla)}
@@ -1460,6 +1488,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             onAplicada={async () => { await cargarDatos(); setRecargaTareas(n => n + 1) }}
           />
         )}
+        {envioPlantilla && <EnviarAEntrenador que={envioPlantilla} onCerrar={() => setEnvioPlantilla(null)} />}
         </div>{/* /fila gráfica+tareas | plantillas */}
 
         {/* Nutrición y notas: plegadas, con el resumen visible en una línea. Estaban

@@ -14,6 +14,33 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Mándale a otro entrenador una sesión, un test o tus zonas
+
+- **Nuevo:** puedes mandar a otro entrenador de TRIPULSE una sesión (le llega
+  como plantilla), uno de tus tests propios o unas zonas propias. Las zonas van
+  con el test del que salen, así que a él le funcionan con su copia del test.
+- **Se manda desde donde está cada cosa:** en la sesión, «📨 Enviar como
+  plantilla», junto a «Guardar como plantilla»; el 📨 de cada plantilla tuya en
+  el panel de plantillas; el 📨 de cada test en Tests propios, y «📨 Enviar» en
+  cada clasificación de Zonas propias. O todo desde la página nueva **Envíos**
+  (en el menú, y en «Herramientas» del panel), con «📨 Mandar algo».
+- **Al otro entrenador se le busca por su correo exacto**, el que usa para
+  entrar: nadie puede ver la lista de entrenadores. Debajo salen aquellos a los
+  que ya les has mandado algo.
+- **A quien lo recibe le sale en su panel** («Te han enviado»), para aceptarlo
+  o rechazarlo. En Envíos ve qué es antes de aceptar, y si ya tiene algo con el
+  mismo nombre, elige cómo se llamará lo nuevo (si no, «Nombre (Ana)»).
+- **Es una copia:** lo que acepta pasa a ser suyo y puede cambiarlo; si tú
+  cambias lo tuyo, lo suyo no cambia. Nunca viajan los datos de tus
+  deportistas: ni mediciones, ni tiempos, ni RPE, ni comentarios, ni tus notas
+  de la sesión.
+- **Cuando contesta, te sale en tu panel** («Luis ha aceptado…»), y en Envíos
+  ves cómo va todo lo que has mandado. Mientras no conteste, puedes cancelarlo.
+- **Lo que aún no se manda:** las sesiones de fuerza (no hay plantillas de
+  fuerza) y los deportistas, que llegarán más adelante como traspaso.
+
+---
+
 ## 23 de octubre de 2026 · Comunicación: cada comentario de sesión sale una vez
 
 - **Antes**, el comentario que deja tu deportista al cerrar una sesión salía

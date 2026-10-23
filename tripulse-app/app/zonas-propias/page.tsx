@@ -42,6 +42,7 @@ import {
   type AjusteZona, type Borrador, type Frontera, type Lado,
 } from '@/lib/zonas-ajuste'
 import EscaleraZonas, { type AsaEscalera, type EdicionEscalera } from '@/components/zonas/EscaleraZonas'
+import EnviarAEntrenador from '@/components/EnviarAEntrenador'
 
 const HITO = '#8ecbff'
 /* Si la lista de clasificaciones está plegada, en este navegador. */
@@ -112,6 +113,8 @@ export default function ZonasPropiasPage() {
   const [ajenas, setAjenas] = useState<{ de: string; clasifs: Clasificacion[] }[]>([])
   const [sel, setSel] = useState<Seleccion | null>(null)
   const [cambios, setCambios] = useState(false)
+  /* La clasificación que se está mandando a otro entrenador (lib/envios). */
+  const [enviando, setEnviando] = useState<Clasificacion | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'mal'; texto: string } | null>(null)
   /* LA LISTA DE LA IZQUIERDA SE PUEDE PLEGAR, para dejarle sitio a la escalera
@@ -787,7 +790,12 @@ export default function ZonasPropiasPage() {
                       <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full text-gray-300 bg-white/[0.07]">{textoUnidad(guia)}</span>
                       {c.suelta && <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full text-amber-200 bg-amber-400/10">sin guardar: guárdala para poder usarla</span>}
                       {!soloLectura && (
-                        <button onClick={() => archivarClasificacion(iActual)} className="ml-auto text-gray-500 hover:text-red-400 text-xs transition">Archivar</button>
+                        <>
+                          <button onClick={() => setEnviando(c)} disabled={cambios || !c.id || !!c.suelta}
+                            title={cambios || !c.id || c.suelta ? 'Guárdala antes de enviarla' : 'Enviar a otro entrenador'}
+                            className="ml-auto text-gray-400 hover:text-sky-300 text-xs transition disabled:opacity-40 disabled:hover:text-gray-400">📨 Enviar</button>
+                          <button onClick={() => archivarClasificacion(iActual)} className="text-gray-500 hover:text-red-400 text-xs transition">Archivar</button>
+                        </>
                       )}
                     </div>
                     {mc && mc !== 'Ponle un nombre' && <p className="text-red-300 text-xs -mt-3">⚠ {mc}</p>}
@@ -1118,6 +1126,16 @@ export default function ZonasPropiasPage() {
           mandan enteras. Si a alguien una zona no le encaja, sale marcada con ⚠ y se puede mandar igual.
         </div>
       </div>
+      {enviando?.id && (
+        <EnviarAEntrenador onCerrar={() => setEnviando(null)} que={{
+          tipo: 'zonas', id: enviando.id, nombre: enviando.nombre,
+          detalle: (enviando.deporte === 'Natacion' ? 'Natación' : enviando.deporte) + ' · ' + enviando.zonas.length + (enviando.zonas.length === 1 ? ' zona' : ' zonas'),
+          zonas: enviando.zonas.map(z => ({ sigla: z.sigla, nombre: z.nombre, color: z.color })),
+          /* Los tests propios de los que cuelga: viajan con ellas. */
+          tests: [...new Set(enviando.hitos.map(h => leerIdPropia(h)?.idDefinicion).filter((x): x is number => !!x))]
+            .map(id => tests?.find(t => t.id === id)?.nombre || 'un test tuyo'),
+        }} />
+      )}
     </main>
   )
 }

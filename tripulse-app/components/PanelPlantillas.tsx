@@ -16,6 +16,7 @@ import {
 } from '@/lib/plantillas'
 import { cargarPropias, borrarPropia, type PlantillaPropia } from '@/lib/plantillas-propias'
 import { horasMinutos } from '@/lib/medicion'
+import EnviarAEntrenador from '@/components/EnviarAEntrenador'
 
 type Pestana = 'tipo' | 'propias'
 
@@ -48,6 +49,8 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
   const [nivel, setNivel] = useState<NivelPlantilla>('intermedio')
   const [aplicando, setAplicando] = useState(false)
   const [propias, setPropias] = useState<PlantillaPropia[]>([])
+  /* La plantilla que se está mandando a otro entrenador (lib/envios). */
+  const [enviando, setEnviando] = useState<PlantillaPropia | null>(null)
 
   const recargarPropias = useCallback(async () => {
     setPropias(await cargarPropias(supabase, disciplina))
@@ -185,7 +188,11 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
                         className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs py-1.5 rounded-lg font-medium transition disabled:opacity-50">
                         {aplicando ? 'Aplicando…' : 'Aplicar a esta sesión'}
                       </button>
-                      {/* Una compartida se aplica, pero solo la borra quien la hizo. */}
+                      {/* Una compartida se aplica, pero solo la manda o la borra quien la hizo. */}
+                      {!p.de && (
+                        <button onClick={() => setEnviando(p)} title="Enviar a otro entrenador" aria-label={'Enviar «' + p.nombre + '» a otro entrenador'}
+                          className="px-2 text-gray-500 hover:text-sky-300 text-xs transition">📨</button>
+                      )}
                       {!p.de && (
                         <button onClick={() => eliminar(p)} title="Borrar plantilla"
                           className="px-2 text-gray-600 hover:text-red-400 text-xs transition">🗑</button>
@@ -262,6 +269,10 @@ export default function PanelPlantillas({ sesionId, disciplina, nTareas, ordenBa
           )
         })}
       </div>
+      {enviando && (
+        <EnviarAEntrenador onCerrar={() => setEnviando(null)}
+          que={{ tipo: 'plantilla', nombre: enviando.nombre, disciplina: enviando.disciplina, objetivo: enviando.objetivo, bloques: enviando.bloques }} />
+      )}
     </div>
   )
 }

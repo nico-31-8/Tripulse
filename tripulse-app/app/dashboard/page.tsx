@@ -29,6 +29,7 @@ import { informesDeDatos } from '@/lib/informe-datos'
 import { resumenDeEquipo, COLOR_SENAL, type ResultadoSenales } from '@/lib/senales'
 import { getEspacio, setEspacio, entrenadorEfectivo, type Espacio } from '@/lib/espacio'
 import AvisosDirector from '@/components/AvisosDirector'
+import AvisosEnvios from '@/components/AvisosEnvios'
 import EntradaEspacio, { type FilaRoster } from '@/components/EntradaEspacio'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import { leerAnamnesis } from '@/lib/anamnesis-vigente'
@@ -391,6 +392,8 @@ export default function Dashboard() {
             ha cambiado algo, o (si él es director) le han contestado. Dentro
             del espacio de otro entrenador no: ahí no está en su casa. */}
         {!espacio && <AvisosDirector papel="entrenador" className="mb-6 max-w-3xl mx-auto" />}
+        {/* Lo que te han mandado otros entrenadores (y lo que te han contestado). */}
+        {!espacio && <AvisosEnvios className="mb-6 max-w-3xl mx-auto" />}
         {/* A quien ya usaba la app el tutorial se le ofrece aquí, una vez (components/tutorial). */}
         {!espacio && <OfertaTutorial className="mb-6" />}
         {!espacio && <OnboardingEntrenador perfil={perfil} numDeportistas={deportistas.length} tienePlan={tienePlan} />}
@@ -750,6 +753,8 @@ export default function Dashboard() {
                       {[
                         { ic: '👥', l: 'Deportistas', s: deportistas.length + ' en tu equipo', c: '#f97316', h: '/deportistas' },
                         { ic: '💬', l: 'Comunicación', s: (metricas?.general?.comunicacion || 0) > 0 ? metricas!.general.comunicacion + ' sin leer' : 'Al día', c: '#ec4899', h: '/comunicacion' },
+                        /* Lo que te mandan otros entrenadores y lo que mandas tú (lib/envios). */
+                        { ic: '📨', l: 'Envíos', s: 'Recibidos y enviados', c: '#38bdf8', h: '/envios' },
                         { ic: '💪', l: 'Bibl. Fuerza', s: (metricas?.general?.ejercicios ?? '—') + ' ejercicios', c: '#ef4444', h: '/fuerza' },
                         { ic: '🗑', l: 'Papelera', s: (metricas?.general?.papelera || 0) > 0 ? metricas!.general.papelera + ' en papelera' : 'Vacía', c: '#6b7280', h: '/papelera' },
                         { ic: '🤖', l: 'Asistente IA', s: 'Copiloto', c: '#f97316', h: '/asistente' },
@@ -766,8 +771,9 @@ export default function Dashboard() {
                       ]
                         /* En el espacio de otro entrenador, sus cobros ni
                            aparecen y el chat se queda con candado: es suyo y de
-                           sus deportistas (supabase/director-1-base.sql). */
-                        .filter(t => !(espacio && t.h === '/cobros'))
+                           sus deportistas (supabase/director-1-base.sql). Tus
+                           envíos tampoco: son tuyos, no de ese entrenador. */
+                        .filter(t => !(espacio && (t.h === '/cobros' || t.h === '/envios')))
                         .map(t => espacio && t.h === '/comunicacion' ? (
                         <div key={t.l} title="Privado entre el entrenador y sus deportistas"
                           className="flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.01] opacity-60 cursor-not-allowed" style={cssVar(t.c)}>
