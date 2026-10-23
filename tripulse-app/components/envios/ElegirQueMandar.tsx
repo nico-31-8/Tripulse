@@ -13,6 +13,9 @@
 //
 // Las sesiones sueltas no salen aquí: una sesión es de un deportista y de un
 // día. Se mandan con su botón, o guardándolas como plantilla.
+//
+// Un DEPORTISTA va solo: es un traspaso (pasa a la lista del otro), no una
+// copia, así que no se junta con nada. Elegirlo quita lo demás, y al revés.
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -22,9 +25,9 @@ import { cargaZona } from '@/lib/zonas'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import type { BloqueP } from '@/lib/plantillas'
 import type { QueEnviar, PlantillaQueEnviar, TestQueEnviar, ZonasQueEnviar } from '@/components/EnviarAEntrenador'
-import { motivoNoSeManda, testsDeHitos, resultadosDe, casaConBusqueda, zonasDeTest, MAX_VARIOS } from '@/lib/envios'
+import { motivoNoSeManda, testsDeHitos, resultadosDe, casaConBusqueda, zonasDeTest, primerNombre, MAX_VARIOS } from '@/lib/envios'
 
-type Pestana = 'plantilla' | 'test' | 'zonas'
+type Pestana = 'plantilla' | 'test' | 'zonas' | 'deportista'
 
 export interface Opcion {
   clave: string
@@ -38,12 +41,15 @@ export interface Opcion {
   que: QueEnviar
   /** En un test: las zonas que salen de él (sus claves), para ofrecerlas. */
   relacionadas?: { clave: string; nombre: string }[]
+  /** Va solo: elegirlo quita lo demás (un deportista). */
+  solo?: boolean
 }
 
 const PESTANAS: { id: Pestana; titulo: string; vacio: string }[] = [
   { id: 'plantilla', titulo: 'Plantillas', vacio: 'Aún no tienes plantillas propias. Se guardan desde una sesión con «Guardar como plantilla».' },
   { id: 'test', titulo: 'Tests', vacio: 'Aún no tienes tests propios. Se crean en Tests propios o en el Laboratorio.' },
   { id: 'zonas', titulo: 'Zonas', vacio: 'Aún no tienes zonas propias. Se crean en Zonas propias.' },
+  { id: 'deportista', titulo: 'Deportistas', vacio: 'Aún no tienes deportistas.' },
 ]
 
 export type OpcionesQueMandar = Record<Pestana, Opcion[]>
@@ -58,13 +64,19 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
       if (!vivo || !user) return
       /* Solo lo tuyo (id_entrenador = tú): la base deja leer también lo que te
          comparte la dirección, y eso no se manda. */
-      const [pl, ts, cs] = await Promise.all([
+      /* Los deportistas: los de tu equipo (no los evaluados ni la ficha de un
+         grupo), y los traspasos que ya tienes pedidos, para no pedirlos dos veces. */
+      const [pl, ts, cs, ds, ps] = await Promise.all([
         supabase.from('plantilla_sesion').select('id, nombre, disciplina, zona, objetivo, bloques')
           .eq('id_entrenador', user.id).order('created_at', { ascending: false }),
         supabase.from('test_definicion').select('id, nombre, deporte, resultados, modelo')
           .eq('id_entrenador', user.id).eq('archivado', false).order('created_at', { ascending: false }),
         supabase.from('zona_clasificacion').select('id, nombre, deporte, hitos')
           .eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
+        supabase.from('deportista').select('id, nombre, id_usuario')
+          .eq('id_entrenador', user.id).eq('solo_test', false).is('id_grupo', null).order('nombre'),
+        supabase.from('envio_entrenador').select('id_deportista, para_nombre')
+          .eq('de', user.id).eq('tipo', 'deportista').eq('estado', 'pendiente'),
       ])
       const clasifs = (cs.data || []) as { id: number; nombre: string; deporte: string; hitos: string[] | null }[]
       const { data: zs } = clasifs.length
@@ -118,7 +130,18 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
         }
       })
 
-      setOpciones({ plantilla: plantillas, test: deTests, zonas: deZonas })
+      const pedidos = new Map(((ps.data || []) as { id_deportista: number; para_nombre: string | null }[])
+        .map(p => [Number(p.id_deportista), p.para_nombre]))
+      const deportistas: Opcion[] = ((ds.data || []) as { id: number; nombre: string; id_usuario: string | null }[]).map(d => {
+        const detalle = d.id_usuario ? 'Con cuenta: también tendrá que aceptarlo' : 'Ficha sin cuenta: basta con que acepte el otro'
+        return {
+          clave: 'd' + d.id, nombre: d.nombre, marca: '👤', color: '#7dd3fc', detalle, solo: true,
+          motivo: pedidos.has(d.id) ? 'Ya has pedido su traspaso a ' + (primerNombre(pedidos.get(d.id)) || 'otro entrenador') + ': lo ves en Enviados' : null,
+          que: { tipo: 'deportista', id: d.id, nombre: d.nombre, tieneCuenta: !!d.id_usuario, detalle: d.id_usuario ? 'Con cuenta en TRIPULSE' : 'Ficha sin cuenta' },
+        }
+      })
+
+      setOpciones({ plantilla: plantillas, test: deTests, zonas: deZonas, deportista: deportistas })
     })()
     return () => { vivo = false }
   }, [])
@@ -126,9 +149,11 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
   return <ElegirQueMandarVista opciones={opciones} onElegir={onElegir} onCerrar={onCerrar} />
 }
 
-/** Con una elegida, esa; con varias, unos «varios» con todas. */
+/** Con una elegida, esa; con varias, unos «varios» con todas. Un deportista va solo. */
 export function queDeLasElegidas(elegidas: Opcion[]): QueEnviar | null {
   if (!elegidas.length) return null
+  const solo = elegidas.find(o => o.solo)
+  if (solo) return solo.que
   if (elegidas.length === 1) return elegidas[0].que
   const plantillas: PlantillaQueEnviar[] = [], tests: TestQueEnviar[] = [], zonas: ZonasQueEnviar[] = []
   for (const { que } of elegidas) {
@@ -151,7 +176,7 @@ export function ElegirQueMandarVista({ opciones, onElegir, onCerrar }: {
   /* Lo marcado, en el orden en que se marcó. */
   const [marcadas, setMarcadas] = useState<string[]>([])
   const pestana: Pestana = elegida
-    ?? (opciones ? (['plantilla', 'test', 'zonas'] as Pestana[]).find(p => opciones[p].length) : null)
+    ?? (opciones ? (['plantilla', 'test', 'zonas', 'deportista'] as Pestana[]).find(p => opciones[p].length) : null)
     ?? 'plantilla'
 
   // Escape cierra, como en el resto de ventanas.
@@ -164,16 +189,19 @@ export function ElegirQueMandarVista({ opciones, onElegir, onCerrar }: {
   const lista = useMemo(
     () => (opciones?.[pestana] || []).filter(o => casaConBusqueda(o.nombre, busqueda)),
     [opciones, pestana, busqueda])
-  const todas = useMemo(() => opciones ? [...opciones.plantilla, ...opciones.test, ...opciones.zonas] : [], [opciones])
+  const todas = useMemo(() => opciones ? [...opciones.plantilla, ...opciones.test, ...opciones.zonas, ...opciones.deportista] : [], [opciones])
   const info = PESTANAS.find(p => p.id === pestana)!
   const elegidas = marcadas.map(c => todas.find(o => o.clave === c)).filter((o): o is Opcion => !!o)
   const demasiadas = elegidas.length > MAX_VARIOS
+  /* Lo que va solo (un deportista) no se junta con nada. */
+  const esSolo = (clave: string) => !!todas.find(o => o.clave === clave)?.solo
 
   const alternar = (o: Opcion) => {
     if (o.motivo) return
-    setMarcadas(m => m.includes(o.clave) ? m.filter(c => c !== o.clave) : [...m, o.clave])
+    setMarcadas(m => m.includes(o.clave) ? m.filter(c => c !== o.clave)
+      : o.solo ? [o.clave] : [...m.filter(c => !esSolo(c)), o.clave])
   }
-  const anadir = (clave: string) => setMarcadas(m => m.includes(clave) ? m : [...m, clave])
+  const anadir = (clave: string) => setMarcadas(m => m.includes(clave) ? m : [...m.filter(c => !esSolo(c)), clave])
   const siguiente = () => {
     const q = queDeLasElegidas(elegidas)
     if (q && !demasiadas) onElegir(q)
@@ -189,13 +217,13 @@ export function ElegirQueMandarVista({ opciones, onElegir, onCerrar }: {
         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 id="elegir-titulo" className="font-bold text-lg">¿Qué quieres mandar?</h3>
-            <p className="text-xs text-gray-500">Puedes elegir varias, también de pestañas distintas: le llega todo junto.</p>
+            <p className="text-xs text-gray-500">Puedes elegir varias, también de pestañas distintas: le llega todo junto. Un deportista va solo.</p>
           </div>
           <button type="button" onClick={onCerrar} aria-label="Cerrar" className="text-gray-500 hover:text-white text-xl leading-none px-1 transition">×</button>
         </div>
 
         <div className="px-5 pt-4 flex flex-col gap-3">
-          <div role="tablist" aria-label="Qué mandas" className="inline-flex gap-1 p-1 rounded-lg bg-gray-950 border border-gray-800 self-start">
+          <div role="tablist" aria-label="Qué mandas" className="inline-flex gap-1 p-1 rounded-lg bg-gray-950 border border-gray-800 self-start max-w-full overflow-x-auto">
             {PESTANAS.map(p => {
               const marcadasAqui = opciones ? opciones[p.id].filter(o => marcadas.includes(o.clave)).length : 0
               return (
@@ -204,7 +232,7 @@ export function ElegirQueMandarVista({ opciones, onElegir, onCerrar }: {
                     ? 'bg-orange-500/15 text-orange-200 font-semibold shadow-[inset_0_0_0_1px_rgba(249,115,22,.4)]'
                     : 'text-gray-400 hover:text-white')}>
                   {p.titulo}
-                  {opciones && opciones[p.id].length > 0 && <span className="ml-1 font-normal opacity-70">{opciones[p.id].length}</span>}
+                  {opciones && opciones[p.id].length > 0 && <span className="ml-1 font-normal opacity-70 hidden sm:inline">{opciones[p.id].length}</span>}
                   {marcadasAqui > 0 && <span className="ml-1.5 text-[11px] font-bold px-1.5 py-px rounded-full bg-orange-500 text-white">✓{marcadasAqui}</span>}
                 </button>
               )
@@ -216,6 +244,12 @@ export function ElegirQueMandarVista({ opciones, onElegir, onCerrar }: {
         </div>
 
         <ul className="px-5 py-3 flex flex-col gap-1.5 overflow-y-auto min-h-[12rem]">
+          {pestana === 'deportista' && opciones && opciones.deportista.length > 0 && (
+            <li className="text-xs text-sky-100/90 bg-sky-400/10 border border-sky-400/30 rounded-lg px-3 py-2 leading-relaxed">
+              Pasar un deportista no es una copia: pasa a la lista del otro entrenador con su historial, y tú dejas de ver su ficha.
+              Va solo, sin nada más.
+            </li>
+          )}
           {!opciones ? (
             <li className="text-sm text-gray-500 py-6 text-center">Cargando…</li>
           ) : !opciones[pestana].length ? (

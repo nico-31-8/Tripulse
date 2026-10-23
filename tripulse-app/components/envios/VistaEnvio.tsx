@@ -4,27 +4,97 @@
 // ============================================================
 // Lo que se ve de un envío antes de aceptarlo (o de lo que mandaste): los
 // bloques de la plantilla, los resultados del test, la tabla de zonas y los
-// tests de los que salen. La usa /envios. Ver lib/envios.
+// tests de los que salen; y en un traspaso, lo que pasa si se acepta. La usa
+// /envios. Ver lib/envios.
 
 import { cargaZona } from '@/lib/zonas'
 import { textoBloque } from '@/lib/plantillas'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import {
-  nombresDeHitos, resultadosDe, textoZona, textoRpe, zonasDesconocidas, primerNombre, resumenVarios,
-  type Envio, type ContenidoEnvio, type TestEnviado,
+  nombresDeHitos, resultadosDe, textoZona, textoRpe, zonasDesconocidas, primerNombre, resumenVarios, chipEstado, textoCupo, listaY,
+  type Envio, type ContenidoEnvio, type TestEnviado, type TonoEstado,
 } from '@/lib/envios'
 
 const DESCANSO = (s?: number) => !s ? '—' : s >= 60 ? (s % 60 ? Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″' : s / 60 + '′') : s + '″'
 
+const TONO: Record<TonoEstado, string> = {
+  ambar: 'text-amber-200 bg-amber-400/10 border-amber-400/40',
+  bien: 'text-emerald-200 bg-emerald-400/10 border-emerald-400/40',
+  rojo: 'text-red-200 bg-red-400/10 border-red-400/35',
+  neutro: 'text-gray-300 bg-white/[0.05] border-gray-700',
+}
+
 /** El estado como chip: lo que pide atención, en ámbar. */
 export function ChipEstado({ e, papel }: { e: Envio; papel: 'recibe' | 'manda' }) {
-  const color = e.estado === 'pendiente' ? 'text-amber-200 bg-amber-400/10 border-amber-400/40'
-    : e.estado === 'aceptado' ? 'text-emerald-200 bg-emerald-400/10 border-emerald-400/40'
-      : e.estado === 'rechazado' ? 'text-red-200 bg-red-400/10 border-red-400/35'
-        : 'text-gray-300 bg-white/[0.05] border-gray-700'
-  const texto = e.estado === 'pendiente' ? (papel === 'recibe' ? 'Por revisar' : 'Sin contestar')
-    : e.estado === 'aceptado' ? 'Aceptado' : e.estado === 'rechazado' ? 'Rechazado' : 'Cancelado'
-  return <span className={'text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap self-start ' + color}>{texto}</span>
+  const { texto, tono } = chipEstado(e, papel)
+  return <span className={'text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap self-start ' + TONO[tono]}>{texto}</span>
+}
+
+/** Un traspaso: lo que pasa si se acepta, y lo suyo que viaja con él. */
+function PreviewTraspaso({ e, papel, cupo }: { e: Envio; papel: 'recibe' | 'manda'; cupo?: { cupo: number | null; tengo: number } | null }) {
+  const c: ContenidoEnvio = e.contenido || {}
+  const dep = primerNombre(c.deportista?.nombre) || 'El deportista'
+  const de = primerNombre(e.de_nombre) || 'su entrenador'
+  const para = primerNombre(e.para_nombre) || 'el otro entrenador'
+  const tests = c.tests || [], clasificaciones = c.clasificaciones || [], ejercicios = c.ejercicios || []
+  const suyo = [
+    tests.length ? (tests.length === 1 ? 'el test ' : 'los tests ') + listaY(tests.map(t => '«' + t.nombre + '»')) : '',
+    clasificaciones.length ? 'las zonas ' + listaY(clasificaciones.map(z => '«' + z.clasificacion?.nombre + '»')) : '',
+    ejercicios.length ? (ejercicios.length === 1 ? 'un ejercicio' : ejercicios.length + ' ejercicios') + ' de ' + (papel === 'recibe' ? 'su biblioteca' : 'tu biblioteca') : '',
+  ].filter(Boolean)
+  const elCupo = papel === 'recibe' && e.estado === 'pendiente' && !c.deportista?.solo_test ? textoCupo(cupo) : null
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <p className={etiqueta}>{papel === 'recibe' ? 'Lo que pasa si aceptas' : 'Lo que pasa si acepta'}</p>
+        <ul className="list-disc pl-5 text-sm text-gray-300 flex flex-col gap-1">
+          <li>{dep} pasa a {papel === 'recibe' ? 'tu lista' : 'la lista de ' + para}, con su historial, sus tests y su plan.</li>
+          {suyo.length > 0 && (
+            <li>
+              {papel === 'recibe' ? 'Te llegan' : 'Le llegan'} también, como copias {papel === 'recibe' ? 'tuyas' : 'suyas'}, {listaY(suyo)}:
+              {' '}sus mediciones, sus ajustes y sus sesiones pasan a ellas.
+              {papel === 'recibe' && ' Si ya tienes algo con el mismo nombre, llega como «Nombre (' + de + ')».'}
+            </li>
+          )}
+          <li>{papel === 'recibe' ? 'Sale de los grupos de ' + de + ', y ' + de + ' deja de ver su ficha.' : 'Sale de tus grupos, y dejas de ver su ficha.'}</li>
+          <li>{papel === 'recibe' ? 'No verás sus cobros ni sus mensajes con ' + de + '.' : 'Tus cobros y vuestros mensajes se quedan contigo.'}</li>
+          {elCupo && <li className={elCupo.lleno ? 'text-amber-200' : ''}>{elCupo.texto}</li>}
+          {e.deportista_usuario
+            ? <li>Tiene que aceptarlo también {dep}. Hasta entonces sigue {papel === 'recibe' ? 'con ' + de : 'contigo'}.</li>
+            : <li>No tiene cuenta: basta con que {papel === 'recibe' ? 'aceptes tú' : 'acepte ' + para}.</li>}
+        </ul>
+      </div>
+      {clasificaciones.map((z, i) => (
+        <PreviewContenido key={'z' + i} papel={papel} sinTests
+          e={{ ...e, tipo: 'zonas', contenido: { clasificacion: z.clasificacion, zonas: z.zonas, tests } }} />
+      ))}
+      {tests.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className={etiqueta}>{tests.length === 1 ? 'Su test' : 'Sus tests'}, con sus mediciones</p>
+          <PreviewTests tests={tests} />
+        </div>
+      )}
+      {ejercicios.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className={etiqueta}>{papel === 'recibe' ? 'Los ejercicios de la biblioteca de ' + de : 'Los ejercicios de tu biblioteca que van'}</p>
+          <ul className="rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 flex flex-col gap-1 text-sm text-gray-200">
+            {ejercicios.map(x => (
+              <li key={x.id} className="flex items-center gap-2 min-w-0">
+                <span className="truncate">{x.nombre}</span>
+                {x.grupo_muscular && <span className="text-gray-500 text-xs flex-shrink-0">· {x.grupo_muscular}</span>}
+                {x.url_video && <span className="text-xs text-sky-300/80 flex-shrink-0">· con vídeo</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-500">
+            {papel === 'recibe'
+              ? 'Llegan a tu biblioteca con su vídeo y sus etiquetas. En sus sesiones siguen con el nombre, las series y los kilos de siempre.'
+              : 'En sus sesiones siguen con el nombre, las series y los kilos de siempre: la copia es para el vídeo y la técnica.'}
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 const etiqueta = 'text-[11px] font-semibold uppercase tracking-[0.07em] text-gray-500'
@@ -65,13 +135,16 @@ function PreviewTests({ tests }: { tests: TestEnviado[] }) {
   )
 }
 
-export function PreviewContenido({ e, papel, sinTests = false }: {
+export function PreviewContenido({ e, papel, sinTests = false, cupo }: {
   e: Envio
   papel: 'recibe' | 'manda'
   /** Dentro de unos «varios», los tests se enseñan una vez, al final. */
   sinTests?: boolean
+  /** En un traspaso que te llega: tu cupo, para decir cuántos te quedarían. */
+  cupo?: { cupo: number | null; tengo: number } | null
 }) {
   const c: ContenidoEnvio = e.contenido || {}
+  if (e.tipo === 'deportista') return <PreviewTraspaso e={e} papel={papel} cupo={cupo} />
   /* Unos «varios»: cada parte con su vista de siempre, y los tests al final. */
   if (e.tipo === 'varios') {
     return (

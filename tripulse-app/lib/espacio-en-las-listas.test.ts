@@ -28,6 +28,8 @@ const SE_QUEDAN_CON_LOS_SUYOS: Record<string, string> = {
   'app/grupo/[id]/page.tsx': 'los grupos quedan fuera de la figura de director',
   'app/zonas-propias/page.tsx': 'las zonas propias son del entrenador que entra',
   'app/deportistas/page.tsx': 'dentro de un espacio pinta ListaEspacio; sus consultas son las de su equipo',
+  'components/envios/ElegirQueMandar.tsx': 'solo se pasa un deportista tuyo (un traspaso), y Envíos está cerrado en un espacio',
+  'components/AvisosEnvios.tsx': 'tu cupo, para aceptar un traspaso; el aviso no sale en el espacio de otro',
 }
 
 /* Las que tienen que pasar por el espacio. Si alguna deja de hacerlo, falla. */

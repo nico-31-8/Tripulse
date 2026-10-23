@@ -52,19 +52,20 @@ export default function ChatPage({ params }: { params: Promise<{ deportistaId: s
     setMiRol(rol)
     const dep = depQ.data
     setDeportista(dep)
-    if (rol === 'entrenador') {
-      setEntrenadorId(user.id)
-    } else {
-      setEntrenadorId(dep?.id_entrenador || null)
-    }
-    setMensajes(msgs || [])
+    /* La conversación es de un entrenador y un deportista. El entrenador solo
+       recibe las suyas; el deportista recibe todas las que ha tenido, y si
+       cambió de entrenador (un traspaso) aquí va la de su entrenador de ahora. */
+    const conversacion: string | null = rol === 'entrenador' ? user.id : (dep?.id_entrenador || null)
+    setEntrenadorId(conversacion)
+    setMensajes((msgs || []).filter((m: { id_entrenador?: string | null }) => !conversacion || m.id_entrenador === conversacion))
     setLoading(false)
-    supabase.from('mensajes')
+    let leer = supabase.from('mensajes')
       .update({ leido: true })
       .eq('id_deportista', Number(deportistaId))
       .eq('autor', rol === 'entrenador' ? 'deportista' : 'entrenador')
       .eq('leido', false)
-      .then(() => {})
+    if (conversacion) leer = leer.eq('id_entrenador', conversacion)
+    leer.then(() => {})
   }
 
   const enviar = async () => {

@@ -6,6 +6,9 @@
 // del test, la tabla de zonas. Si algo choca con un nombre que ya tienes, se
 // elige cómo se llamará lo nuevo. Aceptar crea copias tuyas, en un solo paso
 // (supabase/envios-entrenadores.sql). Ver lib/envios.
+//
+// Un traspaso de un deportista no es una copia: si tiene cuenta, contesta
+// también él, y el chip dice a quién le falta contestar (envios-traspaso.sql).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -14,7 +17,7 @@ import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
   COLUMNAS_ENVIO, contestar, cancelar, marcarRespuestasVistas, conflictosDe, copiasPreviasDe,
-  etiquetaTipo, haceCuanto, dondeQueda, textoEstado, primerNombre, faltaLaTabla,
+  etiquetaTipo, haceCuanto, dondeQueda, textoEstado, primerNombre, faltaLaTabla, puedoContestar, traspasoContestado, textoCupo,
   type Envio, type LoQueTengo, type NombresAlAceptar,
 } from '@/lib/envios'
 import { ChipEstado, PreviewContenido } from '@/components/envios/VistaEnvio'
@@ -35,6 +38,8 @@ export default function PaginaEnvios() {
   const [pestana, setPestana] = useState<Pestana>('recibidos')
   const [sel, setSel] = useState<number | null>(null)
   const [mio, setMio] = useState<Omit<LoQueTengo, 'copiasPrevias'> | null>(null)
+  /* Tu cupo, para decir antes de aceptar un traspaso cuántos te quedarían. */
+  const [miCupo, setMiCupo] = useState<{ cupo: number | null; tengo: number } | null>(null)
   const [nombres, setNombres] = useState<Record<string, string>>({})
   const [trabajando, setTrabajando] = useState(false)
   const [hecho, setHecho] = useState<Record<number, string>>({})
@@ -46,10 +51,13 @@ export default function PaginaEnvios() {
 
   /* Lo que ya tienes, para saber qué nombres chocarían al aceptar. */
   const cargarMio = useCallback(async (id: string) => {
-    const [{ data: ts }, { data: cs }, { data: ps }] = await Promise.all([
+    const [{ data: ts }, { data: cs }, { data: ps }, { data: yo }, { count: tengo }] = await Promise.all([
       supabase.from('test_definicion').select('id, nombre').eq('id_entrenador', id).eq('archivado', false),
       supabase.from('zona_clasificacion').select('nombre').eq('id_entrenador', id).eq('archivada', false),
       supabase.from('plantilla_sesion').select('nombre, disciplina').eq('id_entrenador', id),
+      supabase.from('perfiles').select('cupo_deportistas').eq('id', id).maybeSingle(),
+      /* Lo mismo que cuenta la base para el cupo: los que no son solo de tests. */
+      supabase.from('deportista').select('id', { count: 'exact', head: true }).eq('id_entrenador', id).eq('solo_test', false),
     ])
     const plantillas: Record<string, string[]> = {}
     for (const p of (ps || []) as { nombre: string; disciplina: string }[]) (plantillas[p.disciplina] ||= []).push(p.nombre)
@@ -58,6 +66,8 @@ export default function PaginaEnvios() {
       clasificaciones: ((cs || []) as { nombre: string }[]).map(c => c.nombre),
       plantillas,
     })
+    const cupo = (yo as { cupo_deportistas?: number | null } | null)?.cupo_deportistas
+    setMiCupo({ cupo: cupo == null ? null : Number(cupo), tengo: tengo ?? 0 })
   }, [])
 
   /* Quien lo mandó ya ha visto la respuesta: se va su aviso del panel. */
@@ -118,10 +128,13 @@ export default function PaginaEnvios() {
 
   const lista = pestana === 'recibidos' ? recibidos : enviados
   const actual = lista.find(e => e.id === sel) ?? null
-  const pendientes = recibidos.filter(e => e.estado === 'pendiente').length
+  /* Lo que te toca contestar: un traspaso que ya aceptaste espera al deportista. */
+  const pendientes = recibidos.filter(puedoContestar).length
 
+  /* Un traspaso no pregunta nombres: lo hace el último que acepta, que puede
+     ser el deportista, y la base les pone el «(Ana)» si chocan. */
   const conflictos = useMemo(() => {
-    if (!actual || pestana !== 'recibidos' || actual.estado !== 'pendiente' || !mio) return null
+    if (!actual || pestana !== 'recibidos' || actual.estado !== 'pendiente' || actual.tipo === 'deportista' || !mio) return null
     return conflictosDe(actual, { ...mio, copiasPrevias: copiasPreviasDe(recibidos, actual.de) })
   }, [actual, pestana, mio, recibidos])
 
@@ -135,7 +148,27 @@ export default function PaginaEnvios() {
 
   const responder = async (e: Envio, aceptar: boolean) => {
     if (trabajando) return
-    if (!aceptar && !confirm('¿Rechazar «' + e.titulo + '»?\n\nNo se crea nada, y ' + (primerNombre(e.de_nombre) || 'quien te lo mandó') + ' verá que lo has rechazado.')) return
+    const de = primerNombre(e.de_nombre) || 'quien te lo mandó'
+    if (!aceptar && !confirm(e.tipo === 'deportista'
+      ? '¿Rechazar el traspaso de ' + (e.contenido.deportista?.nombre || 'este deportista') + '?\n\nSigue con ' + de + ', y ' + de + ' verá que lo has rechazado.'
+      : '¿Rechazar «' + e.titulo + '»?\n\nNo se crea nada, y ' + de + ' verá que lo has rechazado.')) return
+    if (e.tipo === 'deportista') {
+      setTrabajando(true)
+      const r = await contestar(supabase, e.id, aceptar)
+      setTrabajando(false)
+      if (r.error) { alert('No se ha podido ' + (aceptar ? 'aceptar' : 'rechazar') + '.\n\n' + r.error); return }
+      const ahora = new Date().toISOString()
+      const estado = r.resultado?.estado
+      /* Si falta el deportista sigue pendiente, con tu «sí» apuntado. */
+      setRecibidos(prev => prev.map(x => x.id !== e.id ? x
+        : !aceptar ? { ...x, estado: 'rechazado', rechaza: 'entrenador', contestado_en: ahora }
+          : estado === 'pendiente' ? { ...x, acepta_entrenador_en: ahora }
+            : estado === 'cancelado' ? { ...x, estado: 'cancelado', contestado_en: ahora }
+              : { ...x, estado: 'aceptado', acepta_entrenador_en: ahora, contestado_en: ahora, resultado: { deportista: e.id_deportista ?? undefined } }))
+      setHecho(prev => ({ ...prev, [e.id]: traspasoContestado(e, aceptar, r.resultado as { estado?: string; motivo?: string } | null) }))
+      if (aceptar && uid) cargarMio(uid)
+      return
+    }
     const n: NombresAlAceptar = {}
     if (aceptar && conflictos) {
       if (conflictos.plantilla) n.plantilla = nombreDe('plantilla', conflictos.plantilla)
@@ -168,7 +201,10 @@ export default function PaginaEnvios() {
 
   const cancelarEnvio = async (e: Envio) => {
     if (trabajando) return
-    if (!confirm('¿Cancelar el envío de «' + e.titulo + '» a ' + (primerNombre(e.para_nombre) || 'ese entrenador') + '?\n\nYa no podrá aceptarlo.')) return
+    const para = primerNombre(e.para_nombre) || 'ese entrenador'
+    if (!confirm(e.tipo === 'deportista'
+      ? '¿Cancelar el traspaso de ' + (e.contenido.deportista?.nombre || 'este deportista') + ' a ' + para + '?\n\nSigue contigo, y ya no se podrá aceptar.'
+      : '¿Cancelar el envío de «' + e.titulo + '» a ' + para + '?\n\nYa no podrá aceptarlo.')) return
     setTrabajando(true)
     const err = await cancelar(supabase, e.id)
     setTrabajando(false)
@@ -222,7 +258,7 @@ export default function PaginaEnvios() {
               <span className="text-xs text-gray-500">
                 {pestana === 'recibidos'
                   ? 'Te llegan también al panel.'
-                  : 'Se manda desde una sesión, el panel de plantillas, Tests propios o Zonas propias.'}
+                  : 'Se manda desde una sesión, el panel de plantillas, Tests propios, Zonas propias o Deportistas.'}
               </span>
             </div>
 
@@ -232,8 +268,8 @@ export default function PaginaEnvios() {
                 {lista.length === 0 ? (
                   <li className="px-4 py-8 text-sm text-gray-500 leading-relaxed">
                     {pestana === 'recibidos'
-                      ? 'Todavía no te han mandado nada. Cuando otro entrenador te mande una sesión, un test o unas zonas, saldrá aquí y en tu panel.'
-                      : 'Todavía no has mandado nada. Busca el botón «Enviar» en una sesión, en tus plantillas, en Tests propios o en Zonas propias.'}
+                      ? 'Todavía no te han mandado nada. Cuando otro entrenador te mande una sesión, un test, unas zonas o un deportista, saldrá aquí y en tu panel.'
+                      : 'Todavía no has mandado nada. Busca el botón «Enviar» en una sesión, en tus plantillas, en Tests propios o en Zonas propias, o «Pasar a otro entrenador» en Deportistas.'}
                   </li>
                 ) : lista.map(e => (
                   <li key={e.id}>
@@ -278,10 +314,10 @@ export default function PaginaEnvios() {
                     </div>
                     {actual.mensaje && <p className="text-sm text-gray-300 italic">«{actual.mensaje}»</p>}
 
-                    <PreviewContenido e={actual} papel={papel} />
+                    <PreviewContenido e={actual} papel={papel} cupo={miCupo} />
 
-                    {/* ── Contestar (lo recibido y pendiente) ── */}
-                    {papel === 'recibe' && actual.estado === 'pendiente' && (
+                    {/* ── Contestar (lo recibido que te toca contestar) ── */}
+                    {papel === 'recibe' && puedoContestar(actual) && (
                       <div className="flex flex-col gap-3 pt-1">
                         {conflictos && (conflictos.plantilla || conflictos.clasificacion || Object.keys(conflictos.tests).length > 0
                           || Object.keys(conflictos.plantillas).length > 0 || Object.keys(conflictos.clasificaciones).length > 0) && (
@@ -335,34 +371,51 @@ export default function PaginaEnvios() {
                             si no ha cambiado, se usa el que tienes y no se duplica.
                           </p>
                         )}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button type="button" onClick={() => responder(actual, true)} disabled={trabajando}
-                            className="bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm px-5 py-2.5 rounded-lg transition disabled:opacity-50">
-                            {trabajando ? 'Un momento…' : 'Aceptar'}
-                          </button>
-                          <button type="button" onClick={() => responder(actual, false)} disabled={trabajando}
-                            className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm px-4 py-2.5 rounded-lg transition disabled:opacity-50">
-                            Rechazar
-                          </button>
-                        </div>
+                        {/* Un traspaso con el cupo lleno no se puede aceptar: se dice por qué. */}
+                        {(() => {
+                          const cupoLleno = actual.tipo === 'deportista' && !actual.contenido.deportista?.solo_test && !!textoCupo(miCupo)?.lleno
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button type="button" onClick={() => responder(actual, true)} disabled={trabajando || cupoLleno}
+                                className="bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm px-5 py-2.5 rounded-lg transition disabled:opacity-50">
+                                {trabajando ? 'Un momento…' : 'Aceptar'}
+                              </button>
+                              <button type="button" onClick={() => responder(actual, false)} disabled={trabajando}
+                                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm px-4 py-2.5 rounded-lg transition disabled:opacity-50">
+                                Rechazar
+                              </button>
+                              {cupoLleno && <span className="text-amber-300 text-xs">Con el cupo lleno no puedes aceptarlo.</span>}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )}
 
-                    {/* ── Lo ya contestado ── */}
-                    {papel === 'recibe' && actual.estado !== 'pendiente' && (
+                    {/* ── Lo ya contestado (o el traspaso que espera al deportista) ── */}
+                    {papel === 'recibe' && !puedoContestar(actual) && (
                       <div className="flex flex-col gap-2">
                         <p role="status" className={'text-sm ' + (actual.estado === 'aceptado' ? 'text-emerald-300' : 'text-gray-400')}>
-                          {hecho[actual.id] ?? (actual.estado === 'aceptado' ? 'Lo aceptaste. ' + dondeQueda(actual) : textoEstado(actual, 'recibe') + '.')}
+                          {hecho[actual.id] ?? (actual.tipo === 'deportista'
+                            ? (actual.estado === 'aceptado' ? dondeQueda(actual) : textoEstado(actual, 'recibe') + '.')
+                            : actual.estado === 'aceptado' ? 'Lo aceptaste. ' + dondeQueda(actual) : textoEstado(actual, 'recibe') + '.')}
                         </p>
                         {actual.estado === 'aceptado' && (
                           <div className="flex flex-wrap gap-x-4 gap-y-1">
-                            {(actual.tipo === 'test' || (actual.tipo === 'varios' && (actual.contenido.tests?.length ?? 0) > 0)) && (
+                            {actual.tipo === 'deportista' && actual.id_deportista && (
+                              <button type="button" onClick={() => router.push('/deportistas/' + actual.id_deportista)}
+                                className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a su ficha →</button>
+                            )}
+                            {((actual.tipo === 'test' || actual.tipo === 'varios' || actual.tipo === 'deportista') && (actual.contenido.tests?.length ?? 0) > 0) && (
                               <button type="button" onClick={() => router.push('/tests-propios')}
                                 className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a Tests propios →</button>
                             )}
-                            {(actual.tipo === 'zonas' || (actual.tipo === 'varios' && (actual.contenido.clasificaciones?.length ?? 0) > 0)) && (
+                            {(actual.tipo === 'zonas' || ((actual.tipo === 'varios' || actual.tipo === 'deportista') && (actual.contenido.clasificaciones?.length ?? 0) > 0)) && (
                               <button type="button" onClick={() => router.push('/zonas-propias')}
                                 className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a Zonas propias →</button>
+                            )}
+                            {actual.tipo === 'deportista' && (actual.contenido.ejercicios?.length ?? 0) > 0 && (
+                              <button type="button" onClick={() => router.push('/fuerza')}
+                                className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a tu biblioteca →</button>
                             )}
                           </div>
                         )}

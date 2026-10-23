@@ -12,6 +12,8 @@ import { getEspacio, type Espacio } from '@/lib/espacio'
 import ListaEspacio from '@/components/ListaEspacio'
 import SeccionDirectores from '@/components/SeccionDirectores'
 import QuitarDeportista from '@/components/QuitarDeportista'
+import EnviarAEntrenador from '@/components/EnviarAEntrenador'
+import { primerNombre } from '@/lib/envios'
 import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDeDeportistas } from '@/lib/consejos'
@@ -66,6 +68,10 @@ export default function Deportistas() {
      (components/QuitarDeportista). Antes no había forma de quitar a nadie. */
   const [quitando, setQuitando] = useState<{ id: number; nombre: string; id_usuario?: string | null } | null>(null)
   const [avisoQuitar, setAvisoQuitar] = useState('')
+  /* Pasarlo a otro entrenador (un traspaso, lib/envios) y los que ya tienes
+     pedidos: mientras nadie conteste, en vez del botón sale a quién. */
+  const [pasando, setPasando] = useState<{ id: number; nombre: string; id_usuario?: string | null } | null>(null)
+  const [pedidos, setPedidos] = useState<Record<number, { envio: number; para: string | null }>>({})
   // Grupos de entrenamiento: el mismo entreno para varios a la vez.
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [nMiembros, setNMiembros] = useState<Record<string, number>>({})
@@ -86,13 +92,18 @@ export default function Deportistas() {
   const cargarDeportistas = async () => {
     const user = await usuarioActual()
     if (!user) { router.push('/login'); return }
-    const [suyos, soloTest] = await Promise.all([
+    const [suyos, soloTest, pedidosQ] = await Promise.all([
       supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false),
       supabase.from('deportista').select('id, nombre, id_usuario').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
+      supabase.from('envio_entrenador').select('id, id_deportista, para_nombre')
+        .eq('de', user.id).eq('tipo', 'deportista').eq('estado', 'pendiente'),
     ])
     if (suyos.error) setError('Error al cargar: ' + suyos.error.message)
     setDeportistas(suyos.data || [])
     setEvaluados(soloTest.data || [])
+    /* Sin la tabla de envíos (o sin la migración) no hay pedidos: el botón sale igual. */
+    setPedidos(Object.fromEntries(((pedidosQ.data || []) as { id: number; id_deportista: number; para_nombre: string | null }[])
+      .map(p => [p.id_deportista, { envio: p.id, para: p.para_nombre }])))
   }
 
   const cargarLosGrupos = async () => {
@@ -339,6 +350,18 @@ export default function Deportistas() {
                     className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-orange-500">
                     {generandoEnlace === d.id ? 'Generando...' : '🔗 Invitar'}
                   </button>
+                  {/* La ficha de un grupo no se pasa: se quita borrando el grupo. */}
+                  {!d.id_grupo && (pedidos[d.id] ? (
+                    <Link href={'/envios?id=' + pedidos[d.id].envio}
+                      className="text-xs text-amber-200 bg-amber-400/10 border border-amber-400/35 hover:border-amber-300 px-3 py-1.5 rounded-lg transition">
+                      Traspaso pedido a {primerNombre(pedidos[d.id].para) || 'otro entrenador'} →
+                    </Link>
+                  ) : (
+                    <button onClick={() => setPasando(d)}
+                      className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-sky-500">
+                      📨 Pasar a otro entrenador
+                    </button>
+                  ))}
                   <button onClick={() => setQuitando(d)} data-guia={i === 0 ? 'dep.quitar' : undefined}
                     className="text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
                     Quitar
@@ -387,6 +410,11 @@ export default function Deportistas() {
             tiene abierto cada uno. Sale sola solo cuando hay algo. */}
         <SeccionDirectores deportistas={deportistas.map(d => ({ id: d.id, nombre: d.nombre }))} />
       </div>
+      {pasando && (
+        <EnviarAEntrenador
+          que={{ tipo: 'deportista', id: pasando.id, nombre: pasando.nombre, tieneCuenta: !!pasando.id_usuario }}
+          onCerrar={() => { setPasando(null); cargarDeportistas() }} />
+      )}
       {quitando && (
         <QuitarDeportista deportista={quitando} onCerrar={() => setQuitando(null)}
           onHecho={hecho => {

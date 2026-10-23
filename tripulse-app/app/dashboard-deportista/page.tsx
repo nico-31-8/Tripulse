@@ -15,6 +15,7 @@ import { analizarWellness } from '@/lib/wellness-analisis'
 
 import { cargaDeTarea } from '@/lib/prescripcion-zona'
 import InvitacionesClub from '@/components/InvitacionesClub'
+import TraspasosDeportista from '@/components/TraspasosDeportista'
 import OnboardingDeportista from '@/components/OnboardingDeportista'
 import { altaCompleta } from '@/lib/anamnesis-datos'
 import { cargarReferencias } from '@/lib/referencia-zona'
@@ -271,15 +272,17 @@ export default function DashboardDeportista() {
   const conConsejos = !!useTutorial()?.consejosActivos
   const [sinLeer, setSinLeer] = useState(0)
   const depId: number | null = deportista?.id ?? null
-  const conEntrenador = !!deportista?.id_entrenador
+  const suEntrenador: string | null = deportista?.id_entrenador ?? null
   useEffect(() => {
-    if (!conConsejos || !depId || !conEntrenador) return
+    if (!conConsejos || !depId || !suEntrenador) return
     let vivo = true
+    /* Solo los de su entrenador de ahora: si cambió de entrenador, los del de
+       antes se quedan en su conversación (supabase/envios-traspaso.sql). */
     supabase.from('mensajes').select('id', { count: 'exact', head: true })
-      .eq('id_deportista', depId).eq('autor', 'entrenador').eq('leido', false)
+      .eq('id_deportista', depId).eq('id_entrenador', suEntrenador).eq('autor', 'entrenador').eq('leido', false)
       .then(({ count }) => { if (vivo) setSinLeer(count ?? 0) })
     return () => { vivo = false }
-  }, [conConsejos, depId, conEntrenador])
+  }, [conConsejos, depId, suEntrenador])
   useConsejos('d-hoy', conConsejos && depId ? consejosDeHoy({ id: depId, sinLeer }) : null)
 
   if (!perfil) return <Cargando />
@@ -298,6 +301,10 @@ export default function DashboardDeportista() {
           <h2 className="text-2xl font-bold">Hola, {perfil?.nombre} 👋</h2>
           <span className="text-gray-600 text-xs">{new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
         </div>
+
+        {/* Si su entrenador propone pasarlo a otro: lo primero, porque tiene que
+            contestar él. Solo sale si hay algo (components/TraspasosDeportista). */}
+        <TraspasosDeportista className="mb-4" onCambio={cargar} />
 
         {/* Que exista. En su aplicación no había una sola línea que se lo dijera,
             y la conexión vive tres niveles abajo: «Más» → Mi perfil → bajar. */}

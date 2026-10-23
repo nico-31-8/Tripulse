@@ -12,7 +12,9 @@ import {
   buscarEntrenador, enviar, contestar, cancelar, marcarRespuestasVistas,
   testsDeHitos, motivoNoSeManda, casaConBusqueda,
   listaY, resumenVarios, zonasDeTest, enviarVarios,
-  type Envio, type ZonaEnviada, type LoQueTengo,
+  faseTraspaso, puedoContestar, chipEstado, traspasoContestado, textoCupo, loQueUsa, textoLoQueUsa, sinLoSuyo,
+  pedirTraspaso, entrenadorTieneSitio, misTraspasosPendientes, contestarTraspasoDeportista, COLUMNAS_ENVIO,
+  type Envio, type ZonaEnviada, type LoQueTengo, type LoQueUsaEntrada,
 } from './envios'
 
 describe('elegir qué mandar desde la página Envíos', () => {
@@ -412,5 +414,337 @@ describe('el SQL de la migración', () => {
     expect(sql).toContain('revoke insert, update, delete, truncate on public.envio_entrenador from authenticated;')
     expect(sql).toMatch(/create policy envio_entrenador_lee on public\.envio_entrenador\s+for select/)
     expect(sql).not.toMatch(/create policy [a-z_]+ on public\.envio_entrenador\s+for (insert|update|delete|all)/)
+  })
+})
+
+describe('el traspaso de un deportista', () => {
+  const marta = { id: 29, nombre: 'Marta López', tiene_cuenta: true, solo_test: false }
+  const traspaso = (e: Partial<Envio> = {}): Envio => envio({
+    tipo: 'deportista', titulo: 'Traspaso de Marta López', contenido: { deportista: marta, con_lo_suyo: true, tests: [], clasificaciones: [] },
+    id_deportista: 29, deportista_usuario: 'u-marta', acepta_entrenador_en: null, acepta_deportista_en: null, rechaza: null, ...e,
+  })
+  const ya = '2026-10-23T11:00:00Z'
+
+  it('en qué va: dos respuestas, la del entrenador y la del deportista', () => {
+    expect(faseTraspaso(traspaso())).toBe('pendiente')
+    expect(faseTraspaso(traspaso({ acepta_entrenador_en: ya }))).toBe('falta-deportista')
+    expect(faseTraspaso(traspaso({ acepta_deportista_en: ya }))).toBe('falta-entrenador')
+    expect(faseTraspaso(traspaso({ estado: 'aceptado', acepta_entrenador_en: ya, acepta_deportista_en: ya }))).toBe('aceptado')
+    expect(faseTraspaso(traspaso({ estado: 'rechazado', rechaza: 'deportista' }))).toBe('rechazado')
+    expect(faseTraspaso(traspaso({ estado: 'cancelado' }))).toBe('cancelado')
+  })
+
+  it('a quien lo recibe le toca contestar hasta que acepta; luego espera al deportista', () => {
+    expect(puedoContestar(traspaso())).toBe(true)
+    expect(puedoContestar(traspaso({ acepta_deportista_en: ya }))).toBe(true)
+    expect(puedoContestar(traspaso({ acepta_entrenador_en: ya }))).toBe(false)
+    expect(puedoContestar(traspaso({ estado: 'aceptado' }))).toBe(false)
+    expect(puedoContestar(envio({}))).toBe(true)
+    expect(puedoContestar(envio({ estado: 'rechazado' }))).toBe(false)
+  })
+
+  /* Los textos de la maqueta aprobada. */
+  it('contado a Luis, que lo recibe', () => {
+    expect(textoEstado(traspaso(), 'recibe')).toBe('Por revisar')
+    expect(textoEstado(traspaso({ acepta_entrenador_en: ya }), 'recibe')).toBe('Falta que conteste Marta. Hasta entonces sigue con Ana')
+    expect(textoEstado(traspaso({ acepta_deportista_en: ya }), 'recibe')).toMatch(/^Marta ya ha dicho que sí/)
+    expect(textoEstado(traspaso({ estado: 'aceptado' }), 'recibe')).toBe('Marta ya está en tu lista')
+    expect(textoEstado(traspaso({ estado: 'rechazado', rechaza: 'deportista' }), 'recibe')).toBe('Marta prefiere seguir con Ana: no cambia nada')
+    expect(textoEstado(traspaso({ estado: 'rechazado', rechaza: 'entrenador' }), 'recibe')).toBe('Lo rechazaste: no cambia nada')
+  })
+
+  it('contado a Ana, que lo pidió', () => {
+    expect(textoEstado(traspaso(), 'manda')).toBe('Esperando a Luis y a Marta')
+    expect(textoEstado(traspaso({ deportista_usuario: null }), 'manda')).toBe('Luis todavía no ha contestado')
+    expect(textoEstado(traspaso({ acepta_entrenador_en: ya }), 'manda')).toBe('Luis lo ha aceptado. Falta que conteste Marta')
+    expect(textoEstado(traspaso({ acepta_deportista_en: ya }), 'manda')).toBe('Marta lo ha aceptado. Falta que conteste Luis')
+    expect(textoEstado(traspaso({ estado: 'aceptado' }), 'manda')).toBe('Marta ya está con Luis')
+    expect(textoEstado(traspaso({ estado: 'rechazado', rechaza: 'deportista' }), 'manda')).toBe('Marta prefiere seguir contigo')
+    expect(textoEstado(traspaso({ estado: 'rechazado', rechaza: 'entrenador' }), 'manda')).toBe('Luis lo ha rechazado')
+  })
+
+  it('el chip dice a quién le falta; lo demás, como siempre', () => {
+    expect(chipEstado(traspaso({ acepta_entrenador_en: ya }), 'manda')).toEqual({ texto: 'Falta Marta', tono: 'ambar' })
+    expect(chipEstado(traspaso({ acepta_entrenador_en: ya }), 'recibe')).toEqual({ texto: 'Falta Marta', tono: 'ambar' })
+    expect(chipEstado(traspaso({ acepta_deportista_en: ya }), 'manda')).toEqual({ texto: 'Falta Luis', tono: 'ambar' })
+    expect(chipEstado(traspaso({ acepta_deportista_en: ya }), 'recibe')).toEqual({ texto: 'Por revisar', tono: 'ambar' })
+    expect(chipEstado(traspaso({ estado: 'rechazado', rechaza: 'deportista' }), 'manda')).toEqual({ texto: 'Marta dijo que no', tono: 'rojo' })
+    expect(chipEstado(traspaso({ estado: 'aceptado' }), 'recibe')).toEqual({ texto: 'Aceptado', tono: 'bien' })
+    expect(chipEstado(envio({}), 'manda')).toEqual({ texto: 'Sin contestar', tono: 'ambar' })
+    expect(chipEstado(envio({ estado: 'cancelado' }), 'recibe')).toEqual({ texto: 'Cancelado', tono: 'neutro' })
+  })
+
+  it('lo que se le dice a quien acaba de contestar', () => {
+    expect(traspasoContestado(traspaso(), false, null)).toBe('Rechazado: Marta sigue con Ana.')
+    expect(traspasoContestado(traspaso(), true, { estado: 'pendiente' })).toBe('Aceptado. Falta que conteste Marta: hasta entonces sigue con Ana.')
+    expect(traspasoContestado(traspaso(), true, { estado: 'cancelado', motivo: 'Ese deportista ya no es de quien te lo pasaba' }))
+      .toBe('Ya no se puede: Ese deportista ya no es de quien te lo pasaba.')
+    expect(traspasoContestado(traspaso(), true, { estado: 'aceptado' })).toBe('Aceptado. Marta ya está en tu lista de deportistas.')
+  })
+
+  it('dónde queda y qué es: con lo suyo, dice adónde llegó', () => {
+    expect(etiquetaTipo(traspaso())).toBe('Deportista')
+    const t = { id: 3, nombre: '30-15 IFT', deporte: 'Carrera', campos: [], resultados: [], modelo: null }
+    const z = { clasificacion: { nombre: 'Zonas 30-15', deporte: 'Carrera', hitos: [] }, zonas: [] }
+    expect(dondeQueda(traspaso({ contenido: { deportista: marta, tests: [t], clasificaciones: [z] } })))
+      .toBe('Marta ya está en tu lista de deportistas. Lo que usaba te ha llegado a tus Tests propios y tus Zonas propias.')
+  })
+
+  it('lo que no viaja: tus cobros, vuestros mensajes y tus grupos', () => {
+    const { viaja, noViaja } = queViaja('deportista', 'Luis Pérez')
+    expect(viaja.join(' ')).toMatch(/historial/)
+    expect(noViaja).toEqual(['Tus cobros: siguen en tu libreta', 'Vuestros mensajes: Luis empieza de cero', 'Tus grupos: sale de ellos'])
+    expect(queViaja('deportista').noViaja[1]).toBe('Vuestros mensajes: su nuevo entrenador empieza de cero')
+  })
+
+  it('el cupo: cuántos te quedarían, o que está lleno; sin cupo, nada', () => {
+    expect(textoCupo(null)).toBeNull()
+    expect(textoCupo({ cupo: null, tengo: 40 })).toBeNull()
+    expect(textoCupo({ cupo: 10, tengo: 7 })).toEqual({ texto: 'Ocupa un sitio de tu cupo: te quedarían 2 libres.', lleno: false })
+    expect(textoCupo({ cupo: 10, tengo: 8 })?.texto).toBe('Ocupa un sitio de tu cupo: te quedaría 1 libre.')
+    expect(textoCupo({ cupo: 10, tengo: 9 })?.texto).toBe('Ocupa un sitio de tu cupo: no te quedaría ninguno libre.')
+    expect(textoCupo({ cupo: 2, tengo: 2 })).toEqual({ texto: 'Tu cupo está lleno (2 de 2 deportistas): para aceptarlo tienes que hacer sitio.', lleno: true })
+  })
+
+  it('las columnas nuevas van en lo que piden las pantallas', () => {
+    for (const c of ['id_deportista', 'deportista_usuario', 'acepta_entrenador_en', 'acepta_deportista_en', 'rechaza']) {
+      expect(COLUMNAS_ENVIO.split(', ')).toContain(c)
+    }
+  })
+})
+
+describe('lo tuyo que usa un deportista (la misma regla que pedir_traspaso)', () => {
+  const base = (p: Partial<LoQueUsaEntrada> = {}): LoQueUsaEntrada => ({
+    misTests: [{ id: 3, nombre: '30-15 IFT' }, { id: 4, nombre: 'Cooper' }, { id: 5, nombre: 'Archivado' }],
+    misClasificaciones: [
+      { id: 10, nombre: 'Zonas 30-15', hitos: ['propia:3:0'] },
+      { id: 11, nombre: 'Zonas Cooper', hitos: ['propia:4:0'] },
+      { id: 12, nombre: 'Zonas mixtas', hitos: ['propia:3:0', 'propia:4:0'] },
+    ],
+    misZonas: [
+      { id: 100, id_clasificacion: 10, ref_definicion: null, desde: null, hasta: { ref: 'propia:3:0', pct: 80 } },
+      { id: 110, id_clasificacion: 11, ref_definicion: null, desde: null, hasta: { ref: 'propia:4:0', pct: 80 } },
+      { id: 120, id_clasificacion: 12, ref_definicion: null, desde: { ref: 'app:vam', pct: 50 }, hasta: null },
+    ],
+    mediciones: [], ajustes: [], sesiones: [], ...p,
+  })
+
+  it('sin nada suyo, nada', () => {
+    expect(loQueUsa(base())).toEqual({ tests: [], zonas: [], ejercicios: [] })
+  })
+
+  it('un test tuyo con mediciones suyas va, con las zonas que salen de él (y sus otros tests)', () => {
+    expect(loQueUsa(base({ mediciones: [{ id_definicion: 3 }] }))).toEqual({
+      tests: [{ id: 3, nombre: '30-15 IFT' }, { id: 4, nombre: 'Cooper' }],
+      zonas: [{ id: 10, nombre: 'Zonas 30-15' }, { id: 12, nombre: 'Zonas mixtas' }],
+      ejercicios: [],
+    })
+  })
+
+  it('un test que no es tuyo no va, aunque tenga mediciones suyas', () => {
+    expect(loQueUsa(base({ mediciones: [{ id_definicion: 99 }] }))).toEqual({ tests: [], zonas: [], ejercicios: [] })
+  })
+
+  it('cuentan también sus ajustes de zona y sus días de test; también un test archivado', () => {
+    expect(loQueUsa(base({ ajustes: [{ id_zona: 110, desde: null, hasta: { ref: 'propia:5:0', pct: 90 } }] }))).toEqual({
+      tests: [{ id: 4, nombre: 'Cooper' }, { id: 5, nombre: 'Archivado' }],
+      zonas: [{ id: 11, nombre: 'Zonas Cooper' }],
+      ejercicios: [],
+    })
+    /* Su día de test del Cooper: van sus zonas, y «Zonas mixtas» se lleva también el 30-15. */
+    expect(loQueUsa(base({ sesiones: [{ test: { origen: 'propio', id: 4 } }, { test: { origen: 'bateria', clave: 'cooper' } }] }))).toEqual({
+      tests: [{ id: 3, nombre: '30-15 IFT' }, { id: 4, nombre: 'Cooper' }],
+      zonas: [{ id: 11, nombre: 'Zonas Cooper' }, { id: 12, nombre: 'Zonas mixtas' }],
+      ejercicios: [],
+    })
+  })
+
+  it('unas zonas que salen de un test que no es tuyo, o sin zonas, se quedan (como en la base)', () => {
+    const r = loQueUsa(base({
+      misClasificaciones: [
+        { id: 10, nombre: 'Zonas 30-15', hitos: ['propia:3:0', 'propia:77:0'] },
+        { id: 13, nombre: 'Vacía', hitos: ['propia:3:0'] },
+      ],
+      mediciones: [{ id_definicion: 3 }],
+    }))
+    expect(r).toEqual({ tests: [{ id: 3, nombre: '30-15 IFT' }], zonas: [], ejercicios: [] })
+  })
+
+  it('una zona archivada no cuenta para el cálculo, pero un ajuste en ella sí lleva su clasificación', () => {
+    const r = loQueUsa(base({
+      misZonas: [
+        { id: 100, id_clasificacion: 10, ref_definicion: null, desde: null, hasta: { ref: 'propia:3:0', pct: 80 } },
+        { id: 101, id_clasificacion: 10, ref_definicion: 4, desde: null, hasta: null, archivada: true },
+      ],
+      ajustes: [{ id_zona: 101, desde: { ref: 'app:vam', pct: 70 }, hasta: null }],
+    }))
+    expect(r).toEqual({ tests: [{ id: 3, nombre: '30-15 IFT' }], zonas: [{ id: 10, nombre: 'Zonas 30-15' }], ejercicios: [] })
+  })
+
+  /* Los ejercicios de tu biblioteca (supabase/envios-traspaso-ejercicios.sql). */
+  it('van los ejercicios tuyos que tiene en sus sesiones: fuerza, encadenado y técnica; una vez cada uno, por nombre', () => {
+    const r = loQueUsa(base({
+      misEjercicios: [{ id: 50, nombre: 'Sentadilla búlgara' }, { id: 51, nombre: 'Hip thrust' }, { id: 52, nombre: 'Skipping' }, { id: 53, nombre: 'No lo usa' }],
+      usosDeEjercicios: [
+        { ejercicio_id: 50, ejercicio_encadenado_id: 51 },
+        { ejercicio_id: 50, ejercicio_encadenado_id: null },
+        { tecnica_id: 52 },
+        /* Del común o de otro: no son tuyos y ya los lee el nuevo. */
+        { ejercicio_id: 900, ejercicio_encadenado_id: 901 },
+      ],
+    }))
+    expect(r.ejercicios).toEqual([{ id: 51, nombre: 'Hip thrust' }, { id: 50, nombre: 'Sentadilla búlgara' }, { id: 52, nombre: 'Skipping' }])
+    expect(r.tests).toEqual([])
+  })
+
+  it('se dice como en la maqueta', () => {
+    expect(textoLoQueUsa({ tests: [{ nombre: '30-15 IFT' }], zonas: [{ nombre: 'Zonas 30-15' }] })).toBe('El test «30-15 IFT» y las zonas «Zonas 30-15»')
+    expect(textoLoQueUsa({ tests: [{ nombre: 'A' }, { nombre: 'B' }], zonas: [] })).toBe('Los tests «A» y «B»')
+    expect(textoLoQueUsa({ tests: [], zonas: [{ nombre: 'Z' }] })).toBe('Las zonas «Z»')
+  })
+
+  it('con ejercicios: se nombran tres y se cuentan los demás', () => {
+    expect(textoLoQueUsa({ tests: [{ nombre: '30-15 IFT' }], zonas: [{ nombre: 'Zonas 30-15' }], ejercicios: [{ nombre: 'Hip thrust' }] }))
+      .toBe('El test «30-15 IFT», las zonas «Zonas 30-15» y un ejercicio tuyo («Hip thrust»)')
+    expect(textoLoQueUsa({ tests: [], zonas: [], ejercicios: [{ nombre: 'A' }, { nombre: 'B' }, { nombre: 'C' }, { nombre: 'D' }, { nombre: 'E' }] }))
+      .toBe('5 ejercicios tuyos («A», «B», «C» y 2 más)')
+  })
+
+  it('lo que no tendrá quien lo recibe sin la casilla, según lo que viaje', () => {
+    expect(sinLoSuyo({ tests: [1], zonas: [1], ejercicios: [1] }, 'Luis'))
+      .toBe('Si no, Luis no podrá apuntarle mediciones nuevas con esos tests, no podrá usar esas zonas y verá sus sesiones sin el vídeo ni la técnica de esos ejercicios.')
+    expect(sinLoSuyo({ tests: [], zonas: [], ejercicios: [1] }, 'Luis')).toBe('Si no, Luis verá sus sesiones sin el vídeo ni la técnica de esos ejercicios.')
+    expect(sinLoSuyo({ tests: [], zonas: [] }, 'Luis')).toBe('')
+  })
+})
+
+describe('las llamadas del traspaso', () => {
+  const sb = (respuesta: { data?: unknown; error?: { code?: string; message?: string } | null }) => {
+    const llamadas: { fn: string; args: unknown }[] = []
+    return {
+      llamadas,
+      rpc: (fn: string, args?: unknown) => { llamadas.push({ fn, args }); return Promise.resolve({ data: null, error: null, ...respuesta }) },
+    }
+  }
+
+  it('pedirlo, preguntar el sitio y contestar como deportista llaman a sus funciones con sus nombres', async () => {
+    const s = sb({ data: 12 })
+    expect(await pedirTraspaso(s, 'luis', 29, true, '  Se muda  ')).toEqual({ id: 12, error: null })
+    await pedirTraspaso(s, 'luis', 30, false)
+    await contestarTraspasoDeportista(s, 12, true)
+    expect(s.llamadas).toEqual([
+      { fn: 'pedir_traspaso', args: { _para: 'luis', _id_deportista: 29, _con_lo_suyo: true, _mensaje: 'Se muda' } },
+      { fn: 'pedir_traspaso', args: { _para: 'luis', _id_deportista: 30, _con_lo_suyo: false, _mensaje: null } },
+      { fn: 'contestar_traspaso_deportista', args: { _id: 12, _aceptar: true } },
+    ])
+  })
+
+  it('el sitio: sí, no, o no se sabe (null) si la base no contesta un sí o un no', async () => {
+    expect(await entrenadorTieneSitio(sb({ data: true }), 'luis')).toBe(true)
+    expect(await entrenadorTieneSitio(sb({ data: false }), 'luis')).toBe(false)
+    expect(await entrenadorTieneSitio(sb({ data: null }), 'luis')).toBeNull()
+    expect(await entrenadorTieneSitio(sb({ error: { message: 'x' } }), 'luis')).toBeNull()
+  })
+
+  it('lo que tiene que contestar el deportista, con sus campos', async () => {
+    const r = await misTraspasosPendientes(sb({ data: [{ id: '12', de_nombre: 'Ana Rivas', para_nombre: 'Luis Pérez', mensaje: null, creado_en: '2026-10-23T10:00:00Z', ya_acepte: false }] }))
+    expect(r).toEqual({ traspasos: [{ id: 12, de_nombre: 'Ana Rivas', para_nombre: 'Luis Pérez', mensaje: null, creado_en: '2026-10-23T10:00:00Z', ya_acepte: false }], error: null })
+    expect((await misTraspasosPendientes(sb({ error: { message: 'x' } }))).traspasos).toEqual([])
+  })
+
+  it('sin la migración del traspaso, dice cuál falta', () => {
+    expect(errorDeEnvio({ code: 'PGRST202', message: 'Could not find the function public.pedir_traspaso(_con_lo_suyo, _id_deportista, _mensaje, _para)' }))
+      .toMatch(/envios-traspaso\.sql/)
+    expect(errorDeEnvio({ code: 'PGRST202', message: 'Could not find the function public.enviar_a_entrenador' })).toMatch(/envios-entrenadores\.sql/)
+  })
+})
+
+describe('el SQL del traspaso', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso.sql'), 'utf8')
+  const ensayo = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso-ensayo.sql'), 'utf8')
+
+  it('no lleva «--», ni la migración ni su ensayo', () => {
+    expect(sql).not.toContain('--')
+    expect(ensayo).not.toContain('--')
+  })
+
+  /* Lo que se ensayó es lo que se aplicó: el ensayo lleva la migración entera. */
+  it('el ensayo lleva la migración tal cual, y acaba deshaciéndolo todo', () => {
+    expect(ensayo).toContain(sql)
+    expect(ensayo.trim()).toMatch(/raise exception 'INFORME:%'[\s\S]*end \$fin\$;$/)
+  })
+
+  it('las funciones que llama la app, cerradas a anon y abiertas a quien ha entrado', () => {
+    for (const [fn, firma] of [
+      ['entrenador_tiene_sitio', 'uuid'],
+      ['pedir_traspaso', 'uuid, bigint, boolean, text'],
+      ['contestar_traspaso_deportista', 'bigint, boolean'],
+      ['mis_traspasos_pendientes', ''],
+      ['contestar_envio', 'bigint, boolean, jsonb'],
+    ]) {
+      expect(sql).toContain('revoke execute on function public.' + fn + '(' + firma + ') from anon;')
+      expect(sql).toContain('grant execute on function public.' + fn + '(' + firma + ') to authenticated;')
+    }
+  })
+
+  it('el traspaso en sí no lo llama nadie desde fuera: solo el último que acepta', () => {
+    expect(sql).toContain('revoke all on function public.envio_hacer_traspaso(bigint) from public, anon, authenticated;')
+    expect(sql).not.toMatch(/grant execute on function public\.envio_hacer_traspaso/)
+  })
+
+  it('las mediciones se mueven a las copias, no se duplican', () => {
+    expect(sql).toMatch(/update test_medicion m set id_definicion = \(_mapa->>_k\)::bigint/)
+    expect(sql).not.toMatch(/insert into test_medicion/)
+  })
+
+  it('los cobros, de su entrenador; y el chat, cada uno el suyo', () => {
+    for (const t of ['cargo', 'cobro', 'tarifa', 'cobros_lista']) {
+      expect(sql).toContain('alter table public.' + t + ' add column if not exists id_entrenador uuid')
+      expect(sql).toContain('create policy ' + t + '_solo_su_entrenador on public.' + t)
+    }
+    expect(sql).toMatch(/create policy mensajes_rw on public\.mensajes[\s\S]*?using \(\(id_entrenador = \(select auth\.uid\(\)\)\)/)
+  })
+})
+
+describe('los ejercicios de tu biblioteca en un traspaso', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso-ejercicios.sql'), 'utf8')
+  const ensayo = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso-ejercicios-ensayo.sql'), 'utf8')
+
+  it('dónde quedan: también en tu biblioteca', () => {
+    const e = envio({
+      tipo: 'deportista',
+      contenido: { deportista: { id: 29, nombre: 'Marta López', tiene_cuenta: true, solo_test: false }, ejercicios: [{ id: 50, nombre: 'Hip thrust' }] },
+    })
+    expect(dondeQueda(e)).toBe('Marta ya está en tu lista de deportistas. Lo que usaba te ha llegado a tu biblioteca de ejercicios.')
+  })
+
+  it('no lleva «--», ni la migración ni su ensayo; y el ensayo la lleva tal cual y lo deshace todo', () => {
+    expect(sql).not.toContain('--')
+    expect(ensayo).not.toContain('--')
+    expect(ensayo).toContain(sql)
+    expect(ensayo.trim()).toMatch(/raise exception 'INFORME:%'[\s\S]*end \$fin\$;$/)
+  })
+
+  it('el ayudante y el traspaso no los llama nadie desde fuera; pedirlo, quien ha entrado', () => {
+    expect(sql).toContain('revoke all on function public.envio_copiar_ejercicios(uuid, envio_entrenador) from public, anon, authenticated;')
+    expect(sql).toContain('revoke all on function public.envio_hacer_traspaso(bigint) from public, anon, authenticated;')
+    expect(sql).not.toMatch(/grant execute on function public\.(envio_copiar_ejercicios|envio_hacer_traspaso)/)
+    expect(sql).toContain('revoke execute on function public.pedir_traspaso(uuid, bigint, boolean, text) from anon;')
+    expect(sql).toContain('grant execute on function public.pedir_traspaso(uuid, bigint, boolean, text) to authenticated;')
+  })
+
+  /* La copia es un ejercicio suyo NUEVO: con origen_id taparía al del común en su lista (lib/biblioteca-propia). */
+  it('la copia no lleva origen_id, y sus sesiones pasan a ella: el ejercicio, el encadenado y la técnica', () => {
+    const insercion = sql.match(/insert into ejercicios_biblioteca \(([^)]*)\)/)?.[1] || ''
+    expect(insercion).toContain('id_entrenador')
+    expect(insercion).not.toContain('origen_id')
+    expect(insercion).not.toContain('id_deportista')
+    expect(sql).toMatch(/update ejercicios x set ejercicio_id = /)
+    expect(sql).toMatch(/update ejercicios x set ejercicio_encadenado_id = /)
+    expect(sql).toMatch(/update tarea t set tecnica_id = /)
+  })
+
+  it('solo los tuyos: ni los del común ni los de un deportista', () => {
+    expect(sql).toMatch(/where b\.id_entrenador = _yo and b\.id_deportista is null\s+and b\.id in/)
   })
 })

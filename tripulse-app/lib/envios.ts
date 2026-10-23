@@ -14,6 +14,12 @@
 //
 // Las sesiones de FUERZA no se mandan: no hay plantillas de fuerza (decidido
 // por el usuario: «fuerza fuera»).
+//
+// FASE 2, EL TRASPASO (supabase/envios-traspaso.sql): un deportista NO se
+// copia, pasa a la lista del otro con todo su historial. Contesta el entrenador
+// que lo recibe y, si el deportista tiene cuenta, también él; lo hace el último
+// que acepta. Si se marca «lo tuyo que usa», van con él copias de los tests y
+// las zonas de quien lo pasa que usa ese deportista.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -22,8 +28,9 @@ import { cargaZona } from './zonas'
 import { zonaPico } from './plantillas-propias'
 import { normalizar } from './buscar-ejercicio'
 
-/** «varios»: plantillas, tests y zonas en un mismo envío (supabase/envios-varios.sql). */
-export type TipoEnvio = 'plantilla' | 'test' | 'zonas' | 'varios'
+/** «varios»: plantillas, tests y zonas en un mismo envío (supabase/envios-varios.sql).
+ *  «deportista»: un traspaso (supabase/envios-traspaso.sql). */
+export type TipoEnvio = 'plantilla' | 'test' | 'zonas' | 'varios' | 'deportista'
 export type EstadoEnvio = 'pendiente' | 'aceptado' | 'rechazado' | 'cancelado'
 
 /** Un test tal como viaja: la fila de `test_definicion` sin su dueño. */
@@ -64,10 +71,28 @@ export interface PlantillaEnviada {
   bloques: BloqueP[]
 }
 
-/** Unas zonas tal como viajan en unos «varios»: su clasificación y sus zonas. */
+/** Unas zonas tal como viajan en unos «varios» o un traspaso: su clasificación y sus zonas. */
 export interface ZonasEnviadas {
+  /** En un traspaso: la clasificación de la que son copia. */
+  origen?: number
   clasificacion: { nombre: string; deporte: string; hitos: string[] }
   zonas: ZonaEnviada[]
+}
+
+/** El deportista de un traspaso, tal como era al pedirlo. */
+export interface DeportistaEnviado {
+  id: number
+  nombre: string
+  tiene_cuenta: boolean
+  solo_test: boolean
+}
+
+/** Un ejercicio de tu biblioteca, tal como viaja en un traspaso (supabase/envios-traspaso-ejercicios.sql). */
+export interface EjercicioEnviado {
+  id: number
+  nombre: string
+  grupo_muscular?: string | null
+  url_video?: string | null
 }
 
 /** Lo que se guardó al enviarlo. Según el tipo, unas claves u otras. */
@@ -85,6 +110,10 @@ export interface ContenidoEnvio {
   /* varios (los tests van en `tests`, como siempre) */
   plantillas?: PlantillaEnviada[]
   clasificaciones?: ZonasEnviadas[]
+  /* deportista: lo que usa viaja en `tests`, `clasificaciones` y `ejercicios` */
+  deportista?: DeportistaEnviado
+  con_lo_suyo?: boolean
+  ejercicios?: EjercicioEnviado[]
 }
 
 export interface ResultadoEnvio {
@@ -95,6 +124,10 @@ export interface ResultadoEnvio {
   clasificaciones?: number[]
   /** Del id del test original al de la copia de quien aceptó. */
   tests?: Record<string, number>
+  /** En un traspaso: el deportista que pasó. */
+  deportista?: number
+  /** En un traspaso: del id del ejercicio original al de su copia. */
+  ejercicios?: Record<string, number>
 }
 
 export interface Envio {
@@ -113,11 +146,20 @@ export interface Envio {
   creado_en: string
   contestado_en: string | null
   respuesta_vista_en: string | null
+  /* Solo en un traspaso. */
+  id_deportista?: number | null
+  /** Su cuenta, si la tiene: entonces contesta también él. */
+  deportista_usuario?: string | null
+  acepta_entrenador_en?: string | null
+  acepta_deportista_en?: string | null
+  /** Quién dijo que no. */
+  rechaza?: 'entrenador' | 'deportista' | null
 }
 
-/** Las columnas que piden las pantallas, escritas UNA vez. */
+/** Las columnas que piden las pantallas, escritas UNA vez. En una sola línea:
+ *  partida en trozos, el cliente de la base ya no sabe leerla. */
 export const COLUMNAS_ENVIO =
-  'id, de, para, tipo, titulo, contenido, mensaje, de_nombre, para_nombre, para_correo, estado, resultado, creado_en, contestado_en, respuesta_vista_en'
+  'id, de, para, tipo, titulo, contenido, mensaje, de_nombre, para_nombre, para_correo, estado, resultado, creado_en, contestado_en, respuesta_vista_en, id_deportista, deportista_usuario, acepta_entrenador_en, acepta_deportista_en, rechaza'
 
 /** Cuántas cosas caben en unos «varios», como mucho (lo mismo que dice la base). */
 export const MAX_VARIOS = 30
@@ -134,11 +176,21 @@ export function etiquetaTipo(e: Pick<Envio, 'tipo' | 'contenido'>): string {
   if (e.tipo === 'plantilla') return 'Plantilla'
   if (e.tipo === 'test') return 'Test'
   if (e.tipo === 'varios') return 'Varios'
+  if (e.tipo === 'deportista') return 'Deportista'
   return (e.contenido?.tests?.length ?? 0) > 0 ? 'Zonas y test' : 'Zonas'
 }
 
-/** Lo que viaja y lo que no, para decirlo antes de pulsar «Enviar». */
-export function queViaja(tipo: TipoEnvio): { viaja: string[]; noViaja: string[] } {
+/** Lo que viaja y lo que no, para decirlo antes de pulsar «Enviar». En un
+ *  traspaso, `otro` es quien lo recibe (para decir quién empieza de cero). */
+export function queViaja(tipo: TipoEnvio, otro?: string | null): { viaja: string[]; noViaja: string[] } {
+  if (tipo === 'deportista') return {
+    viaja: ['Su historial: sesiones hechas, tests, wellness y lo de su reloj', 'Su plan y su calendario'],
+    noViaja: [
+      'Tus cobros: siguen en tu libreta',
+      'Vuestros mensajes: ' + (primerNombre(otro) || 'su nuevo entrenador') + ' empieza de cero',
+      'Tus grupos: sale de ellos',
+    ],
+  }
   if (tipo === 'plantilla') return {
     viaja: ['Los bloques: zona, series, volumen y descanso', 'El nombre y, si lo tiene, el objetivo'],
     noViaja: ['A quién se la pusiste ni cuándo', 'Lo que hizo tu deportista: tiempos, RPE, comentarios', 'Tus notas de la sesión'],
@@ -165,6 +217,17 @@ export function dondeQueda(e: Pick<Envio, 'tipo' | 'contenido'>): string {
     return 'Está en tus plantillas: en cualquier sesión de ' + nombre + ', panel «Plantillas», pestaña «Propias».'
   }
   if (e.tipo === 'test') return 'Está en tus Tests propios.'
+  if (e.tipo === 'deportista') {
+    const c = e.contenido || {}
+    const nombre = primerNombre(c.deportista?.nombre)
+    const suyo = [
+      (c.tests?.length ?? 0) > 0 ? 'tus Tests propios' : '',
+      (c.clasificaciones?.length ?? 0) > 0 ? 'tus Zonas propias' : '',
+      (c.ejercicios?.length ?? 0) > 0 ? 'tu biblioteca de ejercicios' : '',
+    ].filter(Boolean)
+    return (nombre ? nombre + ' ya está' : 'Ya está') + ' en tu lista de deportistas.'
+      + (suyo.length ? ' Lo que usaba te ha llegado a ' + listaY(suyo) + '.' : '')
+  }
   if (e.tipo === 'varios') {
     const c = e.contenido || {}
     const donde = [
@@ -288,8 +351,13 @@ export function plantillaParaEnviar(p: { nombre: string; disciplina: string; obj
   }
 }
 
+/** Lo que hace falta para contar un envío (los campos del traspaso, si los hay). */
+export type EnvioContado = Pick<Envio, 'estado' | 'para_nombre' | 'de_nombre'>
+  & Partial<Pick<Envio, 'tipo' | 'contenido' | 'rechaza' | 'deportista_usuario' | 'acepta_entrenador_en' | 'acepta_deportista_en'>>
+
 /** El estado contado a quien lo recibe o a quien lo mandó. */
-export function textoEstado(e: Pick<Envio, 'estado' | 'para_nombre' | 'de_nombre'>, papel: 'recibe' | 'manda'): string {
+export function textoEstado(e: EnvioContado, papel: 'recibe' | 'manda'): string {
+  if (e.tipo === 'deportista') return textoTraspaso(e, papel)
   const otro = primerNombre(papel === 'recibe' ? e.de_nombre : e.para_nombre) || 'El otro entrenador'
   if (papel === 'recibe') {
     if (e.estado === 'pendiente') return 'Por revisar'
@@ -301,6 +369,201 @@ export function textoEstado(e: Pick<Envio, 'estado' | 'para_nombre' | 'de_nombre
   if (e.estado === 'aceptado') return otro + ' lo ha aceptado'
   if (e.estado === 'rechazado') return otro + ' lo ha rechazado'
   return 'Lo cancelaste'
+}
+
+/** El color de un estado: lo que pide atención, en ámbar. */
+export type TonoEstado = 'ambar' | 'bien' | 'rojo' | 'neutro'
+
+/** El chip de un envío en las listas. */
+export function chipEstado(e: EnvioContado, papel: 'recibe' | 'manda'): { texto: string; tono: TonoEstado } {
+  if (e.tipo === 'deportista') {
+    const f = faseTraspaso(e)
+    const dep = primerNombre(e.contenido?.deportista?.nombre) || 'el deportista'
+    const para = primerNombre(e.para_nombre) || 'el entrenador'
+    if (f === 'falta-deportista') return { texto: 'Falta ' + dep, tono: 'ambar' }
+    if (f === 'falta-entrenador') return { texto: papel === 'recibe' ? 'Por revisar' : 'Falta ' + para, tono: 'ambar' }
+    if (f === 'rechazado' && e.rechaza === 'deportista') return { texto: mayuscula(dep) + ' dijo que no', tono: 'rojo' }
+  }
+  if (e.estado === 'pendiente') return { texto: papel === 'recibe' ? 'Por revisar' : 'Sin contestar', tono: 'ambar' }
+  if (e.estado === 'aceptado') return { texto: 'Aceptado', tono: 'bien' }
+  if (e.estado === 'rechazado') return { texto: 'Rechazado', tono: 'rojo' }
+  return { texto: 'Cancelado', tono: 'neutro' }
+}
+
+const mayuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+// ------------------------------------------------------------
+// El traspaso de un deportista (fase 2)
+// ------------------------------------------------------------
+
+/** En qué va un traspaso: tiene dos respuestas, la del entrenador que lo
+ *  recibe y, si el deportista tiene cuenta, la suya. */
+export type FaseTraspaso = 'pendiente' | 'falta-deportista' | 'falta-entrenador' | 'aceptado' | 'rechazado' | 'cancelado'
+
+export function faseTraspaso(e: Pick<EnvioContado, 'estado' | 'deportista_usuario' | 'acepta_entrenador_en' | 'acepta_deportista_en'>): FaseTraspaso {
+  if (e.estado !== 'pendiente') return e.estado
+  if (e.acepta_entrenador_en && !e.acepta_deportista_en && e.deportista_usuario) return 'falta-deportista'
+  if (e.acepta_deportista_en && !e.acepta_entrenador_en) return 'falta-entrenador'
+  return 'pendiente'
+}
+
+/** Si a quien lo recibe le toca contestar: un traspaso que ya aceptó, no. */
+export function puedoContestar(e: Pick<Envio, 'estado' | 'tipo'> & Pick<EnvioContado, 'acepta_entrenador_en'>): boolean {
+  return e.estado === 'pendiente' && !(e.tipo === 'deportista' && e.acepta_entrenador_en)
+}
+
+/** Un traspaso contado a quien lo recibe o a quien lo pidió (como la maqueta). */
+function textoTraspaso(e: EnvioContado, papel: 'recibe' | 'manda'): string {
+  const f = faseTraspaso(e)
+  const dep = primerNombre(e.contenido?.deportista?.nombre) || 'el deportista'
+  const de = primerNombre(e.de_nombre) || 'su entrenador'
+  const para = primerNombre(e.para_nombre) || 'el otro entrenador'
+  if (papel === 'recibe') {
+    if (f === 'pendiente') return 'Por revisar'
+    if (f === 'falta-entrenador') return mayuscula(dep) + ' ya ha dicho que sí: falta que contestes tú'
+    if (f === 'falta-deportista') return 'Falta que conteste ' + dep + '. Hasta entonces sigue con ' + de
+    if (f === 'aceptado') return mayuscula(dep) + ' ya está en tu lista'
+    if (f === 'rechazado') return e.rechaza === 'deportista' ? mayuscula(dep) + ' prefiere seguir con ' + de + ': no cambia nada' : 'Lo rechazaste: no cambia nada'
+    return mayuscula(de) + ' lo canceló'
+  }
+  if (f === 'pendiente') return e.deportista_usuario ? 'Esperando a ' + para + ' y a ' + dep : mayuscula(para) + ' todavía no ha contestado'
+  if (f === 'falta-deportista') return mayuscula(para) + ' lo ha aceptado. Falta que conteste ' + dep
+  if (f === 'falta-entrenador') return mayuscula(dep) + ' lo ha aceptado. Falta que conteste ' + para
+  if (f === 'aceptado') return mayuscula(dep) + ' ya está con ' + para
+  if (f === 'rechazado') return e.rechaza === 'deportista' ? mayuscula(dep) + ' prefiere seguir contigo' : mayuscula(para) + ' lo ha rechazado'
+  return 'Lo cancelaste'
+}
+
+/** Lo que se le dice a quien acaba de contestar un traspaso. */
+export function traspasoContestado(
+  e: Pick<Envio, 'de_nombre' | 'contenido' | 'tipo'>,
+  aceptar: boolean,
+  r: { estado?: string; motivo?: string } | null | undefined,
+): string {
+  const dep = primerNombre(e.contenido?.deportista?.nombre) || 'El deportista'
+  const de = primerNombre(e.de_nombre) || 'su entrenador'
+  if (!aceptar) return 'Rechazado: ' + dep + ' sigue con ' + de + '.'
+  if (r?.estado === 'cancelado') return 'Ya no se puede: ' + (r.motivo || 'el traspaso se ha cancelado').replace(/\.$/, '') + '.'
+  if (r?.estado === 'pendiente') return 'Aceptado. Falta que conteste ' + dep + ': hasta entonces sigue con ' + de + '.'
+  return 'Aceptado. ' + dondeQueda(e)
+}
+
+/** Tu cupo, para decirlo antes de aceptar un traspaso. `lleno` apaga «Aceptar». */
+export function textoCupo(c: { cupo: number | null; tengo: number } | null | undefined): { texto: string; lleno: boolean } | null {
+  if (!c || c.cupo == null) return null
+  const libres = c.cupo - c.tengo - 1
+  if (libres < 0) return { texto: 'Tu cupo está lleno (' + c.tengo + ' de ' + c.cupo + ' deportistas): para aceptarlo tienes que hacer sitio.', lleno: true }
+  return {
+    texto: 'Ocupa un sitio de tu cupo: ' + (libres === 0 ? 'no te quedaría ninguno libre.' : 'te quedaría' + (libres === 1 ? ' 1 libre.' : 'n ' + libres + ' libres.')),
+    lleno: false,
+  }
+}
+
+/** Lo que hace falta para saber qué usa un deportista de lo tuyo. */
+export interface LoQueUsaEntrada {
+  /** Todos tus tests, también los archivados (la base los manda igual). */
+  misTests: { id: number; nombre: string }[]
+  /** Tus clasificaciones sin archivar, en su orden. */
+  misClasificaciones: { id: number; nombre: string; hitos: string[] | null }[]
+  /** Tus zonas, también las archivadas (un ajuste puede estar en una). */
+  misZonas: { id: number; id_clasificacion: number | null; ref_definicion: number | null; desde: LimiteEnviado | null; hasta: LimiteEnviado | null; archivada?: boolean | null }[]
+  /** Del deportista: sus mediciones, sus ajustes de zona y sus sesiones con test. */
+  mediciones: { id_definicion: number }[]
+  ajustes: { id_zona: number; desde: LimiteEnviado | null; hasta: LimiteEnviado | null }[]
+  sesiones: { test: unknown }[]
+  /** Tus ejercicios de la biblioteca (los tuyos: ni los del común ni los de un deportista). */
+  misEjercicios?: { id: number; nombre: string }[]
+  /** Del deportista: los ejercicios de sus sesiones (fuerza, encadenado) y de sus tareas (técnica, saltos). */
+  usosDeEjercicios?: { ejercicio_id?: number | null; ejercicio_encadenado_id?: number | null; tecnica_id?: number | null }[]
+}
+
+const idDeHito = (ref: unknown): number | null => {
+  const m = /^propia:(\d+):\d+$/.exec(String(ref ?? ''))
+  return m ? Number(m[1]) : null
+}
+
+/** Lo tuyo que va con un deportista si marcas la casilla. */
+export interface LoQueUsa {
+  tests: { id: number; nombre: string }[]
+  zonas: { id: number; nombre: string }[]
+  ejercicios: { id: number; nombre: string }[]
+}
+
+/**
+ * Lo tuyo que usa un deportista: lo que va con él si marcas «mandar también lo
+ * tuyo». ES LA MISMA REGLA QUE pedir_traspaso: tus tests con mediciones suyas,
+ * en sus ajustes de zona o en sus días de test; tus zonas que salen de ellos o
+ * en las que tiene ajustes, con los tests de los que salen; y los ejercicios de
+ * tu biblioteca que tiene en sus sesiones. Unas zonas sin zonas, o que salen de
+ * un test que no es tuyo, se quedan (como en la base).
+ */
+export function loQueUsa(x: LoQueUsaEntrada): LoQueUsa {
+  const mios = new Map(x.misTests.map(t => [Number(t.id), t]))
+  const usados = new Set<number>()
+  const usar = (id: number | null) => { if (id != null && mios.has(id)) usados.add(id) }
+  x.mediciones.forEach(m => usar(Number(m.id_definicion)))
+  x.ajustes.forEach(a => { usar(idDeHito(a.desde?.ref)); usar(idDeHito(a.hasta?.ref)) })
+  x.sesiones.forEach(s => {
+    const t = s.test as { origen?: unknown; id?: unknown } | null
+    if (t && typeof t === 'object' && t.origen === 'propio' && Number.isFinite(Number(t.id))) usar(Number(t.id))
+  })
+
+  const conAjuste = new Set(x.ajustes
+    .map(a => x.misZonas.find(z => z.id === a.id_zona)?.id_clasificacion)
+    .filter((c): c is number => c != null))
+  const tests = new Set(usados)
+  const zonas: { id: number; nombre: string }[] = []
+  for (const c of x.misClasificaciones) {
+    const suyas = x.misZonas.filter(z => z.id_clasificacion === c.id && !z.archivada)
+    const refs = [
+      ...(c.hitos || []).map(idDeHito),
+      ...suyas.flatMap(z => [idDeHito(z.desde?.ref), idDeHito(z.hasta?.ref), z.ref_definicion]),
+    ].filter((n): n is number => n != null)
+    if (!refs.some(id => usados.has(id)) && !conAjuste.has(c.id)) continue
+    if (!suyas.length || refs.some(id => !mios.has(id))) continue
+    zonas.push({ id: c.id, nombre: c.nombre })
+    refs.forEach(id => tests.add(id))
+  }
+
+  /* Los ejercicios de tu biblioteca que tiene en sus sesiones. */
+  const misEjercicios = new Map((x.misEjercicios || []).map(e => [Number(e.id), e]))
+  const ejercicios = new Set<number>()
+  for (const u of x.usosDeEjercicios || []) {
+    for (const id of [u.ejercicio_id, u.ejercicio_encadenado_id, u.tecnica_id]) {
+      if (id != null && misEjercicios.has(Number(id))) ejercicios.add(Number(id))
+    }
+  }
+  return {
+    tests: [...tests].sort((a, b) => a - b).map(id => mios.get(id)!),
+    zonas,
+    ejercicios: [...ejercicios].map(id => misEjercicios.get(id)!)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.id - b.id),
+  }
+}
+
+/** «El test «30-15 IFT», las zonas «Zonas 30-15» y 2 ejercicios tuyos («A» y «B»)». */
+export function textoLoQueUsa(l: { tests: { nombre: string }[]; zonas: { nombre: string }[]; ejercicios?: { nombre: string }[] }): string {
+  const q = (xs: { nombre: string }[]) => listaY(xs.map(x => '«' + x.nombre + '»'))
+  const ejs = l.ejercicios || []
+  /* Los ejercicios pueden ser muchos: se nombran tres y se cuentan los demás. */
+  const nombres = ejs.slice(0, 3).map(e => '«' + e.nombre + '»')
+  if (ejs.length > 3) nombres.push((ejs.length - 3) + ' más')
+  const texto = listaY([
+    l.tests.length ? (l.tests.length === 1 ? 'el test ' : 'los tests ') + q(l.tests) : '',
+    l.zonas.length ? 'las zonas ' + q(l.zonas) : '',
+    ejs.length ? (ejs.length === 1 ? 'un ejercicio tuyo' : ejs.length + ' ejercicios tuyos') + ' (' + listaY(nombres) + ')' : '',
+  ].filter(Boolean))
+  return mayuscula(texto)
+}
+
+/** Lo que no tendrá quien lo recibe si no se marca la casilla, para decirlo al lado. */
+export function sinLoSuyo(l: { tests: unknown[]; zonas: unknown[]; ejercicios?: unknown[] }, otro: string): string {
+  const pierde = [
+    l.tests.length ? 'no podrá apuntarle mediciones nuevas con esos tests' : '',
+    l.zonas.length ? 'no podrá usar esas zonas' : '',
+    (l.ejercicios || []).length ? 'verá sus sesiones sin el vídeo ni la técnica de esos ejercicios' : '',
+  ].filter(Boolean)
+  return pierde.length ? 'Si no, ' + otro + ' ' + listaY(pierde) + '.' : ''
 }
 
 // ------------------------------------------------------------
@@ -510,7 +773,9 @@ export const casaConBusqueda = (nombre: string | null | undefined, busqueda: str
 export function errorDeEnvio(error: { code?: string; message?: string } | null | undefined): string {
   const m = String(error?.message || '')
   if (error?.code === 'PGRST202' || /could not find the function/i.test(m)) {
-    return 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
+    return /traspaso|tiene_sitio/.test(m)
+      ? 'Falta aplicar supabase/envios-traspaso.sql en la base de datos.'
+      : 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
   }
   if (error?.code === 'PGRST205' || error?.code === '42P01' || (/envio_entrenador/.test(m) && /does not exist|schema cache/i.test(m))) {
     return 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
@@ -591,4 +856,76 @@ export async function marcarRespuestasVistas(sb: any, ids: number[]): Promise<st
   if (!ids.length) return null
   const { error } = await sb.rpc('envio_respuesta_vista', { _ids: ids })
   return error ? errorDeEnvio(error) : null
+}
+
+/** Pide pasar un deportista tuyo a otro entrenador. Devuelve el id del envío. */
+export async function pedirTraspaso(
+  sb: any, para: string, idDeportista: number, conLoSuyo: boolean, mensaje?: string | null,
+): Promise<{ id: number | null; error: string | null }> {
+  const { data, error } = await sb.rpc('pedir_traspaso', {
+    _para: para, _id_deportista: idDeportista, _con_lo_suyo: conLoSuyo, _mensaje: mensaje?.trim() || null,
+  })
+  if (error) return { id: null, error: errorDeEnvio(error) }
+  return { id: Number(data), error: null }
+}
+
+/** Si ese entrenador tiene sitio en su cupo. Solo eso: cuántos tiene no se dice. null = no se sabe. */
+export async function entrenadorTieneSitio(sb: any, para: string): Promise<boolean | null> {
+  const { data, error } = await sb.rpc('entrenador_tiene_sitio', { _para: para })
+  return error || typeof data !== 'boolean' ? null : data
+}
+
+/** Lo que tiene que contestar el deportista: quién lo pide y a quién pasaría. */
+export interface TraspasoPendiente {
+  id: number
+  de_nombre: string | null
+  para_nombre: string | null
+  mensaje: string | null
+  creado_en: string
+  /** Ya dijo que sí: falta el entrenador. */
+  ya_acepte: boolean
+}
+
+export async function misTraspasosPendientes(sb: any): Promise<{ traspasos: TraspasoPendiente[]; error: string | null }> {
+  const { data, error } = await sb.rpc('mis_traspasos_pendientes')
+  if (error) return { traspasos: [], error: errorDeEnvio(error) }
+  return {
+    traspasos: (Array.isArray(data) ? data : []).map((t: any) => ({
+      id: Number(t.id), de_nombre: t.de_nombre ?? null, para_nombre: t.para_nombre ?? null,
+      mensaje: t.mensaje ?? null, creado_en: String(t.creado_en ?? ''), ya_acepte: !!t.ya_acepte,
+    })),
+    error: null,
+  }
+}
+
+/** El deportista contesta su traspaso. Si es el último en aceptar, se hace. */
+export async function contestarTraspasoDeportista(
+  sb: any, id: number, aceptar: boolean,
+): Promise<{ resultado: { estado?: string; falta?: string; motivo?: string } | null; error: string | null }> {
+  const { data, error } = await sb.rpc('contestar_traspaso_deportista', { _id: id, _aceptar: aceptar })
+  if (error) return { resultado: null, error: errorDeEnvio(error) }
+  return { resultado: (data || {}) as { estado?: string; falta?: string; motivo?: string }, error: null }
+}
+
+/** Lo tuyo que usa un deportista, mirado en la base (lo que dice loQueUsa).
+ *  Sus sesiones no se suman: se mira cuáles son día de test, y cuentan también
+ *  las de la papelera (`eliminada`), porque la base las reenlaza todas. */
+export async function cargarLoQueUsa(sb: any, yo: string, idDeportista: number): Promise<ReturnType<typeof loQueUsa>> {
+  const [ts, cs, zs, ms, aj, ss, eb, ej, ta] = await Promise.all([
+    sb.from('test_definicion').select('id, nombre').eq('id_entrenador', yo),
+    sb.from('zona_clasificacion').select('id, nombre, hitos').eq('id_entrenador', yo).eq('archivada', false).order('orden'),
+    sb.from('zona_entrenador').select('id, id_clasificacion, ref_definicion, desde, hasta, archivada').eq('id_entrenador', yo),
+    sb.from('test_medicion').select('id_definicion').eq('id_deportista', idDeportista),
+    sb.from('zona_ajuste').select('id_zona, desde, hasta').eq('id_deportista', idDeportista),
+    sb.from('sesion').select('test').eq('id_deportista', idDeportista).not('test', 'is', null),
+    /* Los ejercicios de tu biblioteca, y dónde los tiene él: en la fuerza y en la técnica. */
+    sb.from('ejercicios_biblioteca').select('id, nombre').eq('id_entrenador', yo).is('id_deportista', null),
+    sb.from('ejercicios').select('ejercicio_id, ejercicio_encadenado_id').eq('id_deportista', idDeportista),
+    sb.from('tarea').select('tecnica_id').eq('id_deportista', idDeportista).not('tecnica_id', 'is', null),
+  ])
+  return loQueUsa({
+    misTests: ts.data || [], misClasificaciones: cs.data || [], misZonas: zs.data || [],
+    mediciones: ms.data || [], ajustes: aj.data || [], sesiones: ss.data || [],
+    misEjercicios: eb.data || [], usosDeEjercicios: [...(ej.data || []), ...(ta.data || [])],
+  })
 }

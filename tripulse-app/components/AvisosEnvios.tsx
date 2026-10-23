@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import {
   COLUMNAS_ENVIO, contestar, marcarRespuestasVistas, etiquetaTipo, haceCuanto, dondeQueda, primerNombre, faltaLaTabla,
+  puedoContestar, traspasoContestado, textoEstado, textoCupo,
   type Envio,
 } from '@/lib/envios'
 
@@ -28,10 +29,12 @@ export interface PropsVista {
   onResponder: (e: Envio, aceptar: boolean) => void
   onEntendido: () => void
   onVer: (id: number | null) => void
+  /** Lo que no se puede aceptar ahora, con el motivo (un traspaso con tu cupo lleno). */
+  sinAceptar?: Record<number, string>
   className?: string
 }
 
-export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajando, onResponder, onEntendido, onVer, className = '' }: PropsVista) {
+export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajando, onResponder, onEntendido, onVer, sinAceptar = {}, className = '' }: PropsVista) {
   const pendientes = recibidos.filter(e => !contestados[e.id]).length
   if (!recibidos.length && !respuestas.length) return null
 
@@ -63,7 +66,8 @@ export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajan
                 <p role="status" className="text-[12.5px] text-emerald-300">{contestados[e.id]}</p>
               ) : (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button type="button" onClick={() => onResponder(e, true)} disabled={!!trabajando}
+                  <button type="button" onClick={() => onResponder(e, true)} disabled={!!trabajando || !!sinAceptar[e.id]}
+                    title={sinAceptar[e.id] || undefined}
                     className="bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[13px] px-3.5 py-1.5 rounded-lg transition disabled:opacity-50">
                     {trabajando === e.id ? 'Un momento…' : 'Aceptar'}
                   </button>
@@ -75,6 +79,7 @@ export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajan
                     className="text-gray-400 hover:text-white text-[12.5px] underline decoration-dotted underline-offset-4 px-1 transition">
                     Ver qué es
                   </button>
+                  {sinAceptar[e.id] && <span className="basis-full text-[12px] text-amber-300">{sinAceptar[e.id]}</span>}
                 </div>
               )}
             </li>
@@ -87,7 +92,9 @@ export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajan
           {respuestas.map(e => (
             <p key={e.id} className="text-[13px] text-gray-300">
               <span className={e.estado === 'aceptado' ? 'text-emerald-300' : 'text-red-300'}>{e.estado === 'aceptado' ? '✓' : '✕'}</span>{' '}
-              {primerNombre(e.para_nombre) || 'El otro entrenador'} ha {e.estado === 'aceptado' ? 'aceptado' : 'rechazado'} «{e.titulo}».
+              {e.tipo === 'deportista'
+                ? textoEstado(e, 'manda') + '.'
+                : (primerNombre(e.para_nombre) || 'El otro entrenador') + ' ha ' + (e.estado === 'aceptado' ? 'aceptado' : 'rechazado') + ' «' + e.titulo + '».'}
             </p>
           ))}
           <button type="button" onClick={onEntendido}
@@ -113,30 +120,46 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
      pasó, en vez de desaparecer sin más. */
   const [contestados, setContestados] = useState<Record<number, string>>({})
   const [trabajando, setTrabajando] = useState<number | null>(null)
+  const [sinAceptar, setSinAceptar] = useState<Record<number, string>>({})
 
   useEffect(() => {
     let vivo = true
     ;(async () => {
       const user = await usuarioActual()
       if (!vivo || !user) return
-      const [rec, res] = await Promise.all([
+      const [rec, res, yo, tengo] = await Promise.all([
         supabase.from('envio_entrenador').select(COLUMNAS_ENVIO)
           .eq('para', user.id).eq('estado', 'pendiente').order('creado_en', { ascending: false }).limit(10),
         supabase.from('envio_entrenador').select(COLUMNAS_ENVIO)
           .eq('de', user.id).in('estado', ['aceptado', 'rechazado']).is('respuesta_vista_en', null)
           .order('contestado_en', { ascending: false }).limit(10),
+        /* Tu cupo: un traspaso con el cupo lleno no se acepta desde aquí. */
+        supabase.from('perfiles').select('cupo_deportistas').eq('id', user.id).maybeSingle(),
+        supabase.from('deportista').select('id', { count: 'exact', head: true }).eq('id_entrenador', user.id).eq('solo_test', false),
       ])
       /* Sin la tabla (la migración sin aplicar) no hay nada que enseñar. */
       if (!vivo || faltaLaTabla(rec.error) || faltaLaTabla(res.error)) return
-      setRecibidos((rec.data || []) as Envio[])
+      /* Un traspaso que ya aceptaste espera al deportista: no te toca contestar. */
+      const porContestar = ((rec.data || []) as Envio[]).filter(puedoContestar)
+      setRecibidos(porContestar)
       setRespuestas((res.data || []) as Envio[])
+      const cupo = (yo.data as { cupo_deportistas?: number | null } | null)?.cupo_deportistas
+      const lleno = textoCupo({ cupo: cupo == null ? null : Number(cupo), tengo: tengo.count ?? 0 })?.lleno
+      if (lleno) {
+        setSinAceptar(Object.fromEntries(porContestar
+          .filter(e => e.tipo === 'deportista' && !e.contenido?.deportista?.solo_test)
+          .map(e => [e.id, 'Tu cupo está lleno: para aceptarlo tienes que hacer sitio.'])))
+      }
     })()
     return () => { vivo = false }
   }, [])
 
   const responder = async (e: Envio, aceptar: boolean) => {
     if (trabajando) return
-    if (!aceptar && !confirm('¿Rechazar «' + e.titulo + '»?\n\nNo se crea nada, y ' + (primerNombre(e.de_nombre) || 'quien te lo mandó') + ' verá que lo has rechazado.')) return
+    const de = primerNombre(e.de_nombre) || 'quien te lo mandó'
+    if (!aceptar && !confirm(e.tipo === 'deportista'
+      ? '¿Rechazar el traspaso de ' + (e.contenido.deportista?.nombre || 'este deportista') + '?\n\nSigue con ' + de + ', y ' + de + ' verá que lo has rechazado.'
+      : '¿Rechazar «' + e.titulo + '»?\n\nNo se crea nada, y ' + de + ' verá que lo has rechazado.')) return
     setTrabajando(e.id)
     const r = await contestar(supabase, e.id, aceptar)
     setTrabajando(null)
@@ -144,9 +167,11 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
     if (r.error) { alert('No se ha podido ' + (aceptar ? 'aceptar' : 'rechazar') + '.\n\n' + r.error); return }
     setContestados(prev => ({
       ...prev,
-      [e.id]: aceptar
-        ? 'Aceptado. ' + dondeQueda(e) + ((r.resultado?.reusados?.length ?? 0) > 0 ? ' El test ya lo tenías: no se ha duplicado.' : '')
-        : 'Rechazado: no se ha creado nada.',
+      [e.id]: e.tipo === 'deportista'
+        ? traspasoContestado(e, aceptar, r.resultado as { estado?: string; motivo?: string } | null)
+        : aceptar
+          ? 'Aceptado. ' + dondeQueda(e) + ((r.resultado?.reusados?.length ?? 0) > 0 ? ' El test ya lo tenías: no se ha duplicado.' : '')
+          : 'Rechazado: no se ha creado nada.',
     }))
   }
 
@@ -158,7 +183,7 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
 
   return (
     <AvisosEnviosVista className={className} recibidos={recibidos} respuestas={respuestas} contestados={contestados}
-      trabajando={trabajando} onResponder={responder} onEntendido={entendido}
+      trabajando={trabajando} onResponder={responder} onEntendido={entendido} sinAceptar={sinAceptar}
       onVer={id => router.push(id ? '/envios?id=' + id : '/envios')} />
   )
 }

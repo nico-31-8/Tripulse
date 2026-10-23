@@ -23,6 +23,7 @@ import { chipDisciplina, colorDisciplina, emojiDisciplina, etiquetaConEmoji } fr
 import { coloresDe, fondoDe, inicialDe } from '@/lib/avatar'
 import AccesoDirectorFicha from '@/components/AccesoDirectorFicha'
 import QuitarDeportista from '@/components/QuitarDeportista'
+import EnviarAEntrenador from '@/components/EnviarAEntrenador'
 import { usuarioActual } from '@/lib/sesion'
 import { useTutorial } from '@/components/tutorial/TutorialProvider'
 import { useConsejos } from '@/components/tutorial/useConsejos'
@@ -190,6 +191,8 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
      entrenador: un director puede abrir la ficha pero no decidir de quién es. */
   const [soyEntrenador, setSoyEntrenador] = useState(false)
   const [quitando, setQuitando] = useState(false)
+  /* Pasarlo a otro entrenador: un traspaso (lib/envios), junto a «Quitar». */
+  const [pasando, setPasando] = useState(false)
 
   useEffect(() => { cargarDatos() }, [id])
 
@@ -1170,6 +1173,11 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
         <QuitarDeportista deportista={deportista} onCerrar={() => setQuitando(false)}
           onHecho={() => router.push('/deportistas')} />
       )}
+      {pasando && (
+        <EnviarAEntrenador
+          que={{ tipo: 'deportista', id: deportista.id, nombre: deportista.nombre, tieneCuenta: !!deportista.id_usuario }}
+          onCerrar={() => setPasando(false)} />
+      )}
 
       {/* Modal edición */}
       {editando && (
@@ -1258,7 +1266,14 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
             {/* Quitarlo, aparte y abajo del todo: lejos de «Guardar» para que no
                 se pulse por error, y con su propia pregunta antes. */}
             {soyEntrenador && (
-              <div className="border-t border-gray-800 mt-5 pt-4">
+              <div className="border-t border-gray-800 mt-5 pt-4 flex flex-col gap-2">
+                {/* La ficha de un grupo no se pasa: se quita borrando el grupo. */}
+                {!deportista.id_grupo && (
+                  <button type="button" onClick={() => { setEditando(false); setPasando(true) }}
+                    className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg text-sm transition border border-gray-700 hover:border-sky-500">
+                    📨 Pasar a otro entrenador
+                  </button>
+                )}
                 <button type="button" onClick={() => { setEditando(false); setQuitando(true) }}
                   className="w-full bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 py-2.5 rounded-lg text-sm transition border border-gray-700 hover:border-red-800">
                   {deportista.id_usuario ? 'Desvincular de mis deportistas' : 'Borrar esta ficha'}

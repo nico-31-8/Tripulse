@@ -14,6 +14,43 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Pasa un deportista a otro entrenador
+
+- **Nuevo:** en Deportistas, junto a «Quitar», tienes «📨 Pasar a otro
+  entrenador». También está en la ficha del deportista, al final de «Editar
+  datos personales», y en Envíos, en «📨 Mandar algo», pestaña Deportistas. No
+  es una copia: pasa a la lista del otro entrenador con todo su historial, y tú
+  dejas de verlo.
+- **Contestan los dos:** el entrenador que lo recibe y, si el deportista tiene
+  cuenta, también él, porque son sus datos. Al deportista le sale en su panel
+  («Ana propone que pases a entrenar con Luis»), con «Aceptar» o «Seguir con
+  Ana». Hasta que contestan los dos sigue contigo; si cualquiera dice que no, no
+  cambia nada. Mientras tanto puedes cancelarlo desde Envíos, y en su tarjeta de
+  Deportistas ves a quién se lo has pedido.
+- **Va todo lo suyo:** su plan y sus sesiones (las hechas y las por hacer), sus
+  tests, su wellness, lo de su reloj, su material, sus análisis y sus marcas.
+  Sale de tus grupos, y se quitan los accesos de director que hubieras dado y
+  las invitaciones sin usar.
+- **«Mandarle también lo tuyo que usa»:** con esta casilla, el otro recibe
+  copias de tus tests, tus zonas y los ejercicios de tu biblioteca que usa ese
+  deportista, con sus vídeos. Sus mediciones, sus ajustes de zona, sus días de
+  test y sus sesiones pasan a usar esas copias. Lo tuyo no se toca. Sin la
+  casilla, el otro ve sus sesiones y sus mediciones de antes, pero no los vídeos
+  de tus ejercicios ni tus zonas.
+- **El cupo:** antes de pedirlo te decimos si el otro entrenador tiene sitio,
+  sin decirte cuántos deportistas tiene. Quien lo recibe ve cuántos sitios le
+  quedarían, y con el cupo lleno no puede aceptarlo.
+- **Lo que cambia de lo que ya usabas:**
+  - **Cobros:** cada cobro queda apuntado a quien lo apuntó. Hoy no ves ni más
+    ni menos que ayer. Si pasas un deportista, lo que le cobraste se queda en tu
+    libreta, y el otro entrenador empieza la suya.
+  - **Chat:** cada entrenador ve solo sus conversaciones. Hoy nadie deja de ver
+    nada. Si pasas un deportista, el nuevo entrenador no ve lo que hablasteis, y
+    el deportista ve en su chat la conversación con su entrenador de ahora.
+- Las fichas de un grupo no se pasan: se quitan borrando el grupo.
+
+---
+
 ## 23 de octubre de 2026 · Manda varias cosas a la vez, por ejemplo un test con sus zonas
 
 - **Nuevo:** en un mismo envío puedes mandar a otro entrenador varias cosas:

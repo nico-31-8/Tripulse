@@ -10,6 +10,10 @@
 // Puede llevar VARIAS cosas («varios»: lo arma «Mandar algo» en Envíos), y un
 // test puede llevarse las zonas que salen de él: a quien lo recibe le llega
 // todo en un solo envío, y lo acepta todo junto.
+//
+// Y un DEPORTISTA («Pasar a otro entrenador»): no es una copia, es un traspaso
+// (supabase/envios-traspaso.sql). Se dice antes si el otro tiene sitio en su
+// cupo, y se ofrece mandarle también lo tuyo que usa ese deportista.
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -20,7 +24,8 @@ import { textoBloque, type BloqueP } from '@/lib/plantillas'
 import { etiquetaDisciplina } from '@/lib/disciplinas'
 import {
   buscarEntrenador, enviar, enviarVarios, correoValido, destinatariosPrevios, queViaja, zonasDesconocidas, plantillaParaEnviar,
-  resumenVarios, zonasDeTest, testsDeHitos, motivoNoSeManda,
+  resumenVarios, zonasDeTest, testsDeHitos, motivoNoSeManda, pedirTraspaso, entrenadorTieneSitio, cargarLoQueUsa, textoLoQueUsa,
+  sinLoSuyo, primerNombre, type LoQueUsa,
 } from '@/lib/envios'
 
 export interface ChipZona { sigla: string; nombre: string; color: string }
@@ -32,6 +37,9 @@ export interface ZonasQueEnviar {
   /** Los tests propios de los que salen: viajan con ellas. */
   tests: string[]
 }
+
+/** Un deportista tuyo, para pasárselo a otro entrenador. */
+export interface DeportistaQueEnviar { id: number; nombre: string; tieneCuenta: boolean; detalle?: string }
 
 export type QueEnviar =
   | {
@@ -46,6 +54,7 @@ export type QueEnviar =
   | ({ tipo: 'test' } & TestQueEnviar)
   | ({ tipo: 'zonas' } & ZonasQueEnviar)
   | { tipo: 'varios'; plantillas: PlantillaQueEnviar[]; tests: TestQueEnviar[]; zonas: ZonasQueEnviar[] }
+  | ({ tipo: 'deportista' } & DeportistaQueEnviar)
 
 /** Unas zonas que salen del test que se manda, para llevárselas con él. */
 interface Anclada { id: number; nombre: string; zonas: ChipZona[]; otros: string[]; motivo: string | null }
@@ -56,6 +65,59 @@ type Busqueda =
   | { correo: string; estado: 'error'; error: string }
 
 const DESCANSO = (s?: number) => !s ? '' : s >= 60 ? (s % 60 ? Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″' : s / 60 + '′') : s + '″'
+
+/**
+ * Lo que dice la ventana al pasar un deportista: que es un traspaso, si el otro
+ * tiene sitio, lo tuyo que usa (con la casilla) y si tiene que aceptarlo él
+ * también. Solo pinta: los datos se los da la ventana.
+ */
+export function AvisoTraspaso({ suNombre, tieneCuenta, destino, otro, hayHueco, loSuyo, conLoSuyo, onConLoSuyo, bloqueado = false }: {
+  suNombre: string
+  tieneCuenta: boolean
+  /** El nombre de quien lo recibe, cuando ya se ha encontrado. */
+  destino: string | null
+  /** Su primer nombre, o «el otro entrenador». */
+  otro: string
+  /** undefined mientras se mira; false con el cupo lleno; null si no se sabe. */
+  hayHueco: boolean | null | undefined
+  loSuyo: LoQueUsa | null
+  conLoSuyo: boolean
+  onConLoSuyo: (v: boolean) => void
+  bloqueado?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="text-xs leading-relaxed bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2.5 text-amber-100/90 flex flex-col gap-1">
+        <b className="text-white font-semibold text-[13px]">
+          Es un traspaso: {suNombre} pasa a la lista de {destino || 'otro entrenador'} y dejas de ver su ficha.
+        </b>
+        <span>Su historial, sus tests y su plan van con {suNombre}. Sale de tus grupos.</span>
+        {destino && (
+          hayHueco === undefined ? <span className="text-gray-400">Mirando si tiene sitio…</span>
+            : hayHueco === false ? <span className="text-amber-200 font-semibold">{destino} tiene el cupo lleno: ahora no puede recibir a nadie.</span>
+              : hayHueco === true ? <span className="text-emerald-300">{destino} tiene sitio.</span> : null
+        )}
+      </div>
+      {loSuyo && loSuyo.tests.length + loSuyo.zonas.length + loSuyo.ejercicios.length > 0 && (
+        <label className="flex items-start gap-2.5 text-[13px] cursor-pointer">
+          <input type="checkbox" checked={conLoSuyo} onChange={e => onConLoSuyo(e.target.checked)} disabled={bloqueado}
+            className="mt-0.5 w-4 h-4 accent-orange-500 flex-shrink-0" />
+          <span className="flex flex-col gap-0.5 min-w-0">
+            <span>Mandarle también lo tuyo que usa {suNombre}</span>
+            <span className="text-gray-400 text-xs leading-relaxed">
+              {textoLoQueUsa(loSuyo)}: le llegan como copias suyas, y lo de {suNombre} pasa a ellas. {sinLoSuyo(loSuyo, otro)}
+            </span>
+          </span>
+        </label>
+      )}
+      <p className="text-xs leading-relaxed bg-sky-400/10 border border-sky-400/30 rounded-lg px-3 py-2 text-sky-100/90">
+        {tieneCuenta
+          ? suNombre + ' tiene cuenta: también tendrá que aceptarlo. Hasta entonces sigue contigo.'
+          : 'Es una ficha sin cuenta: basta con que acepte ' + otro + '.'}
+      </p>
+    </div>
+  )
+}
 
 export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   que: QueEnviar
@@ -77,6 +139,12 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   const [ancladas, setAncladas] = useState<Anclada[]>([])
   const [marcadas, setMarcadas] = useState<number[]>([])
   const idTest = que.tipo === 'test' ? que.id : null
+  /* Al pasar un deportista: lo tuyo que usa (null mientras se mira), si se
+     manda con él, y si quien lo recibe tiene sitio en su cupo. */
+  const idDeportista = que.tipo === 'deportista' ? que.id : null
+  const [loSuyo, setLoSuyo] = useState<LoQueUsa | null>(null)
+  const [conLoSuyo, setConLoSuyo] = useState(true)
+  const [sitio, setSitio] = useState<{ para: string; hay: boolean | null } | null>(null)
 
   /* Tu correo (para decirte «ese es el tuyo») y a quién has mandado algo. Si
      la tabla aún no existe, la lista sale vacía y ya está. */
@@ -127,12 +195,36 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
     return () => { vivo = false }
   }, [idTest])
 
+  /* Lo tuyo que usa el deportista que pasas: lo mismo que mirará la base al
+     pedirlo (lib/envios, loQueUsa). */
+  useEffect(() => {
+    if (idDeportista == null) return
+    let vivo = true
+    ;(async () => {
+      const user = await usuarioActual()
+      if (!vivo || !user) return
+      const l = await cargarLoQueUsa(supabase, user.id, idDeportista)
+      if (vivo) setLoSuyo(l)
+    })()
+    return () => { vivo = false }
+  }, [idDeportista])
+
   // Escape cierra, como en el resto de ventanas.
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape' && !enviando) onCerrar() }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
   }, [onCerrar, enviando])
+
+  /* Si quien lo recibe tiene sitio en su cupo. La respuesta se guarda con a
+     quién se preguntó: la de una búsqueda vieja no vale para la de ahora. */
+  const idDestino = busqueda?.estado === 'si' ? busqueda.id : null
+  useEffect(() => {
+    if (idDeportista == null || !idDestino) return
+    let vivo = true
+    entrenadorTieneSitio(supabase, idDestino).then(hay => { if (vivo) setSitio({ para: idDestino, hay }) })
+    return () => { vivo = false }
+  }, [idDeportista, idDestino])
 
   /* Se busca al dejar de escribir, y solo con algo que parezca un correo. La
      respuesta de una búsqueda vieja no pisa la de lo que hay escrito ahora. */
@@ -162,7 +254,11 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
 
   const destino = busqueda?.estado === 'si' ? busqueda : null
   const faltaNombre = que.tipo === 'plantilla' && !nombre.trim()
-  const puede = !!destino && !enviando && !enviadoA && !faltaNombre
+  /* En un traspaso: undefined mientras se mira, false con el cupo lleno, y
+     null si no se ha podido saber (lo vuelve a mirar la base al pedirlo). */
+  const esTraspaso = que.tipo === 'deportista'
+  const hayHueco = esTraspaso && destino ? (sitio && sitio.para === destino.id ? sitio.hay : undefined) : null
+  const puede = !!destino && !enviando && !enviadoA && !faltaNombre && !(esTraspaso && (hayHueco === false || hayHueco === undefined))
 
   /* Un test con zonas marcadas va como «varios»: todo en un solo envío. */
   const conZonas = que.tipo === 'test' && marcadas.length > 0
@@ -170,7 +266,9 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   const mandar = async () => {
     if (!puede || !destino) return
     setEnviando(true)
-    const r = que.tipo === 'varios'
+    const r = que.tipo === 'deportista'
+      ? await pedirTraspaso(supabase, destino.id, que.id, conLoSuyo, mensaje)
+      : que.tipo === 'varios'
       ? await enviarVarios(supabase, destino.id, {
         plantillas: que.plantillas.map(p => plantillaParaEnviar(p)),
         tests: que.tests.map(x => x.id),
@@ -185,12 +283,15 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
           mensaje)
     setEnviando(false)
     // Un fallo al enviar va en ventana, como un fallo al guardar (política de avisos).
-    if (r.error) { alert('No se ha podido enviar.\n\n' + r.error); return }
+    if (r.error) { alert((esTraspaso ? 'No se ha podido pedir el traspaso.' : 'No se ha podido enviar.') + '\n\n' + r.error); return }
     setEnviadoA(destino.nombre)
     if (r.id) onEnviado?.(r.id)
   }
 
-  const { viaja, noViaja } = queViaja(que.tipo === 'varios' || conZonas ? 'varios' : que.tipo)
+  const { viaja, noViaja } = queViaja(que.tipo === 'varios' || conZonas ? 'varios' : que.tipo, destino?.nombre)
+  /* En un traspaso, cómo se llaman los dos. */
+  const suNombre = que.tipo === 'deportista' ? (primerNombre(que.nombre) || 'tu deportista') : ''
+  const otro = primerNombre(destino?.nombre || enviadoA) || 'el otro entrenador'
   const desconocidas = que.tipo === 'plantilla' ? zonasDesconocidas(que.bloques)
     : que.tipo === 'varios' ? zonasDesconocidas(que.plantillas.flatMap(p => p.bloques)) : []
   const chips = (zs: ChipZona[]) => (
@@ -215,7 +316,7 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
         className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-xl max-h-full overflow-y-auto"
         onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
-          <h3 id="enviar-titulo" className="font-bold text-lg">Enviar a otro entrenador</h3>
+          <h3 id="enviar-titulo" className="font-bold text-lg">{esTraspaso ? 'Pasar a otro entrenador' : 'Enviar a otro entrenador'}</h3>
           <button type="button" onClick={onCerrar} disabled={enviando} aria-label="Cerrar"
             className="text-gray-500 hover:text-white text-xl leading-none px-1 transition disabled:opacity-40">×</button>
         </div>
@@ -317,6 +418,11 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
                     </p>
                   )}
                 </>
+              ) : que.tipo === 'deportista' ? (
+                <>
+                  <p className="font-semibold text-[15px]">{que.nombre}</p>
+                  <p className="text-gray-400 text-xs">{que.detalle || (que.tieneCuenta ? 'Con cuenta en TRIPULSE' : 'Ficha sin cuenta')}</p>
+                </>
               ) : (
                 <>
                   <p className="font-semibold text-[15px]">Zonas «{que.nombre}»</p>
@@ -371,9 +477,15 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
           <div className="flex flex-col gap-2">
             <label htmlFor="enviar-mensaje" className={etiqueta}>Mensaje <span className="normal-case tracking-normal font-normal">(si quieres)</span></label>
             <textarea id="enviar-mensaje" value={mensaje} onChange={e => setMensaje(e.target.value)} maxLength={500} rows={2}
-              placeholder="«Te paso la sesión de series que hablamos.»" disabled={!!enviadoA}
+              placeholder={esTraspaso ? '«Se muda a tu ciudad.»' : '«Te paso la sesión de series que hablamos.»'} disabled={!!enviadoA}
               className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500 resize-y" />
           </div>
+
+          {/* ── Un traspaso: qué es, el cupo del otro y lo tuyo que usa ── */}
+          {que.tipo === 'deportista' && (
+            <AvisoTraspaso suNombre={suNombre} tieneCuenta={que.tieneCuenta} destino={destino?.nombre ?? null} otro={otro}
+              hayHueco={enviadoA ? null : hayHueco} loSuyo={loSuyo} conLoSuyo={conLoSuyo} onConLoSuyo={setConLoSuyo} bloqueado={!!enviadoA} />
+          )}
 
           {/* ── Qué viaja ── */}
           <div className="grid sm:grid-cols-2 gap-2.5 text-[12.5px]">
@@ -386,14 +498,20 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
               <ul className="list-disc pl-4 mt-1 flex flex-col gap-0.5">{noViaja.map(v => <li key={v}>{v}</li>)}</ul>
             </div>
           </div>
-          <p className="text-gray-500 text-xs -mt-2">Es una copia: si después cambias lo tuyo, lo suyo no cambia.</p>
+          <p className="text-gray-500 text-xs -mt-2">
+            {esTraspaso
+              ? 'No es una copia: cuando acepten, ' + suNombre + ' sale de tu lista.'
+              : 'Es una copia: si después cambias lo tuyo, lo suyo no cambia.'}
+          </p>
         </div>
 
         <div className="px-5 py-4 border-t border-gray-800">
           {enviadoA ? (
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <p role="status" className="text-emerald-300 text-sm">
-                Enviado a {enviadoA}. Le sale en su panel; cuando conteste, lo verás en el tuyo.
+                {que.tipo === 'deportista'
+                  ? 'Pedido. Te avisaremos en tu panel cuando ' + (que.tieneCuenta ? 'contesten ' + otro + ' y ' + suNombre : 'conteste ' + otro) + '.'
+                  : 'Enviado a ' + enviadoA + '. Le sale en su panel; cuando conteste, lo verás en el tuyo.'}
               </p>
               <button type="button" onClick={onCerrar} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition">Cerrar</button>
             </div>
@@ -404,7 +522,7 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
                 className="text-gray-400 hover:text-white text-sm px-3 py-2 transition disabled:opacity-40">Cancelar</button>
               <button type="button" onClick={mandar} disabled={!puede}
                 className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40">
-                {enviando ? 'Enviando…' : 'Enviar'}
+                {esTraspaso ? (enviando ? 'Pidiendo…' : 'Pedir el traspaso') : (enviando ? 'Enviando…' : 'Enviar')}
               </button>
             </div>
           )}
