@@ -14,6 +14,35 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Las semanas que genera el planificador duran lo que dice el plan
+
+- **Antes**, al pasar al calendario las semanas que genera el planificador —el
+  tuyo y «Mi plan» del deportista—, cada sesión salía con el volumen fijo de su
+  plantilla. Las horas de cada semana se calculaban bien, pero no llegaban a las
+  sesiones: en un bloque de seis semanas, la de descarga (4,5 h) y la de
+  sobrecarga (8,5 h) salían iguales, de unas 8 h 20′ cada una.
+- **Ahora** cada sesión se ajusta a los minutos que le tocan. En las series de
+  calidad cambia cuántas se hacen, no lo que mide cada una ni su descanso: en la
+  descarga, un 2 × 20′ de tempo pasa a un bloque de 20′, y un 10 × 100 a ritmo
+  CSS pasa a 5 × 100. Lo suave (rodajes, tiradas, nado continuo) cambia de
+  duración o de metros, y los metros salen del ritmo de sus tests, o de uno de
+  referencia si aún no los tiene. El calentamiento y la vuelta a la calma no se
+  tocan.
+- **Con límites:** nunca más series ni más volumen de lo que la sesión da para
+  un avanzado, y la parte dura nunca baja de la mitad de lo de su nivel. Si a
+  una sesión de calidad le sobran minutos, el resto va como rodaje en AEL al
+  final («2 × 20′ de tempo + 40′ en AEL»). Si una sesión no cabe en sus minutos
+  —una rodadura de recuperación no pasa de una hora—, se crea igual y, al
+  volcar, te lo dice en ámbar.
+- La pirámide de natación, el 40/20 y los over-unders no se estiran: se elige la
+  versión (principiante, intermedio o avanzado) que mejor cabe.
+- **Lo que ya está en el calendario no cambia:** solo las semanas que se generen
+  desde hoy, también las que «Mi plan» le va poniendo solo al deportista. Las de
+  descarga saldrán bastante más cortas que antes, y las demás, ajustadas a las
+  horas de cada semana.
+
+---
+
 ## 23 de octubre de 2026 · Tests de movimiento: dos cámaras a la vez, zoom y la rueda del ratón
 
 - **Los dos vídeos a la vez.** Seis pruebas se miran desde dos sitios: la

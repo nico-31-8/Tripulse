@@ -34,7 +34,7 @@ import { rellenarSemana, nivelDePlantilla, type SemanaRellena } from '@/lib/plan
 import { volcarSemana, loQueYaHay, fechaDeDia, domingoDe, type ResultadoVolcado } from '@/lib/plan-volcado'
 import CadenaMesociclo from '@/components/CadenaMesociclo'
 import PlanificarMesociclo from '@/components/PlanificarMesociclo'
-import { aplicarBloques, bloquesPorClave, plantillasDe, opcionesDe } from '@/lib/plantillas'
+import { aplicarBloques, plantillasDe, opcionesDe } from '@/lib/plantillas'
 import { ETIQUETA_DISTANCIA, DISTRIBUCION_POR_FASE, type DistanciaTri, type FaseMacro } from '@/lib/distribucion-zonas'
 import { horasDeAnamnesis, diasDeAnamnesis, nivelDeAnamnesis } from '@/lib/anamnesis-datos'
 import { useTutorial } from '@/components/tutorial/TutorialProvider'
@@ -271,13 +271,12 @@ export default function Planificador() {
   async function volcar() {
     if (!semana || !dep) return
     setVolcando(true); setConfirmando(false)
-    const nivelP = nivelDePlantilla(nivel)
     const r = await volcarSemana(supabase, {
       idDeportista: dep.id,
       lunes,
       relleno: semana.relleno,
       aplicarBloques,
-      bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+      nivel: nivelDePlantilla(nivel),
       // Sumar a lo que ya hay solo si se ha enseñado cuánto hay y se ha
       // confirmado encima de ese aviso. Si el recuento era viejo, volcarSemana
       // no escribe y el aviso sale con el número bueno.
@@ -672,6 +671,15 @@ export default function Planificador() {
                     <ul className="mt-2 flex flex-col gap-1">
                       {volcado.parte.filter(p => !p.ok).map((p, k) => (
                         <li key={k} className="text-[12px] text-red-300/80">{p.dia} · {p.nombre}: {p.error}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {/* Creadas, pero sin llegar a sus minutos (o pasándose) porque no
+                      se estiran más allá de lo documentado: se dice, no se esconde. */}
+                  {volcado.parte.some(p => p.ok && p.aviso) && (
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {volcado.parte.filter(p => p.ok && p.aviso).map((p, k) => (
+                        <li key={k} className="text-[12px] text-amber-300/80">{p.dia} · {p.nombre}: {p.aviso}</li>
                       ))}
                     </ul>
                   )}

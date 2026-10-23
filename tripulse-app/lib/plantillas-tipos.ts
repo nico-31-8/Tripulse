@@ -59,4 +59,11 @@ export interface VarianteSesion {
   calentamiento?: BloqueP[]
   principal: Record<NivelPlantilla, BloqueP[]>
   vuelta?: BloqueP[]
+  /**
+   * Cómo se ajusta a los minutos que le da el plan (lib/plan-duracion).
+   * 'por-niveles': su forma no se estira —una pirámide, o series que la nota
+   * agrupa («3 series de 9»)—, así que se elige entre sus tres niveles el que
+   * mejor cabe. Sin esto, se estira o se encoge.
+   */
+  ajuste?: 'por-niveles'
 }

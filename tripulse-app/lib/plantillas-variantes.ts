@@ -258,6 +258,9 @@ const CIC_AEI: VarianteSesion[] = [
     // 5 min Z1 entre bloques · 3–4 bloques". El 95 % cae en AEI y el 108 % en PAE:
     // por eso son dos bloques y no uno. Las series están calculadas para que el
     // total cuadre con los bloques de la fuente.
+    // Los bloques van en la NOTA («3 bloques de 3»): estirar las series la
+    // dejaría mintiendo, así que para ajustarla a sus minutos se elige nivel.
+    ajuste: 'por-niveles',
     calentamiento: [{ zona: 'AER', segundos: 20 * 60, nota: 'Calentamiento (la sesión no tiene pausas dentro del bloque)' }],
     principal: {
       // 3 bloques de 8′ = 6 repeticiones de (3′ + 1′)
@@ -299,6 +302,8 @@ const CIC_PAE: VarianteSesion[] = [
     origen: 'documentado', fuente: 'B1-00d · Ciclismo Z5 («Protocolo noruego 40/20»)',
     // B1-00d Z5: "40 s al 110% FTP / 20 s al 55% FTP · 3 series de 8–10 rep ·
     // 5 min Z1 entre series". El 110 % FTP cae en PAE.
+    // «3 series de 9» va en la nota: se ajusta eligiendo nivel, no estirando.
+    ajuste: 'por-niveles',
     principal: {
       principiante: [{ zona: 'PAE', series: 24, segundos: 40, descansoSeg: 20, nota: '40″ al 110 % FTP / 20″ suaves · 3 series de 8, con 5′ suaves entre series' }],
       intermedio: [{ zona: 'PAE', series: 27, segundos: 40, descansoSeg: 20, nota: '40″ al 110 % FTP / 20″ suaves · 3 series de 9, con 5′ suaves entre series' }],
@@ -573,6 +578,8 @@ const NAT_PAE: VarianteSesion[] = [
     objetivo: 'Subir y bajar de distancia dentro de la misma sesión. Cada repetición se siente distinta, que es justo lo contrario de 8 × 100.',
     origen: 'propuesta', fuente: 'B1-00d · Natación Z5 («Pirámide intensiva»)',
     aviso: 'La fuente da la pirámide en un solo tamaño (50-100-150-200-150-100-50, 800m). El nivel intermedio es ese exacto; principiante y avanzado son escalados nuestros quitando y añadiendo escalones por los extremos.',
+    // Estirar cada escalón la deformaría: se ajusta eligiendo nivel.
+    ajuste: 'por-niveles',
     principal: {
       principiante: [
         { zona: 'PAE', metros: 50, descansoSeg: 30 }, { zona: 'PAE', metros: 100, descansoSeg: 35 },

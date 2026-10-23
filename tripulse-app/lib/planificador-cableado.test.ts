@@ -90,3 +90,24 @@ describe('sumar a una semana que ya tiene sesiones', () => {
     expect(quienes).toEqual(['app/planificador/page.tsx'])
   })
 })
+
+describe('lo que se vuelca lleva los minutos del plan', () => {
+  /* El 2026-10-18 las cuatro pantallas que vuelcan le pasaban a volcarSemana los
+     bloques ya hechos —`bloquesPorClave(clave, nivel)`, la plantilla con su
+     volumen fijo— y los minutos del plan no los miraba nadie: la semana de
+     descarga y la de sobrecarga salían iguales. Ahora los bloques los saca el
+     volcado ajustados a sus minutos (lib/plan-duracion), y quien vuelca solo
+     le dice el nivel. */
+  const VOLCADORES = [...BLOQUES, 'app/planificador/page.tsx']
+
+  it.each(VOLCADORES)('%s le da al volcado el nivel, no los bloques hechos', f => {
+    const src = leer(f)
+    const llamadas = argumentos(src, 'volcarSemana')
+    expect(llamadas.length).toBeGreaterThan(0)
+    llamadas.forEach(a => {
+      expect(a).toMatch(/\bnivel\s*:/)
+      expect(a).not.toMatch(/bloquesDe/)
+    })
+    expect(src).not.toMatch(/bloquesPorClave\(/)
+  })
+})

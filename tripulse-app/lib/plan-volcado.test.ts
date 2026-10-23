@@ -3,8 +3,9 @@ import {
   fechaDeDia, domingoDe, microDelDia, volcarSemana, resumenVolcado, aplicarBloquesFuerza,
 } from './plan-volcado'
 import { formaDeSemana, type EntradaSemana } from './plan-semana'
-import { colocarSemana } from './plan-colocacion'
-import { rellenarSemana } from './plan-relleno'
+import { colocarSemana, type DiaSemana } from './plan-colocacion'
+import { rellenarSemana, type Relleno } from './plan-relleno'
+import { segundosDe } from './plan-duracion'
 
 /* Doble de supabase que registra lo que se le inserta. Tiene que FILTRAR de
    verdad: un doble que devuelve siempre lo mismo da verde sobre datos falsos. */
@@ -55,7 +56,7 @@ const opts = (extra: any = {}) => ({
   idDeportista: 7,
   lunes: '2026-08-17',
   aplicarBloques: vi.fn(async () => null),
-  bloquesDe: () => [{ zona: 'AEL', segundos: 3600 }],
+  nivel: 'intermedio' as const,
   ...extra,
 })
 
@@ -234,10 +235,14 @@ describe('cuando algo falla', () => {
 /* Un doble que SE ACUERDA de lo que se le escribe y filtra de verdad por
    deportista, fechas y papelera. Con el de arriba —que contesta siempre «no hay
    nada»— una segunda pasada ni siquiera se puede plantear. */
-function baseDeDatos(inicial: { sesion?: any[]; competicion?: any[]; falla?: string } = {}) {
+function baseDeDatos(inicial: {
+  sesion?: any[]; competicion?: any[]; test1_carrera?: any[]; test2_natacion?: any[]; falla?: string
+} = {}) {
   const tablas: Record<string, any[]> = {
     sesion: [...(inicial.sesion || [])],
     competicion: [...(inicial.competicion || [])],
+    test1_carrera: [...(inicial.test1_carrera || [])],
+    test2_natacion: [...(inicial.test2_natacion || [])],
   }
   let id = 1000
   const from = (tabla: string) => {
@@ -250,6 +255,7 @@ function baseDeDatos(inicial: { sesion?: any[]; competicion?: any[]; falla?: str
     q.gte = (c: string, v: any) => { filtros.push(f => String(f[c]) >= String(v)); return q }
     q.lte = (c: string, v: any) => { filtros.push(f => String(f[c]) <= String(v)); return q }
     q.or = (expr: string) => { if (expr.includes('eliminada')) filtros.push(f => !f.eliminada); return q }
+    q.not = (c: string, op: string, v: any) => { if (op === 'is' && v === null) filtros.push(f => f[c] != null); return q }
     q.then = (res: any, rej: any) => Promise.resolve(inicial.falla === tabla
       ? { data: null, error: { message: 'sin conexión' } }
       : { data: (tablas[tabla] || []).filter(f => filtros.every(p => p(f))), error: null }).then(res, rej)
@@ -391,5 +397,62 @@ describe('lo que se escribe en la tabla sesion', () => {
     sb.insertado.sesion.forEach((ses: any) => {
       Object.keys(ses).forEach(k => expect(permitidas, 'columna inventada: ' + k).toContain(k))
     })
+  })
+})
+
+describe('los minutos de cada sesión', () => {
+  /* LO QUE PASÓ EL 2026-10-18: se escribía la plantilla con su volumen fijo y
+     los minutos del plan se tiraban, así que la semana de descarga y la de
+     sobrecarga salían iguales. Dos huecos de la misma sesión con minutos
+     distintos tienen que salir distintos en el calendario. */
+  const deUna = (clave: string, bloque: string, minutos: number, dia: DiaSemana): Relleno => ({
+    dia, clave, nombre: clave, zona: '', nivel: 'intermedio', minutos, motivo: '',
+    hueco: { bloque: bloque as any, minutos, calidad: false, larga: false, brick: false },
+  })
+
+  /** Lo que se le escribe a cada sesión, por su fecha. */
+  async function escribir(relleno: Relleno[], db = baseDeDatos()) {
+    const porId: Record<number, any[]> = {}
+    const aplicar = vi.fn(async (_sb: any, id: number, _d: string, bloques: any[]) => { porId[id] = bloques; return null })
+    const r = await volcarSemana(db, opts({ lunes: '2026-11-02', relleno, aplicarBloques: aplicar }))
+    const porFecha: Record<string, any[]> = {}
+    db.tablas.sesion.forEach((s: any) => { if (porId[s.id]) porFecha[s.fecha_sesion] = porId[s.id] })
+    return { r, porFecha }
+  }
+  const minutos = (bloques: any[], disciplina: string) => Math.round(segundosDe(bloques, disciplina) / 60)
+
+  it('dos huecos de la misma sesión con distintos minutos se escriben distintos', async () => {
+    const { porFecha } = await escribir([deUna('car-ael', 'Carrera', 40, 'Martes'), deUna('car-ael', 'Carrera', 80, 'Domingo')])
+    expect(minutos(porFecha['2026-11-03'], 'Carrera')).toBe(40)
+    expect(minutos(porFecha['2026-11-08'], 'Carrera')).toBe(80)
+  })
+
+  it('los metros de natación salen de SU CSS', async () => {
+    const nado = [deUna('nat-ael/continuo', 'Natacion', 45, 'Miércoles')]
+    const metros = (x: { porFecha: Record<string, any[]> }) =>
+      x.porFecha['2026-11-04'].reduce((a: number, b: any) => a + (b.metros || 0) * (b.series || 1), 0)
+    const rapida = await escribir(nado, baseDeDatos({ test2_natacion: [{ id_deportista: 7, css: 1.5, fecha: '2026-10-01' }] }))
+    const lenta = await escribir(nado, baseDeDatos({ test2_natacion: [{ id_deportista: 7, css: 1.0, fecha: '2026-10-01' }] }))
+    expect(metros(rapida)).toBeGreaterThan(metros(lenta))
+  })
+
+  it('sin poder leer sus tests se escribe igual, con el ritmo de referencia', async () => {
+    const { r } = await escribir([deUna('nat-ael/continuo', 'Natacion', 45, 'Miércoles')], baseDeDatos({ falla: 'test2_natacion' }))
+    expect(r.creadas).toBe(1)
+  })
+
+  it('la que no cabe en sus minutos se crea, y el parte dice por qué', async () => {
+    const { r } = await escribir([deUna('car-aer', 'Carrera', 100, 'Lunes')])
+    expect(r.parte[0].ok).toBe(true)
+    expect(r.parte[0].aviso).toMatch(/100′/)
+    expect(resumenVolcado(r)).toMatch(/no caben en sus minutos/)
+  })
+
+  it('una sesión que no está en el catálogo no deja una sesión vacía en el calendario', async () => {
+    const db = baseDeDatos()
+    const { r } = await escribir([deUna('car-inventada', 'Carrera', 60, 'Lunes')], db)
+    expect(r.creadas).toBe(0)
+    expect(r.parte[0].error).toMatch(/catálogo/)
+    expect(db.tablas.sesion).toEqual([])
   })
 })

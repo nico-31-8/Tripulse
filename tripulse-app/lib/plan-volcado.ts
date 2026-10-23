@@ -36,10 +36,19 @@
 // 5. El día de una competición no se escribe nada. El bloque ya no planifica
 //    ese día (lib/plan-bloque); esto es la red de debajo para lo que llegue
 //    montado de otra manera, como la semana suelta del planificador.
+//
+// Y UNA MÁS, DEL MISMO DÍA:
+//
+// 6. Cada sesión se escribe con LOS MINUTOS QUE LE DA EL PLAN (lib/plan-duracion),
+//    no con el volumen fijo de su plantilla. Se escribía la plantilla tal cual
+//    y los minutos del relleno se tiraban: la semana de descarga y la de
+//    sobrecarga de un mesociclo salían idénticas en el calendario.
 import type { Relleno } from './plan-relleno'
 import type { DiaSemana } from './plan-colocacion'
 import { DIAS } from './plan-colocacion'
 import { plantillaFuerzaPorId, type BloqueFuerza } from './plantillas-fuerza'
+import type { NivelPlantilla } from './plantillas-tipos'
+import { ajustarAMinutos, ritmosDelDeportista } from './plan-duracion'
 
 export interface ParteSesion {
   dia: DiaSemana
@@ -50,6 +59,8 @@ export interface ParteSesion {
   /** Cayó dentro de su microciclo, o entró como sesión libre. */
   enSuPlan: boolean
   error?: string
+  /** Se creó, pero no cabe en sus minutos sin salirse de lo documentado: por qué. */
+  aviso?: string
 }
 
 export interface ResultadoVolcado {
@@ -220,8 +231,13 @@ export interface OpcionesVolcado {
   relleno: Relleno[]
   /** Se inyecta para poder probar esto entero con un doble. */
   aplicarBloques: (sb: any, idSesion: number, disciplina: string, bloques: any[]) => Promise<string | null>
-  /** Los bloques de cada sesión de resistencia, por clave del catálogo. */
-  bloquesDe: (clave: string) => any[]
+  /**
+   * El nivel de las plantillas de este deportista. Los bloques de cada sesión
+   * los saca el volcado y no quien llama: así no hay forma de escribir una
+   * sesión sin pasar por sus minutos (lib/plan-duracion). Antes cada pantalla
+   * pasaba sus bloques hechos, y las cuatro los sacaban sin mirar los minutos.
+   */
+  nivel: NivelPlantilla
   /**
    * Sumarlas a las que ya tenga esa semana. Sin esto, una semana con alguna
    * sesión no se toca. Solo lo pide la semana suelta del planificador, y
@@ -239,6 +255,8 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
      semana se pregunta AQUÍ y no se fía de lo que se contó al generar: entre
      una cosa y otra pudo volcarse otra pasada (es lo que pasó el 18-10). */
   let micros: any[], yaHabia: number, carreras: { fecha: string; nombre: string }[]
+  // Sus ritmos no tumban el volcado: sin ellos se usa el de referencia.
+  const ritmos = ritmosDelDeportista(sb, o.idDeportista)
   try {
     ;[micros, yaHabia, carreras] = await Promise.all([
       microsDelDeportista(sb, o.idDeportista),
@@ -254,6 +272,7 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
   if (yaHabia > 0 && !o.sumar) {
     return { parte: [], creadas: 0, yaHabia, error: `La semana ya tenía ${yaHabia} sesión(es): no se ha tocado.` }
   }
+  const susRitmos = await ritmos
 
   /* TODAS A LA VEZ. Iban una detrás de otra, y cada una son tres esperas (la
      sesión, sus tareas, lo que cuelga de ellas): una semana de seis sesiones
@@ -268,6 +287,11 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
     // La carrera ES la sesión de ese día.
     const carrera = carreras.find(c => c.fecha === fecha)
     if (carrera) return { ...base, error: 'Ese día compite en «' + carrera.nombre + '»: no se le pone nada más.' }
+
+    /* Los bloques ANTES de crear la sesión: una clave que no está en el
+       catálogo dejaba una sesión vacía en el calendario, que parece que está. */
+    const ajuste = r.claveFuerza ? null : ajustarAMinutos(r.clave, o.nivel, r.minutos, susRitmos)
+    if (!r.claveFuerza && !ajuste) return { ...base, error: 'La sesión «' + r.clave + '» no está en el catálogo.' }
 
     try {
       const { data: ses, error: eS } = await sb.from('sesion').insert({
@@ -296,8 +320,8 @@ export async function volcarSemana(sb: any, o: OpcionesVolcado): Promise<Resulta
 
       const err = r.claveFuerza
         ? await aplicarBloquesFuerza(sb, ses.id, r.claveFuerza)
-        : await o.aplicarBloques(sb, ses.id, disciplina, o.bloquesDe(r.clave))
-      return { ...base, ok: !err, error: err || undefined }
+        : await o.aplicarBloques(sb, ses.id, disciplina, ajuste!.bloques)
+      return { ...base, ok: !err, error: err || undefined, ...(ajuste?.aviso && !err ? { aviso: ajuste.aviso } : {}) }
     } catch (e: any) {
       return { ...base, error: e?.message || 'Error inesperado' }
     }
@@ -312,9 +336,11 @@ export function resumenVolcado(r: ResultadoVolcado): string {
   if (r.error && !r.creadas) return r.error
   const fallos = r.parte.filter(p => !p.ok)
   const libres = r.parte.filter(p => p.ok && !p.enSuPlan).length
+  const descuadradas = r.parte.filter(p => p.ok && p.aviso)
   return [
     `${r.creadas} sesión(es) creadas.`,
     libres ? `${libres} entraron como sesión libre: esos días no tenía semana planificada.` : '',
+    descuadradas.length ? `${descuadradas.length} no caben en sus minutos: ${descuadradas.map(f => f.dia).join(', ')}.` : '',
     fallos.length ? `${fallos.length} fallaron: ${fallos.map(f => f.dia).join(', ')}.` : '',
   ].filter(Boolean).join(' ')
 }

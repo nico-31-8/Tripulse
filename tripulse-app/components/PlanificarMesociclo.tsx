@@ -19,7 +19,7 @@ import {
 import { type DiaDisponible } from '@/lib/plan-colocacion'
 import { nivelDePlantilla } from '@/lib/plan-relleno'
 import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
-import { bloquesPorClave, aplicarBloques } from '@/lib/plantillas'
+import { aplicarBloques } from '@/lib/plantillas'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
 import { sumarDias } from '@/lib/desplazar'
 import type { DistanciaTri } from '@/lib/distribucion-zonas'
@@ -124,11 +124,14 @@ export default function PlanificarMesociclo({ dep, base, horasReferencia, dispon
       const lunes = semanas[i].lunes!
       const r = await volcarSemana(supabase, {
         idDeportista: dep.id, lunes, relleno: g.relleno,
-        aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+        aplicarBloques, nivel: nivelP,
       })
+      // Las que no caben en sus minutos sin salirse de lo documentado, por su día.
+      const cortas = r.parte.filter(p => p.ok && p.aviso).map(p => p.dia.toLowerCase())
       lineas[i] = 'Semana ' + (i + 1) + ' (' + lunes + '): ' + (r.yaHabia && !r.creadas
         ? 'ya tenía ' + r.yaHabia + ' sesión(es), no se ha tocado'
-        : r.creadas + ' sesiones' + (r.error ? ' · ' + r.error : ''))
+        : r.creadas + ' sesiones' + (r.error ? ' · ' + r.error : '')
+          + (cortas.length ? ' · no caben en sus minutos: ' + cortas.join(', ') : ''))
       setParte(lineas.filter(Boolean))
     }))
     setVolcando(null)

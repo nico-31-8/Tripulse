@@ -20,7 +20,7 @@ import { type DiaDisponible } from '@/lib/plan-colocacion'
 import { nivelDePlantilla } from '@/lib/plan-relleno'
 import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
-import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
+import { aplicarBloques } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
 import type { DistanciaTri } from '@/lib/distribucion-zonas'
 
@@ -46,7 +46,8 @@ interface Props {
 interface SemanaGenerada extends SemanaDelMeso {
   plan: SemanaDelBloque
   yaHay: number | null
-  volcada?: { creadas: number; error: string | null; yaHabia: number }
+  /** `cortas`: las que no caben en sus minutos sin salirse de lo documentado, con el porqué. */
+  volcada?: { creadas: number; error: string | null; yaHabia: number; cortas?: string[] }
 }
 
 export default function CadenaMesociclo({
@@ -172,9 +173,12 @@ export default function CadenaMesociclo({
         lunes: s.lunes,
         relleno: s.plan.relleno,
         aplicarBloques,
-        bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+        nivel: nivelP,
       })
-      out[i] = { ...s, volcada: { creadas: r.creadas, error: r.yaHabia && !r.creadas ? null : r.error, yaHabia: r.yaHabia } }
+      out[i] = { ...s, volcada: {
+        creadas: r.creadas, error: r.yaHabia && !r.creadas ? null : r.error, yaHabia: r.yaHabia,
+        cortas: r.parte.filter(p => p.ok && p.aviso).map(p => p.dia + ' · ' + p.nombre + ': ' + p.aviso),
+      } }
       setGeneradas([...out])
     }))
     setVolcando(false)
@@ -268,7 +272,15 @@ export default function CadenaMesociclo({
                         ? <span className="text-red-400">{g.volcada.error}</span>
                         : g.volcada.yaHabia && !g.volcada.creadas
                           ? <span className="text-amber-300">ya tenía {g.volcada.yaHabia}: no se ha tocado</span>
-                          : <span className="text-green-400">✓ {g.volcada.creadas} creadas</span>)
+                          : <span className="text-green-400">✓ {g.volcada.creadas} creadas
+                            {/* Las que no llegan a sus minutos (o se pasan) sin
+                                salirse de lo documentado: el detalle, al pasar por encima. */}
+                            {!!g.volcada.cortas?.length && (
+                              <span className="text-amber-300" title={g.volcada.cortas.join('\n')}>
+                                {' · '}{g.volcada.cortas.length} no caben en sus minutos
+                              </span>
+                            )}
+                          </span>)
                       : g?.yaHay
                         ? <span className="text-amber-300">ya hay {g.yaHay}: no se toca</span>
                         : <span className="text-gray-600">—</span>}

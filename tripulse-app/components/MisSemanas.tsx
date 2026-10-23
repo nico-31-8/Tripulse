@@ -20,7 +20,7 @@ import { type DiaDisponible } from '@/lib/plan-colocacion'
 import { nivelDePlantilla } from '@/lib/plan-relleno'
 import { semanaDelBloque, textoCompeticion, type SemanaDelBloque, type CompeticionDelPlan } from '@/lib/plan-bloque'
 import { volcarSemana, loQueYaHay } from '@/lib/plan-volcado'
-import { aplicarBloques, bloquesPorClave } from '@/lib/plantillas'
+import { aplicarBloques } from '@/lib/plantillas'
 import { sumarDias } from '@/lib/desplazar'
 import { testsDelPlan, type EncargoTests } from '@/lib/plan-tests'
 import { adaptar, horasAdaptadas, type Adaptacion } from '@/lib/plan-adaptacion'
@@ -237,7 +237,7 @@ export default function MisSemanas({
         if (!plan.relleno.length) return 0    // la carrera se lleva todos sus días
         const r = await volcarSemana(supabase, {
           idDeportista, lunes: x.lunes, relleno: plan.relleno,
-          aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelDePlantilla(nivel)) || [],
+          aplicarBloques, nivel: nivelDePlantilla(nivel),
         })
         return r.error ? 0 : r.creadas
       }))
@@ -268,7 +268,7 @@ export default function MisSemanas({
       if (!s.plan.relleno.length) { out[i] = { ...s, creadas: 0, error: null }; return }
       const r = await volcarSemana(supabase, {
         idDeportista, lunes: s.lunes, relleno: s.plan.relleno,
-        aplicarBloques, bloquesDe: clave => bloquesPorClave(clave, nivelP) || [],
+        aplicarBloques, nivel: nivelP,
       })
       out[i] = { ...s, creadas: r.creadas, error: r.yaHabia && !r.creadas ? null : r.error, yaHabia: r.yaHabia }
       setGeneradas([...out])
