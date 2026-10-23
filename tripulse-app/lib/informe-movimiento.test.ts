@@ -294,6 +294,17 @@ describe('los fotogramas', () => {
     expect(fotos[1].texto).toBe('')
   })
 
+  it('en las de dos vistas, uno por vista, que dice de qué vista es y si son de la misma repetición', () => {
+    const fotos = fotogramasDelInforme(NINE, [f('nine.sentadilla', 'unico', 2, {
+      vista: 'perfil', fotograma: 'p.jpg', medidas: [medidaDelFotograma(7, false)],
+      segunda_vista: { vista: 'frente', fotograma: 'f.jpg', misma_repeticion: true, medidas: [medidaDelFotograma(8.37, false)] },
+    })])
+    expect(fotos.map(x => x.titulo)).toEqual(['Sentadilla profunda · de perfil', 'Sentadilla profunda · de frente'])
+    expect(fotos.map(x => x.texto)).toEqual(['a los 7,00 s · misma repetición', 'a los 8,37 s · misma repetición'])
+    const sola = fotogramasDelInforme(NINE, [f('nine.sentadilla', 'unico', 2, { vista: 'perfil', fotograma: 'p.jpg' })])
+    expect(sola.map(x => x.titulo)).toEqual(['Sentadilla profunda'])
+  })
+
   it('con dolor, su nota es 0; y una foto se dice que es una foto', () => {
     const fotos = fotogramasDelInforme(NINE, [f('nine.flexion', 'unico', null, { dolor: true, fotograma: 'x.jpg' })])
     expect(fotos[0].nota).toBe(0)

@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { BATERIAS, resultadoBateria } from '@/lib/baterias-movimiento'
-import { cargarValoraciones, urlsFotogramas, type FilaPrueba, type Valoracion } from '@/lib/movimiento-datos'
+import { cargarValoraciones, rutasDe, urlsFotogramas, type FilaPrueba, type Valoracion } from '@/lib/movimiento-datos'
 import ResultadoMovimiento from './ResultadoMovimiento'
 
 export default function MovimientoDeportista({ idDeportista }: { idDeportista: number }) {
@@ -22,7 +22,7 @@ export default function MovimientoDeportista({ idDeportista }: { idDeportista: n
   useEffect(() => {
     let vivo = true
     cargarValoraciones(supabase, idDeportista).then(async d => {
-      const u = await urlsFotogramas(supabase, d.pruebas.map(p => p.fotograma || ''))
+      const u = await urlsFotogramas(supabase, rutasDe(d.pruebas))
       if (!vivo) return
       setValoraciones(d.valoraciones); setPruebas(d.pruebas); setUrls(u)
     })

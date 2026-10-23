@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { BATERIAS, DE_VISTA } from './baterias-movimiento'
-import { FICHAS, MATERIAL, COMO_SE_PASA, DICE_DOLOR, fichaDe } from './fichas-movimiento'
+import { BATERIAS, DE_VISTA, pruebaDe } from './baterias-movimiento'
+import { FICHAS, MATERIAL, COMO_SE_PASA, DICE_DOLOR, fichaDe, grabarDosVistas, vistaPrincipal } from './fichas-movimiento'
 
 const todas = Object.values(BATERIAS).flatMap(b => b.pruebas)
 
@@ -60,5 +60,33 @@ describe('el material de la batería, antes de empezar', () => {
   it('las tablas de 2 y 4 cm del Nine Test y la de la rotación desde arriba están en la lista', () => {
     expect(MATERIAL.nine.some(x => /2 cm/.test(x.medida) && /4 cm/.test(x.medida))).toBe(true)
     expect(MATERIAL.nine.some(x => /rotación sentado/.test(x.para))).toBe(true)
+  })
+})
+
+describe('las pruebas que se miran desde dos cámaras', () => {
+  it('dicen cómo grabarlas con dos móviles y con uno; las de una vista, no', () => {
+    for (const p of todas) {
+      const g = grabarDosVistas(p)
+      if (p.vistas.length === 2) {
+        expect(g, p.clave).not.toBeNull()
+        for (const v of p.vistas) expect(g!.conUno.includes(DE_VISTA[v]), p.clave + ' · ' + v).toBe(true)
+      } else expect(g, p.clave).toBeNull()
+    }
+    expect(todas.filter(p => p.vistas.length === 2).length).toBe(6)
+  })
+
+  it('con un móvil, los dos primeros intentos van desde la vista con más criterios', () => {
+    expect(vistaPrincipal(pruebaDe('fms.sentadilla')!)).toBe('perfil')
+    expect(vistaPrincipal(pruebaDe('fms.valla')!)).toBe('frente')
+    expect(vistaPrincipal(pruebaDe('fms.zancada')!)).toBe('perfil')
+    expect(vistaPrincipal(pruebaDe('nine.diagonal')!)).toBe('atras')
+    expect(grabarDosVistas(pruebaDe('fms.valla')!)!.conUno)
+      .toMatch(/^Con cada lado, mueve el móvil entre intentos: el 1.º y el 2.º de frente y el 3.º de perfil/)
+  })
+
+  it('el material pide uno o dos móviles', () => {
+    for (const b of ['fms', 'nine'] as const) {
+      expect(MATERIAL[b].some(x => x.grupo === 'Para grabar' && /dos móviles/.test(x.cosa)), b).toBe(true)
+    }
   })
 })

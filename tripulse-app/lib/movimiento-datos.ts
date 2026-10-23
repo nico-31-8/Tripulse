@@ -10,6 +10,12 @@
 // EL VÍDEO NO SALE DEL DISPOSITIVO. Lo único que se sube es el fotograma
 // anotado, y solo si el entrenador ha marcado el permiso del deportista: la base
 // rechaza la imagen sin él, así que aquí se mira antes para no intentarlo.
+//
+// LAS PRUEBAS DE DOS VISTAS (22-10-2026). Seis pruebas se miran desde dos
+// cámaras: cada fila guarda un fotograma por vista. La principal va en las
+// columnas de siempre (vista, fotograma, medidas, dibujo) y la otra en
+// segunda_vista, con si las dos son de la misma repetición
+// (supabase/valoracion-movimiento-dos-vistas.sql). Lo junta fundirVistas.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hoyISO } from './fechas'
@@ -68,6 +74,23 @@ export interface FilaPrueba extends RegistroPrueba {
   dibujo?: Trazo[] | null
   vista: Vista | null
   fotograma: string | null
+  /**
+   * En las pruebas de dos vistas, la otra: su vista, su imagen y si las dos son
+   * de la misma repetición. Sin sus medidas ni lo dibujado, que pesan.
+   */
+  segunda_vista?: { vista: Vista; fotograma: string | null; misma_repeticion: boolean; medidas?: Medida[] | null } | null
+}
+
+/** Las imágenes guardadas de unas filas, de las dos vistas: para pedir sus enlaces. */
+export const rutasDe = (filas: FilaPrueba[]): string[] =>
+  filas.flatMap(f => [f.fotograma, f.segunda_vista?.fotograma]).filter((r): r is string => !!r)
+
+/** Las imágenes de una fila para enseñarlas: la principal y, si la hay, la de la otra vista. */
+export function fotogramasDeFila(f: FilaPrueba): { vista: Vista | null; ruta: string; medidas: Medida[] | null }[] {
+  const out: { vista: Vista | null; ruta: string; medidas: Medida[] | null }[] = []
+  if (f.fotograma) out.push({ vista: f.vista, ruta: f.fotograma, medidas: f.medidas ?? null })
+  if (f.segunda_vista?.fotograma) out.push({ vista: f.segunda_vista.vista, ruta: f.segunda_vista.fotograma, medidas: f.segunda_vista.medidas ?? null })
+  return out
 }
 
 export const ALMACEN = 'fotogramas'
@@ -76,26 +99,91 @@ export const ALMACEN = 'fotogramas'
 export const rutaFotograma = (idDep: number, idVal: number, prueba: string, lado: Lado) =>
   `${idDep}/${idVal}/${prueba}-${lado}.jpg`
 
+/** En las pruebas de dos vistas, cada vista tiene el suyo. */
+export const rutaFotogramaVista = (idDep: number, idVal: number, prueba: string, lado: Lado, vista: Vista) =>
+  `${idDep}/${idVal}/${prueba}-${lado}-${vista}.jpg`
+
+/** El fotograma de una vista: la imagen (si se subió), sus medidas y lo dibujado. */
+export interface FotoVista {
+  vista: Vista
+  fotograma: string | null
+  medidas: Medida[] | null
+  dibujo: Trazo[] | null
+}
+
+/** La otra vista de una prueba de dos (columna segunda_vista), y si las dos son de la misma repetición. */
+export interface SegundaVista extends FotoVista { misma_repeticion: boolean }
+
+/** Las vistas guardadas de una fila: la principal y, si la hay, la segunda. */
+export function fotosDeFila(f: {
+  vista: Vista | null; fotograma: string | null; medidas?: Medida[] | null; dibujo?: Trazo[] | null; segunda_vista?: SegundaVista | null
+}): FotoVista[] {
+  const out: FotoVista[] = []
+  if (f.vista) out.push({ vista: f.vista, fotograma: f.fotograma ?? null, medidas: f.medidas ?? null, dibujo: f.dibujo ?? null })
+  const s = f.segunda_vista
+  if (s?.vista) out.push({ vista: s.vista, fotograma: s.fotograma ?? null, medidas: s.medidas ?? null, dibujo: s.dibujo ?? null })
+  return out
+}
+
+/**
+ * Junta lo que ya había de una prueba de dos vistas con lo que se guarda ahora.
+ * Cada vista nueva pisa a la suya; la imagen, solo si trae una (sin permiso se
+ * queda la de antes, como con una vista). La principal (las columnas de
+ * siempre) es la primera vista de la prueba que tenga algo, y la otra va en
+ * segunda_vista. Las dos son de la misma repetición solo si se guardan juntas
+ * con los vídeos alineados. `sueltas`: imágenes de antes que se quedan sin fila.
+ */
+export function fundirVistas(antes: FotoVista[], nuevas: FotoVista[], orden: Vista[], alineadas: boolean): {
+  principal: FotoVista | null; segunda: SegundaVista | null; sueltas: string[]
+} {
+  const m = new Map<Vista, FotoVista>()
+  for (const f of antes) if (orden.includes(f.vista)) m.set(f.vista, f)
+  for (const f of nuevas) m.set(f.vista, { ...f, fotograma: f.fotograma ?? m.get(f.vista)?.fotograma ?? null })
+  const vp = orden.find(v => m.has(v))
+  const principal = vp ? m.get(vp)! : null
+  const vs = vp ? orden.find(v => v !== vp && m.has(v)) : undefined
+  const juntas = alineadas && nuevas.length === 2 && nuevas[0].vista !== nuevas[1].vista
+  const segunda: SegundaVista | null = vs ? { ...m.get(vs)!, misma_repeticion: juntas } : null
+  const usadas = new Set([principal?.fotograma, segunda?.fotograma].filter(Boolean))
+  const sueltas = [...new Set(antes.map(f => f.fotograma).filter((r): r is string => !!r && !usadas.has(r)))]
+  return { principal, segunda, sueltas }
+}
+
+/** De la segunda vista, en las listas, solo lo que se enseña: sus medidas y lo dibujado pesan. */
+const SEGUNDA_EN_LISTA = 'sv_vista:segunda_vista->>vista, sv_fotograma:segunda_vista->>fotograma, sv_misma:segunda_vista->misma_repeticion'
+type FilaConSegunda = Omit<FilaPrueba, 'segunda_vista'> & { sv_vista: Vista | null; sv_fotograma: string | null; sv_misma: boolean | null }
+
 export async function cargarValoraciones(sb: any, idDep: number): Promise<{ valoraciones: Valoracion[]; pruebas: FilaPrueba[]; error?: string }> {
   const [v, p] = await Promise.all([
     sb.from('valoracion_movimiento').select('id, id_deportista, bateria, fecha, modo, notas, actualizada_en')
       .eq('id_deportista', idDep).order('fecha', { ascending: false }).order('id', { ascending: false }),
-    sb.from('valoracion_prueba').select('id, id_valoracion, prueba, lado, nota, dolor, criterios, vista, fotograma')
+    sb.from('valoracion_prueba').select('id, id_valoracion, prueba, lado, nota, dolor, criterios, vista, fotograma, ' + SEGUNDA_EN_LISTA)
       .eq('id_deportista', idDep),
   ])
   const error = v.error?.message || p.error?.message
-  return { valoraciones: (v.data || []) as Valoracion[], pruebas: (p.data || []) as FilaPrueba[], error }
+  const pruebas: FilaPrueba[] = ((p.data || []) as FilaConSegunda[]).map(({ sv_vista, sv_fotograma, sv_misma, ...f }) => ({
+    ...f, segunda_vista: sv_vista ? { vista: sv_vista, fotograma: sv_fotograma, misma_repeticion: sv_misma === true } : null,
+  }))
+  return { valoraciones: (v.data || []) as Valoracion[], pruebas, error }
 }
 
-/** Las medidas de cada prueba de UNA valoración, por el id de su fila: para el informe, que dibuja sus curvas. */
-export async function cargarMedidas(sb: SupabaseClient, idValoracion: number): Promise<{ medidas: Record<number, Medida[]>; error?: string }> {
-  const { data, error } = await sb.from('valoracion_prueba').select('id, medidas').eq('id_valoracion', idValoracion)
-  if (error) return { medidas: {}, error: error.message }
+/**
+ * Las medidas de cada prueba de UNA valoración, por el id de su fila: para el
+ * informe, que dibuja sus curvas. `segundas`: las de la otra vista, en las
+ * pruebas de dos (de qué momento es su fotograma, lo medido en él).
+ */
+export async function cargarMedidas(sb: SupabaseClient, idValoracion: number): Promise<{
+  medidas: Record<number, Medida[]>; segundas: Record<number, Medida[]>; error?: string
+}> {
+  const { data, error } = await sb.from('valoracion_prueba').select('id, medidas, segunda_medidas:segunda_vista->medidas').eq('id_valoracion', idValoracion)
+  if (error) return { medidas: {}, segundas: {}, error: error.message }
   const medidas: Record<number, Medida[]> = {}
-  for (const f of (data || []) as { id: number; medidas: Medida[] | null }[]) {
+  const segundas: Record<number, Medida[]> = {}
+  for (const f of (data || []) as { id: number; medidas: Medida[] | null; segunda_medidas: Medida[] | null }[]) {
     if (Array.isArray(f.medidas)) medidas[f.id] = f.medidas
+    if (Array.isArray(f.segunda_medidas)) segundas[f.id] = f.segunda_medidas
   }
-  return { medidas }
+  return { medidas, segundas }
 }
 
 export async function crearValoracion(sb: any, idDep: number, bateria: Bateria, modo: 'video' | 'mano'): Promise<{ valoracion?: Valoracion; error?: string }> {
@@ -118,6 +206,8 @@ export interface PruebaAGuardar {
   dibujo?: Trazo[] | null
   vista?: Vista | null
   fotograma?: string | null
+  /** En las pruebas de dos vistas: la otra (null la quita). */
+  segundaVista?: SegundaVista | null
 }
 
 /**
@@ -138,10 +228,52 @@ export async function guardarPrueba(sb: any, p: PruebaAGuardar): Promise<{ error
   if (p.dibujo !== undefined) fila.dibujo = p.dibujo
   if (p.vista !== undefined) fila.vista = p.vista
   if (p.fotograma !== undefined) fila.fotograma = p.fotograma
+  if (p.segundaVista !== undefined) fila.segunda_vista = p.segundaVista
   const { error } = await sb.from('valoracion_prueba').upsert(fila, { onConflict: 'id_valoracion,prueba,lado' })
   if (error) return { error: error.message }
   await sb.from('valoracion_movimiento').update({ actualizada_en: new Date().toISOString() }).eq('id', p.idValoracion)
   return {}
+}
+
+export interface PruebaDosVistasAGuardar {
+  idValoracion: number
+  idDeportista: number
+  prueba: string
+  lado: Lado
+  nota: number | null
+  dolor: boolean
+  criterios: Record<string, boolean> | null
+  /** Las vistas de la prueba, en su orden: la primera es la principal. */
+  orden: Vista[]
+  /** Los fotogramas de esta vez: uno por vista con vídeo. */
+  fotos: FotoVista[]
+  /** Si los dos vídeos estaban alineados: entonces los dos fotogramas son de la misma repetición. */
+  alineadas: boolean
+}
+
+/**
+ * Guarda una prueba de dos vistas: lee lo que ya tenía la fila, lo junta con lo
+ * de ahora (fundirVistas) y guarda las dos. Sin fotogramas (sin vídeo), solo la
+ * nota y los criterios, como siempre. Las imágenes que se quedan sin fila se
+ * borran del almacén.
+ */
+export async function guardarPruebaDosVistas(sb: SupabaseClient, p: PruebaDosVistasAGuardar): Promise<{ error?: string }> {
+  const base: PruebaAGuardar = {
+    idValoracion: p.idValoracion, idDeportista: p.idDeportista, prueba: p.prueba, lado: p.lado,
+    nota: p.nota, dolor: p.dolor, criterios: p.criterios,
+  }
+  if (!p.fotos.length) return guardarPrueba(sb, base)
+  const { data, error } = await sb.from('valoracion_prueba').select('vista, fotograma, medidas, dibujo, segunda_vista')
+    .eq('id_valoracion', p.idValoracion).eq('prueba', p.prueba).eq('lado', p.lado).maybeSingle()
+  if (error) return { error: error.message }
+  const { principal, segunda, sueltas } = fundirVistas(data ? fotosDeFila(data) : [], p.fotos, p.orden, p.alineadas)
+  const r = await guardarPrueba(sb, {
+    ...base,
+    vista: principal?.vista ?? null, fotograma: principal?.fotograma ?? null,
+    medidas: principal?.medidas ?? null, dibujo: principal?.dibujo ?? null, segundaVista: segunda,
+  })
+  if (!r.error && sueltas.length) await sb.storage.from(ALMACEN).remove(sueltas)
+  return r
 }
 
 /** Quitar lo puntuado de un lado (para volver a dejarlo pendiente). */

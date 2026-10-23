@@ -21,8 +21,14 @@
 //    texto no las describe, y el artículo que sí (Frohm y otros, 2012) es de pago.
 //  · Las distancias de grabación, «el móvil, bajo» y lo marcado como propuesta
 //    son nuestros.
+//
+// LAS PRUEBAS DE DOS VISTAS (22-10-2026, con su maqueta: https://claude.ai/artifact/71YoXvZLYsux3qZ11uNshV).
+// Seis se miran desde dos cámaras. Con dos móviles se graban a la vez (la misma
+// repetición desde los dos lados) y el visor los alinea; con uno, se mueve entre
+// intentos. Cómo repartir los intentos con un móvil es propuesta nuestra: las
+// fuentes no lo dicen. Lo dice grabarDosVistas.
 
-import type { Bateria } from './baterias-movimiento'
+import { DE_VISTA, type Bateria, type Prueba, type Vista } from './baterias-movimiento'
 
 export interface FichaPrueba {
   material: string[]
@@ -71,7 +77,8 @@ export const MATERIAL: Record<Bateria, MaterialBateria[]> = {
     { grupo: 'Material', cosa: 'Cinta adhesiva o un rotulador', medida: 'Para marcar en la tabla la distancia de la zancada.', para: 'zancada.' },
     { grupo: 'La persona', cosa: 'Descalza y con ropa ajustada', medida: 'Pantalón corto o mallas: hay que ver rodillas y cadera.', para: 'todas.' },
     { grupo: 'La persona', cosa: 'Un sitio para tumbarse', medida: 'Suelo firme; si es duro, una esterilla fina.', para: 'pierna recta, flexión y estabilidad rotatoria.' },
-    { grupo: 'Para grabar', cosa: 'El móvil y un apoyo', medida: 'Un trípode, o algo para dejarlo quieto a la altura de la cadera, con unos 3 m libres.', para: 'todas, menos las de dolor.' },
+    { grupo: 'Para grabar', cosa: 'Uno o dos móviles, y algo para dejarlos quietos', medida: 'Un trípode, o algo para dejarlos a la altura de la cadera, con unos 3 m libres. Con dos, la sentadilla, la valla y la zancada se graban desde sus dos vistas a la vez.',
+      para: 'todas, menos las de dolor.', casera: 'El segundo puede ser el móvil del deportista. De apoyo vale una silla.' },
   ],
   nine: [
     { grupo: 'Material', cosa: 'Dos tablas para los talones', medida: 'Una de 2 cm de alto y otra de 4 cm.', para: 'sentadilla profunda (la de 4 cm, si no sale el 3).',
@@ -84,7 +91,8 @@ export const MATERIAL: Record<Bateria, MaterialBateria[]> = {
     { grupo: 'Material', cosa: 'Una cinta métrica', medida: 'Para medir su mano.', para: 'movilidad funcional de hombro.' },
     { grupo: 'La persona', cosa: 'Descalza, con top o camiseta de tirantes y pantalón corto o mallas', medida: 'Así lo pide el artículo: hay que ver los hombros, la espalda y las rodillas.', para: 'todas.' },
     { grupo: 'La persona', cosa: 'Un sitio para tumbarse', medida: 'Suelo firme; si es duro, una esterilla fina.', para: 'flexión activa de cadera, elevación de piernas, flexión y elevación diagonal.' },
-    { grupo: 'Para grabar', cosa: 'El móvil y un apoyo', medida: 'Un trípode, o algo para dejarlo quieto a la altura de la cadera, con unos 3 m libres.', para: 'todas.' },
+    { grupo: 'Para grabar', cosa: 'Uno o dos móviles, y algo para dejarlos quietos', medida: 'Un trípode, o algo para dejarlos a la altura de la cadera, con unos 3 m libres. Con dos, la sentadilla, la zancada y la elevación diagonal se graban desde sus dos vistas a la vez.',
+      para: 'todas.', casera: 'El segundo puede ser el móvil del deportista. De apoyo vale una silla.' },
     { grupo: 'Para grabar', cosa: 'Algo para grabar desde arriba', medida: 'Una silla a la que subirte, o un palo de selfi.', para: 'rotación sentado.' },
   ],
 }
@@ -280,3 +288,27 @@ export const FICHAS: Record<string, FichaPrueba> = {
 }
 
 export const fichaDe = (clave: string): FichaPrueba | null => FICHAS[clave] ?? null
+
+/** La vista desde la que se miran más criterios; si empatan, la primera de la prueba. */
+export function vistaPrincipal(p: Prueba): Vista {
+  const cuantos = (v: Vista) => p.criterios.filter(c => c.vista === v).length
+  return p.vistas.reduce((a, v) => (cuantos(v) > cuantos(a) ? v : a), p.vistas[0])
+}
+
+/**
+ * Cómo grabar una prueba que se mira desde dos cámaras: con dos móviles, a la
+ * vez; con uno, moviéndolo entre intentos (los dos primeros desde la vista con
+ * más criterios y el tercero desde la otra, para no pasar de los tres intentos).
+ * null en las de una vista.
+ */
+export function grabarDosVistas(p: Prueba): { conDos: string; conUno: string; palmada: string } | null {
+  if (p.vistas.length !== 2) return null
+  const principal = vistaPrincipal(p)
+  const otra = p.vistas.find(v => v !== principal)!
+  return {
+    conDos: 'Uno ' + DE_VISTA[p.vistas[0]] + ' y otro ' + DE_VISTA[p.vistas[1]] + ', grabando a la vez: así ves la misma repetición desde los dos lados.',
+    conUno: (p.bilateral ? 'Con cada lado, mueve' : 'Mueve') + ' el móvil entre intentos: el 1.º y el 2.º ' + DE_VISTA[principal]
+      + ' y el 3.º ' + DE_VISTA[otra] + '. Así no pasas de los tres intentos de la prueba.',
+    palmada: 'Con dos móviles, una palmada al empezar a grabar: si la app no los alinea sola, sirve para alinearlos a mano.',
+  }
+}

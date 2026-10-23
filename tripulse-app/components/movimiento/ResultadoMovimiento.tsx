@@ -9,8 +9,8 @@
 // seguir a la persona consigo misma, no para predecir lesiones.
 
 import { useState } from 'react'
-import { resultadoBateria, textoTotal, type DefBateria } from '@/lib/baterias-movimiento'
-import type { FilaPrueba, Valoracion } from '@/lib/movimiento-datos'
+import { DE_VISTA, resultadoBateria, textoTotal, type DefBateria } from '@/lib/baterias-movimiento'
+import { fotogramasDeFila, type FilaPrueba, type Valoracion } from '@/lib/movimiento-datos'
 import { fechaLarga } from '@/lib/fechas'
 
 const COLOR_NOTA: Record<number, string> = { 3: '#3fd08a', 2: '#f0b429', 1: '#f2545b', 0: '#f2545b' }
@@ -33,7 +33,11 @@ export default function ResultadoMovimiento({ def, valoracion, registros, previa
   const minima = notas.length ? Math.min(...notas.map(x => x.n.nota as number)) : null
   const masBajas = minima != null && minima < 3 ? notas.filter(x => x.n.nota === minima) : []
 
-  const fotos = registros.filter(r => r.fotograma && urls[r.fotograma])
+  /* Cada imagen guardada; en las pruebas de dos vistas, las dos, juntas y con su vista. */
+  const fotos = registros.flatMap(r => {
+    const fs = fotogramasDeFila(r).filter(f => urls[f.ruta])
+    return fs.map(f => ({ r, f, vista: fs.length === 2 && f.vista ? DE_VISTA[f.vista] : '' }))
+  })
 
   return (
     <div className="rounded-2xl border border-gray-800 bg-gray-900/60 overflow-hidden">
@@ -97,16 +101,17 @@ export default function ResultadoMovimiento({ def, valoracion, registros, previa
           )}
           {fotos.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-              {fotos.map(r => {
+              {fotos.map(({ r, f, vista }) => {
                 const p = def.pruebas.find(x => x.clave === r.prueba)
                 const lado = r.lado === 'izq' ? ' · izq' : r.lado === 'der' ? ' · der' : ''
+                const titulo = (p?.nombre || r.prueba) + lado + (vista ? ' · ' + vista : '')
                 return (
-                  <button key={r.id} onClick={() => setGrande(r.fotograma)} className="relative rounded-lg overflow-hidden border border-gray-800 hover:border-orange-500/60 transition text-left"
-                    title={'Ver ' + (p?.nombre || r.prueba) + lado}>
+                  <button key={r.id + ':' + f.ruta} onClick={() => setGrande(f.ruta)} className="relative rounded-lg overflow-hidden border border-gray-800 hover:border-orange-500/60 transition text-left"
+                    title={'Ver ' + titulo}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={urls[r.fotograma!]} alt={(p?.nombre || r.prueba) + lado} className="w-full aspect-[3/4] object-cover bg-black" />
+                    <img src={urls[f.ruta]} alt={titulo} className="w-full aspect-[3/4] object-cover bg-black" />
                     <span className="absolute left-1 right-1 bottom-1 text-[10px] bg-black/65 rounded px-1.5 py-0.5 truncate">
-                      {(p?.nombre || r.prueba) + lado} · {r.dolor ? 0 : r.nota}
+                      {titulo} · {r.dolor ? 0 : r.nota}
                     </span>
                   </button>
                 )

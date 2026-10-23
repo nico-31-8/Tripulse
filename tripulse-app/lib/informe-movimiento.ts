@@ -17,9 +17,9 @@
 // (aSerieGuardada, dentro de sus medidas). Pesa: por eso las listas no la
 // cargan y el informe la pide aparte (lib/movimiento-datos: cargarMedidas).
 
-import { resultadoBateria, type DefBateria, type Lado, type Prueba } from './baterias-movimiento'
+import { DE_VISTA, resultadoBateria, type DefBateria, type Lado, type Prueba } from './baterias-movimiento'
 import { fiabilidadDe, MEDIDAS_GRAFICA, NOMBRE_MEDIDA, type ClaveGrafica, type Fiabilidad, type LadoCuerpo } from './cuerpo'
-import type { FilaPrueba, Medida, SerieGuardada } from './movimiento-datos'
+import { fotogramasDeFila, type FilaPrueba, type Medida, type SerieGuardada } from './movimiento-datos'
 
 const NOMBRE_LADO: Record<Lado, string> = { unico: '', izq: 'izquierda', der: 'derecha' }
 const ORDEN_LADO: Record<Lado, number> = { unico: 0, izq: 1, der: 2 }
@@ -408,20 +408,28 @@ export interface FotoInforme {
   deLaApp: boolean
 }
 
-/** Un fotograma por prueba y lado, en el orden de la batería: los que se guardaron con su imagen. */
+/**
+ * Un fotograma por prueba y lado, en el orden de la batería: los que se
+ * guardaron con su imagen. En las pruebas de dos vistas, uno por vista, que
+ * dicen de qué vista son y si son de la misma repetición.
+ */
 export function fotogramasDelInforme(def: DefBateria, registros: FilaPrueba[]): FotoInforme[] {
   const out: FotoInforme[] = []
   for (const p of def.pruebas) {
-    for (const r of registros.filter(x => x.prueba === p.clave && x.fotograma).sort(porLado)) {
-      const de = (r.medidas ?? []).find(m => m?.nombre === NOMBRE_FOTOGRAMA)
-      const texto = typeof de?.valor === 'string' ? de.valor : ''
-      out.push({
-        ruta: r.fotograma as string,
-        titulo: p.nombre + (r.lado === 'izq' ? ' · izq' : r.lado === 'der' ? ' · der' : ''),
-        nota: r.dolor ? 0 : r.nota,
-        texto,
-        deLaApp: texto.includes(TEXTO_DE_LA_APP),
-      })
+    for (const r of registros.filter(x => x.prueba === p.clave).sort(porLado)) {
+      const fotos = fotogramasDeFila(r)
+      const dos = fotos.length === 2
+      for (const f of fotos) {
+        const de = (f.medidas ?? []).find(m => m?.nombre === NOMBRE_FOTOGRAMA)
+        const texto = typeof de?.valor === 'string' ? de.valor : ''
+        out.push({
+          ruta: f.ruta,
+          titulo: p.nombre + (r.lado === 'izq' ? ' · izq' : r.lado === 'der' ? ' · der' : '') + (dos && f.vista ? ' · ' + DE_VISTA[f.vista] : ''),
+          nota: r.dolor ? 0 : r.nota,
+          texto: [texto, dos && r.segunda_vista?.misma_repeticion ? 'misma repetición' : ''].filter(Boolean).join(' · '),
+          deLaApp: texto.includes(TEXTO_DE_LA_APP),
+        })
+      }
     }
   }
   return out

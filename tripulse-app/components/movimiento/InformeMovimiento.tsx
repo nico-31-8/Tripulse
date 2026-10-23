@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { resultadoBateria, type DefBateria } from '@/lib/baterias-movimiento'
-import { cargarMedidas, urlsFotogramas, type FilaPrueba, type Medida, type Valoracion } from '@/lib/movimiento-datos'
+import { cargarMedidas, rutasDe, urlsFotogramas, type FilaPrueba, type Medida, type Valoracion } from '@/lib/movimiento-datos'
 import {
   cambiosDesde, enLista, faltanDe, filasDelInforme, fotogramasDelInforme, graficasDisponibles, queTrabajar, textoCambios,
   textoDolores, textoTambien,
@@ -38,11 +38,13 @@ export default function InformeMovimiento({ def, valoracion, registros, previa, 
   onCerrar: () => void
 }) {
   const [medidas, setMedidas] = useState<Record<number, Medida[]> | null>(null)
+  /** Las de la otra vista, en las pruebas de dos. */
+  const [segundas, setSegundas] = useState<Record<number, Medida[]>>({})
   const [urls, setUrls] = useState<Record<string, string>>(() => urlsDeAntes ?? {})
   const [error, setError] = useState('')
   const { elegidas, alternar } = useElegidas()
 
-  const rutas = registros.map(r => r.fotograma || '').filter(Boolean)
+  const rutas = rutasDe(registros)
   const claveRutas = rutas.join('|')
   useEffect(() => {
     let vivo = true
@@ -51,14 +53,19 @@ export default function InformeMovimiento({ def, valoracion, registros, previa, 
       if (!vivo) return
       if (m.error) setError('No se han podido cargar las gráficas: ' + m.error)
       setMedidas(m.medidas)
+      setSegundas(m.segundas)
       setUrls(antes => ({ ...antes, ...u }))
     })()
     return () => { vivo = false }
   }, [valoracion.id, claveRutas])
 
   const conMedidas = useMemo(
-    () => (medidas ? registros.map(r => ({ ...r, medidas: medidas[r.id] ?? r.medidas ?? null })) : registros),
-    [registros, medidas],
+    () => (medidas ? registros.map(r => ({
+      ...r,
+      medidas: medidas[r.id] ?? r.medidas ?? null,
+      segunda_vista: r.segunda_vista ? { ...r.segunda_vista, medidas: segundas[r.id] ?? r.segunda_vista.medidas ?? null } : r.segunda_vista,
+    })) : registros),
+    [registros, medidas, segundas],
   )
   const graficas = useMemo(() => (medidas ? graficasDisponibles(def, conMedidas) : []), [def, conMedidas, medidas])
 

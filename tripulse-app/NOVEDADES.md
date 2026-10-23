@@ -14,6 +14,44 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Tests de movimiento: dos cámaras a la vez, zoom y la rueda del ratón
+
+- **Los dos vídeos a la vez.** Seis pruebas se miran desde dos sitios: la
+  sentadilla, el paso de valla y la zancada del FMS, y la sentadilla, la zancada
+  y la elevación diagonal del Nine Test. Cada criterio se mira en su vista (en la
+  sentadilla, el fémur de perfil y las rodillas de frente) y la nota junta las
+  dos. Ahora el visor lleva un vídeo por vista: los dos a la vez o uno a uno. En
+  el móvil, uno grande y el otro pequeño en una esquina; tocas el pequeño y se
+  cambian.
+- **Alinearlos.** Si los grabaste a la vez con dos móviles, cada uno empezó en un
+  momento distinto. «Alinear solos» busca el cuerpo en los dos vídeos y encaja su
+  sube y baja. También puedes hacerlo a mano: pones los dos en el mismo momento y
+  pulsas «Están a la vez». Desde ahí, un solo mando los mueve juntos y ves la
+  misma repetición desde los dos lados. «Ir al punto más bajo» te lleva al fondo
+  de la repetición.
+- **Se guarda un fotograma por vista.** Antes se guardaba uno por prueba y lado,
+  y en la sentadilla solía ser el de perfil: el de las rodillas de frente no
+  quedaba. Ahora se guardan los dos, y si los vídeos estaban alineados quedan
+  como de la misma repetición. Salen juntos en el resultado, en el informe y en
+  lo que ve el deportista.
+- **Cómo grabarlas.** En el material pone «uno o dos móviles» (el segundo puede
+  ser el del deportista). La ficha de cada una de las seis trae un plano visto
+  desde arriba con dónde va cada móvil. Con un solo móvil, la propuesta es
+  moverlo entre intentos: los dos primeros desde la vista con más criterios y el
+  tercero desde la otra. Con dos, una palmada al empezar a grabar sirve para
+  alinearlos a mano.
+- **Zoom y rueda del ratón, en todas las pruebas** (también en el análisis
+  libre). Con la rueda pasas fotograma a fotograma: hacia abajo, adelante. Con
+  Ctrl + rueda, o pellizcando en el móvil o en el panel táctil, acercas donde
+  apuntas, hasta ocho veces. Con zoom te mueves arrastrando con «mover» (o con la
+  rueda pulsada), o con dos dedos. En la esquina del vídeo tienes − y + para
+  acercar o alejar, y «Ajustar» para volver a verlo entero. Lo que dibujas con
+  zoom queda en su sitio, y las líneas no engordan al acercar.
+- **Lo demás no cambia:** las otras diez pruebas siguen con un vídeo, como
+  siempre.
+
+---
+
 ## 22 de octubre de 2026 · Tests de movimiento: el material y cómo se pasa cada prueba
 
 - **Antes de empezar un FMS o un Nine Test, la lista de lo que necesitas.** Al

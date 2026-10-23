@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { BATERIAS, NOMBRE_VISTA, resultadoBateria, textoTotal, type Bateria, type Lado, type Prueba } from '@/lib/baterias-movimiento'
 import {
-  cargarValoraciones, crearValoracion, guardarPrueba, marcarPermiso, urlsFotogramas,
+  cargarValoraciones, crearValoracion, guardarPrueba, marcarPermiso, rutasDe, urlsFotogramas,
   type FilaPrueba, type Valoracion,
 } from '@/lib/movimiento-datos'
 import { fechaLarga, hoyISO } from '@/lib/fechas'
@@ -72,7 +72,7 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
     if (d.error) setError('No se han podido cargar sus valoraciones: ' + d.error)
     setValoraciones(d.valoraciones)
     setPruebas(d.pruebas)
-    setUrls(await urlsFotogramas(supabase, d.pruebas.map(p => p.fotograma || '')))
+    setUrls(await urlsFotogramas(supabase, rutasDe(d.pruebas)))
   }, [idDeportista])
 
   /* La regla ve una llamada que acaba en setState; el estado se pone DESPUÉS de
@@ -254,7 +254,9 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
                   {def.pruebas.map((p, i) => {
                     const n = res.porPrueba[p.clave]
                     const regs = regsActiva.filter(r => r.prueba === p.clave)
-                    const conFoto = regs.some(r => r.fotograma)
+                    const conFoto = regs.some(r => r.fotograma || r.segunda_vista?.fotograma)
+                    /* En las de dos vistas, de cuáles hay imagen guardada. */
+                    const conImagen = new Set(regs.flatMap(r => [r.fotograma ? r.vista : null, r.segunda_vista?.fotograma ? r.segunda_vista.vista : null]))
                     const dolorDe = def.dolores.find(d => d.clave === p.dolor)
                     const abrir = () => {
                       if (activa.modo === 'mano') { setAMano(aMano === p.clave ? null : p.clave); return }
@@ -271,7 +273,7 @@ export default function PestanaMovimiento({ idDeportista, deportista, onPermiso,
                             {conFoto && <span className="text-[11px] text-gray-500"> · fotograma guardado</span>}
                           </span>
                           <span className="hidden sm:flex gap-1 flex-wrap">
-                            {p.vistas.map(v => <span key={v} className="text-[10.5px] px-2 py-0.5 rounded-full bg-sky-300/10 text-sky-300 whitespace-nowrap">{NOMBRE_VISTA[v]}</span>)}
+                            {p.vistas.map(v => <span key={v} className="text-[10.5px] px-2 py-0.5 rounded-full bg-sky-300/10 text-sky-300 whitespace-nowrap">{NOMBRE_VISTA[v]}{p.vistas.length === 2 && conImagen.has(v) ? ' ✓' : ''}</span>)}
                           </span>
                           <span className={'font-mono text-[11.5px] text-right ' + (n.asimetria ? 'text-amber-300' : 'text-gray-500')}>
                             {p.bilateral ? `izq ${n.izq ?? '—'} · der ${n.der ?? '—'}${n.asimetria ? ' ⚠' : ''}` : n.porDolor ? 'duele' : 'un solo lado'}
