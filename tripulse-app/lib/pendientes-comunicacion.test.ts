@@ -1,5 +1,51 @@
 import { describe, it, expect } from 'vitest'
-import { resumirPendientes, totalDe, textoPendientes, atletasConPendientes, SIN_PENDIENTES } from './pendientes-comunicacion'
+import { resumirPendientes, totalDe, textoPendientes, atletasConPendientes, SIN_PENDIENTES, unoPorSesion, tarjetasDeComentarios } from './pendientes-comunicacion'
+
+describe('tarjetasDeComentarios', () => {
+  type Fila = Parameters<typeof tarjetasDeComentarios>[0][number]
+  type Ses = { id: number; fecha_sesion: string; disciplina: string; id_deportista: number; eliminada?: boolean | null; rpe_reportado?: number | null }
+  const ses = (id: number, extra: Partial<Ses> = {}): Ses => ({ id, fecha_sesion: '2026-10-22', disciplina: 'Carrera', id_deportista: 5, eliminada: false, rpe_reportado: null, ...extra })
+  const fila = (id: number, sesion: Fila['sesion'], extra: Partial<Fila> = {}): Fila => ({ id, notas_post: 'vino Pedro', comentario_leido: false, rpe_reportado: 2, sesion, ...extra })
+
+  it('el comentario copiado en las dos tareas de una sesión sale UNA vez, con las dos tareas', () => {
+    const t = tarjetasDeComentarios([fila(1, ses(10)), fila(2, ses(10))], new Set([5]))
+    expect(t).toHaveLength(1)
+    expect(t[0].tareaIds).toEqual([1, 2])
+    expect(t[0].rpe).toBe(2)
+  })
+
+  it('leída solo si lo están todas sus tareas; el RPE, el de la sesión', () => {
+    const t = tarjetasDeComentarios([fila(1, ses(10, { rpe_reportado: 7 }), { comentario_leido: true }), fila(2, ses(10, { rpe_reportado: 7 }))], new Set([5]))
+    expect(t[0].leido).toBe(false)
+    expect(t[0].rpe).toBe(7)
+  })
+
+  it('sesiones distintas, tarjetas distintas, de la más nueva a la más vieja; fuera papelera y deportistas ajenos', () => {
+    const t = tarjetasDeComentarios([
+      fila(1, ses(10, { fecha_sesion: '2026-10-20' })),
+      fila(2, ses(11, { fecha_sesion: '2026-10-22' })),
+      fila(3, ses(12, { eliminada: true })),
+      fila(4, ses(13, { id_deportista: 99 })),
+      fila(5, [ses(14, { fecha_sesion: '2026-10-21' })]),
+    ], new Set([5]))
+    expect(t.map(x => x.sesionId)).toEqual([11, 14, 10])
+  })
+})
+
+describe('unoPorSesion', () => {
+  it('el comentario de una sesión cuenta una vez, aunque vaya en cada tarea', () => {
+    const filas = [
+      { id_sesion: 7, notas_post: 'vino Pedro y entrenamos juntos' },
+      { id_sesion: 7, notas_post: 'vino Pedro y entrenamos juntos' },
+      { id_sesion: 7, notas_post: ' vino Pedro y entrenamos juntos ' },
+      { id_sesion: 8, notas_post: 'vino Pedro y entrenamos juntos' },
+    ]
+    expect(unoPorSesion(filas).map(f => f.id_sesion)).toEqual([7, 8])
+  })
+  it('dos comentarios distintos en la misma sesión salen los dos', () => {
+    expect(unoPorSesion([{ id_sesion: 1, notas_post: 'a' }, { id_sesion: 1, notas_post: 'b' }])).toHaveLength(2)
+  })
+})
 
 describe('resumirPendientes', () => {
   it('cuenta mensajes y comentarios por atleta', () => {

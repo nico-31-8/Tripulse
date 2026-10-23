@@ -10,6 +10,7 @@ import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import { colorDisciplina } from '@/lib/disciplinas'
 import Avatar from '@/components/Avatar'
+import { tarjetasDeComentarios, type TarjetaComentario } from '@/lib/pendientes-comunicacion'
 
 
 export default function ComunicacionPage() {
@@ -18,7 +19,7 @@ export default function ComunicacionPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [deportistas, setDeportistas] = useState<any[]>([])
   const [mensajes, setMensajes] = useState<any[]>([])
-  const [feedback, setFeedback] = useState<any[]>([])
+  const [feedback, setFeedback] = useState<TarjetaComentario[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [filtro, setFiltro] = useState<'todos' | 'sin_leer' | 'feedback'>('todos')
   const [query, setQuery] = useState('')
@@ -59,7 +60,7 @@ export default function ComunicacionPage() {
          Se piden las que la RLS deja ver y abajo se quedan las de SUS
          deportistas, que es lo que filtraba antes la lista de ids. */
       supabase.from('tarea')
-        .select('id, id_sesion, notas_post, comentario_leido, rpe_reportado, sesion!inner(id, fecha_sesion, disciplina, id_deportista, eliminada)')
+        .select('id, id_sesion, notas_post, comentario_leido, rpe_reportado, sesion!inner(id, fecha_sesion, disciplina, id_deportista, eliminada, rpe_reportado)')
         .not('notas_post', 'is', null).neq('notas_post', ''),
     ])
     const deportistas = deps || []
@@ -68,14 +69,13 @@ export default function ComunicacionPage() {
 
     let fbRecien: typeof feedback = []
     if (deportistas.length) {
-      const suyos = new Set(deportistas.map((d: any) => d.id))
-      const fb = (conNota || []).map((t: any) => {
-        const x = Array.isArray(t.sesion) ? t.sesion[0] : t.sesion
-        /* Las de la papelera no cuentan, como antes (iban por `vivas`). */
-        if (!x || x.eliminada || !suyos.has(x.id_deportista)) return null
-        return { tareaId: t.id, sesionId: x.id, fecha: x.fecha_sesion, disciplina: x.disciplina, notas: t.notas_post, leido: t.comentario_leido, rpe: t.rpe_reportado, depId: x.id_deportista }
-      }).filter(Boolean).sort((a: any, b: any) => b.fecha.localeCompare(a.fecha))
-      fbRecien = fb as any[]
+      /* UNA TARJETA POR SESIÓN. El comentario se guarda en cada tarea de la
+         sesión (es del día, como el dolor y la HRV), y salía una tarjeta por
+         tarea: el mismo comentario dos, tres o diez veces, que además llenaban
+         las tres que se enseñan y tapaban los de otras sesiones. Ahora una por
+         sesión y texto, la misma regla que el aviso del panel; leerla marca
+         todas sus tareas. Las de la papelera no cuentan, como antes. */
+      fbRecien = tarjetasDeComentarios((conNota || []) as any[], new Set(deportistas.map((d: any) => d.id)))
       setFeedback(fbRecien)
     }
     setLoading(false)
@@ -103,10 +103,10 @@ export default function ComunicacionPage() {
        en cada uno, así que el aviso del panel principal seguía diciendo «15 sin
        revisar» después de haberlos leído todos. Siguen en el hilo para
        responderlos; solo dejan de contar como pendientes. */
-    const ids = fbActual.filter(f => f.depId === depId && !f.leido).map(f => f.tareaId)
+    const ids = fbActual.filter(f => f.depId === depId && !f.leido).flatMap(f => f.tareaIds)
     if (ids.length) {
       await supabase.from('tarea').update({ comentario_leido: true }).in('id', ids)
-      setFeedback(prev => prev.map(f => ids.includes(f.tareaId) ? { ...f, leido: true } : f))
+      setFeedback(prev => prev.map(f => f.tareaIds.some(x => ids.includes(x)) ? { ...f, leido: true } : f))
     }
   }
 
@@ -123,7 +123,10 @@ export default function ComunicacionPage() {
 
   const responderFeedback = (f: any) => {
     setReply({ texto: f.notas, disciplina: f.disciplina, fecha: f.fecha })
-    if (!f.leido) { supabase.from('tarea').update({ comentario_leido: true }).eq('id', f.tareaId); setFeedback(prev => prev.map(x => x.tareaId === f.tareaId ? { ...x, leido: true } : x)) }
+    if (!f.leido) {
+      supabase.from('tarea').update({ comentario_leido: true }).in('id', f.tareaIds)
+      setFeedback(prev => prev.map(x => x.tareaIds[0] === f.tareaIds[0] ? { ...x, leido: true } : x))
+    }
     setTimeout(() => taRef.current?.focus(), 50)
   }
 
@@ -251,7 +254,7 @@ export default function ComunicacionPage() {
                   {threadFbs.length > 0 && (
                     <div className="flex flex-col gap-2 mb-1">
                       {threadFbs.slice(0, 3).map(f => (
-                        <div key={f.tareaId} data-guia="com.feedback" className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + colorDisciplina(f.disciplina) }}>
+                        <div key={f.tareaIds[0]} data-guia="com.feedback" className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" style={{ borderLeft: '2px solid ' + colorDisciplina(f.disciplina) }}>
                           <div className="flex items-center gap-2 text-[11.5px] font-semibold text-gray-300">
                             <span className="w-5 h-5 rounded-md grid place-items-center flex-shrink-0" style={{ background: colorDisciplina(f.disciplina) + '2e', color: colorDisciplina(f.disciplina) }}>
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5h16v11H9l-4 3.5V16.5H4Z" /></svg>

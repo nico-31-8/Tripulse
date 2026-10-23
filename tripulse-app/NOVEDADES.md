@@ -14,6 +14,23 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Comunicación: cada comentario de sesión sale una vez
+
+- **Antes**, el comentario que deja tu deportista al cerrar una sesión salía
+  repetido en Comunicación, una vez por cada tarea de la sesión: dos, tres y
+  hasta diez veces. Como en cada conversación se enseñan los tres últimos, las
+  repeticiones tapaban los comentarios de otras sesiones. El aviso del panel
+  principal los contaba igual: una sesión de tres tareas eran «3 comentarios sin
+  revisar».
+- **Ahora** sale una vez por sesión, y el aviso cuenta uno. Al leerlo o
+  responderlo queda leído entero. El RPE de la tarjeta es el de la sesión.
+- **En «Mis análisis» del deportista**, su nota sale una vez, y no debajo de
+  cada tarea.
+- No cambia nada de lo guardado: el comentario sigue en cada tarea, que es como
+  lo lee el SICAT.
+
+---
+
 ## 23 de octubre de 2026 · Las semanas que genera el planificador duran lo que dice el plan
 
 - **Antes**, al pasar al calendario las semanas que genera el planificador —el

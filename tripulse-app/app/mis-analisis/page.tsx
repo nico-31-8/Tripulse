@@ -313,8 +313,9 @@ export default function MisAnalisis() {
                           <p className="text-gray-500 text-xs italic mt-2">"{t.comentario}"</p>
                         )}
 
-                        {/* Notas post */}
-                        {t.notas_post && (
+                        {/* Notas post. Van copiadas en cada tarea de la sesión (son del
+                            día): se enseñan en la primera donde salen, no en todas. */}
+                        {t.notas_post && !tareasSel.slice(0, i).some(x => (x.notas_post || '').trim() === t.notas_post.trim()) && (
                           <div className="bg-gray-800 rounded-lg p-2 mt-2">
                             <p className="text-gray-500 text-xs">Tus notas</p>
                             <p className="text-gray-300 text-sm">{t.notas_post}</p>
