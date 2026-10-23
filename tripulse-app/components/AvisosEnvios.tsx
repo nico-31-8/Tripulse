@@ -7,6 +7,10 @@
 // que pulsas «Entendido». Todo junto y con el detalle, en /envios. Si no hay
 // nada, no se pinta. Ver lib/envios.
 //
+// Y en qué quedó un traspaso que te llegó y que cerró otro: el deportista
+// (aceptando el último o diciendo que no) o quien te lo pasaba (cancelándolo
+// después de que lo aceptaras). Si lo cerraste tú, ya lo viste: no sale.
+//
 // Dos piezas: la que pinta (AvisosEnviosVista, con los datos que le den) y la
 // que los carga y contesta (la de por defecto, la que va en el panel).
 
@@ -15,14 +19,16 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import {
-  COLUMNAS_ENVIO, contestar, marcarRespuestasVistas, etiquetaTipo, haceCuanto, dondeQueda, primerNombre, faltaLaTabla,
-  puedoContestar, traspasoContestado, textoEstado, textoCupo,
+  COLUMNAS_ENVIO, contestar, marcarRespuestasVistas, marcarAvisosVistos, etiquetaTipo, haceCuanto, dondeQueda, primerNombre, faltaLaTabla,
+  puedoContestar, traspasoContestado, textoEstado, textoCupo, avisoParaQuienRecibe,
   type Envio,
 } from '@/lib/envios'
 
 export interface PropsVista {
   recibidos: Envio[]
   respuestas: Envio[]
+  /** Traspasos que te llegaron y que cerró otro: en qué quedaron. */
+  desenlaces?: Envio[]
   /** Lo que se acaba de contestar desde aquí, con lo que pasó. */
   contestados: Record<number, string>
   trabajando: number | null
@@ -34,9 +40,10 @@ export interface PropsVista {
   className?: string
 }
 
-export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajando, onResponder, onEntendido, onVer, sinAceptar = {}, className = '' }: PropsVista) {
+export function AvisosEnviosVista({ recibidos, respuestas, desenlaces = [], contestados, trabajando, onResponder, onEntendido, onVer, sinAceptar = {}, className = '' }: PropsVista) {
   const pendientes = recibidos.filter(e => !contestados[e.id]).length
-  if (!recibidos.length && !respuestas.length) return null
+  const avisos = desenlaces.map(e => ({ e, aviso: avisoParaQuienRecibe(e) })).filter(x => !!x.aviso)
+  if (!recibidos.length && !respuestas.length && !avisos.length) return null
 
   return (
     <section aria-label="Envíos de otros entrenadores" className={'w-full text-left rounded-2xl border border-sky-500/30 bg-sky-500/[0.07] px-4 py-3 flex flex-col gap-2.5 ' + className}>
@@ -87,7 +94,7 @@ export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajan
         </ul>
       )}
 
-      {respuestas.length > 0 && (
+      {(respuestas.length > 0 || avisos.length > 0) && (
         <div className={'flex flex-col gap-1.5 ' + (recibidos.length ? 'pt-2 border-t border-white/[0.08]' : '')}>
           {respuestas.map(e => (
             <p key={e.id} className="text-[13px] text-gray-300">
@@ -95,6 +102,12 @@ export function AvisosEnviosVista({ recibidos, respuestas, contestados, trabajan
               {e.tipo === 'deportista'
                 ? textoEstado(e, 'manda') + '.'
                 : (primerNombre(e.para_nombre) || 'El otro entrenador') + ' ha ' + (e.estado === 'aceptado' ? 'aceptado' : 'rechazado') + ' «' + e.titulo + '».'}
+            </p>
+          ))}
+          {avisos.map(({ e, aviso }) => (
+            <p key={'d' + e.id} className="text-[13px] text-gray-300">
+              <span className={aviso!.bien ? 'text-emerald-300' : 'text-red-300'}>{aviso!.bien ? '✓' : '✕'}</span>{' '}
+              {aviso!.texto}
             </p>
           ))}
           <button type="button" onClick={onEntendido}
@@ -116,6 +129,7 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
   const router = useRouter()
   const [recibidos, setRecibidos] = useState<Envio[]>([])
   const [respuestas, setRespuestas] = useState<Envio[]>([])
+  const [desenlaces, setDesenlaces] = useState<Envio[]>([])
   /* Lo que se acaba de contestar desde aquí: se queda a la vista con lo que
      pasó, en vez de desaparecer sin más. */
   const [contestados, setContestados] = useState<Record<number, string>>({})
@@ -127,12 +141,17 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
     ;(async () => {
       const user = await usuarioActual()
       if (!vivo || !user) return
-      const [rec, res, yo, tengo] = await Promise.all([
+      const [rec, res, des, yo, tengo] = await Promise.all([
         supabase.from('envio_entrenador').select(COLUMNAS_ENVIO)
           .eq('para', user.id).eq('estado', 'pendiente').order('creado_en', { ascending: false }).limit(10),
         supabase.from('envio_entrenador').select(COLUMNAS_ENVIO)
           .eq('de', user.id).in('estado', ['aceptado', 'rechazado']).is('respuesta_vista_en', null)
           .order('contestado_en', { ascending: false }).limit(10),
+        /* En qué quedaron los traspasos que te llegaron y cerró otro (la base
+           solo deja el aviso pendiente entonces). */
+        supabase.from('envio_entrenador').select(COLUMNAS_ENVIO)
+          .eq('para', user.id).eq('tipo', 'deportista').in('estado', ['aceptado', 'rechazado', 'cancelado'])
+          .is('aviso_para_visto_en', null).order('contestado_en', { ascending: false }).limit(10),
         /* Tu cupo: un traspaso con el cupo lleno no se acepta desde aquí. */
         supabase.from('perfiles').select('cupo_deportistas').eq('id', user.id).maybeSingle(),
         supabase.from('deportista').select('id', { count: 'exact', head: true }).eq('id_entrenador', user.id).eq('solo_test', false),
@@ -143,6 +162,7 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
       const porContestar = ((rec.data || []) as Envio[]).filter(puedoContestar)
       setRecibidos(porContestar)
       setRespuestas((res.data || []) as Envio[])
+      setDesenlaces(des.error ? [] : (des.data || []) as Envio[])
       const cupo = (yo.data as { cupo_deportistas?: number | null } | null)?.cupo_deportistas
       const lleno = textoCupo({ cupo: cupo == null ? null : Number(cupo), tengo: tengo.count ?? 0 })?.lleno
       if (lleno) {
@@ -175,14 +195,17 @@ export default function AvisosEnvios({ className = '' }: { className?: string })
     }))
   }
 
+  /* «Entendido» quita las dos cosas: tus respuestas y en qué quedaron los traspasos que te llegaron. */
   const entendido = async () => {
     const ids = respuestas.map(r => r.id)
+    const vistos = desenlaces.map(d => d.id)
     setRespuestas([])
-    await marcarRespuestasVistas(supabase, ids)
+    setDesenlaces([])
+    await Promise.all([marcarRespuestasVistas(supabase, ids), marcarAvisosVistos(supabase, vistos)])
   }
 
   return (
-    <AvisosEnviosVista className={className} recibidos={recibidos} respuestas={respuestas} contestados={contestados}
+    <AvisosEnviosVista className={className} recibidos={recibidos} respuestas={respuestas} desenlaces={desenlaces} contestados={contestados}
       trabajando={trabajando} onResponder={responder} onEntendido={entendido} sinAceptar={sinAceptar}
       onVer={id => router.push(id ? '/envios?id=' + id : '/envios')} />
   )

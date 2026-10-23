@@ -154,12 +154,14 @@ export interface Envio {
   acepta_deportista_en?: string | null
   /** Quién dijo que no. */
   rechaza?: 'entrenador' | 'deportista' | null
+  /** Quien lo recibe ya ha visto en qué quedó (null = le queda el aviso). */
+  aviso_para_visto_en?: string | null
 }
 
 /** Las columnas que piden las pantallas, escritas UNA vez. En una sola línea:
  *  partida en trozos, el cliente de la base ya no sabe leerla. */
 export const COLUMNAS_ENVIO =
-  'id, de, para, tipo, titulo, contenido, mensaje, de_nombre, para_nombre, para_correo, estado, resultado, creado_en, contestado_en, respuesta_vista_en, id_deportista, deportista_usuario, acepta_entrenador_en, acepta_deportista_en, rechaza'
+  'id, de, para, tipo, titulo, contenido, mensaje, de_nombre, para_nombre, para_correo, estado, resultado, creado_en, contestado_en, respuesta_vista_en, id_deportista, deportista_usuario, acepta_entrenador_en, acepta_deportista_en, rechaza, aviso_para_visto_en'
 
 /** Cuántas cosas caben en unos «varios», como mucho (lo mismo que dice la base). */
 export const MAX_VARIOS = 30
@@ -446,6 +448,24 @@ export function traspasoContestado(
   if (r?.estado === 'cancelado') return 'Ya no se puede: ' + (r.motivo || 'el traspaso se ha cancelado').replace(/\.$/, '') + '.'
   if (r?.estado === 'pendiente') return 'Aceptado. Falta que conteste ' + dep + ': hasta entonces sigue con ' + de + '.'
   return 'Aceptado. ' + dondeQueda(e)
+}
+
+/**
+ * El aviso a quien recibe un traspaso de en qué quedó, cuando lo cerró otro:
+ * el deportista (aceptando el último o diciendo que no) o quien lo pidió
+ * (cancelándolo). La base solo deja el aviso pendiente en esos casos
+ * (supabase/envios-traspaso-aviso.sql); aquí se cuenta.
+ */
+export function avisoParaQuienRecibe(
+  e: Pick<Envio, 'tipo' | 'estado' | 'contenido' | 'de_nombre'> & Pick<EnvioContado, 'rechaza'>,
+): { texto: string; bien: boolean } | null {
+  if (e.tipo !== 'deportista') return null
+  const dep = primerNombre(e.contenido?.deportista?.nombre) || 'El deportista'
+  const de = primerNombre(e.de_nombre) || 'su entrenador'
+  if (e.estado === 'aceptado') return { texto: dep + ' ha aceptado: ya está en tu lista.', bien: true }
+  if (e.estado === 'rechazado') return { texto: dep + ' prefiere seguir con ' + de + ': el traspaso no sigue.', bien: false }
+  if (e.estado === 'cancelado') return { texto: 'El traspaso de ' + dep + ' se ha cancelado: no cambia nada para ti.', bien: false }
+  return null
 }
 
 /** Tu cupo, para decirlo antes de aceptar un traspaso. `lleno` apaga «Aceptar». */
@@ -773,9 +793,11 @@ export const casaConBusqueda = (nombre: string | null | undefined, busqueda: str
 export function errorDeEnvio(error: { code?: string; message?: string } | null | undefined): string {
   const m = String(error?.message || '')
   if (error?.code === 'PGRST202' || /could not find the function/i.test(m)) {
-    return /traspaso|tiene_sitio/.test(m)
-      ? 'Falta aplicar supabase/envios-traspaso.sql en la base de datos.'
-      : 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
+    return /aviso_visto/.test(m)
+      ? 'Falta aplicar supabase/envios-traspaso-aviso.sql en la base de datos.'
+      : /traspaso|tiene_sitio/.test(m)
+        ? 'Falta aplicar supabase/envios-traspaso.sql en la base de datos.'
+        : 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
   }
   if (error?.code === 'PGRST205' || error?.code === '42P01' || (/envio_entrenador/.test(m) && /does not exist|schema cache/i.test(m))) {
     return 'Falta aplicar supabase/envios-entrenadores.sql en la base de datos.'
@@ -855,6 +877,13 @@ export async function cancelar(sb: any, id: number): Promise<string | null> {
 export async function marcarRespuestasVistas(sb: any, ids: number[]): Promise<string | null> {
   if (!ids.length) return null
   const { error } = await sb.rpc('envio_respuesta_vista', { _ids: ids })
+  return error ? errorDeEnvio(error) : null
+}
+
+/** Quien recibió un traspaso ya ha visto en qué quedó: se va su aviso del panel. */
+export async function marcarAvisosVistos(sb: any, ids: number[]): Promise<string | null> {
+  if (!ids.length) return null
+  const { error } = await sb.rpc('envio_aviso_visto', { _ids: ids })
   return error ? errorDeEnvio(error) : null
 }
 

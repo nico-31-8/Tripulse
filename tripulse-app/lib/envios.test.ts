@@ -14,6 +14,7 @@ import {
   listaY, resumenVarios, zonasDeTest, enviarVarios,
   faseTraspaso, puedoContestar, chipEstado, traspasoContestado, textoCupo, loQueUsa, textoLoQueUsa, sinLoSuyo,
   pedirTraspaso, entrenadorTieneSitio, misTraspasosPendientes, contestarTraspasoDeportista, COLUMNAS_ENVIO,
+  avisoParaQuienRecibe, marcarAvisosVistos,
   type Envio, type ZonaEnviada, type LoQueTengo, type LoQueUsaEntrada,
 } from './envios'
 
@@ -746,5 +747,58 @@ describe('los ejercicios de tu biblioteca en un traspaso', () => {
 
   it('solo los tuyos: ni los del común ni los de un deportista', () => {
     expect(sql).toMatch(/where b\.id_entrenador = _yo and b\.id_deportista is null\s+and b\.id in/)
+  })
+})
+
+describe('el aviso a quien recibe un traspaso (en qué quedó, cuando lo cerró otro)', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso-aviso.sql'), 'utf8')
+  const ensayo = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'envios-traspaso-aviso-ensayo.sql'), 'utf8')
+  const t = (e: Partial<Envio>): Envio => envio({
+    tipo: 'deportista', contenido: { deportista: { id: 29, nombre: 'Marta López', tiene_cuenta: true, solo_test: false } }, ...e,
+  })
+
+  it('se cuenta como en la maqueta: aceptado, que no, o cancelado', () => {
+    expect(avisoParaQuienRecibe(t({ estado: 'aceptado' }))).toEqual({ texto: 'Marta ha aceptado: ya está en tu lista.', bien: true })
+    expect(avisoParaQuienRecibe(t({ estado: 'rechazado', rechaza: 'deportista' }))).toEqual({ texto: 'Marta prefiere seguir con Ana: el traspaso no sigue.', bien: false })
+    expect(avisoParaQuienRecibe(t({ estado: 'cancelado' }))).toEqual({ texto: 'El traspaso de Marta se ha cancelado: no cambia nada para ti.', bien: false })
+  })
+
+  it('mientras sigue pendiente, o si no es un traspaso, no hay aviso', () => {
+    expect(avisoParaQuienRecibe(t({ estado: 'pendiente' }))).toBeNull()
+    expect(avisoParaQuienRecibe(envio({ estado: 'aceptado' }))).toBeNull()
+  })
+
+  it('quitarlo llama a su función; sin ids, a nada', async () => {
+    const llamadas: { fn: string; args: unknown }[] = []
+    const sb = { rpc: (fn: string, args: unknown) => { llamadas.push({ fn, args }); return Promise.resolve({ data: null, error: null }) } }
+    expect(await marcarAvisosVistos(sb, [4, 5])).toBeNull()
+    expect(await marcarAvisosVistos(sb, [])).toBeNull()
+    expect(llamadas).toEqual([{ fn: 'envio_aviso_visto', args: { _ids: [4, 5] } }])
+    expect(errorDeEnvio({ code: 'PGRST202', message: 'Could not find the function public.envio_aviso_visto(_ids)' })).toMatch(/envios-traspaso-aviso\.sql/)
+    expect(COLUMNAS_ENVIO.split(', ')).toContain('aviso_para_visto_en')
+  })
+
+  it('no lleva «--», ni la migración ni su ensayo; y el ensayo la lleva tal cual y lo deshace todo', () => {
+    expect(sql).not.toContain('--')
+    expect(ensayo).not.toContain('--')
+    expect(ensayo).toContain(sql)
+    expect(ensayo.trim()).toMatch(/raise exception 'INFORME:%'[\s\S]*end \$fin\$;$/)
+  })
+
+  it('quitarlo, quien ha entrado (y solo lo suyo); el traspaso, nadie desde fuera', () => {
+    expect(sql).toContain('revoke execute on function public.envio_aviso_visto(bigint[]) from anon;')
+    expect(sql).toContain('grant execute on function public.envio_aviso_visto(bigint[]) to authenticated;')
+    expect(sql).toMatch(/where id = any\(coalesce\(_ids, '\{\}'::bigint\[\]\)\) and para = auth\.uid\(\)/)
+    expect(sql).toContain('revoke all on function public.envio_hacer_traspaso(bigint) from public, anon, authenticated;')
+    expect(sql).not.toMatch(/grant execute on function public\.envio_hacer_traspaso/)
+  })
+
+  it('sin aviso cuando lo cierra quien lo recibe; con aviso si lo cierra otro', () => {
+    /* Al hacerse (y al cancelarse solo): visto si quien llama es quien lo recibe. */
+    expect(sql.match(/aviso_para_visto_en = case when auth\.uid\(\) = _e\.para then now\(\) end/g)?.length).toBe(2)
+    /* Si lo rechaza él, ya lo sabe. */
+    expect(sql).toMatch(/aviso_para_visto_en = case when tipo = 'deportista' then now\(\) else aviso_para_visto_en end/)
+    /* Si quien lo pidió lo cancela antes de que lo aceptara, no hace falta avisarle. */
+    expect(sql).toMatch(/aviso_para_visto_en = case when tipo = 'deportista' and acepta_entrenador_en is null then now\(\) else aviso_para_visto_en end/)
   })
 })

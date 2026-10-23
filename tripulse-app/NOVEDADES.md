@@ -14,6 +14,18 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 23 de octubre de 2026 · Si te pasan un deportista, te avisamos de en qué quedó
+
+- **Nuevo:** cuando aceptas un deportista que te pasa otro entrenador y falta
+  que conteste él, ya no tienes que estar pendiente. Si acepta, te sale en tu
+  panel «Marta ha aceptado: ya está en tu lista». Si dice que no, o quien te lo
+  pasaba lo cancela, también te sale.
+- Se quita con «Entendido», o al abrir Recibidos en Envíos.
+- No te avisamos de lo que hiciste tú: si eres el último en aceptarlo o lo
+  rechazas, ya lo ves en el momento.
+
+---
+
 ## 23 de octubre de 2026 · Pasa un deportista a otro entrenador
 
 - **Nuevo:** en Deportistas, junto a «Quitar», tienes «📨 Pasar a otro

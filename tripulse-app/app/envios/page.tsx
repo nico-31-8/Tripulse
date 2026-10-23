@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/sesion'
 import { useRequireEntrenador } from '@/lib/useRequireEntrenador'
 import {
-  COLUMNAS_ENVIO, contestar, cancelar, marcarRespuestasVistas, conflictosDe, copiasPreviasDe,
+  COLUMNAS_ENVIO, contestar, cancelar, marcarRespuestasVistas, marcarAvisosVistos, conflictosDe, copiasPreviasDe,
   etiquetaTipo, haceCuanto, dondeQueda, textoEstado, primerNombre, faltaLaTabla, puedoContestar, traspasoContestado, textoCupo,
   type Envio, type LoQueTengo, type NombresAlAceptar,
 } from '@/lib/envios'
@@ -76,6 +76,12 @@ export default function PaginaEnvios() {
     if (ids.length) marcarRespuestasVistas(supabase, ids)
   }, [])
 
+  /* Y quien recibió un traspaso ya ha visto en qué quedó (lo cerró otro). */
+  const verRecibidos = useCallback((lista: Envio[]) => {
+    const ids = lista.filter(e => e.tipo === 'deportista' && e.estado !== 'pendiente' && !e.aviso_para_visto_en).map(e => e.id)
+    if (ids.length) marcarAvisosVistos(supabase, ids)
+  }, [])
+
   const pedirListas = useCallback(async (id: string): Promise<{ r: Envio[]; s: Envio[] } | null> => {
     const [rec, env] = await Promise.all([
       supabase.from('envio_entrenador').select(COLUMNAS_ENVIO).eq('para', id).order('creado_en', { ascending: false }).limit(100),
@@ -106,11 +112,12 @@ export default function PaginaEnvios() {
       setPestana(enEnviados ? 'enviados' : 'recibidos')
       setSel(pedido)
       if (enEnviados) verEnviados(s)
+      else verRecibidos(r)
       setCargando(false)
       if (r.some(e => e.estado === 'pendiente')) await cargarMio(user.id)
     })()
     return () => { vivo = false }
-  }, [router, cargarMio, verEnviados, pedirListas])
+  }, [router, cargarMio, verEnviados, verRecibidos, pedirListas])
 
   /* Al cerrar la ventana de enviar: si se mandó algo, a Enviados con eso abierto. */
   const cerrarNuevo = async () => {
@@ -142,6 +149,7 @@ export default function PaginaEnvios() {
     setPestana(p)
     setSel(null)
     if (p === 'enviados') verEnviados(enviados)
+    else verRecibidos(recibidos)
   }
 
   const nombreDe = (clave: string, propuesto: string) => nombres[clave] ?? propuesto
