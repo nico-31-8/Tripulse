@@ -53,7 +53,7 @@ export default function Deportistas() {
   useConsejos('deportistas', consejos)
   /* Los que solo hacen tests. Van aparte y plegados: no son su equipo, pero
      tiene que poder llegar a su ficha para ver lo que midió. */
-  const [evaluados, setEvaluados] = useState<{ id: number; nombre: string; id_usuario?: string | null }[]>([])
+  const [evaluados, setEvaluados] = useState<{ id: number; nombre: string; id_usuario?: string | null; id_grupo?: number | null }[]>([])
   const [verEvaluados, setVerEvaluados] = useState(false)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [nombre, setNombre] = useState('')
@@ -70,7 +70,7 @@ export default function Deportistas() {
   const [avisoQuitar, setAvisoQuitar] = useState('')
   /* Pasarlo a otro entrenador (un traspaso, lib/envios) y los que ya tienes
      pedidos: mientras nadie conteste, en vez del botón sale a quién. */
-  const [pasando, setPasando] = useState<{ id: number; nombre: string; id_usuario?: string | null } | null>(null)
+  const [pasando, setPasando] = useState<{ id: number; nombre: string; id_usuario?: string | null; soloTest?: boolean } | null>(null)
   const [pedidos, setPedidos] = useState<Record<number, { envio: number; para: string | null }>>({})
   // Grupos de entrenamiento: el mismo entreno para varios a la vez.
   const [grupos, setGrupos] = useState<Grupo[]>([])
@@ -94,7 +94,7 @@ export default function Deportistas() {
     if (!user) { router.push('/login'); return }
     const [suyos, soloTest, pedidosQ] = await Promise.all([
       supabase.from('deportista').select('*').eq('id_entrenador', user.id).eq('solo_test', false),
-      supabase.from('deportista').select('id, nombre, id_usuario').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
+      supabase.from('deportista').select('id, nombre, id_usuario, id_grupo').eq('id_entrenador', user.id).eq('solo_test', true).order('nombre'),
       supabase.from('envio_entrenador').select('id, id_deportista, para_nombre')
         .eq('de', user.id).eq('tipo', 'deportista').eq('estado', 'pendiente'),
     ])
@@ -388,12 +388,24 @@ export default function Deportistas() {
               <div className="grid gap-2 mt-3">
                 {evaluados.map(d => (
                   <div key={d.id}
-                    className="bg-gray-900 rounded-xl border border-gray-800 hover:border-gray-700 transition flex items-center gap-2 pr-3">
+                    className="bg-gray-900 rounded-xl border border-gray-800 hover:border-gray-700 transition flex items-center gap-2 pr-3 min-w-0">
                     <button onClick={() => router.push('/tests/' + d.id)}
                       className="flex-1 min-w-0 px-5 py-3.5 text-left flex items-center justify-between gap-3">
                       <span className="font-semibold text-[14px] truncate">{d.nombre}</span>
-                      <span className="text-gray-500 text-[12px] shrink-0">Ver sus tests →</span>
+                      <span className="text-gray-500 text-[12px] shrink-0 hidden sm:inline">Ver sus tests →</span>
                     </button>
+                    {/* También se pasa: a quien lo recibe le llega a sus evaluados, sin gastar cupo. */}
+                    {!d.id_grupo && (pedidos[d.id] ? (
+                      <Link href={'/envios?id=' + pedidos[d.id].envio} aria-label={'Traspaso de ' + d.nombre + ' pedido a ' + (pedidos[d.id].para || 'otro entrenador')}
+                        className="shrink-0 text-xs text-amber-200 bg-amber-400/10 border border-amber-400/35 hover:border-amber-300 px-3 py-1.5 rounded-lg transition">
+                        Pedido a {primerNombre(pedidos[d.id].para) || 'otro'} →
+                      </Link>
+                    ) : (
+                      <button onClick={() => setPasando({ ...d, soloTest: true })} aria-label={'Pasar a ' + d.nombre + ' a otro entrenador'}
+                        className="shrink-0 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-sky-500">
+                        📨 Pasar
+                      </button>
+                    ))}
                     <button onClick={() => setQuitando(d)} aria-label={'Quitar a ' + d.nombre}
                       className="shrink-0 text-xs bg-gray-800 hover:bg-red-950 text-gray-400 hover:text-red-300 px-3 py-1.5 rounded-lg transition border border-gray-700 hover:border-red-800">
                       Quitar
@@ -412,7 +424,7 @@ export default function Deportistas() {
       </div>
       {pasando && (
         <EnviarAEntrenador
-          que={{ tipo: 'deportista', id: pasando.id, nombre: pasando.nombre, tieneCuenta: !!pasando.id_usuario }}
+          que={{ tipo: 'deportista', id: pasando.id, nombre: pasando.nombre, tieneCuenta: !!pasando.id_usuario, soloTest: !!pasando.soloTest }}
           onCerrar={() => { setPasando(null); cargarDeportistas() }} />
       )}
       {quitando && (

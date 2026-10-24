@@ -48,7 +48,14 @@ function PreviewTraspaso({ e, papel, cupo }: { e: Envio; papel: 'recibe' | 'mand
       <div className="flex flex-col gap-1.5">
         <p className={etiqueta}>{papel === 'recibe' ? 'Lo que pasa si aceptas' : 'Lo que pasa si acepta'}</p>
         <ul className="list-disc pl-5 text-sm text-gray-300 flex flex-col gap-1">
-          <li>{dep} pasa a {papel === 'recibe' ? 'tu lista' : 'la lista de ' + para}, con su historial, sus tests y su plan.</li>
+          {c.deportista?.solo_test ? (
+            <li>
+              {dep} pasa a {papel === 'recibe' ? 'tus Evaluados' : 'los Evaluados de ' + para}, con sus tests: es de solo tests,
+              {' '}así que no entra en {papel === 'recibe' ? 'tu' : 'su'} equipo ni gasta {papel === 'recibe' ? 'tu' : 'su'} cupo.
+            </li>
+          ) : (
+            <li>{dep} pasa a {papel === 'recibe' ? 'tu lista' : 'la lista de ' + para}, con su historial, sus tests y su plan.</li>
+          )}
           {suyo.length > 0 && (
             <li>
               {papel === 'recibe' ? 'Te llegan' : 'Le llegan'} también, como copias {papel === 'recibe' ? 'tuyas' : 'suyas'}, {listaY(suyo)}:

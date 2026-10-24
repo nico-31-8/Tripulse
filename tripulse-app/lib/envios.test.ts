@@ -802,3 +802,23 @@ describe('el aviso a quien recibe un traspaso (en qué quedó, cuando lo cerró 
     expect(sql).toMatch(/aviso_para_visto_en = case when tipo = 'deportista' and acepta_entrenador_en is null then now\(\) else aviso_para_visto_en end/)
   })
 })
+
+describe('pasar un evaluado (solo tests)', () => {
+  const evaluado = (e: Partial<Envio> = {}): Envio => envio({
+    tipo: 'deportista', contenido: { deportista: { id: 30, nombre: 'Pedro Souto', tiene_cuenta: false, solo_test: true } }, ...e,
+  })
+
+  it('a quien lo recibe le llega a sus Evaluados, no a su lista', () => {
+    expect(dondeQueda(evaluado())).toBe('Pedro ya está en tus Evaluados.')
+    expect(textoEstado(evaluado({ estado: 'aceptado' }), 'recibe')).toBe('Pedro ya está en tus Evaluados')
+    expect(avisoParaQuienRecibe(evaluado({ estado: 'aceptado' }))).toEqual({ texto: 'Pedro ha aceptado: ya está en tus Evaluados.', bien: true })
+  })
+
+  it('no gasta cupo: con el cupo lleno se puede aceptar igual', () => {
+    /* La pantalla solo apaga «Aceptar» si no es de solo tests (lo mismo que la base). */
+    const e = evaluado()
+    expect(e.contenido.deportista?.solo_test).toBe(true)
+    expect(textoCupo({ cupo: 2, tengo: 2 })?.lleno).toBe(true)
+    expect(puedoContestar(e)).toBe(true)
+  })
+})

@@ -1175,7 +1175,7 @@ export default function PerfilDeportista({ params }: { params: Promise<{ id: str
       )}
       {pasando && (
         <EnviarAEntrenador
-          que={{ tipo: 'deportista', id: deportista.id, nombre: deportista.nombre, tieneCuenta: !!deportista.id_usuario }}
+          que={{ tipo: 'deportista', id: deportista.id, nombre: deportista.nombre, tieneCuenta: !!deportista.id_usuario, soloTest: !!deportista.solo_test }}
           onCerrar={() => setPasando(false)} />
       )}
 

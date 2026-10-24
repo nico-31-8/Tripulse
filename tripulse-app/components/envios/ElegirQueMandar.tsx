@@ -64,7 +64,7 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
       if (!vivo || !user) return
       /* Solo lo tuyo (id_entrenador = tú): la base deja leer también lo que te
          comparte la dirección, y eso no se manda. */
-      /* Los deportistas: los de tu equipo (no los evaluados ni la ficha de un
+      /* Los deportistas: los de tu equipo y tus evaluados (no la ficha de un
          grupo), y los traspasos que ya tienes pedidos, para no pedirlos dos veces. */
       const [pl, ts, cs, ds, ps] = await Promise.all([
         supabase.from('plantilla_sesion').select('id, nombre, disciplina, zona, objetivo, bloques')
@@ -73,8 +73,8 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
           .eq('id_entrenador', user.id).eq('archivado', false).order('created_at', { ascending: false }),
         supabase.from('zona_clasificacion').select('id, nombre, deporte, hitos')
           .eq('id_entrenador', user.id).eq('archivada', false).order('orden'),
-        supabase.from('deportista').select('id, nombre, id_usuario')
-          .eq('id_entrenador', user.id).eq('solo_test', false).is('id_grupo', null).order('nombre'),
+        supabase.from('deportista').select('id, nombre, id_usuario, solo_test')
+          .eq('id_entrenador', user.id).is('id_grupo', null).order('solo_test').order('nombre'),
         supabase.from('envio_entrenador').select('id_deportista, para_nombre')
           .eq('de', user.id).eq('tipo', 'deportista').eq('estado', 'pendiente'),
       ])
@@ -132,12 +132,14 @@ export default function ElegirQueMandar({ onElegir, onCerrar }: { onElegir: (q: 
 
       const pedidos = new Map(((ps.data || []) as { id_deportista: number; para_nombre: string | null }[])
         .map(p => [Number(p.id_deportista), p.para_nombre]))
-      const deportistas: Opcion[] = ((ds.data || []) as { id: number; nombre: string; id_usuario: string | null }[]).map(d => {
-        const detalle = d.id_usuario ? 'Con cuenta: también tendrá que aceptarlo' : 'Ficha sin cuenta: basta con que acepte el otro'
+      /* Primero los de tu equipo; los evaluados detrás, marcados (no gastan cupo). */
+      const deportistas: Opcion[] = ((ds.data || []) as { id: number; nombre: string; id_usuario: string | null; solo_test: boolean | null }[]).map(d => {
+        const quien = d.id_usuario ? 'Con cuenta: también tendrá que aceptarlo' : 'Ficha sin cuenta: basta con que acepte el otro'
         return {
-          clave: 'd' + d.id, nombre: d.nombre, marca: '👤', color: '#7dd3fc', detalle, solo: true,
+          clave: 'd' + d.id, nombre: d.nombre, marca: d.solo_test ? '🧪' : '👤', color: d.solo_test ? '#c4b5fd' : '#7dd3fc', solo: true,
+          detalle: d.solo_test ? 'Evaluado (solo tests): no gasta cupo · ' + quien : quien,
           motivo: pedidos.has(d.id) ? 'Ya has pedido su traspaso a ' + (primerNombre(pedidos.get(d.id)) || 'otro entrenador') + ': lo ves en Enviados' : null,
-          que: { tipo: 'deportista', id: d.id, nombre: d.nombre, tieneCuenta: !!d.id_usuario, detalle: d.id_usuario ? 'Con cuenta en TRIPULSE' : 'Ficha sin cuenta' },
+          que: { tipo: 'deportista', id: d.id, nombre: d.nombre, tieneCuenta: !!d.id_usuario, soloTest: !!d.solo_test },
         }
       })
 

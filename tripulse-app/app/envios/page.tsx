@@ -409,10 +409,13 @@ export default function PaginaEnvios() {
                         </p>
                         {actual.estado === 'aceptado' && (
                           <div className="flex flex-wrap gap-x-4 gap-y-1">
-                            {actual.tipo === 'deportista' && actual.id_deportista && (
+                            {actual.tipo === 'deportista' && actual.id_deportista && (actual.contenido.deportista?.solo_test ? (
+                              <button type="button" onClick={() => router.push('/tests/' + actual.id_deportista)}
+                                className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ver sus tests →</button>
+                            ) : (
                               <button type="button" onClick={() => router.push('/deportistas/' + actual.id_deportista)}
                                 className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a su ficha →</button>
-                            )}
+                            ))}
                             {((actual.tipo === 'test' || actual.tipo === 'varios' || actual.tipo === 'deportista') && (actual.contenido.tests?.length ?? 0) > 0) && (
                               <button type="button" onClick={() => router.push('/tests-propios')}
                                 className="text-orange-300 hover:text-orange-200 text-sm underline underline-offset-4 transition">Ir a Tests propios →</button>

@@ -227,7 +227,7 @@ export function dondeQueda(e: Pick<Envio, 'tipo' | 'contenido'>): string {
       (c.clasificaciones?.length ?? 0) > 0 ? 'tus Zonas propias' : '',
       (c.ejercicios?.length ?? 0) > 0 ? 'tu biblioteca de ejercicios' : '',
     ].filter(Boolean)
-    return (nombre ? nombre + ' ya está' : 'Ya está') + ' en tu lista de deportistas.'
+    return (nombre ? nombre + ' ya está' : 'Ya está') + (c.deportista?.solo_test ? ' en tus Evaluados.' : ' en tu lista de deportistas.')
       + (suyo.length ? ' Lo que usaba te ha llegado a ' + listaY(suyo) + '.' : '')
   }
   if (e.tipo === 'varios') {
@@ -424,7 +424,7 @@ function textoTraspaso(e: EnvioContado, papel: 'recibe' | 'manda'): string {
     if (f === 'pendiente') return 'Por revisar'
     if (f === 'falta-entrenador') return mayuscula(dep) + ' ya ha dicho que sí: falta que contestes tú'
     if (f === 'falta-deportista') return 'Falta que conteste ' + dep + '. Hasta entonces sigue con ' + de
-    if (f === 'aceptado') return mayuscula(dep) + ' ya está en tu lista'
+    if (f === 'aceptado') return mayuscula(dep) + (e.contenido?.deportista?.solo_test ? ' ya está en tus Evaluados' : ' ya está en tu lista')
     if (f === 'rechazado') return e.rechaza === 'deportista' ? mayuscula(dep) + ' prefiere seguir con ' + de + ': no cambia nada' : 'Lo rechazaste: no cambia nada'
     return mayuscula(de) + ' lo canceló'
   }
@@ -462,7 +462,7 @@ export function avisoParaQuienRecibe(
   if (e.tipo !== 'deportista') return null
   const dep = primerNombre(e.contenido?.deportista?.nombre) || 'El deportista'
   const de = primerNombre(e.de_nombre) || 'su entrenador'
-  if (e.estado === 'aceptado') return { texto: dep + ' ha aceptado: ya está en tu lista.', bien: true }
+  if (e.estado === 'aceptado') return { texto: dep + ' ha aceptado: ya está en ' + (e.contenido?.deportista?.solo_test ? 'tus Evaluados.' : 'tu lista.'), bien: true }
   if (e.estado === 'rechazado') return { texto: dep + ' prefiere seguir con ' + de + ': el traspaso no sigue.', bien: false }
   if (e.estado === 'cancelado') return { texto: 'El traspaso de ' + dep + ' se ha cancelado: no cambia nada para ti.', bien: false }
   return null

@@ -14,6 +14,21 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 24 de octubre de 2026 · Pasa también a tus evaluados
+
+- **Nuevo:** en Deportistas, en el apartado «Evaluados» (los que solo hacen
+  tests), cada uno tiene «📨 Pasar» junto a «Quitar». Sirve, por ejemplo, para
+  darle a su entrenador los resultados de una jornada de valoraciones.
+- **No gasta cupo:** al otro entrenador le llega a sus Evaluados, con sus tests,
+  y puede aceptarlo aunque tenga el cupo lleno. Si es una ficha sin cuenta,
+  basta con que acepte él.
+- Mientras no conteste, en su fila ves «Pedido a Luis →». En Envíos, en
+  «📨 Mandar algo», pestaña Deportistas, también salen tus evaluados.
+- **Arreglado:** en el móvil, una fila de Evaluados con un nombre largo se salía
+  por la derecha y dejaba «Quitar» cortado. Ahora el nombre se corta con «…».
+
+---
+
 ## 23 de octubre de 2026 · Si te pasan un deportista, te avisamos de en qué quedó
 
 - **Nuevo:** cuando aceptas un deportista que te pasa otro entrenador y falta

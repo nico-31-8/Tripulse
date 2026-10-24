@@ -39,7 +39,14 @@ export interface ZonasQueEnviar {
 }
 
 /** Un deportista tuyo, para pasárselo a otro entrenador. */
-export interface DeportistaQueEnviar { id: number; nombre: string; tieneCuenta: boolean; detalle?: string }
+export interface DeportistaQueEnviar {
+  id: number
+  nombre: string
+  tieneCuenta: boolean
+  /** Un evaluado (solo tests): no gasta cupo, y al otro le llega también como evaluado. */
+  soloTest?: boolean
+  detalle?: string
+}
 
 export type QueEnviar =
   | {
@@ -71,9 +78,11 @@ const DESCANSO = (s?: number) => !s ? '' : s >= 60 ? (s % 60 ? Math.floor(s / 60
  * tiene sitio, lo tuyo que usa (con la casilla) y si tiene que aceptarlo él
  * también. Solo pinta: los datos se los da la ventana.
  */
-export function AvisoTraspaso({ suNombre, tieneCuenta, destino, otro, hayHueco, loSuyo, conLoSuyo, onConLoSuyo, bloqueado = false }: {
+export function AvisoTraspaso({ suNombre, tieneCuenta, soloTest = false, destino, otro, hayHueco, loSuyo, conLoSuyo, onConLoSuyo, bloqueado = false }: {
   suNombre: string
   tieneCuenta: boolean
+  /** Un evaluado: no se mira el cupo, y al otro le llega a sus Evaluados. */
+  soloTest?: boolean
   /** El nombre de quien lo recibe, cuando ya se ha encontrado. */
   destino: string | null
   /** Su primer nombre, o «el otro entrenador». */
@@ -89,11 +98,12 @@ export function AvisoTraspaso({ suNombre, tieneCuenta, destino, otro, hayHueco, 
     <div className="flex flex-col gap-2.5">
       <div className="text-xs leading-relaxed bg-amber-400/10 border border-amber-400/30 rounded-lg px-3 py-2.5 text-amber-100/90 flex flex-col gap-1">
         <b className="text-white font-semibold text-[13px]">
-          Es un traspaso: {suNombre} pasa a la lista de {destino || 'otro entrenador'} y dejas de ver su ficha.
+          Es un traspaso: {suNombre} pasa a {soloTest ? 'los Evaluados' : 'la lista'} de {destino || 'otro entrenador'} y dejas de ver su ficha.
         </b>
-        <span>Su historial, sus tests y su plan van con {suNombre}. Sale de tus grupos.</span>
+        <span>{soloTest ? 'Sus tests van' : 'Su historial, sus tests y su plan van'} con {suNombre}. Sale de tus grupos.</span>
         {destino && (
-          hayHueco === undefined ? <span className="text-gray-400">Mirando si tiene sitio…</span>
+          soloTest ? <span className="text-emerald-300">No gasta cupo: a {otro} le llega a sus Evaluados, como lo tienes tú.</span>
+            : hayHueco === undefined ? <span className="text-gray-400">Mirando si tiene sitio…</span>
             : hayHueco === false ? <span className="text-amber-200 font-semibold">{destino} tiene el cupo lleno: ahora no puede recibir a nadie.</span>
               : hayHueco === true ? <span className="text-emerald-300">{destino} tiene sitio.</span> : null
         )}
@@ -219,12 +229,14 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   /* Si quien lo recibe tiene sitio en su cupo. La respuesta se guarda con a
      quién se preguntó: la de una búsqueda vieja no vale para la de ahora. */
   const idDestino = busqueda?.estado === 'si' ? busqueda.id : null
+  /* Un evaluado no gasta cupo: ni se pregunta. */
+  const soloTest = que.tipo === 'deportista' && !!que.soloTest
   useEffect(() => {
-    if (idDeportista == null || !idDestino) return
+    if (idDeportista == null || soloTest || !idDestino) return
     let vivo = true
     entrenadorTieneSitio(supabase, idDestino).then(hay => { if (vivo) setSitio({ para: idDestino, hay }) })
     return () => { vivo = false }
-  }, [idDeportista, idDestino])
+  }, [idDeportista, soloTest, idDestino])
 
   /* Se busca al dejar de escribir, y solo con algo que parezca un correo. La
      respuesta de una búsqueda vieja no pisa la de lo que hay escrito ahora. */
@@ -257,7 +269,7 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
   /* En un traspaso: undefined mientras se mira, false con el cupo lleno, y
      null si no se ha podido saber (lo vuelve a mirar la base al pedirlo). */
   const esTraspaso = que.tipo === 'deportista'
-  const hayHueco = esTraspaso && destino ? (sitio && sitio.para === destino.id ? sitio.hay : undefined) : null
+  const hayHueco = esTraspaso && destino && !soloTest ? (sitio && sitio.para === destino.id ? sitio.hay : undefined) : null
   const puede = !!destino && !enviando && !enviadoA && !faltaNombre && !(esTraspaso && (hayHueco === false || hayHueco === undefined))
 
   /* Un test con zonas marcadas va como «varios»: todo en un solo envío. */
@@ -421,7 +433,9 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
               ) : que.tipo === 'deportista' ? (
                 <>
                   <p className="font-semibold text-[15px]">{que.nombre}</p>
-                  <p className="text-gray-400 text-xs">{que.detalle || (que.tieneCuenta ? 'Con cuenta en TRIPULSE' : 'Ficha sin cuenta')}</p>
+                  <p className="text-gray-400 text-xs">
+                    {que.detalle || ((que.soloTest ? 'Evaluado (solo tests) · ' : '') + (que.tieneCuenta ? 'Con cuenta en TRIPULSE' : 'Ficha sin cuenta'))}
+                  </p>
                 </>
               ) : (
                 <>
@@ -483,7 +497,7 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
 
           {/* ── Un traspaso: qué es, el cupo del otro y lo tuyo que usa ── */}
           {que.tipo === 'deportista' && (
-            <AvisoTraspaso suNombre={suNombre} tieneCuenta={que.tieneCuenta} destino={destino?.nombre ?? null} otro={otro}
+            <AvisoTraspaso suNombre={suNombre} tieneCuenta={que.tieneCuenta} soloTest={soloTest} destino={destino?.nombre ?? null} otro={otro}
               hayHueco={enviadoA ? null : hayHueco} loSuyo={loSuyo} conLoSuyo={conLoSuyo} onConLoSuyo={setConLoSuyo} bloqueado={!!enviadoA} />
           )}
 
@@ -500,7 +514,7 @@ export default function EnviarAEntrenador({ que, onCerrar, onEnviado }: {
           </div>
           <p className="text-gray-500 text-xs -mt-2">
             {esTraspaso
-              ? 'No es una copia: cuando acepten, ' + suNombre + ' sale de tu lista.'
+              ? 'No es una copia: cuando acepten, ' + suNombre + ' sale de tu' + (soloTest ? 's evaluados.' : ' lista.')
               : 'Es una copia: si después cambias lo tuyo, lo suyo no cambia.'}
           </p>
         </div>
