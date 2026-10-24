@@ -42,7 +42,7 @@ import { useConsejos } from '@/components/tutorial/useConsejos'
 import { consejosDeLaSesion } from '@/lib/consejos'
 import { cargarBiblioteca } from '@/lib/biblioteca-propia'
 import InfoSemana from '@/components/InfoSemana'
-import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo } from '@/lib/zonas'
+import { ZONAS_FUERZA, ZONAS_RESISTENCIA, ritmoObjetivo, tipoDeEjercicioDeZona } from '@/lib/zonas'
 import BotonMovilidad from '@/components/BotonMovilidad'
 import BuscadorEjercicios from '@/components/BuscadorEjercicios'
 import { conTecnica, catalogoTecnica, filtrarDrills } from '@/lib/tecnica'
@@ -1245,6 +1245,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
                        crea el entrenador es suyo. Juntandolos, el entrenador
                        se quedaria sin historial justo donde mas sirve. */
                     historialDe={deportistaId}
+                    primeroTipo={tipoDeEjercicioDeZona(sesion?.zona_fuerza)}
                     onElegir={ej => { setGrupoMuscularSel(ej.grupo_muscular || ''); setEjercicioSel(ej) }}
                     clase="flex-none bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-orange-500 rounded-lg px-3.5 transition" />
                 </div>

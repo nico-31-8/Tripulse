@@ -14,6 +14,24 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 24 de octubre de 2026 · La rehabilitación, con su zona y su color en el calendario
+
+- **Nuevo:** una zona de fuerza más, **REH · Rehabilitación**, igual que la
+  movilidad. Al crear una sesión de fuerza, la eliges en «Zona de la sesión».
+  Tiene su ficha en la guía de zonas y pesa poco en la carga (RPE 2–3): si un
+  día la readaptación es dura, ponle su RPE a la sesión.
+- **En el calendario se distingue de un vistazo:** una sesión de rehabilitación
+  va entera en turquesa, y una de movilidad, en rosa (antes las dos salían
+  rojas, como cualquier día de fuerza). Si es una sesión de fuerza normal que
+  solo lleva algún ejercicio de rehabilitación o de movilidad, lleva un punto de
+  ese color delante. En el móvil son un cuadradito en vez de un punto, para no
+  confundirlas con la carrera ni con el híbrido.
+- **Al buscar ejercicios** en una tarea de rehabilitación salen primero los de
+  tipo «Rehab» de la biblioteca, y en una de movilidad, los de «Movilidad».
+- El asistente no propone rehabilitación: esa pauta la marca su fisioterapeuta.
+
+---
+
 ## 24 de octubre de 2026 · El descanso de la última serie cuenta, y los descansos se ven en la gráfica
 
 - **Cambia cómo se cuenta la duración.** El descanso que pones en una tarea va

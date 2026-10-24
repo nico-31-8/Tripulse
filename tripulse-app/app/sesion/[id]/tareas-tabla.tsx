@@ -12,7 +12,7 @@ import { ordenarTareasQuery, moverItem, persistirOrden, renumerar, ultimoOrden }
 import { borrarTareaEntera, vaciarMedicion } from '@/lib/borrar-tarea'
 import { insertarMedicion } from '@/lib/insertar-medicion'
 import { idsEnOrden } from '@/lib/copiar-sesion'
-import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, type ZonaResistencia } from '@/lib/zonas'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, FACTORES_RESISTENCIA, ZONAS_CLASICAS, zonaResistencia, prescripcion, tipoDeEjercicioDeZona, type ZonaResistencia } from '@/lib/zonas'
 import { tablaMedicion, valorCanonico, detectarMedicion, mmssASegundos, mmssCorto, duracionCorta, distanciaSospechosa, type UnidadMedicion } from '@/lib/medicion'
 import {
   seriesIguales, ajustarSeries, valorComun, sonDistintas, resumenCampo, ponerEnTodas, ponerEnUna,
@@ -2621,6 +2621,7 @@ export default function TareasTabla({ sesionId, deportistaId, disciplinaSesion, 
                         <BuscadorEjercicios
                           ejercicios={ejerciciosBiblioteca}
                           onBibliotecaCambia={cargarDatos} historialDe={deportistaId}
+                          primeroTipo={tipoDeEjercicioDeZona(modoFuerza === 'compleja' ? f.zonaFuerzaTarea : zonaFuerza)}
                           onElegir={ej => parcheF(i, {
                             grupoMuscularSel: ej.grupo_muscular || '',
                             ejercicioSelId: String(ej.id),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   EJERCICIO_NUEVO_VACIO, type EjercicioNuevo, gruposExistentes, queLeFalta, filaDe, esMio, SIN_CLASIFICAR,
+  ordenParaElegir, cabeceraParaElegir,
 } from './ejercicio-propio'
 
 const e = (p: Partial<EjercicioNuevo>): EjercicioNuevo => ({ ...EJERCICIO_NUEVO_VACIO, ...p })
@@ -123,5 +124,37 @@ describe('de quién es cada ejercicio', () => {
   it('sin sesión de deportista, ninguno', () => {
     expect(esMio({ id_deportista: 14 }, null)).toBe(false)
     expect(esMio(null, 14)).toBe(false)
+  })
+})
+
+// ============================================================
+// El orden del buscador
+// ============================================================
+
+describe('el orden del buscador', () => {
+  const bib = [
+    { nombre: 'Press banca', grupo_muscular: 'Pecho', tipo: ['Fuerza'] },
+    { nombre: 'Rotación externa con goma', grupo_muscular: 'Hombro', tipo: ['Rehab'] },
+    { nombre: 'Press militar', grupo_muscular: 'Hombro', tipo: ['Fuerza'] },
+    { nombre: 'Isométrico de cuádriceps', grupo_muscular: 'Rodilla', tipo: ['Rehab'] },
+  ]
+  const nombres = (tipo?: string | null) => [...bib].sort(ordenParaElegir(tipo)).map(e => e.nombre)
+
+  it('sin tipo, por grupo y por nombre, como siempre', () => {
+    expect(nombres(null)).toEqual(['Rotación externa con goma', 'Press militar', 'Press banca', 'Isométrico de cuádriceps'].sort((a, b) => {
+      const g = (n: string) => bib.find(e => e.nombre === n)!.grupo_muscular
+      return g(a).localeCompare(g(b), 'es') || a.localeCompare(b, 'es')
+    }))
+  })
+
+  it('en una tarea de rehabilitación, los de «Rehab» primero', () => {
+    expect(nombres('Rehab')).toEqual(['Rotación externa con goma', 'Isométrico de cuádriceps', 'Press militar', 'Press banca'])
+  })
+
+  /* Sin el tipo delante, «Hombro» saldría dos veces: arriba con la goma y abajo con el press. */
+  it('la cabecera lleva el tipo delante en los que van primero', () => {
+    expect(cabeceraParaElegir(bib[1], 'Rehab')).toBe('Rehab · Hombro')
+    expect(cabeceraParaElegir(bib[2], 'Rehab')).toBe('Hombro')
+    expect(cabeceraParaElegir(bib[1], null)).toBe('Hombro')
   })
 })

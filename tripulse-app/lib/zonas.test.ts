@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   zonaResistencia, prescripcion, pctVamZona, velNatacionZona, ritmoObjetivo,
-  tablaIntensidades, cargaZona, esSupuesta, ZONAS_RESISTENCIA, ZONAS_FUERZA,
+  tablaIntensidades, cargaZona, esSupuesta, ZONAS_RESISTENCIA, ZONAS_FUERZA, tipoDeEjercicioDeZona,
 } from './zonas'
+import { explicacionDe } from './zonas-explicacion'
 
 describe('zonaResistencia', () => {
   it('encuentra una zona por sigla', () => {
@@ -162,6 +163,8 @@ describe('cargaZona', () => {
       'CLA:5/8.5', 'PLA:6/9.5', 'CALA:6/9.5', 'PALA:7/10',
       'AFG:3/5.5', 'FMI:5/9', 'FMH:4/8', 'FEC:4/8', 'FEA:5/9',
       'RFMIX1:4/8', 'RFLA:5/9', 'RFMIX2:4/7.5', 'RFAE:3/6', 'FLEX:1/2',
+      /* Nueva el 24-10-2026, no movida: la rehabilitación (RPE 2–3). */
+      'REH:1/2.5',
       'Z1:1/2.5', 'Z2:2/4.5', 'Z3:3/6.5', 'Z4:4/7.5', 'Z5:5/8.5', 'Z6:6/9.5', 'Z7:7/10',
     ])
   })
@@ -282,5 +285,38 @@ describe('los ritmos se escriben bien en todo el abanico de atletas', () => {
     const t = ritmoObjetivo('PAE', 'Carrera', { vam: 3600 / 239.7 })
     expect(t).not.toContain(':60')
     expect(RITMO.test(t)).toBe(true)
+  })
+})
+
+// ============================================================
+// La rehabilitación (24-10-2026)
+// ============================================================
+
+describe('la zona de rehabilitación', () => {
+  const reh = ZONAS_FUERZA.find(z => z.sigla === 'REH')!
+
+  /* RPE 2–3, lo que eligió el entrenador: pesa poco en la carga. */
+  it('es una zona de fuerza más, con RPE 2–3', () => {
+    expect(reh).toBeDefined()
+    expect([reh.rpeMin, reh.rpeMax]).toEqual([2, 3])
+    expect(cargaZona('REH').nivel).toBe(1)
+    expect(cargaZona('REH').color).toBe(reh.color)
+  })
+
+  /* Turquesa CLARO: el AEI y el RFMIX1 ya son turquesa, y en el lienzo serían el mismo. */
+  it('su color no es el de ninguna otra zona', () => {
+    const otros = [...ZONAS_RESISTENCIA, ...ZONAS_FUERZA].filter(z => z.sigla !== 'REH').map(z => z.color.toLowerCase())
+    expect(otros).not.toContain(reh.color.toLowerCase())
+  })
+
+  it('tiene su ficha en la guía de zonas', () => {
+    expect(explicacionDe('REH')?.paraQue).toBeTruthy()
+  })
+
+  it('al buscar ejercicios, los de «Rehab» primero; en movilidad, los de «Movilidad»', () => {
+    expect(tipoDeEjercicioDeZona('REH')).toBe('Rehab')
+    expect(tipoDeEjercicioDeZona('FLEX')).toBe('Movilidad')
+    expect(tipoDeEjercicioDeZona('FMH')).toBeNull()
+    expect(tipoDeEjercicioDeZona(null)).toBeNull()
   })
 })

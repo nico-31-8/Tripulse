@@ -30,7 +30,7 @@ import { LLAVE_PROPUESTA, EVENTO_PROPUESTA } from '@/components/TarjetaPropuesta
 import { BotonGuiaZonas } from '@/components/GuiaZonas'
 import DesplazarCiclo from '@/components/DesplazarCiclo'
 import { PRIORIDADES, prioridadDe, defDe, avisoDeObjetivos, type Prioridad } from '@/lib/competicion-prioridad'
-import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS } from '@/lib/disciplinas'
+import { botonDisciplina, claseDisciplina, colorDisciplina, DEPORTES, esDisciplinaDeFuerza, etiquetaConEmoji, etiquetaDisciplina, paraProgramar, TODAS, FORMAS_DE_FUERZA, formaDeFuerza, marcasDeFuerza } from '@/lib/disciplinas'
 import EtiquetaCambiada from '@/components/EtiquetaCambiada'
 import { copiarSesiones, type DestinoCopia } from '@/lib/copiar-sesion'
 import { useTutorial } from '@/components/tutorial/TutorialProvider'
@@ -904,6 +904,12 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                   <i className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: c }} />{l}
                 </div>
               ))}
+              {/* En cuadradito, como en el calendario: no son disciplinas, son sesiones de fuerza. */}
+              {FORMAS_DE_FUERZA.map(f => (
+                <div key={f.zona} className="flex items-center gap-2 text-[12px] text-gray-400">
+                  <i className="w-2.5 h-2.5 rounded-[2px] flex-none" style={{ background: f.color }} />{f.label}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1224,6 +1230,9 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
             ))}</>
           )}
           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-white opacity-70"/><span className="text-gray-400">Sesión</span></div>
+          {FORMAS_DE_FUERZA.map(f => (
+            <div key={f.zona} className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm" style={{ background: f.color }}/><span className="text-gray-400">{f.label}</span></div>
+          ))}
           {PRIORIDADES.map(pr => (
             <div key={pr.id} className="flex items-center gap-1.5">
               <span>{pr.simbolo}</span><span className="text-gray-400">{pr.etiqueta}</span>
@@ -1305,9 +1314,13 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                             cuadrado, que es lo que hace falta para poder pulsarlo. */}
                         {!bloqueo && (sesDia.length > 0 || coros.siguen.some(g => g.fecha === f)) && (
                           <div className="sm:hidden flex flex-wrap gap-[3px] justify-center mt-0.5">
-                            {sesDia.slice(0, 6).map(s => (
-                              <i key={s.id} className={'w-1.5 h-1.5 rounded-full ' + claseDisciplina(s.disciplina)} />
-                            ))}
+                            {sesDia.slice(0, 6).map(s => {
+                              /* Rehabilitación y movilidad, en cuadradito: a 6 px su color
+                                 se confunde con el de una disciplina (el turquesa con la
+                                 carrera, el rosa con el híbrido), y la forma no. */
+                              const forma = formaDeFuerza(s.disciplina, s.zonas, s.zona_fuerza)
+                              return <i key={s.id} className={'w-1.5 h-1.5 ' + (forma ? 'rounded-[1.5px] ' + forma.clases.solido : 'rounded-full ' + claseDisciplina(s.disciplina))} />
+                            })}
                             {coros.siguen.filter(g => g.fecha === f).map(g => (
                               <i key={'coros-' + g.id} className="w-1.5 h-1.5 rounded-full ring-1 ring-gray-400" title="Sigue en su COROS" />
                             ))}
@@ -1326,7 +1339,8 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                 onDragEnd={() => setArrastrando(null)}
                                 className={'rounded px-1 py-1 sm:py-0.5 flex justify-between items-center group cursor-pointer ' +
                                   (arrastrando === s.id ? 'opacity-40 ' : '') +
-                                  botonDisciplina(s.disciplina)}>
+                                  /* Una sesión entera de rehabilitación o de movilidad va en su color, no en el de fuerza. */
+                                  (formaDeFuerza(s.disciplina, s.zonas, s.zona_fuerza)?.clases.boton || botonDisciplina(s.disciplina))}>
                                 {/* La ZONA ocupa el sitio de «Car»/«Fue», no se
                                     añade al lado: el color del chip ya dice el
                                     deporte, así que las tres letras eran la única
@@ -1338,6 +1352,10 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
                                   {/* La cambió alguien de la dirección: en la casilla solo cabe la
                                       marca; el nombre sale al abrir el día o la sesión. */}
                                   {s.cambiada_por && <span className="text-teal-200 mr-0.5" title="Cambiada desde la dirección">✎</span>}
+                                  {/* Lleva rehabilitación o movilidad sin serlo entera: un punto de su color. */}
+                                  {marcasDeFuerza(s.disciplina, s.zonas, s.zona_fuerza).map(m => (
+                                    <i key={m.zona} className={'inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle ring-1 ring-black/40 ' + m.clases.solido} title={'Lleva ' + m.label.toLowerCase()} />
+                                  ))}
                                   {s.zonas?.length > 0
                                     ? <b>{s.zonas[0]}{s.zonas.length > 1 ? '+' + (s.zonas.length - 1) : ''}</b>
                                     : s.disciplina?.slice(0, 3)}

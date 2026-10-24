@@ -18,7 +18,7 @@ import {
   type BloqueBorrador, type LineaBorrador, type EjercicioBib,
 } from '@/lib/bloque-borrador'
 import { MODALIDADES_CARDIO } from '@/lib/cardio-fuerza'
-import { ZONAS_RESISTENCIA, ZONAS_FUERZA } from '@/lib/zonas'
+import { ZONAS_RESISTENCIA, ZONAS_FUERZA, tipoDeEjercicioDeZona } from '@/lib/zonas'
 
 const campo = 'bg-gray-800 text-white text-sm rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-orange-500 min-w-0'
 const numero = 'bg-transparent border-0 border-b border-gray-600 text-center font-bold tabular-nums outline-none focus:border-orange-500 py-0.5'
@@ -173,6 +173,7 @@ export default function BloqueEditor({
                       claseCaja="flex-1 min-w-0"
                       claseEjercicio={campo + ' w-full'} />
                     <BuscadorEjercicios ejercicios={biblioteca} onBibliotecaCambia={onBibliotecaCambia} historialDe={historialDe}
+                      primeroTipo={tipoDeEjercicioDeZona(bloque.zonaFuerzaTarea)}
                       onElegir={ej => cambiaLinea(i, { grupo: ej.grupo_muscular || '', ejercicioId: String(ej.id) })} />
                   </div>
                 )}

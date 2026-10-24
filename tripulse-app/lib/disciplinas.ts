@@ -152,6 +152,76 @@ export const esDisciplinaDeFuerza = (d: string | null | undefined): boolean =>
 export const disciplinaDeTareaFuerza = (disciplinaSesion: string | null | undefined): string =>
   normalizar(disciplinaSesion) === HIBRIDO ? HIBRIDO : 'Fuerza'
 
+// ------------------------------------------------------------
+// Las sesiones de fuerza que se distinguen en el calendario
+// ------------------------------------------------------------
+// La rehabilitación y la movilidad son ZONAS de fuerza (REH y FLEX, en
+// lib/zonas), no disciplinas: se programan con la misma tabla. Pero en el
+// calendario una sesión de rehabilitación tiene que verse de un vistazo, y no
+// como otro día de gimnasio con «REH» escrito (lo pidió el entrenador el
+// 24-10-2026, y la movilidad igual). Así que la sesión toma el color de su zona.
+//
+// `color` es el de su zona en ZONAS_FUERZA y `clases.solido`, ese mismo color
+// en clases: dos tests lo comprueban, como en las disciplinas.
+
+export interface FormaDeFuerza {
+  zona: 'REH' | 'FLEX'
+  label: string
+  color: string
+  clases: { solido: string; boton: string }
+}
+
+export const FORMAS_DE_FUERZA: FormaDeFuerza[] = [
+  { zona: 'REH', label: 'Rehabilitación', color: '#2dd4bf',
+    clases: { solido: 'bg-teal-400', boton: 'bg-teal-800 text-teal-200 hover:bg-teal-700' } },
+  /* Rosa como su zona, más vivo que el del Híbrido (que también es rosa): lo
+     que las distingue es «FLEX» escrito y, en el móvil, la forma del punto. */
+  { zona: 'FLEX', label: 'Movilidad', color: '#ec4899',
+    clases: { solido: 'bg-pink-500', boton: 'bg-pink-700 text-pink-100 hover:bg-pink-600' } },
+]
+
+const formaDe = (zona: string) => FORMAS_DE_FUERZA.find(f => f.zona === zona) || null
+
+/* Las zonas de una sesión: las de sus tareas y, si no dicen ninguna, la de la
+   sesión (una recién creada en el calendario aún no tiene tareas). */
+const zonasDeSesion = (zonas: (string | null | undefined)[] | null | undefined, zonaSesion?: string | null): string[] => {
+  const deTareas = (zonas || []).filter((z): z is string => !!z)
+  return deTareas.length ? deTareas : zonaSesion ? [zonaSesion] : []
+}
+
+/**
+ * Si una sesión de fuerza es ENTERA de rehabilitación o de movilidad.
+ *
+ * De rehabilitación si todo es REH, o REH con algo de movilidad: la movilidad
+ * va muchas veces dentro de la rehabilitación, y lo que manda es para qué es la
+ * sesión. De movilidad si todo es FLEX. Con cualquier otra zona, ninguna: es
+ * una sesión de fuerza que LLEVA algo de eso (ver marcasDeFuerza).
+ */
+export function formaDeFuerza(
+  disciplina: string | null | undefined,
+  zonas: (string | null | undefined)[] | null | undefined,
+  zonaSesion?: string | null,
+): FormaDeFuerza | null {
+  if (!esDisciplinaDeFuerza(disciplina)) return null
+  const todas = zonasDeSesion(zonas, zonaSesion)
+  if (!todas.length) return null
+  if (todas.every(z => z === 'FLEX')) return formaDe('FLEX')
+  if (todas.includes('REH') && todas.every(z => z === 'REH' || z === 'FLEX')) return formaDe('REH')
+  return null
+}
+
+/** Lo que una sesión de fuerza LLEVA sin serlo entera: un punto de su color en la tarjeta. */
+export function marcasDeFuerza(
+  disciplina: string | null | undefined,
+  zonas: (string | null | undefined)[] | null | undefined,
+  zonaSesion?: string | null,
+): FormaDeFuerza[] {
+  if (!esDisciplinaDeFuerza(disciplina)) return []
+  const todas = zonasDeSesion(zonas, zonaSesion)
+  const entera = formaDeFuerza(disciplina, zonas, zonaSesion)
+  return FORMAS_DE_FUERZA.filter(f => f !== entera && todas.includes(f.zona))
+}
+
 // ============================================================
 // Las de cada deportista
 // ============================================================

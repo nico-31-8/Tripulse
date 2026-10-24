@@ -316,6 +316,17 @@ export const EXPLICACION_FUERZA: Record<string, ExplicacionZona> = {
     cuando: 'Sesión aparte, o al final de la de fuerza. En los últimos 10–14 días antes de la competición A es, con el core, lo único que queda.',
     ojo: 'El estiramiento estático largo antes de una sesión de calidad baja la producción de fuerza. Va después, nunca antes.',
   },
+
+  REH: {
+    paraQue: 'Volver a cargar una zona lesionada u operada, poco a poco y con el dolor como guía.',
+    hitos: [
+      'Recuperar el rango y el control del movimiento',
+      'Volver a tolerar carga, de menos a más',
+      'Pasar de los ejercicios aislados al gesto de su deporte',
+    ],
+    cuando: 'Mientras dura la lesión: como sesión aparte o como parte de la de fuerza.',
+    ojo: 'La pauta la marca su fisioterapeuta o su médico: esto la ordena en el plan, no la sustituye.',
+  },
 }
 
 // ------------------------------------------------------------

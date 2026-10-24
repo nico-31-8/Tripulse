@@ -29,6 +29,7 @@ import { partirInstrucciones } from '@/lib/instrucciones'
 import {
   EJERCICIO_NUEVO_VACIO, TIPOS_EJERCICIO, crearEjercicioPropio, type Dueno,
   editarEjercicioPropio, borrarEjercicioPropio, esMio, type EjercicioNuevo,
+  ordenParaElegir, cabeceraParaElegir,
 } from '@/lib/ejercicio-propio'
 import { FAMILIAS, esDeFamilia } from '@/lib/familias-grupo'
 import SelectorGrupo from '@/components/SelectorGrupo'
@@ -42,6 +43,8 @@ export interface EjercicioBib {
   url_video?: string | null
   /** Con valor = se lo creó ese deportista. NULL = catálogo común. */
   id_deportista?: number | null
+  /** «Fuerza», «Movilidad», «Rehab»…: lo que es en la biblioteca. */
+  tipo?: string[] | null
 }
 
 /* Los chips son las MISMAS familias que parten el desplegable de grupo
@@ -93,9 +96,14 @@ interface Props {
    * donde más sirve, que es prescribiendo.
    */
   historialDe?: number | null
+  /**
+   * El tipo de ejercicio que va primero: en una tarea de rehabilitación, los de
+   * «Rehab» (lib/zonas: tipoDeEjercicioDeZona). Los demás siguen debajo.
+   */
+  primeroTipo?: string | null
 }
 
-export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista, historialDe }: Props) {
+export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaCambia, clase, etiqueta, idDeportista, historialDe, primeroTipo }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [creando, setCreando] = useState<EjercicioNuevo | null>(null)
   /**
@@ -160,16 +168,10 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
       // Se busca también en la descripción: «lordosis» encuentra el psoas
       // aunque la palabra no esté en su nombre.
       .filter(e => !q || sinTildes(e.nombre).includes(q) || sinTildes(e.descripcion || '').includes(q))
-      /* Por grupo y luego por nombre. La biblioteca llega ordenada por nombre, y
-         así las cabeceras de grupo salían una por fila —«Core», «Cadera»,
-         «Movilidad»…— comiéndose la mitad de la altura para agrupar de uno en
-         uno. Agrupadas de verdad, una cabecera cubre diez ejercicios. */
-      .sort((a, b) => {
-        const ga = a.grupo_muscular || 'zzz', gb = b.grupo_muscular || 'zzz'
-        if (ga !== gb) return ga.localeCompare(gb, 'es')
-        return a.nombre.localeCompare(b.nombre, 'es')
-      })
-  }, [ejercicios, filtro, consulta])
+      /* Por grupo y luego por nombre, y con `primeroTipo`, esos delante. Agrupadas
+         de verdad, una cabecera cubre diez ejercicios (lib/ejercicio-propio). */
+      .sort(ordenParaElegir(primeroTipo))
+  }, [ejercicios, filtro, consulta, primeroTipo])
 
   useEffect(() => { setSel(0) }, [consulta, filtro])
 
@@ -336,12 +338,13 @@ export default function BuscadorEjercicios({ ejercicios, onElegir, onBibliotecaC
                 </div>
               )}
               {resultados.map((e, i) => {
-                const nuevoGrupo = i === 0 || e.grupo_muscular !== resultados[i - 1].grupo_muscular
+                const cabecera = cabeceraParaElegir(e, primeroTipo)
+                const nuevoGrupo = i === 0 || cabecera !== cabeceraParaElegir(resultados[i - 1], primeroTipo)
                 return (
                   <div key={e.id}>
                     {nuevoGrupo && (
                       <p className="sticky top-0 bg-gray-900 text-[10.5px] uppercase tracking-wide text-gray-600 font-bold px-4 pt-2.5 pb-1 z-[1]">
-                        {e.grupo_muscular}
+                        {cabecera}
                       </p>
                     )}
                     <div className={'w-full flex items-center gap-2 border-b border-white/[0.04] transition ' +

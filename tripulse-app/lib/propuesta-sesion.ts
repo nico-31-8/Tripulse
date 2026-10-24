@@ -46,7 +46,8 @@ export const ESQUEMA_PROPUESTA = {
       items: {
         type: 'object',
         properties: {
-          zona: { type: 'string', enum: [...ZONAS_RESISTENCIA.map(z => z.sigla), ...ZONAS_FUERZA.map(z => z.sigla)] },
+          /* Sin la rehabilitación: esa pauta la marca su fisioterapeuta, no el asistente. */
+          zona: { type: 'string', enum: [...ZONAS_RESISTENCIA.map(z => z.sigla), ...ZONAS_FUERZA.filter(z => z.sigla !== 'REH').map(z => z.sigla)] },
           minutos: { type: ['number', 'null'], description: 'Minutos del bloque. Usar esto salvo en natación.' },
           metros: { type: ['number', 'null'], description: 'Metros. Solo en natación.' },
           series: { type: ['number', 'null'] },

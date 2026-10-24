@@ -115,6 +115,9 @@ describe('el esquema no deja inventar zonas', () => {
     expect(zonas).toContain('AEM')
     expect(zonas).toContain('FMH')
     expect(zonas).not.toContain('Z2')
+    /* Sin la rehabilitación: esa pauta la marca su fisioterapeuta, no el asistente. */
+    expect(zonas).not.toContain('REH')
+    expect(zonas).toContain('FLEX')
   })
   it('la disciplina también', () => {
     const d = (ESQUEMA_PROPUESTA as any).properties.disciplina.enum as string[]

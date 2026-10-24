@@ -236,3 +236,39 @@ export async function borrarEjercicioPropio(
   const { error } = await sb.from('ejercicios_biblioteca').delete().eq('id', idEjercicio)
   return { borrado: !error, error: error?.message || null }
 }
+
+// ------------------------------------------------------------
+// El orden del buscador
+// ------------------------------------------------------------
+
+interface ParaElegir { nombre: string; grupo_muscular?: string | null; tipo?: string[] | null }
+
+const esDelTipo = (e: ParaElegir, tipo?: string | null) => !!tipo && (e.tipo || []).includes(tipo)
+
+/**
+ * El orden del buscador: primero los del tipo que pide la zona de la tarea (en
+ * una de rehabilitación, los de «Rehab»: lib/zonas, tipoDeEjercicioDeZona), y
+ * después por grupo y por nombre. Sin tipo, el orden de siempre.
+ *
+ * Por grupo y no solo por nombre: la biblioteca llega ordenada por nombre, y las
+ * cabeceras de grupo salían una por fila —«Core», «Cadera», «Movilidad»…—.
+ */
+export function ordenParaElegir(primeroTipo?: string | null) {
+  return (a: ParaElegir, b: ParaElegir): number => {
+    const primero = Number(esDelTipo(b, primeroTipo)) - Number(esDelTipo(a, primeroTipo))
+    if (primero) return primero
+    const ga = a.grupo_muscular || 'zzz', gb = b.grupo_muscular || 'zzz'
+    if (ga !== gb) return ga.localeCompare(gb, 'es')
+    return a.nombre.localeCompare(b.nombre, 'es')
+  }
+}
+
+/**
+ * La cabecera de cada tramo de la lista: su grupo y, en los que van primero, su
+ * tipo delante («Rehab · Hombro»). Sin eso, «Hombro» saldría dos veces: con los
+ * de rehabilitación arriba y con los demás más abajo.
+ */
+export function cabeceraParaElegir(e: ParaElegir, primeroTipo?: string | null): string {
+  const grupo = e.grupo_muscular || ''
+  return esDelTipo(e, primeroTipo) ? primeroTipo + ' · ' + grupo : grupo
+}

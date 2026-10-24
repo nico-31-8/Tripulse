@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   CATALOGO, HIBRIDO, TODAS, PERFILES, esDisciplinaDeFuerza, disciplinaDeTareaFuerza, disciplinasDe, paraProgramar,
   perfilDe, alternar, guardarPerfil, etiquetaDisciplina, etiquetaConEmoji, cortoDisciplina, normalizar,
+  FORMAS_DE_FUERZA, formaDeFuerza, marcasDeFuerza,
 } from './disciplinas'
+import { ZONAS_FUERZA } from './zonas'
 
 describe('qué se programa con la tabla de fuerza', () => {
   it('Fuerza e Híbrido; el resto no', () => {
@@ -186,5 +188,58 @@ describe('cómo se escribe una disciplina', () => {
     const cortos = CATALOGO.map(d => d.corto)
     expect(new Set(cortos).size).toBe(cortos.length)
     for (const d of CATALOGO) expect(d.corto, d.label).toHaveLength(3)
+  })
+})
+
+// ============================================================
+// Las sesiones de rehabilitación y de movilidad en el calendario
+// ============================================================
+
+describe('las sesiones de rehabilitación y de movilidad', () => {
+  /** La paleta de Tailwind de estas dos. El oráculo, como el de las disciplinas. */
+  const HEX_DE_CLASE: Record<string, string> = { 'bg-teal-400': '#2dd4bf', 'bg-pink-500': '#ec4899' }
+
+  for (const f of FORMAS_DE_FUERZA) {
+    it(f.label + ': su color es el de su zona y el de su clase', () => {
+      expect(f.color.toLowerCase()).toBe(ZONAS_FUERZA.find(z => z.sigla === f.zona)!.color.toLowerCase())
+      expect(HEX_DE_CLASE[f.clases.solido], 'Añade ' + f.clases.solido + ' a la tabla').toBe(f.color)
+      const color = f.clases.solido.match(/^bg-([a-z]+)-\d+$/)?.[1]
+      for (const clase of f.clases.boton.split(' ')) expect(clase, clase + ' no es ' + color).toContain('-' + color + '-')
+    })
+  }
+
+  const forma = (zonas: string[], zonaSesion?: string | null, disciplina = 'Fuerza') => formaDeFuerza(disciplina, zonas, zonaSesion)?.zona ?? null
+  const marcas = (zonas: string[], zonaSesion?: string | null) => marcasDeFuerza('Fuerza', zonas, zonaSesion).map(f => f.zona)
+
+  it('entera de rehabilitación: todo REH, o REH con movilidad (manda para qué es la sesión)', () => {
+    expect(forma(['REH'])).toBe('REH')
+    expect(forma(['REH', 'FLEX'])).toBe('REH')
+    expect(marcas(['REH', 'FLEX'])).toEqual(['FLEX'])
+  })
+
+  it('entera de movilidad: todo FLEX', () => {
+    expect(forma(['FLEX'])).toBe('FLEX')
+    expect(marcas(['FLEX'])).toEqual([])
+  })
+
+  /* El día 6 de la maqueta: fuerza normal con un ejercicio de rehabilitación. */
+  it('una sesión de fuerza que solo lleva algo: su color de siempre y un punto de cada', () => {
+    expect(forma(['FMH', 'REH'])).toBeNull()
+    expect(marcas(['FMH', 'REH'])).toEqual(['REH'])
+    expect(marcas(['FMH', 'REH', 'FLEX'])).toEqual(['REH', 'FLEX'])
+    expect(marcas(['FMH'])).toEqual([])
+  })
+
+  /* Recién creada en el calendario no tiene tareas: ya se ve de qué es. */
+  it('sin tareas manda la zona de la sesión; con tareas, las de las tareas', () => {
+    expect(forma([], 'REH')).toBe('REH')
+    expect(forma([], null)).toBeNull()
+    expect(forma(['FMH'], 'REH')).toBeNull()
+  })
+
+  it('solo en las sesiones de fuerza (e híbridas)', () => {
+    expect(forma(['REH'], null, 'Carrera')).toBeNull()
+    expect(marcasDeFuerza('Carrera', ['REH'], null)).toEqual([])
+    expect(forma(['REH'], null, HIBRIDO)).toBe('REH')
   })
 })

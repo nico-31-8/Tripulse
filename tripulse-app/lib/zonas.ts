@@ -64,7 +64,7 @@ export const ZONAS_RESISTENCIA: ZonaResistencia[] = [
 ]
 
 // ------------------------------------------------------------
-// 10 ZONAS DE FUERZA Y FLEXIBILIDAD
+// 11 ZONAS DE FUERZA, FLEXIBILIDAD Y REHABILITACIÓN
 // ------------------------------------------------------------
 export const ZONAS_FUERZA: ZonaFuerza[] = [
   { sigla: 'AFG',    nombre: 'Acondicionamiento Físico General', factor: 'Fuerza básica',    rmMin: 40,  rmMax: 60,  rpeMin: 5,  rpeMax: 6,  series: '2–4', repTiempo: '15–25 rep',     descanso: '45–90 s',   durSerie: '30–75 s',  indicador: 'FC',     color: '#6B7280' },
@@ -79,7 +79,24 @@ export const ZONAS_FUERZA: ZonaFuerza[] = [
   // RPE 1–3, no 3–5: la movilidad no es una zona de esfuerzo. Con 3–5 empataba
   // con el AFG y una sesión de estiramientos pesaba como una de gimnasio suave.
   { sigla: 'FLEX',   nombre: 'Flexibilidad / Movilidad',         factor: 'Flexibilidad',     rmMin: null,rmMax: null,rpeMin: 1,  rpeMax: 3,  series: '2–4', repTiempo: '20–60 s/pos.',  descanso: '30–60 s',   durSerie: '20–60 s',  indicador: 'RPE',    color: '#EC4899' },
+  // La rehabilitación (24-10-2026): como la movilidad, una zona para poder
+  // marcarla en el plan y en el calendario, no una zona de esfuerzo. RPE 2–3,
+  // lo que eligió el entrenador: pesa poco en la carga, y si un día es dura se
+  // le pone su RPE a la sesión. Turquesa CLARO a propósito: el AEI y el RFMIX1
+  // son el turquesa de siempre (#14B8A6), y en el lienzo serían el mismo.
+  { sigla: 'REH',    nombre: 'Rehabilitación',                   factor: 'Rehabilitación',   rmMin: null,rmMax: null,rpeMin: 2,  rpeMax: 3,  series: '2–4', repTiempo: '8–15 rep o 20–45 s', descanso: '30–90 s', durSerie: '20–60 s', indicador: 'RPE', color: '#2DD4BF' },
 ]
+
+/**
+ * El tipo de ejercicio de la biblioteca que va con una zona, para ponerlo
+ * primero al buscar: en una tarea de rehabilitación, los de «Rehab»; en una de
+ * movilidad, los de «Movilidad». En las demás, ninguno.
+ */
+export function tipoDeEjercicioDeZona(zona: string | null | undefined): string | null {
+  if (zona === 'REH') return 'Rehab'
+  if (zona === 'FLEX') return 'Movilidad'
+  return null
+}
 
 // ------------------------------------------------------------
 // El sistema clásico Z1–Z7
