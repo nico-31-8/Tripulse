@@ -29,7 +29,7 @@ export async function estimarDuraciones(
 
   const { data: tareas } = await supabase
     .from('tarea')
-    .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
+    .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
     .in('id_sesion', sesionIds)
   const tareaIds = (tareas || []).map((t: any) => t.id)
 
@@ -95,6 +95,8 @@ export function duracionesDe(
     const tarSes = (tareas || []).filter((t: any) => t.id_sesion === sid)
     const tareasDur = tarSes.map((t: any) => ({
       disciplina: t.disciplina,
+      /* Para saber cuál es la última, la que no descansa detrás (lib/duracion). */
+      orden: t.orden,
       series: t.series,
       descanso_segundos: t.descanso_segundos,
       bloques: t.bloques,

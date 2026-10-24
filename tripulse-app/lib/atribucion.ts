@@ -115,9 +115,11 @@ export interface OpcionesAtribucion {
 const rpePorDefecto = (s: SesionAtribuible) => s.rpe_reportado || s.rpe_estimado || 5
 
 // Reparte los minutos de la sesión entre sus tareas según la duración estimada
-// de cada una. Si ninguna es estimable, reparto a partes iguales.
+// de cada una. Si ninguna es estimable, reparto a partes iguales. Llegan en su
+// orden: cada una lleva el descanso de detrás de su última serie, menos la
+// última de la sesión (lib/bloques-tarea: descansoFinalDe).
 function pesos(tareas: TareaAtribuible[], tests: TestsDeportista): number[] {
-  const seg = tareas.map(t => calcularDuracionEstimada([t], tests).segundos)
+  const seg = tareas.map((t, i) => calcularDuracionEstimada([t], tests, { hayMasDetras: i < tareas.length - 1 }).segundos)
   const suma = seg.reduce((a, b) => a + b, 0)
   if (suma > 0) return seg.map(s => s / suma)
   return tareas.map(() => 1 / tareas.length)

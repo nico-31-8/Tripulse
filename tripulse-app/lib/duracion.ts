@@ -12,6 +12,9 @@
 //       + transición de 90s entre cambios de ejercicio: TRANSICION · (nEjercicios - 1)
 //
 //   total_tarea = (tiempo_trabajo · series) + descanso_segundos · (series - 1)
+//                 + el descanso de detrás de la última serie, si viene otra tarea
+//                   (lib/bloques-tarea: descansoFinalDe). En fuerza no: ahí el paso
+//                   al ejercicio siguiente ya es la transición de 90 s.
 //
 // El % de zona es el punto medio del rango de ZONAS_CLASICAS (lib/zonas.ts).
 // Para Zonas 2 la sigla se resuelve a su nivel 1–7 equivalente vía cargaZona().
@@ -19,7 +22,7 @@ import { cargaZona, pctVamZona, velNatacionZona, zonaResistencia, ZONAS_CLASICAS
 import { leerCopia } from './prescripcion-zona'
 import { vamDeReferencia, cssDeReferencia } from './referencia-sin-test'
 import { hayCardio, modalidadDe, segundosDeCardio } from './cardio-fuerza'
-import { vecesDe, descansoTotalDe } from './bloques-tarea'
+import { vecesDe, descansoTotalDe, descansoFinalDe, seriesTarea, bloquesDe } from './bloques-tarea'
 import { esDisciplinaDeFuerza } from './disciplinas'
 import { repsDeCalculoPorSerie, segDeCalculoPorSerie } from './series-detalle'
 import { esBloque, duracionBloque, leerConfig, ordenarLineas, type Formato, type LineaBloque } from './bloque-formato'
@@ -49,6 +52,8 @@ const TRANSICION_EJERCICIO = 90
 
 export interface TareaDuracion {
   disciplina?: string | null
+  /** Su sitio en la sesión: hace falta para saber cuál es la última (ver ordenDeLasTareas). */
+  orden?: number | null
   series?: number | null
   descanso_segundos?: number | null
   /** En bloques: 3 × (2 × 400). Ver lib/bloques-tarea. */
@@ -125,6 +130,13 @@ export interface OpcionesDuracion {
    * suposición que va marcada. Quien enseñe el número tiene que marcarlo.
    */
   conReferencia?: boolean
+  /**
+   * Detrás de estas tareas viene otra de la misma sesión, así que la última de
+   * la lista también descansa (lib/bloques-tarea: descansoFinalDe). Es para
+   * quien cuenta tarea a tarea, como el reparto de lib/atribucion: sin esto,
+   * cada tarea suelta contaría como la última de su sesión.
+   */
+  hayMasDetras?: boolean
 }
 
 export interface ResultadoDuracion {
@@ -276,6 +288,51 @@ function segTrabajoPorSerie(
   return null
 }
 
+/**
+ * Lo que dura UNA serie de una tarea de fuerza: reps × tempo (o los segundos
+ * de un isométrico), y aparte su cardio.
+ */
+function segFuerzaPorSerie(t: TareaDuracion, tests: TestsDeportista): { fuerza: number; cardio: number } {
+  /* Con un rango se cuenta el CENTRO: «8-10» estimado como ocho dejaría
+     la sesión corta siempre, y la carga detrás de ella. Con repeticiones
+     exactas da el número de siempre (lib/repeticiones). */
+  /* SERIE A SERIE: con series distintas cuenta la media de cada ejercicio,
+     que por las series da lo que suman todas (lib/series-detalle). */
+  const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + repsDeCalculoPorSerie(e), 0)
+  const isoSeg = segDeCalculoPorSerie(t.ejercicios?.[0], t.p_duracion?.[0]?.tiempo_planeado || 0)
+  /* EL CARDIO SON MINUTOS DE VERDAD. Una línea de 4 × 300 m de remo no
+     tiene repeticiones ni segundos de fuerza, así que sin esto contaría
+     cero: la sesión saldría seis minutos corta y, detrás de ella, la carga
+     — que es lo que el entrenador mira para decidir la semana. */
+  const cardio = (t.ejercicios || []).reduce((acc, e) => acc + (segCardioPorSerie(e, tests) || 0), 0)
+  return { fuerza: totalReps > 0 ? totalReps * SEG_POR_REP : isoSeg > 0 ? isoSeg : 0, cardio }
+}
+
+/** Lo que dura un bloque con formato (AMRAP 12′, 4 rondas…), con el cardio de dentro a su ritmo. */
+function segBloque(t: TareaDuracion, tests: TestsDeportista): number {
+  return duracionBloque(t.formato as Formato, leerConfig(t.formato_config),
+    ordenarLineas(t.ejercicios as LineaBloque[] | null),
+    l => segCardioPorSerie(l as EjercicioDuracion, tests)).segundos
+}
+
+/**
+ * En qué orden van las tareas: por su `orden` si todas lo traen, y si no, como
+ * vienen (quien no lo pide las trae ya en orden, y una plantilla va por
+ * posición). Hace falta para saber cuál es la última, la que no descansa
+ * detrás: una lista desordenada le quitaría el descanso a otra.
+ */
+function ordenDeLasTareas(tareas: TareaDuracion[]): number[] {
+  const posiciones = tareas.map((_, i) => i)
+  const conOrden = tareas.length > 0 && tareas.every(t => t.orden != null && Number.isFinite(Number(t.orden)))
+  return conOrden ? posiciones.sort((a, b) => Number(tareas[a].orden) - Number(tareas[b].orden) || a - b) : posiciones
+}
+
+/** La posición de la última tarea de la sesión, o −1 si detrás viene otra (`hayMasDetras`). */
+function ultimaDeLaSesion(tareas: TareaDuracion[], opciones: OpcionesDuracion): number {
+  const enOrden = ordenDeLasTareas(tareas)
+  return opciones.hayMasDetras || !enOrden.length ? -1 : enOrden[enOrden.length - 1]
+}
+
 export function calcularDuracionEstimada(
   tareas: TareaDuracion[],
   tests: TestsDeportista,
@@ -298,16 +355,18 @@ export function calcularDuracionEstimada(
     return false
   }
 
-  for (const t of tareas) {
+  /* La última de la sesión no descansa detrás: no hay a qué pasar. */
+  const ultima = ultimaDeLaSesion(tareas, opciones)
+
+  for (let i = 0; i < tareas.length; i++) {
+    const t = tareas[i]
     /* UN BLOQUE (AMRAP 12′, 4 rondas…) dura lo que dice su formato, no series ×
        reps: sus líneas no llevan series. La cuenta es de lib/bloque-formato, y el
        cardio de dentro sale al ritmo del atleta, como en una línea suelta. */
     if (esBloque(t)) {
-      const d = duracionBloque(t.formato as Formato, leerConfig(t.formato_config),
-        ordenarLineas(t.ejercicios as LineaBloque[] | null),
-        l => segCardioPorSerie(l as EjercicioDuracion, tests))
-      if (d.segundos > 0 && cabe(d.segundos)) {
-        segundos += d.segundos
+      const seg = segBloque(t, tests)
+      if (seg > 0 && cabe(seg)) {
+        segundos += seg
         ejerciciosFuerza++
         algunaEstimada = true
       }
@@ -318,23 +377,9 @@ export function calcularDuracionEstimada(
 
     // Fuerza (e Híbrido): reps × tempo (normal) o series × segundos (isométrico)
     if (esDisciplinaDeFuerza(t.disciplina)) {
-      /* Con un rango se cuenta el CENTRO: «8-10» estimado como ocho dejaría
-         la sesión corta siempre, y la carga detrás de ella. Con repeticiones
-         exactas da el número de siempre (lib/repeticiones). */
-      /* SERIE A SERIE: con series distintas cuenta la media de cada ejercicio,
-         que por las series da lo que suman todas (lib/series-detalle). */
-      const totalReps = (t.ejercicios || []).reduce((acc, e) => acc + repsDeCalculoPorSerie(e), 0)
-      const isoSeg = segDeCalculoPorSerie(t.ejercicios?.[0], t.p_duracion?.[0]?.tiempo_planeado || 0)
-      let trabajo = 0
-      if (totalReps > 0) trabajo = series * totalReps * SEG_POR_REP
-      else if (isoSeg > 0) trabajo = series * isoSeg
-
-      /* EL CARDIO SON MINUTOS DE VERDAD. Una línea de 4 × 300 m de remo no
-         tiene repeticiones ni segundos de fuerza, así que sin esto contaría
-         cero: la sesión saldría seis minutos corta y, detrás de ella, la carga
-         — que es lo que el entrenador mira para decidir la semana. */
-      const cardio = (t.ejercicios || []).reduce((acc, e) => acc + (segCardioPorSerie(e, tests) || 0), 0)
-      if (cardio > 0) trabajo += series * cardio
+      const porSerie = segFuerzaPorSerie(t, tests)
+      let trabajo = series * porSerie.fuerza
+      if (porSerie.cardio > 0) trabajo += series * porSerie.cardio
 
       if (trabajo > 0) {
         const descanso = (t.descanso_segundos || 0) * Math.max(0, series - 1)
@@ -352,9 +397,12 @@ export function calcularDuracionEstimada(
       /* EN BLOQUES, el trabajo se hace series × bloques veces y el descanso
          tiene dos tamaños: el corto dentro de cada bloque y el largo entre
          bloques. Las dos cuentas son de lib/bloques-tarea, que es el único
-         sitio que sabe qué es un bloque. Sin bloques dan exactamente lo de
-         antes: series × trabajo + (series − 1) × descanso. */
-      const segTarea = trabajoSerie.seg * vecesDe(t) + descansoTotalDe(t)
+         sitio que sabe qué es un bloque. Sin bloques: series × trabajo +
+         (series − 1) × descanso.
+         Y DETRÁS DE LA ÚLTIMA SERIE, el paso a la tarea siguiente si la hay
+         (descansoFinalDe). Hasta el 24-10-2026 no contaba, y el «3 × 400, 2:00»
+         seguido de un 3.000 salía dos minutos más corto de lo que se corre. */
+      const segTarea = trabajoSerie.seg * vecesDe(t) + descansoTotalDe(t) + (i === ultima ? 0 : descansoFinalDe(t))
       if (cabe(segTarea)) {
         segundos += segTarea
         algunaEstimada = true
@@ -385,4 +433,117 @@ export function calcularDuracionEstimada(
     usoReferencia,
     datoImposible,
   }
+}
+
+// ------------------------------------------------------------
+// La sesión en el tiempo: cada serie y cada descanso en su sitio
+// ------------------------------------------------------------
+// Para la gráfica de la sesión, que dibuja el tiempo. ES LA MISMA CUENTA que
+// calcularDuracionEstimada —un test comprueba que lo que no es supuesto suma
+// exactamente lo mismo—, porque la gráfica y la cabecera de la sesión no pueden
+// dar dos duraciones distintas. Antes la gráfica tenía la suya: contaba una sola
+// serie de cada tarea, a un ritmo de tabla, y ningún descanso.
+
+/** Qué descanso es: entre series, entre bloques, detrás de la última serie, o el cambio de ejercicio de fuerza. */
+export type CualDescanso = 'entre' | 'bloque' | 'final' | 'cambio'
+
+export interface TramoSesion {
+  tipo: 'trabajo' | 'descanso'
+  /** La posición de su tarea en la lista que se pasó. */
+  tarea: number
+  /** La serie, desde 0. En bloques cuenta todas: 3 × (2 × 400) va de 0 a 5. */
+  serie: number
+  segundos: number
+  cual?: CualDescanso
+  /**
+   * Su tiempo NO se pudo estimar (bici por distancia, sin medida, un dato
+   * imposible): lleva un ancho orientativo para que la tarea se vea, y no
+   * cuenta en calcularDuracionEstimada. Quien lo pinte tiene que decirlo.
+   */
+  supuesto?: boolean
+}
+
+/* El ancho de lo que no se puede estimar: la tabla gruesa de minutos por km que
+   usaba la gráfica, o tres minutos por serie sin medida. Solo dibuja: no suma. */
+const MIN_POR_KM_SUPUESTO = [6, 5.5, 5, 4.5, 4, 3.5, 3]
+const SEG_SERIE_SUPUESTA = 180
+
+function segSupuestoPorSerie(t: TareaDuracion): number {
+  const metros = t.p_distancia?.[0]?.metros_planeados
+  if (metros == null || !(metros > 0)) return SEG_SERIE_SUPUESTA
+  const ritmo = MIN_POR_KM_SUPUESTO[numZona(t.zona_entrenamiento, leerCopia(t.zona_copia)) - 1] || 5
+  return Math.min(3600, Math.max(60, (metros / 1000) * ritmo * 60))
+}
+
+/** Las series de una tarea con sus descansos: el corto entre series, el largo entre bloques y el `final` detrás de la última. */
+function seriesConDescanso(
+  tarea: number, series: number, bloques: number, segSerie: number,
+  corto: number, largo: number, final: number, supuesto: boolean,
+): TramoSesion[] {
+  const marca = supuesto ? { supuesto: true } : {}
+  const out: TramoSesion[] = []
+  let n = 0
+  for (let b = 0; b < bloques; b++) {
+    for (let s = 0; s < series; s++, n++) {
+      out.push({ tipo: 'trabajo', tarea, serie: n, segundos: segSerie, ...marca })
+      const cual: CualDescanso = s < series - 1 ? 'entre' : b < bloques - 1 ? 'bloque' : 'final'
+      const seg = cual === 'entre' ? corto : cual === 'bloque' ? largo : final
+      if (seg > 0) out.push({ tipo: 'descanso', tarea, serie: n, segundos: seg, cual, ...marca })
+    }
+  }
+  return out
+}
+
+export function tramosDeSesion(
+  tareas: TareaDuracion[],
+  tests: TestsDeportista,
+  opciones: OpcionesDuracion = {},
+): TramoSesion[] {
+  const conReferencia = opciones.conReferencia !== false
+  const ultima = ultimaDeLaSesion(tareas, opciones)
+  const positivo = (x: unknown) => (Number(x) > 0 ? Number(x) : 0)
+
+  const porTarea = tareas.map((t, i): { tramos: TramoSesion[]; fuerza: boolean } => {
+    /* Un bloque con formato va entero: dura lo que dice su formato. */
+    if (esBloque(t)) {
+      const seg = segBloque(t, tests)
+      const vale = seg > 0 && seg <= TOPE_TAREA_SEG
+      return {
+        tramos: [{ tipo: 'trabajo', tarea: i, serie: 0, segundos: vale ? seg : SEG_SERIE_SUPUESTA, ...(vale ? {} : { supuesto: true }) }],
+        fuerza: vale,
+      }
+    }
+    const series = seriesTarea(t)
+    const corto = positivo(t.descanso_segundos)
+    if (esDisciplinaDeFuerza(t.disciplina)) {
+      /* En fuerza, sin descanso detrás de la última: el paso al ejercicio
+         siguiente ya es su transición (el «cambio» de abajo). */
+      const { fuerza, cardio } = segFuerzaPorSerie(t, tests)
+      const serie = fuerza + (cardio > 0 ? cardio : 0)
+      const vale = serie > 0 && series * serie + corto * (series - 1) <= TOPE_TAREA_SEG
+      return { tramos: seriesConDescanso(i, series, 1, vale ? serie : SEG_SERIE_SUPUESTA, corto, 0, 0, !vale), fuerza: vale }
+    }
+    const tr = segTrabajoPorSerie(t, tests, conReferencia)
+    const final = i === ultima ? 0 : descansoFinalDe(t)
+    const vale = tr != null && tr.seg * vecesDe(t) + descansoTotalDe(t) + final <= TOPE_TAREA_SEG
+    const serie = vale ? tr!.seg : tr != null ? SEG_SERIE_SUPUESTA : segSupuestoPorSerie(t)
+    return {
+      tramos: seriesConDescanso(i, series, bloquesDe(t), serie, corto, positivo(t.descanso_bloques_segundos), final, !vale),
+      fuerza: false,
+    }
+  })
+
+  /* El cambio de ejercicio va detrás de cada tarea de fuerza (o bloque) que
+     tiene otra después: n − 1 cambios, como en la cuenta. */
+  const enOrden = ordenDeLasTareas(tareas)
+  const deFuerza = enOrden.filter(i => porTarea[i].fuerza)
+  const ultimaDeFuerza = deFuerza.length ? deFuerza[deFuerza.length - 1] : -1
+  const out: TramoSesion[] = []
+  for (const i of enOrden) {
+    out.push(...porTarea[i].tramos)
+    if (porTarea[i].fuerza && i !== ultimaDeFuerza) {
+      out.push({ tipo: 'descanso', tarea: i, serie: 0, segundos: TRANSICION_EJERCICIO, cual: 'cambio' })
+    }
+  }
+  return out
 }

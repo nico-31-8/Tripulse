@@ -14,6 +14,36 @@ Se añade una entrada cada vez que se publica algo. Lo nuevo va arriba.
 
 ---
 
+## 24 de octubre de 2026 · El descanso de la última serie cuenta, y los descansos se ven en la gráfica
+
+- **Cambia cómo se cuenta la duración.** El descanso que pones en una tarea va
+  ahora también detrás de su última serie, porque es el paso a la siguiente
+  tarea. Con «3 × 400, 2:00» y debajo un 3.000, entre el tercer 400 y el 3.000
+  también se descansan los 2:00. Y el descanso de una tarea de una sola serie
+  (el «3:00» de un 3.000) cuenta como el descanso antes de lo siguiente. Al
+  final de la sesión no se suma nada.
+- **Qué números se mueven:** sube la duración estimada de las sesiones que
+  llevan descansos, y con ella su carga planificada, en la ficha de la sesión,
+  el calendario, Carga y el reparto por zonas. Por ejemplo, una sesión de
+  carrera con 3 × 400, un 3.000 y 2 × 400 pasa de 26 a 31 minutos. Lo que ya
+  está hecho con su duración real no cambia, y en fuerza tampoco: ahí el paso
+  al ejercicio siguiente ya contaba. Las semanas que hagas a partir de ahora
+  con el Planificador ya cuentan así sus minutos.
+- **La gráfica de la sesión, rehecha.** El eje es tiempo de verdad: antes el
+  ancho de cada barra iba por metros y no casaba con los minutos. Cada descanso
+  sale como una franja rayada con su tiempo encima («2:00»; en el móvil, «2'»),
+  y al pasar el ratón te dice dónde va. Su duración es la misma que la de la
+  cabecera de la sesión (antes contaba una sola serie de cada tarea), y la
+  carga y la zona media salen de cada serie a su ritmo.
+- **En el reloj COROS:** al mandar una sesión, el descanso de una tarea de una
+  sola serie ya llega (antes el 3:00 del 3.000 se perdía), y al final del
+  entreno ya no queda un descanso suelto. En las tareas en bloques, entre
+  bloques se descansa una vez: antes se sumaban el corto y el largo. Si ya la
+  habías mandado y cambia con esto, la verás con «⌚!» y al mandarla otra vez se
+  reemplaza.
+
+---
+
 ## 24 de octubre de 2026 · Pasa también a tus evaluados
 
 - **Nuevo:** en Deportistas, en el apartado «Evaluados» (los que solo hacen

@@ -237,7 +237,7 @@ export default function CalendarioPage({ params }: { params: Promise<{ id: strin
     /* Con la copia de la zona: sin ella, una zona propia se ordenaba y se
        cronometraba como la del catálogo que se llame igual. */
     supabase.from('tarea')
-      .select('id, id_sesion, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
+      .select('id, id_sesion, orden, series, disciplina, zona_entrenamiento, zona_copia, descanso_segundos, bloques, descanso_bloques_segundos, formato, formato_config')
       .eq('id_deportista', depId),
     supabase.from('p_distancia').select('id_tarea, metros_planeados').eq('id_deportista', depId),
     supabase.from('p_duracion').select('id_tarea, tiempo_planeado').eq('id_deportista', depId),

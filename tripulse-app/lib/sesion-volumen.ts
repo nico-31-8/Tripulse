@@ -24,6 +24,8 @@ import { esBloque, leerConfig, ordenarLineas, seriesDeLinea, type Formato } from
 export interface TareaCruda {
   id: number
   id_sesion: number
+  /** Su sitio en la sesión: la última no descansa detrás (lib/duracion). */
+  orden?: number | null
   series?: number | null
   disciplina?: string | null
   zona_entrenamiento?: string | null
@@ -130,6 +132,7 @@ export function conVolumen(
       })
       return {
         disciplina: t.disciplina,
+        orden: t.orden,
         series: t.series,
         descanso_segundos: t.descanso_segundos,
         bloques: t.bloques,

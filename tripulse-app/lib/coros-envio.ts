@@ -30,7 +30,7 @@
 import { intensidadGuardada } from './intensidad-prescrita'
 import { objetivoDeTarea } from './objetivo-tarea'
 import { referenciaDeZona, type Tests } from './referencia-zona'
-import { seriesTarea, bloquesDe } from './bloques-tarea'
+import { seriesTarea, bloquesDe, descansoFinalDe } from './bloques-tarea'
 import { ZONAS_RESISTENCIA, numZonaClasica } from './zonas'
 import { nombreDeZona } from './tarea-vista'
 import { mmss, duracionCorta, horasMinutos } from './medicion'
@@ -382,8 +382,15 @@ export function intensidadDeTarea(t: TareaParaCoros, disciplina: string, ctx: Co
 
 interface Pasos { pasos: PasoCoros[]; notas: string[]; calculadas: Set<TipoLeido>; topes: number[] }
 
-/** Las secciones de una tarea: una sola, o los grupos de intervalos desplegados. */
-export function pasosDeTarea(t: TareaParaCoros, disciplina: string, ctx: ContextoCoros, papel: 1 | 2 | 4): Pasos {
+/**
+ * Las secciones de una tarea: una sola, o los grupos de intervalos desplegados.
+ *
+ * `hayMasDetras`: si en el entreno viene otra tarea después. Entonces la última
+ * serie también descansa, porque es el paso a la siguiente; al final del
+ * entreno, no. Es la misma regla que la duración (lib/bloques-tarea:
+ * descansoFinalDe), para que el reloj y la app cuenten lo mismo.
+ */
+export function pasosDeTarea(t: TareaParaCoros, disciplina: string, ctx: ContextoCoros, papel: 1 | 2 | 4, hayMasDetras: boolean): Pasos {
   const m = positivo(una(t?.p_distancia)?.metros_planeados)
   const s = positivo(una(t?.p_duracion)?.tiempo_planeado)
   const intens = intensidadDeTarea(t, disciplina, ctx)
@@ -403,22 +410,35 @@ export function pasosDeTarea(t: TareaParaCoros, disciplina: string, ctx: Context
   const topes = intens.tope ? [intens.tope] : []
 
   const series = seriesTarea(t), bloques = bloquesDe(t)
-  if (series === 1 && bloques === 1) return { pasos: [base], notas, calculadas, topes }
+  const descanso = (seg: number): SeccionCoros => ({ sectionType: 3, targetType: 2, targetValue: seg })
+  const final = hayMasDetras ? descansoFinalDe(t) : 0
+  /* Una serie sola con su descanso: el 3:00 de detrás de un 3.000 no llegaba al reloj. */
+  if (series === 1 && bloques === 1) return { pasos: final ? [base, descanso(final)] : [base], notas, calculadas, topes }
 
-  const descanso = positivo(t?.descanso_segundos)
-  const descansoBloques = positivo(t?.descanso_bloques_segundos)
-  const sets: SeccionCoros[] = [
-    { ...base, sectionType: 2 },
-    ...(descanso ? [{ sectionType: 3 as const, targetType: 2 as const, targetValue: descanso }] : []),
-  ]
+  const corto = positivo(t?.descanso_segundos)
+  const largo = positivo(t?.descanso_bloques_segundos)
+  const trabajo: SeccionCoros = { ...base, sectionType: 2 }
+  const sets: SeccionCoros[] = corto ? [trabajo, descanso(corto)] : [trabajo]
   const pasos: PasoCoros[] = []
   for (let b = 0; b < bloques; b++) {
+    /* Detrás de la última serie del bloque va UN descanso: el largo entre
+       bloques y, detrás del último, el paso a la tarea siguiente. El corto de
+       esa serie no se suma al largo, igual que en la duración (descansoTotalDe):
+       antes el grupo lo llevaba dentro y entre bloques se descansaba dos veces. */
+    const detras = b < bloques - 1 ? largo : final
+    /* Las series que llevan el corto detrás van en grupo; si a la última le toca
+       otra cosa, va suelta con lo suyo. */
+    const enGrupo = detras === corto ? series : series - 1
     /* Si una serie pasa de 20 repeticiones, en grupos de 20 seguidos. */
-    for (let quedan = series; quedan > 0; quedan -= REPETICIONES_MAXIMAS_COROS) {
+    for (let quedan = enGrupo; quedan > 0; quedan -= REPETICIONES_MAXIMAS_COROS) {
       const repeats = Math.min(REPETICIONES_MAXIMAS_COROS, quedan)
-      pasos.push(repeats === 1 ? { ...base, sectionType: 2 } : { intervalGroup: true, repeats, sets: sets.map(x => ({ ...x })) })
+      if (repeats === 1) pasos.push(...sets.map(x => ({ ...x })))
+      else pasos.push({ intervalGroup: true, repeats, sets: sets.map(x => ({ ...x })) })
     }
-    if (b < bloques - 1 && descansoBloques) pasos.push({ sectionType: 3, targetType: 2, targetValue: descansoBloques })
+    if (enGrupo < series) {
+      pasos.push({ ...trabajo })
+      if (detras) pasos.push(descanso(detras))
+    }
   }
   return { pasos, notas, calculadas, topes }
 }
@@ -485,7 +505,7 @@ function cursoDe(disciplina: string, tareas: TareaParaCoros[], ctx: ContextoCoro
   const ritmoDeLaSesion = disciplina === 'Carrera' ? ritmoEscritoDeLaSesion(lista) : null
   const ctxSesion: ContextoCoros = ritmoDeLaSesion ? { ...ctx, ritmoDeLaSesion } : ctx
   lista.forEach((t, i) => {
-    const p = pasosDeTarea(t, disciplina, ctxSesion, papelDe(i, lista.length, t))
+    const p = pasosDeTarea(t, disciplina, ctxSesion, papelDe(i, lista.length, t), i < lista.length - 1)
     pasos.push(...p.pasos)
     notas.push(...p.notas)
     p.calculadas.forEach(x => calculadas.add(x))

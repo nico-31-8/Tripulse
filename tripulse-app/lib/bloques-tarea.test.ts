@@ -17,7 +17,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('./supabase', () => ({ supabase: { auth: { onAuthStateChange: () => {} } } }))
 
 import {
-  bloquesDe, hayBloques, seriesTarea, vecesDe, descansoTotalDe, repeticionTexto,
+  bloquesDe, hayBloques, seriesTarea, vecesDe, descansoTotalDe, descansoFinalDe, repeticionTexto,
 } from './bloques-tarea'
 import { calcularDuracionEstimada, type TareaDuracion } from './duracion'
 import { conVolumen, type TareaCruda } from './sesion-volumen'
@@ -67,9 +67,9 @@ describe('el descanso', () => {
       .toBe(3 * 60 + 2 * 180)
   })
 
-  /* LA GARANTÍA. Sin bloques tiene que salir la cuenta de toda la vida:
-     (series − 1) descansos. Si esto cambiara, se moverían las duraciones de
-     todas las sesiones que ya existen. */
+  /* Sin bloques, DENTRO de la tarea, la cuenta de toda la vida: (series − 1)
+     descansos. El de detrás de la última serie va aparte (descansoFinalDe) y
+     solo cuenta si viene otra tarea: eso lo decide quien recorre la sesión. */
   it('sin bloques, la cuenta de siempre', () => {
     for (const s of [1, 2, 6, 10]) {
       expect(descansoTotalDe({ series: s, descanso_segundos: 90 })).toBe((s - 1) * 90)
@@ -78,6 +78,28 @@ describe('el descanso', () => {
 
   it('un descanso largo sin bloques no cuenta', () => {
     expect(descansoTotalDe({ series: 4, descanso_segundos: 60, descanso_bloques_segundos: 300 })).toBe(3 * 60)
+  })
+})
+
+describe('el descanso de detrás de la última serie', () => {
+  /* «3 × 400, 2:00» y debajo un 3.000: entre el tercer 400 y el 3.000 también
+     se descansan los 2:00 (lo pidió el entrenador el 24-10-2026). */
+  it('sin bloques, el corto', () => {
+    expect(descansoFinalDe({ series: 3, descanso_segundos: 120 })).toBe(120)
+  })
+
+  it('una serie sola: su descanso solo puede ser el de después', () => {
+    expect(descansoFinalDe({ series: 1, descanso_segundos: 180 })).toBe(180)
+  })
+
+  it('en bloques, el largo, que es el que va detrás de cada bloque; sin largo, el corto', () => {
+    expect(descansoFinalDe({ series: 2, bloques: 3, descanso_segundos: 60, descanso_bloques_segundos: 180 })).toBe(180)
+    expect(descansoFinalDe({ series: 2, bloques: 3, descanso_segundos: 60 })).toBe(60)
+  })
+
+  it('sin descanso, nada; y un largo sin bloques no es el de detrás', () => {
+    expect(descansoFinalDe({ series: 4 })).toBe(0)
+    expect(descansoFinalDe({ series: 4, descanso_segundos: 60, descanso_bloques_segundos: 300 })).toBe(60)
   })
 })
 
@@ -126,6 +148,68 @@ describe('la duración', () => {
     const uno = calcularDuracionEstimada([cuatrocientos()], { vam: 16 }).segundos
     const tres = calcularDuracionEstimada([cuatrocientos({ bloques: 3, descanso_bloques_segundos: 180 })], { vam: 16 }).segundos
     expect(tres).toBeGreaterThan(3 * uno)
+  })
+})
+
+describe('la duración de la sesión, con el descanso de detrás de la última serie', () => {
+  const tresMil = (extra: Partial<TareaDuracion> = {}): TareaDuracion => ({
+    disciplina: 'Carrera', series: 1, descanso_segundos: 180, p_distancia: [{ metros_planeados: 3000 }], ...extra,
+  })
+  const vam = { vam: 20 }
+  const sola = (t: TareaDuracion) => calcularDuracionEstimada([t], vam).segundos
+
+  /* Una tarea suelta cuenta como la última de su sesión. Lo que añade tener
+     otra detrás es JUSTO su descanso final, ni un segundo más. */
+  it('lo que añade tener otra tarea detrás es su descanso final', () => {
+    const a = cuatrocientos({ series: 3, descanso_segundos: 120 })
+    const b = tresMil()
+    expect(calcularDuracionEstimada([a, b], vam).segundos).toBeCloseTo(sola(a) + sola(b) + 120, 6)
+    expect(calcularDuracionEstimada([b, a], vam).segundos).toBeCloseTo(sola(a) + sola(b) + 180, 6)
+  })
+
+  it('al final de la sesión no se descansa', () => {
+    const t = cuatrocientos({ series: 3, descanso_segundos: 120 })
+    expect(sola(t) - 3 * sola(cuatrocientos({ series: 1, descanso_segundos: null }))).toBeCloseTo(2 * 120, 6)
+  })
+
+  /* La de la captura del entrenador (22-10-2026): 1.000 m de AEL, cuatro
+     técnicas de 2 × 25 m, 3 × 400 con 2:00, 3.000 con 3:00 y 2 × 400 con
+     2:00, con VAM 20. Antes 26 minutos: faltaban el 2:00 del tercer 400 y el
+     3:00 del 3.000. */
+  it('la sesión de 400 y 3.000 pasa de 26 a 31 minutos', () => {
+    const t = (zona: string, series: number, metros: number, descanso: number | null): TareaDuracion =>
+      ({ disciplina: 'Carrera', zona_entrenamiento: zona, series, descanso_segundos: descanso, p_distancia: [{ metros_planeados: metros }] })
+    const sesion = [
+      t('AEL', 1, 1000, null),
+      t('AER', 2, 25, null), t('AER', 2, 25, null), t('AER', 2, 25, null), t('AER', 2, 25, null),
+      t('CLA', 3, 400, 120),
+      t('AEI', 1, 3000, 180),
+      t('CLA', 2, 400, 120),
+    ]
+    expect(calcularDuracionEstimada(sesion, vam).minutos).toBe(31)
+    const porSeparado = sesion.reduce((s, x) => s + sola(x), 0)
+    expect(calcularDuracionEstimada(sesion, vam).segundos - porSeparado).toBeCloseTo(120 + 180, 6)
+  })
+
+  /* El orden de verdad es `orden`, no el de la lista: varias pantallas piden
+     las tareas sin ordenar, y la última se quedaría con el descanso de otra. */
+  it('la última es la de mayor orden, aunque llegue antes en la lista', () => {
+    const a = cuatrocientos({ orden: 1, series: 3, descanso_segundos: 120 })
+    const b = tresMil({ orden: 2 })
+    expect(calcularDuracionEstimada([b, a], vam).segundos).toBeCloseTo(calcularDuracionEstimada([a, b], vam).segundos, 6)
+    expect(calcularDuracionEstimada([b, a], vam).segundos).toBeCloseTo(sola(a) + sola(b) + 120, 6)
+  })
+
+  /* Para quien cuenta tarea a tarea (el reparto de lib/atribucion). */
+  it('con hayMasDetras, la última de la lista también descansa', () => {
+    expect(calcularDuracionEstimada([tresMil()], vam, { hayMasDetras: true }).segundos).toBeCloseTo(sola(tresMil()) + 180, 6)
+  })
+
+  /* En fuerza el paso al ejercicio siguiente ya es la transición de 90 s: el
+     descanso de la última serie no se suma encima. */
+  it('en fuerza no cambia nada', () => {
+    const f = (): TareaDuracion => ({ disciplina: 'Fuerza', series: 3, descanso_segundos: 60, ejercicios: [{ repeticiones: 10 }] })
+    expect(calcularDuracionEstimada([f(), f()], {}).segundos).toBe(2 * calcularDuracionEstimada([f()], {}).segundos + 90)
   })
 })
 

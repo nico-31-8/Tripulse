@@ -4,8 +4,14 @@ import {
   estadoEnCoros, siguenEnSuCoros, nombreDeEntreno, huellaDe, repeticionDe, textoTiempo, fechaCoros,
   idEnPlanDe, esIdProvisional, ID_PROVISIONAL, textoObjetivo, textoIntensidad,
   leerCalendarioCoros, esCalendarioCoros, ajenosDelDia, idDeCalendario, ritmoSinUnidad,
-  type ContextoCoros, type EnvioCoros, type GrupoCoros, type SeccionCoros, type SesionParaCoros,
+  type ContextoCoros, type EnvioCoros, type GrupoCoros, type SeccionCoros, type SesionParaCoros, type PasoCoros,
 } from './coros-envio'
+
+/* El primer trabajo de un paso, vaya en grupo o suelto. */
+const trabajoDe = (x: PasoCoros): SeccionCoros => ('intervalGroup' in x ? x.sets[0] : x)
+/* Un paso en una palabra: «grupo 6», «serie» o «descanso 120». */
+const comoSeLee = (x: PasoCoros): string =>
+  'intervalGroup' in x ? 'grupo ' + x.repeats : x.sectionType === 3 ? 'descanso ' + x.targetValue : 'serie'
 
 /* El deportista de la maqueta: VAM 17 km/h, FTP 250 W, FC máx 188 y de reposo 50. */
 const CTX: ContextoCoros = { tests: { vam: 17, ftp: 250, css: 1.25 }, propios: [], fcMax: 188, fcReposo: 50 }
@@ -126,11 +132,11 @@ describe('el ritmo sin «/km» en carrera', () => {
     ]
     const [e] = entrenosDeSesion(sesion(), tareas, SIN_NADA)
     expect(e.curso.sections[0]).toMatchObject({ intensityType: 2, intensityValueStart: 530, intensityValueEnd: 530 })
-    expect((e.curso.sections[1] as GrupoCoros).sets[0]).toMatchObject({ intensityType: 2, intensityValueStart: 460, intensityValueEnd: 490 })
+    expect(trabajoDe(e.curso.sections[1])).toMatchObject({ intensityType: 2, intensityValueStart: 460, intensityValueEnd: 490 })
     expect(e.curso.courseDescription).not.toContain('7:40')
     /* Sola, sin nada escrito con «/km» al lado, no se adivina. */
     const [solo] = entrenosDeSesion(sesion(), [tareas[1]], SIN_NADA)
-    expect((solo.curso.sections[0] as GrupoCoros).sets[0].intensityType).toBeUndefined()
+    expect(trabajoDe(solo.curso.sections[0]).intensityType).toBeUndefined()
     expect(solo.curso.courseDescription).toContain('7:40-8:10')
   })
 })
@@ -189,8 +195,8 @@ describe('la intensidad de una tarea', () => {
 })
 
 describe('las secciones de una tarea', () => {
-  it('series con descanso: un grupo de intervalos con el trabajo y la recuperación', () => {
-    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 800, series: 6, descanso_segundos: 120 }), 'Carrera', CTX, 2)
+  it('series con descanso y otra tarea detrás: un grupo con el trabajo y la recuperación, también la de la última', () => {
+    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 800, series: 6, descanso_segundos: 120 }), 'Carrera', CTX, 2, true)
     expect(p.pasos).toEqual([{
       intervalGroup: true, repeats: 6, sets: [
         { sectionType: 2, targetType: 1, targetValue: 800, intensityType: 2, intensityValueStart: 202, intensityValueEnd: 223 },
@@ -199,25 +205,49 @@ describe('las secciones de una tarea', () => {
     }])
   })
 
+  /* La misma regla que la duración (lib/bloques-tarea: descansoFinalDe): al
+     final del entreno no se descansa. Antes el grupo dejaba 2:00 sueltos al
+     acabar, que la app no contaba. */
+  it('la última tarea del entreno no deja un descanso suelto al final', () => {
+    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 800, series: 6, descanso_segundos: 120 }), 'Carrera', CTX, 2, false)
+    expect(p.pasos.map(comoSeLee)).toEqual(['grupo 5', 'serie'])
+    expect(trabajoDe(p.pasos[1])).toMatchObject({ sectionType: 2, targetValue: 800, intensityValueStart: 202 })
+  })
+
+  /* Lo que pidió el entrenador el 24-10-2026: el 3:00 de detrás de un 3.000 no
+     llegaba al reloj, porque una serie sola nunca llevaba descanso. */
+  it('una serie sola con descanso: el descanso va detrás si viene otra tarea, y al final no', () => {
+    const tresMil = () => tarea({ zona_entrenamiento: 'AEI', metros: 3000, descanso_segundos: 180 })
+    expect(pasosDeTarea(tresMil(), 'Carrera', CTX, 2, true).pasos.map(comoSeLee)).toEqual(['serie', 'descanso 180'])
+    expect(pasosDeTarea(tresMil(), 'Carrera', CTX, 2, false).pasos.map(comoSeLee)).toEqual(['serie'])
+  })
+
   it('más de 20 repeticiones: en grupos de 20 seguidos', () => {
-    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'AEI', metros: 200, series: 25, descanso_segundos: 30 }), 'Carrera', CTX, 2)
+    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'AEI', metros: 200, series: 25, descanso_segundos: 30 }), 'Carrera', CTX, 2, true)
     expect(p.pasos.map(x => (x as GrupoCoros).repeats)).toEqual([20, 5])
   })
 
-  it('3 × (2 × 400): desplegado, con el descanso largo entre bloques y no después del último', () => {
-    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 400, series: 2, bloques: 3, descanso_segundos: 60, descanso_bloques_segundos: 180 }), 'Carrera', CTX, 2)
-    expect(p.pasos.map(x => ('intervalGroup' in x ? 'grupo ' + x.repeats : 'rec ' + (x as SeccionCoros).targetValue)))
-      .toEqual(['grupo 2', 'rec 180', 'grupo 2', 'rec 180', 'grupo 2'])
+  /* Entre bloques, UN descanso: el largo. Antes cada bloque era un grupo con el
+     corto dentro, y entre bloques se descansaba 1:00 + 3:00, cuando la duración
+     de la app contaba solo los 3:00 (descansoTotalDe). */
+  it('3 × (2 × 400): desplegado, con el descanso largo entre bloques y sin el corto delante', () => {
+    const t = () => tarea({ zona_entrenamiento: 'PAE', metros: 400, series: 2, bloques: 3, descanso_segundos: 60, descanso_bloques_segundos: 180 })
+    const bloque = ['serie', 'descanso 60', 'serie']
+    expect(pasosDeTarea(t(), 'Carrera', CTX, 2, false).pasos.map(comoSeLee))
+      .toEqual([...bloque, 'descanso 180', ...bloque, 'descanso 180', ...bloque])
+    /* Con otra tarea detrás, el del último bloque es el paso a la siguiente: el largo. */
+    expect(pasosDeTarea(t(), 'Carrera', CTX, 2, true).pasos.map(comoSeLee))
+      .toEqual([...bloque, 'descanso 180', ...bloque, 'descanso 180', ...bloque, 'descanso 180'])
   })
 
   it('sin metros ni tiempo, una sección libre (se acaba con el botón de vuelta)', () => {
-    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'AEL' }), 'Carrera', CTX, 2)
+    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'AEL' }), 'Carrera', CTX, 2, false)
     expect(p.pasos[0]).toMatchObject({ sectionType: 2, targetType: 4 })
     expect((p.pasos[0] as SeccionCoros).targetValue).toBeUndefined()
   })
 
   it('el comentario de la tarea va a la descripción con su repetición', () => {
-    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 200, series: 4, comentario: 'A tope' }), 'Carrera', CTX, 2)
+    const p = pasosDeTarea(tarea({ zona_entrenamiento: 'PAE', metros: 200, series: 4, comentario: 'A tope' }), 'Carrera', CTX, 2, false)
     expect(p.notas).toEqual(['4×200 m: A tope'])
   })
 })

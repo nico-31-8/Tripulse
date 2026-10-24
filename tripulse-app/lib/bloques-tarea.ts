@@ -49,18 +49,40 @@ export const seriesTarea = (t: ConBloques | null | undefined): number => {
  */
 export const vecesDe = (t: ConBloques | null | undefined): number => seriesTarea(t) * bloquesDe(t)
 
+const positivo = (x: unknown): number => (Number(x) > 0 ? Number(x) : 0)
+
 /**
- * Todo el descanso de la tarea, en segundos.
+ * El descanso de DENTRO de la tarea, en segundos.
  *
  * Dentro de cada bloque hay (series − 1) descansos cortos, y entre bloques hay
  * (bloques − 1) descansos largos. En 3 × (2 × 400) con 1:00 y 3:00: tres
- * descansos de 1:00 —uno por bloque— y dos de 3:00. El último 400 no descansa.
+ * descansos de 1:00 —uno por bloque— y dos de 3:00. El del último 400 no está
+ * aquí: es el paso a la tarea siguiente, y lo da `descansoFinalDe`.
  */
 export const descansoTotalDe = (t: ConBloques | null | undefined): number => {
-  const corto = Number(t?.descanso_segundos) > 0 ? Number(t?.descanso_segundos) : 0
-  const largo = Number(t?.descanso_bloques_segundos) > 0 ? Number(t?.descanso_bloques_segundos) : 0
   const b = bloquesDe(t)
-  return corto * Math.max(0, seriesTarea(t) - 1) * b + largo * Math.max(0, b - 1)
+  return positivo(t?.descanso_segundos) * Math.max(0, seriesTarea(t) - 1) * b
+    + positivo(t?.descanso_bloques_segundos) * Math.max(0, b - 1)
+}
+
+/**
+ * El descanso que va detrás de la ÚLTIMA serie: el paso a la tarea siguiente.
+ *
+ * Lo pidió el entrenador el 24-10-2026 viendo la gráfica de una sesión: «falta
+ * un descanso después del 3 mil y después del último 400». Quien escribe
+ * «3 × 400, 2:00» y debajo un 3.000 descansa también entre el tercer 400 y el
+ * 3.000, y el 3:00 de una tarea de una sola serie solo puede ser eso. Hasta
+ * entonces no contaba en ninguna pantalla, y el reloj sí lo hacía con los 400.
+ *
+ * SOLO SI DETRÁS VIENE OTRA TAREA: al final de la sesión no se descansa. Eso
+ * no lo sabe la tarea, lo sabe quien recorre la sesión (lib/duracion, el envío
+ * a COROS, la gráfica de la sesión), así que aquí no se mira.
+ *
+ * En bloques es el LARGO, el que va detrás de cada bloque; sin largo, el corto.
+ */
+export const descansoFinalDe = (t: ConBloques | null | undefined): number => {
+  const largo = positivo(t?.descanso_bloques_segundos)
+  return hayBloques(t) && largo > 0 ? largo : positivo(t?.descanso_segundos)
 }
 
 /**

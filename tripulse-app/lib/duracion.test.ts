@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularDuracionEstimada, medirDuracion, TOPE_TAREA_SEG, type TareaDuracion, type TestsDeportista } from './duracion'
+import { calcularDuracionEstimada, medirDuracion, tramosDeSesion, TOPE_TAREA_SEG, type TareaDuracion, type TestsDeportista, type TramoSesion } from './duracion'
 
 const tests: TestsDeportista = { vam: 15, css: 1.4, ftp: 250 }
 
@@ -267,5 +267,69 @@ describe('una tarea imposible no se suma', () => {
 
   it('el tope es un día entero', () => {
     expect(TOPE_TAREA_SEG).toBe(86_400)
+  })
+})
+
+// ============================================================
+// La sesión en el tiempo (la gráfica de la sesión)
+// ============================================================
+
+describe('tramosDeSesion', () => {
+  const vam = { vam: 20, css: 1.4 }
+  const carrera = (series: number, metros: number, descanso: number | null, extra: Partial<TareaDuracion> = {}): TareaDuracion =>
+    ({ disciplina: 'Carrera', zona_entrenamiento: 'CLA', series, descanso_segundos: descanso, p_distancia: [{ metros_planeados: metros }], ...extra })
+  const fuerza = (): TareaDuracion => ({ disciplina: 'Fuerza', series: 3, descanso_segundos: 90, ejercicios: [{ repeticiones: 8 }] })
+  const suma = (tr: TramoSesion[]) => tr.filter(x => !x.supuesto).reduce((s, x) => s + x.segundos, 0)
+  const comoSeLee = (tr: TramoSesion[]) => tr.map(x => (x.tipo === 'trabajo' ? 'serie' : x.cual + ' ' + x.segundos))
+
+  /* LA GARANTÍA: la gráfica y la cabecera de la sesión no pueden dar dos
+     duraciones distintas. Antes la gráfica tenía su propia cuenta (una serie de
+     cada tarea, ritmo de tabla, sin descansos) y decía 29 minutos donde la
+     cabecera decía 26. */
+  it.each([
+    ['series y un 3.000', [carrera(3, 400, 120), carrera(1, 3000, 180, { zona_entrenamiento: 'AEI' }), carrera(2, 400, 120)]],
+    ['en bloques', [carrera(2, 400, 60, { bloques: 3, descanso_bloques_segundos: 180 }), carrera(1, 2000, null, { zona_entrenamiento: 'AEL' })]],
+    ['por tiempo, en bici', [{ disciplina: 'Ciclismo', zona_entrenamiento: 'AEM', series: 4, descanso_segundos: 120, p_duracion: [{ tiempo_planeado: 480 }] }]],
+    ['natación', [{ disciplina: 'Natacion', zona_entrenamiento: 'AEI', series: 8, descanso_segundos: 20, p_distancia: [{ metros_planeados: 100 }] }]],
+    ['fuerza con carrera detrás', [fuerza(), fuerza(), carrera(4, 200, 60)]],
+    ['un AMRAP entre medias', [fuerza(), { disciplina: 'Hibrido', formato: 'amrap', formato_config: { minutos: 12 }, ejercicios: [{ repeticiones: 10 }] }, fuerza()]],
+  ] as [string, TareaDuracion[]][])('%s: suma lo mismo que la duración', (_, tareas) => {
+    expect(suma(tramosDeSesion(tareas, vam))).toBeCloseTo(calcularDuracionEstimada(tareas, vam).segundos, 6)
+  })
+
+  it('cada descanso en su sitio: entre series, detrás de la última si viene otra, y al final nada', () => {
+    const tr = tramosDeSesion([carrera(3, 400, 120), carrera(1, 3000, 180), carrera(2, 400, 120)], vam)
+    expect(comoSeLee(tr)).toEqual([
+      'serie', 'entre 120', 'serie', 'entre 120', 'serie', 'final 120',
+      'serie', 'final 180',
+      'serie', 'entre 120', 'serie',
+    ])
+  })
+
+  it('en bloques: el largo entre bloques y, detrás del último, el paso a la siguiente', () => {
+    const tr = tramosDeSesion([carrera(2, 400, 60, { bloques: 2, descanso_bloques_segundos: 180 }), carrera(1, 1000, null)], vam)
+    expect(comoSeLee(tr)).toEqual(['serie', 'entre 60', 'serie', 'bloque 180', 'serie', 'entre 60', 'serie', 'final 180', 'serie'])
+  })
+
+  it('en fuerza, el cambio de ejercicio entre tareas y ningún descanso detrás de la última serie', () => {
+    const tr = tramosDeSesion([fuerza(), fuerza()], {})
+    expect(comoSeLee(tr)).toEqual(['serie', 'entre 90', 'serie', 'entre 90', 'serie', 'cambio 90', 'serie', 'entre 90', 'serie', 'entre 90', 'serie'])
+  })
+
+  it('va en el orden de la sesión aunque las tareas lleguen desordenadas', () => {
+    const tr = tramosDeSesion([carrera(1, 3000, 180, { orden: 2 }), carrera(2, 400, 120, { orden: 1 })], vam)
+    expect(tr.map(x => x.tarea)).toEqual([1, 1, 1, 1, 0])
+    expect(comoSeLee(tr)).toEqual(['serie', 'entre 120', 'serie', 'final 120', 'serie'])
+  })
+
+  /* La bici por distancia no se puede pasar a minutos (lib/duracion lo explica):
+     se dibuja con un ancho orientativo, marcado, y no suma. */
+  it('lo que no se puede estimar va marcado y no suma', () => {
+    const bici: TareaDuracion = { disciplina: 'Ciclismo', zona_entrenamiento: 'AEL', series: 1, p_distancia: [{ metros_planeados: 40000 }] }
+    const tareas = [carrera(2, 400, 60), bici]
+    const tr = tramosDeSesion(tareas, vam)
+    expect(tr.filter(x => x.tarea === 1).every(x => x.supuesto)).toBe(true)
+    expect(tr.filter(x => x.tarea === 1)[0].segundos).toBeGreaterThan(0)
+    expect(suma(tr)).toBeCloseTo(calcularDuracionEstimada(tareas, vam).segundos, 6)
   })
 })

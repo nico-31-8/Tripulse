@@ -1146,7 +1146,7 @@ export default function PaginaSesion({ params }: { params: Promise<{ id: string 
             onCopiar={pedirCopia} />
         )}
 
-        <SessionLoadChart tareas={tareas} />
+        <SessionLoadChart tareas={tareas} tests={testsData || {}} />
 
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-xl font-bold">
